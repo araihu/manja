@@ -24,3 +24,12 @@ jobs:
       - run: go test ./...
       - run: npm run api:bundle
       - run: npm run api:lint
+
+  integration:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - run: go test -tags=integration ./internal/integration -v
