@@ -1,0 +1,6 @@
+/bin/
+/tmp/
+/api/dist/
+.superpowers/
+/node_modules/
+*.test
