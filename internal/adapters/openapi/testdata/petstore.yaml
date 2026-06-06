@@ -1,0 +1,39 @@
+openapi: 3.1.0
+info:
+  title: Petstore
+  version: 1.0.0
+  description: Sample pet API.
+paths:
+  /pets:
+    get:
+      operationId: listPets
+      summary: List pets
+      description: Returns visible pets.
+      tags: [Pets]
+      responses:
+        "200":
+          description: Pet list
+  /pets/{petId}:
+    get:
+      operationId: getPet
+      summary: Get pet
+      tags: [Pets]
+      parameters:
+        - name: petId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Pet detail
+components:
+  schemas:
+    Pet:
+      type: object
+      description: A pet record.
+      properties:
+        id:
+          type: string
+        name:
+          type: string

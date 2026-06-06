@@ -1,0 +1,91 @@
+package core_test
+
+import (
+	"context"
+	"os"
+	"testing"
+
+	openapiadapter "github.com/araihu/manja/internal/adapters/openapi"
+	"github.com/araihu/manja/internal/core"
+)
+
+func TestOpenAPIParserBuildsSearchIndex(t *testing.T) {
+	data, err := os.ReadFile("../adapters/openapi/testdata/petstore.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	parser := openapiadapter.Parser{}
+	idx, err := parser.Parse(context.Background(), core.SpecFile{
+		SourceID: "src1",
+		Path:     "openapi.yaml",
+		Format:   "yaml",
+		Bytes:    data,
+	}, core.Revision{ID: "rev1", SourceID: "src1", Ref: "main"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if idx.Title != "Petstore" || idx.Version != "1.0.0" {
+		t.Fatalf("identity = %q %q", idx.Title, idx.Version)
+	}
+	if len(idx.Operations) != 2 {
+		t.Fatalf("operations = %d, want 2", len(idx.Operations))
+	}
+	if idx.Search[0].Title != "GET /pets" {
+		t.Fatalf("first search title = %q", idx.Search[0].Title)
+	}
+	if len(idx.Schemas) != 1 || idx.Schemas[0].Name != "Pet" {
+		t.Fatalf("schemas = %#v", idx.Schemas)
+	}
+}
+
+func TestOpenAPIParserBuildsStableAnchorsWithoutOperationID(t *testing.T) {
+	spec := []byte(`
+openapi: 3.1.0
+info:
+  title: Anonymous Operations
+  version: 1.0.0
+paths:
+  /pets:
+    get:
+      summary: List pets
+      responses:
+        "200":
+          description: ok
+  /pets/{petId}:
+    get:
+      summary: Get pet
+      parameters:
+        - name: petId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: ok
+components:
+  schemas: {}
+`)
+	parser := openapiadapter.Parser{}
+	idx, err := parser.Parse(context.Background(), core.SpecFile{
+		SourceID: "src1",
+		Path:     "anonymous.yaml",
+		Format:   "yaml",
+		Bytes:    spec,
+	}, core.Revision{ID: "rev1", SourceID: "src1", Ref: "main"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(idx.Search) < 2 {
+		t.Fatalf("search documents = %d, want at least 2", len(idx.Search))
+	}
+	if idx.Search[0].ID != "operation-get-pets" || idx.Search[0].Href != "#operation-get-pets" {
+		t.Fatalf("first operation anchor = %q %q", idx.Search[0].ID, idx.Search[0].Href)
+	}
+	if idx.Search[1].ID != "operation-get-pets-petid" || idx.Search[1].Href != "#operation-get-pets-petid" {
+		t.Fatalf("second operation anchor = %q %q", idx.Search[1].ID, idx.Search[1].Href)
+	}
+	if idx.PublicRoutes[1].Path != idx.Search[0].Href || idx.PublicRoutes[2].Path != idx.Search[1].Href {
+		t.Fatalf("public route paths = %#v, search hrefs = %#v", idx.PublicRoutes, idx.Search[:2])
+	}
+}
