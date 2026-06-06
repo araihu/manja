@@ -7,6 +7,7 @@ require (
 	github.com/araihu/goshtoso v0.0.4
 	github.com/getkin/kin-openapi v0.140.0
 	github.com/oapi-codegen/oapi-codegen/v2 v2.7.1
+	github.com/playwright-community/playwright-go v0.5700.1
 	github.com/yuin/goldmark v1.8.2
 )
 
@@ -15,11 +16,14 @@ require (
 	github.com/andybalholm/brotli v1.1.0 // indirect
 	github.com/cenkalti/backoff/v4 v4.3.0 // indirect
 	github.com/cli/browser v1.3.0 // indirect
+	github.com/deckarep/golang-set/v2 v2.8.0 // indirect
 	github.com/dprotaso/go-yit v0.0.0-20220510233725-9ba8df137936 // indirect
 	github.com/fatih/color v1.16.0 // indirect
 	github.com/fsnotify/fsnotify v1.7.0 // indirect
+	github.com/go-jose/go-jose/v3 v3.0.4 // indirect
 	github.com/go-openapi/jsonpointer v0.22.5 // indirect
 	github.com/go-openapi/swag/jsonname v0.25.5 // indirect
+	github.com/go-stack/stack v1.8.1 // indirect
 	github.com/mattn/go-colorable v0.1.13 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
 	github.com/natefinch/atomic v1.0.1 // indirect
