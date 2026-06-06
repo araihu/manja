@@ -6,6 +6,7 @@ require (
 	github.com/a-h/templ v0.3.1020
 	github.com/getkin/kin-openapi v0.140.0
 	github.com/oapi-codegen/oapi-codegen/v2 v2.7.1
+	github.com/yuin/goldmark v1.8.2
 )
 
 require (
