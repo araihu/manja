@@ -1,0 +1,14 @@
+openapi: 3.1.0
+info:
+  title: Manja Management API
+  version: 0.1.0
+servers:
+  - url: http://localhost:8080
+security: []
+paths:
+  /api/healthz:
+    $ref: ./paths/health.yaml
+components:
+  schemas:
+    Health:
+      $ref: ./components/schemas.yaml#/Health
