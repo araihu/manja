@@ -41,6 +41,7 @@ func (Parser) Parse(ctx context.Context, file core.SpecFile, rev core.Revision) 
 				Tags:        append([]string(nil), op.Tags...),
 				Deprecated:  op.Deprecated,
 			}
+			operation.Anchor = operationAnchor(operation)
 			idx.Operations = append(idx.Operations, operation)
 		}
 	}
@@ -115,6 +116,9 @@ func buildPublicRoutes(idx core.SpecIndex) []core.PublicRoute {
 }
 
 func operationAnchor(op core.Operation) string {
+	if op.Anchor != "" {
+		return op.Anchor
+	}
 	fragment := anchorFragment(op.ID)
 	if fragment == "" {
 		fragment = anchorFragment(op.Method + " " + op.Path)

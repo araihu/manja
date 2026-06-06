@@ -30,8 +30,14 @@ func TestOpenAPIParserBuildsSearchIndex(t *testing.T) {
 	if len(idx.Operations) != 2 {
 		t.Fatalf("operations = %d, want 2", len(idx.Operations))
 	}
+	if idx.Operations[0].Anchor != "operation-listpets" {
+		t.Fatalf("first operation anchor = %q", idx.Operations[0].Anchor)
+	}
 	if idx.Search[0].Title != "GET /pets" {
 		t.Fatalf("first search title = %q", idx.Search[0].Title)
+	}
+	if idx.Search[0].Href != "#"+idx.Operations[0].Anchor || idx.PublicRoutes[1].Path != idx.Search[0].Href {
+		t.Fatalf("operation anchor mismatch: operation = %q, search = %q, route = %q", idx.Operations[0].Anchor, idx.Search[0].Href, idx.PublicRoutes[1].Path)
 	}
 	if len(idx.Schemas) != 1 || idx.Schemas[0].Name != "Pet" {
 		t.Fatalf("schemas = %#v", idx.Schemas)
@@ -82,8 +88,14 @@ components:
 	if idx.Search[0].ID != "operation-get-pets" || idx.Search[0].Href != "#operation-get-pets" {
 		t.Fatalf("first operation anchor = %q %q", idx.Search[0].ID, idx.Search[0].Href)
 	}
+	if idx.Operations[0].Anchor != idx.Search[0].ID {
+		t.Fatalf("first operation anchor = %q, search id = %q", idx.Operations[0].Anchor, idx.Search[0].ID)
+	}
 	if idx.Search[1].ID != "operation-get-pets-petid" || idx.Search[1].Href != "#operation-get-pets-petid" {
 		t.Fatalf("second operation anchor = %q %q", idx.Search[1].ID, idx.Search[1].Href)
+	}
+	if idx.Operations[1].Anchor != idx.Search[1].ID {
+		t.Fatalf("second operation anchor = %q, search id = %q", idx.Operations[1].Anchor, idx.Search[1].ID)
 	}
 	if idx.PublicRoutes[1].Path != idx.Search[0].Href || idx.PublicRoutes[2].Path != idx.Search[1].Href {
 		t.Fatalf("public route paths = %#v, search hrefs = %#v", idx.PublicRoutes, idx.Search[:2])

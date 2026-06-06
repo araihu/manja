@@ -1,0 +1,31 @@
+.manja-markdown {
+  color: var(--color-on-surface);
+  line-height: 1.65;
+}
+
+.dark .manja-markdown {
+  color: var(--color-on-surface-dark);
+}
+
+.manja-markdown h1,
+.manja-markdown h2,
+.manja-markdown h3 {
+  color: var(--color-on-surface-strong);
+  font-family: var(--font-title);
+  font-weight: 700;
+}
+
+.dark .manja-markdown h1,
+.dark .manja-markdown h2,
+.dark .manja-markdown h3 {
+  color: var(--color-on-surface-dark-strong);
+}
+
+.manja-markdown a {
+  color: var(--color-primary);
+  text-decoration: underline;
+}
+
+.dark .manja-markdown a {
+  color: var(--color-primary-dark);
+}

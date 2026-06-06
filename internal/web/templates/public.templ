@@ -1,0 +1,119 @@
+package templates
+
+import (
+	"strings"
+
+	"github.com/araihu/goshtoso/components/badge"
+	searchfield "github.com/araihu/goshtoso/components/search"
+
+	"github.com/araihu/manja/internal/core"
+)
+
+templ PublicDocs(idx core.SpecIndex) {
+	@Layout(idx.Title) {
+		<div class="mx-auto flex min-h-screen max-w-6xl flex-col gap-8 px-6 py-8">
+			<header class="flex flex-col gap-4 border-b border-outline pb-6 dark:border-outline-dark md:flex-row md:items-center md:justify-between">
+				<div>
+					<p class="text-sm text-on-surface-muted dark:text-on-surface-dark-muted">OpenAPI docs</p>
+					<h1 class="font-title text-3xl font-bold text-on-surface-strong dark:text-on-surface-dark-strong">{ idx.Title }</h1>
+					<p class="mt-1 text-on-surface-muted dark:text-on-surface-dark-muted">Version { idx.Version }</p>
+				</div>
+				<div class="w-full md:w-80">
+					@searchfield.Search(searchfield.Config{
+						ID: "docs-search",
+						Label: "Search docs",
+						Placeholder: "Search operations and schemas",
+						GlobalShortcut: true,
+						Items: searchItems(idx.Search),
+						MaxResults: 8,
+					})
+				</div>
+			</header>
+			<main class="grid gap-4">
+				for _, op := range idx.Operations {
+					<section id={ operationAnchor(op) } class="rounded-radius border border-outline bg-surface p-4 dark:border-outline-dark dark:bg-surface-dark">
+						<div class="flex flex-wrap items-center gap-3">
+							@badge.Badge(badge.Config{Label: op.Method, Variant: badge.Primary})
+							<h2 class="font-mono text-lg font-semibold text-on-surface-strong dark:text-on-surface-dark-strong">{ op.Path }</h2>
+						</div>
+						if op.Summary != "" {
+							<p class="mt-3 text-on-surface dark:text-on-surface-dark">{ op.Summary }</p>
+						}
+						if len(op.Tags) > 0 {
+							<p class="mt-2 text-sm text-on-surface-muted dark:text-on-surface-dark-muted">Tags: { strings.Join(op.Tags, ", ") }</p>
+						}
+					</section>
+				}
+				if len(idx.Schemas) > 0 {
+					<section class="mt-4 border-t border-outline pt-6 dark:border-outline-dark">
+						<h2 class="font-title text-2xl font-bold text-on-surface-strong dark:text-on-surface-dark-strong">Schemas</h2>
+						<div class="mt-4 grid gap-3">
+							for _, schema := range idx.Schemas {
+								<section id={ schemaAnchor(schema) } class="border-b border-outline pb-3 last:border-b-0 dark:border-outline-dark">
+									<h3 class="font-mono text-base font-semibold text-on-surface-strong dark:text-on-surface-dark-strong">{ schema.Name }</h3>
+									if schema.Description != "" {
+										<p class="mt-2 text-sm text-on-surface-muted dark:text-on-surface-dark-muted">{ schema.Description }</p>
+									}
+								</section>
+							}
+						</div>
+					</section>
+				}
+			</main>
+		</div>
+	}
+}
+
+func searchItems(docs []core.SearchDocument) []searchfield.Item {
+	items := make([]searchfield.Item, 0, len(docs))
+	for _, doc := range docs {
+		items = append(items, searchfield.Item{
+			ID: "search-" + doc.ID,
+			Title: doc.Title,
+			Description: doc.Description,
+			Href: doc.Href,
+			Section: doc.Section,
+			Keywords: doc.Keywords,
+		})
+	}
+	return items
+}
+
+func operationAnchor(op core.Operation) string {
+	if op.Anchor != "" {
+		return op.Anchor
+	}
+	if op.ID != "" {
+		return "operation-" + op.ID
+	}
+	fragment := anchorFragment(op.Method + " " + op.Path)
+	if fragment == "" {
+		return "operation"
+	}
+	return "operation-" + fragment
+}
+
+func schemaAnchor(schema core.Schema) string {
+	return "schema-" + strings.ToLower(schema.Name)
+}
+
+func anchorFragment(value string) string {
+	var builder strings.Builder
+	lastWasSeparator := false
+	for _, r := range strings.ToLower(value) {
+		switch {
+		case r >= 'a' && r <= 'z':
+			builder.WriteRune(r)
+			lastWasSeparator = false
+		case r >= '0' && r <= '9':
+			builder.WriteRune(r)
+			lastWasSeparator = false
+		default:
+			if builder.Len() > 0 && !lastWasSeparator {
+				builder.WriteByte('-')
+				lastWasSeparator = true
+			}
+		}
+	}
+	return strings.Trim(builder.String(), "-")
+}

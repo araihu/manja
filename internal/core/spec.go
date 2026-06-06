@@ -28,6 +28,7 @@ type SpecIndex struct {
 
 type Operation struct {
 	ID          string
+	Anchor      string
 	Method      string
 	Path        string
 	Summary     string

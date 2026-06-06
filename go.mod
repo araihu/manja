@@ -4,6 +4,7 @@ go 1.26.1
 
 require (
 	github.com/a-h/templ v0.3.1020
+	github.com/araihu/goshtoso v0.0.4
 	github.com/getkin/kin-openapi v0.140.0
 	github.com/oapi-codegen/oapi-codegen/v2 v2.7.1
 	github.com/yuin/goldmark v1.8.2
@@ -19,13 +20,11 @@ require (
 	github.com/fsnotify/fsnotify v1.7.0 // indirect
 	github.com/go-openapi/jsonpointer v0.22.5 // indirect
 	github.com/go-openapi/swag/jsonname v0.25.5 // indirect
-	github.com/google/go-cmp v0.7.0 // indirect
 	github.com/mattn/go-colorable v0.1.13 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
 	github.com/natefinch/atomic v1.0.1 // indirect
 	github.com/oasdiff/yaml v0.1.0 // indirect
 	github.com/oasdiff/yaml3 v0.0.13 // indirect
-	github.com/rogpeppe/go-internal v1.14.1 // indirect
 	github.com/santhosh-tekuri/jsonschema/v6 v6.0.2 // indirect
 	github.com/speakeasy-api/jsonpath v0.6.3 // indirect
 	github.com/speakeasy-api/openapi v1.19.2 // indirect
