@@ -1,0 +1,111 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-06-07T00:03:07Z",
+  "title": "Design System: Manja",
+  "extensions": {
+    "colorMeta": {
+      "surface": {
+        "role": "neutral",
+        "displayName": "Workbench Surface",
+        "canonical": "var(--color-surface)",
+        "resolved": "#f5f5f5",
+        "tonalRamp": ["#fafafa", "#f5f5f5", "#e5e5e5"]
+      },
+      "surface-dark": {
+        "role": "neutral",
+        "displayName": "Night Surface",
+        "canonical": "var(--color-surface-dark)",
+        "resolved": "#262626",
+        "tonalRamp": ["#404040", "#262626", "#171717"]
+      },
+      "primary": {
+        "role": "primary",
+        "displayName": "Command Violet",
+        "canonical": "var(--color-primary)",
+        "resolved": "#a855f7",
+        "tonalRamp": ["#c084fc", "#a855f7", "#9333ea"]
+      },
+      "outline": {
+        "role": "neutral",
+        "displayName": "Outline Grey",
+        "canonical": "var(--color-outline)",
+        "resolved": "#d4d4d4",
+        "tonalRamp": ["#e5e5e5", "#d4d4d4", "#a3a3a3"]
+      }
+    },
+    "typographyMeta": {
+      "display": {
+        "displayName": "Spec Title",
+        "purpose": "Use for the public spec title only."
+      },
+      "headline": {
+        "displayName": "Docs Section Heading",
+        "purpose": "Use for major documentation groups such as Schemas."
+      },
+      "body": {
+        "displayName": "Documentation Prose",
+        "purpose": "Use for operation summaries, schema descriptions, and Markdown prose."
+      },
+      "mono": {
+        "displayName": "API Identifier",
+        "purpose": "Use for paths, schema names, and code-like identifiers."
+      }
+    },
+    "elevationMeta": {
+      "philosophy": "Flat by default. Use borders, tonal surfaces, and spacing for depth. Shadows are reserved for floating Goshtoso overlays such as command search."
+    },
+    "motion": {
+      "duration": {
+        "fast": "150ms",
+        "standard": "200ms",
+        "overlay": "150ms"
+      },
+      "easing": {
+        "standard": "ease-out"
+      },
+      "rules": [
+        "Motion should communicate state, not decorate content.",
+        "Do not animate documentation content on page load."
+      ]
+    },
+    "breakpoints": {
+      "mobile": "0px",
+      "medium": "768px",
+      "contentMax": "72rem"
+    },
+    "componentMeta": {
+      "public-docs-header": {
+        "description": "Stacked on mobile, two-column at medium screens. Contains product eyebrow, spec title, version, and the search trigger.",
+        "classes": "flex flex-col gap-4 border-b border-outline pb-6 md:flex-row md:items-center md:justify-between"
+      },
+      "operation-section": {
+        "description": "Repeated operation content surface. Flat border, semantic surface, compact padding.",
+        "classes": "rounded-radius border border-outline bg-surface p-4 dark:border-outline-dark dark:bg-surface-dark"
+      },
+      "schema-row": {
+        "description": "Simple bordered rows under the Schemas section. No card chrome.",
+        "classes": "border-b border-outline pb-3 last:border-b-0 dark:border-outline-dark"
+      },
+      "command-search": {
+        "description": "Goshtoso search component with global shortcut. Search result IDs are prefixed with search- so content anchors remain unique."
+      },
+      "markdown": {
+        "description": "Safe Markdown output wrapper using Goshtoso color and font tokens.",
+        "selector": ".manja-markdown"
+      }
+    },
+    "rules": {
+      "dos": [
+        "Use Goshtoso semantic tokens before adding Manja-specific CSS.",
+        "Keep operation and schema anchors visible and stable.",
+        "Use primary only for badges, focus, selected states, and real actions."
+      ],
+      "donts": [
+        "Do not create a marketing hero for public docs.",
+        "Do not add try-it console behavior in v1.",
+        "Do not use Tailwind Typography prose classes for Markdown.",
+        "Do not duplicate DOM IDs between search results and content anchors."
+      ]
+    }
+  }
+}
