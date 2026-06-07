@@ -11,7 +11,7 @@ import (
 
 func main() {
 	addr := flag.String("addr", ":8080", "listen address")
-	spec := flag.String("spec", "internal/adapters/openapi/testdata/petstore.yaml", "OpenAPI spec path")
+	spec := flag.String("spec", defaultSpecPath(), "OpenAPI spec path")
 	dataDir := flag.String("data-dir", ".manja/data", "local Manja data directory")
 	flag.Parse()
 
@@ -24,4 +24,8 @@ func main() {
 	}
 	log.Printf("manja listening on %s", *addr)
 	log.Fatal(http.ListenAndServe(*addr, handler))
+}
+
+func defaultSpecPath() string {
+	return "internal/adapters/openapi/testdata/github-v3-rest.json"
 }
