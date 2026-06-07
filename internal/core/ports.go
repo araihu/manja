@@ -8,6 +8,7 @@ type Store interface {
 	SaveRevision(context.Context, Revision) error
 	Revision(context.Context, string) (Revision, error)
 	SavePublication(context.Context, Publication) error
+	SaveSyncRecord(context.Context, SyncRecord) error
 }
 
 type BlobStore interface {
@@ -24,6 +25,10 @@ type Cache interface {
 	Get(string) ([]byte, bool)
 	Set(string, []byte)
 	Delete(string)
+}
+
+type SourceFetcher interface {
+	Fetch(context.Context) (SpecFile, Revision, error)
 }
 
 type Parser interface {

@@ -12,9 +12,13 @@ import (
 func main() {
 	addr := flag.String("addr", ":8080", "listen address")
 	spec := flag.String("spec", "internal/adapters/openapi/testdata/petstore.yaml", "OpenAPI spec path")
+	dataDir := flag.String("data-dir", ".manja/data", "local Manja data directory")
 	flag.Parse()
 
-	handler, err := app.New(context.Background(), *spec)
+	handler, err := app.NewWithOptions(context.Background(), app.Options{
+		SpecPath: *spec,
+		DataDir:  *dataDir,
+	})
 	if err != nil {
 		log.Fatal(err)
 	}

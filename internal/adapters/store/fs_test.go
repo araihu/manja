@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/araihu/manja/internal/core"
 )
@@ -56,6 +57,30 @@ func TestFileStorePersistsProjectRevisionPublicationAndBlob(t *testing.T) {
 	}
 	if string(blob) != "openapi: 3.1.0" {
 		t.Fatalf("blob = %q", blob)
+	}
+
+	record := core.SyncRecord{
+		ID:         "sync-1",
+		ProjectID:  "p1",
+		SourceID:   "s1",
+		RevisionID: "r1",
+		Trigger:    "manual",
+		Ref:        "main",
+		CommitSHA:  "abc123",
+		SpecPath:   "openapi.yaml",
+		Result:     core.SyncResultSuccess,
+		StartedAt:  time.Date(2026, 6, 7, 1, 2, 3, 0, time.UTC),
+		FinishedAt: time.Date(2026, 6, 7, 1, 2, 4, 0, time.UTC),
+	}
+	if err := fs.SaveSyncRecord(ctx, record); err != nil {
+		t.Fatal(err)
+	}
+	var gotRecord core.SyncRecord
+	if err := fs.readJSON(ctx, "sync-history", "sync-1.json", &gotRecord); err != nil {
+		t.Fatal(err)
+	}
+	if gotRecord.ProjectID != "p1" || gotRecord.Result != core.SyncResultSuccess || gotRecord.CommitSHA != "abc123" {
+		t.Fatalf("sync record = %+v", gotRecord)
 	}
 }
 
@@ -137,6 +162,14 @@ func TestFileStoreRejectsInvalidFlatIDs(t *testing.T) {
 		{
 			name: "save publication revision traversal",
 			run:  func() error { return fs.SavePublication(ctx, core.Publication{ProjectID: "p1", RevisionID: "../r1"}) },
+		},
+		{
+			name: "save sync record separator",
+			run:  func() error { return fs.SaveSyncRecord(ctx, core.SyncRecord{ID: "bad/id"}) },
+		},
+		{
+			name: "save sync record traversal",
+			run:  func() error { return fs.SaveSyncRecord(ctx, core.SyncRecord{ID: "../sync"}) },
 		},
 	}
 

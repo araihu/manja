@@ -1,0 +1,105 @@
+package app
+
+import (
+	"context"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+
+	"github.com/araihu/manja/internal/core"
+)
+
+func TestNewWithOptionsSyncsSpecBeforeServingPublicDocs(t *testing.T) {
+	ctx := context.Background()
+	dataDir := t.TempDir()
+	specPath := filepath.Join(dataDir, "openapi.yaml")
+	if err := os.WriteFile(specPath, []byte("openapi: 3.1.0\ninfo:\n  title: Synced API\n  version: v1\npaths: {}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	handler, err := NewWithOptions(ctx, Options{
+		ProjectID: "project1",
+		SourceID:  "source1",
+		SpecPath:  specPath,
+		DataDir:   dataDir,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d", rec.Code)
+	}
+	if body := rec.Body.String(); !containsAll(body, "Synced API", "OpenAPI docs") {
+		t.Fatalf("body = %s", body)
+	}
+
+	revisions := entries(t, filepath.Join(dataDir, "revisions"))
+	if len(revisions) != 1 {
+		t.Fatalf("revisions = %#v", revisions)
+	}
+	var rev core.Revision
+	readJSON(t, filepath.Join(dataDir, "revisions", revisions[0]), &rev)
+	if rev.ID == "" || rev.SourceID != "source1" || rev.Ref != "file" {
+		t.Fatalf("revision = %#v", rev)
+	}
+
+	blobPath := filepath.Join(dataDir, "blobs", "specs", rev.ID+".yaml")
+	blob, err := os.ReadFile(blobPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(blob) == "" || !containsAll(string(blob), "Synced API") {
+		t.Fatalf("blob = %q", blob)
+	}
+
+	records := entries(t, filepath.Join(dataDir, "sync-history"))
+	if len(records) != 1 {
+		t.Fatalf("records = %#v", records)
+	}
+	var record core.SyncRecord
+	readJSON(t, filepath.Join(dataDir, "sync-history", records[0]), &record)
+	if record.Result != core.SyncResultSuccess || record.ProjectID != "project1" || record.SourceID != "source1" || record.RevisionID != rev.ID {
+		t.Fatalf("sync record = %#v", record)
+	}
+}
+
+func entries(t *testing.T, path string) []string {
+	t.Helper()
+	dirEntries, err := os.ReadDir(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	names := make([]string, 0, len(dirEntries))
+	for _, entry := range dirEntries {
+		names = append(names, entry.Name())
+	}
+	return names
+}
+
+func readJSON(t *testing.T, path string, value any) {
+	t.Helper()
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal(data, value); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func containsAll(body string, wants ...string) bool {
+	for _, want := range wants {
+		if !strings.Contains(body, want) {
+			return false
+		}
+	}
+	return true
+}

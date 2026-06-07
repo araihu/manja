@@ -3,22 +3,58 @@ package app
 import (
 	"context"
 	"net/http"
+	"path/filepath"
 
+	cacheadapter "github.com/araihu/manja/internal/adapters/cache"
 	openapiadapter "github.com/araihu/manja/internal/adapters/openapi"
 	sourceadapter "github.com/araihu/manja/internal/adapters/source"
+	storeadapter "github.com/araihu/manja/internal/adapters/store"
+	"github.com/araihu/manja/internal/core"
 	"github.com/araihu/manja/internal/web"
 )
 
+type Options struct {
+	ProjectID string
+	SourceID  string
+	SpecPath  string
+	DataDir   string
+}
+
 func New(ctx context.Context, specPath string) (http.Handler, error) {
-	src := sourceadapter.File{Path: specPath}
-	spec, rev, err := src.Fetch(ctx)
+	return NewWithOptions(ctx, Options{SpecPath: specPath})
+}
+
+func NewWithOptions(ctx context.Context, opts Options) (http.Handler, error) {
+	opts = opts.withDefaults()
+	src := sourceadapter.File{Path: opts.SpecPath}
+	store := storeadapter.NewFileStore(opts.DataDir)
+	syncer := core.Syncer{
+		Source: src,
+		Parser: openapiadapter.Parser{},
+		Store:  store,
+		Blobs:  store,
+		Cache:  cacheadapter.NewMemory(),
+	}
+	result, err := syncer.Sync(ctx, core.SyncRequest{
+		ProjectID: opts.ProjectID,
+		SourceID:  opts.SourceID,
+		Trigger:   "startup",
+	})
 	if err != nil {
 		return nil, err
 	}
-	parser := openapiadapter.Parser{}
-	idx, err := parser.Parse(ctx, spec, rev)
-	if err != nil {
-		return nil, err
+	return web.NewServer(result.Index), nil
+}
+
+func (o Options) withDefaults() Options {
+	if o.ProjectID == "" {
+		o.ProjectID = "default"
 	}
-	return web.NewServer(idx), nil
+	if o.SourceID == "" {
+		o.SourceID = "default"
+	}
+	if o.DataDir == "" {
+		o.DataDir = filepath.Join(".manja", "data")
+	}
+	return o
 }

@@ -13,7 +13,7 @@ go test ./...
 npm ci
 npm run api:bundle
 npm run api:lint
-go run ./cmd/manja -spec internal/adapters/openapi/testdata/petstore.yaml
+go run ./cmd/manja -spec internal/adapters/openapi/testdata/petstore.yaml -data-dir .manja/data
 ```
 
 Open <http://localhost:8080>.

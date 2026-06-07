@@ -102,6 +102,32 @@ components:
 	}
 }
 
+func TestOpenAPIParserHandlesSpecWithoutComponents(t *testing.T) {
+	spec := []byte(`
+openapi: 3.1.0
+info:
+  title: Componentless API
+  version: 1.0.0
+paths: {}
+`)
+	parser := openapiadapter.Parser{}
+	idx, err := parser.Parse(context.Background(), core.SpecFile{
+		SourceID: "src1",
+		Path:     "componentless.yaml",
+		Format:   "yaml",
+		Bytes:    spec,
+	}, core.Revision{ID: "rev1", SourceID: "src1", Ref: "main"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if idx.Title != "Componentless API" {
+		t.Fatalf("title = %q", idx.Title)
+	}
+	if len(idx.Schemas) != 0 {
+		t.Fatalf("schemas = %#v", idx.Schemas)
+	}
+}
+
 func TestOpenAPIParserIgnoresInvalidExamplesForDocsIndexing(t *testing.T) {
 	spec := []byte(`
 openapi: 3.0.3

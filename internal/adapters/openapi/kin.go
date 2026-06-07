@@ -52,12 +52,14 @@ func (Parser) Parse(ctx context.Context, file core.SpecFile, rev core.Revision) 
 		return idx.Operations[i].Path < idx.Operations[j].Path
 	})
 
-	for name, schema := range doc.Components.Schemas {
-		description := ""
-		if schema != nil && schema.Value != nil {
-			description = schema.Value.Description
+	if doc.Components != nil {
+		for name, schema := range doc.Components.Schemas {
+			description := ""
+			if schema != nil && schema.Value != nil {
+				description = schema.Value.Description
+			}
+			idx.Schemas = append(idx.Schemas, core.Schema{Name: name, Description: description})
 		}
-		idx.Schemas = append(idx.Schemas, core.Schema{Name: name, Description: description})
 	}
 	sort.Slice(idx.Schemas, func(i, j int) bool { return idx.Schemas[i].Name < idx.Schemas[j].Name })
 

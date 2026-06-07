@@ -64,6 +64,13 @@ func (s *FileStore) SavePublication(ctx context.Context, p core.Publication) err
 	return s.writeJSON(ctx, "publications", name, p)
 }
 
+func (s *FileStore) SaveSyncRecord(ctx context.Context, record core.SyncRecord) error {
+	if err := validateID(record.ID); err != nil {
+		return err
+	}
+	return s.writeJSON(ctx, "sync-history", record.ID+".json", record)
+}
+
 func (s *FileStore) Put(ctx context.Context, key string, data []byte) error {
 	if err := ctx.Err(); err != nil {
 		return err
