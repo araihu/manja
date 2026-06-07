@@ -5,62 +5,128 @@ import (
 
 	"github.com/araihu/goshtoso/components/badge"
 	searchfield "github.com/araihu/goshtoso/components/search"
+	selectfield "github.com/araihu/goshtoso/components/select"
+	"github.com/araihu/goshtoso/components/sidebar"
 
 	"github.com/araihu/manja/internal/core"
 )
 
 templ PublicDocs(idx core.SpecIndex) {
 	@Layout(idx.Title) {
-		<div class="mx-auto flex min-h-screen max-w-6xl flex-col gap-8 px-6 py-8">
-			<header class="flex flex-col gap-4 border-b border-outline pb-6 dark:border-outline-dark md:flex-row md:items-center md:justify-between">
-				<div>
-					<p class="text-sm text-on-surface-muted dark:text-on-surface-dark-muted">OpenAPI docs</p>
-					<h1 class="font-title text-3xl font-bold text-on-surface-strong dark:text-on-surface-dark-strong">{ idx.Title }</h1>
-					<p class="mt-1 text-on-surface-muted dark:text-on-surface-dark-muted">Version { idx.Version }</p>
-				</div>
-				<div class="w-full md:w-80">
-					@searchfield.Search(searchfield.Config{
-						ID: "docs-search",
-						Label: "Search docs",
-						Placeholder: "Search operations and schemas",
-						GlobalShortcut: true,
-						Items: searchItems(idx.Search),
-						MaxResults: 8,
-					})
+		<div class="h-screen overflow-hidden bg-surface text-on-surface dark:bg-surface-dark dark:text-on-surface-dark">
+			<header class="sticky top-0 z-50 border-b border-outline bg-surface dark:border-outline-dark dark:bg-surface-dark">
+				<div class="flex h-16 items-center justify-between px-4 lg:px-8">
+					<a href="/" class="flex items-center gap-2 text-2xl font-bold font-title text-on-surface-strong dark:text-on-surface-dark-strong">
+						<span>Manja</span>
+					</a>
+					<div class="flex items-center gap-3 text-sm text-on-surface-muted dark:text-on-surface-dark-muted">
+						<div class="w-44 shrink-0">
+							@selectfield.Select(selectfield.Config{
+								ID: "manja-theme",
+								Name: "theme",
+								Alpine: &selectfield.AlpineConfig{Model: "theme"},
+								TriggerLeading: themeSelectIcon(),
+								Options: themeOptions(),
+							})
+						</div>
+						@themeToggle()
+						<span>OpenAPI docs</span>
+						if idx.Version != "" {
+							<span class="rounded-radius border border-outline px-2 py-1 font-mono text-xs text-on-surface-strong dark:border-outline-dark dark:text-on-surface-dark-strong">v{ idx.Version }</span>
+						}
+					</div>
 				</div>
 			</header>
-			<main class="grid gap-4">
-				for _, op := range idx.Operations {
-					<section id={ operationAnchor(op) } class="rounded-radius border border-outline bg-surface p-4 dark:border-outline-dark dark:bg-surface-dark">
-						<div class="flex flex-wrap items-center gap-3">
-							@badge.Badge(badge.Config{Label: op.Method, Variant: badge.Primary})
-							<h2 class="font-mono text-lg font-semibold text-on-surface-strong dark:text-on-surface-dark-strong">{ op.Path }</h2>
-						</div>
-						if op.Summary != "" {
-							<p class="mt-3 text-on-surface dark:text-on-surface-dark">{ op.Summary }</p>
+			<div class="flex h-[calc(100vh-4rem)] overflow-hidden">
+				<aside class="hidden w-72 shrink-0 lg:block" aria-label="API sections">
+					@sidebar.Sidebar(sidebar.Config{
+						SectionsTitle: "API Reference",
+						Sections: sidebarSections(idx),
+						SearchSlot: docsSearchField(idx.Search),
+					})
+				</aside>
+				<main class="flex-1 overflow-y-auto p-6 lg:p-8">
+					<div id="main-content" class="mx-auto max-w-5xl">
+						<section class="mb-8">
+							<p class="text-sm font-semibold text-on-surface-muted dark:text-on-surface-dark-muted">OpenAPI docs</p>
+							<h1 class="mt-2 font-title text-5xl font-bold text-on-surface-strong dark:text-on-surface-dark-strong">{ idx.Title }</h1>
+							<p class="mt-4 max-w-3xl text-lg leading-8 text-on-surface dark:text-on-surface-dark">
+								Browse the published API surface by operation and schema, or use search to jump directly to a known path, identifier, or model.
+							</p>
+						</section>
+						if len(idx.Operations) > 0 {
+							<section aria-labelledby="operations-heading" class="grid gap-4">
+								<h2 id="operations-heading" data-toc-heading class="font-title text-3xl font-bold text-on-surface-strong dark:text-on-surface-dark-strong">Operations</h2>
+								for _, op := range idx.Operations {
+									<section id={ operationAnchor(op) } class="scroll-mt-24 rounded-radius border border-outline bg-surface p-5 dark:border-outline-dark dark:bg-surface-dark">
+										<div class="flex flex-wrap items-center gap-3">
+											@methodBadge(op.Method)
+											<h3 class="font-mono text-lg font-semibold text-on-surface-strong dark:text-on-surface-dark-strong">{ op.Path }</h3>
+										</div>
+										if op.Summary != "" {
+											<p class="mt-3 text-on-surface dark:text-on-surface-dark">{ op.Summary }</p>
+										}
+										if op.Description != "" {
+											<p class="mt-2 max-w-3xl text-sm leading-6 text-on-surface-muted dark:text-on-surface-dark-muted">{ op.Description }</p>
+										}
+										if len(op.Tags) > 0 {
+											<p class="mt-3 text-sm text-on-surface-muted dark:text-on-surface-dark-muted">Tags: { strings.Join(op.Tags, ", ") }</p>
+										}
+									</section>
+								}
+							</section>
 						}
-						if len(op.Tags) > 0 {
-							<p class="mt-2 text-sm text-on-surface-muted dark:text-on-surface-dark-muted">Tags: { strings.Join(op.Tags, ", ") }</p>
-						}
-					</section>
-				}
-				if len(idx.Schemas) > 0 {
-					<section class="mt-4 border-t border-outline pt-6 dark:border-outline-dark">
-						<h2 class="font-title text-2xl font-bold text-on-surface-strong dark:text-on-surface-dark-strong">Schemas</h2>
-						<div class="mt-4 grid gap-3">
-							for _, schema := range idx.Schemas {
-								<section id={ schemaAnchor(schema) } class="border-b border-outline pb-3 last:border-b-0 dark:border-outline-dark">
-									<h3 class="font-mono text-base font-semibold text-on-surface-strong dark:text-on-surface-dark-strong">{ schema.Name }</h3>
-									if schema.Description != "" {
-										<p class="mt-2 text-sm text-on-surface-muted dark:text-on-surface-dark-muted">{ schema.Description }</p>
+						if len(idx.Schemas) > 0 {
+							<section aria-labelledby="schemas-heading" class="mt-10 border-t border-outline pt-6 dark:border-outline-dark">
+								<h2 id="schemas-heading" data-toc-heading class="font-title text-3xl font-bold text-on-surface-strong dark:text-on-surface-dark-strong">Schemas</h2>
+								<div class="mt-4 grid gap-3">
+									for _, schema := range idx.Schemas {
+										<section id={ schemaAnchor(schema) } class="scroll-mt-24 border-b border-outline pb-3 last:border-b-0 dark:border-outline-dark">
+											<h3 class="font-mono text-base font-semibold text-on-surface-strong dark:text-on-surface-dark-strong">{ schema.Name }</h3>
+											if schema.Description != "" {
+												<p class="mt-2 text-sm text-on-surface-muted dark:text-on-surface-dark-muted">{ schema.Description }</p>
+											}
+										</section>
 									}
-								</section>
+								</div>
+							</section>
+						}
+					</div>
+				</main>
+				<aside class="hidden w-60 shrink-0 overflow-y-auto border-l border-outline dark:border-outline-dark xl:block">
+					<div class="sticky top-0 px-6 py-8">
+						<p class="mb-3 text-xs font-semibold uppercase text-on-surface-muted dark:text-on-surface-dark-muted">On this page</p>
+						<nav aria-label="On this page" class="flex flex-col border-l border-outline dark:border-outline-dark">
+							if len(idx.Operations) > 0 {
+								<a href="#operations-heading" class="-ml-px block border-l border-transparent py-1.5 pl-4 text-sm text-on-surface-muted transition-colors hover:text-on-surface-strong focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary dark:text-on-surface-dark-muted dark:hover:text-on-surface-dark-strong dark:focus-visible:outline-primary-dark">Operations</a>
 							}
-						</div>
-					</section>
-				}
-			</main>
+							if len(idx.Schemas) > 0 {
+								<a href="#schemas-heading" class="-ml-px block border-l border-transparent py-1.5 pl-4 text-sm text-on-surface-muted transition-colors hover:text-on-surface-strong focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary dark:text-on-surface-dark-muted dark:hover:text-on-surface-dark-strong dark:focus-visible:outline-primary-dark">Schemas</a>
+							}
+						</nav>
+					</div>
+				</aside>
+				@searchfield.SearchModal(docsSearchConfig(idx.Search))
+			</div>
 		</div>
+	}
+}
+
+templ docsSearchField(docs []core.SearchDocument) {
+	<div class="shrink-0 px-4 py-3" aria-label="Documentation search">
+		@searchfield.SearchField(docsSearchConfig(docs))
+	</div>
+}
+
+func docsSearchConfig(docs []core.SearchDocument) searchfield.Config {
+	return searchfield.Config{
+		ID: "docs-search",
+		Label: "Search docs",
+		Placeholder: "Search operations and schemas",
+		GlobalShortcut: true,
+		Items: searchItems(docs),
+		MaxResults: 8,
+		EmptyText: "No operations or schemas found.",
 	}
 }
 
@@ -77,6 +143,133 @@ func searchItems(docs []core.SearchDocument) []searchfield.Item {
 		})
 	}
 	return items
+}
+
+func sidebarSections(idx core.SpecIndex) []sidebar.Section {
+	sections := make([]sidebar.Section, 0, 2)
+	if len(idx.Operations) > 0 {
+		tagOrder := make([]string, 0)
+		tagItems := map[string][]sidebar.Item{}
+		for _, op := range idx.Operations {
+			tags := op.Tags
+			if len(tags) == 0 {
+				tags = []string{"Untagged"}
+			}
+			for _, tag := range tags {
+				tag = strings.TrimSpace(tag)
+				if tag == "" {
+					tag = "Untagged"
+				}
+				if _, ok := tagItems[tag]; !ok {
+					tagOrder = append(tagOrder, tag)
+				}
+				tagItems[tag] = append(tagItems[tag], sidebar.Item{
+					ID: operationAnchor(op),
+					Label: op.Path,
+					Href: "#" + operationAnchor(op),
+					Badge: op.Method,
+					BadgeClass: methodBadgeClass(op.Method),
+				})
+			}
+		}
+		items := make([]sidebar.Item, 0, len(tagOrder))
+		for _, tag := range tagOrder {
+			items = append(items, sidebar.Item{
+				ID: "tag-" + anchorFragment(tag),
+				Label: tag,
+				Href: "#operations-heading",
+				Items: tagItems[tag],
+			})
+		}
+		sections = append(sections, sidebar.Section{Title: "Operations", Items: items})
+	}
+	if len(idx.Schemas) > 0 {
+		items := make([]sidebar.Item, 0, len(idx.Schemas))
+		for _, schema := range idx.Schemas {
+			items = append(items, sidebar.Item{
+				ID: schemaAnchor(schema),
+				Label: schema.Name,
+				Href: "#" + schemaAnchor(schema),
+			})
+		}
+		sections = append(sections, sidebar.Section{Title: "Schemas", Items: items})
+	}
+	return sections
+}
+
+templ methodBadge(method string) {
+	@badge.Badge(badge.Config{
+		Label: strings.ToUpper(strings.TrimSpace(method)),
+		Variant: methodBadgeVariant(method),
+		Size: badge.SizeSM,
+		RootClass: "font-mono font-bold",
+	})
+}
+
+func methodBadgeClass(method string) string {
+	return badge.Config{Variant: methodBadgeVariant(method), Size: badge.SizeSM}.VariantClasses()
+}
+
+func methodBadgeVariant(method string) badge.Variant {
+	switch strings.ToUpper(strings.TrimSpace(method)) {
+	case "GET":
+		return badge.Info
+	case "POST":
+		return badge.Success
+	case "PUT":
+		return badge.Warning
+	case "PATCH":
+		return badge.Secondary
+	case "DELETE":
+		return badge.Danger
+	default:
+		return badge.Default
+	}
+}
+
+func themeOptions() []selectfield.Option {
+	return []selectfield.Option{
+		{Value: "goshtoso", Label: "Goshtoso", Selected: true},
+		{Value: "minimal", Label: "Minimal"},
+		{Value: "modern", Label: "Modern"},
+		{Value: "arctic", Label: "Arctic"},
+		{Value: "high-contrast", Label: "High Contrast"},
+		{Value: "neo-brutalism", Label: "Neo Brutalism"},
+		{Value: "news", Label: "News"},
+		{Value: "industrial", Label: "Industrial"},
+		{Value: "90s", Label: "90s"},
+		{Value: "pastel", Label: "Pastel"},
+		{Value: "christmas", Label: "Christmas"},
+		{Value: "halloween", Label: "Halloween"},
+		{Value: "zombie", Label: "Halloween II"},
+		{Value: "prototype", Label: "Prototype"},
+		{Value: "dracula", Label: "Dracula"},
+	}
+}
+
+templ themeSelectIcon() {
+	<svg xmlns="http://www.w3.org/2000/svg" class="size-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+		<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21a4 4 0 0 1-4-4V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v12a4 4 0 0 1-4 4Zm0 0h12a2 2 0 0 0 2-2v-4a2 2 0 0 0-2-2h-2.343M11 7.343l1.657-1.657a2 2 0 0 1 2.828 0l2.829 2.829a2 2 0 0 1 0 2.828l-8.486 8.485M7 17h.01"></path>
+	</svg>
+}
+
+templ themeToggle() {
+	<button
+		id="darkModeToggleBtn"
+		type="button"
+		aria-label="dark mode toggle"
+		x-on:click="toggleDarkMode()"
+		x-bind:aria-pressed="darkMode.toString()"
+		class="inline-flex size-10 shrink-0 items-center justify-center rounded-radius border border-outline bg-surface text-on-surface transition hover:bg-surface-alt focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary dark:border-outline-dark dark:bg-surface-dark dark:text-on-surface-dark dark:hover:bg-surface-dark-alt dark:focus-visible:outline-primary-dark"
+	>
+		<svg x-show="darkMode" xmlns="http://www.w3.org/2000/svg" class="size-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+			<circle cx="12" cy="12" r="4"></circle>
+			<path stroke-linecap="round" d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"></path>
+		</svg>
+		<svg x-show="!darkMode" xmlns="http://www.w3.org/2000/svg" class="size-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+			<path stroke-linecap="round" stroke-linejoin="round" d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79Z"></path>
+		</svg>
+	</button>
 }
 
 func operationAnchor(op core.Operation) string {
