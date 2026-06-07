@@ -4,7 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io/fs"
 	"os"
+	"path"
 	"path/filepath"
 	"strings"
 
@@ -60,8 +62,51 @@ func (s *FileStore) SavePublication(ctx context.Context, p core.Publication) err
 	if err := validateID(p.RevisionID); err != nil {
 		return err
 	}
+	if err := validatePublicPath(p.Path); err != nil {
+		return err
+	}
 	name := p.ProjectID + "-" + p.RevisionID + ".json"
 	return s.writeJSON(ctx, "publications", name, p)
+}
+
+func (s *FileStore) Publication(ctx context.Context, projectID, revisionID string) (core.Publication, error) {
+	var p core.Publication
+	if err := validateID(projectID); err != nil {
+		return p, err
+	}
+	if err := validateID(revisionID); err != nil {
+		return p, err
+	}
+	err := s.readJSON(ctx, "publications", projectID+"-"+revisionID+".json", &p)
+	return p, err
+}
+
+func (s *FileStore) PublicPublicationByPath(ctx context.Context, publicPath string) (core.Publication, error) {
+	var p core.Publication
+	if err := validatePublicPath(publicPath); err != nil {
+		return p, err
+	}
+	if err := ctx.Err(); err != nil {
+		return p, err
+	}
+	dir := filepath.Join(s.root, "publications")
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return p, err
+	}
+	for _, entry := range entries {
+		if entry.IsDir() || filepath.Ext(entry.Name()) != ".json" {
+			continue
+		}
+		var candidate core.Publication
+		if err := s.readJSON(ctx, "publications", entry.Name(), &candidate); err != nil {
+			return p, err
+		}
+		if candidate.Public && candidate.Path == publicPath {
+			return candidate, nil
+		}
+	}
+	return p, fs.ErrNotExist
 }
 
 func (s *FileStore) SaveSyncRecord(ctx context.Context, record core.SyncRecord) error {
@@ -153,6 +198,16 @@ func validateID(id string) error {
 		return errUnsafeStorePath
 	}
 	if strings.ContainsAny(id, `/\`) || filepath.Clean(id) != id {
+		return errUnsafeStorePath
+	}
+	return nil
+}
+
+func validatePublicPath(publicPath string) error {
+	if publicPath == "" || !strings.HasPrefix(publicPath, "/") || strings.Contains(publicPath, `\`) {
+		return errUnsafeStorePath
+	}
+	if path.Clean(publicPath) != publicPath {
 		return errUnsafeStorePath
 	}
 	return nil
