@@ -5,3 +5,5 @@
 .superpowers/
 /node_modules/
 *.test
+go.work
+go.work.sum
