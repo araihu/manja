@@ -76,8 +76,8 @@ func TestPublicDocsSearchKeyboard(t *testing.T) {
 	if err := page.Locator("#operation-listpets:visible").WaitFor(); err != nil {
 		t.Fatal(err)
 	}
-	if got := page.URL(); got != server+"/#operation-listpets" {
-		t.Fatalf("page URL = %q, want %q", got, server+"/#operation-listpets")
+	if got := page.URL(); got != server+"/?selected=operation-listpets#operation-listpets" {
+		t.Fatalf("page URL = %q, want %q", got, server+"/?selected=operation-listpets#operation-listpets")
 	}
 }
 

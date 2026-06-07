@@ -1,26 +1,38 @@
 package templates
 
 import (
+	"net/url"
 	"strings"
 
 	"github.com/araihu/goshtoso/components/badge"
+	"github.com/araihu/goshtoso/components/codeblock"
 	searchfield "github.com/araihu/goshtoso/components/search"
 	selectfield "github.com/araihu/goshtoso/components/select"
 	"github.com/araihu/goshtoso/components/sidebar"
+	"github.com/araihu/goshtoso/components/table"
+	"github.com/araihu/goshtoso/components/tabs"
 
 	"github.com/araihu/manja/internal/core"
 )
 
-templ PublicDocs(idx core.SpecIndex) {
+type selectedDocsItem struct {
+	Anchor    string
+	Kind      string
+	Operation core.Operation
+	Schema    core.Schema
+}
+
+templ PublicDocs(idx core.SpecIndex, selectedID string) {
+	{{ selected := selectedDocsItemFor(idx, selectedID) }}
 	@Layout(idx.Title) {
 		<div class="h-screen overflow-hidden bg-surface text-on-surface dark:bg-surface-dark dark:text-on-surface-dark">
-			<header class="sticky top-0 z-50 border-b border-outline bg-surface dark:border-outline-dark dark:bg-surface-dark">
-				<div class="flex h-16 items-center justify-between px-4 lg:px-8">
+			<header class="manja-docs-header sticky top-0 z-50 border-b border-outline bg-surface dark:border-outline-dark dark:bg-surface-dark">
+				<div class="flex h-16 items-center justify-between gap-3 px-4 lg:px-8">
 					<a href="/" class="flex items-center gap-2 text-2xl font-bold font-title text-on-surface-strong dark:text-on-surface-dark-strong">
 						<span>Manja</span>
 					</a>
-					<div class="flex items-center gap-3 text-sm text-on-surface-muted dark:text-on-surface-dark-muted">
-						<div class="w-44 shrink-0">
+					<div class="flex min-w-0 items-center gap-3 text-sm text-on-surface-muted dark:text-on-surface-dark-muted">
+						<div class="manja-theme-select shrink-0">
 							@selectfield.Select(selectfield.Config{
 								ID: "manja-theme",
 								Name: "theme",
@@ -30,9 +42,9 @@ templ PublicDocs(idx core.SpecIndex) {
 							})
 						</div>
 						@themeToggle()
-						<span>OpenAPI docs</span>
+						<span class="hidden md:inline">OpenAPI docs</span>
 						if idx.Version != "" {
-							<span class="rounded-radius border border-outline px-2 py-1 font-mono text-xs text-on-surface-strong dark:border-outline-dark dark:text-on-surface-dark-strong">v{ idx.Version }</span>
+							<span class="hidden rounded-radius border border-outline px-2 py-1 font-mono text-xs text-on-surface-strong dark:border-outline-dark dark:text-on-surface-dark-strong sm:inline">v{ idx.Version }</span>
 						}
 					</div>
 				</div>
@@ -41,36 +53,14 @@ templ PublicDocs(idx core.SpecIndex) {
 				<aside class="hidden w-72 shrink-0 lg:block" aria-label="API sections">
 					@sidebar.Sidebar(sidebar.Config{
 						SectionsTitle: "API Reference",
-						Sections: sidebarSections(idx),
+						Sections: sidebarSections(idx, selected.Anchor),
 						SearchSlot: docsSearchField(idx.Search),
 					})
 				</aside>
-				<main class="flex-1 overflow-y-auto p-6 lg:px-10 lg:py-8">
+				<main class="min-w-0 flex-1 overflow-x-hidden overflow-y-auto p-6 lg:px-10 lg:py-8">
 					<div id="main-content" class="mx-auto max-w-[100rem]">
 						<h1 class="sr-only">{ idx.Title } OpenAPI docs</h1>
-						if len(idx.Operations) > 0 {
-							<section aria-labelledby="operations-heading" class="grid gap-16">
-								<h2 id="operations-heading" data-toc-heading class="sr-only">Operations</h2>
-								for _, op := range idx.Operations {
-									@endpointSection(op)
-								}
-							</section>
-						}
-						if len(idx.Schemas) > 0 {
-							<section aria-labelledby="schemas-heading" class="mt-10 border-t border-outline pt-6 dark:border-outline-dark">
-								<h2 id="schemas-heading" data-toc-heading class="font-title text-3xl font-bold text-on-surface-strong dark:text-on-surface-dark-strong">Schemas</h2>
-								<div class="mt-4 grid gap-3">
-									for _, schema := range idx.Schemas {
-										<section id={ schemaAnchor(schema) } class="scroll-mt-24 border-b border-outline pb-3 last:border-b-0 dark:border-outline-dark">
-											<h3 class="font-mono text-base font-semibold text-on-surface-strong dark:text-on-surface-dark-strong">{ schema.Name }</h3>
-											if schema.Description != "" {
-												<p class="mt-2 text-sm text-on-surface-muted dark:text-on-surface-dark-muted">{ schema.Description }</p>
-											}
-										</section>
-									}
-								</div>
-							</section>
-						}
+						@selectedDocsContent(selected)
 					</div>
 				</main>
 				@searchfield.SearchModal(docsSearchConfig(idx.Search))
@@ -79,24 +69,54 @@ templ PublicDocs(idx core.SpecIndex) {
 	}
 }
 
+templ selectedDocsContent(selected selectedDocsItem) {
+	if selected.Kind == "operation" {
+		<section aria-labelledby="operations-heading" class="grid gap-16">
+			<h2 id="operations-heading" data-toc-heading class="sr-only">Operations</h2>
+			@endpointSection(selected.Operation)
+		</section>
+	} else if selected.Kind == "schema" {
+		<section aria-labelledby="schemas-heading">
+			<h2 id="schemas-heading" data-toc-heading class="sr-only">Schemas</h2>
+			@schemaSection(selected.Schema)
+		</section>
+	} else {
+		<section class="rounded-radius border border-outline bg-surface-alt p-6 dark:border-outline-dark dark:bg-surface-dark-alt">
+			<h2 class="font-title text-2xl font-bold text-on-surface-strong dark:text-on-surface-dark-strong">No public documentation</h2>
+			<p class="mt-2 text-sm text-on-surface-muted dark:text-on-surface-dark-muted">Publish a spec with operations or schemas to populate this view.</p>
+		</section>
+	}
+}
+
 templ endpointSection(op core.Operation) {
-	<section id={ operationAnchor(op) } class="scroll-mt-24">
+	{{ opID := operationAnchor(op) }}
+	<section id={ opID } class="scroll-mt-24">
 		<div class="grid gap-10 xl:grid-cols-[minmax(0,50rem)_24rem] xl:items-start 2xl:grid-cols-[minmax(0,54rem)_26rem]">
 			<div class="min-w-0">
-				<h3 class="font-title text-4xl font-bold leading-tight text-on-surface-strong dark:text-on-surface-dark-strong lg:text-5xl">{ operationTitle(op) }</h3>
-				<div aria-label="Endpoint route" class="mt-6 inline-flex max-w-full items-center gap-3 rounded-radius bg-surface-alt px-3 py-2 dark:bg-surface-dark-alt">
-					@methodBadge(op.Method)
-					<p class="min-w-0 break-words font-mono text-sm font-semibold text-on-surface-strong dark:text-on-surface-dark-strong">{ op.Path }</p>
+				<div class="border-b border-outline pb-8 dark:border-outline-dark">
+					<div class="flex flex-wrap items-center gap-2">
+						for _, tag := range op.Tags {
+							<span class="rounded-radius border border-outline px-2 py-1 text-xs font-medium text-on-surface-muted dark:border-outline-dark dark:text-on-surface-dark-muted">{ tag }</span>
+						}
+						if op.Deprecated {
+							@badge.Badge(badge.Config{Label: "Deprecated", Variant: badge.Warning, Style: badge.StyleSoft, Size: badge.SizeSM})
+						}
+					</div>
+					<h3 class="mt-4 font-title text-4xl font-bold leading-tight text-on-surface-strong dark:text-on-surface-dark-strong lg:text-5xl">{ operationTitle(op) }</h3>
+					<div aria-label="Endpoint route" class="mt-6 inline-flex max-w-full items-center gap-3 rounded-radius border border-outline bg-surface-alt px-3 py-2 dark:border-outline-dark dark:bg-surface-dark-alt">
+						@methodBadge(op.Method)
+						<p class="min-w-0 break-words font-mono text-sm font-semibold text-on-surface-strong dark:text-on-surface-dark-strong">{ op.Path }</p>
+					</div>
+					if op.Description != "" {
+						<p class="mt-6 max-w-[70ch] text-base leading-7 text-on-surface dark:text-on-surface-dark">{ op.Description }</p>
+					}
 				</div>
-				if op.Description != "" {
-					<p class="mt-8 max-w-[70ch] text-base leading-7 text-on-surface dark:text-on-surface-dark">{ op.Description }</p>
-				}
 				if operationHasRequest(op) {
 					<section class="mt-14" aria-label="Request">
 						<h4 class="font-title text-3xl font-bold text-on-surface-strong dark:text-on-surface-dark-strong">Request</h4>
-						@paramGroup("Path Parameters", parametersIn(op.Parameters, "path"))
-						@paramGroup("Query Parameters", parametersIn(op.Parameters, "query"))
-						@paramGroup("Header Parameters", parametersIn(op.Parameters, "header"))
+						@paramGroup(opID, "Path Parameters", parametersIn(op.Parameters, "path"))
+						@paramGroup(opID, "Query Parameters", parametersIn(op.Parameters, "query"))
+						@paramGroup(opID, "Header Parameters", parametersIn(op.Parameters, "header"))
 						if op.RequestBody != nil {
 							<section class="mt-10" aria-label="Request body">
 								<div class="flex flex-wrap items-center gap-2">
@@ -108,33 +128,16 @@ templ endpointSection(op core.Operation) {
 								if op.RequestBody.Description != "" {
 									<p class="mt-2 text-sm text-on-surface-muted dark:text-on-surface-dark-muted">{ op.RequestBody.Description }</p>
 								}
-								@mediaTypeList(op.RequestBody.MediaTypes)
+								@mediaTypeList(opID+"-request-body", "Request body", op.RequestBody.MediaTypes)
 							</section>
 						}
 					</section>
 				}
 				if len(op.Responses) > 0 {
 					<section class="mt-14" aria-label="Responses">
-						<div class="flex flex-wrap items-center gap-4">
-							<h4 class="font-title text-3xl font-bold text-on-surface-strong dark:text-on-surface-dark-strong">Responses</h4>
-							<div class="flex flex-wrap gap-2">
-								for _, response := range op.Responses {
-									<span class={ responseBadgeClass(response.Status) }>{ response.Status }</span>
-								}
-								</div>
-							</div>
-							<div class="mt-8 grid gap-8">
-							for _, response := range op.Responses {
-								<section>
-									<div class="flex flex-wrap items-center gap-3">
-										<span class={ responseBadgeClass(response.Status) }>{ response.Status }</span>
-										if response.Description != "" {
-											<p class="text-base font-medium text-on-surface dark:text-on-surface-dark">{ response.Description }</p>
-										}
-									</div>
-									@mediaTypeList(response.MediaTypes)
-								</section>
-							}
+						<h4 class="font-title text-3xl font-bold text-on-surface-strong dark:text-on-surface-dark-strong">Responses</h4>
+						<div id={ opID + "-responses" } class="mt-6">
+							@tabs.Tabs(responseTabsConfig(opID, op.Responses))
 						</div>
 					</section>
 				}
@@ -167,7 +170,7 @@ templ endpointSection(op core.Operation) {
 							</section>
 						}
 						for _, snippet := range op.Snippets {
-							@codeExample("Request Sample: Shell / "+snippet.Label, snippet.Language, snippet.Code)
+							@codeExample("Request Sample: "+snippet.Label, snippet.Language, snippet.Code)
 						}
 						if op.RequestBody != nil {
 							for _, media := range op.RequestBody.MediaTypes {
@@ -179,7 +182,7 @@ templ endpointSection(op core.Operation) {
 						for _, response := range op.Responses {
 							for _, media := range response.MediaTypes {
 								if media.Example != "" {
-									@codeExample("Response Example", "json", media.Example)
+									@codeExample("Response Example: "+response.Status+" "+media.ContentType, "json", media.Example)
 								}
 							}
 						}
@@ -190,7 +193,31 @@ templ endpointSection(op core.Operation) {
 	</section>
 }
 
-templ mediaTypeList(mediaTypes []core.OperationMediaType) {
+templ schemaSection(schema core.Schema) {
+	<section id={ schemaAnchor(schema) } class="scroll-mt-24">
+		<div class="max-w-3xl border-b border-outline pb-8 dark:border-outline-dark">
+			<p class="font-mono text-sm font-semibold uppercase text-on-surface-muted dark:text-on-surface-dark-muted">Schema</p>
+			<h3 class="mt-4 font-title text-4xl font-bold leading-tight text-on-surface-strong dark:text-on-surface-dark-strong lg:text-5xl">{ schema.Name }</h3>
+			if schema.Description != "" {
+				<p class="mt-6 max-w-[70ch] text-base leading-7 text-on-surface dark:text-on-surface-dark">{ schema.Description }</p>
+			}
+		</div>
+	</section>
+}
+
+templ responsePanel(opID string, response core.OperationResponse) {
+	<section>
+		<div class="flex flex-wrap items-center gap-3">
+			<span class={ responseBadgeClass(response.Status) }>{ response.Status }</span>
+			if response.Description != "" {
+				<p class="text-base font-medium text-on-surface dark:text-on-surface-dark">{ response.Description }</p>
+			}
+		</div>
+		@mediaTypeList(opID+"-response-"+anchorFragment(response.Status), "Response "+response.Status, response.MediaTypes)
+	</section>
+}
+
+templ mediaTypeList(idPrefix string, label string, mediaTypes []core.OperationMediaType) {
 	if len(mediaTypes) > 0 {
 		<div class="mt-3 grid gap-3">
 			for _, media := range mediaTypes {
@@ -201,76 +228,39 @@ templ mediaTypeList(mediaTypes []core.OperationMediaType) {
 							<span class="font-mono text-xs text-on-surface-muted dark:text-on-surface-dark-muted">{ schemaInline(media.Schema) }</span>
 						}
 					</div>
-					@schemaProperties(media.Schema)
+					@schemaProperties(mediaTypeTableID(idPrefix, media), label+" schema for "+media.ContentType, media.Schema)
 				</div>
 			}
 		</div>
 	}
 }
 
-templ paramGroup(title string, parameters []core.OperationParameter) {
+templ paramGroup(idPrefix string, title string, parameters []core.OperationParameter) {
 	if len(parameters) > 0 {
 		<section class="mt-8">
 			<h5 class="font-title text-xl font-bold text-on-surface-strong dark:text-on-surface-dark-strong">{ title }</h5>
-			<div class="mt-5 grid gap-5">
-				for _, param := range parameters {
-					<div class="grid gap-3 md:grid-cols-[minmax(8rem,12rem)_minmax(0,1fr)]">
-						<div class="flex min-w-0 flex-wrap items-baseline gap-2">
-							<span class="font-mono text-sm font-bold text-on-surface-strong dark:text-on-surface-dark-strong">{ param.Name }</span>
-							<span class="font-mono text-xs text-on-surface-muted dark:text-on-surface-dark-muted">{ firstNonEmpty(schemaInline(param.Schema), param.In) }</span>
-						</div>
-						<div class="min-w-0 border-t border-outline pt-3 text-sm leading-6 text-on-surface dark:border-outline-dark dark:text-on-surface-dark md:pt-2">
-							if param.Description != "" {
-								<p>{ param.Description }</p>
-							}
-							if param.Required || param.Example != "" {
-								<div class="mt-2 flex flex-wrap gap-2 text-xs text-on-surface-muted dark:text-on-surface-dark-muted">
-									if param.Required {
-										<span class="font-semibold text-danger dark:text-danger-dark">required</span>
-									}
-									if param.Example != "" {
-										<span>Example: <code class="font-mono">{ param.Example }</code></span>
-									}
-								</div>
-							}
-						</div>
-					</div>
-				}
+			<div class="mt-4">
+				@table.Table(parameterTableConfig(idPrefix, title, parameters))
 			</div>
 		</section>
 	}
 }
 
-templ schemaProperties(schema core.SchemaSummary) {
+templ schemaProperties(id string, caption string, schema core.SchemaSummary) {
 	if len(schema.Properties) > 0 {
-		<div class="mt-3 overflow-x-auto">
-			<table class="min-w-full border-collapse text-left text-xs">
-				<tbody class="divide-y divide-outline dark:divide-outline-dark">
-					for _, property := range schema.Properties {
-						<tr>
-							<td class="py-2 pr-3 align-top font-mono font-semibold text-on-surface-strong dark:text-on-surface-dark-strong">
-								{ property.Name }
-								if property.Required {
-									<span class="ml-1 text-danger dark:text-danger-dark">Required</span>
-								}
-							</td>
-							<td class="py-2 pr-3 align-top font-mono text-on-surface-muted dark:text-on-surface-dark-muted">{ schemaInline(property.Schema) }</td>
-							<td class="py-2 align-top text-on-surface-muted dark:text-on-surface-dark-muted">{ property.Description }</td>
-						</tr>
-					}
-				</tbody>
-			</table>
+		<div class="mt-4">
+			@table.Table(schemaTableConfig(id, caption, schema.Properties))
 		</div>
 	}
 }
 
 templ codeExample(label string, language string, code string) {
-	<section class="min-w-0 overflow-hidden rounded-radius bg-surface-alt dark:bg-surface-dark-alt">
-		<div class="border-b border-outline bg-surface-alt px-4 py-3 dark:border-outline-dark dark:bg-surface-dark-alt">
-			<p class="font-mono text-xs font-semibold text-on-surface-strong dark:text-on-surface-dark-strong">{ label }</p>
-		</div>
-		<pre class="max-h-96 overflow-auto bg-surface p-4 text-xs leading-5 text-on-surface-strong dark:bg-surface-dark dark:text-on-surface-dark-strong"><code class={ "language-" + language }>{ code }</code></pre>
-	</section>
+	@codeblock.CodeBlock(codeblock.Config{
+		Label: label,
+		Language: language,
+		Code: code,
+		MaxHeight: "24rem",
+	})
 }
 
 templ docsSearchField(docs []core.SearchDocument) {
@@ -298,7 +288,7 @@ func searchItems(docs []core.SearchDocument) []searchfield.Item {
 			ID: "search-" + doc.ID,
 			Title: doc.Title,
 			Description: doc.Description,
-			Href: doc.Href,
+			Href: selectedDocsHrefFromDoc(doc.Href),
 			Section: doc.Section,
 			Keywords: doc.Keywords,
 		})
@@ -306,7 +296,118 @@ func searchItems(docs []core.SearchDocument) []searchfield.Item {
 	return items
 }
 
-func sidebarSections(idx core.SpecIndex) []sidebar.Section {
+func responseTabsConfig(opID string, responses []core.OperationResponse) tabs.Config {
+	tabItems := make([]tabs.Tab, 0, len(responses))
+	for _, response := range responses {
+		tabItems = append(tabItems, tabs.Tab{
+			ID:      responseTabID(response),
+			Label:   response.Status,
+			Content: responsePanel(opID, response),
+		})
+	}
+	cfg := tabs.Config{
+		ID:        opID + "-responses",
+		Tabs:      tabItems,
+		RootClass: "manja-response-tabs",
+	}
+	if len(responses) > 0 {
+		cfg.DefaultTab = responseTabID(responses[0])
+	}
+	return cfg
+}
+
+func responseTabID(response core.OperationResponse) string {
+	id := anchorFragment(response.Status)
+	if id == "" {
+		id = "default"
+	}
+	return "response-" + id
+}
+
+func parameterTableConfig(idPrefix string, title string, parameters []core.OperationParameter) table.Config {
+	rows := make([]table.Row, 0, len(parameters))
+	for _, param := range parameters {
+		required := "optional"
+		requiredColor := "neutral"
+		if param.Required {
+			required = "required"
+			requiredColor = "danger"
+		}
+		description := param.Description
+		if param.Example != "" {
+			if description != "" {
+				description += " "
+			}
+			description += "Example: " + param.Example
+		}
+		rows = append(rows, table.Row{
+			ID: idPrefix + "-" + anchorFragment(title) + "-" + anchorFragment(param.In+"-"+param.Name),
+			Cells: map[string]table.Cell{
+				"name":        {Text: param.Name, Code: true},
+				"in":          {Text: param.In, Code: true},
+				"type":        {Text: firstNonEmpty(schemaInline(param.Schema), param.In), Code: true},
+				"requirement": {Text: required, BadgeColor: requiredColor},
+				"description": {Text: description},
+			},
+		})
+	}
+	return table.Config{
+		ID:      idPrefix + "-" + anchorFragment(title),
+		Caption: title,
+		Columns: []table.Column{
+			{Key: "name", Label: "Name", Width: "min-w-[8rem]"},
+			{Key: "in", Label: "In", Width: "w-24"},
+			{Key: "type", Label: "Type", Width: "min-w-[8rem]"},
+			{Key: "requirement", Label: "Required", Width: "w-28"},
+			{Key: "description", Label: "Description"},
+		},
+		Rows: rows,
+		RootClass: "text-sm",
+	}
+}
+
+func schemaTableConfig(id string, caption string, properties []core.SchemaProperty) table.Config {
+	rows := make([]table.Row, 0, len(properties))
+	for _, property := range properties {
+		required := "optional"
+		requiredColor := "neutral"
+		if property.Required {
+			required = "required"
+			requiredColor = "danger"
+		}
+		rows = append(rows, table.Row{
+			ID: id + "-" + anchorFragment(property.Name),
+			Cells: map[string]table.Cell{
+				"name":        {Text: property.Name, Code: true},
+				"type":        {Text: schemaInline(property.Schema), Code: true},
+				"requirement": {Text: required, BadgeColor: requiredColor},
+				"description": {Text: property.Description},
+			},
+		})
+	}
+	return table.Config{
+		ID:      id,
+		Caption: caption,
+		Columns: []table.Column{
+			{Key: "name", Label: "Property", Width: "min-w-[10rem]"},
+			{Key: "type", Label: "Type", Width: "min-w-[8rem]"},
+			{Key: "requirement", Label: "Required", Width: "w-28"},
+			{Key: "description", Label: "Description"},
+		},
+		Rows: rows,
+		RootClass: "text-sm",
+	}
+}
+
+func mediaTypeTableID(idPrefix string, media core.OperationMediaType) string {
+	contentType := anchorFragment(media.ContentType)
+	if contentType == "" {
+		contentType = "media"
+	}
+	return idPrefix + "-" + contentType + "-schema"
+}
+
+func sidebarSections(idx core.SpecIndex, selectedAnchor string) []sidebar.Section {
 	sections := make([]sidebar.Section, 0, 2)
 	if len(idx.Operations) > 0 {
 		tagOrder := make([]string, 0)
@@ -324,10 +425,12 @@ func sidebarSections(idx core.SpecIndex) []sidebar.Section {
 				if _, ok := tagItems[tag]; !ok {
 					tagOrder = append(tagOrder, tag)
 				}
+				anchor := operationAnchor(op)
 				tagItems[tag] = append(tagItems[tag], sidebar.Item{
-					ID: operationAnchor(op),
+					ID: anchor,
 					Label: op.Path,
-					Href: "#" + operationAnchor(op),
+					Href: selectedDocsHref(anchor),
+					Active: anchor == selectedAnchor,
 					Badge: op.Method,
 					BadgeClass: methodBadgeClass(op.Method),
 				})
@@ -338,7 +441,7 @@ func sidebarSections(idx core.SpecIndex) []sidebar.Section {
 			items = append(items, sidebar.Item{
 				ID: "tag-" + anchorFragment(tag),
 				Label: tag,
-				Href: "#operations-heading",
+				Href: firstSidebarHref(tagItems[tag]),
 				Items: tagItems[tag],
 			})
 		}
@@ -347,15 +450,67 @@ func sidebarSections(idx core.SpecIndex) []sidebar.Section {
 	if len(idx.Schemas) > 0 {
 		items := make([]sidebar.Item, 0, len(idx.Schemas))
 		for _, schema := range idx.Schemas {
+			anchor := schemaAnchor(schema)
 			items = append(items, sidebar.Item{
-				ID: schemaAnchor(schema),
+				ID: anchor,
 				Label: schema.Name,
-				Href: "#" + schemaAnchor(schema),
+				Href: selectedDocsHref(anchor),
+				Active: anchor == selectedAnchor,
 			})
 		}
 		sections = append(sections, sidebar.Section{Title: "Schemas", Items: items})
 	}
 	return sections
+}
+
+func selectedDocsItemFor(idx core.SpecIndex, selectedID string) selectedDocsItem {
+	selectedID = strings.TrimPrefix(strings.TrimSpace(selectedID), "#")
+	for _, op := range idx.Operations {
+		anchor := operationAnchor(op)
+		if anchor == selectedID {
+			return selectedDocsItem{Anchor: anchor, Kind: "operation", Operation: op}
+		}
+	}
+	for _, schema := range idx.Schemas {
+		anchor := schemaAnchor(schema)
+		if anchor == selectedID {
+			return selectedDocsItem{Anchor: anchor, Kind: "schema", Schema: schema}
+		}
+	}
+	if len(idx.Operations) > 0 {
+		anchor := operationAnchor(idx.Operations[0])
+		return selectedDocsItem{Anchor: anchor, Kind: "operation", Operation: idx.Operations[0]}
+	}
+	if len(idx.Schemas) > 0 {
+		anchor := schemaAnchor(idx.Schemas[0])
+		return selectedDocsItem{Anchor: anchor, Kind: "schema", Schema: idx.Schemas[0]}
+	}
+	return selectedDocsItem{}
+}
+
+func selectedDocsHref(anchor string) string {
+	anchor = strings.TrimPrefix(strings.TrimSpace(anchor), "#")
+	if anchor == "" {
+		return "/"
+	}
+	return "/?selected=" + url.QueryEscape(anchor) + "#" + anchor
+}
+
+func selectedDocsHrefFromDoc(href string) string {
+	anchor, ok := strings.CutPrefix(strings.TrimSpace(href), "#")
+	if !ok {
+		return href
+	}
+	return selectedDocsHref(anchor)
+}
+
+func firstSidebarHref(items []sidebar.Item) string {
+	for _, item := range items {
+		if item.Href != "" {
+			return item.Href
+		}
+	}
+	return "/"
 }
 
 templ methodBadge(method string) {

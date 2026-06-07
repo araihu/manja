@@ -3,6 +3,24 @@
   line-height: 1.65;
 }
 
+.manja-theme-select {
+  display: none;
+  width: 8.75rem;
+}
+
+.manja-docs-header {
+  max-width: 100%;
+  overflow: hidden;
+  width: 100vw;
+}
+
+@media (min-width: 640px) {
+  .manja-theme-select {
+    display: block;
+    width: 11rem;
+  }
+}
+
 .dark .manja-markdown {
   color: var(--color-on-surface-dark);
 }

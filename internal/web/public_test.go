@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"regexp"
 	"strings"
@@ -49,22 +50,24 @@ func TestPublicDocsRenderSearchAndOperations(t *testing.T) {
 		`h-[calc(100vh-4rem)] overflow-hidden`,
 		`aria-label="API sections"`,
 		`aria-label="Documentation search"`,
-		`href="#operation-listPets"`,
-		`href="#schema-pet"`,
+		`href="/?selected=operation-listPets#operation-listPets"`,
+		`href="/?selected=schema-pet#schema-pet"`,
 		`id="main-content"`,
 		`max-w-[100rem]`,
 		`Operations`,
-		`Schemas`,
 	} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("docs shell missing %q:\n%s", want, body)
 		}
 	}
-	sidebarMethodBadge := regexp.MustCompile(`<a href="#operation-listPets"[^>]*><span class="min-w-0 flex-1 truncate">/pets</span>\s*<sup[^>]*ml-auto shrink-0[^"]*border-info[^"]*bg-info[^"]*text-on-info[^"]*"[^>]*>GET</sup>`)
+	if strings.Contains(body, `<section id="operation-createPet"`) {
+		t.Fatalf("default page should render only the selected sidebar item, got create operation content:\n%s", body)
+	}
+	sidebarMethodBadge := regexp.MustCompile(`<a href="/\?selected=operation-listPets#operation-listPets"[^>]*><span class="min-w-0 flex-1 truncate">/pets</span>\s*<sup[^>]*ml-auto shrink-0[^"]*border-info[^"]*bg-info[^"]*text-on-info[^"]*"[^>]*>GET</sup>`)
 	if !sidebarMethodBadge.MatchString(body) {
 		t.Fatalf("operation sidebar item should render flex path label with right-aligned Goshtoso method badge:\n%s", body)
 	}
-	postMethodBadge := regexp.MustCompile(`<a href="#operation-createPet"[^>]*><span class="min-w-0 flex-1 truncate">/pets</span>\s*<sup[^>]*border-success[^"]*bg-success[^"]*text-on-success[^"]*"[^>]*>POST</sup>`)
+	postMethodBadge := regexp.MustCompile(`<a href="/\?selected=operation-createPet#operation-createPet"[^>]*><span class="min-w-0 flex-1 truncate">/pets</span>\s*<sup[^>]*border-success[^"]*bg-success[^"]*text-on-success[^"]*"[^>]*>POST</sup>`)
 	if !postMethodBadge.MatchString(body) {
 		t.Fatalf("POST sidebar method badge should use Goshtoso success styling:\n%s", body)
 	}
@@ -77,11 +80,11 @@ func TestPublicDocsRenderSearchAndOperations(t *testing.T) {
 			t.Fatalf("method badges should use Goshtoso badge variants, got custom class %q:\n%s", reject, body)
 		}
 	}
-	sidebarTagGroup := regexp.MustCompile(`<div data-sidebar-section="Operations">.*<a href="#operations-heading"[^>]*><span class="min-w-0 flex-1 truncate">Pets</span>.*<div class="ml-4 flex flex-col">.*<a href="#operation-listPets"[^>]*><span class="min-w-0 flex-1 truncate">/pets</span>\s*<sup[^>]*>GET</sup>`)
+	sidebarTagGroup := regexp.MustCompile(`<div data-sidebar-section="Operations">.*<a href="/\?selected=operation-listPets#operation-listPets"[^>]*><span class="min-w-0 flex-1 truncate">Pets</span>.*<div class="ml-4 flex flex-col">.*<a href="/\?selected=operation-listPets#operation-listPets"[^>]*><span class="min-w-0 flex-1 truncate">/pets</span>\s*<sup[^>]*>GET</sup>`)
 	if !sidebarTagGroup.MatchString(body) {
 		t.Fatalf("operation sidebar items should use Penguin-style tag sub-items:\n%s", body)
 	}
-	tagWithoutRail := regexp.MustCompile(`<a href="#operations-heading" class="flex items-center gap-2 py-2\.5 pl-4[^"]*"><span class="min-w-0 flex-1 truncate">Pets</span>`)
+	tagWithoutRail := regexp.MustCompile(`<a href="/\?selected=operation-listPets#operation-listPets" class="flex items-center gap-2 py-2\.5 pl-4[^"]*"><span class="min-w-0 flex-1 truncate">Pets</span>`)
 	if !tagWithoutRail.MatchString(body) {
 		t.Fatalf("operation tag parent should not render a leading rail:\n%s", body)
 	}
@@ -139,6 +142,54 @@ func TestPublicDocsRenderSearchAndOperations(t *testing.T) {
 	}
 }
 
+func TestPublicDocsRendersSelectedSidebarItemOnly(t *testing.T) {
+	idx := core.SpecIndex{
+		Title: "Petstore",
+		Operations: []core.Operation{
+			{ID: "listPets", Method: "GET", Path: "/pets", Summary: "List pets", Description: "Listing body", Tags: []string{"Pets"}},
+			{ID: "createPet", Method: "POST", Path: "/pets", Summary: "Create pet", Description: "Creation body", Tags: []string{"Pets"}},
+		},
+		Schemas: []core.Schema{{Name: "Pet", Description: "A pet schema body"}},
+	}
+	srv := NewPublicServer(idx)
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/?selected=operation-createPet", nil)
+	srv.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("operation status = %d", rec.Code)
+	}
+	body := rec.Body.String()
+	for _, want := range []string{`id="operation-createPet"`, `Create pet`, `Creation body`, `href="/?selected=operation-createPet#operation-createPet"`, `<span class="sr-only">active</span>`} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("selected operation page missing %q:\n%s", want, body)
+		}
+	}
+	for _, reject := range []string{`<section id="operation-listPets"`, `Listing body`, `<section id="schema-pet"`} {
+		if strings.Contains(body, reject) {
+			t.Fatalf("selected operation page should not render %q:\n%s", reject, body)
+		}
+	}
+
+	rec = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodGet, "/?selected=schema-pet", nil)
+	srv.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("schema status = %d", rec.Code)
+	}
+	body = rec.Body.String()
+	for _, want := range []string{`id="schema-pet"`, `Pet`, `A pet schema body`, `<span class="sr-only">active</span>`} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("selected schema page missing %q:\n%s", want, body)
+		}
+	}
+	for _, reject := range []string{`<section id="operation-listPets"`, `<section id="operation-createPet"`} {
+		if strings.Contains(body, reject) {
+			t.Fatalf("selected schema page should not render %q:\n%s", reject, body)
+		}
+	}
+}
+
 func TestPublicDocsSearchTargetsVisibleSectionsWithUniqueIDs(t *testing.T) {
 	data, err := os.ReadFile("../adapters/openapi/testdata/petstore.yaml")
 	if err != nil {
@@ -168,6 +219,15 @@ func TestPublicDocsSearchTargetsVisibleSectionsWithUniqueIDs(t *testing.T) {
 		if !ok {
 			t.Fatalf("search href %q is not an anchor", doc.Href)
 		}
+		rec := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodGet, "/?selected="+url.QueryEscape(anchor), nil)
+
+		NewPublicServer(idx).ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusOK {
+			t.Fatalf("selected %q status = %d", anchor, rec.Code)
+		}
+		body := rec.Body.String()
 		if !strings.Contains(body, `<section id="`+anchor+`"`) {
 			t.Fatalf("search href %q has no matching visible section:\n%s", doc.Href, body)
 		}
@@ -232,6 +292,22 @@ func TestPublicDocsRenderEndpointDetails(t *testing.T) {
 					Schema:      core.SchemaSummary{Name: "Todo", Type: "object"},
 					Example:     "{\n  \"id\": \"string\"\n}",
 				}},
+			}, {
+				Status:      "404",
+				Description: "Todo was not found.",
+				MediaTypes: []core.OperationMediaType{{
+					ContentType: "application/json",
+					Schema: core.SchemaSummary{
+						Name: "Error",
+						Type: "object",
+						Properties: []core.SchemaProperty{{
+							Name:        "message",
+							Required:    true,
+							Schema:      core.SchemaSummary{Type: "string"},
+							Description: "Human-readable error.",
+						}},
+					},
+				}},
 			}},
 			Security: []core.OperationSecurity{{Name: "bearerAuth"}},
 			Snippets: []core.RequestSnippet{{
@@ -273,15 +349,31 @@ func TestPublicDocsRenderEndpointDetails(t *testing.T) {
 		`Responses`,
 		`200`,
 		`Updated todo.`,
+		`404`,
+		`Todo was not found.`,
 		`Security`,
 		`bearerAuth`,
 		`aria-label="Endpoint examples"`,
 		`lg:sticky`,
-		`Request Sample: Shell / cURL`,
+		`Request Sample: cURL`,
 		`Response Example`,
 		`cURL`,
 		`curl --request PUT`,
 		`&#34;name&#34;`,
+		`aria-label="Copy Request Sample: cURL code"`,
+		`class="codeblock overflow-x-auto"`,
+		`id="operation-updatetodo-path-parameters"`,
+		`id="operation-updatetodo-query-parameters"`,
+		`id="operation-updatetodo-request-body-application-json-schema"`,
+		`id="operation-updatetodo-responses"`,
+		`role="tablist"`,
+		`role="tab"`,
+		`role="tabpanel"`,
+		`tabpaneloperation-updatetodo-responsesresponse-200`,
+		`tabpaneloperation-updatetodo-responsesresponse-404`,
+		`caption class="sr-only">Path Parameters</caption>`,
+		`caption class="sr-only">Request body schema for application/json</caption>`,
+		`caption class="sr-only">Response 404 schema for application/json</caption>`,
 	} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("endpoint detail view missing %q:\n%s", want, body)
