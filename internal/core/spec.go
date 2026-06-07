@@ -35,6 +35,65 @@ type Operation struct {
 	Description string
 	Tags        []string
 	Deprecated  bool
+	Parameters  []OperationParameter
+	RequestBody *OperationRequestBody
+	Responses   []OperationResponse
+	Security    []OperationSecurity
+	Snippets    []RequestSnippet
+}
+
+type OperationParameter struct {
+	Name        string
+	In          string
+	Required    bool
+	Description string
+	Schema      SchemaSummary
+	Example     string
+}
+
+type OperationRequestBody struct {
+	Description string
+	Required    bool
+	MediaTypes  []OperationMediaType
+}
+
+type OperationResponse struct {
+	Status      string
+	Description string
+	MediaTypes  []OperationMediaType
+}
+
+type OperationMediaType struct {
+	ContentType string
+	Schema      SchemaSummary
+	Example     string
+}
+
+type OperationSecurity struct {
+	Name   string
+	Scopes []string
+}
+
+type RequestSnippet struct {
+	Label    string
+	Language string
+	Code     string
+}
+
+type SchemaSummary struct {
+	Name        string
+	Type        string
+	Format      string
+	Description string
+	Properties  []SchemaProperty
+	Items       *SchemaSummary
+}
+
+type SchemaProperty struct {
+	Name        string
+	Required    bool
+	Schema      SchemaSummary
+	Description string
 }
 
 type Schema struct {

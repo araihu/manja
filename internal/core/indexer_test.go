@@ -3,6 +3,7 @@ package core_test
 import (
 	"context"
 	"os"
+	"strings"
 	"testing"
 
 	openapiadapter "github.com/araihu/manja/internal/adapters/openapi"
@@ -172,6 +173,128 @@ components:
 	}
 	if len(idx.Schemas) != 1 || idx.Schemas[0].Name != "Event" {
 		t.Fatalf("schemas = %#v", idx.Schemas)
+	}
+}
+
+func TestOpenAPIParserIndexesOperationRequestAndResponses(t *testing.T) {
+	spec := []byte(`
+openapi: 3.1.0
+info:
+  title: Todos
+  version: 1.0.0
+servers:
+  - url: https://api.example.test
+paths:
+  /todos/{todoId}:
+    put:
+      operationId: updateTodo
+      tags:
+        - todos
+      summary: Update Todo
+      description: Updates a todo item.
+      parameters:
+        - name: todoId
+          in: path
+          required: true
+          description: Todo identifier.
+          schema:
+            type: string
+        - name: include
+          in: query
+          description: Include related resources.
+          schema:
+            type: string
+            enum: [owner]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TodoInput"
+      responses:
+        "200":
+          description: Updated todo.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Todo"
+        "404":
+          description: Not found.
+      security:
+        - bearerAuth: []
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+  schemas:
+    TodoInput:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+          description: Name of the task.
+        completed:
+          type: boolean
+    Todo:
+      type: object
+      required: [id, name]
+      properties:
+        id:
+          type: string
+          description: ID of the task.
+        name:
+          type: string
+          description: Name of the task.
+        completed:
+          type: boolean
+`)
+	parser := openapiadapter.Parser{}
+	idx, err := parser.Parse(context.Background(), core.SpecFile{
+		SourceID: "src1",
+		Path:     "todos.yaml",
+		Format:   "yaml",
+		Bytes:    spec,
+	}, core.Revision{ID: "rev1", SourceID: "src1", Ref: "main"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	op := idx.Operations[0]
+	if len(op.Parameters) != 2 {
+		t.Fatalf("parameters = %#v", op.Parameters)
+	}
+	if op.Parameters[0].Name != "todoId" || op.Parameters[0].In != "path" || !op.Parameters[0].Required || op.Parameters[0].Schema.Type != "string" {
+		t.Fatalf("path parameter = %#v", op.Parameters[0])
+	}
+	if op.Parameters[1].Name != "include" || op.Parameters[1].In != "query" || op.Parameters[1].Schema.Type != "string" {
+		t.Fatalf("query parameter = %#v", op.Parameters[1])
+	}
+	if op.RequestBody == nil || !op.RequestBody.Required || len(op.RequestBody.MediaTypes) != 1 {
+		t.Fatalf("request body = %#v", op.RequestBody)
+	}
+	requestMedia := op.RequestBody.MediaTypes[0]
+	if requestMedia.ContentType != "application/json" || requestMedia.Schema.Name != "TodoInput" {
+		t.Fatalf("request media = %#v", requestMedia)
+	}
+	if !strings.Contains(requestMedia.Example, `"name"`) || !strings.Contains(requestMedia.Example, `"completed"`) {
+		t.Fatalf("request example = %q", requestMedia.Example)
+	}
+	if len(op.Responses) != 2 || op.Responses[0].Status != "200" || op.Responses[1].Status != "404" {
+		t.Fatalf("responses = %#v", op.Responses)
+	}
+	responseMedia := op.Responses[0].MediaTypes[0]
+	if responseMedia.ContentType != "application/json" || responseMedia.Schema.Name != "Todo" {
+		t.Fatalf("response media = %#v", responseMedia)
+	}
+	if responseMedia.Schema.Properties[0].Name != "completed" {
+		t.Fatalf("response schema properties = %#v", responseMedia.Schema.Properties)
+	}
+	if len(op.Security) != 1 || op.Security[0].Name != "bearerAuth" {
+		t.Fatalf("security = %#v", op.Security)
+	}
+	if len(op.Snippets) == 0 || op.Snippets[0].Language != "shell" || !strings.Contains(op.Snippets[0].Code, "https://api.example.test/todos/{todoId}") {
+		t.Fatalf("snippets = %#v", op.Snippets)
 	}
 }
 

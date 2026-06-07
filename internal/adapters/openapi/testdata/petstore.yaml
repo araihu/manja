@@ -3,6 +3,8 @@ info:
   title: Petstore
   version: 1.0.0
   description: Sample pet API.
+servers:
+  - url: https://api.petstore.test
 paths:
   /pets:
     get:
@@ -10,30 +12,74 @@ paths:
       summary: List pets
       description: Returns visible pets.
       tags: [Pets]
+      parameters:
+        - name: status
+          in: query
+          description: Filters pets by adoption status.
+          schema:
+            type: string
+            enum: [available, pending, adopted]
+            default: available
+        - name: page
+          in: query
+          description: Page number of the results to fetch.
+          schema:
+            type: integer
+            default: 1
+        - name: per_page
+          in: query
+          description: Results per page.
+          schema:
+            type: integer
+            default: 30
       responses:
         "200":
           description: Pet list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Pet"
   /pets/{petId}:
     get:
       operationId: getPet
       summary: Get pet
+      description: Returns one pet by identifier.
       tags: [Pets]
       parameters:
         - name: petId
           in: path
           required: true
+          description: Pet identifier.
           schema:
             type: string
       responses:
         "200":
           description: Pet detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Pet"
+        "404":
+          description: Pet not found
 components:
   schemas:
     Pet:
       type: object
       description: A pet record.
+      required: [id, name]
       properties:
         id:
           type: string
+          description: Stable pet identifier.
+          example: pet_123
         name:
           type: string
+          description: Display name.
+          example: Maple
+        status:
+          type: string
+          enum: [available, pending, adopted]
+          description: Adoption status.
+          example: available

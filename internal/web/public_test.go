@@ -52,7 +52,7 @@ func TestPublicDocsRenderSearchAndOperations(t *testing.T) {
 		`href="#operation-listPets"`,
 		`href="#schema-pet"`,
 		`id="main-content"`,
-		`aria-label="On this page"`,
+		`max-w-[100rem]`,
 		`Operations`,
 		`Schemas`,
 	} {
@@ -181,5 +181,115 @@ func TestPublicDocsSearchTargetsVisibleSectionsWithUniqueIDs(t *testing.T) {
 			t.Fatalf("duplicate DOM id %q in rendered public docs:\n%s", id, body)
 		}
 		seen[id] = true
+	}
+}
+
+func TestPublicDocsRenderEndpointDetails(t *testing.T) {
+	idx := core.SpecIndex{
+		Title: "Todos",
+		Operations: []core.Operation{{
+			ID:          "updateTodo",
+			Anchor:      "operation-updatetodo",
+			Method:      "PUT",
+			Path:        "/todos/{todoId}",
+			Summary:     "Update Todo",
+			Description: "Updates a todo item.",
+			Tags:        []string{"Todos"},
+			Parameters: []core.OperationParameter{{
+				Name:        "todoId",
+				In:          "path",
+				Required:    true,
+				Description: "Todo identifier.",
+				Schema:      core.SchemaSummary{Type: "string"},
+			}, {
+				Name:        "include",
+				In:          "query",
+				Description: "Include related resources.",
+				Schema:      core.SchemaSummary{Type: "string"},
+			}},
+			RequestBody: &core.OperationRequestBody{
+				Required: true,
+				MediaTypes: []core.OperationMediaType{{
+					ContentType: "application/json",
+					Schema: core.SchemaSummary{
+						Name: "TodoInput",
+						Type: "object",
+						Properties: []core.SchemaProperty{{
+							Name:        "name",
+							Required:    true,
+							Schema:      core.SchemaSummary{Type: "string"},
+							Description: "Name of the task.",
+						}},
+					},
+					Example: "{\n  \"name\": \"string\"\n}",
+				}},
+			},
+			Responses: []core.OperationResponse{{
+				Status:      "200",
+				Description: "Updated todo.",
+				MediaTypes: []core.OperationMediaType{{
+					ContentType: "application/json",
+					Schema:      core.SchemaSummary{Name: "Todo", Type: "object"},
+					Example:     "{\n  \"id\": \"string\"\n}",
+				}},
+			}},
+			Security: []core.OperationSecurity{{Name: "bearerAuth"}},
+			Snippets: []core.RequestSnippet{{
+				Label:    "cURL",
+				Language: "shell",
+				Code:     "curl --request PUT --url https://api.example.test/todos/{todoId}",
+			}},
+		}},
+		Search: []core.SearchDocument{{
+			ID:    "operation-updatetodo",
+			Title: "PUT /todos/{todoId}",
+			Href:  "#operation-updatetodo",
+			Kind:  "Operation",
+		}},
+	}
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+
+	NewPublicServer(idx).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d", rec.Code)
+	}
+	body := rec.Body.String()
+	for _, want := range []string{
+		`Update Todo`,
+		`/todos/{todoId}`,
+		`aria-label="Endpoint route"`,
+		`xl:grid-cols-[minmax(0,50rem)_24rem]`,
+		`Path Parameters`,
+		`Query Parameters`,
+		`Endpoint parameters`,
+		`todoId`,
+		`include`,
+		`path`,
+		`required`,
+		`Request body`,
+		`TodoInput`,
+		`Responses`,
+		`200`,
+		`Updated todo.`,
+		`Security`,
+		`bearerAuth`,
+		`aria-label="Endpoint examples"`,
+		`lg:sticky`,
+		`Request Sample: Shell / cURL`,
+		`Response Example`,
+		`cURL`,
+		`curl --request PUT`,
+		`&#34;name&#34;`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("endpoint detail view missing %q:\n%s", want, body)
+		}
+	}
+	for _, reject := range []string{"Try It", "Send API Request", "Execute request", `aria-label="On this page"`} {
+		if strings.Contains(body, reject) {
+			t.Fatalf("endpoint detail view should be read-only, got %q:\n%s", reject, body)
+		}
 	}
 }
