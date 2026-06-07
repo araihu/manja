@@ -8,6 +8,8 @@ type Store interface {
 	SaveRevision(context.Context, Revision) error
 	Revision(context.Context, string) (Revision, error)
 	SavePublication(context.Context, Publication) error
+	Publication(context.Context, string, string) (Publication, error)
+	PublicPublicationByPath(context.Context, string) (Publication, error)
 	SaveSyncRecord(context.Context, SyncRecord) error
 }
 

@@ -144,6 +144,14 @@ func (s *fakeSyncStore) SavePublication(context.Context, Publication) error {
 	return nil
 }
 
+func (s *fakeSyncStore) Publication(context.Context, string, string) (Publication, error) {
+	return Publication{}, nil
+}
+
+func (s *fakeSyncStore) PublicPublicationByPath(context.Context, string) (Publication, error) {
+	return Publication{}, nil
+}
+
 func (s *fakeSyncStore) SaveSyncRecord(_ context.Context, record SyncRecord) error {
 	s.records = append(s.records, record)
 	return nil

@@ -47,6 +47,13 @@ func TestFileStorePersistsProjectRevisionPublicationAndBlob(t *testing.T) {
 	if gotPub.ProjectID != "p1" || gotPub.RevisionID != "r1" || !gotPub.Public || gotPub.Path != "/acme/payments/v1" {
 		t.Fatalf("publication = %+v", gotPub)
 	}
+	readPub, err := fs.Publication(ctx, "p1", "r1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if readPub.ProjectID != "p1" || readPub.RevisionID != "r1" || !readPub.Public || readPub.Path != "/acme/payments/v1" {
+		t.Fatalf("read publication = %+v", readPub)
+	}
 
 	if err := fs.Put(ctx, "specs/r1.yaml", []byte("openapi: 3.1.0")); err != nil {
 		t.Fatal(err)
@@ -81,6 +88,50 @@ func TestFileStorePersistsProjectRevisionPublicationAndBlob(t *testing.T) {
 	}
 	if gotRecord.ProjectID != "p1" || gotRecord.Result != core.SyncResultSuccess || gotRecord.CommitSHA != "abc123" {
 		t.Fatalf("sync record = %+v", gotRecord)
+	}
+}
+
+func TestFileStoreReadsPublicPublicationByPath(t *testing.T) {
+	ctx := context.Background()
+	fs := NewFileStore(t.TempDir())
+	pub := core.Publication{
+		ProjectID:  "p1",
+		RevisionID: "r1",
+		Public:     true,
+		Path:       "/acme/payments/v1",
+	}
+	if err := fs.SavePublication(ctx, pub); err != nil {
+		t.Fatal(err)
+	}
+	got, err := fs.PublicPublicationByPath(ctx, "/acme/payments/v1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.ProjectID != "p1" || got.RevisionID != "r1" || !got.Public {
+		t.Fatalf("publication = %#v", got)
+	}
+}
+
+func TestFileStorePublicPublicationByPathRejectsPrivateAndInvalidPaths(t *testing.T) {
+	ctx := context.Background()
+	fs := NewFileStore(t.TempDir())
+	pub := core.Publication{
+		ProjectID:  "p1",
+		RevisionID: "r1",
+		Public:     false,
+		Path:       "/acme/payments/v1",
+	}
+	if err := fs.SavePublication(ctx, pub); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := fs.PublicPublicationByPath(ctx, "/acme/payments/v1"); err == nil {
+		t.Fatal("private publication was returned for public path lookup")
+	}
+	if _, err := fs.PublicPublicationByPath(ctx, "acme/payments/v1"); err == nil {
+		t.Fatal("relative publication path was accepted")
+	}
+	if _, err := fs.PublicPublicationByPath(ctx, "/../payments"); err == nil {
+		t.Fatal("unsafe publication path was accepted")
 	}
 }
 
@@ -162,6 +213,32 @@ func TestFileStoreRejectsInvalidFlatIDs(t *testing.T) {
 		{
 			name: "save publication revision traversal",
 			run:  func() error { return fs.SavePublication(ctx, core.Publication{ProjectID: "p1", RevisionID: "../r1"}) },
+		},
+		{
+			name: "save publication relative path",
+			run: func() error {
+				return fs.SavePublication(ctx, core.Publication{ProjectID: "p1", RevisionID: "r1", Path: "acme/payments"})
+			},
+		},
+		{
+			name: "save publication traversal path",
+			run: func() error {
+				return fs.SavePublication(ctx, core.Publication{ProjectID: "p1", RevisionID: "r1", Path: "/../payments"})
+			},
+		},
+		{
+			name: "get publication project separator",
+			run: func() error {
+				_, err := fs.Publication(ctx, "bad/id", "r1")
+				return err
+			},
+		},
+		{
+			name: "get publication revision traversal",
+			run: func() error {
+				_, err := fs.Publication(ctx, "p1", "../r1")
+				return err
+			},
 		},
 		{
 			name: "save sync record separator",
