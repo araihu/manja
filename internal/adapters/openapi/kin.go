@@ -20,7 +20,7 @@ func (Parser) Parse(ctx context.Context, file core.SpecFile, rev core.Revision) 
 	if err != nil {
 		return core.SpecIndex{}, err
 	}
-	if err := doc.Validate(ctx); err != nil {
+	if err := doc.Validate(ctx, openapi3.DisableExamplesValidation()); err != nil {
 		return core.SpecIndex{}, err
 	}
 

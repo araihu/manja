@@ -101,3 +101,79 @@ components:
 		t.Fatalf("public route paths = %#v, search hrefs = %#v", idx.PublicRoutes, idx.Search[:2])
 	}
 }
+
+func TestOpenAPIParserIgnoresInvalidExamplesForDocsIndexing(t *testing.T) {
+	spec := []byte(`
+openapi: 3.0.3
+info:
+  title: Example Tolerant API
+  version: 1.0.0
+paths:
+  /events:
+    get:
+      tags:
+        - events
+      summary: List events
+      responses:
+        "200":
+          description: ok
+components:
+  schemas:
+    Event:
+      type: object
+      properties:
+        published_at:
+          type: string
+          format: date-time
+      example:
+        published_at: not-a-date-time
+`)
+	parser := openapiadapter.Parser{}
+	idx, err := parser.Parse(context.Background(), core.SpecFile{
+		SourceID: "src1",
+		Path:     "examples.yaml",
+		Format:   "yaml",
+		Bytes:    spec,
+	}, core.Revision{ID: "rev1", SourceID: "src1", Ref: "main"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if idx.Title != "Example Tolerant API" {
+		t.Fatalf("title = %q", idx.Title)
+	}
+	if len(idx.Operations) != 1 || idx.Operations[0].Path != "/events" {
+		t.Fatalf("operations = %#v", idx.Operations)
+	}
+	if len(idx.Schemas) != 1 || idx.Schemas[0].Name != "Event" {
+		t.Fatalf("schemas = %#v", idx.Schemas)
+	}
+}
+
+func TestOpenAPIParserIndexesGitHubRESTFixture(t *testing.T) {
+	data, err := os.ReadFile("../adapters/openapi/testdata/github-v3-rest.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	parser := openapiadapter.Parser{}
+	idx, err := parser.Parse(context.Background(), core.SpecFile{
+		SourceID: "src1",
+		Path:     "github-v3-rest.json",
+		Format:   "json",
+		Bytes:    data,
+	}, core.Revision{ID: "rev1", SourceID: "src1", Ref: "main"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if idx.Title != "GitHub v3 REST API" || idx.Version != "1.1.4" {
+		t.Fatalf("identity = %q %q", idx.Title, idx.Version)
+	}
+	if len(idx.Operations) != 674 {
+		t.Fatalf("operations = %d, want 674", len(idx.Operations))
+	}
+	if len(idx.Schemas) != 278 {
+		t.Fatalf("schemas = %d, want 278", len(idx.Schemas))
+	}
+	if len(idx.Search) != len(idx.Operations)+len(idx.Schemas)+1 {
+		t.Fatalf("search documents = %d, want %d", len(idx.Search), len(idx.Operations)+len(idx.Schemas)+1)
+	}
+}

@@ -4,11 +4,47 @@ import "github.com/araihu/goshtoso/components/head"
 
 templ Layout(title string) {
 	<!DOCTYPE html>
-	<html lang="en" data-theme="goshtoso">
+	<html
+		lang="en"
+		data-theme="goshtoso"
+		x-data="{
+			theme: localStorage.getItem('theme') || 'goshtoso',
+			darkMode: (function() {
+				const stored = localStorage.getItem('darkMode');
+				if (stored !== null) return stored === 'true';
+				return window.matchMedia('(prefers-color-scheme: dark)').matches;
+			})(),
+			setTheme(name) { this.theme = name; document.documentElement.setAttribute('data-theme', name); },
+			applyDarkMode(on) { document.documentElement.classList.toggle('dark', on); },
+			toggleDarkMode() { this.darkMode = !this.darkMode; }
+		}"
+		x-init="
+			document.documentElement.setAttribute('data-theme', theme);
+			applyDarkMode(darkMode);
+			$watch('theme', value => {
+				localStorage.setItem('theme', value);
+				document.documentElement.setAttribute('data-theme', value);
+			});
+			$watch('darkMode', value => {
+				localStorage.setItem('darkMode', value ? 'true' : 'false');
+				applyDarkMode(value);
+			});
+		"
+	>
 		<head>
 			<meta charset="UTF-8"/>
 			<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 			<title>{ title }</title>
+			<script>
+				(function() {
+					try {
+						document.documentElement.setAttribute('data-theme', localStorage.getItem('theme') || 'goshtoso');
+						var d = localStorage.getItem('darkMode');
+						var on = d !== null ? d === 'true' : window.matchMedia('(prefers-color-scheme: dark)').matches;
+						document.documentElement.classList.toggle('dark', on);
+					} catch (e) {}
+				})();
+			</script>
 			@head.Dependencies()
 			<link rel="stylesheet" href="/manja-assets/manja.css"/>
 			<style>[x-cloak] { display: none !important; }</style>
