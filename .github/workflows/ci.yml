@@ -22,6 +22,8 @@ jobs:
       - run: git diff --exit-code go.mod go.sum
       - run: go run github.com/playwright-community/playwright-go/cmd/playwright@v0.5700.1 install --with-deps chromium
       - run: go test ./...
+      - run: go test ./...
+        working-directory: site
       - run: npm run api:bundle
       - run: npm run api:lint
 
