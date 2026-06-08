@@ -862,9 +862,9 @@ func TestPublicDocsRenderEndpointDetails(t *testing.T) {
 		`/todos/{todoId}`,
 		`aria-label="Endpoint route"`,
 		`xl:grid-cols-[minmax(0,50rem)_24rem]`,
-		`<div class="grid gap-10 pt-10 xl:grid-cols-2 xl:items-start">`,
+		`<div class="manja-endpoint-detail-layout">`,
 		`<section class="grid gap-8" aria-label="Request">`,
-		`<section class="grid gap-7 border-t border-outline pt-10 dark:border-outline-dark xl:border-t-0 xl:pt-0" aria-label="Responses">`,
+		`<section class="manja-endpoint-responses-section grid gap-7" aria-label="Responses">`,
 		`<section class="grid gap-4">`,
 		`Path Parameters`,
 		`Query Parameters`,
@@ -917,6 +917,36 @@ func TestPublicDocsRenderEndpointDetails(t *testing.T) {
 		if strings.Contains(body, reject) {
 			t.Fatalf("endpoint detail view should be read-only, got %q:\n%s", reject, body)
 		}
+	}
+}
+
+func TestPublicDocsEndpointDetailCSSUsesResponsiveSplitLayout(t *testing.T) {
+	css, err := os.ReadFile("static/manja.css")
+	if err != nil {
+		t.Fatal(err)
+	}
+	layoutRule := regexp.MustCompile(`(?s)\.manja-endpoint-detail-layout\s*\{[^}]*\}`)
+	rule := layoutRule.FindString(string(css))
+	if rule == "" {
+		t.Fatalf("missing .manja-endpoint-detail-layout rule")
+	}
+	for _, want := range []string{
+		`display: grid;`,
+		`grid-template-columns: minmax(0, 1fr);`,
+	} {
+		if !strings.Contains(rule, want) {
+			t.Fatalf("endpoint detail layout should stack by default with %q:\n%s", want, rule)
+		}
+	}
+	largeRule := regexp.MustCompile(`(?s)@media\s*\(min-width:\s*1280px\)\s*\{[^{}]*\.manja-endpoint-detail-layout\s*\{[^}]*\}`).FindString(string(css))
+	if largeRule == "" {
+		t.Fatalf("missing large-screen endpoint detail layout media rule")
+	}
+	if !strings.Contains(largeRule, `grid-template-columns: repeat(2, minmax(0, 1fr));`) {
+		t.Fatalf("endpoint detail layout should split request and responses into two columns on large screens:\n%s", largeRule)
+	}
+	if !strings.Contains(string(css), `.manja-endpoint-responses-section`) {
+		t.Fatalf("endpoint responses section should own stacked-layout divider spacing")
 	}
 }
 
