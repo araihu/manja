@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 
 	cacheadapter "github.com/araihu/manja/internal/adapters/cache"
+	markdownadapter "github.com/araihu/manja/internal/adapters/markdown"
 	openapiadapter "github.com/araihu/manja/internal/adapters/openapi"
 	sourceadapter "github.com/araihu/manja/internal/adapters/source"
 	storeadapter "github.com/araihu/manja/internal/adapters/store"
@@ -54,6 +55,7 @@ func NewWithOptions(ctx context.Context, opts Options) (http.Handler, error) {
 	return web.NewServerWithOptions(result.Index, web.Options{
 		Public: web.PublicOptions{
 			EndpointSidebarLabel: web.EndpointSidebarLabelMode(opts.EndpointSidebarLabel),
+			MarkdownRenderer:     markdownadapter.NewRenderer(),
 		},
 	}), nil
 }

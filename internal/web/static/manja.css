@@ -371,6 +371,11 @@ summary.manja-schema-row::marker {
   color: var(--color-on-surface-dark);
 }
 
+.bg-surface-dark .manja-markdown,
+.bg-surface-dark-alt .manja-markdown {
+  color: var(--color-on-surface-dark);
+}
+
 .dark .manja-schema-tree {
   color: var(--color-on-surface-dark);
 }
@@ -431,11 +436,144 @@ summary.manja-schema-row::marker {
   color: var(--color-on-surface-dark-strong);
 }
 
+.manja-markdown > * + * {
+  margin-top: 0.9rem;
+}
+
+.manja-markdown p {
+  margin: 0;
+}
+
+.manja-markdown strong {
+  color: var(--color-on-surface-strong);
+  font-weight: 650;
+}
+
+.dark .manja-markdown strong {
+  color: var(--color-on-surface-dark-strong);
+}
+
+.bg-surface-dark .manja-markdown strong,
+.bg-surface-dark-alt .manja-markdown strong {
+  color: var(--color-on-surface-dark-strong);
+}
+
 .manja-markdown a {
   color: var(--color-primary);
   text-decoration: underline;
+  text-underline-offset: 0.2em;
 }
 
 .dark .manja-markdown a {
   color: var(--color-primary-dark);
+}
+
+.bg-surface-dark .manja-markdown a,
+.bg-surface-dark-alt .manja-markdown a {
+  color: var(--color-primary-dark);
+}
+
+.manja-markdown ul,
+.manja-markdown ol {
+  color: var(--color-on-surface);
+  margin-bottom: 0;
+  padding-left: 1.25rem;
+}
+
+.manja-markdown ul {
+  list-style: disc;
+}
+
+.manja-markdown ol {
+  list-style: decimal;
+}
+
+.manja-markdown li + li {
+  margin-top: 0.35rem;
+}
+
+.manja-markdown code {
+  background: var(--color-surface-alt);
+  border: 1px solid var(--color-outline);
+  border-radius: var(--radius-radius);
+  color: var(--color-on-surface-strong);
+  font-family: var(--font-mono);
+  font-size: 0.875em;
+  padding: 0.1rem 0.35rem;
+}
+
+.manja-markdown pre {
+  background: var(--color-surface-alt);
+  border: 1px solid var(--color-outline);
+  border-radius: var(--radius-radius);
+  color: var(--color-on-surface);
+  overflow-x: auto;
+  padding: 0.875rem 1rem;
+}
+
+.manja-markdown pre code {
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  color: inherit;
+  display: block;
+  padding: 0;
+}
+
+.manja-markdown blockquote {
+  border-left: 3px solid var(--color-outline);
+  color: var(--color-on-surface-muted);
+  margin-left: 0;
+  padding-left: 1rem;
+}
+
+.manja-markdown table {
+  border-collapse: collapse;
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  width: max-content;
+}
+
+.manja-markdown th,
+.manja-markdown td {
+  border: 1px solid var(--color-outline);
+  padding: 0.5rem 0.75rem;
+  text-align: left;
+  vertical-align: top;
+}
+
+.manja-markdown th {
+  background: var(--color-surface-alt);
+  color: var(--color-on-surface-strong);
+  font-weight: 650;
+}
+
+.dark .manja-markdown ul,
+.dark .manja-markdown ol,
+.dark .manja-markdown pre {
+  color: var(--color-on-surface-dark);
+}
+
+.dark .manja-markdown code,
+.dark .manja-markdown pre,
+.dark .manja-markdown th {
+  background: var(--color-surface-dark-alt);
+}
+
+.dark .manja-markdown code,
+.dark .manja-markdown pre,
+.dark .manja-markdown th,
+.dark .manja-markdown td {
+  border-color: var(--color-outline-dark);
+}
+
+.dark .manja-markdown code,
+.dark .manja-markdown th {
+  color: var(--color-on-surface-dark-strong);
+}
+
+.dark .manja-markdown blockquote {
+  border-left-color: var(--color-outline-dark);
+  color: var(--color-on-surface-dark-muted);
 }

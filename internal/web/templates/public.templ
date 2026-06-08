@@ -1,7 +1,9 @@
 package templates
 
 import (
+	"context"
 	"encoding/json"
+	"io"
 	"net/url"
 	"strconv"
 	"strings"
@@ -35,6 +37,7 @@ const (
 
 type PublicDocsOptions struct {
 	EndpointSidebarLabel EndpointSidebarLabelMode
+	MarkdownRenderer     core.MarkdownRenderer
 }
 
 func (opts PublicDocsOptions) withDefaults() PublicDocsOptions {
@@ -122,7 +125,7 @@ templ PublicDocsFragmentContent(idx core.SpecIndex, selectedID string, opts Publ
 	{{ selected := selectedDocsItemFor(idx, selectedID) }}
 	<h1 class="sr-only">{ idx.Title } OpenAPI docs</h1>
 	@selectedDocsBreadcrumbs(idx, selected)
-	@selectedDocsContent(idx, selected)
+	@selectedDocsContent(idx, selected, opts)
 	@publicDocsFooter()
 }
 
@@ -135,18 +138,18 @@ templ publicDocsSidebar(idx core.SpecIndex, selected selectedDocsItem, opts Publ
 	})
 }
 
-templ selectedDocsContent(idx core.SpecIndex, selected selectedDocsItem) {
+templ selectedDocsContent(idx core.SpecIndex, selected selectedDocsItem, opts PublicDocsOptions) {
 	if selected.Kind == "overview" {
-		@overviewSection(idx)
+		@overviewSection(idx, opts)
 	} else if selected.Kind == "operation" {
 		<section aria-labelledby="operations-heading" class="grid gap-16">
 			<h2 id="operations-heading" data-toc-heading class="sr-only">Operations</h2>
-			@endpointSection(selected.Operation, idx.ExampleSpecJSON)
+			@endpointSection(selected.Operation, idx.ExampleSpecJSON, opts)
 		</section>
 	} else if selected.Kind == "schema" {
 		<section aria-labelledby="schemas-heading">
 			<h2 id="schemas-heading" data-toc-heading class="sr-only">Schemas</h2>
-			@schemaSection(selected.Schema, idx.ExampleSpecJSON)
+			@schemaSection(selected.Schema, idx.ExampleSpecJSON, opts)
 		</section>
 	} else {
 		<section class="rounded-radius border border-outline bg-surface-alt p-6 dark:border-outline-dark dark:bg-surface-dark-alt">
@@ -180,7 +183,7 @@ templ selectedDocsBreadcrumbs(idx core.SpecIndex, selected selectedDocsItem) {
 	}
 }
 
-templ overviewSection(idx core.SpecIndex) {
+templ overviewSection(idx core.SpecIndex, opts PublicDocsOptions) {
 	<section id="overview" aria-labelledby="overview-heading" class="scroll-mt-24">
 		<div class="max-w-[88rem]">
 			<div class="flex flex-wrap items-start justify-between gap-6 border-b border-outline pb-8 dark:border-outline-dark">
@@ -220,10 +223,21 @@ templ overviewSection(idx core.SpecIndex) {
 								<div class="flex min-w-0 flex-wrap items-center gap-2 px-4 py-3">
 									<span aria-hidden="true" class="text-on-surface-dark-muted">▾</span>
 									<p class="min-w-0 text-sm font-semibold text-on-surface-dark-strong">
-										{ overviewServerLabel(server) }:
+										Live Server:
 										<code class="ml-1 break-all font-mono text-sm font-semibold text-on-surface-dark">{ server.URL }</code>
 									</p>
 								</div>
+								if server.Description != "" {
+									<div class="px-4 pb-4">
+										if hasMarkdown(opts.MarkdownRenderer, server.Description) {
+											<div class="max-w-[70ch] text-sm">
+												@renderedMarkdown(opts.MarkdownRenderer, server.Description)
+											</div>
+										} else {
+											<p class="text-sm leading-6 text-on-surface-dark">{ server.Description }</p>
+										}
+									</div>
+								}
 								if len(server.Variables) > 0 {
 									<dl class="grid gap-5 border-t border-outline-dark px-8 py-6">
 										for _, variable := range server.Variables {
@@ -233,7 +247,13 @@ templ overviewSection(idx core.SpecIndex) {
 													<dd class="text-sm text-on-surface-dark-muted">string</dd>
 												</div>
 												if variable.Description != "" {
-													<p class="text-sm leading-6 text-on-surface-dark">{ variable.Description }</p>
+													if hasMarkdown(opts.MarkdownRenderer, variable.Description) {
+														<div class="max-w-[70ch] text-sm">
+															@renderedMarkdown(opts.MarkdownRenderer, variable.Description)
+														</div>
+													} else {
+														<p class="text-sm leading-6 text-on-surface-dark">{ variable.Description }</p>
+													}
 												}
 												if variable.Default != "" {
 													<p class="text-xs text-on-surface-dark-muted">
@@ -272,7 +292,11 @@ templ overviewSection(idx core.SpecIndex) {
 					</div>
 				</section>
 			}
-			if idx.Overview.Description != "" {
+			if hasMarkdown(opts.MarkdownRenderer, idx.Overview.Description) {
+				<div class="mt-8 max-w-[70ch]">
+					@renderedMarkdown(opts.MarkdownRenderer, idx.Overview.Description)
+				</div>
+			} else if idx.Overview.Description != "" {
 				<div class="manja-markdown mt-8 max-w-[70ch]">
 					<p>{ idx.Overview.Description }</p>
 				</div>
@@ -317,10 +341,6 @@ func overviewSpecFilename(download core.SpecDownload) string {
 	return filename
 }
 
-func overviewServerLabel(server core.SpecServer) string {
-	return firstNonEmpty(server.Description, "Live Server")
-}
-
 func overviewHasAdditionalInfo(overview core.SpecOverview) bool {
 	return overviewContactHref(overview.Contact) != "" || overviewLicenseLabel(overview.License) != "" || overview.TermsOfService != ""
 }
@@ -343,7 +363,21 @@ func overviewLicenseLabel(license core.SpecLicense) string {
 	return firstNonEmpty(license.Name, license.Identifier)
 }
 
-templ endpointSection(op core.Operation, exampleSpecJSON string) {
+func hasMarkdown(renderer core.MarkdownRenderer, input string) bool {
+	return renderer != nil && strings.TrimSpace(input) != ""
+}
+
+func renderedMarkdown(renderer core.MarkdownRenderer, input string) templpkg.Component {
+	return templpkg.ComponentFunc(func(ctx context.Context, w io.Writer) error {
+		result, err := renderer.Render(ctx, input)
+		if err != nil {
+			return err
+		}
+		return templpkg.Raw(result.HTML).Render(ctx, w)
+	})
+}
+
+templ endpointSection(op core.Operation, exampleSpecJSON string, opts PublicDocsOptions) {
 	{{ opID := operationAnchor(op) }}
 	<section id={ opID } class="scroll-mt-24">
 		<div class="manja-endpoint-shell-layout">
@@ -359,7 +393,11 @@ templ endpointSection(op core.Operation, exampleSpecJSON string) {
 						@methodBadge(op.Method)
 						<p class="min-w-0 break-words font-mono text-sm font-semibold text-on-surface-strong dark:text-on-surface-dark-strong">{ op.Path }</p>
 					</div>
-					if op.Description != "" {
+					if hasMarkdown(opts.MarkdownRenderer, op.Description) {
+						<div class="mt-4 max-w-[70ch]">
+							@renderedMarkdown(opts.MarkdownRenderer, op.Description)
+						</div>
+					} else if op.Description != "" {
 						<p class="mt-4 max-w-[70ch] text-base leading-6 text-on-surface dark:text-on-surface-dark">{ op.Description }</p>
 					}
 				</div>
@@ -368,9 +406,9 @@ templ endpointSection(op core.Operation, exampleSpecJSON string) {
 						if operationHasRequest(op) {
 							<section class="grid gap-8" aria-label="Request">
 								<h4 class="font-title text-2xl font-bold text-on-surface-strong dark:text-on-surface-dark-strong">Request</h4>
-								@paramGroup(opID, "Path Parameters", parametersIn(op.Parameters, "path"))
-								@paramGroup(opID, "Query Parameters", parametersIn(op.Parameters, "query"))
-								@paramGroup(opID, "Header Parameters", parametersIn(op.Parameters, "header"))
+								@paramGroup(opID, "Path Parameters", parametersIn(op.Parameters, "path"), opts)
+								@paramGroup(opID, "Query Parameters", parametersIn(op.Parameters, "query"), opts)
+								@paramGroup(opID, "Header Parameters", parametersIn(op.Parameters, "header"), opts)
 								if op.RequestBody != nil {
 									<section class="grid gap-4" aria-label="Request body">
 										<div class="flex flex-wrap items-center gap-2">
@@ -380,9 +418,15 @@ templ endpointSection(op core.Operation, exampleSpecJSON string) {
 											}
 										</div>
 										if op.RequestBody.Description != "" {
-											<p class="text-sm text-on-surface-muted dark:text-on-surface-dark-muted">{ op.RequestBody.Description }</p>
+											if hasMarkdown(opts.MarkdownRenderer, op.RequestBody.Description) {
+												<div class="max-w-[70ch] text-sm">
+													@renderedMarkdown(opts.MarkdownRenderer, op.RequestBody.Description)
+												</div>
+											} else {
+												<p class="text-sm text-on-surface-muted dark:text-on-surface-dark-muted">{ op.RequestBody.Description }</p>
+											}
 										}
-										@mediaTypeList(opID+"-request-body", "Request body", op.RequestBody.MediaTypes)
+										@mediaTypeList(opID+"-request-body", "Request body", op.RequestBody.MediaTypes, opts)
 									</section>
 								}
 							</section>
@@ -391,7 +435,7 @@ templ endpointSection(op core.Operation, exampleSpecJSON string) {
 							<section class="manja-endpoint-responses-section grid gap-5" aria-label="Responses">
 								<h4 class="font-title text-2xl font-bold text-on-surface-strong dark:text-on-surface-dark-strong">Responses</h4>
 								<div id={ opID + "-responses" }>
-									@tabs.Tabs(responseTabsConfig(opID, op.Responses, exampleSpecJSON))
+								@tabs.Tabs(responseTabsConfig(opID, op.Responses, exampleSpecJSON, opts))
 								</div>
 							</section>
 						}
@@ -443,7 +487,7 @@ templ endpointSection(op core.Operation, exampleSpecJSON string) {
 	</section>
 }
 
-templ schemaSection(schema core.Schema, exampleSpecJSON string) {
+templ schemaSection(schema core.Schema, exampleSpecJSON string, opts PublicDocsOptions) {
 	{{ summary := schema.Summary }}
 	if summary.Name == "" {
 		{{ summary.Name = schema.Name }}
@@ -456,35 +500,47 @@ templ schemaSection(schema core.Schema, exampleSpecJSON string) {
 			<p class="font-mono text-sm font-semibold uppercase text-on-surface-muted dark:text-on-surface-dark-muted">Schema</p>
 			<h3 class="manja-doc-title mt-4 font-title text-4xl font-bold leading-tight text-on-surface-strong dark:text-on-surface-dark-strong lg:text-5xl">{ schema.Name }</h3>
 			if summary.Description != "" {
-				<p class="mt-6 max-w-[70ch] text-base leading-7 text-on-surface dark:text-on-surface-dark">{ summary.Description }</p>
+				if hasMarkdown(opts.MarkdownRenderer, summary.Description) {
+					<div class="mt-6 max-w-[70ch]">
+						@renderedMarkdown(opts.MarkdownRenderer, summary.Description)
+					</div>
+				} else {
+					<p class="mt-6 max-w-[70ch] text-base leading-7 text-on-surface dark:text-on-surface-dark">{ summary.Description }</p>
+				}
 			}
 		</div>
 		{{ cfg := schemaPageExampleConfig(schema, exampleSpecJSON) }}
 		if hasSchemaExample(cfg) {
 			<div class="manja-schema-detail-layout">
 				<div class="manja-schema-tree-panel">
-					@schemaTree(schemaAnchor(schema)+"-tree", schema.Name, summary)
+					@schemaTree(schemaAnchor(schema)+"-tree", schema.Name, summary, opts)
 				</div>
 				<aside class="manja-schema-example-panel" aria-label="Schema example">
 					@schemaExample(cfg)
 				</aside>
 			</div>
 		} else {
-			@schemaTree(schemaAnchor(schema)+"-tree", schema.Name, summary)
+			@schemaTree(schemaAnchor(schema)+"-tree", schema.Name, summary, opts)
 		}
 	</section>
 }
 
-templ responsePanel(opID string, response core.OperationResponse, exampleSpecJSON string) {
+templ responsePanel(opID string, response core.OperationResponse, exampleSpecJSON string, opts PublicDocsOptions) {
 	<section class="grid gap-4">
 		if response.Description != "" {
-			<p class="text-base font-medium text-on-surface dark:text-on-surface-dark">{ response.Description }</p>
+			if hasMarkdown(opts.MarkdownRenderer, response.Description) {
+				<div class="max-w-[70ch]">
+					@renderedMarkdown(opts.MarkdownRenderer, response.Description)
+				</div>
+			} else {
+				<p class="text-base font-medium text-on-surface dark:text-on-surface-dark">{ response.Description }</p>
+			}
 		}
-		@responseMediaTypeList(opID, response, exampleSpecJSON)
+		@responseMediaTypeList(opID, response, exampleSpecJSON, opts)
 	</section>
 }
 
-templ mediaTypeList(idPrefix string, label string, mediaTypes []core.OperationMediaType) {
+templ mediaTypeList(idPrefix string, label string, mediaTypes []core.OperationMediaType, opts PublicDocsOptions) {
 	if len(mediaTypes) > 0 {
 		<div class="grid gap-4">
 			for _, media := range mediaTypes {
@@ -495,14 +551,14 @@ templ mediaTypeList(idPrefix string, label string, mediaTypes []core.OperationMe
 							<span class="font-mono text-xs text-on-surface-muted dark:text-on-surface-dark-muted">{ schemaInline(media.Schema) }</span>
 						}
 					</div>
-					@schemaProperties(mediaTypeTableID(idPrefix, media), label+" schema for "+media.ContentType, media.Schema)
+					@schemaProperties(mediaTypeTableID(idPrefix, media), label+" schema for "+media.ContentType, media.Schema, opts)
 				</div>
 			}
 		</div>
 	}
 }
 
-templ responseMediaTypeList(opID string, response core.OperationResponse, exampleSpecJSON string) {
+templ responseMediaTypeList(opID string, response core.OperationResponse, exampleSpecJSON string, opts PublicDocsOptions) {
 	if len(response.MediaTypes) > 0 {
 		<div class="grid gap-4">
 			for _, media := range response.MediaTypes {
@@ -513,12 +569,12 @@ templ responseMediaTypeList(opID string, response core.OperationResponse, exampl
 						<div class="manja-response-panel-main grid gap-4">
 							<div class="flex flex-wrap items-center gap-3">
 								<span class="font-mono text-xs font-semibold text-on-surface-strong dark:text-on-surface-dark-strong">{ media.ContentType }</span>
-								if schemaInline(media.Schema) != "" {
-									<span class="font-mono text-xs text-on-surface-muted dark:text-on-surface-dark-muted">{ schemaInline(media.Schema) }</span>
-								}
-							</div>
-							@schemaProperties(mediaTypeTableID(idPrefix, media), "Response "+response.Status+" schema for "+media.ContentType, media.Schema)
+							if schemaInline(media.Schema) != "" {
+								<span class="font-mono text-xs text-on-surface-muted dark:text-on-surface-dark-muted">{ schemaInline(media.Schema) }</span>
+							}
 						</div>
+						@schemaProperties(mediaTypeTableID(idPrefix, media), "Response "+response.Status+" schema for "+media.ContentType, media.Schema, opts)
+					</div>
 						if hasSchemaExample(cfg) {
 							<aside class="manja-response-panel-example" aria-label={ "Response " + response.Status + " " + media.ContentType + " example" }>
 								@schemaExample(cfg)
@@ -531,49 +587,49 @@ templ responseMediaTypeList(opID string, response core.OperationResponse, exampl
 	}
 }
 
-templ paramGroup(idPrefix string, title string, parameters []core.OperationParameter) {
+templ paramGroup(idPrefix string, title string, parameters []core.OperationParameter, opts PublicDocsOptions) {
 	if len(parameters) > 0 {
 		<section class="grid gap-4">
 			<h5 class="font-title text-lg font-bold text-on-surface-strong dark:text-on-surface-dark-strong">{ title }</h5>
 			<div>
-				@table.Table(parameterTableConfig(idPrefix, title, parameters))
+				@table.Table(parameterTableConfig(idPrefix, title, parameters, opts.MarkdownRenderer))
 			</div>
 		</section>
 	}
 }
 
-templ schemaProperties(id string, caption string, schema core.SchemaSummary) {
+templ schemaProperties(id string, caption string, schema core.SchemaSummary, opts PublicDocsOptions) {
 	if schemaTreeHasContent(schema) {
 		<div class="mt-4">
-			@schemaTree(id, caption, schema)
+			@schemaTree(id, caption, schema, opts)
 		</div>
 	}
 }
 
-templ schemaTree(id string, caption string, schema core.SchemaSummary) {
+templ schemaTree(id string, caption string, schema core.SchemaSummary, opts PublicDocsOptions) {
 	<section id={ id } aria-label={ caption + " schema tree" } class="manja-schema-tree">
 		if schemaTreeExpandable(schema) {
 			<div class="manja-schema-root">
-				@schemaTreeChildNodes(schema)
+				@schemaTreeChildNodes(schema, opts)
 			</div>
 		} else {
-			@schemaTreeNode(schemaTreeRootName(caption, schema), false, schema, true)
+			@schemaTreeNode(schemaTreeRootName(caption, schema), false, schema, true, opts)
 		}
 	</section>
 }
 
-templ schemaTreeNode(name string, required bool, schema core.SchemaSummary, root bool) {
+templ schemaTreeNode(name string, required bool, schema core.SchemaSummary, root bool, opts PublicDocsOptions) {
 	{{ displayName := schemaTreeDisplayName(name, schema) }}
 	if schemaTreeExpandable(schema) {
 		if root {
 			<details open data-schema-tree-node={ displayName } class="manja-schema-node manja-schema-node-root">
-				@schemaTreeSummary(displayName, required, schema)
-				@schemaTreeChildren(schema)
+				@schemaTreeSummary(displayName, required, schema, opts)
+				@schemaTreeChildren(schema, opts)
 			</details>
 		} else {
 			<details open data-schema-tree-row={ displayName } class="manja-schema-node">
-				@schemaTreeSummary(displayName, required, schema)
-				@schemaTreeChildren(schema)
+				@schemaTreeSummary(displayName, required, schema, opts)
+				@schemaTreeChildren(schema, opts)
 			</details>
 		}
 	} else {
@@ -581,7 +637,7 @@ templ schemaTreeNode(name string, required bool, schema core.SchemaSummary, root
 			<div data-schema-tree-node={ displayName } class="manja-schema-node manja-schema-node-root">
 				<div class="manja-schema-row">
 					<span class="manja-schema-branch" aria-hidden="true"></span>
-					@schemaTreeLabel(displayName, schema)
+					@schemaTreeLabel(displayName, schema, opts)
 					@schemaTreeRequired(required)
 				</div>
 			</div>
@@ -589,7 +645,7 @@ templ schemaTreeNode(name string, required bool, schema core.SchemaSummary, root
 			<div data-schema-tree-row={ displayName } class="manja-schema-node">
 				<div class="manja-schema-row">
 					<span class="manja-schema-branch" aria-hidden="true"></span>
-					@schemaTreeLabel(displayName, schema)
+					@schemaTreeLabel(displayName, schema, opts)
 					@schemaTreeRequired(required)
 				</div>
 			</div>
@@ -597,16 +653,16 @@ templ schemaTreeNode(name string, required bool, schema core.SchemaSummary, root
 	}
 }
 
-templ schemaTreeSummary(name string, required bool, schema core.SchemaSummary) {
+templ schemaTreeSummary(name string, required bool, schema core.SchemaSummary, opts PublicDocsOptions) {
 	<summary class="manja-schema-row">
 		<span class="manja-schema-branch" aria-hidden="true"></span>
 		<span class="manja-schema-caret" aria-hidden="true"></span>
-		@schemaTreeLabel(name, schema)
+		@schemaTreeLabel(name, schema, opts)
 		@schemaTreeRequired(required)
 	</summary>
 }
 
-templ schemaTreeLabel(name string, schema core.SchemaSummary) {
+templ schemaTreeLabel(name string, schema core.SchemaSummary, opts PublicDocsOptions) {
 	<div class="manja-schema-label">
 		<div class="manja-schema-heading">
 			<span class="manja-schema-name">{ name }</span>
@@ -615,7 +671,13 @@ templ schemaTreeLabel(name string, schema core.SchemaSummary) {
 			}
 		</div>
 		if schema.Description != "" {
-			<p class="manja-schema-description">{ schema.Description }</p>
+			if hasMarkdown(opts.MarkdownRenderer, schema.Description) {
+				<div class="manja-schema-description">
+					@renderedMarkdown(opts.MarkdownRenderer, schema.Description)
+				</div>
+			} else {
+				<p class="manja-schema-description">{ schema.Description }</p>
+			}
 		}
 		if schema.Example != "" {
 			if schemaTreeExampleBlock(schema.Example) {
@@ -639,18 +701,18 @@ templ schemaTreeRequired(required bool) {
 	}
 }
 
-templ schemaTreeChildren(schema core.SchemaSummary) {
+templ schemaTreeChildren(schema core.SchemaSummary, opts PublicDocsOptions) {
 	<div class="manja-schema-children">
-		@schemaTreeChildNodes(schema)
+		@schemaTreeChildNodes(schema, opts)
 	</div>
 }
 
-templ schemaTreeChildNodes(schema core.SchemaSummary) {
+templ schemaTreeChildNodes(schema core.SchemaSummary, opts PublicDocsOptions) {
 	if schema.Items != nil && schemaTreeExpandable(*schema.Items) {
-		@schemaTreeNode("items", false, *schema.Items, false)
+		@schemaTreeNode("items", false, *schema.Items, false, opts)
 	}
 	for _, property := range schema.Properties {
-		@schemaTreeNode(property.Name, property.Required, property.Schema, false)
+		@schemaTreeNode(property.Name, property.Required, property.Schema, false, opts)
 	}
 }
 
@@ -695,14 +757,14 @@ func docsSearchConfig(docs []core.SearchDocument) searchfield.Config {
 	}
 }
 
-func responseTabsConfig(opID string, responses []core.OperationResponse, exampleSpecJSON string) tabs.Config {
+func responseTabsConfig(opID string, responses []core.OperationResponse, exampleSpecJSON string, opts PublicDocsOptions) tabs.Config {
 	tabItems := make([]tabs.Tab, 0, len(responses))
 	for _, response := range responses {
 		tabItems = append(tabItems, tabs.Tab{
 			ID:        responseTabID(response),
 			Label:     response.Status,
 			LabelSlot: responseStatusBadge(response.Status),
-			Content:   responsePanel(opID, response, exampleSpecJSON),
+			Content:   responsePanel(opID, response, exampleSpecJSON, opts),
 		})
 	}
 	cfg := tabs.Config{
@@ -724,7 +786,23 @@ func responseTabID(response core.OperationResponse) string {
 	return "response-" + id
 }
 
-func parameterTableConfig(idPrefix string, title string, parameters []core.OperationParameter) table.Config {
+templ parameterDescriptionCell(renderer core.MarkdownRenderer, description string, example string) {
+	if strings.TrimSpace(description) != "" {
+		if hasMarkdown(renderer, description) {
+			@renderedMarkdown(renderer, description)
+		} else {
+			<p>{ description }</p>
+		}
+	}
+	if strings.TrimSpace(example) != "" {
+		<p class="mt-2 text-xs text-on-surface-muted dark:text-on-surface-dark-muted">
+			Example:
+			<code class="ml-1 rounded-radius bg-surface-alt px-1.5 py-0.5 font-mono text-xs text-on-surface-strong dark:bg-surface-dark-alt dark:text-on-surface-dark-strong">{ example }</code>
+		</p>
+	}
+}
+
+func parameterTableConfig(idPrefix string, title string, parameters []core.OperationParameter, renderer core.MarkdownRenderer) table.Config {
 	rows := make([]table.Row, 0, len(parameters))
 	for _, param := range parameters {
 		required := "optional"
@@ -740,6 +818,10 @@ func parameterTableConfig(idPrefix string, title string, parameters []core.Opera
 			}
 			description += "Example: " + param.Example
 		}
+		descriptionCell := table.Cell{Text: description}
+		if renderer != nil && (strings.TrimSpace(param.Description) != "" || strings.TrimSpace(param.Example) != "") {
+			descriptionCell = table.Cell{Component: parameterDescriptionCell(renderer, param.Description, param.Example)}
+		}
 		rows = append(rows, table.Row{
 			ID: idPrefix + "-" + anchorFragment(title) + "-" + anchorFragment(param.In+"-"+param.Name),
 			Cells: map[string]table.Cell{
@@ -747,7 +829,7 @@ func parameterTableConfig(idPrefix string, title string, parameters []core.Opera
 				"in":          {Text: param.In, Code: true},
 				"type":        {Text: firstNonEmpty(schemaInline(param.Schema), param.In), Code: true},
 				"requirement": {Text: required, BadgeColor: requiredColor},
-				"description": {Text: description},
+				"description": descriptionCell,
 			},
 		})
 	}
