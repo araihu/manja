@@ -42,6 +42,10 @@ type PublicDocsOptions struct {
 	MarkdownRenderer     core.MarkdownRenderer
 }
 
+const (
+	docsSearchID = "docs-search"
+)
+
 func (opts PublicDocsOptions) withDefaults() PublicDocsOptions {
 	switch opts.EndpointSidebarLabel {
 	case EndpointSidebarLabelPath:
@@ -86,9 +90,20 @@ templ PublicDocsWithOptions(idx core.SpecIndex, selectedID string, opts PublicDo
 		<div class="min-h-screen bg-surface text-on-surface dark:bg-surface-dark dark:text-on-surface-dark">
 			<header class="manja-docs-header sticky top-0 z-50 border-b border-outline bg-surface dark:border-outline-dark dark:bg-surface-dark">
 				<div class="flex h-16 items-center justify-between gap-3 px-4 lg:px-8">
-					<a href="/" class="flex items-center gap-2 text-2xl font-bold font-title text-on-surface-strong dark:text-on-surface-dark-strong">
-						<span>Manja</span>
-					</a>
+					<div class="flex min-w-0 items-center gap-2">
+						@sidebar.Overlay(sidebar.OverlayConfig{
+							ID:                    "public-docs-sidebar",
+							TriggerLabel:          "Open API sections",
+							RootClass:             "lg:hidden",
+							PanelPositionClass:    "fixed top-16 bottom-0 left-0",
+							PanelWidthClass:       "w-72 max-w-[85vw]",
+							BackdropPositionClass: "fixed inset-0",
+							Sidebar:               publicDocsSidebarConfig(idx, selected, opts, docsSearchOpenSlot(), "mobile"),
+						})
+						<a href="/" class="flex min-w-0 items-center gap-2 text-2xl font-bold font-title text-on-surface-strong dark:text-on-surface-dark-strong">
+							<span>Manja</span>
+						</a>
+					</div>
 					<div class="flex min-w-0 items-center gap-3 text-sm text-on-surface-muted dark:text-on-surface-dark-muted">
 						<div class="manja-theme-select shrink-0">
 							@selectfield.Select(selectfield.Config{
@@ -138,12 +153,16 @@ templ PublicDocsFragmentContent(idx core.SpecIndex, selectedID string, opts Publ
 }
 
 templ publicDocsSidebar(idx core.SpecIndex, selected selectedDocsItem, opts PublicDocsOptions) {
-	@sidebar.Sidebar(sidebar.Config{
+	@sidebar.Sidebar(publicDocsSidebarConfig(idx, selected, opts, docsSearchField(idx.Search), ""))
+}
+
+func publicDocsSidebarConfig(idx core.SpecIndex, selected selectedDocsItem, opts PublicDocsOptions, searchSlot templpkg.Component, idPrefix string) sidebar.Config {
+	return sidebar.Config{
 		Items: overviewSidebarItems(selected.Anchor),
 		SectionsTitle: "API Reference",
-		Sections: sidebarSections(idx, selected.Anchor, opts.EndpointSidebarLabel),
-		SearchSlot: docsSearchField(idx.Search),
-	})
+		Sections: sidebarSections(idx, selected.Anchor, opts.EndpointSidebarLabel, idPrefix),
+		SearchSlot: searchSlot,
+	}
 }
 
 templ selectedDocsContent(idx core.SpecIndex, selected selectedDocsItem, opts PublicDocsOptions) {
@@ -834,9 +853,26 @@ templ docsSearchField(docs []core.SearchDocument) {
 	</div>
 }
 
+templ docsSearchOpenSlot() {
+	<div class="shrink-0 px-4 py-3" aria-label="Documentation search">
+		<button
+			type="button"
+			class="flex min-h-10 w-full items-center gap-2 rounded-radius border border-outline bg-surface px-3 text-left text-sm text-on-surface-muted transition hover:border-outline-strong hover:text-on-surface-strong focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary dark:border-outline-dark dark:bg-surface-dark/50 dark:text-on-surface-dark-muted dark:hover:border-outline-dark-strong dark:hover:text-on-surface-dark-strong dark:focus-visible:outline-primary-dark"
+			x-on:click="window.dispatchEvent(new CustomEvent('goshtoso-search-open', { detail: { id: 'docs-search' } }))"
+			aria-haspopup="dialog"
+			aria-controls="docs-search-dialog"
+		>
+			<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" stroke="currentColor" fill="none" stroke-width="2" class="size-5 shrink-0" aria-hidden="true">
+				<path stroke-linecap="round" stroke-linejoin="round" d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z"></path>
+			</svg>
+			<span class="min-w-0 flex-1 truncate">Search docs</span>
+		</button>
+	</div>
+}
+
 func docsSearchConfig(docs []core.SearchDocument) searchfield.Config {
 	return searchfield.Config{
-		ID:             "docs-search",
+		ID:             docsSearchID,
 		Label:          "Search docs",
 		Placeholder:    "Search operations and schemas",
 		GlobalShortcut: true,
@@ -1024,7 +1060,7 @@ func schemaExamplePayload(cfg ExampleConfig) map[string]any {
 	return payload
 }
 
-func sidebarSections(idx core.SpecIndex, selectedAnchor string, labelMode EndpointSidebarLabelMode) []sidebar.Section {
+func sidebarSections(idx core.SpecIndex, selectedAnchor string, labelMode EndpointSidebarLabelMode, idPrefix string) []sidebar.Section {
 	sections := make([]sidebar.Section, 0, 2)
 	if len(idx.Operations) > 0 {
 		tagOrder := make([]string, 0)
@@ -1051,7 +1087,7 @@ func sidebarSections(idx core.SpecIndex, selectedAnchor string, labelMode Endpoi
 				label := operationSidebarLabel(op, labelMode)
 				href := selectedDocsHref(anchor)
 				tagItems[tag] = append(tagItems[tag], sidebar.Item{
-					ID:         anchor,
+					ID:         sidebarItemID(idPrefix, anchor),
 					Label:      label,
 					Href:       href,
 					Active:     active,
@@ -1064,7 +1100,7 @@ func sidebarSections(idx core.SpecIndex, selectedAnchor string, labelMode Endpoi
 		items := make([]sidebar.Item, 0, len(tagOrder))
 		for _, tag := range tagOrder {
 			items = append(items, sidebar.Item{
-				ID:        "tag-" + anchorFragment(tag),
+				ID:        sidebarItemID(idPrefix, "tag-"+anchorFragment(tag)),
 				Label:     tag,
 				Href:      "#",
 				Open:      tagOpen[tag],
@@ -1081,7 +1117,7 @@ func sidebarSections(idx core.SpecIndex, selectedAnchor string, labelMode Endpoi
 			label := schemaSidebarLabel(schema)
 			href := selectedDocsHref(anchor)
 			items = append(items, sidebar.Item{
-				ID:        anchor,
+				ID:        sidebarItemID(idPrefix, anchor),
 				Label:     label,
 				Href:      href,
 				Active:    anchor == selectedAnchor,
@@ -1091,6 +1127,14 @@ func sidebarSections(idx core.SpecIndex, selectedAnchor string, labelMode Endpoi
 		sections = append(sections, sidebar.Section{Title: "Schemas", Items: items})
 	}
 	return sections
+}
+
+func sidebarItemID(prefix string, id string) string {
+	prefix = strings.TrimSpace(prefix)
+	if prefix == "" {
+		return id
+	}
+	return prefix + "-" + id
 }
 
 func selectedDocsItemFor(idx core.SpecIndex, selectedID string) selectedDocsItem {
