@@ -20,10 +20,50 @@ type SpecIndex struct {
 	RevisionID   string
 	Title        string
 	Version      string
+	Overview     SpecOverview
+	SpecDownload SpecDownload
 	Operations   []Operation
 	Schemas      []Schema
 	Search       []SearchDocument
 	PublicRoutes []PublicRoute
+}
+
+type SpecDownload struct {
+	JSON     []byte
+	Filename string
+}
+
+type SpecOverview struct {
+	Description    string
+	TermsOfService string
+	Contact        SpecContact
+	License        SpecLicense
+	Servers        []SpecServer
+}
+
+type SpecContact struct {
+	Name  string
+	URL   string
+	Email string
+}
+
+type SpecLicense struct {
+	Name       string
+	URL        string
+	Identifier string
+}
+
+type SpecServer struct {
+	URL         string
+	Description string
+	Variables   []SpecServerVariable
+}
+
+type SpecServerVariable struct {
+	Name        string
+	Default     string
+	Description string
+	Enum        []string
 }
 
 type Operation struct {

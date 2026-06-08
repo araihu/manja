@@ -28,11 +28,17 @@ func (Parser) Parse(ctx context.Context, file core.SpecFile, rev core.Revision) 
 	if err := doc.Validate(ctx, openapi3.DisableExamplesValidation()); err != nil {
 		return core.SpecIndex{}, err
 	}
+	download, err := specDownload(doc, file.Path)
+	if err != nil {
+		return core.SpecIndex{}, err
+	}
 
 	idx := core.SpecIndex{
-		RevisionID: rev.ID,
-		Title:      doc.Info.Title,
-		Version:    doc.Info.Version,
+		RevisionID:   rev.ID,
+		Title:        doc.Info.Title,
+		Version:      doc.Info.Version,
+		Overview:     overview(doc.Info, doc.Servers),
+		SpecDownload: download,
 	}
 
 	serverURL := firstServerURL(doc.Servers)
@@ -89,6 +95,95 @@ func operationCount(doc *openapi3.T) int {
 		count += len(item.Operations())
 	}
 	return count
+}
+
+func specDownload(doc *openapi3.T, path string) (core.SpecDownload, error) {
+	data, err := json.MarshalIndent(doc, "", "  ")
+	if err != nil {
+		return core.SpecDownload{}, fmt.Errorf("marshal OpenAPI JSON download: %w", err)
+	}
+	return core.SpecDownload{
+		JSON:     data,
+		Filename: jsonSpecFilename(path),
+	}, nil
+}
+
+func jsonSpecFilename(path string) string {
+	name := filepath.Base(strings.TrimSpace(path))
+	if name == "" || name == "." || name == "/" {
+		return "openapi.json"
+	}
+	ext := filepath.Ext(name)
+	if ext != "" {
+		name = strings.TrimSuffix(name, ext)
+	}
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return "openapi.json"
+	}
+	return name + ".json"
+}
+
+func overview(info *openapi3.Info, servers openapi3.Servers) core.SpecOverview {
+	var result core.SpecOverview
+	if info != nil {
+		result.Description = info.Description
+		result.TermsOfService = info.TermsOfService
+		if info.Contact != nil {
+			result.Contact = core.SpecContact{
+				Name:  info.Contact.Name,
+				URL:   info.Contact.URL,
+				Email: info.Contact.Email,
+			}
+		}
+		if info.License != nil {
+			result.License = core.SpecLicense{
+				Name:       info.License.Name,
+				URL:        info.License.URL,
+				Identifier: info.License.Identifier,
+			}
+		}
+	}
+	result.Servers = overviewServers(servers)
+	return result
+}
+
+func overviewServers(servers openapi3.Servers) []core.SpecServer {
+	result := make([]core.SpecServer, 0, len(servers))
+	for _, server := range servers {
+		if server == nil {
+			continue
+		}
+		result = append(result, core.SpecServer{
+			URL:         server.URL,
+			Description: server.Description,
+			Variables:   overviewServerVariables(server.Variables),
+		})
+	}
+	return result
+}
+
+func overviewServerVariables(variables openapi3.ServerVariables) []core.SpecServerVariable {
+	names := make([]string, 0, len(variables))
+	for name := range variables {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+
+	result := make([]core.SpecServerVariable, 0, len(names))
+	for _, name := range names {
+		variable := variables[name]
+		if variable == nil {
+			continue
+		}
+		result = append(result, core.SpecServerVariable{
+			Name:        name,
+			Default:     variable.Default,
+			Description: variable.Description,
+			Enum:        append([]string(nil), variable.Enum...),
+		})
+	}
+	return result
 }
 
 func operationParameters(groups ...openapi3.Parameters) []core.OperationParameter {
@@ -534,10 +629,12 @@ func buildSearch(idx core.SpecIndex) []core.SearchDocument {
 	}
 	docs = append(docs, core.SearchDocument{
 		ID:          "overview",
-		Title:       idx.Title,
-		Description: "API overview",
-		Href:        "/",
+		Title:       firstNonEmpty(idx.Title, "Overview"),
+		Description: firstNonEmpty(idx.Overview.Description, "API overview"),
+		Href:        "#overview",
 		Kind:        "Overview",
+		Section:     "Overview",
+		Keywords:    []string{"overview", idx.Title},
 	})
 	return docs
 }

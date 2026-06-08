@@ -129,6 +129,65 @@ paths: {}
 	}
 }
 
+func TestOpenAPIParserIndexesOverviewMetadata(t *testing.T) {
+	spec := []byte(`
+openapi: 3.1.0
+info:
+  title: Overview API
+  version: 1.0.0
+  description: Overview description.
+  termsOfService: https://example.test/terms
+  contact:
+    name: Contact Support
+    url: https://example.test/support
+    email: support@example.test
+  license:
+    name: MIT
+    url: https://example.test/license
+servers:
+  - url: "{protocol}://{hostname}/api/v3"
+    description: Live Server
+    variables:
+      protocol:
+        default: https
+        description: Server protocol.
+      hostname:
+        default: api.example.test
+        description: Server host.
+paths: {}
+`)
+	parser := openapiadapter.Parser{}
+	idx, err := parser.Parse(context.Background(), core.SpecFile{
+		SourceID: "src1",
+		Path:     "overview.yaml",
+		Format:   "yaml",
+		Bytes:    spec,
+	}, core.Revision{ID: "rev1", SourceID: "src1", Ref: "main"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if idx.Overview.Description != "Overview description." || idx.Overview.TermsOfService != "https://example.test/terms" {
+		t.Fatalf("overview info = %#v", idx.Overview)
+	}
+	if idx.Overview.Contact.Name != "Contact Support" || idx.Overview.Contact.URL != "https://example.test/support" || idx.Overview.Contact.Email != "support@example.test" {
+		t.Fatalf("overview contact = %#v", idx.Overview.Contact)
+	}
+	if idx.Overview.License.Name != "MIT" || idx.Overview.License.URL != "https://example.test/license" {
+		t.Fatalf("overview license = %#v", idx.Overview.License)
+	}
+	if len(idx.Overview.Servers) != 1 {
+		t.Fatalf("overview servers = %#v", idx.Overview.Servers)
+	}
+	server := idx.Overview.Servers[0]
+	if server.URL != "{protocol}://{hostname}/api/v3" || server.Description != "Live Server" {
+		t.Fatalf("overview server = %#v", server)
+	}
+	if len(server.Variables) != 2 || server.Variables[0].Name != "hostname" || server.Variables[0].Default != "api.example.test" || server.Variables[1].Name != "protocol" {
+		t.Fatalf("overview server variables = %#v", server.Variables)
+	}
+}
+
 func TestOpenAPIParserIgnoresInvalidExamplesForDocsIndexing(t *testing.T) {
 	spec := []byte(`
 openapi: 3.0.3
