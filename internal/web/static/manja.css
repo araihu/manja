@@ -78,6 +78,30 @@
   padding: 0.75rem 0 0;
 }
 
+.manja-response-panel-layout {
+  align-items: start;
+  display: grid;
+  gap: 1.5rem;
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.manja-response-panel-layout > * {
+  min-width: 0;
+}
+
+.manja-response-panel-example {
+  align-self: start;
+  display: grid;
+  gap: 1.5rem;
+}
+
+.manja-response-panel-example [data-manja-example],
+.manja-response-panel-example [data-manja-example] > *,
+.manja-response-panel-example .codeblock {
+  max-width: 100%;
+  min-width: 0;
+}
+
 .manja-schema-detail-layout {
   align-items: start;
   display: grid;
@@ -319,6 +343,10 @@ summary.manja-schema-row::marker {
   .manja-endpoint-examples-rail-content {
     position: sticky;
     top: 2rem;
+  }
+
+  .manja-response-panel-layout {
+    grid-template-columns: minmax(0, 1fr) minmax(20rem, 28rem);
   }
 }
 
