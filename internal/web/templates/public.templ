@@ -2,6 +2,7 @@ package templates
 
 import (
 	"net/url"
+	"strconv"
 	"strings"
 
 	templpkg "github.com/a-h/templ"
@@ -79,6 +80,7 @@ templ PublicDocsWithOptions(idx core.SpecIndex, selectedID string, opts PublicDo
 			<div class="flex h-[calc(100vh-4rem)] overflow-hidden">
 				<aside class="hidden w-72 shrink-0 lg:block" aria-label="API sections">
 					@sidebar.Sidebar(sidebar.Config{
+						Items: overviewSidebarItems(selected.Anchor),
 						SectionsTitle: "API Reference",
 						Sections: sidebarSections(idx, selected.Anchor, opts.EndpointSidebarLabel),
 						SearchSlot: docsSearchField(idx.Search),
@@ -87,7 +89,7 @@ templ PublicDocsWithOptions(idx core.SpecIndex, selectedID string, opts PublicDo
 				<main class="min-w-0 flex-1 overflow-x-hidden overflow-y-auto p-6 lg:px-10 lg:py-8">
 					<div id="main-content" class="mx-auto max-w-[100rem]">
 						<h1 class="sr-only">{ idx.Title } OpenAPI docs</h1>
-						@selectedDocsContent(selected)
+						@selectedDocsContent(idx, selected)
 					</div>
 				</main>
 				@searchfield.SearchModal(docsSearchConfig(idx.Search))
@@ -96,8 +98,10 @@ templ PublicDocsWithOptions(idx core.SpecIndex, selectedID string, opts PublicDo
 	}
 }
 
-templ selectedDocsContent(selected selectedDocsItem) {
-	if selected.Kind == "operation" {
+templ selectedDocsContent(idx core.SpecIndex, selected selectedDocsItem) {
+	if selected.Kind == "overview" {
+		@overviewSection(idx)
+	} else if selected.Kind == "operation" {
 		<section aria-labelledby="operations-heading" class="grid gap-16">
 			<h2 id="operations-heading" data-toc-heading class="sr-only">Operations</h2>
 			@endpointSection(selected.Operation)
@@ -113,6 +117,168 @@ templ selectedDocsContent(selected selectedDocsItem) {
 			<p class="mt-2 text-sm text-on-surface-muted dark:text-on-surface-dark-muted">Publish a spec with operations or schemas to populate this view.</p>
 		</section>
 	}
+}
+
+templ overviewSection(idx core.SpecIndex) {
+	<section id="overview" aria-labelledby="overview-heading" class="scroll-mt-24">
+		<div class="max-w-[88rem]">
+			<div class="flex flex-wrap items-start justify-between gap-6 border-b border-outline pb-8 dark:border-outline-dark">
+				<div class="min-w-0">
+					<h2 id="overview-heading" data-toc-heading class="font-title text-4xl font-bold leading-tight text-on-surface-strong dark:text-on-surface-dark-strong lg:text-5xl">{ idx.Title }</h2>
+					if idx.Version != "" {
+						<div class="mt-4">
+							<span class="rounded-radius border border-outline bg-surface-alt px-2 py-1 font-mono text-xs font-semibold text-on-surface-strong dark:border-outline-dark dark:bg-surface-dark-alt dark:text-on-surface-dark-strong">v{ idx.Version }</span>
+						</div>
+					}
+				</div>
+				if overviewHasSpecDownload(idx) {
+					<a href="/openapi.json" download={ overviewSpecFilename(idx.SpecDownload) } aria-label="Download OpenAPI JSON spec" class="inline-flex h-10 shrink-0 items-center justify-center gap-2 rounded-radius border border-outline bg-surface-alt px-3 text-sm font-semibold text-on-surface-strong transition hover:bg-surface focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary dark:border-outline-dark dark:bg-surface-dark-alt dark:text-on-surface-dark-strong dark:hover:bg-surface-dark dark:focus-visible:outline-primary-dark">
+						@downloadIcon()
+						<span>Download JSON</span>
+					</a>
+				}
+			</div>
+			<dl class="mt-6 grid max-w-3xl gap-3 sm:grid-cols-2">
+				<div class="rounded-radius border border-outline bg-surface-alt px-4 py-3 dark:border-outline-dark dark:bg-surface-dark-alt">
+					<dt class="text-sm font-medium text-on-surface-muted dark:text-on-surface-dark-muted">Endpoints</dt>
+					<dd class="mt-1 font-title text-lg font-bold text-on-surface-strong dark:text-on-surface-dark-strong">{ pluralizedCount(len(idx.Operations), "endpoint") }</dd>
+				</div>
+				<div class="rounded-radius border border-outline bg-surface-alt px-4 py-3 dark:border-outline-dark dark:bg-surface-dark-alt">
+					<dt class="text-sm font-medium text-on-surface-muted dark:text-on-surface-dark-muted">Schemas</dt>
+					<dd class="mt-1 font-title text-lg font-bold text-on-surface-strong dark:text-on-surface-dark-strong">{ pluralizedCount(len(idx.Schemas), "schema") }</dd>
+				</div>
+			</dl>
+			if len(idx.Overview.Servers) > 0 {
+				<section class="mt-10 overflow-hidden rounded-radius border border-outline bg-surface-dark text-on-surface-dark dark:border-outline-dark" aria-labelledby="overview-base-url-heading">
+					<div class="border-b border-outline-dark bg-surface-dark px-4 py-3">
+						<h3 id="overview-base-url-heading" class="text-sm font-semibold text-on-surface-dark-strong">API Base URL</h3>
+					</div>
+					<div class="grid gap-4 bg-surface-dark-alt p-4">
+						for _, server := range idx.Overview.Servers {
+							<section class="overflow-hidden rounded-radius bg-surface-dark">
+								<div class="flex min-w-0 flex-wrap items-center gap-2 px-4 py-3">
+									<span aria-hidden="true" class="text-on-surface-dark-muted">▾</span>
+									<p class="min-w-0 text-sm font-semibold text-on-surface-dark-strong">
+										{ overviewServerLabel(server) }:
+										<code class="ml-1 break-all font-mono text-sm font-semibold text-on-surface-dark">{ server.URL }</code>
+									</p>
+								</div>
+								if len(server.Variables) > 0 {
+									<dl class="grid gap-5 border-t border-outline-dark px-8 py-6">
+										for _, variable := range server.Variables {
+											<div class="grid gap-2">
+												<div class="flex flex-wrap items-baseline gap-2">
+													<dt class="font-mono text-sm font-bold text-on-surface-dark-strong">{ variable.Name }</dt>
+													<dd class="text-sm text-on-surface-dark-muted">string</dd>
+												</div>
+												if variable.Description != "" {
+													<p class="text-sm leading-6 text-on-surface-dark">{ variable.Description }</p>
+												}
+												if variable.Default != "" {
+													<p class="text-xs text-on-surface-dark-muted">
+														Default:
+														<code class="ml-1 rounded-radius bg-surface-dark-alt px-1.5 py-0.5 font-mono text-xs text-on-surface-dark">{ variable.Default }</code>
+													</p>
+												}
+											</div>
+										}
+									</dl>
+								}
+							</section>
+						}
+					</div>
+				</section>
+			}
+			if overviewHasAdditionalInfo(idx.Overview) {
+				<section class="mt-10 overflow-hidden rounded-radius border border-outline bg-surface-alt dark:border-outline-dark dark:bg-surface-dark-alt" aria-labelledby="overview-additional-info-heading">
+					<div class="border-b border-outline bg-surface-alt px-4 py-3 dark:border-outline-dark dark:bg-surface-dark-alt">
+						<h3 id="overview-additional-info-heading" class="text-sm font-semibold text-on-surface-strong dark:text-on-surface-dark-strong">Additional Information</h3>
+					</div>
+					<div class="grid gap-3 p-4">
+						if overviewContactHref(idx.Overview.Contact) != "" {
+							<a href={ templpkg.URL(overviewContactHref(idx.Overview.Contact)) } class="w-fit text-sm font-medium text-primary underline-offset-4 hover:underline dark:text-primary-dark">{ overviewContactLabel(idx.Overview.Contact) }</a>
+						}
+						if overviewLicenseLabel(idx.Overview.License) != "" {
+							if idx.Overview.License.URL != "" {
+								<a href={ templpkg.URL(idx.Overview.License.URL) } class="w-fit text-sm font-medium text-primary underline-offset-4 hover:underline dark:text-primary-dark">{ overviewLicenseLabel(idx.Overview.License) }</a>
+							} else {
+								<p class="text-sm font-medium text-on-surface dark:text-on-surface-dark">{ overviewLicenseLabel(idx.Overview.License) }</p>
+							}
+						}
+						if idx.Overview.TermsOfService != "" {
+							<a href={ templpkg.URL(idx.Overview.TermsOfService) } class="w-fit text-sm font-medium text-primary underline-offset-4 hover:underline dark:text-primary-dark">Terms of Service</a>
+						}
+					</div>
+				</section>
+			}
+			if idx.Overview.Description != "" {
+				<div class="manja-markdown mt-8 max-w-[70ch]">
+					<p>{ idx.Overview.Description }</p>
+				</div>
+			}
+		</div>
+	</section>
+}
+
+templ overviewIcon() {
+	<svg xmlns="http://www.w3.org/2000/svg" class="size-full" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+		<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6M9 16h6M8 4h8l3 3v13H5V4h3Z"></path>
+	</svg>
+}
+
+templ downloadIcon() {
+	<svg xmlns="http://www.w3.org/2000/svg" class="size-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+		<path stroke-linecap="round" stroke-linejoin="round" d="M12 3v12m0 0 4-4m-4 4-4-4M5 21h14"></path>
+	</svg>
+}
+
+func overviewSidebarItems(selectedAnchor string) []sidebar.Item {
+	return []sidebar.Item{{
+		ID:        "overview",
+		Label:     "Overview",
+		Icon:      overviewIcon(),
+		Href:      selectedDocsHref("overview"),
+		Active:    selectedAnchor == "overview",
+		LinkAttrs: sidebarLinkAttrs("Overview"),
+	}}
+}
+
+func overviewHasSpecDownload(idx core.SpecIndex) bool {
+	return len(idx.SpecDownload.JSON) > 0
+}
+
+func overviewSpecFilename(download core.SpecDownload) string {
+	filename := strings.TrimSpace(download.Filename)
+	if filename == "" {
+		return "openapi.json"
+	}
+	return filename
+}
+
+func overviewServerLabel(server core.SpecServer) string {
+	return firstNonEmpty(server.Description, "Live Server")
+}
+
+func overviewHasAdditionalInfo(overview core.SpecOverview) bool {
+	return overviewContactHref(overview.Contact) != "" || overviewLicenseLabel(overview.License) != "" || overview.TermsOfService != ""
+}
+
+func overviewContactHref(contact core.SpecContact) string {
+	if strings.TrimSpace(contact.URL) != "" {
+		return strings.TrimSpace(contact.URL)
+	}
+	if strings.TrimSpace(contact.Email) != "" {
+		return "mailto:" + strings.TrimSpace(contact.Email)
+	}
+	return ""
+}
+
+func overviewContactLabel(contact core.SpecContact) string {
+	return firstNonEmpty(contact.Name, contact.URL, contact.Email, "Contact")
+}
+
+func overviewLicenseLabel(license core.SpecLicense) string {
+	return firstNonEmpty(license.Name, license.Identifier)
 }
 
 templ endpointSection(op core.Operation) {
@@ -496,6 +662,9 @@ func sidebarSections(idx core.SpecIndex, selectedAnchor string, labelMode Endpoi
 
 func selectedDocsItemFor(idx core.SpecIndex, selectedID string) selectedDocsItem {
 	selectedID = strings.TrimPrefix(strings.TrimSpace(selectedID), "#")
+	if selectedID == "" || selectedID == "overview" {
+		return selectedDocsItem{Anchor: "overview", Kind: "overview"}
+	}
 	for _, op := range idx.Operations {
 		anchor := operationAnchor(op)
 		if anchor == selectedID {
@@ -516,7 +685,7 @@ func selectedDocsItemFor(idx core.SpecIndex, selectedID string) selectedDocsItem
 		anchor := schemaAnchor(idx.Schemas[0])
 		return selectedDocsItem{Anchor: anchor, Kind: "schema", Schema: idx.Schemas[0]}
 	}
-	return selectedDocsItem{}
+	return selectedDocsItem{Anchor: "overview", Kind: "overview"}
 }
 
 func selectedDocsHref(anchor string) string {
@@ -663,6 +832,14 @@ func sidebarLinkAttrs(label string) templpkg.Attributes {
 		"title":      label,
 		"aria-label": label,
 	}
+}
+
+func pluralizedCount(count int, singular string) string {
+	label := singular
+	if count != 1 {
+		label += "s"
+	}
+	return strconv.Itoa(count) + " " + label
 }
 
 func schemaInline(schema core.SchemaSummary) string {

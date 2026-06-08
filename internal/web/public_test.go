@@ -2,6 +2,8 @@ package web
 
 import (
 	"context"
+	"encoding/json"
+	"mime"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -30,7 +32,7 @@ func TestPublicDocsRenderSearchAndOperations(t *testing.T) {
 	}
 	srv := NewPublicServer(idx)
 	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	req := httptest.NewRequest(http.MethodGet, "/?selected=operation-listPets", nil)
 
 	srv.ServeHTTP(rec, req)
 
@@ -61,7 +63,7 @@ func TestPublicDocsRenderSearchAndOperations(t *testing.T) {
 		}
 	}
 	if strings.Contains(body, `<section id="operation-createPet"`) {
-		t.Fatalf("default page should render only the selected sidebar item, got create operation content:\n%s", body)
+		t.Fatalf("operation page should render only the selected sidebar item, got create operation content:\n%s", body)
 	}
 	sidebarMethodBadge := regexp.MustCompile(`<a href="/\?selected=operation-listPets#operation-listPets"[^>]*><span class="min-w-0 flex-1 truncate">List pets</span>\s*<sup[^>]*ml-auto shrink-0[^"]*border-info[^"]*bg-info[^"]*text-on-info[^"]*"[^>]*>GET</sup>`)
 	if !sidebarMethodBadge.MatchString(body) {
@@ -139,6 +141,152 @@ func TestPublicDocsRenderSearchAndOperations(t *testing.T) {
 		if !strings.Contains(body, theme) {
 			t.Fatalf("theme picker missing Goshtoso theme option %q:\n%s", theme, body)
 		}
+	}
+}
+
+func TestPublicDocsRenderOverviewByDefault(t *testing.T) {
+	idx := core.SpecIndex{
+		Title:   "Petstore",
+		Version: "1.0.0",
+		Overview: core.SpecOverview{
+			Description:    "GitHub's v3 REST API.",
+			TermsOfService: "https://docs.example.test/terms",
+			Contact: core.SpecContact{
+				Name: "Contact Support",
+				URL:  "https://support.example.test",
+			},
+			License: core.SpecLicense{
+				Name: "MIT",
+				URL:  "https://license.example.test",
+			},
+			Servers: []core.SpecServer{{
+				URL:         "{protocol}://{hostname}/api/v3",
+				Description: "Live Server",
+				Variables: []core.SpecServerVariable{{
+					Name:        "hostname",
+					Default:     "HOSTNAME",
+					Description: "Self-hosted Enterprise Server or Enterprise Cloud hostname",
+				}, {
+					Name:        "protocol",
+					Default:     "http",
+					Description: "Self-hosted Enterprise Server or Enterprise Cloud protocol",
+				}},
+			}},
+		},
+		Operations: []core.Operation{
+			{ID: "listPets", Method: "GET", Path: "/pets", Summary: "List pets", Tags: []string{"Pets"}},
+			{ID: "createPet", Method: "POST", Path: "/pets", Summary: "Create pet", Tags: []string{"Pets"}},
+		},
+		Schemas: []core.Schema{{Name: "Pet", Description: "A pet"}},
+		Search: []core.SearchDocument{
+			{ID: "overview", Title: "Petstore", Description: "API overview", Href: "#overview", Kind: "Overview"},
+			{ID: "operation-listPets", Title: "GET /pets", Description: "List pets", Href: "#operation-listPets", Kind: "Operation", Section: "Pets"},
+			{ID: "schema-Pet", Title: "Pet", Description: "A pet", Href: "#schema-pet", Kind: "Schema", Section: "Schemas"},
+		},
+	}
+
+	body := renderPublicDocs(t, NewPublicServer(idx))
+
+	for _, want := range []string{
+		`<section id="overview"`,
+		`API overview`,
+		`Petstore`,
+		`v1.0.0`,
+		`Endpoints`,
+		`2 endpoints`,
+		`Schemas`,
+		`1 schema`,
+		`API Base URL`,
+		`Live Server`,
+		`{protocol}://{hostname}/api/v3`,
+		`hostname`,
+		`Self-hosted Enterprise Server or Enterprise Cloud hostname`,
+		`Default:`,
+		`HOSTNAME`,
+		`protocol`,
+		`http`,
+		`Additional Information`,
+		`href="https://support.example.test"`,
+		`Contact Support`,
+		`href="https://license.example.test"`,
+		`MIT`,
+		`href="https://docs.example.test/terms"`,
+		`Terms of Service`,
+		`GitHub&#39;s v3 REST API.`,
+		`href="/?selected=overview#overview"`,
+		`<span>Overview</span>`,
+		`<span class="sr-only">active</span>`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("default overview page missing %q:\n%s", want, body)
+		}
+	}
+	if strings.Contains(body, `<section id="operation-listPets"`) {
+		t.Fatalf("default overview page should not render endpoint content:\n%s", body)
+	}
+	for _, reject := range []string{`data-sidebar-section=""`} {
+		if strings.Contains(body, reject) {
+			t.Fatalf("default overview page should not render %q:\n%s", reject, body)
+		}
+	}
+}
+
+func TestPublicDocsExposeJSONSpecDownload(t *testing.T) {
+	spec := []byte(`
+openapi: 3.1.0
+info:
+  title: Downloadable API
+  version: 1.0.0
+paths: {}
+`)
+	idx, err := (openapiadapter.Parser{}).Parse(context.Background(), core.SpecFile{
+		Path:   "downloadable.yaml",
+		Format: "yaml",
+		Bytes:  spec,
+	}, core.Revision{ID: "downloadable"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv := NewPublicServer(idx)
+
+	body := renderPublicDocs(t, srv)
+	for _, want := range []string{
+		`href="/openapi.json"`,
+		`download="downloadable.json"`,
+		`Download JSON`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("overview page missing JSON download button marker %q:\n%s", want, body)
+		}
+	}
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/openapi.json", nil)
+	srv.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("download status = %d, body = %s", rec.Code, rec.Body.String())
+	}
+	if contentType := rec.Header().Get("Content-Type"); contentType != "application/json; charset=utf-8" {
+		t.Fatalf("download content type = %q", contentType)
+	}
+	_, params, err := mime.ParseMediaType(rec.Header().Get("Content-Disposition"))
+	if err != nil {
+		t.Fatalf("download content disposition = %q: %v", rec.Header().Get("Content-Disposition"), err)
+	}
+	if params["filename"] != "downloadable.json" {
+		t.Fatalf("download filename = %q", params["filename"])
+	}
+	var payload struct {
+		Info struct {
+			Title string `json:"title"`
+		} `json:"info"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("download body is not JSON: %v\n%s", err, rec.Body.String())
+	}
+	if payload.Info.Title != "Downloadable API" {
+		t.Fatalf("download title = %q", payload.Info.Title)
 	}
 }
 
@@ -368,7 +516,7 @@ func TestPublicDocsRenderEndpointDetails(t *testing.T) {
 		}},
 	}
 	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	req := httptest.NewRequest(http.MethodGet, "/?selected=operation-updatetodo", nil)
 
 	NewPublicServer(idx).ServeHTTP(rec, req)
 

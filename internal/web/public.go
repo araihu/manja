@@ -3,6 +3,7 @@ package web
 import (
 	"encoding/xml"
 	"log/slog"
+	"mime"
 	"net"
 	"net/http"
 	"strings"
@@ -23,6 +24,8 @@ const (
 type PublicOptions struct {
 	EndpointSidebarLabel EndpointSidebarLabelMode
 }
+
+const openAPIJSONDownloadPath = "/openapi.json"
 
 func (opts PublicOptions) withDefaults() PublicOptions {
 	switch opts.EndpointSidebarLabel {
@@ -82,6 +85,31 @@ func NewPublicServerWithOptions(idx core.SpecIndex, opts PublicOptions) http.Han
 	mux := http.NewServeMux()
 	mux.Handle("/assets/", assets.Handler())
 	mux.Handle("/manja-assets/", http.StripPrefix("/manja-assets/", http.FileServer(http.Dir("internal/web/static"))))
+	mux.HandleFunc(openAPIJSONDownloadPath, func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != openAPIJSONDownloadPath {
+			http.NotFound(w, r)
+			return
+		}
+		if r.Method != http.MethodGet && r.Method != http.MethodHead {
+			w.Header().Set("Allow", strings.Join([]string{http.MethodGet, http.MethodHead}, ", "))
+			http.Error(w, http.StatusText(http.StatusMethodNotAllowed), http.StatusMethodNotAllowed)
+			return
+		}
+		if len(idx.SpecDownload.JSON) == 0 {
+			http.NotFound(w, r)
+			return
+		}
+		filename := strings.TrimSpace(idx.SpecDownload.Filename)
+		if filename == "" {
+			filename = "openapi.json"
+		}
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		w.Header().Set("Content-Disposition", mime.FormatMediaType("attachment", map[string]string{"filename": filename}))
+		if r.Method == http.MethodHead {
+			return
+		}
+		_, _ = w.Write(idx.SpecDownload.JSON)
+	})
 	mux.HandleFunc("/sitemap.xml", func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/sitemap.xml" {
 			http.NotFound(w, r)
