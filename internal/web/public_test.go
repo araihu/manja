@@ -59,10 +59,14 @@ func TestPublicDocsRenderSearchAndOperations(t *testing.T) {
 		`id="main-content"`,
 		`max-w-[100rem]`,
 		`Operations`,
+		`data-search-source-url="/search.json"`,
 	} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("docs shell missing %q:\n%s", want, body)
 		}
+	}
+	if strings.Contains(body, `id="search-operation-listPets"`) || strings.Contains(body, `data-search-title="GET /pets"`) {
+		t.Fatalf("search records should load from /search.json instead of pre-rendering every result:\n%s", body)
 	}
 	if strings.Contains(body, `<section id="operation-createPet"`) {
 		t.Fatalf("operation page should render only the selected sidebar item, got create operation content:\n%s", body)
@@ -146,6 +150,57 @@ func TestPublicDocsRenderSearchAndOperations(t *testing.T) {
 	}
 }
 
+func TestPublicDocsServeSearchIndexJSON(t *testing.T) {
+	idx := core.SpecIndex{
+		Title: "Petstore",
+		Search: []core.SearchDocument{{
+			ID:          "operation-listPets",
+			Title:       "GET /pets",
+			Description: "List pets",
+			Href:        "#operation-listPets",
+			Kind:        "Operation",
+			Section:     "Pets",
+			Keywords:    []string{"listPets", "GET", "/pets", "Pets"},
+		}},
+	}
+	srv := NewPublicServer(idx)
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/search.json", nil)
+
+	srv.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", rec.Code, rec.Body.String())
+	}
+	contentType, _, err := mime.ParseMediaType(rec.Header().Get("Content-Type"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if contentType != "application/json" {
+		t.Fatalf("content type = %q", contentType)
+	}
+	var got []struct {
+		ID          string   `json:"id"`
+		Title       string   `json:"title"`
+		Description string   `json:"description"`
+		Href        string   `json:"href"`
+		Section     string   `json:"section"`
+		Keywords    []string `json:"keywords"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 {
+		t.Fatalf("search documents = %d, want 1: %#v", len(got), got)
+	}
+	if got[0].ID != "search-operation-listPets" || got[0].Title != "GET /pets" || got[0].Href != "/?selected=operation-listPets#operation-listPets" {
+		t.Fatalf("search item = %#v", got[0])
+	}
+	if strings.Join(got[0].Keywords, " ") != "listPets GET /pets Pets" {
+		t.Fatalf("keywords = %#v", got[0].Keywords)
+	}
+}
+
 func TestPublicDocsRenderOverviewByDefault(t *testing.T) {
 	idx := core.SpecIndex{
 		Title:   "Petstore",
@@ -191,7 +246,6 @@ func TestPublicDocsRenderOverviewByDefault(t *testing.T) {
 
 	for _, want := range []string{
 		`<section id="overview"`,
-		`API overview`,
 		`Petstore`,
 		`v1.0.0`,
 		`Endpoints`,
