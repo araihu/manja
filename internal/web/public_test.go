@@ -448,7 +448,7 @@ func TestPublicDocsRenderGenericSchemaExamples(t *testing.T) {
 		`id="schema-todo-example"`,
 		`Example: Todo`,
 		`data-manja-example`,
-		`"maxSampleDepth":2`,
+		`"maxSampleDepth":4`,
 	} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("generic schema example missing %q:\n%s", want, body)
