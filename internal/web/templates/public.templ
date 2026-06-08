@@ -123,6 +123,7 @@ templ PublicDocsFragmentContent(idx core.SpecIndex, selectedID string, opts Publ
 	<h1 class="sr-only">{ idx.Title } OpenAPI docs</h1>
 	@selectedDocsBreadcrumbs(idx, selected)
 	@selectedDocsContent(idx, selected)
+	@publicDocsFooter()
 }
 
 templ publicDocsSidebar(idx core.SpecIndex, selected selectedDocsItem, opts PublicDocsOptions) {
@@ -153,6 +154,20 @@ templ selectedDocsContent(idx core.SpecIndex, selected selectedDocsItem) {
 			<p class="mt-2 text-sm text-on-surface-muted dark:text-on-surface-dark-muted">Publish a spec with operations or schemas to populate this view.</p>
 		</section>
 	}
+}
+
+templ publicDocsFooter() {
+	<footer aria-label="Powered by Manja" class="mt-16 border-t border-outline pt-6 pb-2 text-sm text-on-surface-muted dark:border-outline-dark dark:text-on-surface-dark-muted">
+		<p class="inline-flex items-center gap-2">
+			<svg xmlns="http://www.w3.org/2000/svg" class="size-4 shrink-0 text-primary dark:text-primary-dark" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+				<path d="M13 2 4 14h7l-1 8 9-12h-7l1-8Z"></path>
+			</svg>
+			<span>
+				Powered by
+				<a href="https://manja.araihu.com" target="_blank" rel="noopener" class="font-semibold text-on-surface-strong underline-offset-4 transition-colors hover:text-primary hover:underline dark:text-on-surface-dark-strong dark:hover:text-primary-dark">Manja</a>
+			</span>
+		</p>
+	</footer>
 }
 
 templ selectedDocsBreadcrumbs(idx core.SpecIndex, selected selectedDocsItem) {

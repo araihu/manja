@@ -464,6 +464,45 @@ func TestPublicDocsFragmentRequestReturnsOnlyMainContent(t *testing.T) {
 	}
 }
 
+func TestPublicDocsRendersPoweredByFooterInFullPageAndFragments(t *testing.T) {
+	idx := core.SpecIndex{
+		Title: "Petstore",
+		Operations: []core.Operation{
+			{ID: "listPets", Method: "GET", Path: "/pets", Summary: "List pets", Tags: []string{"Pets"}},
+		},
+	}
+	srv := NewPublicServer(idx)
+
+	full := renderPublicDocs(t, srv, "/?selected=operation-listPets")
+	for _, want := range []string{
+		`<footer aria-label="Powered by Manja"`,
+		`Powered by`,
+		`href="https://manja.araihu.com"`,
+		`>Manja</a>`,
+	} {
+		if !strings.Contains(full, want) {
+			t.Fatalf("full page missing powered-by footer marker %q:\n%s", want, full)
+		}
+	}
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/?selected=operation-listPets", nil)
+	req.Header.Set("HX-Request", "true")
+	srv.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("fragment status = %d", rec.Code)
+	}
+	fragment := rec.Body.String()
+	for _, want := range []string{
+		`<footer aria-label="Powered by Manja"`,
+		`href="https://manja.araihu.com"`,
+	} {
+		if !strings.Contains(fragment, want) {
+			t.Fatalf("fragment response missing powered-by footer marker %q:\n%s", want, fragment)
+		}
+	}
+}
+
 func TestPublicDocsEndpointSidebarLabelMode(t *testing.T) {
 	idx := core.SpecIndex{
 		Title: "Petstore",
