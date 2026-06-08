@@ -13,11 +13,13 @@ func main() {
 	addr := flag.String("addr", ":8080", "listen address")
 	spec := flag.String("spec", defaultSpecPath(), "OpenAPI spec path")
 	dataDir := flag.String("data-dir", ".manja/data", "local Manja data directory")
+	endpointSidebarLabel := flag.String("endpoint-sidebar-label", string(app.EndpointSidebarLabelAuto), "endpoint sidebar label mode: auto or path")
 	flag.Parse()
 
 	handler, err := app.NewWithOptions(context.Background(), app.Options{
-		SpecPath: *spec,
-		DataDir:  *dataDir,
+		SpecPath:             *spec,
+		DataDir:              *dataDir,
+		EndpointSidebarLabel: app.EndpointSidebarLabelMode(*endpointSidebarLabel),
 	})
 	if err != nil {
 		log.Fatal(err)
