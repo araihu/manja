@@ -399,6 +399,30 @@ func TestPublicDocsEndpointSidebarLabelMode(t *testing.T) {
 	})
 }
 
+func TestPublicDocsSchemaSidebarLabelPrefersDisplayName(t *testing.T) {
+	idx := core.SpecIndex{
+		Title: "Schema Labels",
+		Schemas: []core.Schema{
+			{
+				Name:    "workflow",
+				Summary: core.SchemaSummary{Name: "Workflow"},
+			},
+			{Name: "raw-schema-name"},
+		},
+	}
+
+	body := renderPublicDocs(t, NewPublicServer(idx), "/?selected=schema-workflow")
+
+	displayLabel := regexp.MustCompile(`<a href="/\?selected=schema-workflow#schema-workflow"[^>]*title="Workflow"[^>]*><span class="min-w-0 flex-1 truncate">Workflow</span>`)
+	if !displayLabel.MatchString(body) {
+		t.Fatalf("schema sidebar label should prefer schema display name:\n%s", body)
+	}
+	fallbackLabel := regexp.MustCompile(`<a href="/\?selected=schema-raw-schema-name#schema-raw-schema-name"[^>]*title="raw-schema-name"[^>]*><span class="min-w-0 flex-1 truncate">raw-schema-name</span>`)
+	if !fallbackLabel.MatchString(body) {
+		t.Fatalf("schema sidebar label should fall back to schema name:\n%s", body)
+	}
+}
+
 func TestPublicDocsRendersSchemaTree(t *testing.T) {
 	idx := core.SpecIndex{
 		Title: "Todos",
@@ -898,6 +922,10 @@ func TestPublicDocsRenderGenericSchemaExamples(t *testing.T) {
 
 	body = renderPublicDocs(t, NewPublicServer(idx), "/?selected=schema-todo")
 	for _, want := range []string{
+		`class="manja-schema-detail-layout"`,
+		`class="manja-schema-tree-panel"`,
+		`aria-label="Schema example"`,
+		`class="manja-schema-example-panel"`,
 		`id="schema-todo-example"`,
 		`Example: Todo`,
 		`data-manja-example`,
@@ -911,6 +939,36 @@ func TestPublicDocsRenderGenericSchemaExamples(t *testing.T) {
 		if strings.Contains(body, reject) {
 			t.Fatalf("example component should stay read-only, got %q:\n%s", reject, body)
 		}
+	}
+}
+
+func TestPublicDocsSchemaDetailCSSUsesResponsiveSplitLayout(t *testing.T) {
+	css, err := os.ReadFile("static/manja.css")
+	if err != nil {
+		t.Fatal(err)
+	}
+	layoutRule := regexp.MustCompile(`(?s)\.manja-schema-detail-layout\s*\{[^}]*\}`)
+	rule := layoutRule.FindString(string(css))
+	if rule == "" {
+		t.Fatalf("missing .manja-schema-detail-layout rule")
+	}
+	for _, want := range []string{
+		`display: grid;`,
+		`grid-template-columns: minmax(0, 1fr);`,
+	} {
+		if !strings.Contains(rule, want) {
+			t.Fatalf("schema detail layout should stack by default with %q:\n%s", want, rule)
+		}
+	}
+	largeRule := regexp.MustCompile(`(?s)@media\s*\(min-width:\s*1280px\)\s*\{[^{}]*\.manja-schema-detail-layout\s*\{[^}]*\}`).FindString(string(css))
+	if largeRule == "" {
+		t.Fatalf("missing large-screen schema detail layout media rule")
+	}
+	if !strings.Contains(largeRule, `grid-template-columns: minmax(0, 1fr) minmax(20rem, 28rem);`) {
+		t.Fatalf("schema detail layout should split tree and example into two columns on large screens:\n%s", largeRule)
+	}
+	if !strings.Contains(string(css), `.manja-schema-detail-layout .manja-schema-tree`) {
+		t.Fatalf("schema detail layout should reset schema tree top margin so columns align")
 	}
 }
 

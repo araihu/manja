@@ -487,6 +487,19 @@ func TestOpenAPIParserIndexesGitHubRESTFixture(t *testing.T) {
 	if len(idx.Schemas) != 278 {
 		t.Fatalf("schemas = %d, want 278", len(idx.Schemas))
 	}
+	var workflow core.Schema
+	for _, schema := range idx.Schemas {
+		if schema.Name == "workflow" {
+			workflow = schema
+			break
+		}
+	}
+	if workflow.Name == "" {
+		t.Fatalf("workflow schema not indexed")
+	}
+	if workflow.Summary.Name != "Workflow" {
+		t.Fatalf("workflow display name = %q, want Workflow", workflow.Summary.Name)
+	}
 	if len(idx.Search) != len(idx.Operations)+len(idx.Schemas)+1 {
 		t.Fatalf("search documents = %d, want %d", len(idx.Search), len(idx.Operations)+len(idx.Schemas)+1)
 	}

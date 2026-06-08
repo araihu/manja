@@ -404,6 +404,9 @@ func schemaSummaryDepth(ref *openapi3.SchemaRef, depth int) core.SchemaSummary {
 		return summary
 	}
 	schema := ref.Value
+	if strings.TrimSpace(schema.Title) != "" {
+		summary.Name = schema.Title
+	}
 	summary.Type = schemaType(schema)
 	summary.Format = schema.Format
 	summary.Description = schema.Description
