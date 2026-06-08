@@ -214,7 +214,7 @@ func TestPublicDocsRenderOverviewByDefault(t *testing.T) {
 		`Terms of Service`,
 		`GitHub&#39;s v3 REST API.`,
 		`href="/?selected=overview#overview"`,
-		`<span>Overview</span>`,
+		`<span class="min-w-0 flex-1 truncate">Overview</span>`,
 		`<span class="sr-only">active</span>`,
 	} {
 		if !strings.Contains(body, want) {
@@ -354,19 +354,21 @@ func TestPublicDocsEndpointSidebarLabelMode(t *testing.T) {
 		if !listLabel.MatchString(body) {
 			t.Fatalf("auto sidebar label should prefer endpoint name:\n%s", body)
 		}
-		for _, want := range []string{`title="List pets"`, `aria-label="List pets"`} {
-			if !strings.Contains(body, want) {
-				t.Fatalf("auto sidebar label should expose full endpoint name via %q:\n%s", want, body)
-			}
+		if !strings.Contains(body, `title="List pets"`) {
+			t.Fatalf("auto sidebar label should expose full endpoint name via title:\n%s", body)
+		}
+		if strings.Contains(body, `aria-label="List pets"`) {
+			t.Fatalf("auto sidebar label should not generate aria-label by default:\n%s", body)
 		}
 		deleteLabel := regexp.MustCompile(`<a href="/\?selected=operation-deletePet#operation-deletePet"[^>]*><span class="min-w-0 flex-1 truncate">/pets/{petId}</span>\s*<sup[^>]*>DELETE</sup>`)
 		if !deleteLabel.MatchString(body) {
 			t.Fatalf("auto sidebar label should fall back to endpoint path:\n%s", body)
 		}
-		for _, want := range []string{`title="/pets/{petId}"`, `aria-label="/pets/{petId}"`} {
-			if !strings.Contains(body, want) {
-				t.Fatalf("path fallback sidebar label should expose full path via %q:\n%s", want, body)
-			}
+		if !strings.Contains(body, `title="/pets/{petId}"`) {
+			t.Fatalf("path fallback sidebar label should expose full path via title:\n%s", body)
+		}
+		if strings.Contains(body, `aria-label="/pets/{petId}"`) {
+			t.Fatalf("path fallback sidebar label should not generate aria-label by default:\n%s", body)
 		}
 	})
 
