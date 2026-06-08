@@ -431,12 +431,18 @@ templ schemaSection(schema core.Schema, exampleSpecJSON string) {
 				<p class="mt-6 max-w-[70ch] text-base leading-7 text-on-surface dark:text-on-surface-dark">{ summary.Description }</p>
 			}
 		</div>
-		@schemaTree(schemaAnchor(schema)+"-tree", schema.Name, summary)
 		{{ cfg := schemaPageExampleConfig(schema, exampleSpecJSON) }}
 		if hasSchemaExample(cfg) {
-			<div class="mt-8 max-w-3xl">
-				@schemaExample(cfg)
+			<div class="manja-schema-detail-layout">
+				<div class="manja-schema-tree-panel">
+					@schemaTree(schemaAnchor(schema)+"-tree", schema.Name, summary)
+				</div>
+				<aside class="manja-schema-example-panel" aria-label="Schema example">
+					@schemaExample(cfg)
+				</aside>
 			</div>
+		} else {
+			@schemaTree(schemaAnchor(schema)+"-tree", schema.Name, summary)
 		}
 	</section>
 }
@@ -854,12 +860,13 @@ func sidebarSections(idx core.SpecIndex, selectedAnchor string, labelMode Endpoi
 		items := make([]sidebar.Item, 0, len(idx.Schemas))
 		for _, schema := range idx.Schemas {
 			anchor := schemaAnchor(schema)
+			label := schemaSidebarLabel(schema)
 			items = append(items, sidebar.Item{
 				ID:        anchor,
-				Label:     schema.Name,
+				Label:     label,
 				Href:      selectedDocsHref(anchor),
 				Active:    anchor == selectedAnchor,
-				LinkAttrs: sidebarTitleAttrs(schema.Name),
+				LinkAttrs: sidebarTitleAttrs(label),
 			})
 		}
 		sections = append(sections, sidebar.Section{Title: "Schemas", Items: items})
@@ -1076,6 +1083,10 @@ func operationSidebarLabel(op core.Operation, labelMode EndpointSidebarLabelMode
 		return firstNonEmpty(op.Path, operationTitle(op))
 	}
 	return firstNonEmpty(op.Summary, op.Path, operationTitle(op))
+}
+
+func schemaSidebarLabel(schema core.Schema) string {
+	return firstNonEmpty(schema.Summary.Name, schema.Name)
 }
 
 func pluralizedCount(count int, singular string) string {

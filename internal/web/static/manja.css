@@ -19,6 +19,24 @@
   overflow-wrap: anywhere;
 }
 
+.manja-schema-detail-layout {
+  align-items: start;
+  display: grid;
+  gap: 2rem;
+  grid-template-columns: minmax(0, 1fr);
+  margin-top: 2rem;
+}
+
+.manja-schema-tree-panel,
+.manja-schema-example-panel {
+  min-width: 0;
+}
+
+.manja-schema-detail-layout .manja-schema-tree {
+  margin-top: 0;
+  max-width: none;
+}
+
 .manja-schema-tree {
   --manja-schema-caret-gap: 0.4rem;
   --manja-schema-caret-size: 0.35rem;
@@ -231,6 +249,18 @@ summary.manja-schema-row::marker {
   .manja-theme-select {
     display: block;
     width: 11rem;
+  }
+}
+
+@media (min-width: 1280px) {
+  .manja-schema-detail-layout {
+    gap: 3rem;
+    grid-template-columns: minmax(0, 1fr) minmax(20rem, 28rem);
+  }
+
+  .manja-schema-example-panel {
+    position: sticky;
+    top: 6rem;
   }
 }
 
