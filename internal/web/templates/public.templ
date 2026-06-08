@@ -31,13 +31,14 @@ type ExampleOptions struct {
 }
 
 type ExampleConfig struct {
-	ID          string
-	Label       string
-	Language    string
-	SchemaJSON  string
-	ExampleJSON string
-	SpecJSON    string
-	Options     ExampleOptions
+	ID              string
+	Label           string
+	Language        string
+	SchemaJSON      string
+	ExampleJSON     string
+	ExplicitExample bool
+	SpecJSON        string
+	Options         ExampleOptions
 }
 
 templ PublicDocs(idx core.SpecIndex, selectedID string) {
@@ -454,6 +455,7 @@ func mediaSchemaExampleConfig(id string, label string, media core.OperationMedia
 		Language:    "json",
 		SchemaJSON:  media.Schema.JSON,
 		ExampleJSON: media.Example,
+		ExplicitExample: media.ExampleProvided,
 		SpecJSON:    specJSON,
 		Options:     defaultExampleOptions(),
 	}
@@ -466,6 +468,7 @@ func schemaPageExampleConfig(schema core.Schema, specJSON string) ExampleConfig 
 		Language:    "json",
 		SchemaJSON:  schema.Example.JSON,
 		ExampleJSON: schema.Example.Example,
+		ExplicitExample: schema.Example.Provided,
 		SpecJSON:    specJSON,
 		Options: ExampleOptions{
 			SkipNonRequired: false,
@@ -504,6 +507,9 @@ func exampleFallback(cfg ExampleConfig) string {
 func schemaExamplePayload(cfg ExampleConfig) map[string]any {
 	payload := map[string]any{
 		"options": cfg.Options,
+	}
+	if cfg.ExplicitExample && strings.TrimSpace(cfg.ExampleJSON) != "" {
+		payload["hasExplicitExample"] = true
 	}
 	var schema any
 	if strings.TrimSpace(cfg.SchemaJSON) != "" {

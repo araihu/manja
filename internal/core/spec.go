@@ -65,9 +65,10 @@ type OperationResponse struct {
 }
 
 type OperationMediaType struct {
-	ContentType string
-	Schema      SchemaSummary
-	Example     string
+	ContentType     string
+	Schema          SchemaSummary
+	Example         string
+	ExampleProvided bool
 }
 
 type OperationSecurity struct {
@@ -105,8 +106,9 @@ type Schema struct {
 }
 
 type SchemaExample struct {
-	JSON    string
-	Example string
+	JSON     string
+	Example  string
+	Provided bool
 }
 
 type SearchDocument struct {

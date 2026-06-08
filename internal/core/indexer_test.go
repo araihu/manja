@@ -283,6 +283,9 @@ components:
 	if !strings.Contains(requestMedia.Example, `"name"`) || !strings.Contains(requestMedia.Example, `"completed"`) {
 		t.Fatalf("request example = %q", requestMedia.Example)
 	}
+	if requestMedia.ExampleProvided {
+		t.Fatalf("request media should mark generated fallback example as not provided: %#v", requestMedia)
+	}
 	if len(op.Responses) != 2 || op.Responses[0].Status != "200" || op.Responses[1].Status != "404" {
 		t.Fatalf("responses = %#v", op.Responses)
 	}
@@ -295,6 +298,9 @@ components:
 	}
 	if responseMedia.Schema.Properties[0].Name != "completed" {
 		t.Fatalf("response schema properties = %#v", responseMedia.Schema.Properties)
+	}
+	if responseMedia.ExampleProvided {
+		t.Fatalf("response media should mark generated fallback example as not provided: %#v", responseMedia)
 	}
 	if idx.Schemas[0].Example.JSON == "" || !strings.Contains(idx.Schemas[0].Example.JSON, `"properties"`) {
 		t.Fatalf("schema example payload = %#v", idx.Schemas[0].Example)

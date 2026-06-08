@@ -404,7 +404,8 @@ func TestPublicDocsRenderGenericSchemaExamples(t *testing.T) {
 					Type: "object",
 					JSON: `{"type":"object","required":["name"],"properties":{"name":{"type":"string"},"done":{"type":"boolean"}}}`,
 				},
-				Example: "{\n  \"name\": \"fallback\"\n}",
+				Example:         "{\n  \"name\": \"fallback\"\n}",
+				ExampleProvided: true,
 			}}},
 			Responses: []core.OperationResponse{{Status: "200", MediaTypes: []core.OperationMediaType{{
 				ContentType: "application/json",
@@ -413,12 +414,14 @@ func TestPublicDocsRenderGenericSchemaExamples(t *testing.T) {
 					Type: "object",
 					JSON: `{"type":"object","required":["id"],"properties":{"id":{"type":"string"}}}`,
 				},
-				Example: "{\n  \"id\": \"fallback\"\n}",
+				Example:         "{\n  \"id\": \"fallback\"\n}",
+				ExampleProvided: true,
 			}}}},
 		}},
 		Schemas: []core.Schema{{Name: "Todo", Description: "A todo.", Example: core.SchemaExample{
-			JSON:    `{"type":"object","required":["id"],"properties":{"id":{"type":"string"},"name":{"type":"string"}}}`,
-			Example: "{\n  \"id\": \"fallback\"\n}",
+			JSON:     `{"type":"object","required":["id"],"properties":{"id":{"type":"string"},"name":{"type":"string"}}}`,
+			Example:  "{\n  \"id\": \"fallback\"\n}",
+			Provided: true,
 		}}},
 	}
 
@@ -429,6 +432,7 @@ func TestPublicDocsRenderGenericSchemaExamples(t *testing.T) {
 		`Request Example: application/json`,
 		`Response Example: 200 application/json`,
 		`type="application/json"`,
+		`"hasExplicitExample":true`,
 		`"spec":{"components":{"schemas":{"Todo"`,
 		`"skipNonRequired":false`,
 		`"maxSampleDepth":3`,

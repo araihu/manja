@@ -48,6 +48,38 @@ test('updates the nested code element without replacing the codeblock wrapper', 
   assert.equal(root.codeblock.textContent, 'fallback');
 });
 
+test('keeps explicit spec examples without sampling', () => {
+  const root = fakeRoot('provided', {
+    hasExplicitExample: true,
+    schema: objectSchema(),
+    options: {},
+  }, '{\n  "name": "provided"\n}');
+
+  hydrateSchemaExamples({
+    roots: [root],
+    sampler: {
+      sample() {
+        throw new Error('explicit examples should not be sampled');
+      },
+    },
+  });
+
+  assert.equal(root.code.textContent, '{\n  "name": "provided"\n}');
+  assert.equal(root.code.innerHTML, '{\n  "name": "provided"\n}');
+  assert.equal(root.status.textContent, 'Spec example');
+});
+
+test('writes highlighted HTML for generated JSON examples', () => {
+  const root = fakeRoot('highlighted', { schema: objectSchema(), options: {} }, 'fallback');
+
+  hydrateSchemaExamples({ roots: [root], sampler: { sample: sampleSchema } });
+
+  assert.equal(root.code.textContent, '{\n  "name": "string",\n  "done": true\n}');
+  assert.match(root.code.innerHTML, /class="ch-nt"/);
+  assert.match(root.code.innerHTML, /class="ch-s2"/);
+  assert.match(root.code.innerHTML, /class="ch-kc"/);
+});
+
 test('preserves fallback when sampling fails and is idempotent', () => {
   const root = fakeRoot('broken', { schema: { type: 'object' }, options: {} }, 'fallback');
 
@@ -83,7 +115,7 @@ function sampleSchema(schema, options = {}) {
 
 function fakeRoot(id, payload, fallback) {
   const codeblock = { textContent: fallback };
-  const code = { textContent: fallback };
+  const code = { textContent: fallback, innerHTML: fallback };
   const status = { textContent: '' };
   const payloadScript = { textContent: JSON.stringify(payload) };
   return {

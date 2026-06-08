@@ -178,44 +178,46 @@ func operationMediaTypes(content openapi3.Content, inferExamples bool) []core.Op
 			continue
 		}
 		summary := schemaSummary(media.Schema)
+		example, exampleProvided := mediaExample(media, inferExamples)
 		mediaTypes = append(mediaTypes, core.OperationMediaType{
-			ContentType: contentType,
-			Schema:      summary,
-			Example:     mediaExample(media, inferExamples),
+			ContentType:     contentType,
+			Schema:          summary,
+			Example:         example,
+			ExampleProvided: exampleProvided,
 		})
 	}
 	return mediaTypes
 }
 
-func mediaExample(media *openapi3.MediaType, inferExamples bool) string {
+func mediaExample(media *openapi3.MediaType, inferExamples bool) (string, bool) {
 	if media == nil {
-		return ""
+		return "", false
 	}
 	if example := exampleString(media.Example); example != "" {
-		return example
+		return example, true
 	}
 	for _, key := range sortedExampleKeys(media.Examples) {
 		ref := media.Examples[key]
 		if ref != nil && ref.Value != nil {
 			if example := exampleString(ref.Value.Value); example != "" {
-				return example
+				return example, true
 			}
 		}
 	}
 	if media.Schema != nil && media.Schema.Value != nil {
-		if example := exampleString(media.Schema.Value.Example); example != "" {
-			return example
+		if example, provided := schemaProvidedExample(media.Schema.Value); provided {
+			return example, true
 		}
 		if inferExamples {
 			if example := sampleWithOpenAPISampler(media.Schema.Value); example != "" {
-				return example
+				return example, false
 			}
 		}
 		if example := exampleString(simpleSample(media.Schema.Value)); example != "" {
-			return example
+			return example, false
 		}
 	}
-	return ""
+	return "", false
 }
 
 func sortedExampleKeys(examples openapi3.Examples) []string {
@@ -377,10 +379,27 @@ func schemaExample(ref *openapi3.SchemaRef) core.SchemaExample {
 	if ref == nil || ref.Value == nil {
 		return core.SchemaExample{}
 	}
+	example, provided := schemaProvidedExample(ref.Value)
 	return core.SchemaExample{
-		JSON:    schemaJSON(ref.Value),
-		Example: exampleString(ref.Value.Example),
+		JSON:     schemaJSON(ref.Value),
+		Example:  example,
+		Provided: provided,
 	}
+}
+
+func schemaProvidedExample(schema *openapi3.Schema) (string, bool) {
+	if schema == nil {
+		return "", false
+	}
+	if example := exampleString(schema.Example); example != "" {
+		return example, true
+	}
+	for _, candidate := range schema.Examples {
+		if example := exampleString(candidate); example != "" {
+			return example, true
+		}
+	}
+	return "", false
 }
 
 func schemaJSON(schema *openapi3.Schema) string {
