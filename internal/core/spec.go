@@ -16,14 +16,15 @@ type Revision struct {
 }
 
 type SpecIndex struct {
-	ProjectID    string
-	RevisionID   string
-	Title        string
-	Version      string
-	Operations   []Operation
-	Schemas      []Schema
-	Search       []SearchDocument
-	PublicRoutes []PublicRoute
+	ProjectID       string
+	RevisionID      string
+	Title           string
+	Version         string
+	Operations      []Operation
+	Schemas         []Schema
+	Search          []SearchDocument
+	PublicRoutes    []PublicRoute
+	ExampleSpecJSON string
 }
 
 type Operation struct {

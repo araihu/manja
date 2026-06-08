@@ -16,6 +16,29 @@ test('hydrates multiple examples and honors skipNonRequired', () => {
   assert.equal(roots[1].code.textContent, '{\n  "name": "string",\n  "done": true\n}');
 });
 
+test('passes spec context so referenced schemas can be sampled', () => {
+  const spec = { components: { schemas: { Todo: objectSchema() } } };
+  const root = fakeRoot('ref', {
+    schema: { $ref: '#/components/schemas/Todo' },
+    spec,
+    options: { skipNonRequired: true },
+  }, 'fallback');
+
+  hydrateSchemaExamples({
+    roots: [root],
+    sampler: {
+      sample(schema, options, receivedSpec) {
+        assert.deepEqual(schema, { $ref: '#/components/schemas/Todo' });
+        assert.deepEqual(receivedSpec, spec);
+        return sampleSchema(receivedSpec.components.schemas.Todo, options);
+      },
+    },
+  });
+
+  assert.equal(root.code.textContent, '{\n  "name": "string"\n}');
+  assert.equal(root.status.textContent, 'Example generated');
+});
+
 test('preserves fallback when sampling fails and is idempotent', () => {
   const root = fakeRoot('broken', { schema: { type: 'object' }, options: {} }, 'fallback');
 

@@ -30,9 +30,10 @@ func (Parser) Parse(ctx context.Context, file core.SpecFile, rev core.Revision) 
 	}
 
 	idx := core.SpecIndex{
-		RevisionID: rev.ID,
-		Title:      doc.Info.Title,
-		Version:    doc.Info.Version,
+		RevisionID:      rev.ID,
+		Title:           doc.Info.Title,
+		Version:         doc.Info.Version,
+		ExampleSpecJSON: exampleSpecJSON(doc),
 	}
 
 	serverURL := firstServerURL(doc.Servers)
@@ -387,6 +388,21 @@ func schemaJSON(schema *openapi3.Schema) string {
 		return ""
 	}
 	data, err := json.Marshal(schema)
+	if err != nil {
+		return ""
+	}
+	return string(data)
+}
+
+func exampleSpecJSON(doc *openapi3.T) string {
+	if doc == nil || doc.Components == nil || len(doc.Components.Schemas) == 0 {
+		return ""
+	}
+	data, err := json.Marshal(map[string]any{
+		"components": map[string]any{
+			"schemas": doc.Components.Schemas,
+		},
+	})
 	if err != nil {
 		return ""
 	}

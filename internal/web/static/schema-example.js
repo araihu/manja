@@ -1630,7 +1630,7 @@ function jsf32(a, b, c, d) {
           setStatus(status, 'Example unavailable');
           return;
         }
-        const sample = sampler.sample(payload.schema, payload.options || {});
+        const sample = sampler.sample(payload.schema, payload.options || {}, payload.spec);
         code.textContent = JSON.stringify(sample, null, 2);
         setStatus(status, 'Example generated');
       } catch (error) {

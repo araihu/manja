@@ -246,7 +246,8 @@ func TestPublicDocsSearchTargetsVisibleSectionsWithUniqueIDs(t *testing.T) {
 
 func TestPublicDocsRenderEndpointDetails(t *testing.T) {
 	idx := core.SpecIndex{
-		Title: "Todos",
+		Title:           "Todos",
+		ExampleSpecJSON: `{"components":{"schemas":{"Todo":{"type":"object","properties":{"id":{"type":"string"}}}}}}`,
 		Operations: []core.Operation{{
 			ID:          "updateTodo",
 			Anchor:      "operation-updatetodo",
@@ -388,7 +389,8 @@ func TestPublicDocsRenderEndpointDetails(t *testing.T) {
 
 func TestPublicDocsRenderGenericSchemaExamples(t *testing.T) {
 	idx := core.SpecIndex{
-		Title: "Todos",
+		Title:           "Todos",
+		ExampleSpecJSON: `{"components":{"schemas":{"Todo":{"type":"object","properties":{"id":{"type":"string"}}}}}}`,
 		Operations: []core.Operation{{
 			ID:      "updateTodo",
 			Anchor:  "operation-updatetodo",
@@ -427,6 +429,7 @@ func TestPublicDocsRenderGenericSchemaExamples(t *testing.T) {
 		`Request Example: application/json`,
 		`Response Example: 200 application/json`,
 		`type="application/json"`,
+		`"spec":{"components":{"schemas":{"Todo"`,
 		`"skipNonRequired":false`,
 		`/manja-assets/schema-example.js`,
 	} {

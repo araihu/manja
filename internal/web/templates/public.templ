@@ -36,6 +36,7 @@ type ExampleConfig struct {
 	Language    string
 	SchemaJSON  string
 	ExampleJSON string
+	SpecJSON    string
 	Options     ExampleOptions
 }
 
@@ -77,7 +78,7 @@ templ PublicDocs(idx core.SpecIndex, selectedID string) {
 				<main class="min-w-0 flex-1 overflow-x-hidden overflow-y-auto p-6 lg:px-10 lg:py-8">
 					<div id="main-content" class="mx-auto max-w-[100rem]">
 						<h1 class="sr-only">{ idx.Title } OpenAPI docs</h1>
-						@selectedDocsContent(selected)
+						@selectedDocsContent(idx, selected)
 					</div>
 				</main>
 				@searchfield.SearchModal(docsSearchConfig(idx.Search))
@@ -86,16 +87,16 @@ templ PublicDocs(idx core.SpecIndex, selectedID string) {
 	}
 }
 
-templ selectedDocsContent(selected selectedDocsItem) {
+templ selectedDocsContent(idx core.SpecIndex, selected selectedDocsItem) {
 	if selected.Kind == "operation" {
 		<section aria-labelledby="operations-heading" class="grid gap-16">
 			<h2 id="operations-heading" data-toc-heading class="sr-only">Operations</h2>
-			@endpointSection(selected.Operation)
+			@endpointSection(selected.Operation, idx.ExampleSpecJSON)
 		</section>
 	} else if selected.Kind == "schema" {
 		<section aria-labelledby="schemas-heading">
 			<h2 id="schemas-heading" data-toc-heading class="sr-only">Schemas</h2>
-			@schemaSection(selected.Schema)
+			@schemaSection(selected.Schema, idx.ExampleSpecJSON)
 		</section>
 	} else {
 		<section class="rounded-radius border border-outline bg-surface-alt p-6 dark:border-outline-dark dark:bg-surface-dark-alt">
@@ -105,7 +106,7 @@ templ selectedDocsContent(selected selectedDocsItem) {
 	}
 }
 
-templ endpointSection(op core.Operation) {
+templ endpointSection(op core.Operation, exampleSpecJSON string) {
 	{{ opID := operationAnchor(op) }}
 	<section id={ opID } class="scroll-mt-24">
 		<div class="grid gap-10 xl:grid-cols-[minmax(0,50rem)_24rem] xl:items-start 2xl:grid-cols-[minmax(0,54rem)_26rem]">
@@ -191,7 +192,7 @@ templ endpointSection(op core.Operation) {
 						}
 						if op.RequestBody != nil {
 							for _, media := range op.RequestBody.MediaTypes {
-								{{ cfg := mediaSchemaExampleConfig(opID+"-request-body-"+anchorFragment(media.ContentType)+"-example", "Request Example: "+media.ContentType, media) }}
+								{{ cfg := mediaSchemaExampleConfig(opID+"-request-body-"+anchorFragment(media.ContentType)+"-example", "Request Example: "+media.ContentType, media, exampleSpecJSON) }}
 								if hasSchemaExample(cfg) {
 									@schemaExample(cfg)
 								}
@@ -199,7 +200,7 @@ templ endpointSection(op core.Operation) {
 						}
 						for _, response := range op.Responses {
 							for _, media := range response.MediaTypes {
-								{{ cfg := mediaSchemaExampleConfig(opID+"-response-"+anchorFragment(response.Status)+"-"+anchorFragment(media.ContentType)+"-example", "Response Example: "+response.Status+" "+media.ContentType, media) }}
+								{{ cfg := mediaSchemaExampleConfig(opID+"-response-"+anchorFragment(response.Status)+"-"+anchorFragment(media.ContentType)+"-example", "Response Example: "+response.Status+" "+media.ContentType, media, exampleSpecJSON) }}
 								if hasSchemaExample(cfg) {
 									@schemaExample(cfg)
 								}
@@ -212,7 +213,7 @@ templ endpointSection(op core.Operation) {
 	</section>
 }
 
-templ schemaSection(schema core.Schema) {
+templ schemaSection(schema core.Schema, exampleSpecJSON string) {
 	<section id={ schemaAnchor(schema) } class="scroll-mt-24">
 		<div class="max-w-3xl border-b border-outline pb-8 dark:border-outline-dark">
 			<p class="font-mono text-sm font-semibold uppercase text-on-surface-muted dark:text-on-surface-dark-muted">Schema</p>
@@ -221,7 +222,7 @@ templ schemaSection(schema core.Schema) {
 				<p class="mt-6 max-w-[70ch] text-base leading-7 text-on-surface dark:text-on-surface-dark">{ schema.Description }</p>
 			}
 		</div>
-		{{ cfg := schemaPageExampleConfig(schema) }}
+		{{ cfg := schemaPageExampleConfig(schema, exampleSpecJSON) }}
 		if hasSchemaExample(cfg) {
 			<div class="mt-8 max-w-3xl">
 				@schemaExample(cfg)
@@ -446,24 +447,26 @@ func mediaTypeTableID(idPrefix string, media core.OperationMediaType) string {
 	return idPrefix + "-" + contentType + "-schema"
 }
 
-func mediaSchemaExampleConfig(id string, label string, media core.OperationMediaType) ExampleConfig {
+func mediaSchemaExampleConfig(id string, label string, media core.OperationMediaType, specJSON string) ExampleConfig {
 	return ExampleConfig{
 		ID:          id,
 		Label:       label,
 		Language:    "json",
 		SchemaJSON:  media.Schema.JSON,
 		ExampleJSON: media.Example,
+		SpecJSON:    specJSON,
 		Options:     defaultExampleOptions(),
 	}
 }
 
-func schemaPageExampleConfig(schema core.Schema) ExampleConfig {
+func schemaPageExampleConfig(schema core.Schema, specJSON string) ExampleConfig {
 	return ExampleConfig{
 		ID:          schemaAnchor(schema) + "-example",
 		Label:       "Example: " + schema.Name,
 		Language:    "json",
 		SchemaJSON:  schema.Example.JSON,
 		ExampleJSON: schema.Example.Example,
+		SpecJSON:    specJSON,
 		Options:     defaultExampleOptions(),
 	}
 }
@@ -495,16 +498,23 @@ func exampleFallback(cfg ExampleConfig) string {
 }
 
 func schemaExamplePayload(cfg ExampleConfig) map[string]any {
+	payload := map[string]any{
+		"options": cfg.Options,
+	}
 	var schema any
 	if strings.TrimSpace(cfg.SchemaJSON) != "" {
 		if err := json.Unmarshal([]byte(cfg.SchemaJSON), &schema); err != nil {
 			schema = nil
 		}
 	}
-	return map[string]any{
-		"schema":  schema,
-		"options": cfg.Options,
+	payload["schema"] = schema
+	if strings.TrimSpace(cfg.SpecJSON) != "" {
+		var spec any
+		if err := json.Unmarshal([]byte(cfg.SpecJSON), &spec); err == nil {
+			payload["spec"] = spec
+		}
 	}
+	return payload
 }
 
 func sidebarSections(idx core.SpecIndex, selectedAnchor string) []sidebar.Section {

@@ -299,6 +299,9 @@ components:
 	if idx.Schemas[0].Example.JSON == "" || !strings.Contains(idx.Schemas[0].Example.JSON, `"properties"`) {
 		t.Fatalf("schema example payload = %#v", idx.Schemas[0].Example)
 	}
+	if !strings.Contains(idx.ExampleSpecJSON, `"#/components/schemas/Todo"`) && !strings.Contains(idx.ExampleSpecJSON, `"Todo"`) {
+		t.Fatalf("example spec JSON = %q", idx.ExampleSpecJSON)
+	}
 	if len(op.Security) != 1 || op.Security[0].Name != "bearerAuth" {
 		t.Fatalf("security = %#v", op.Security)
 	}
