@@ -1175,12 +1175,14 @@ func TestPublicDocsRenderEndpointDetails(t *testing.T) {
 		`Header Parameters`,
 		`Request configuration`,
 		`data-manja-request-config-panel`,
+		`px-1 text-sm font-semibold text-on-surface-strong dark:text-on-surface-dark-strong`,
 		`bg-surface-alt/40 dark:bg-surface-dark-alt/50`,
 		`x-collapse`,
 		`Server Variables`,
 		`Parameters`,
 		`Body`,
 		`data-manja-request-config-body`,
+		`border border-outline bg-surface px-3 py-2 font-mono text-xs leading-5 text-on-surface-strong outline-none placeholder:text-on-surface-muted focus:ring-2 focus:ring-primary dark:border-outline-dark dark:bg-surface-dark dark:text-on-surface-dark-strong dark:placeholder:text-on-surface-dark-muted dark:focus:ring-primary-dark`,
 		`name="server.hostname"`,
 		`value="HOSTNAME"`,
 		`name="server.protocol"`,
@@ -1254,9 +1256,14 @@ func TestPublicDocsRenderEndpointDetails(t *testing.T) {
 	for _, reject := range []string{
 		`size-1.5 rounded-full bg-success`,
 		`size-1.5 rounded-full bg-danger`,
+		`class="dark grid min-w-0 gap-2" data-manja-request-config-panel`,
+		`font-mono text-on-surface-dark-strong">security</span>`,
+		`<span class="text-on-surface-dark-muted">:</span>`,
+		`<span class="truncate text-on-surface-dark-muted">bearerAuth</span>`,
+		`border border-outline-dark bg-surface-dark px-3 py-2 font-mono text-xs leading-5 text-on-surface-dark-strong`,
 	} {
 		if strings.Contains(body, reject) {
-			t.Fatalf("response status should use one soft badge treatment without dot indicators, got %q:\n%s", reject, body)
+			t.Fatalf("endpoint detail view should not render stale dark-only styling %q:\n%s", reject, body)
 		}
 	}
 	for _, statusBadge := range []string{

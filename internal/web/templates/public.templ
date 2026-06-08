@@ -510,8 +510,8 @@ templ requestComposer(opID string, op core.Operation, servers []core.SpecServer,
 	{{ items := requestConfigAccordionItems(opID, op, server, body) }}
 	<div data-manja-request-composer class="grid min-w-0 gap-6">
 		if len(items) > 0 {
-			<section class="dark grid min-w-0 gap-2" data-manja-request-config-panel aria-labelledby={ opID + "-request-config-heading" }>
-				<p id={ opID + "-request-config-heading" } class="px-1 text-sm font-semibold text-on-surface-dark-strong">Request configuration</p>
+			<section class="grid min-w-0 gap-2" data-manja-request-config-panel aria-labelledby={ opID + "-request-config-heading" }>
+				<p id={ opID + "-request-config-heading" } class="px-1 text-sm font-semibold text-on-surface-strong dark:text-on-surface-dark-strong">Request configuration</p>
 				@accordion.Accordion(accordion.AccordionConfig{
 					ID:            opID + "-request-config-accordion",
 					Items:         items,
@@ -599,9 +599,9 @@ templ requestSecurityContent(security []core.OperationSecurity) {
 	<div class="grid gap-3 text-sm">
 		for _, item := range security {
 			<div class="grid grid-cols-[6rem_1rem_minmax(0,1fr)] gap-2">
-				<span class="truncate font-mono text-on-surface-dark-strong">security</span>
-				<span class="text-on-surface-dark-muted">:</span>
-				<span class="truncate text-on-surface-dark-muted">{ securityLabel(item) }</span>
+				<span class="truncate font-mono text-on-surface-strong dark:text-on-surface-dark-strong">security</span>
+				<span class="text-on-surface-muted dark:text-on-surface-dark-muted">:</span>
+				<span class="truncate text-on-surface-muted dark:text-on-surface-dark-muted">{ securityLabel(item) }</span>
 			</div>
 		}
 	</div>
@@ -615,7 +615,7 @@ templ requestConfigBodyContent(opID string, cfg ExampleConfig) {
 			data-manja-request-body-input
 			spellcheck="false"
 			rows="10"
-			class="min-h-48 w-full resize-y rounded-radius border border-outline-dark bg-surface-dark px-3 py-2 font-mono text-xs leading-5 text-on-surface-dark-strong outline-none placeholder:text-on-surface-dark-muted focus:ring-2 focus:ring-primary-dark"
+			class="min-h-48 w-full resize-y rounded-radius border border-outline bg-surface px-3 py-2 font-mono text-xs leading-5 text-on-surface-strong outline-none placeholder:text-on-surface-muted focus:ring-2 focus:ring-primary dark:border-outline-dark dark:bg-surface-dark dark:text-on-surface-dark-strong dark:placeholder:text-on-surface-dark-muted dark:focus:ring-primary-dark"
 		>{ exampleFallback(cfg) }</textarea>
 		@templpkg.JSONScript(opID+"-request-body-payload", schemaExamplePayload(cfg))
 		<p data-manja-request-body-status class="sr-only" aria-live="polite"></p>

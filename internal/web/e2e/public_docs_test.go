@@ -173,6 +173,48 @@ func TestRequestComposerUpdatesRequestSample(t *testing.T) {
 	if err := sample.WaitFor(); err != nil {
 		t.Fatal(err)
 	}
+	if err := page.Locator("[data-manja-request-config-panel]").WaitFor(); err != nil {
+		t.Fatal(err)
+	}
+	themeResult, err := page.Evaluate(`() => {
+		const panel = document.querySelector('[data-manja-request-config-panel]');
+		const heading = panel?.querySelector('[id$="-request-config-heading"]');
+		const textarea = panel?.querySelector('[data-manja-request-body-input]');
+		const readStyles = () => ({
+			headingColor: getComputedStyle(heading).color,
+			textareaBackground: getComputedStyle(textarea).backgroundColor,
+			textareaColor: getComputedStyle(textarea).color,
+		});
+		document.documentElement.classList.remove('dark');
+		const light = readStyles();
+		document.documentElement.classList.add('dark');
+		const dark = readStyles();
+		return {
+			panelForcedDark: panel.classList.contains('dark'),
+			lightHeadingColor: light.headingColor,
+			darkHeadingColor: dark.headingColor,
+			lightTextareaBackground: light.textareaBackground,
+			darkTextareaBackground: dark.textareaBackground,
+			lightTextareaColor: light.textareaColor,
+			darkTextareaColor: dark.textareaColor,
+		};
+	}`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	themeStyles, ok := themeResult.(map[string]any)
+	if !ok {
+		t.Fatalf("request config theme styles should be a map, got %#v", themeResult)
+	}
+	if themeStyles["panelForcedDark"] == true {
+		t.Fatalf("request config panel should not force dark mode, got %#v", themeStyles)
+	}
+	if themeStyles["lightHeadingColor"] == themeStyles["darkHeadingColor"] {
+		t.Fatalf("request config heading should react to dark mode, got %#v", themeStyles)
+	}
+	if themeStyles["lightTextareaBackground"] == themeStyles["darkTextareaBackground"] || themeStyles["lightTextareaColor"] == themeStyles["darkTextareaColor"] {
+		t.Fatalf("request config body input should react to dark mode, got %#v", themeStyles)
+	}
 	if _, err := page.WaitForFunction(`() => document.querySelector('[data-manja-request-sample] .codeblock')?.textContent.includes("HOSTNAME/api/v3/admin/hooks?page=1")`, nil); err != nil {
 		t.Fatal(err)
 	}
