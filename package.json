@@ -2,6 +2,8 @@
   "name": "manja",
   "private": true,
   "scripts": {
+    "dev": "node scripts/dev-server.mjs",
+    "dev:build": "go run github.com/a-h/templ/cmd/templ generate && npm run examples:build && npm run css:build --if-present && go build -o ./tmp/manja-dev ./cmd/manja",
     "examples:build": "node scripts/build-schema-example-asset.mjs",
     "examples:test": "node --test internal/web/static/schema-example-hydrator.test.mjs",
     "api:bundle": "redocly bundle api/openapi.yaml -o api/dist/openapi.yaml",
