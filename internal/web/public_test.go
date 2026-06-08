@@ -49,12 +49,12 @@ func TestPublicDocsRenderSearchAndOperations(t *testing.T) {
 		}
 	}
 	for _, want := range []string{
-		`min-h-screen`,
+		`fixed inset-0 flex flex-col overflow-clip`,
 		`Manja`,
 		`class="flex h-16`,
-		`min-h-[calc(100vh-4rem)] overflow-x-hidden`,
-		`sticky top-16 hidden h-[calc(100vh-4rem)] w-72 shrink-0 lg:block`,
-		`class="min-w-0 flex-1 overflow-x-hidden p-6`,
+		`flex min-h-0 flex-1 overflow-clip`,
+		`hidden h-full w-72 shrink-0 lg:block`,
+		`class="min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden p-6`,
 		`aria-label="API sections"`,
 		`aria-label="Documentation search"`,
 		`href="/?selected=operation-listPets#operation-listPets"`,
