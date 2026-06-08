@@ -51,6 +51,30 @@ Open <http://localhost:8080>. By default the server renders the GitHub REST
 fixture from `internal/adapters/openapi/testdata/github-v3-rest.json`; pass
 `-spec <path>` to use another OpenAPI file.
 
+## Session Servers and Cleanup
+
+After making changes during an active session, bring the public docs server up
+from the task worktree so the current state is inspectable. Use the first free
+port starting at `8080`, then increment upward until one is available:
+
+```bash
+port=8080
+while lsof -nP -iTCP:"$port" -sTCP:LISTEN >/dev/null 2>&1; do
+  port=$((port + 1))
+done
+go run ./cmd/manja -addr "127.0.0.1:${port}" -data-dir .manja/data
+```
+
+Share the resulting `http://127.0.0.1:<port>` URL in the session. When the
+worktree PR merges into `main`, stop any server process started for that
+worktree before removing it. Cleanup should include removing the worktree and
+pruning stale worktree metadata:
+
+```bash
+git worktree remove /tmp/manja-<short-slug>
+git worktree prune
+```
+
 ## Worktree Isolation (required)
 
 Every unit of work - a feature, bugfix, review fix, API slice, UI polish pass,
@@ -78,7 +102,8 @@ Rules:
   primary checkout stays clean.
 - If you use a repo-local worktree directory instead of `/tmp`, make sure it is
   gitignored before creating the worktree.
-- Remove the worktree after the branch merges: `git worktree remove <path>`.
+- Remove the worktree after the branch merges and stop any server processes
+  started for it.
 
 When you or the harness hand a task to a sub-agent, the worktree boundary is how
 that work stays mergeable.
