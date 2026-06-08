@@ -203,6 +203,10 @@
   padding: 0.75rem 0 0;
 }
 
+.manja-response-media-block {
+  container-type: inline-size;
+}
+
 .manja-response-panel-layout {
   align-items: start;
   display: grid;
@@ -379,6 +383,8 @@ summary.manja-schema-row::marker {
   color: var(--color-on-surface-strong);
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   font-weight: 650;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .manja-schema-type {
@@ -470,8 +476,11 @@ summary.manja-schema-row::marker {
     top: 2rem;
   }
 
+}
+
+@container (min-width: 58rem) {
   .manja-response-panel-layout {
-    grid-template-columns: minmax(0, 1fr) minmax(20rem, 28rem);
+    grid-template-columns: minmax(24rem, 1fr) minmax(20rem, 28rem);
   }
 }
 

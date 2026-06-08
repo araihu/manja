@@ -699,7 +699,7 @@ templ responseMediaTypeList(opID string, response core.OperationResponse, exampl
 			for _, media := range response.MediaTypes {
 				{{ idPrefix := opID+"-response-"+anchorFragment(response.Status) }}
 				{{ cfg := mediaSchemaExampleConfig(idPrefix+"-"+anchorFragment(media.ContentType)+"-example", "Response Example: "+response.Status+" "+media.ContentType, media, exampleSpecJSON) }}
-				<div class="border-t border-outline pt-6 pb-5 dark:border-outline-dark">
+				<div class="manja-response-media-block border-t border-outline pt-6 pb-5 dark:border-outline-dark">
 					<div class="manja-response-panel-layout">
 						<div class="manja-response-panel-main grid gap-4">
 							<div class="flex flex-wrap items-center gap-3">

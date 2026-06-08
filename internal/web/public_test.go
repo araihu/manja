@@ -952,6 +952,13 @@ func TestPublicDocsSchemaTreeCSSConnectsBranchRails(t *testing.T) {
 	if !strings.Contains(rule, `padding: 0.125rem 0 0.25rem 0;`) {
 		t.Fatalf("schema children rail should start at the child row branch origin:\n%s", rule)
 	}
+	nameRule := regexp.MustCompile(`(?s)\.manja-schema-name\s*\{[^}]*\}`).FindString(string(css))
+	if nameRule == "" {
+		t.Fatalf("missing .manja-schema-name rule")
+	}
+	if !strings.Contains(nameRule, `min-width: 0;`) || !strings.Contains(nameRule, `overflow-wrap: anywhere;`) {
+		t.Fatalf("schema property names should wrap inside their grid column instead of overlapping required labels or examples:\n%s", nameRule)
+	}
 }
 
 func TestPublicDocsSchemaTreeCSSSeparatesCaretFromBranch(t *testing.T) {
@@ -1256,7 +1263,7 @@ func TestPublicDocsRenderEndpointDetails(t *testing.T) {
 		`id="tabpaneloperation-updatetodo-responsesresponse-200" role="tabpanel" aria-label="200"><section class="grid gap-4">`,
 		`class="manja-response-panel-main grid gap-4"`,
 		`class="manja-response-panel-example"`,
-		`class="border-t border-outline pt-6 pb-5 dark:border-outline-dark"><div class="manja-response-panel-layout">`,
+		`class="manja-response-media-block border-t border-outline pt-6 pb-5 dark:border-outline-dark"><div class="manja-response-panel-layout">`,
 		`tabpaneloperation-updatetodo-responsesresponse-404`,
 		`caption class="sr-only">Path Parameters</caption>`,
 		`aria-label="Request body schema for application/json schema tree"`,
@@ -1510,7 +1517,7 @@ func TestPublicDocsEndpointResponseExamplesRenderInsideMatchingTabPanel(t *testi
 	}
 	response200Panel := htmlBetween(t, body, `id="tabpaneloperation-gettodo-responsesresponse-200"`, `id="tabpaneloperation-gettodo-responsesresponse-404"`)
 	for _, want := range []string{
-		`class="border-t border-outline pt-6 pb-5 dark:border-outline-dark"><div class="manja-response-panel-layout">`,
+		`class="manja-response-media-block border-t border-outline pt-6 pb-5 dark:border-outline-dark"><div class="manja-response-panel-layout">`,
 		`class="manja-response-panel-main grid gap-4"`,
 		`class="manja-response-panel-example"`,
 		`Response Example: 200 application/json`,
@@ -1574,6 +1581,13 @@ func TestPublicDocsEndpointResponsePanelCSSUsesResponsiveExampleColumn(t *testin
 	if err != nil {
 		t.Fatal(err)
 	}
+	mediaBlockRule := regexp.MustCompile(`(?s)\.manja-response-media-block\s*\{[^}]*\}`).FindString(string(css))
+	if mediaBlockRule == "" {
+		t.Fatalf("missing .manja-response-media-block rule")
+	}
+	if !strings.Contains(mediaBlockRule, `container-type: inline-size;`) {
+		t.Fatalf("response media blocks should provide the container width for nested schema/example splits:\n%s", mediaBlockRule)
+	}
 	layoutRule := regexp.MustCompile(`(?s)\.manja-response-panel-layout\s*\{[^}]*\}`).FindString(string(css))
 	if layoutRule == "" {
 		t.Fatalf("missing .manja-response-panel-layout rule")
@@ -1590,12 +1604,12 @@ func TestPublicDocsEndpointResponsePanelCSSUsesResponsiveExampleColumn(t *testin
 	if childrenRule == "" || !strings.Contains(childrenRule, `min-width: 0;`) {
 		t.Fatalf("response panel children should be constrained in their grid columns:\n%s", childrenRule)
 	}
-	largeRule := regexp.MustCompile(`(?s)@media\s*\(min-width:\s*1280px\)\s*\{.*?\.manja-response-panel-layout\s*\{[^}]*\}`).FindString(string(css))
-	if largeRule == "" {
-		t.Fatalf("missing large-screen response panel layout media rule")
+	containerRule := regexp.MustCompile(`(?s)@container\s*\(min-width:\s*58rem\)\s*\{[^{}]*\.manja-response-panel-layout\s*\{[^}]*\}`).FindString(string(css))
+	if containerRule == "" {
+		t.Fatalf("missing response panel container query layout rule")
 	}
-	if !strings.Contains(largeRule, `grid-template-columns: minmax(0, 1fr) minmax(20rem, 28rem);`) {
-		t.Fatalf("response panel should split schema and matching example into two columns on large screens:\n%s", largeRule)
+	if !strings.Contains(containerRule, `grid-template-columns: minmax(24rem, 1fr) minmax(20rem, 28rem);`) {
+		t.Fatalf("response panel should split schema and matching example only when the media block is wide enough:\n%s", containerRule)
 	}
 }
 
