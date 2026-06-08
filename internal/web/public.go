@@ -1,6 +1,7 @@
 package web
 
 import (
+	"context"
 	"encoding/json"
 	"encoding/xml"
 	"log/slog"
@@ -25,6 +26,7 @@ const (
 
 type PublicOptions struct {
 	EndpointSidebarLabel EndpointSidebarLabelMode
+	MarkdownRenderer     core.MarkdownRenderer
 }
 
 const openAPIJSONDownloadPath = "/openapi.json"
@@ -100,19 +102,34 @@ func selectedDocsSearchHref(href string) string {
 	return "/?selected=" + url.QueryEscape(anchor) + "#" + anchor
 }
 
-func searchJSONItems(docs []core.SearchDocument) []searchJSONItem {
+func searchJSONItems(ctx context.Context, docs []core.SearchDocument, renderer core.MarkdownRenderer) ([]searchJSONItem, error) {
 	items := make([]searchJSONItem, 0, len(docs))
 	for _, doc := range docs {
+		description, err := markdownPlainText(ctx, renderer, doc.Description)
+		if err != nil {
+			return nil, err
+		}
 		items = append(items, searchJSONItem{
 			ID:          "search-" + doc.ID,
 			Title:       doc.Title,
-			Description: doc.Description,
+			Description: description,
 			Href:        selectedDocsSearchHref(doc.Href),
 			Section:     doc.Section,
 			Keywords:    doc.Keywords,
 		})
 	}
-	return items
+	return items, nil
+}
+
+func markdownPlainText(ctx context.Context, renderer core.MarkdownRenderer, value string) (string, error) {
+	if renderer == nil || strings.TrimSpace(value) == "" {
+		return value, nil
+	}
+	result, err := renderer.Render(ctx, value)
+	if err != nil {
+		return "", err
+	}
+	return result.Plain, nil
 }
 
 func NewPublicServer(idx core.SpecIndex) http.Handler {
@@ -138,7 +155,13 @@ func NewPublicServerWithOptions(idx core.SpecIndex, opts PublicOptions) http.Han
 		if r.Method == http.MethodHead {
 			return
 		}
-		if err := json.NewEncoder(w).Encode(searchJSONItems(idx.Search)); err != nil {
+		items, err := searchJSONItems(r.Context(), idx.Search, opts.MarkdownRenderer)
+		if err != nil {
+			slog.ErrorContext(r.Context(), "render public search markdown", "error", err)
+			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+			return
+		}
+		if err := json.NewEncoder(w).Encode(items); err != nil {
 			slog.ErrorContext(r.Context(), "render public search index", "error", err)
 		}
 	})
@@ -196,6 +219,7 @@ func NewPublicServerWithOptions(idx core.SpecIndex, opts PublicOptions) http.Han
 		selected := r.URL.Query().Get("selected")
 		renderOpts := templates.PublicDocsOptions{
 			EndpointSidebarLabel: opts.EndpointSidebarLabel,
+			MarkdownRenderer:     opts.MarkdownRenderer,
 		}
 		component := templates.PublicDocsWithOptions(idx, selected, renderOpts)
 		if r.Header.Get("HX-Request") == "true" && r.Header.Get("HX-Boosted") != "true" {

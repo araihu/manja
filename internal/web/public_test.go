@@ -12,6 +12,7 @@ import (
 	"strings"
 	"testing"
 
+	markdownadapter "github.com/araihu/manja/internal/adapters/markdown"
 	openapiadapter "github.com/araihu/manja/internal/adapters/openapi"
 	"github.com/araihu/manja/internal/core"
 )
@@ -339,6 +340,146 @@ func TestPublicDocsRenderOverviewByDefault(t *testing.T) {
 	for _, reject := range []string{`data-sidebar-section=""`} {
 		if strings.Contains(body, reject) {
 			t.Fatalf("default overview page should not render %q:\n%s", reject, body)
+		}
+	}
+}
+
+func TestPublicDocsRenderMarkdownDescriptions(t *testing.T) {
+	idx := core.SpecIndex{
+		Title: "Markdown API",
+		Overview: core.SpecOverview{
+			Description: "Use **REST** docs.\n\nSee [guides](https://docs.example.test).",
+			Servers: []core.SpecServer{{
+				URL:         "https://api.example.test",
+				Description: "Use the **production** base URL.",
+				Variables: []core.SpecServerVariable{{
+					Name:        "tenant",
+					Default:     "demo",
+					Description: "Choose a **tenant** value.",
+				}},
+			}},
+		},
+		Operations: []core.Operation{{
+			ID:          "listPets",
+			Anchor:      "operation-listpets",
+			Method:      "GET",
+			Path:        "/pets",
+			Summary:     "List pets",
+			Description: "Returns **pets**.\n\n- Fast\n- Safe",
+			Parameters: []core.OperationParameter{{
+				Name:        "kind",
+				In:          "query",
+				Description: "Filter by **kind**.",
+				Example:     "cat",
+				Schema:      core.SchemaSummary{Type: "string"},
+			}},
+			RequestBody: &core.OperationRequestBody{
+				Description: "Send a **pet** payload.",
+			},
+			Responses: []core.OperationResponse{{
+				Status:      "200",
+				Description: "Returns **matching** pets.",
+			}},
+		}},
+		Schemas: []core.Schema{{
+			Name:        "Pet",
+			Description: "A **pet** resource.",
+			Summary: core.SchemaSummary{
+				Name:        "Pet",
+				Type:        "object",
+				Description: "A **pet** resource.",
+				Properties: []core.SchemaProperty{{
+					Name:        "name",
+					Description: "The **display** name.",
+					Schema: core.SchemaSummary{
+						Type:        "string",
+						Description: "The **display** name.",
+					},
+				}},
+			},
+		}},
+		Search: []core.SearchDocument{{
+			ID:          "operation-listpets",
+			Title:       "GET /pets",
+			Description: "Returns **pets**.",
+			Href:        "#operation-listpets",
+			Kind:        "Operation",
+		}, {
+			ID:          "schema-Pet",
+			Title:       "Pet",
+			Description: "A **pet** resource.",
+			Href:        "#schema-pet",
+			Kind:        "Schema",
+		}},
+	}
+	srv := NewPublicServerWithOptions(idx, PublicOptions{
+		MarkdownRenderer: markdownadapter.NewRenderer(),
+	})
+
+	overview := renderPublicDocs(t, srv)
+	for _, want := range []string{
+		`<div class="manja-markdown">`,
+		`<strong>REST</strong>`,
+		`<a href="https://docs.example.test">guides</a>`,
+		`<strong>production</strong>`,
+		`<strong>tenant</strong>`,
+	} {
+		if !strings.Contains(overview, want) {
+			t.Fatalf("overview markdown missing %q:\n%s", want, overview)
+		}
+	}
+	for _, reject := range []string{`**REST**`, `[guides](https://docs.example.test)`} {
+		if strings.Contains(overview, reject) {
+			t.Fatalf("overview markdown should render %q instead of preserving markdown syntax:\n%s", reject, overview)
+		}
+	}
+
+	endpoint := renderPublicDocs(t, srv, "/?selected=operation-listpets")
+	for _, want := range []string{
+		`<div class="manja-markdown">`,
+		`<strong>pets</strong>`,
+		`<ul>`,
+		`<li>Fast</li>`,
+		`<li>Safe</li>`,
+		`<strong>kind</strong>`,
+		`Example:`,
+		`cat`,
+		`<strong>pet</strong>`,
+		`<strong>matching</strong>`,
+	} {
+		if !strings.Contains(endpoint, want) {
+			t.Fatalf("endpoint markdown missing %q:\n%s", want, endpoint)
+		}
+	}
+	if strings.Contains(endpoint, `**pets**`) {
+		t.Fatalf("endpoint markdown should not preserve markdown syntax:\n%s", endpoint)
+	}
+
+	schema := renderPublicDocs(t, srv, "/?selected=schema-pet")
+	for _, want := range []string{
+		`<strong>pet</strong>`,
+		`<strong>display</strong>`,
+	} {
+		if !strings.Contains(schema, want) {
+			t.Fatalf("schema markdown missing %q:\n%s", want, schema)
+		}
+	}
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/search.json", nil)
+	srv.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("search status = %d", rec.Code)
+	}
+	searchBody := rec.Body.String()
+	for _, want := range []string{`"description":"Returns pets."`, `"description":"A pet resource."`} {
+		if !strings.Contains(searchBody, want) {
+			t.Fatalf("search markdown plain text missing %q:\n%s", want, searchBody)
+		}
+	}
+	for _, reject := range []string{`**pets**`, `**pet**`} {
+		if strings.Contains(searchBody, reject) {
+			t.Fatalf("search descriptions should use markdown plain text, got %q in %s", reject, searchBody)
 		}
 	}
 }
@@ -1128,6 +1269,31 @@ func TestPublicDocsEndpointDetailCSSStacksRequestAndResponses(t *testing.T) {
 		if strings.Contains(string(css), reject) {
 			t.Fatalf("endpoint detail layout should keep Request and Responses stacked, got %q in CSS", reject)
 		}
+	}
+}
+
+func TestPublicDocsMarkdownCSSUsesThemeTokens(t *testing.T) {
+	css, err := os.ReadFile("static/manja.css")
+	if err != nil {
+		t.Fatal(err)
+	}
+	source := string(css)
+	for _, want := range []string{
+		`.manja-markdown`,
+		`var(--color-on-surface)`,
+		`var(--color-on-surface-muted)`,
+		`var(--color-outline)`,
+		`var(--color-surface-alt)`,
+		`var(--color-primary)`,
+		`var(--font-title)`,
+		`var(--radius-radius)`,
+	} {
+		if !strings.Contains(source, want) {
+			t.Fatalf("markdown CSS should use theme token marker %q", want)
+		}
+	}
+	if strings.Contains(source, `prose`) {
+		t.Fatalf("markdown CSS should not depend on Tailwind Typography prose classes")
 	}
 }
 
