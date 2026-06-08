@@ -264,11 +264,12 @@ templ downloadIcon() {
 
 func overviewSidebarItems(selectedAnchor string) []sidebar.Item {
 	return []sidebar.Item{{
-		ID:     "overview",
-		Label:  "Overview",
-		Icon:   overviewIcon(),
-		Href:   selectedDocsHref("overview"),
-		Active: selectedAnchor == "overview",
+		ID:        "overview",
+		Label:     "Overview",
+		Icon:      overviewIcon(),
+		Href:      selectedDocsHref("overview"),
+		Active:    selectedAnchor == "overview",
+		LinkAttrs: sidebarTitleAttrs("Overview"),
 	}}
 }
 
@@ -833,16 +834,18 @@ func sidebarSections(idx core.SpecIndex, selectedAnchor string, labelMode Endpoi
 					Active:     anchor == selectedAnchor,
 					Badge:      op.Method,
 					BadgeClass: methodBadgeClass(op.Method),
+					LinkAttrs:  sidebarTitleAttrs(label),
 				})
 			}
 		}
 		items := make([]sidebar.Item, 0, len(tagOrder))
 		for _, tag := range tagOrder {
 			items = append(items, sidebar.Item{
-				ID:    "tag-" + anchorFragment(tag),
-				Label: tag,
-				Href:  firstSidebarHref(tagItems[tag]),
-				Items: tagItems[tag],
+				ID:        "tag-" + anchorFragment(tag),
+				Label:     tag,
+				Href:      firstSidebarHref(tagItems[tag]),
+				Items:     tagItems[tag],
+				LinkAttrs: sidebarTitleAttrs(tag),
 			})
 		}
 		sections = append(sections, sidebar.Section{Title: "Operations", Items: items})
@@ -852,10 +855,11 @@ func sidebarSections(idx core.SpecIndex, selectedAnchor string, labelMode Endpoi
 		for _, schema := range idx.Schemas {
 			anchor := schemaAnchor(schema)
 			items = append(items, sidebar.Item{
-				ID:     anchor,
-				Label:  schema.Name,
-				Href:   selectedDocsHref(anchor),
-				Active: anchor == selectedAnchor,
+				ID:        anchor,
+				Label:     schema.Name,
+				Href:      selectedDocsHref(anchor),
+				Active:    anchor == selectedAnchor,
+				LinkAttrs: sidebarTitleAttrs(schema.Name),
 			})
 		}
 		sections = append(sections, sidebar.Section{Title: "Schemas", Items: items})
@@ -945,6 +949,14 @@ func selectedDocsHrefFromDoc(href string) string {
 		return href
 	}
 	return selectedDocsHref(anchor)
+}
+
+func sidebarTitleAttrs(label string) templpkg.Attributes {
+	label = strings.TrimSpace(label)
+	if label == "" {
+		return nil
+	}
+	return templpkg.Attributes{"title": label}
 }
 
 func firstSidebarHref(items []sidebar.Item) string {

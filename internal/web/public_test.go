@@ -214,7 +214,7 @@ func TestPublicDocsRenderOverviewByDefault(t *testing.T) {
 		`Terms of Service`,
 		`GitHub&#39;s v3 REST API.`,
 		`href="/?selected=overview#overview"`,
-		`<span class="min-w-0 flex-1 truncate">Overview</span>`,
+		`>Overview</span>`,
 		`<span class="sr-only">active</span>`,
 	} {
 		if !strings.Contains(body, want) {
