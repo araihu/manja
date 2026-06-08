@@ -382,6 +382,245 @@ func TestPublicDocsEndpointSidebarLabelMode(t *testing.T) {
 	})
 }
 
+func TestPublicDocsRendersSchemaTree(t *testing.T) {
+	idx := core.SpecIndex{
+		Title: "Todos",
+		Schemas: []core.Schema{{
+			Name:        "Todo",
+			Description: "A todo schema body",
+			Summary: core.SchemaSummary{
+				Name:        "Todo",
+				Type:        "object",
+				Description: "A todo schema body",
+				Properties: []core.SchemaProperty{{
+					Name:        "id",
+					Required:    true,
+					Description: "Stable todo ID.",
+					Schema: core.SchemaSummary{
+						Type:    "string",
+						Example: "todo_123",
+					},
+				}, {
+					Name:        "labels",
+					Description: "Display labels.",
+					Schema: core.SchemaSummary{
+						Type: "array",
+						Items: &core.SchemaSummary{
+							Type: "string",
+						},
+					},
+				}, {
+					Name:     "owner",
+					Required: true,
+					Schema: core.SchemaSummary{
+						Name: "User",
+						Type: "object",
+						Properties: []core.SchemaProperty{{
+							Name:     "email",
+							Required: true,
+							Schema: core.SchemaSummary{
+								Type:   "string",
+								Format: "email",
+							},
+						}},
+					},
+				}},
+			},
+		}},
+	}
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/?selected=schema-todo", nil)
+
+	NewPublicServer(idx).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d", rec.Code)
+	}
+	body := rec.Body.String()
+	for _, want := range []string{
+		`id="schema-todo-tree"`,
+		`aria-label="Todo schema tree"`,
+		`manja-doc-title`,
+		`class="manja-schema-tree"`,
+		`class="manja-schema-root"`,
+		`data-schema-tree-row="id"`,
+		`data-schema-tree-row="labels"`,
+		`data-schema-tree-row="owner"`,
+		`data-schema-tree-row="email"`,
+		`manja-schema-row`,
+		`manja-schema-caret`,
+		`manja-schema-branch`,
+		`manja-schema-children`,
+		`required`,
+		`string`,
+		`array[string]`,
+		`User object`,
+		`string&lt;email&gt;`,
+		`Example:`,
+		`todo_123`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("schema tree missing %q:\n%s", want, body)
+		}
+	}
+	if strings.Contains(body, `<table`) {
+		t.Fatalf("schema page should render a tree component, not a table:\n%s", body)
+	}
+	if strings.Contains(body, `class="overflow-hidden rounded-radius border border-outline bg-surface text-sm`) {
+		t.Fatalf("schema tree should not use the heavy bordered-panel wrapper:\n%s", body)
+	}
+	if strings.Contains(body, `data-schema-tree-node="Todo"`) {
+		t.Fatalf("schema tree should start at the root object properties, not render the root object row:\n%s", body)
+	}
+}
+
+func TestPublicDocsRendersLongSchemaExamplesAsBlocks(t *testing.T) {
+	longExample := strings.Repeat("Contributor Covenant Code of Conduct ", 12)
+	idx := core.SpecIndex{
+		Title: "Todos",
+		Schemas: []core.Schema{{
+			Name: "Repository",
+			Summary: core.SchemaSummary{
+				Name: "Repository",
+				Type: "object",
+				Properties: []core.SchemaProperty{{
+					Name: "code_of_conduct",
+					Schema: core.SchemaSummary{
+						Name:        "Code Of Conduct",
+						Type:        "object",
+						Description: "Code Of Conduct",
+						Properties: []core.SchemaProperty{{
+							Name: "body",
+							Schema: core.SchemaSummary{
+								Type:    "string",
+								Example: longExample,
+							},
+						}},
+					},
+				}},
+			},
+		}},
+	}
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/?selected=schema-repository", nil)
+
+	NewPublicServer(idx).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d", rec.Code)
+	}
+	body := rec.Body.String()
+	for _, want := range []string{
+		`data-schema-tree-row="body"`,
+		`class="manja-schema-example manja-schema-example-block"`,
+		`<pre><code>`,
+		`Contributor Covenant Code of Conduct`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("long schema example missing %q:\n%s", want, body)
+		}
+	}
+	if strings.Contains(body, `<p class="manja-schema-example"><span>Example:</span><code>`) {
+		t.Fatalf("long schema example should not render as an inline chip:\n%s", body)
+	}
+}
+
+func TestPublicDocsSchemaTreeCSSConnectsBranchRails(t *testing.T) {
+	css, err := os.ReadFile("static/manja.css")
+	if err != nil {
+		t.Fatal(err)
+	}
+	childrenRule := regexp.MustCompile(`(?s)\.manja-schema-children\s*\{[^}]*\}`)
+	rule := childrenRule.FindString(string(css))
+	if rule == "" {
+		t.Fatalf("missing .manja-schema-children rule")
+	}
+	if !strings.Contains(string(css), `--manja-schema-child-indent-x: 1.5rem;`) {
+		t.Fatalf("schema tree should indent child rails enough to read as nested ownership")
+	}
+	if !strings.Contains(string(css), `--manja-schema-root-child-indent-x: 2.5rem;`) {
+		t.Fatalf("schema tree root-property children should have a tab-like indent")
+	}
+	if !strings.Contains(rule, `margin-left: var(--manja-schema-child-indent-x);`) {
+		t.Fatalf("schema children rail should use the child indent coordinate:\n%s", rule)
+	}
+	rootChildrenRule := regexp.MustCompile(`(?s)\.manja-schema-root\s*>\s*\.manja-schema-node\s*>\s*\.manja-schema-children\s*\{[^}]*\}`)
+	rootRule := rootChildrenRule.FindString(string(css))
+	if rootRule == "" {
+		t.Fatalf("missing root-property child rail rule")
+	}
+	if !strings.Contains(rootRule, `margin-left: var(--manja-schema-root-child-indent-x);`) {
+		t.Fatalf("schema root-property child rail should use the stronger root child indent:\n%s", rootRule)
+	}
+	if !strings.Contains(rule, `padding: 0.125rem 0 0.25rem 0;`) {
+		t.Fatalf("schema children rail should start at the child row branch origin:\n%s", rule)
+	}
+}
+
+func TestPublicDocsSchemaTreeCSSSeparatesCaretFromBranch(t *testing.T) {
+	css, err := os.ReadFile("static/manja.css")
+	if err != nil {
+		t.Fatal(err)
+	}
+	caretRule := regexp.MustCompile(`(?s)\.manja-schema-caret::before\s*\{[^}]*\}`)
+	rule := caretRule.FindString(string(css))
+	if rule == "" {
+		t.Fatalf("missing .manja-schema-caret::before rule")
+	}
+	if strings.Contains(rule, `left: -`) || strings.Contains(rule, "\n  right:") {
+		t.Fatalf("schema tree caret should be anchored at the elbow right tip, not offset outside the elbow lane:\n%s", rule)
+	}
+	if !strings.Contains(string(css), `--manja-schema-caret-gap: 0.4rem;`) {
+		t.Fatalf("schema tree should reserve a small gap between elbow tips and carets")
+	}
+	if !strings.Contains(rule, `left: calc(var(--manja-schema-elbow-tip-x) + var(--manja-schema-caret-gap));`) {
+		t.Fatalf("schema tree caret should sit after the elbow right tip with spacing:\n%s", rule)
+	}
+	if !strings.Contains(rule, `top: 0.55rem;`) {
+		t.Fatalf("schema tree caret should be vertically centered on the elbow line:\n%s", rule)
+	}
+	branchRule := regexp.MustCompile(`(?s)\.manja-schema-branch::before\s*\{[^}]*\}`).FindString(string(css))
+	if !strings.Contains(branchRule, `left: 0;`) {
+		t.Fatalf("schema tree branch should pass through the rail before reaching the elbow tip:\n%s", branchRule)
+	}
+	if !strings.Contains(branchRule, `width: var(--manja-schema-elbow-tip-x);`) {
+		t.Fatalf("schema tree branch should extend to the elbow tip where the caret sits:\n%s", branchRule)
+	}
+	if strings.Contains(string(css), `.manja-schema-node > summary .manja-schema-branch::after`) {
+		t.Fatalf("schema tree caret should not be drawn on the branch connector")
+	}
+}
+
+func TestPublicDocsSchemaTitleCSSWrapsLongNames(t *testing.T) {
+	css, err := os.ReadFile("static/manja.css")
+	if err != nil {
+		t.Fatal(err)
+	}
+	titleRule := regexp.MustCompile(`(?s)\.manja-doc-title\s*\{[^}]*\}`)
+	rule := titleRule.FindString(string(css))
+	if rule == "" {
+		t.Fatalf("missing .manja-doc-title rule")
+	}
+	if !strings.Contains(rule, `overflow-wrap: anywhere;`) {
+		t.Fatalf("schema title should wrap long API identifiers:\n%s", rule)
+	}
+}
+
+func TestPublicDocsSchemaInlineExampleCSSWrapsLongValues(t *testing.T) {
+	css, err := os.ReadFile("static/manja.css")
+	if err != nil {
+		t.Fatal(err)
+	}
+	exampleRule := regexp.MustCompile(`(?s)\.manja-schema-example-inline code\s*\{[^}]*\}`)
+	rule := exampleRule.FindString(string(css))
+	if rule == "" {
+		t.Fatalf("missing .manja-schema-example-inline code rule")
+	}
+	if !strings.Contains(rule, `overflow-wrap: anywhere;`) {
+		t.Fatalf("inline schema examples should wrap long URLs:\n%s", rule)
+	}
+}
+
 func TestPublicDocsSearchTargetsVisibleSectionsWithUniqueIDs(t *testing.T) {
 	data, err := os.ReadFile("../adapters/openapi/testdata/petstore.yaml")
 	if err != nil {
@@ -564,12 +803,17 @@ func TestPublicDocsRenderEndpointDetails(t *testing.T) {
 		`tabpaneloperation-updatetodo-responsesresponse-200`,
 		`tabpaneloperation-updatetodo-responsesresponse-404`,
 		`caption class="sr-only">Path Parameters</caption>`,
-		`caption class="sr-only">Request body schema for application/json</caption>`,
-		`caption class="sr-only">Response 404 schema for application/json</caption>`,
+		`aria-label="Request body schema for application/json schema tree"`,
+		`aria-label="Response 404 schema for application/json schema tree"`,
+		`class="manja-schema-root"`,
+		`data-schema-tree-row="message"`,
 	} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("endpoint detail view missing %q:\n%s", want, body)
 		}
+	}
+	if strings.Contains(body, `data-schema-tree-node="Error"`) {
+		t.Fatalf("endpoint schema tree should start at the root object properties, not render the root object row:\n%s", body)
 	}
 	for _, reject := range []string{"Try It", "Send API Request", "Execute request", `aria-label="On this page"`} {
 		if strings.Contains(body, reject) {

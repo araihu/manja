@@ -188,6 +188,94 @@ paths: {}
 	}
 }
 
+func TestOpenAPIParserIndexesComponentSchemaTree(t *testing.T) {
+	spec := []byte(`
+openapi: 3.1.0
+info:
+  title: Billing
+  version: 1.0.0
+paths: {}
+components:
+  schemas:
+    Invoice:
+      type: object
+      description: Billing invoice.
+      required: [id, customer, items]
+      properties:
+        id:
+          type: string
+          description: Stable invoice ID.
+          example: inv_123
+        customer:
+          type: object
+          description: Customer snapshot.
+          required: [email]
+          properties:
+            email:
+              type: string
+              format: email
+              description: Billing email.
+              example: ada@example.test
+            name:
+              type: string
+        items:
+          type: array
+          description: Purchased line items.
+          items:
+            type: object
+            required: [sku, quantity]
+            properties:
+              quantity:
+                type: integer
+                format: int32
+                example: 1
+              sku:
+                type: string
+                description: Stock keeping unit.
+`)
+	parser := openapiadapter.Parser{}
+	idx, err := parser.Parse(context.Background(), core.SpecFile{
+		SourceID: "src1",
+		Path:     "billing.yaml",
+		Format:   "yaml",
+		Bytes:    spec,
+	}, core.Revision{ID: "rev1", SourceID: "src1", Ref: "main"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(idx.Schemas) != 1 {
+		t.Fatalf("schemas = %#v", idx.Schemas)
+	}
+	schema := idx.Schemas[0]
+	if schema.Name != "Invoice" || schema.Summary.Type != "object" || schema.Summary.Description != "Billing invoice." {
+		t.Fatalf("schema summary = %#v", schema)
+	}
+	if len(schema.Summary.Properties) != 3 {
+		t.Fatalf("schema properties = %#v", schema.Summary.Properties)
+	}
+	customer := schema.Summary.Properties[0]
+	if customer.Name != "customer" || !customer.Required || customer.Schema.Type != "object" {
+		t.Fatalf("customer property = %#v", customer)
+	}
+	if len(customer.Schema.Properties) != 2 || customer.Schema.Properties[0].Name != "email" || customer.Schema.Properties[0].Schema.Format != "email" {
+		t.Fatalf("customer nested properties = %#v", customer.Schema.Properties)
+	}
+	if customer.Schema.Properties[0].Schema.Example != "ada@example.test" {
+		t.Fatalf("customer email example = %#v", customer.Schema.Properties[0].Schema)
+	}
+	id := schema.Summary.Properties[1]
+	if id.Name != "id" || !id.Required || id.Schema.Example != "inv_123" {
+		t.Fatalf("id property = %#v", id)
+	}
+	items := schema.Summary.Properties[2]
+	if items.Name != "items" || !items.Required || items.Schema.Type != "array" || items.Schema.Items == nil {
+		t.Fatalf("items property = %#v", items)
+	}
+	if len(items.Schema.Items.Properties) != 2 || items.Schema.Items.Properties[0].Name != "quantity" || items.Schema.Items.Properties[0].Schema.Format != "int32" {
+		t.Fatalf("item nested properties = %#v", items.Schema.Items)
+	}
+}
+
 func TestOpenAPIParserIgnoresInvalidExamplesForDocsIndexing(t *testing.T) {
 	spec := []byte(`
 openapi: 3.0.3

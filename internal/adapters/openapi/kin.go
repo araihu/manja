@@ -72,11 +72,15 @@ func (Parser) Parse(ctx context.Context, file core.SpecFile, rev core.Revision) 
 
 	if doc.Components != nil {
 		for name, schema := range doc.Components.Schemas {
-			description := ""
-			if schema != nil && schema.Value != nil {
-				description = schema.Value.Description
+			summary := schemaSummary(schema)
+			if summary.Name == "" {
+				summary.Name = name
 			}
-			idx.Schemas = append(idx.Schemas, core.Schema{Name: name, Description: description})
+			idx.Schemas = append(idx.Schemas, core.Schema{
+				Name:        name,
+				Description: summary.Description,
+				Summary:     summary,
+			})
 		}
 	}
 	sort.Slice(idx.Schemas, func(i, j int) bool { return idx.Schemas[i].Name < idx.Schemas[j].Name })
@@ -392,13 +396,14 @@ func schemaSummaryDepth(ref *openapi3.SchemaRef, depth int) core.SchemaSummary {
 		return core.SchemaSummary{}
 	}
 	summary := core.SchemaSummary{Name: refName(ref.Ref)}
-	if ref.Value == nil || depth > 2 {
+	if ref.Value == nil || depth > 4 {
 		return summary
 	}
 	schema := ref.Value
 	summary.Type = schemaType(schema)
 	summary.Format = schema.Format
 	summary.Description = schema.Description
+	summary.Example = exampleString(schema.Example)
 	if schema.Items != nil {
 		items := schemaSummaryDepth(schema.Items, depth+1)
 		summary.Items = &items

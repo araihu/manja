@@ -125,6 +125,7 @@ type SchemaSummary struct {
 	Type        string
 	Format      string
 	Description string
+	Example     string
 	Properties  []SchemaProperty
 	Items       *SchemaSummary
 }
@@ -139,6 +140,7 @@ type SchemaProperty struct {
 type Schema struct {
 	Name        string
 	Description string
+	Summary     SchemaSummary
 }
 
 type SearchDocument struct {
