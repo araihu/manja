@@ -966,7 +966,9 @@ func TestPublicDocsRenderEndpointDetails(t *testing.T) {
 		`role="tabpanel"`,
 		`tabpaneloperation-updatetodo-responsesresponse-200`,
 		`id="tabpaneloperation-updatetodo-responsesresponse-200" role="tabpanel" aria-label="200"><section class="grid gap-4">`,
-		`class="border-t border-outline pt-6 pb-5 dark:border-outline-dark"`,
+		`class="manja-response-panel-main grid gap-4"`,
+		`class="manja-response-panel-example"`,
+		`class="border-t border-outline pt-6 pb-5 dark:border-outline-dark"><div class="manja-response-panel-layout">`,
 		`tabpaneloperation-updatetodo-responsesresponse-404`,
 		`caption class="sr-only">Path Parameters</caption>`,
 		`aria-label="Request body schema for application/json schema tree"`,
@@ -996,6 +998,10 @@ func TestPublicDocsRenderEndpointDetails(t *testing.T) {
 		if count := strings.Count(body, statusBadge); count != 1 {
 			t.Fatalf("response status badge %q should render once in the tab, got %d:\n%s", statusBadge, count, body)
 		}
+	}
+	rail := htmlBetween(t, body, `<aside class="manja-endpoint-examples-rail"`, `</aside>`)
+	if strings.Contains(rail, `Response Example`) {
+		t.Fatalf("endpoint examples rail should not include response examples:\n%s", rail)
 	}
 	for _, reject := range []string{"Try It", "Send API Request", "Execute request", `aria-label="On this page"`} {
 		if strings.Contains(body, reject) {
@@ -1095,6 +1101,70 @@ func TestPublicDocsEndpointResponsesOnlyUsesSingleDetailColumn(t *testing.T) {
 	}
 }
 
+func TestPublicDocsEndpointResponseExamplesRenderInsideMatchingTabPanel(t *testing.T) {
+	idx := core.SpecIndex{
+		Title:           "Todos",
+		ExampleSpecJSON: `{"components":{"schemas":{"Todo":{"type":"object","properties":{"id":{"type":"string"},"message":{"type":"string"}}}}}}`,
+		Operations: []core.Operation{{
+			ID:      "getTodo",
+			Anchor:  "operation-gettodo",
+			Method:  "GET",
+			Path:    "/todos/{todoId}",
+			Summary: "Get Todo",
+			Responses: []core.OperationResponse{{
+				Status:      "200",
+				Description: "Todo response.",
+				MediaTypes: []core.OperationMediaType{{
+					ContentType: "application/json",
+					Schema: core.SchemaSummary{
+						Name: "Todo",
+						Type: "object",
+						JSON: `{"type":"object","required":["id"],"properties":{"id":{"type":"string"}}}`,
+					},
+					Example:         "{\n  \"id\": \"todo-1\"\n}",
+					ExampleProvided: true,
+				}},
+			}, {
+				Status:      "404",
+				Description: "Missing todo.",
+				MediaTypes: []core.OperationMediaType{{
+					ContentType: "application/json",
+					Schema: core.SchemaSummary{
+						Name: "Error",
+						Type: "object",
+						JSON: `{"type":"object","required":["message"],"properties":{"message":{"type":"string"}}}`,
+					},
+					Example:         "{\n  \"message\": \"not found\"\n}",
+					ExampleProvided: true,
+				}},
+			}},
+		}},
+	}
+
+	body := renderPublicDocs(t, NewPublicServer(idx), "/?selected=operation-gettodo")
+	if strings.Contains(body, `<aside class="manja-endpoint-examples-rail"`) {
+		t.Fatalf("response examples should not create the endpoint examples rail:\n%s", body)
+	}
+	response200Panel := htmlBetween(t, body, `id="tabpaneloperation-gettodo-responsesresponse-200"`, `id="tabpaneloperation-gettodo-responsesresponse-404"`)
+	for _, want := range []string{
+		`class="border-t border-outline pt-6 pb-5 dark:border-outline-dark"><div class="manja-response-panel-layout">`,
+		`class="manja-response-panel-main grid gap-4"`,
+		`class="manja-response-panel-example"`,
+		`Response Example: 200 application/json`,
+		`id="operation-gettodo-response-200-application-json-example"`,
+	} {
+		if !strings.Contains(response200Panel, want) {
+			t.Fatalf("200 response panel missing %q:\n%s", want, response200Panel)
+		}
+	}
+	if strings.Contains(response200Panel, `Response Example: 404 application/json`) {
+		t.Fatalf("200 response panel should not include the 404 example:\n%s", response200Panel)
+	}
+	if strings.Contains(response200Panel, `<section class="manja-response-panel-layout">`) {
+		t.Fatalf("response example grid should live inside the media block under its divider:\n%s", response200Panel)
+	}
+}
+
 func TestPublicDocsEndpointShellCSSUsesResponsiveExamplesRail(t *testing.T) {
 	css, err := os.ReadFile("static/manja.css")
 	if err != nil {
@@ -1133,6 +1203,36 @@ func TestPublicDocsEndpointShellCSSUsesResponsiveExamplesRail(t *testing.T) {
 	}
 	if !strings.Contains(railContentRule, `min-width: 0;`) || !strings.Contains(railContentRule, `max-width: 100%;`) {
 		t.Fatalf("endpoint examples rail children should not overflow their column:\n%s", railContentRule)
+	}
+}
+
+func TestPublicDocsEndpointResponsePanelCSSUsesResponsiveExampleColumn(t *testing.T) {
+	css, err := os.ReadFile("static/manja.css")
+	if err != nil {
+		t.Fatal(err)
+	}
+	layoutRule := regexp.MustCompile(`(?s)\.manja-response-panel-layout\s*\{[^}]*\}`).FindString(string(css))
+	if layoutRule == "" {
+		t.Fatalf("missing .manja-response-panel-layout rule")
+	}
+	for _, want := range []string{
+		`display: grid;`,
+		`grid-template-columns: minmax(0, 1fr);`,
+	} {
+		if !strings.Contains(layoutRule, want) {
+			t.Fatalf("response panel should stack by default with %q:\n%s", want, layoutRule)
+		}
+	}
+	childrenRule := regexp.MustCompile(`(?s)\.manja-response-panel-layout\s*>\s*\*[^}]*\}`).FindString(string(css))
+	if childrenRule == "" || !strings.Contains(childrenRule, `min-width: 0;`) {
+		t.Fatalf("response panel children should be constrained in their grid columns:\n%s", childrenRule)
+	}
+	largeRule := regexp.MustCompile(`(?s)@media\s*\(min-width:\s*1280px\)\s*\{.*?\.manja-response-panel-layout\s*\{[^}]*\}`).FindString(string(css))
+	if largeRule == "" {
+		t.Fatalf("missing large-screen response panel layout media rule")
+	}
+	if !strings.Contains(largeRule, `grid-template-columns: minmax(0, 1fr) minmax(20rem, 28rem);`) {
+		t.Fatalf("response panel should split schema and matching example into two columns on large screens:\n%s", largeRule)
 	}
 }
 
@@ -1257,4 +1357,18 @@ func renderPublicDocs(t *testing.T, handler http.Handler, targets ...string) str
 		t.Fatalf("status = %d", rec.Code)
 	}
 	return rec.Body.String()
+}
+
+func htmlBetween(t *testing.T, body string, start string, end string) string {
+	t.Helper()
+	startIndex := strings.Index(body, start)
+	if startIndex == -1 {
+		t.Fatalf("missing start marker %q:\n%s", start, body)
+	}
+	remainder := body[startIndex:]
+	endIndex := strings.Index(remainder, end)
+	if endIndex == -1 {
+		t.Fatalf("missing end marker %q after %q:\n%s", end, start, remainder)
+	}
+	return remainder[:endIndex]
 }

@@ -376,7 +376,7 @@ templ endpointSection(op core.Operation, exampleSpecJSON string) {
 							<section class="manja-endpoint-responses-section grid gap-5" aria-label="Responses">
 								<h4 class="font-title text-2xl font-bold text-on-surface-strong dark:text-on-surface-dark-strong">Responses</h4>
 								<div id={ opID + "-responses" }>
-									@tabs.Tabs(responseTabsConfig(opID, op.Responses))
+									@tabs.Tabs(responseTabsConfig(opID, op.Responses, exampleSpecJSON))
 								</div>
 							</section>
 						}
@@ -421,14 +421,6 @@ templ endpointSection(op core.Operation, exampleSpecJSON string) {
 								}
 							}
 						}
-						for _, response := range op.Responses {
-							for _, media := range response.MediaTypes {
-								{{ cfg := mediaSchemaExampleConfig(opID+"-response-"+anchorFragment(response.Status)+"-"+anchorFragment(media.ContentType)+"-example", "Response Example: "+response.Status+" "+media.ContentType, media, exampleSpecJSON) }}
-								if hasSchemaExample(cfg) {
-									@schemaExample(cfg)
-								}
-							}
-						}
 					</div>
 				</aside>
 			}
@@ -468,12 +460,12 @@ templ schemaSection(schema core.Schema, exampleSpecJSON string) {
 	</section>
 }
 
-templ responsePanel(opID string, response core.OperationResponse) {
+templ responsePanel(opID string, response core.OperationResponse, exampleSpecJSON string) {
 	<section class="grid gap-4">
 		if response.Description != "" {
 			<p class="text-base font-medium text-on-surface dark:text-on-surface-dark">{ response.Description }</p>
 		}
-		@mediaTypeList(opID+"-response-"+anchorFragment(response.Status), "Response "+response.Status, response.MediaTypes)
+		@responseMediaTypeList(opID, response, exampleSpecJSON)
 	</section>
 }
 
@@ -489,6 +481,35 @@ templ mediaTypeList(idPrefix string, label string, mediaTypes []core.OperationMe
 						}
 					</div>
 					@schemaProperties(mediaTypeTableID(idPrefix, media), label+" schema for "+media.ContentType, media.Schema)
+				</div>
+			}
+		</div>
+	}
+}
+
+templ responseMediaTypeList(opID string, response core.OperationResponse, exampleSpecJSON string) {
+	if len(response.MediaTypes) > 0 {
+		<div class="grid gap-4">
+			for _, media := range response.MediaTypes {
+				{{ idPrefix := opID+"-response-"+anchorFragment(response.Status) }}
+				{{ cfg := mediaSchemaExampleConfig(idPrefix+"-"+anchorFragment(media.ContentType)+"-example", "Response Example: "+response.Status+" "+media.ContentType, media, exampleSpecJSON) }}
+				<div class="border-t border-outline pt-6 pb-5 dark:border-outline-dark">
+					<div class="manja-response-panel-layout">
+						<div class="manja-response-panel-main grid gap-4">
+							<div class="flex flex-wrap items-center gap-3">
+								<span class="font-mono text-xs font-semibold text-on-surface-strong dark:text-on-surface-dark-strong">{ media.ContentType }</span>
+								if schemaInline(media.Schema) != "" {
+									<span class="font-mono text-xs text-on-surface-muted dark:text-on-surface-dark-muted">{ schemaInline(media.Schema) }</span>
+								}
+							</div>
+							@schemaProperties(mediaTypeTableID(idPrefix, media), "Response "+response.Status+" schema for "+media.ContentType, media.Schema)
+						</div>
+						if hasSchemaExample(cfg) {
+							<aside class="manja-response-panel-example" aria-label={ "Response " + response.Status + " " + media.ContentType + " example" }>
+								@schemaExample(cfg)
+							</aside>
+						}
+					</div>
 				</div>
 			}
 		</div>
@@ -659,14 +680,14 @@ func docsSearchConfig(docs []core.SearchDocument) searchfield.Config {
 	}
 }
 
-func responseTabsConfig(opID string, responses []core.OperationResponse) tabs.Config {
+func responseTabsConfig(opID string, responses []core.OperationResponse, exampleSpecJSON string) tabs.Config {
 	tabItems := make([]tabs.Tab, 0, len(responses))
 	for _, response := range responses {
 		tabItems = append(tabItems, tabs.Tab{
 			ID:        responseTabID(response),
 			Label:     response.Status,
 			LabelSlot: responseStatusBadge(response.Status),
-			Content:   responsePanel(opID, response),
+			Content:   responsePanel(opID, response, exampleSpecJSON),
 		})
 	}
 	cfg := tabs.Config{
@@ -1208,13 +1229,6 @@ func operationHasRail(op core.Operation) bool {
 	}
 	if op.RequestBody != nil {
 		for _, media := range op.RequestBody.MediaTypes {
-			if strings.TrimSpace(media.Example) != "" || strings.TrimSpace(media.Schema.JSON) != "" {
-				return true
-			}
-		}
-	}
-	for _, response := range op.Responses {
-		for _, media := range response.MediaTypes {
 			if strings.TrimSpace(media.Example) != "" || strings.TrimSpace(media.Schema.JSON) != "" {
 				return true
 			}
