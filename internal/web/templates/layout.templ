@@ -153,13 +153,13 @@ templ Layout(title string) {
 						if (!target || target.id !== 'main-content') return;
 						updateSidebarActiveLink(pendingSidebarHref || (window.location.pathname + window.location.search + window.location.hash));
 						pendingSidebarHref = "";
-						var main = document.querySelector('main');
-						if (main) main.scrollTo({ top: 0 });
+						window.scrollTo({ top: 0 });
 					});
 				})();
 			</script>
 			<link rel="stylesheet" href="/manja-assets/manja.css"/>
 			<script defer src="/manja-assets/schema-example.js"></script>
+			<script defer src="/manja-assets/request-composer.js"></script>
 			<style>[x-cloak] { display: none !important; }</style>
 		</head>
 		<body class="min-h-screen bg-surface text-on-surface dark:bg-surface-dark dark:text-on-surface-dark">
