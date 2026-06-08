@@ -252,12 +252,11 @@ templ downloadIcon() {
 
 func overviewSidebarItems(selectedAnchor string) []sidebar.Item {
 	return []sidebar.Item{{
-		ID:        "overview",
-		Label:     "Overview",
-		Icon:      overviewIcon(),
-		Href:      selectedDocsHref("overview"),
-		Active:    selectedAnchor == "overview",
-		LinkAttrs: sidebarLinkAttrs("Overview"),
+		ID:     "overview",
+		Label:  "Overview",
+		Icon:   overviewIcon(),
+		Href:   selectedDocsHref("overview"),
+		Active: selectedAnchor == "overview",
 	}}
 }
 
@@ -825,18 +824,16 @@ func sidebarSections(idx core.SpecIndex, selectedAnchor string, labelMode Endpoi
 					Active:     anchor == selectedAnchor,
 					Badge:      op.Method,
 					BadgeClass: methodBadgeClass(op.Method),
-					LinkAttrs:  sidebarLinkAttrs(label),
 				})
 			}
 		}
 		items := make([]sidebar.Item, 0, len(tagOrder))
 		for _, tag := range tagOrder {
 			items = append(items, sidebar.Item{
-				ID:        "tag-" + anchorFragment(tag),
-				Label:     tag,
-				Href:      firstSidebarHref(tagItems[tag]),
-				Items:     tagItems[tag],
-				LinkAttrs: sidebarLinkAttrs(tag),
+				ID:    "tag-" + anchorFragment(tag),
+				Label: tag,
+				Href:  firstSidebarHref(tagItems[tag]),
+				Items: tagItems[tag],
 			})
 		}
 		sections = append(sections, sidebar.Section{Title: "Operations", Items: items})
@@ -846,11 +843,10 @@ func sidebarSections(idx core.SpecIndex, selectedAnchor string, labelMode Endpoi
 		for _, schema := range idx.Schemas {
 			anchor := schemaAnchor(schema)
 			items = append(items, sidebar.Item{
-				ID:        anchor,
-				Label:     schema.Name,
-				Href:      selectedDocsHref(anchor),
-				Active:    anchor == selectedAnchor,
-				LinkAttrs: sidebarLinkAttrs(schema.Name),
+				ID:     anchor,
+				Label:  schema.Name,
+				Href:   selectedDocsHref(anchor),
+				Active: anchor == selectedAnchor,
 			})
 		}
 		sections = append(sections, sidebar.Section{Title: "Schemas", Items: items})
@@ -1019,17 +1015,6 @@ func operationSidebarLabel(op core.Operation, labelMode EndpointSidebarLabelMode
 		return firstNonEmpty(op.Path, operationTitle(op))
 	}
 	return firstNonEmpty(op.Summary, op.Path, operationTitle(op))
-}
-
-func sidebarLinkAttrs(label string) templpkg.Attributes {
-	label = strings.TrimSpace(label)
-	if label == "" {
-		return nil
-	}
-	return templpkg.Attributes{
-		"title":      label,
-		"aria-label": label,
-	}
 }
 
 func pluralizedCount(count int, singular string) string {
