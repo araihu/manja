@@ -6,9 +6,9 @@ templ Layout(title string) {
 	<!DOCTYPE html>
 	<html
 		lang="en"
-		data-theme="goshtoso"
+		data-theme="manja"
 		x-data="{
-			theme: localStorage.getItem('theme') || 'goshtoso',
+			theme: localStorage.getItem('theme') || 'manja',
 			darkMode: (function() {
 				const stored = localStorage.getItem('darkMode');
 				if (stored !== null) return stored === 'true';
@@ -38,7 +38,7 @@ templ Layout(title string) {
 			<script>
 				(function() {
 					try {
-						document.documentElement.setAttribute('data-theme', localStorage.getItem('theme') || 'goshtoso');
+						document.documentElement.setAttribute('data-theme', localStorage.getItem('theme') || 'manja');
 						var d = localStorage.getItem('darkMode');
 						var on = d !== null ? d === 'true' : window.matchMedia('(prefers-color-scheme: dark)').matches;
 						document.documentElement.classList.toggle('dark', on);

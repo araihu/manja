@@ -114,9 +114,17 @@ func TestPublicDocsRenderSearchAndOperations(t *testing.T) {
 			t.Fatalf("operation tag group missing collapsible marker %q:\n%s", want, body)
 		}
 	}
-	for _, want := range []string{`id="manja-theme"`, `name="theme"`, `manja-theme-trigger`, `theme: localStorage.getItem`, `theme = opt.value`} {
+	for _, want := range []string{
+		`data-theme="manja"`,
+		`id="manja-theme"`,
+		`name="theme"`,
+		`manja-theme-trigger`,
+		`theme: localStorage.getItem('theme') || 'manja'`,
+		`localStorage.getItem('theme') || 'manja'`,
+		`theme = opt.value`,
+	} {
 		if !strings.Contains(body, want) {
-			t.Fatalf("header theme picker missing %q:\n%s", want, body)
+			t.Fatalf("header theme picker or default theme missing %q:\n%s", want, body)
 		}
 	}
 	for _, want := range []string{
@@ -138,6 +146,7 @@ func TestPublicDocsRenderSearchAndOperations(t *testing.T) {
 		t.Fatalf("theme picker should be visible in the nav, not hidden behind responsive utility classes:\n%s", body)
 	}
 	for _, theme := range []string{
+		`value:&#39;manja&#39;`,
 		`value:&#39;goshtoso&#39;`,
 		`value:&#39;arctic&#39;`,
 		`value:&#39;minimal&#39;`,
@@ -155,8 +164,17 @@ func TestPublicDocsRenderSearchAndOperations(t *testing.T) {
 		`value:&#39;dracula&#39;`,
 	} {
 		if !strings.Contains(body, theme) {
-			t.Fatalf("theme picker missing Goshtoso theme option %q:\n%s", theme, body)
+			t.Fatalf("theme picker missing theme option %q:\n%s", theme, body)
 		}
+	}
+	if !regexp.MustCompile(`allOptions:\s*\[\{value:&#39;manja&#39;,label:&#39;Manja&#39;\},\{value:&#39;goshtoso&#39;,label:&#39;Goshtoso&#39;\}`).MatchString(body) {
+		t.Fatalf("Manja theme option should be first and Goshtoso should remain available:\n%s", body)
+	}
+	if !strings.Contains(body, `selectedValues: [&#39;manja&#39;]`) {
+		t.Fatalf("Manja theme option should be selected by default:\n%s", body)
+	}
+	if strings.Contains(body, `data-theme="goshtoso"`) || strings.Contains(body, `|| 'goshtoso'`) {
+		t.Fatalf("public docs should default to the Manja theme, not Goshtoso:\n%s", body)
 	}
 }
 
@@ -1340,6 +1358,27 @@ func TestPublicDocsRequestSampleHighlightCSSUsesThemeTokens(t *testing.T) {
 	} {
 		if !strings.Contains(source, want) {
 			t.Fatalf("request sample highlight CSS should use theme token marker %q", want)
+		}
+	}
+}
+
+func TestPublicDocsManjaThemeCSSDefinesBrandTokens(t *testing.T) {
+	css, err := os.ReadFile("static/manja.css")
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := string(css)
+	for _, want := range []string{
+		`[data-theme=manja]`,
+		`--color-surface: #f7f4ec;`,
+		`--color-surface-alt: #fffdf8;`,
+		`--color-primary: #0d8f73;`,
+		`--color-secondary: #18d6a7;`,
+		`--color-surface-dark: #101513;`,
+		`--color-primary-dark: #68f0c8;`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("Manja theme CSS missing %q:\n%s", want, body)
 		}
 	}
 }

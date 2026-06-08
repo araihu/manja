@@ -3399,7 +3399,8 @@ func methodBadgeVariant(method string) badge.Variant {
 
 func themeOptions() []selectfield.Option {
 	return []selectfield.Option{
-		{Value: "goshtoso", Label: "Goshtoso", Selected: true},
+		{Value: "manja", Label: "Manja", Selected: true},
+		{Value: "goshtoso", Label: "Goshtoso"},
 		{Value: "minimal", Label: "Minimal"},
 		{Value: "modern", Label: "Modern"},
 		{Value: "arctic", Label: "Arctic"},
