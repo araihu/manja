@@ -115,11 +115,6 @@ templ PublicDocsWithOptions(idx core.SpecIndex, selectedID string, opts PublicDo
 
 templ PublicDocsFragmentWithOptions(idx core.SpecIndex, selectedID string, opts PublicDocsOptions) {
 	{{ opts = opts.withDefaults() }}
-	{{ selected := selectedDocsItemFor(idx, selectedID) }}
-	<title hx-swap-oob="true">{ idx.Title }</title>
-	<div id="sidebar-nav-content" hx-swap-oob="true" class="h-full">
-		@publicDocsSidebar(idx, selected, opts)
-	</div>
 	@PublicDocsFragmentContent(idx, selectedID, opts)
 }
 
@@ -827,6 +822,7 @@ func sidebarSections(idx core.SpecIndex, selectedAnchor string, labelMode Endpoi
 	if len(idx.Operations) > 0 {
 		tagOrder := make([]string, 0)
 		tagItems := map[string][]sidebar.Item{}
+		tagOpen := map[string]bool{}
 		for _, op := range idx.Operations {
 			tags := op.Tags
 			if len(tags) == 0 {
@@ -841,13 +837,17 @@ func sidebarSections(idx core.SpecIndex, selectedAnchor string, labelMode Endpoi
 					tagOrder = append(tagOrder, tag)
 				}
 				anchor := operationAnchor(op)
+				active := anchor == selectedAnchor
+				if active {
+					tagOpen[tag] = true
+				}
 				label := operationSidebarLabel(op, labelMode)
 				href := selectedDocsHref(anchor)
 				tagItems[tag] = append(tagItems[tag], sidebar.Item{
 					ID:         anchor,
 					Label:      label,
 					Href:       href,
-					Active:     anchor == selectedAnchor,
+					Active:     active,
 					Badge:      op.Method,
 					BadgeClass: methodBadgeClass(op.Method),
 					LinkAttrs:  sidebarNavigationAttrs(label, href),
@@ -856,16 +856,15 @@ func sidebarSections(idx core.SpecIndex, selectedAnchor string, labelMode Endpoi
 		}
 		items := make([]sidebar.Item, 0, len(tagOrder))
 		for _, tag := range tagOrder {
-			href := firstSidebarHref(tagItems[tag])
 			items = append(items, sidebar.Item{
-				ID:        "tag-" + anchorFragment(tag),
-				Label:     tag,
-				Href:      href,
-				Items:     tagItems[tag],
-				LinkAttrs: sidebarNavigationAttrs(tag, href),
+				ID:    "tag-" + anchorFragment(tag),
+				Label: tag,
+				Href:  "#",
+				Open:  tagOpen[tag],
+				Items: tagItems[tag],
 			})
 		}
-		sections = append(sections, sidebar.Section{Title: "Operations", Items: items})
+		sections = append(sections, sidebar.Section{Title: "Operations", Collapsible: true, Items: items})
 	}
 	if len(idx.Schemas) > 0 {
 		items := make([]sidebar.Item, 0, len(idx.Schemas))
@@ -991,6 +990,7 @@ func sidebarNavigationAttrs(label string, href string) templpkg.Attributes {
 	attrs["hx-target"] = "#main-content"
 	attrs["hx-swap"] = "innerHTML"
 	attrs["hx-push-url"] = "true"
+	attrs["data-manja-sidebar-nav"] = "true"
 	return attrs
 }
 

@@ -23,10 +23,12 @@ func TestPublicDocsRenderSearchAndOperations(t *testing.T) {
 		Operations: []core.Operation{
 			{ID: "listPets", Method: "GET", Path: "/pets", Summary: "List pets", Tags: []string{"Pets"}},
 			{ID: "createPet", Method: "POST", Path: "/pets", Summary: "Create pet", Tags: []string{"Pets"}},
+			{ID: "listStores", Method: "GET", Path: "/stores", Summary: "List stores", Tags: []string{"Stores"}},
 		},
 		Schemas: []core.Schema{{Name: "Pet", Description: "A pet"}},
 		Search: []core.SearchDocument{
 			{ID: "operation-listPets", Title: "GET /pets", Description: "List pets", Href: "#operation-listPets", Kind: "Operation", Section: "Pets"},
+			{ID: "operation-listStores", Title: "GET /stores", Description: "List stores", Href: "#operation-listStores", Kind: "Operation", Section: "Stores"},
 			{ID: "schema-Pet", Title: "Pet", Description: "A pet", Href: "#schema-pet", Kind: "Schema", Section: "Schemas"},
 		},
 	}
@@ -88,20 +90,27 @@ func TestPublicDocsRenderSearchAndOperations(t *testing.T) {
 			t.Fatalf("method badges should use Goshtoso badge variants, got custom class %q:\n%s", reject, body)
 		}
 	}
-	sidebarTagGroup := regexp.MustCompile(`<div data-sidebar-section="Operations">.*<a href="/\?selected=operation-listPets#operation-listPets"[^>]*><span class="min-w-0 flex-1 truncate">Pets</span>.*<div class="ml-4 flex flex-col">.*<a href="/\?selected=operation-listPets#operation-listPets"[^>]*><span class="min-w-0 flex-1 truncate">List pets</span>\s*<sup[^>]*>GET</sup>`)
+	sidebarTagGroup := regexp.MustCompile(`<div data-sidebar-section="Operations">.*<div x-data="\{ open: true \}">.*<a href="#"[^>]*x-on:click\.prevent="open = !open"[^>]*aria-controls="tag-pets-children"[^>]*><span class="min-w-0 flex-1 truncate">Pets</span>.*<div id="tag-pets-children" x-show="open" class="ml-4 flex flex-col">.*<a href="/\?selected=operation-listPets#operation-listPets"[^>]*><span class="min-w-0 flex-1 truncate">List pets</span>\s*<sup[^>]*>GET</sup>`)
 	if !sidebarTagGroup.MatchString(body) {
-		t.Fatalf("operation sidebar items should use Penguin-style tag sub-items:\n%s", body)
+		t.Fatalf("operation sidebar items should open the selected tag group on full page render:\n%s", body)
 	}
-	tagWithoutRail := regexp.MustCompile(`<a href="/\?selected=operation-listPets#operation-listPets"[^>]*class="flex items-center gap-2 py-2\.5 pl-4[^"]*"><span class="min-w-0 flex-1 truncate">Pets</span>`)
-	if !tagWithoutRail.MatchString(body) {
-		t.Fatalf("operation tag parent should not render a leading rail:\n%s", body)
+	petsControl := regexp.MustCompile(`<a [^>]*aria-controls="tag-pets-children"[^>]*>`).FindString(body)
+	if petsControl == "" {
+		t.Fatalf("operation tag group should render a Pets disclosure control:\n%s", body)
 	}
-	if strings.Contains(body, `<a href="#operations-heading" class="flex items-center gap-2 border-l`) {
-		t.Fatalf("operation tag parent should not use endpoint rail classes:\n%s", body)
+	if !strings.Contains(petsControl, `href="#"`) {
+		t.Fatalf("operation tag disclosure should not navigate to the first endpoint, got:\n%s", petsControl)
 	}
-	for _, reject := range []string{`x-data="{ open: true }"`, `x-on:click.prevent="open = !open"`, `x-bind:aria-expanded="open.toString()"`, `tag-pets-children`} {
-		if strings.Contains(body, reject) {
-			t.Fatalf("Penguin-style sidebar sub-items should be persistently visible, got collapsible marker %q:\n%s", reject, body)
+	if strings.Contains(petsControl, `hx-get=`) {
+		t.Fatalf("operation tag disclosure should not issue HTMX navigation, got:\n%s", petsControl)
+	}
+	storesGroup := regexp.MustCompile(`<div x-data="\{ open: false \}">.*<a href="#"[^>]*aria-controls="tag-stores-children"[^>]*><span class="min-w-0 flex-1 truncate">Stores</span>.*<div id="tag-stores-children" x-show="open" style="display: none;" class="ml-4 flex flex-col">`)
+	if !storesGroup.MatchString(body) {
+		t.Fatalf("unselected operation tag groups should stay collapsed:\n%s", body)
+	}
+	for _, want := range []string{`aria-controls="tag-pets-children"`, `aria-controls="tag-stores-children"`, `x-bind:aria-expanded="open.toString()"`} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("operation tag group missing collapsible marker %q:\n%s", want, body)
 		}
 	}
 	for _, want := range []string{`id="manja-theme"`, `name="theme"`, `manja-theme-trigger`, `theme: localStorage.getItem`, `theme = opt.value`} {
@@ -409,7 +418,7 @@ func TestPublicDocsRendersSelectedSidebarItemOnly(t *testing.T) {
 	}
 }
 
-func TestPublicDocsFragmentRequestSwapsMainContentAndSidebar(t *testing.T) {
+func TestPublicDocsFragmentRequestReturnsOnlyMainContent(t *testing.T) {
 	idx := core.SpecIndex{
 		Title: "Petstore",
 		Operations: []core.Operation{
@@ -443,18 +452,14 @@ func TestPublicDocsFragmentRequestSwapsMainContentAndSidebar(t *testing.T) {
 	body := rec.Body.String()
 	for _, want := range []string{
 		`Creation body`,
-		`<title hx-swap-oob="true">Petstore</title>`,
-		`id="sidebar-nav-content" hx-swap-oob="true"`,
-		`href="/?selected=operation-createPet#operation-createPet"`,
-		`<span class="sr-only">active</span>`,
 	} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("fragment response missing %q:\n%s", want, body)
 		}
 	}
-	for _, reject := range []string{`<!doctype html>`, `<html`, `id="main-content"`} {
+	for _, reject := range []string{`<!doctype html>`, `<html`, `id="main-content"`, `hx-swap-oob`, `id="sidebar-nav-content"`} {
 		if strings.Contains(body, reject) {
-			t.Fatalf("fragment response should not include full-page marker %q:\n%s", reject, body)
+			t.Fatalf("fragment response should not include shell/sidebar marker %q:\n%s", reject, body)
 		}
 	}
 }

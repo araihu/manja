@@ -215,10 +215,17 @@ func TestPublicDocsSidebarNavigationSwapsMainContent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := page.Goto(server); err != nil {
+	if _, err := page.Goto(server + "/?selected=operation-filler-0#operation-filler-0"); err != nil {
+		t.Fatal(err)
+	}
+	if err := page.Locator("#operation-filler-0:visible").WaitFor(); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := page.Evaluate("() => { window.__manjaReloadSentinel = 'kept'; }"); err != nil {
+		t.Fatal(err)
+	}
+	openSidebarTagGroup(t, page, "tag-pets-children")
+	if _, err := page.Evaluate("() => { document.getElementById('sidebar-nav-content').dataset.sidebarSentinel = 'kept'; }"); err != nil {
 		t.Fatal(err)
 	}
 	scrolled, err := page.Evaluate(`() => {
@@ -258,22 +265,121 @@ func TestPublicDocsSidebarNavigationSwapsMainContent(t *testing.T) {
 	if scrollPreserved != true {
 		t.Fatalf("sidebar navigation reset the sidebar scroll position")
 	}
-	operationActive, err := page.Evaluate(`() => Array.from(document.querySelectorAll('aside a[href="/?selected=operation-target#operation-target"]')).some((link) => link.querySelector('.sr-only')?.textContent.trim() === 'active')`)
+	sidebarUntouched, err := page.Evaluate(`() => document.getElementById('sidebar-nav-content')?.dataset.sidebarSentinel === 'kept'`)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if operationActive != true {
-		t.Fatalf("sidebar navigation did not update the selected operation active marker")
+	if sidebarUntouched != true {
+		t.Fatalf("sidebar navigation replaced the sidebar instead of swapping only main content")
 	}
-	overviewActive, err := page.Evaluate(`() => document.querySelector('aside a[href="/?selected=overview#overview"] .sr-only')?.textContent.trim() === 'active'`)
+	groupStillOpen, err := page.Evaluate(`() => document.querySelector('#tag-pets-children a')?.offsetParent !== null`)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if overviewActive == true {
-		t.Fatalf("sidebar navigation left the previous overview active marker in place")
+	if groupStillOpen != true {
+		t.Fatalf("sidebar navigation collapsed the open sidebar tag group")
+	}
+	targetActive, err := page.Evaluate(`() => document.querySelector('aside a[href="/?selected=operation-target#operation-target"] .sr-only')?.textContent.trim() === 'active'`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if targetActive != true {
+		t.Fatalf("sidebar navigation did not move the active marker to the selected operation")
+	}
+	initialActive, err := page.Evaluate(`() => document.querySelector('aside a[href="/?selected=operation-filler-0#operation-filler-0"] .sr-only')?.textContent.trim() === 'active'`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if initialActive == true {
+		t.Fatalf("sidebar navigation left the previous operation active marker in place")
 	}
 	if got := page.URL(); got != server+"/?selected=operation-target#operation-target" {
 		t.Fatalf("page URL = %q, want %q", got, server+"/?selected=operation-target#operation-target")
+	}
+}
+
+func TestPublicDocsSidebarTagGroupsToggleIndependently(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping e2e test in short mode")
+	}
+
+	idx := core.SpecIndex{
+		Title:   "Petstore",
+		Version: "1.0.0",
+		Operations: []core.Operation{
+			{ID: "listPets", Method: "GET", Path: "/pets", Summary: "List pets", Tags: []string{"Pets"}, Anchor: "operation-listpets"},
+			{ID: "createPet", Method: "POST", Path: "/pets", Summary: "Create pet", Tags: []string{"Pets"}, Anchor: "operation-createpet"},
+			{ID: "listStores", Method: "GET", Path: "/stores", Summary: "List stores", Tags: []string{"Stores"}, Anchor: "operation-liststores"},
+		},
+	}
+	server := httptestServer(t, web.NewPublicServer(idx))
+
+	pw, err := playwright.Run()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pw.Stop()
+	browser, err := pw.Chromium.Launch()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer browser.Close()
+	page, err := browser.NewPage(playwright.BrowserNewPageOptions{
+		Viewport: &playwright.Size{Width: 1024, Height: 768},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := page.Goto(server); err != nil {
+		t.Fatal(err)
+	}
+	initialURL := page.URL()
+	petsControl := page.Locator(`aside a[aria-controls="tag-pets-children"]`)
+	count, err := petsControl.Count()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if count != 1 {
+		t.Fatalf("Pets tag disclosure count = %d, want 1", count)
+	}
+	storesControl := page.Locator(`aside a[aria-controls="tag-stores-children"]`)
+	count, err = storesControl.Count()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if count != 1 {
+		t.Fatalf("Stores tag disclosure count = %d, want 1", count)
+	}
+	petsChild := page.Locator(`#tag-pets-children a`).First()
+	storesChild := page.Locator(`#tag-stores-children a`).First()
+	if err := petsChild.WaitFor(playwright.LocatorWaitForOptions{State: playwright.WaitForSelectorStateHidden}); err != nil {
+		t.Fatal(err)
+	}
+	if err := storesChild.WaitFor(playwright.LocatorWaitForOptions{State: playwright.WaitForSelectorStateHidden}); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := petsControl.Click(); err != nil {
+		t.Fatal(err)
+	}
+	if err := petsChild.WaitFor(playwright.LocatorWaitForOptions{State: playwright.WaitForSelectorStateVisible}); err != nil {
+		t.Fatal(err)
+	}
+	if err := storesChild.WaitFor(playwright.LocatorWaitForOptions{State: playwright.WaitForSelectorStateHidden}); err != nil {
+		t.Fatal(err)
+	}
+	if got := page.URL(); got != initialURL {
+		t.Fatalf("tag disclosure should not navigate, got URL %q want %q", got, initialURL)
+	}
+
+	if err := petsControl.Click(); err != nil {
+		t.Fatal(err)
+	}
+	if err := petsChild.WaitFor(playwright.LocatorWaitForOptions{State: playwright.WaitForSelectorStateHidden}); err != nil {
+		t.Fatal(err)
+	}
+	if got := page.URL(); got != initialURL {
+		t.Fatalf("closing tag disclosure should not navigate, got URL %q want %q", got, initialURL)
 	}
 }
 
@@ -309,6 +415,7 @@ func TestPublicDocsContainsScrollInDocsPanes(t *testing.T) {
 	if err := page.Locator("#" + selectedAnchor + ":visible").WaitFor(); err != nil {
 		t.Fatal(err)
 	}
+	openSidebarTagGroup(t, page, "tag-teams-children")
 
 	result, err := page.Evaluate(`() => {
 		const documentScroller = document.scrollingElement;
@@ -375,6 +482,27 @@ func metricNumber(t *testing.T, metrics map[string]any, key string) float64 {
 	default:
 		t.Fatalf("metric %s should be numeric, got %#v", key, value)
 		return 0
+	}
+}
+
+func openSidebarTagGroup(t *testing.T, page playwright.Page, childrenID string) {
+	t.Helper()
+
+	open, err := page.Evaluate(`(childrenID) => document.querySelector("#" + childrenID + " a")?.offsetParent !== null`, childrenID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if open == true {
+		return
+	}
+	if err := page.Locator(`aside a[aria-controls="` + childrenID + `"]`).Click(); err != nil {
+		t.Fatal(err)
+	}
+	if err := page.Locator("#" + childrenID + " a").First().WaitFor(playwright.LocatorWaitForOptions{
+		State:   playwright.WaitForSelectorStateVisible,
+		Timeout: playwright.Float(3000),
+	}); err != nil {
+		t.Fatal(err)
 	}
 }
 
