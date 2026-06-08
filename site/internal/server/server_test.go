@@ -4,6 +4,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -13,7 +14,7 @@ import (
 func TestRoutesRender(t *testing.T) {
 	t.Parallel()
 
-	srv := httptest.NewServer(server.New())
+	srv := httptest.NewServer(newTestServer(t))
 	t.Cleanup(srv.Close)
 
 	tests := []struct {
@@ -31,9 +32,12 @@ func TestRoutesRender(t *testing.T) {
 		{
 			path: "/demo",
 			want: []string{
-				"GitHub REST API demo",
-				"GET",
-				"/repos/{owner}/{repo}/teams",
+				"GitHub v3 REST API",
+				"Search docs",
+				"Operations",
+				`href="/demo/?selected=overview#overview"`,
+				`href="/demo/manja-assets/manja.css"`,
+				`data-search-source-url="/demo/search.json"`,
 			},
 		},
 		{
@@ -64,7 +68,7 @@ func TestRoutesRender(t *testing.T) {
 func TestStaticAssetsRender(t *testing.T) {
 	t.Parallel()
 
-	srv := httptest.NewServer(server.New())
+	srv := httptest.NewServer(newTestServer(t))
 	t.Cleanup(srv.Close)
 
 	css := get(t, srv.URL+"/static/site.css", http.StatusOK)
@@ -76,15 +80,35 @@ func TestStaticAssetsRender(t *testing.T) {
 	if !strings.Contains(favicon, "<svg") {
 		t.Fatalf("favicon.svg did not render as svg")
 	}
+
+	demoCSS := get(t, srv.URL+"/demo/manja-assets/manja.css", http.StatusOK)
+	if !strings.Contains(demoCSS, "--color-surface") {
+		t.Fatalf("demo renderer CSS did not render")
+	}
+
+	searchJSON := get(t, srv.URL+"/demo/search.json", http.StatusOK)
+	if !strings.Contains(searchJSON, `"href":"/demo/?selected=`) {
+		t.Fatalf("demo search index did not keep result hrefs under /demo")
+	}
 }
 
 func TestMissingRoute(t *testing.T) {
 	t.Parallel()
 
-	srv := httptest.NewServer(server.New())
+	srv := httptest.NewServer(newTestServer(t))
 	t.Cleanup(srv.Close)
 
 	get(t, srv.URL+"/missing", http.StatusNotFound)
+}
+
+func newTestServer(t *testing.T) http.Handler {
+	t.Helper()
+
+	return server.NewWithOptions(t.Context(), server.Options{
+		SpecPath:  filepath.Join("..", "..", "..", "internal", "adapters", "openapi", "testdata", "github-v3-rest.json"),
+		DataDir:   t.TempDir(),
+		StaticDir: filepath.Join("..", "..", "..", "internal", "web", "static"),
+	})
 }
 
 func get(t *testing.T, url string, wantStatus int) string {

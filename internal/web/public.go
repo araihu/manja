@@ -27,6 +27,7 @@ const (
 type PublicOptions struct {
 	EndpointSidebarLabel EndpointSidebarLabelMode
 	MarkdownRenderer     core.MarkdownRenderer
+	StaticDir            string
 }
 
 const openAPIJSONDownloadPath = "/openapi.json"
@@ -42,6 +43,9 @@ type searchJSONItem struct {
 }
 
 func (opts PublicOptions) withDefaults() PublicOptions {
+	if opts.StaticDir == "" {
+		opts.StaticDir = "internal/web/static"
+	}
 	switch opts.EndpointSidebarLabel {
 	case EndpointSidebarLabelPath:
 		return opts
@@ -140,7 +144,7 @@ func NewPublicServerWithOptions(idx core.SpecIndex, opts PublicOptions) http.Han
 	opts = opts.withDefaults()
 	mux := http.NewServeMux()
 	mux.Handle("/assets/", assets.Handler())
-	mux.Handle("/manja-assets/", http.StripPrefix("/manja-assets/", http.FileServer(http.Dir("internal/web/static"))))
+	mux.Handle("/manja-assets/", http.StripPrefix("/manja-assets/", http.FileServer(http.Dir(opts.StaticDir))))
 	mux.HandleFunc(searchJSONPath, func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != searchJSONPath {
 			http.NotFound(w, r)
