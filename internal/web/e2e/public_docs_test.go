@@ -2,6 +2,7 @@ package e2e
 
 import (
 	"context"
+	"fmt"
 	"net"
 	"net/http"
 	"os"
@@ -156,6 +157,123 @@ func TestPublicDocsThemeSelectDropdownOverlaysContent(t *testing.T) {
 	}
 	if resultMap, ok := result.(map[string]any); !ok || resultMap["menuContainsHit"] != true {
 		t.Fatalf("theme dropdown should overlay content below the header, got %#v", result)
+	}
+}
+
+func TestPublicDocsSidebarNavigationSwapsMainContent(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping e2e test in short mode")
+	}
+
+	const operationAnchor = "operation-target"
+	operations := make([]core.Operation, 0, 45)
+	for i := 0; i < 44; i++ {
+		operations = append(operations, core.Operation{
+			ID:      fmt.Sprintf("filler%d", i),
+			Method:  "GET",
+			Path:    fmt.Sprintf("/filler/%d", i),
+			Summary: fmt.Sprintf("Filler operation %d", i),
+			Tags:    []string{"Pets"},
+			Anchor:  fmt.Sprintf("operation-filler-%d", i),
+		})
+	}
+	operations = append(operations, core.Operation{
+		ID:          "target",
+		Method:      "GET",
+		Path:        "/target",
+		Summary:     "Target operation",
+		Description: "Target body",
+		Tags:        []string{"Pets"},
+		Anchor:      operationAnchor,
+	})
+	idx := core.SpecIndex{
+		Title:      "Petstore",
+		Version:    "1.0.0",
+		Operations: operations,
+		Search: []core.SearchDocument{{
+			ID:          operationAnchor,
+			Title:       "GET /target",
+			Description: "Target operation",
+			Href:        "#" + operationAnchor,
+			Kind:        "Operation",
+			Section:     "Pets",
+		}},
+	}
+	server := httptestServer(t, web.NewPublicServer(idx))
+
+	pw, err := playwright.Run()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pw.Stop()
+	browser, err := pw.Chromium.Launch()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer browser.Close()
+	page, err := browser.NewPage()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := page.Goto(server); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := page.Evaluate("() => { window.__manjaReloadSentinel = 'kept'; }"); err != nil {
+		t.Fatal(err)
+	}
+	scrolled, err := page.Evaluate(`() => {
+		const sidebar = document.querySelector('.sidebar-scroll');
+		if (!sidebar) return false;
+		sidebar.scrollTop = sidebar.scrollHeight;
+		return sidebar.scrollTop > 0;
+	}`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if scrolled != true {
+		t.Fatalf("test setup could not scroll the sidebar")
+	}
+
+	link := page.Locator(`aside a[href="/?selected=operation-target#operation-target"]`).Last()
+	if err := link.Click(); err != nil {
+		t.Fatal(err)
+	}
+	if err := page.Locator("#operation-target:visible").WaitFor(); err != nil {
+		t.Fatal(err)
+	}
+	kept, err := page.Evaluate("() => window.__manjaReloadSentinel === 'kept'")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if kept != true {
+		t.Fatalf("sidebar navigation performed a full page reload instead of preserving page state")
+	}
+	scrollPreserved, err := page.Evaluate(`() => {
+		const sidebar = document.querySelector('.sidebar-scroll');
+		return !!sidebar && sidebar.scrollTop > 0;
+	}`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if scrollPreserved != true {
+		t.Fatalf("sidebar navigation reset the sidebar scroll position")
+	}
+	operationActive, err := page.Evaluate(`() => Array.from(document.querySelectorAll('aside a[href="/?selected=operation-target#operation-target"]')).some((link) => link.querySelector('.sr-only')?.textContent.trim() === 'active')`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if operationActive != true {
+		t.Fatalf("sidebar navigation did not update the selected operation active marker")
+	}
+	overviewActive, err := page.Evaluate(`() => document.querySelector('aside a[href="/?selected=overview#overview"] .sr-only')?.textContent.trim() === 'active'`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if overviewActive == true {
+		t.Fatalf("sidebar navigation left the previous overview active marker in place")
+	}
+	if got := page.URL(); got != server+"/?selected=operation-target#operation-target" {
+		t.Fatalf("page URL = %q, want %q", got, server+"/?selected=operation-target#operation-target")
 	}
 }
 

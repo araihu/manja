@@ -46,6 +46,24 @@ templ Layout(title string) {
 				})();
 			</script>
 			@head.Dependencies()
+			<script>
+				var __manjaSidebarScrollTop = 0;
+				document.addEventListener('htmx:beforeSwap', () => {
+					var el = document.querySelector('.sidebar-scroll');
+					if (el) __manjaSidebarScrollTop = el.scrollTop;
+				});
+				document.addEventListener('htmx:afterSwap', (e) => {
+					var target = e && e.detail && e.detail.target;
+					if (!target || target.id !== 'main-content') return;
+					var sidebarContent = document.getElementById('sidebar-nav-content');
+					if (sidebarContent && window.Alpine && Alpine.initTree) Alpine.initTree(sidebarContent);
+					if (sidebarContent && window.htmx && htmx.process) htmx.process(sidebarContent);
+					var sidebar = document.querySelector('.sidebar-scroll');
+					if (sidebar) sidebar.scrollTop = __manjaSidebarScrollTop;
+					var main = document.querySelector('main');
+					if (main) main.scrollTo({ top: 0 });
+				});
+			</script>
 			<link rel="stylesheet" href="/manja-assets/manja.css"/>
 			<script defer src="/manja-assets/schema-example.js"></script>
 			<style>[x-cloak] { display: none !important; }</style>

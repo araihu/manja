@@ -135,9 +135,16 @@ func NewPublicServerWithOptions(idx core.SpecIndex, opts PublicOptions) http.Han
 			http.NotFound(w, r)
 			return
 		}
-		if err := templates.PublicDocsWithOptions(idx, r.URL.Query().Get("selected"), templates.PublicDocsOptions{
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		selected := r.URL.Query().Get("selected")
+		renderOpts := templates.PublicDocsOptions{
 			EndpointSidebarLabel: opts.EndpointSidebarLabel,
-		}).Render(r.Context(), w); err != nil {
+		}
+		component := templates.PublicDocsWithOptions(idx, selected, renderOpts)
+		if r.Header.Get("HX-Request") == "true" && r.Header.Get("HX-Boosted") != "true" {
+			component = templates.PublicDocsFragmentWithOptions(idx, selected, renderOpts)
+		}
+		if err := component.Render(r.Context(), w); err != nil {
 			slog.ErrorContext(r.Context(), "render public docs", "error", err)
 			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		}

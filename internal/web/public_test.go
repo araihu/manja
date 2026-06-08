@@ -353,6 +353,56 @@ func TestPublicDocsRendersSelectedSidebarItemOnly(t *testing.T) {
 	}
 }
 
+func TestPublicDocsFragmentRequestSwapsMainContentAndSidebar(t *testing.T) {
+	idx := core.SpecIndex{
+		Title: "Petstore",
+		Operations: []core.Operation{
+			{ID: "listPets", Method: "GET", Path: "/pets", Summary: "List pets", Tags: []string{"Pets"}},
+			{ID: "createPet", Method: "POST", Path: "/pets", Summary: "Create pet", Description: "Creation body", Tags: []string{"Pets"}},
+		},
+	}
+	srv := NewPublicServer(idx)
+
+	full := renderPublicDocs(t, srv, "/?selected=operation-createPet")
+	for _, want := range []string{
+		`id="main-content"`,
+		`id="sidebar-nav-content"`,
+		`hx-get="/?selected=operation-createPet#operation-createPet"`,
+		`hx-target="#main-content"`,
+		`hx-swap="innerHTML"`,
+		`hx-push-url="true"`,
+	} {
+		if !strings.Contains(full, want) {
+			t.Fatalf("full page missing fragment navigation marker %q:\n%s", want, full)
+		}
+	}
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/?selected=operation-createPet", nil)
+	req.Header.Set("HX-Request", "true")
+	srv.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("fragment status = %d", rec.Code)
+	}
+	body := rec.Body.String()
+	for _, want := range []string{
+		`Creation body`,
+		`<title hx-swap-oob="true">Petstore</title>`,
+		`id="sidebar-nav-content" hx-swap-oob="true"`,
+		`href="/?selected=operation-createPet#operation-createPet"`,
+		`<span class="sr-only">active</span>`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("fragment response missing %q:\n%s", want, body)
+		}
+	}
+	for _, reject := range []string{`<!doctype html>`, `<html`, `id="main-content"`} {
+		if strings.Contains(body, reject) {
+			t.Fatalf("fragment response should not include full-page marker %q:\n%s", reject, body)
+		}
+	}
+}
+
 func TestPublicDocsEndpointSidebarLabelMode(t *testing.T) {
 	idx := core.SpecIndex{
 		Title: "Petstore",

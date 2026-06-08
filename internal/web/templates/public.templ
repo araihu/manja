@@ -98,24 +98,45 @@ templ PublicDocsWithOptions(idx core.SpecIndex, selectedID string, opts PublicDo
 			</header>
 			<div class="flex h-[calc(100vh-4rem)] overflow-hidden">
 				<aside class="hidden w-72 shrink-0 lg:block" aria-label="API sections">
-					@sidebar.Sidebar(sidebar.Config{
-						Items: overviewSidebarItems(selected.Anchor),
-						SectionsTitle: "API Reference",
-						Sections: sidebarSections(idx, selected.Anchor, opts.EndpointSidebarLabel),
-						SearchSlot: docsSearchField(idx.Search),
-					})
+					<div id="sidebar-nav-content" class="h-full">
+						@publicDocsSidebar(idx, selected, opts)
+					</div>
 				</aside>
 				<main class="min-w-0 flex-1 overflow-x-hidden overflow-y-auto p-6 lg:px-10 lg:py-8">
 					<div id="main-content" class="mx-auto max-w-[100rem]">
-						<h1 class="sr-only">{ idx.Title } OpenAPI docs</h1>
-						@selectedDocsBreadcrumbs(idx, selected)
-						@selectedDocsContent(idx, selected)
+						@PublicDocsFragmentContent(idx, selectedID, opts)
 					</div>
 				</main>
 				@searchfield.SearchModal(docsSearchConfig(idx.Search))
 			</div>
 		</div>
 	}
+}
+
+templ PublicDocsFragmentWithOptions(idx core.SpecIndex, selectedID string, opts PublicDocsOptions) {
+	{{ opts = opts.withDefaults() }}
+	{{ selected := selectedDocsItemFor(idx, selectedID) }}
+	<title hx-swap-oob="true">{ idx.Title }</title>
+	<div id="sidebar-nav-content" hx-swap-oob="true" class="h-full">
+		@publicDocsSidebar(idx, selected, opts)
+	</div>
+	@PublicDocsFragmentContent(idx, selectedID, opts)
+}
+
+templ PublicDocsFragmentContent(idx core.SpecIndex, selectedID string, opts PublicDocsOptions) {
+	{{ selected := selectedDocsItemFor(idx, selectedID) }}
+	<h1 class="sr-only">{ idx.Title } OpenAPI docs</h1>
+	@selectedDocsBreadcrumbs(idx, selected)
+	@selectedDocsContent(idx, selected)
+}
+
+templ publicDocsSidebar(idx core.SpecIndex, selected selectedDocsItem, opts PublicDocsOptions) {
+	@sidebar.Sidebar(sidebar.Config{
+		Items: overviewSidebarItems(selected.Anchor),
+		SectionsTitle: "API Reference",
+		Sections: sidebarSections(idx, selected.Anchor, opts.EndpointSidebarLabel),
+		SearchSlot: docsSearchField(idx.Search),
+	})
 }
 
 templ selectedDocsContent(idx core.SpecIndex, selected selectedDocsItem) {
@@ -263,13 +284,14 @@ templ downloadIcon() {
 }
 
 func overviewSidebarItems(selectedAnchor string) []sidebar.Item {
+	href := selectedDocsHref("overview")
 	return []sidebar.Item{{
 		ID:        "overview",
 		Label:     "Overview",
 		Icon:      overviewIcon(),
-		Href:      selectedDocsHref("overview"),
+		Href:      href,
 		Active:    selectedAnchor == "overview",
-		LinkAttrs: sidebarTitleAttrs("Overview"),
+		LinkAttrs: sidebarNavigationAttrs("Overview", href),
 	}}
 }
 
@@ -833,25 +855,27 @@ func sidebarSections(idx core.SpecIndex, selectedAnchor string, labelMode Endpoi
 				}
 				anchor := operationAnchor(op)
 				label := operationSidebarLabel(op, labelMode)
+				href := selectedDocsHref(anchor)
 				tagItems[tag] = append(tagItems[tag], sidebar.Item{
 					ID:         anchor,
 					Label:      label,
-					Href:       selectedDocsHref(anchor),
+					Href:       href,
 					Active:     anchor == selectedAnchor,
 					Badge:      op.Method,
 					BadgeClass: methodBadgeClass(op.Method),
-					LinkAttrs:  sidebarTitleAttrs(label),
+					LinkAttrs:  sidebarNavigationAttrs(label, href),
 				})
 			}
 		}
 		items := make([]sidebar.Item, 0, len(tagOrder))
 		for _, tag := range tagOrder {
+			href := firstSidebarHref(tagItems[tag])
 			items = append(items, sidebar.Item{
 				ID:        "tag-" + anchorFragment(tag),
 				Label:     tag,
-				Href:      firstSidebarHref(tagItems[tag]),
+				Href:      href,
 				Items:     tagItems[tag],
-				LinkAttrs: sidebarTitleAttrs(tag),
+				LinkAttrs: sidebarNavigationAttrs(tag, href),
 			})
 		}
 		sections = append(sections, sidebar.Section{Title: "Operations", Items: items})
@@ -861,12 +885,13 @@ func sidebarSections(idx core.SpecIndex, selectedAnchor string, labelMode Endpoi
 		for _, schema := range idx.Schemas {
 			anchor := schemaAnchor(schema)
 			label := schemaSidebarLabel(schema)
+			href := selectedDocsHref(anchor)
 			items = append(items, sidebar.Item{
 				ID:        anchor,
 				Label:     label,
-				Href:      selectedDocsHref(anchor),
+				Href:      href,
 				Active:    anchor == selectedAnchor,
-				LinkAttrs: sidebarTitleAttrs(label),
+				LinkAttrs: sidebarNavigationAttrs(label, href),
 			})
 		}
 		sections = append(sections, sidebar.Section{Title: "Schemas", Items: items})
@@ -964,6 +989,22 @@ func sidebarTitleAttrs(label string) templpkg.Attributes {
 		return nil
 	}
 	return templpkg.Attributes{"title": label}
+}
+
+func sidebarNavigationAttrs(label string, href string) templpkg.Attributes {
+	attrs := sidebarTitleAttrs(label)
+	if attrs == nil {
+		attrs = templpkg.Attributes{}
+	}
+	href = strings.TrimSpace(href)
+	if href == "" || !strings.HasPrefix(href, "/") {
+		return attrs
+	}
+	attrs["hx-get"] = href
+	attrs["hx-target"] = "#main-content"
+	attrs["hx-swap"] = "innerHTML"
+	attrs["hx-push-url"] = "true"
+	return attrs
 }
 
 func firstSidebarHref(items []sidebar.Item) string {
