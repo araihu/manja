@@ -4,6 +4,7 @@ import (
 	"net/url"
 	"strings"
 
+	templpkg "github.com/a-h/templ"
 	"github.com/araihu/goshtoso/components/badge"
 	"github.com/araihu/goshtoso/components/codeblock"
 	searchfield "github.com/araihu/goshtoso/components/search"
@@ -22,7 +23,33 @@ type selectedDocsItem struct {
 	Schema    core.Schema
 }
 
+type EndpointSidebarLabelMode string
+
+const (
+	EndpointSidebarLabelAuto EndpointSidebarLabelMode = "auto"
+	EndpointSidebarLabelPath EndpointSidebarLabelMode = "path"
+)
+
+type PublicDocsOptions struct {
+	EndpointSidebarLabel EndpointSidebarLabelMode
+}
+
+func (opts PublicDocsOptions) withDefaults() PublicDocsOptions {
+	switch opts.EndpointSidebarLabel {
+	case EndpointSidebarLabelPath:
+		return opts
+	default:
+		opts.EndpointSidebarLabel = EndpointSidebarLabelAuto
+		return opts
+	}
+}
+
 templ PublicDocs(idx core.SpecIndex, selectedID string) {
+	@PublicDocsWithOptions(idx, selectedID, PublicDocsOptions{})
+}
+
+templ PublicDocsWithOptions(idx core.SpecIndex, selectedID string, opts PublicDocsOptions) {
+	{{ opts = opts.withDefaults() }}
 	{{ selected := selectedDocsItemFor(idx, selectedID) }}
 	@Layout(idx.Title) {
 		<div class="h-screen overflow-hidden bg-surface text-on-surface dark:bg-surface-dark dark:text-on-surface-dark">
@@ -53,7 +80,7 @@ templ PublicDocs(idx core.SpecIndex, selectedID string) {
 				<aside class="hidden w-72 shrink-0 lg:block" aria-label="API sections">
 					@sidebar.Sidebar(sidebar.Config{
 						SectionsTitle: "API Reference",
-						Sections: sidebarSections(idx, selected.Anchor),
+						Sections: sidebarSections(idx, selected.Anchor, opts.EndpointSidebarLabel),
 						SearchSlot: docsSearchField(idx.Search),
 					})
 				</aside>
@@ -407,7 +434,7 @@ func mediaTypeTableID(idPrefix string, media core.OperationMediaType) string {
 	return idPrefix + "-" + contentType + "-schema"
 }
 
-func sidebarSections(idx core.SpecIndex, selectedAnchor string) []sidebar.Section {
+func sidebarSections(idx core.SpecIndex, selectedAnchor string, labelMode EndpointSidebarLabelMode) []sidebar.Section {
 	sections := make([]sidebar.Section, 0, 2)
 	if len(idx.Operations) > 0 {
 		tagOrder := make([]string, 0)
@@ -426,23 +453,26 @@ func sidebarSections(idx core.SpecIndex, selectedAnchor string) []sidebar.Sectio
 					tagOrder = append(tagOrder, tag)
 				}
 				anchor := operationAnchor(op)
+				label := operationSidebarLabel(op, labelMode)
 				tagItems[tag] = append(tagItems[tag], sidebar.Item{
-					ID: anchor,
-					Label: op.Path,
-					Href: selectedDocsHref(anchor),
-					Active: anchor == selectedAnchor,
-					Badge: op.Method,
+					ID:         anchor,
+					Label:      label,
+					Href:       selectedDocsHref(anchor),
+					Active:     anchor == selectedAnchor,
+					Badge:      op.Method,
 					BadgeClass: methodBadgeClass(op.Method),
+					LinkAttrs:  sidebarLinkAttrs(label),
 				})
 			}
 		}
 		items := make([]sidebar.Item, 0, len(tagOrder))
 		for _, tag := range tagOrder {
 			items = append(items, sidebar.Item{
-				ID: "tag-" + anchorFragment(tag),
-				Label: tag,
-				Href: firstSidebarHref(tagItems[tag]),
-				Items: tagItems[tag],
+				ID:        "tag-" + anchorFragment(tag),
+				Label:     tag,
+				Href:      firstSidebarHref(tagItems[tag]),
+				Items:     tagItems[tag],
+				LinkAttrs: sidebarLinkAttrs(tag),
 			})
 		}
 		sections = append(sections, sidebar.Section{Title: "Operations", Items: items})
@@ -452,10 +482,11 @@ func sidebarSections(idx core.SpecIndex, selectedAnchor string) []sidebar.Sectio
 		for _, schema := range idx.Schemas {
 			anchor := schemaAnchor(schema)
 			items = append(items, sidebar.Item{
-				ID: anchor,
-				Label: schema.Name,
-				Href: selectedDocsHref(anchor),
-				Active: anchor == selectedAnchor,
+				ID:        anchor,
+				Label:     schema.Name,
+				Href:      selectedDocsHref(anchor),
+				Active:    anchor == selectedAnchor,
+				LinkAttrs: sidebarLinkAttrs(schema.Name),
 			})
 		}
 		sections = append(sections, sidebar.Section{Title: "Schemas", Items: items})
@@ -614,6 +645,24 @@ func operationTitle(op core.Operation) string {
 		return op.ID
 	}
 	return strings.TrimSpace(op.Method + " " + op.Path)
+}
+
+func operationSidebarLabel(op core.Operation, labelMode EndpointSidebarLabelMode) string {
+	if labelMode == EndpointSidebarLabelPath {
+		return firstNonEmpty(op.Path, operationTitle(op))
+	}
+	return firstNonEmpty(op.Summary, op.Path, operationTitle(op))
+}
+
+func sidebarLinkAttrs(label string) templpkg.Attributes {
+	label = strings.TrimSpace(label)
+	if label == "" {
+		return nil
+	}
+	return templpkg.Attributes{
+		"title":      label,
+		"aria-label": label,
+	}
 }
 
 func schemaInline(schema core.SchemaSummary) string {

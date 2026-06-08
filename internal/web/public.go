@@ -13,6 +13,27 @@ import (
 	"github.com/araihu/manja/internal/web/templates"
 )
 
+type EndpointSidebarLabelMode = templates.EndpointSidebarLabelMode
+
+const (
+	EndpointSidebarLabelAuto = templates.EndpointSidebarLabelAuto
+	EndpointSidebarLabelPath = templates.EndpointSidebarLabelPath
+)
+
+type PublicOptions struct {
+	EndpointSidebarLabel EndpointSidebarLabelMode
+}
+
+func (opts PublicOptions) withDefaults() PublicOptions {
+	switch opts.EndpointSidebarLabel {
+	case EndpointSidebarLabelPath:
+		return opts
+	default:
+		opts.EndpointSidebarLabel = EndpointSidebarLabelAuto
+		return opts
+	}
+}
+
 type sitemapURLSet struct {
 	XMLName xml.Name     `xml:"urlset"`
 	Xmlns   string       `xml:"xmlns,attr"`
@@ -53,6 +74,11 @@ func sitemapLoc(r *http.Request, path string) (string, bool) {
 }
 
 func NewPublicServer(idx core.SpecIndex) http.Handler {
+	return NewPublicServerWithOptions(idx, PublicOptions{})
+}
+
+func NewPublicServerWithOptions(idx core.SpecIndex, opts PublicOptions) http.Handler {
+	opts = opts.withDefaults()
 	mux := http.NewServeMux()
 	mux.Handle("/assets/", assets.Handler())
 	mux.Handle("/manja-assets/", http.StripPrefix("/manja-assets/", http.FileServer(http.Dir("internal/web/static"))))
@@ -81,7 +107,9 @@ func NewPublicServer(idx core.SpecIndex) http.Handler {
 			http.NotFound(w, r)
 			return
 		}
-		if err := templates.PublicDocs(idx, r.URL.Query().Get("selected")).Render(r.Context(), w); err != nil {
+		if err := templates.PublicDocsWithOptions(idx, r.URL.Query().Get("selected"), templates.PublicDocsOptions{
+			EndpointSidebarLabel: opts.EndpointSidebarLabel,
+		}).Render(r.Context(), w); err != nil {
 			slog.ErrorContext(r.Context(), "render public docs", "error", err)
 			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		}

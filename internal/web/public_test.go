@@ -63,11 +63,11 @@ func TestPublicDocsRenderSearchAndOperations(t *testing.T) {
 	if strings.Contains(body, `<section id="operation-createPet"`) {
 		t.Fatalf("default page should render only the selected sidebar item, got create operation content:\n%s", body)
 	}
-	sidebarMethodBadge := regexp.MustCompile(`<a href="/\?selected=operation-listPets#operation-listPets"[^>]*><span class="min-w-0 flex-1 truncate">/pets</span>\s*<sup[^>]*ml-auto shrink-0[^"]*border-info[^"]*bg-info[^"]*text-on-info[^"]*"[^>]*>GET</sup>`)
+	sidebarMethodBadge := regexp.MustCompile(`<a href="/\?selected=operation-listPets#operation-listPets"[^>]*><span class="min-w-0 flex-1 truncate">List pets</span>\s*<sup[^>]*ml-auto shrink-0[^"]*border-info[^"]*bg-info[^"]*text-on-info[^"]*"[^>]*>GET</sup>`)
 	if !sidebarMethodBadge.MatchString(body) {
-		t.Fatalf("operation sidebar item should render flex path label with right-aligned Goshtoso method badge:\n%s", body)
+		t.Fatalf("operation sidebar item should render flex endpoint label with right-aligned Goshtoso method badge:\n%s", body)
 	}
-	postMethodBadge := regexp.MustCompile(`<a href="/\?selected=operation-createPet#operation-createPet"[^>]*><span class="min-w-0 flex-1 truncate">/pets</span>\s*<sup[^>]*border-success[^"]*bg-success[^"]*text-on-success[^"]*"[^>]*>POST</sup>`)
+	postMethodBadge := regexp.MustCompile(`<a href="/\?selected=operation-createPet#operation-createPet"[^>]*><span class="min-w-0 flex-1 truncate">Create pet</span>\s*<sup[^>]*border-success[^"]*bg-success[^"]*text-on-success[^"]*"[^>]*>POST</sup>`)
 	if !postMethodBadge.MatchString(body) {
 		t.Fatalf("POST sidebar method badge should use Goshtoso success styling:\n%s", body)
 	}
@@ -80,11 +80,11 @@ func TestPublicDocsRenderSearchAndOperations(t *testing.T) {
 			t.Fatalf("method badges should use Goshtoso badge variants, got custom class %q:\n%s", reject, body)
 		}
 	}
-	sidebarTagGroup := regexp.MustCompile(`<div data-sidebar-section="Operations">.*<a href="/\?selected=operation-listPets#operation-listPets"[^>]*><span class="min-w-0 flex-1 truncate">Pets</span>.*<div class="ml-4 flex flex-col">.*<a href="/\?selected=operation-listPets#operation-listPets"[^>]*><span class="min-w-0 flex-1 truncate">/pets</span>\s*<sup[^>]*>GET</sup>`)
+	sidebarTagGroup := regexp.MustCompile(`<div data-sidebar-section="Operations">.*<a href="/\?selected=operation-listPets#operation-listPets"[^>]*><span class="min-w-0 flex-1 truncate">Pets</span>.*<div class="ml-4 flex flex-col">.*<a href="/\?selected=operation-listPets#operation-listPets"[^>]*><span class="min-w-0 flex-1 truncate">List pets</span>\s*<sup[^>]*>GET</sup>`)
 	if !sidebarTagGroup.MatchString(body) {
 		t.Fatalf("operation sidebar items should use Penguin-style tag sub-items:\n%s", body)
 	}
-	tagWithoutRail := regexp.MustCompile(`<a href="/\?selected=operation-listPets#operation-listPets" class="flex items-center gap-2 py-2\.5 pl-4[^"]*"><span class="min-w-0 flex-1 truncate">Pets</span>`)
+	tagWithoutRail := regexp.MustCompile(`<a href="/\?selected=operation-listPets#operation-listPets"[^>]*class="flex items-center gap-2 py-2\.5 pl-4[^"]*"><span class="min-w-0 flex-1 truncate">Pets</span>`)
 	if !tagWithoutRail.MatchString(body) {
 		t.Fatalf("operation tag parent should not render a leading rail:\n%s", body)
 	}
@@ -188,6 +188,50 @@ func TestPublicDocsRendersSelectedSidebarItemOnly(t *testing.T) {
 			t.Fatalf("selected schema page should not render %q:\n%s", reject, body)
 		}
 	}
+}
+
+func TestPublicDocsEndpointSidebarLabelMode(t *testing.T) {
+	idx := core.SpecIndex{
+		Title: "Petstore",
+		Operations: []core.Operation{
+			{ID: "listPets", Method: "GET", Path: "/pets", Summary: "List pets", Tags: []string{"Pets"}},
+			{ID: "deletePet", Method: "DELETE", Path: "/pets/{petId}", Tags: []string{"Pets"}},
+		},
+	}
+
+	t.Run("auto uses endpoint name with path fallback", func(t *testing.T) {
+		body := renderPublicDocs(t, NewPublicServer(idx))
+
+		listLabel := regexp.MustCompile(`<a href="/\?selected=operation-listPets#operation-listPets"[^>]*><span class="min-w-0 flex-1 truncate">List pets</span>\s*<sup[^>]*>GET</sup>`)
+		if !listLabel.MatchString(body) {
+			t.Fatalf("auto sidebar label should prefer endpoint name:\n%s", body)
+		}
+		for _, want := range []string{`title="List pets"`, `aria-label="List pets"`} {
+			if !strings.Contains(body, want) {
+				t.Fatalf("auto sidebar label should expose full endpoint name via %q:\n%s", want, body)
+			}
+		}
+		deleteLabel := regexp.MustCompile(`<a href="/\?selected=operation-deletePet#operation-deletePet"[^>]*><span class="min-w-0 flex-1 truncate">/pets/{petId}</span>\s*<sup[^>]*>DELETE</sup>`)
+		if !deleteLabel.MatchString(body) {
+			t.Fatalf("auto sidebar label should fall back to endpoint path:\n%s", body)
+		}
+		for _, want := range []string{`title="/pets/{petId}"`, `aria-label="/pets/{petId}"`} {
+			if !strings.Contains(body, want) {
+				t.Fatalf("path fallback sidebar label should expose full path via %q:\n%s", want, body)
+			}
+		}
+	})
+
+	t.Run("path option enforces endpoint path", func(t *testing.T) {
+		body := renderPublicDocs(t, NewPublicServerWithOptions(idx, PublicOptions{
+			EndpointSidebarLabel: EndpointSidebarLabelPath,
+		}))
+
+		pathLabel := regexp.MustCompile(`<a href="/\?selected=operation-listPets#operation-listPets"[^>]*><span class="min-w-0 flex-1 truncate">/pets</span>\s*<sup[^>]*>GET</sup>`)
+		if !pathLabel.MatchString(body) {
+			t.Fatalf("path sidebar label option should use endpoint path:\n%s", body)
+		}
+	})
 }
 
 func TestPublicDocsSearchTargetsVisibleSectionsWithUniqueIDs(t *testing.T) {
@@ -384,4 +428,15 @@ func TestPublicDocsRenderEndpointDetails(t *testing.T) {
 			t.Fatalf("endpoint detail view should be read-only, got %q:\n%s", reject, body)
 		}
 	}
+}
+
+func renderPublicDocs(t *testing.T, handler http.Handler) string {
+	t.Helper()
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d", rec.Code)
+	}
+	return rec.Body.String()
 }

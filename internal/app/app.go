@@ -13,11 +13,19 @@ import (
 	"github.com/araihu/manja/internal/web"
 )
 
+type EndpointSidebarLabelMode = web.EndpointSidebarLabelMode
+
+const (
+	EndpointSidebarLabelAuto = web.EndpointSidebarLabelAuto
+	EndpointSidebarLabelPath = web.EndpointSidebarLabelPath
+)
+
 type Options struct {
-	ProjectID string
-	SourceID  string
-	SpecPath  string
-	DataDir   string
+	ProjectID            string
+	SourceID             string
+	SpecPath             string
+	DataDir              string
+	EndpointSidebarLabel EndpointSidebarLabelMode
 }
 
 func New(ctx context.Context, specPath string) (http.Handler, error) {
@@ -43,7 +51,11 @@ func NewWithOptions(ctx context.Context, opts Options) (http.Handler, error) {
 	if err != nil {
 		return nil, err
 	}
-	return web.NewServer(result.Index), nil
+	return web.NewServerWithOptions(result.Index, web.Options{
+		Public: web.PublicOptions{
+			EndpointSidebarLabel: web.EndpointSidebarLabelMode(opts.EndpointSidebarLabel),
+		},
+	}), nil
 }
 
 func (o Options) withDefaults() Options {
@@ -55,6 +67,11 @@ func (o Options) withDefaults() Options {
 	}
 	if o.DataDir == "" {
 		o.DataDir = filepath.Join(".manja", "data")
+	}
+	switch o.EndpointSidebarLabel {
+	case EndpointSidebarLabelPath:
+	default:
+		o.EndpointSidebarLabel = EndpointSidebarLabelAuto
 	}
 	return o
 }
