@@ -39,6 +39,15 @@ test('passes spec context so referenced schemas can be sampled', () => {
   assert.equal(root.status.textContent, 'Example generated');
 });
 
+test('updates the nested code element without replacing the codeblock wrapper', () => {
+  const root = fakeRoot('nested', { schema: objectSchema(), options: {} }, 'fallback');
+
+  hydrateSchemaExamples({ roots: [root], sampler: { sample: sampleSchema } });
+
+  assert.equal(root.code.textContent, '{\n  "name": "string",\n  "done": true\n}');
+  assert.equal(root.codeblock.textContent, 'fallback');
+});
+
 test('preserves fallback when sampling fails and is idempotent', () => {
   const root = fakeRoot('broken', { schema: { type: 'object' }, options: {} }, 'fallback');
 
@@ -73,16 +82,19 @@ function sampleSchema(schema, options = {}) {
 }
 
 function fakeRoot(id, payload, fallback) {
+  const codeblock = { textContent: fallback };
   const code = { textContent: fallback };
   const status = { textContent: '' };
   const payloadScript = { textContent: JSON.stringify(payload) };
   return {
     dataset: {},
+    codeblock,
     code,
     status,
     payloadScript,
     querySelector(selector) {
-      if (selector === '.codeblock') return code;
+      if (selector === '.codeblock code') return code;
+      if (selector === '.codeblock') return codeblock;
       if (selector === 'script[type="application/json"]') return payloadScript;
       if (selector === '[data-manja-example-status]') return status;
       throw new Error(`unexpected selector: ${selector}`);

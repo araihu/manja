@@ -35,7 +35,7 @@ type selectedDocsItem struct {
 type ExampleOptions struct {
 	SkipNonRequired bool `json:"skipNonRequired"`
 	Quiet           bool `json:"quiet"`
-	MaxDepth        int  `json:"maxDepth"`
+	MaxSampleDepth  int  `json:"maxSampleDepth"`
 }
 
 type ExampleConfig struct {
@@ -1233,7 +1233,11 @@ func schemaPageExampleConfig(schema core.Schema, specJSON string) ExampleConfig 
 		SchemaJSON:  schema.Example.JSON,
 		ExampleJSON: schema.Example.Example,
 		SpecJSON:    specJSON,
-		Options:     defaultExampleOptions(),
+		Options: ExampleOptions{
+			SkipNonRequired: false,
+			Quiet:           true,
+			MaxSampleDepth:  2,
+		},
 	}
 }
 
@@ -1241,7 +1245,7 @@ func defaultExampleOptions() ExampleOptions {
 	return ExampleOptions{
 		SkipNonRequired: false,
 		Quiet:           true,
-		MaxDepth:        3,
+		MaxSampleDepth:  3,
 	}
 }
 

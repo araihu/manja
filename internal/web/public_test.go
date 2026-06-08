@@ -431,6 +431,7 @@ func TestPublicDocsRenderGenericSchemaExamples(t *testing.T) {
 		`type="application/json"`,
 		`"spec":{"components":{"schemas":{"Todo"`,
 		`"skipNonRequired":false`,
+		`"maxSampleDepth":3`,
 		`/manja-assets/schema-example.js`,
 	} {
 		if !strings.Contains(body, want) {
@@ -443,6 +444,7 @@ func TestPublicDocsRenderGenericSchemaExamples(t *testing.T) {
 		`id="schema-todo-example"`,
 		`Example: Todo`,
 		`data-manja-example`,
+		`"maxSampleDepth":2`,
 	} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("generic schema example missing %q:\n%s", want, body)

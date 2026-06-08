@@ -1616,7 +1616,7 @@ function jsf32(a, b, c, d) {
       }
       root.dataset.manjaExampleHydrated = 'true';
 
-      const code = root.querySelector('.codeblock');
+      const code = root.querySelector('.codeblock code') || root.querySelector('.codeblock');
       const payloadScript = root.querySelector('script[type="application/json"]');
       const status = root.querySelector('[data-manja-example-status]');
       if (!code || !payloadScript) {
