@@ -469,7 +469,7 @@ func TestPublicDocsSidebarNavigationSwapsMainContent(t *testing.T) {
 		t.Fatal(err)
 	}
 	scrolled, err := page.Evaluate(`() => {
-		const sidebar = document.querySelector('.sidebar-scroll');
+		const sidebar = document.querySelector('aside[aria-label="API sections"] .sidebar-scroll');
 		if (!sidebar) return false;
 		sidebar.scrollTop = sidebar.scrollHeight;
 		return sidebar.scrollTop > 0;
@@ -496,7 +496,7 @@ func TestPublicDocsSidebarNavigationSwapsMainContent(t *testing.T) {
 		t.Fatalf("sidebar navigation performed a full page reload instead of preserving page state")
 	}
 	scrollPreserved, err := page.Evaluate(`() => {
-		const sidebar = document.querySelector('.sidebar-scroll');
+		const sidebar = document.querySelector('aside[aria-label="API sections"] .sidebar-scroll');
 		return !!sidebar && sidebar.scrollTop > 0;
 	}`)
 	if err != nil {
@@ -623,6 +623,105 @@ func TestPublicDocsSidebarTagGroupsToggleIndependently(t *testing.T) {
 	}
 }
 
+func TestPublicDocsSidebarOverlayOnSmallDevices(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping e2e test in short mode")
+	}
+	chdirRepoRoot(t)
+
+	const createAnchor = "operation-createpet"
+	idx := core.SpecIndex{
+		Title:   "Petstore",
+		Version: "1.0.0",
+		Operations: []core.Operation{
+			{ID: "listPets", Method: "GET", Path: "/pets", Summary: "List pets", Tags: []string{"Pets"}, Anchor: "operation-listpets"},
+			{ID: "createPet", Method: "POST", Path: "/pets", Summary: "Create pet", Description: "Creation body", Tags: []string{"Pets"}, Anchor: createAnchor},
+		},
+	}
+	server := httptestServer(t, web.NewPublicServer(idx))
+
+	pw, err := playwright.Run()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pw.Stop()
+	browser, err := pw.Chromium.Launch()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer browser.Close()
+	page, err := browser.NewPage(playwright.BrowserNewPageOptions{
+		Viewport: &playwright.Size{Width: 390, Height: 740},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := page.Goto(server); err != nil {
+		t.Fatal(err)
+	}
+
+	trigger := page.Locator(`button[aria-label="Open API sections"]`)
+	if err := trigger.WaitFor(playwright.LocatorWaitForOptions{State: playwright.WaitForSelectorStateVisible}); err != nil {
+		t.Fatal(err)
+	}
+	desktopAsideHidden, err := page.Locator(`aside[aria-label="API sections"]`).IsHidden()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !desktopAsideHidden {
+		t.Fatalf("desktop sidebar should be hidden on small screens")
+	}
+
+	if err := trigger.Click(); err != nil {
+		t.Fatal(err)
+	}
+	panel := page.Locator(`#public-docs-sidebar-panel`)
+	if err := panel.WaitFor(playwright.LocatorWaitForOptions{State: playwright.WaitForSelectorStateVisible}); err != nil {
+		t.Fatal(err)
+	}
+	focusedSkipLink, err := page.Evaluate(`() => {
+		const active = document.activeElement;
+		return active instanceof HTMLAnchorElement &&
+			active.closest('#public-docs-sidebar-panel') !== null &&
+			active.getAttribute('href') === '#main-content';
+	}`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if focusedSkipLink == true {
+		t.Fatalf("mobile sidebar should open like the Goshtoso docs drawer without forcing focus to the skip link")
+	}
+	expanded, err := trigger.GetAttribute("aria-expanded")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if expanded != "true" {
+		t.Fatalf("mobile sidebar trigger aria-expanded = %q, want true", expanded)
+	}
+
+	tagControl := panel.Locator(`a[aria-controls="mobile-tag-pets-children"]`)
+	if err := tagControl.Click(); err != nil {
+		t.Fatal(err)
+	}
+	if err := panel.Locator(`#mobile-tag-pets-children a`).First().WaitFor(playwright.LocatorWaitForOptions{State: playwright.WaitForSelectorStateVisible}); err != nil {
+		t.Fatal(err)
+	}
+
+	link := panel.Locator(`a[href="/?selected=` + createAnchor + `#` + createAnchor + `"]`).Last()
+	if err := link.Click(); err != nil {
+		t.Fatal(err)
+	}
+	if err := page.Locator("#" + createAnchor + ":visible").WaitFor(); err != nil {
+		t.Fatal(err)
+	}
+	if err := panel.WaitFor(playwright.LocatorWaitForOptions{State: playwright.WaitForSelectorStateHidden}); err != nil {
+		t.Fatal(err)
+	}
+	if got := page.URL(); got != server+"/?selected="+createAnchor+"#"+createAnchor {
+		t.Fatalf("page URL = %q, want %q", got, server+"/?selected="+createAnchor+"#"+createAnchor)
+	}
+}
+
 func TestPublicDocsScrollsMainContentWithDocument(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping e2e test in short mode")
@@ -662,8 +761,8 @@ func TestPublicDocsScrollsMainContentWithDocument(t *testing.T) {
 		const body = document.body;
 		const shell = body.firstElementChild;
 		const main = document.querySelector('main');
-		const aside = document.querySelector('aside');
-		const sidebar = document.querySelector('.sidebar-scroll');
+		const aside = document.querySelector('aside[aria-label="API sections"]');
+		const sidebar = document.querySelector('aside[aria-label="API sections"] .sidebar-scroll');
 		const overflows = (scrollSize, clientSize) => scrollSize > clientSize + 1;
 
 		return {
