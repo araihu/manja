@@ -915,10 +915,10 @@ func TestPublicDocsRenderEndpointDetails(t *testing.T) {
 		`Update Todo`,
 		`/todos/{todoId}`,
 		`aria-label="Endpoint route"`,
-		`xl:grid-cols-[minmax(0,50rem)_24rem]`,
+		`<div class="manja-endpoint-shell-layout">`,
 		`<div class="manja-endpoint-detail-layout">`,
 		`<section class="grid gap-8" aria-label="Request">`,
-		`<section class="manja-endpoint-responses-section grid gap-7" aria-label="Responses">`,
+		`<section class="manja-endpoint-responses-section grid gap-5" aria-label="Responses">`,
 		`<section class="grid gap-4">`,
 		`Path Parameters`,
 		`Query Parameters`,
@@ -936,8 +936,15 @@ func TestPublicDocsRenderEndpointDetails(t *testing.T) {
 		`Todo was not found.`,
 		`Security`,
 		`bearerAuth`,
-		`aria-label="Endpoint examples"`,
-		`lg:sticky`,
+		`<aside class="manja-endpoint-examples-rail" aria-label="Endpoint examples">`,
+		`<div class="manja-endpoint-examples-rail-content">`,
+		`aria-label="200"`,
+		`bg-success/10`,
+		`text-success`,
+		`text-xs px-2 py-1 bg-success/10`,
+		`bg-danger/10`,
+		`text-danger`,
+		`text-xs px-2 py-1 bg-danger/10`,
 		`Request Sample: cURL`,
 		`Response Example`,
 		`cURL`,
@@ -953,6 +960,8 @@ func TestPublicDocsRenderEndpointDetails(t *testing.T) {
 		`role="tab"`,
 		`role="tabpanel"`,
 		`tabpaneloperation-updatetodo-responsesresponse-200`,
+		`id="tabpaneloperation-updatetodo-responsesresponse-200" role="tabpanel" aria-label="200"><section class="grid gap-4">`,
+		`class="border-t border-outline pt-6 pb-5 dark:border-outline-dark"`,
 		`tabpaneloperation-updatetodo-responsesresponse-404`,
 		`caption class="sr-only">Path Parameters</caption>`,
 		`aria-label="Request body schema for application/json schema tree"`,
@@ -967,6 +976,22 @@ func TestPublicDocsRenderEndpointDetails(t *testing.T) {
 	if strings.Contains(body, `data-schema-tree-node="Error"`) {
 		t.Fatalf("endpoint schema tree should start at the root object properties, not render the root object row:\n%s", body)
 	}
+	for _, reject := range []string{
+		`size-1.5 rounded-full bg-success`,
+		`size-1.5 rounded-full bg-danger`,
+	} {
+		if strings.Contains(body, reject) {
+			t.Fatalf("response status should use one soft badge treatment without dot indicators, got %q:\n%s", reject, body)
+		}
+	}
+	for _, statusBadge := range []string{
+		`border border-success bg-surface text-success`,
+		`border border-danger bg-surface text-danger`,
+	} {
+		if count := strings.Count(body, statusBadge); count != 1 {
+			t.Fatalf("response status badge %q should render once in the tab, got %d:\n%s", statusBadge, count, body)
+		}
+	}
 	for _, reject := range []string{"Try It", "Send API Request", "Execute request", `aria-label="On this page"`} {
 		if strings.Contains(body, reject) {
 			t.Fatalf("endpoint detail view should be read-only, got %q:\n%s", reject, body)
@@ -974,7 +999,7 @@ func TestPublicDocsRenderEndpointDetails(t *testing.T) {
 	}
 }
 
-func TestPublicDocsEndpointDetailCSSUsesResponsiveSplitLayout(t *testing.T) {
+func TestPublicDocsEndpointDetailCSSStacksRequestAndResponses(t *testing.T) {
 	css, err := os.ReadFile("static/manja.css")
 	if err != nil {
 		t.Fatal(err)
@@ -992,15 +1017,117 @@ func TestPublicDocsEndpointDetailCSSUsesResponsiveSplitLayout(t *testing.T) {
 			t.Fatalf("endpoint detail layout should stack by default with %q:\n%s", want, rule)
 		}
 	}
-	largeRule := regexp.MustCompile(`(?s)@media\s*\(min-width:\s*1280px\)\s*\{[^{}]*\.manja-endpoint-detail-layout\s*\{[^}]*\}`).FindString(string(css))
-	if largeRule == "" {
-		t.Fatalf("missing large-screen endpoint detail layout media rule")
-	}
-	if !strings.Contains(largeRule, `grid-template-columns: repeat(2, minmax(0, 1fr));`) {
-		t.Fatalf("endpoint detail layout should split request and responses into two columns on large screens:\n%s", largeRule)
-	}
 	if !strings.Contains(string(css), `.manja-endpoint-responses-section`) {
 		t.Fatalf("endpoint responses section should own stacked-layout divider spacing")
+	}
+	if !strings.Contains(string(css), `.manja-endpoint-detail-layout-single`) {
+		t.Fatalf("endpoint detail layout should have a single-child class for response-only endpoints")
+	}
+	for _, reject := range []string{
+		`@container endpoint-main`,
+		`.manja-endpoint-detail-layout:not(.manja-endpoint-detail-layout-single)`,
+		`grid-template-columns: repeat(2, minmax(0, 1fr));`,
+	} {
+		if strings.Contains(string(css), reject) {
+			t.Fatalf("endpoint detail layout should keep Request and Responses stacked, got %q in CSS", reject)
+		}
+	}
+}
+
+func TestPublicDocsEndpointResponsesOnlyUsesSingleDetailColumn(t *testing.T) {
+	idx := core.SpecIndex{
+		Title: "GitHub",
+		Operations: []core.Operation{{
+			ID:          "root",
+			Anchor:      "operation-root",
+			Method:      "GET",
+			Path:        "/",
+			Summary:     "GitHub API Root",
+			Description: "Get Hypermedia links to resources accessible in GitHub's REST API.",
+			Responses: []core.OperationResponse{{
+				Status:      "200",
+				Description: "Response",
+				MediaTypes: []core.OperationMediaType{{
+					ContentType: "application/json",
+					Schema: core.SchemaSummary{
+						Type: "object",
+						Properties: []core.SchemaProperty{{
+							Name:     "authorizations_url",
+							Required: true,
+							Schema:   core.SchemaSummary{Type: "string"},
+						}},
+					},
+				}},
+			}},
+			Snippets: []core.RequestSnippet{{
+				Label:    "cURL",
+				Language: "shell",
+				Code:     "curl --request GET --url https://api.example.test/",
+			}},
+		}},
+	}
+
+	body := renderPublicDocs(t, NewPublicServer(idx), "/?selected=operation-root")
+	for _, want := range []string{
+		`<div class="manja-endpoint-detail-layout manja-endpoint-detail-layout-single">`,
+		`aria-label="200"`,
+		`bg-success/10`,
+		`text-success`,
+		`Request Sample: cURL`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("response-only endpoint layout missing %q:\n%s", want, body)
+		}
+	}
+	if strings.Contains(body, `rounded-radius px-3 py-1 font-mono text-xs font-bold bg-success`) {
+		t.Fatalf("response status should use Goshtoso soft badge, not custom status pill:\n%s", body)
+	}
+	if strings.Contains(body, `size-1.5 rounded-full bg-success`) {
+		t.Fatalf("response status should use one soft badge treatment without dot indicators:\n%s", body)
+	}
+	if count := strings.Count(body, `border border-success bg-surface text-success`); count != 1 {
+		t.Fatalf("response status badge should render once in the tab, got %d:\n%s", count, body)
+	}
+}
+
+func TestPublicDocsEndpointShellCSSUsesResponsiveExamplesRail(t *testing.T) {
+	css, err := os.ReadFile("static/manja.css")
+	if err != nil {
+		t.Fatal(err)
+	}
+	layoutRule := regexp.MustCompile(`(?s)\.manja-endpoint-shell-layout\s*\{[^}]*\}`)
+	rule := layoutRule.FindString(string(css))
+	if rule == "" {
+		t.Fatalf("missing .manja-endpoint-shell-layout rule")
+	}
+	for _, want := range []string{
+		`display: grid;`,
+		`grid-template-columns: minmax(0, 1fr);`,
+	} {
+		if !strings.Contains(rule, want) {
+			t.Fatalf("endpoint shell should stack by default with %q:\n%s", want, rule)
+		}
+	}
+	largeRule := regexp.MustCompile(`(?s)@media\s*\(min-width:\s*1280px\)\s*\{.*?\.manja-endpoint-shell-layout\s*\{[^}]*\}`).FindString(string(css))
+	if largeRule == "" {
+		t.Fatalf("missing large-screen endpoint shell media rule")
+	}
+	if !strings.Contains(largeRule, `grid-template-columns: minmax(0, 1fr) minmax(20rem, 28rem);`) {
+		t.Fatalf("endpoint shell should split content and examples rail on large screens:\n%s", largeRule)
+	}
+	railRule := regexp.MustCompile(`(?s)\.manja-endpoint-examples-rail\s*\{[^}]*\}`).FindString(string(css))
+	if railRule == "" {
+		t.Fatalf("endpoint examples rail should use named CSS instead of breakpoint-only utility classes")
+	}
+	if !strings.Contains(railRule, `align-self: stretch;`) {
+		t.Fatalf("endpoint examples rail should stretch to the endpoint row so sticky examples keep working:\n%s", railRule)
+	}
+	railContentRule := regexp.MustCompile(`(?s)\.manja-endpoint-examples-rail-content\s*>\s*\*[^}]*\}`).FindString(string(css))
+	if railContentRule == "" {
+		t.Fatalf("endpoint examples rail content should constrain grid children")
+	}
+	if !strings.Contains(railContentRule, `min-width: 0;`) || !strings.Contains(railContentRule, `max-width: 100%;`) {
+		t.Fatalf("endpoint examples rail children should not overflow their column:\n%s", railContentRule)
 	}
 }
 

@@ -19,21 +19,63 @@
   overflow-wrap: anywhere;
 }
 
+.manja-endpoint-shell-layout {
+  align-items: start;
+  display: grid;
+  gap: 2rem;
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.manja-endpoint-shell-layout > * {
+  min-width: 0;
+}
+
+.manja-endpoint-examples-rail {
+  align-self: stretch;
+  min-width: 0;
+}
+
+.manja-endpoint-examples-rail-content {
+  display: grid;
+  gap: 1.5rem;
+}
+
+.manja-endpoint-examples-rail-content > *,
+.manja-endpoint-examples-rail [data-manja-example],
+.manja-endpoint-examples-rail [data-manja-example] > *,
+.manja-endpoint-examples-rail .codeblock {
+  max-width: 100%;
+  min-width: 0;
+}
+
 .manja-endpoint-detail-layout {
   align-items: start;
   display: grid;
-  gap: 2.5rem;
+  gap: 2rem;
   grid-template-columns: minmax(0, 1fr);
-  padding-top: 2.5rem;
+  padding-top: 1.5rem;
 }
 
 .manja-endpoint-detail-layout > section {
   min-width: 0;
 }
 
+.manja-endpoint-detail-layout-single {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.manja-endpoint-detail-layout-single .manja-endpoint-responses-section {
+  border-top: 0;
+  padding-top: 0;
+}
+
 .manja-endpoint-responses-section {
   border-top: 1px solid var(--color-outline);
-  padding-top: 2.5rem;
+  padding-top: 1.5rem;
+}
+
+.manja-response-tabs > div:last-child {
+  padding: 0.75rem 0 0;
 }
 
 .manja-schema-detail-layout {
@@ -270,13 +312,13 @@ summary.manja-schema-row::marker {
 }
 
 @media (min-width: 1280px) {
-  .manja-endpoint-detail-layout {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+  .manja-endpoint-shell-layout {
+    grid-template-columns: minmax(0, 1fr) minmax(20rem, 28rem);
   }
 
-  .manja-endpoint-responses-section {
-    border-top: 0;
-    padding-top: 0;
+  .manja-endpoint-examples-rail-content {
+    position: sticky;
+    top: 2rem;
   }
 }
 
