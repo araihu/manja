@@ -2037,7 +2037,7 @@ func responseMediaTypeList(opID string, response core.OperationResponse, example
 			for _, media := range response.MediaTypes {
 				idPrefix := opID + "-response-" + anchorFragment(response.Status)
 				cfg := mediaSchemaExampleConfig(idPrefix+"-"+anchorFragment(media.ContentType)+"-example", "Response Example: "+response.Status+" "+media.ContentType, media, exampleSpecJSON)
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 152, "<div class=\"border-t border-outline pt-6 pb-5 dark:border-outline-dark\"><div class=\"manja-response-panel-layout\"><div class=\"manja-response-panel-main grid gap-4\"><div class=\"flex flex-wrap items-center gap-3\"><span class=\"font-mono text-xs font-semibold text-on-surface-strong dark:text-on-surface-dark-strong\">")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 152, "<div class=\"manja-response-media-block border-t border-outline pt-6 pb-5 dark:border-outline-dark\"><div class=\"manja-response-panel-layout\"><div class=\"manja-response-panel-main grid gap-4\"><div class=\"flex flex-wrap items-center gap-3\"><span class=\"font-mono text-xs font-semibold text-on-surface-strong dark:text-on-surface-dark-strong\">")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
