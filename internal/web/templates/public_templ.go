@@ -151,7 +151,7 @@ func PublicDocsWithOptions(idx core.SpecIndex, selectedID string, opts PublicDoc
 				}()
 			}
 			ctx = templ.InitializeContext(ctx)
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<div class=\"min-h-screen bg-surface text-on-surface dark:bg-surface-dark dark:text-on-surface-dark\"><header class=\"manja-docs-header sticky top-0 z-50 border-b border-outline bg-surface dark:border-outline-dark dark:bg-surface-dark\"><div class=\"flex h-16 items-center justify-between gap-3 px-4 lg:px-8\"><div class=\"flex min-w-0 items-center gap-2\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<div class=\"fixed inset-0 flex flex-col overflow-clip bg-surface text-on-surface dark:bg-surface-dark dark:text-on-surface-dark\"><header class=\"manja-docs-header shrink-0 border-b border-outline bg-surface dark:border-outline-dark dark:bg-surface-dark\"><div class=\"flex h-16 items-center justify-between gap-3 px-4 lg:px-8\"><div class=\"flex min-w-0 items-center gap-2\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -212,7 +212,7 @@ func PublicDocsWithOptions(idx core.SpecIndex, selectedID string, opts PublicDoc
 					return templ_7745c5c3_Err
 				}
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 7, "</div></div></header><div class=\"flex min-h-[calc(100vh-4rem)] overflow-x-hidden\"><aside class=\"sticky top-16 hidden h-[calc(100vh-4rem)] w-72 shrink-0 lg:block\" aria-label=\"API sections\"><div id=\"sidebar-nav-content\" class=\"h-full\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 7, "</div></div></header><div class=\"flex min-h-0 flex-1 overflow-clip\"><aside class=\"hidden h-full w-72 shrink-0 lg:block\" aria-label=\"API sections\"><div id=\"sidebar-nav-content\" class=\"h-full\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -220,7 +220,7 @@ func PublicDocsWithOptions(idx core.SpecIndex, selectedID string, opts PublicDoc
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 8, "</div></aside><main class=\"min-w-0 flex-1 overflow-x-hidden p-6 lg:px-10 lg:py-8\"><div id=\"main-content\" class=\"mx-auto max-w-[100rem]\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 8, "</div></aside><main class=\"min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden p-6 lg:px-10 lg:py-8\"><div id=\"main-content\" class=\"mx-auto max-w-[100rem]\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}

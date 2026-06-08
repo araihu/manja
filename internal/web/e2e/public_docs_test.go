@@ -11,6 +11,7 @@ import (
 
 	"github.com/playwright-community/playwright-go"
 
+	openapiadapter "github.com/araihu/manja/internal/adapters/openapi"
 	"github.com/araihu/manja/internal/core"
 	"github.com/araihu/manja/internal/web"
 )
@@ -722,14 +723,25 @@ func TestPublicDocsSidebarOverlayOnSmallDevices(t *testing.T) {
 	}
 }
 
-func TestPublicDocsScrollsMainContentWithDocument(t *testing.T) {
+func TestPublicDocsScrollsMainContentInsideShell(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping e2e test in short mode")
 	}
 	chdirRepoRoot(t)
 
-	idx := scrollStressIndex()
-	const selectedAnchor = "operation-listteams-00"
+	const selectedAnchor = "operation-oauth-authorizations-list-grants"
+	const fixturePath = "internal/adapters/openapi/testdata/github-v3-rest.json"
+	data, err := os.ReadFile(fixturePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	idx, err := (openapiadapter.Parser{}).Parse(context.Background(), core.SpecFile{
+		Path:  fixturePath,
+		Bytes: data,
+	}, core.Revision{ID: "test"})
+	if err != nil {
+		t.Fatal(err)
+	}
 	server := httptestServer(t, web.NewPublicServer(idx))
 
 	pw, err := playwright.Run()
@@ -754,30 +766,34 @@ func TestPublicDocsScrollsMainContentWithDocument(t *testing.T) {
 	if err := page.Locator("#" + selectedAnchor + ":visible").WaitFor(); err != nil {
 		t.Fatal(err)
 	}
-	openSidebarTagGroup(t, page, "tag-teams-children")
 
 	result, err := page.Evaluate(`() => {
-		const documentScroller = document.scrollingElement;
-		const body = document.body;
-		const shell = body.firstElementChild;
-		const main = document.querySelector('main');
-		const aside = document.querySelector('aside[aria-label="API sections"]');
-		const sidebar = document.querySelector('aside[aria-label="API sections"] .sidebar-scroll');
-		const overflows = (scrollSize, clientSize) => scrollSize > clientSize + 1;
+			const documentScroller = document.scrollingElement;
+			const body = document.body;
+			const shell = body.firstElementChild;
+			const header = document.querySelector('.manja-docs-header');
+			const main = document.querySelector('main');
+			const aside = document.querySelector('aside[aria-label="API sections"]');
+			const sidebar = document.querySelector('aside[aria-label="API sections"] .sidebar-scroll');
+			const overflows = (scrollSize, clientSize) => scrollSize > clientSize + 1;
+			const headerRect = header ? header.getBoundingClientRect() : null;
+			const asideRect = aside ? aside.getBoundingClientRect() : null;
 
-		return {
-			documentScrollableX: overflows(documentScroller.scrollWidth, documentScroller.clientWidth),
-			documentScrollableY: overflows(documentScroller.scrollHeight, documentScroller.clientHeight),
-			bodyScrollableX: overflows(body.scrollWidth, window.innerWidth),
-			bodyScrollableY: overflows(body.scrollHeight, window.innerHeight),
-			mainScrollableY: main ? overflows(main.scrollHeight, main.clientHeight) : false,
-			sidebarScrollableY: sidebar ? overflows(sidebar.scrollHeight, sidebar.clientHeight) : false,
-			mainRectHeight: main ? Math.round(main.getBoundingClientRect().height) : 0,
-			asideRectHeight: aside ? Math.round(aside.getBoundingClientRect().height) : 0,
-			windowInnerHeight: window.innerHeight,
-			shellOverflow: shell ? getComputedStyle(shell).overflow : '',
-			mainOverflowY: main ? getComputedStyle(main).overflowY : '',
-			sidebarOverflowY: sidebar ? getComputedStyle(sidebar).overflowY : '',
+			return {
+				documentScrollableX: overflows(documentScroller.scrollWidth, documentScroller.clientWidth),
+				documentScrollableY: overflows(documentScroller.scrollHeight, documentScroller.clientHeight),
+				bodyScrollableX: overflows(body.scrollWidth, window.innerWidth),
+				bodyScrollableY: overflows(body.scrollHeight, window.innerHeight),
+				mainScrollableY: main ? overflows(main.scrollHeight, main.clientHeight) : false,
+				sidebarScrollableY: sidebar ? overflows(sidebar.scrollHeight, sidebar.clientHeight) : false,
+				mainRectHeight: main ? Math.round(main.getBoundingClientRect().height) : 0,
+				asideRectHeight: asideRect ? Math.round(asideRect.height) : 0,
+				asideRectTop: asideRect ? Math.round(asideRect.top) : 0,
+				headerRectBottom: headerRect ? Math.round(headerRect.bottom) : 0,
+				windowInnerHeight: window.innerHeight,
+				shellOverflow: shell ? getComputedStyle(shell).overflow : '',
+				mainOverflowY: main ? getComputedStyle(main).overflowY : '',
+				sidebarOverflowY: sidebar ? getComputedStyle(sidebar).overflowY : '',
 		};
 	}`)
 	if err != nil {
@@ -787,28 +803,26 @@ func TestPublicDocsScrollsMainContentWithDocument(t *testing.T) {
 	if !ok {
 		t.Fatalf("scroll metrics should be a map, got %#v", result)
 	}
-	for _, key := range []string{"documentScrollableX", "bodyScrollableX"} {
+	for _, key := range []string{"documentScrollableX", "documentScrollableY", "bodyScrollableX", "bodyScrollableY"} {
 		if metrics[key] == true {
-			t.Fatalf("public docs should not create document-level scrollbars; %s=true in metrics %#v", key, metrics)
+			t.Fatalf("public docs should keep scrolling inside the docs shell; %s=true in metrics %#v", key, metrics)
 		}
 	}
-	for _, key := range []string{"documentScrollableY", "bodyScrollableY"} {
-		if metrics[key] != true {
-			t.Fatalf("public docs should scroll selected content with the document; %s=false in metrics %#v", key, metrics)
-		}
-	}
-	if metrics["mainScrollableY"] == true {
-		t.Fatalf("public docs should not create an independent main content scrollbar, got metrics %#v", metrics)
+	if metrics["mainScrollableY"] != true {
+		t.Fatalf("public docs should scroll selected content inside the main pane, got metrics %#v", metrics)
 	}
 	if metrics["sidebarScrollableY"] != true {
 		t.Fatalf("test setup should keep long navigation scrollable inside the sidebar, got metrics %#v", metrics)
 	}
-	wantPaneHeight := metricNumber(t, metrics, "windowInnerHeight") - 64
+	wantPaneHeight := metricNumber(t, metrics, "windowInnerHeight") - metricNumber(t, metrics, "headerRectBottom")
 	if got := metricNumber(t, metrics, "asideRectHeight"); got != wantPaneHeight {
 		t.Fatalf("aside should keep the viewport-height navigation rail; want %v got %v, metrics %#v", wantPaneHeight, got, metrics)
 	}
-	if got := metricNumber(t, metrics, "mainRectHeight"); got <= wantPaneHeight {
-		t.Fatalf("main should grow with selected endpoint content instead of matching pane height; want > %v got %v, metrics %#v", wantPaneHeight, got, metrics)
+	if got := metricNumber(t, metrics, "mainRectHeight"); got != wantPaneHeight {
+		t.Fatalf("main should match the docs shell height and scroll internally; want %v got %v, metrics %#v", wantPaneHeight, got, metrics)
+	}
+	if got := metricNumber(t, metrics, "asideRectTop"); got != metricNumber(t, metrics, "headerRectBottom") {
+		t.Fatalf("sidebar rail should connect to the header bottom; metrics %#v", metrics)
 	}
 }
 
