@@ -104,29 +104,6 @@ var homeBody = template.HTML(`
       <a class="button button-secondary" href="/docs">Read setup docs</a>
     </div>
   </div>
-
-  <dl class="source-panel" aria-label="Publication source">
-    <div class="panel-head">
-      <dt>Publication source</dt>
-      <dd>last known good</dd>
-    </div>
-    <div class="source-row">
-      <dt>Repository</dt>
-      <dd>github.com/acme/platform-api</dd>
-    </div>
-    <div class="source-row">
-      <dt>Spec path</dt>
-      <dd>docs/openapi.yaml</dd>
-    </div>
-    <div class="source-row">
-      <dt>Revision</dt>
-      <dd>refs/tags/v2026.06</dd>
-    </div>
-    <div class="source-row">
-      <dt>Public docs</dt>
-      <dd>api.acme.test/docs</dd>
-    </div>
-  </dl>
 </section>
 
 <section class="workflow shell" aria-label="Workflow">
