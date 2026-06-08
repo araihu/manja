@@ -49,12 +49,12 @@ func TestPublicDocsRenderSearchAndOperations(t *testing.T) {
 		}
 	}
 	for _, want := range []string{
-		`h-screen overflow-hidden`,
+		`min-h-screen`,
 		`Manja`,
 		`class="flex h-16`,
-		`h-[calc(100vh-4rem)] overflow-hidden`,
-		`hidden h-[calc(100vh-4rem)] w-72 shrink-0 lg:block`,
-		`class="min-w-0 flex-1 overflow-x-hidden overflow-y-auto p-6`,
+		`min-h-[calc(100vh-4rem)] overflow-x-hidden`,
+		`sticky top-16 hidden h-[calc(100vh-4rem)] w-72 shrink-0 lg:block`,
+		`class="min-w-0 flex-1 overflow-x-hidden p-6`,
 		`aria-label="API sections"`,
 		`aria-label="Documentation search"`,
 		`href="/?selected=operation-listPets#operation-listPets"`,
@@ -1058,6 +1058,18 @@ func TestPublicDocsRenderEndpointDetails(t *testing.T) {
 	idx := core.SpecIndex{
 		Title:           "Todos",
 		ExampleSpecJSON: `{"components":{"schemas":{"Todo":{"type":"object","properties":{"id":{"type":"string"}}}}}}`,
+		Overview: core.SpecOverview{
+			Servers: []core.SpecServer{{
+				URL: "{protocol}://{hostname}/api/v3",
+				Variables: []core.SpecServerVariable{{
+					Name:    "hostname",
+					Default: "HOSTNAME",
+				}, {
+					Name:    "protocol",
+					Default: "http",
+				}},
+			}},
+		},
 		Operations: []core.Operation{{
 			ID:          "updateTodo",
 			Anchor:      "operation-updatetodo",
@@ -1076,7 +1088,13 @@ func TestPublicDocsRenderEndpointDetails(t *testing.T) {
 				Name:        "include",
 				In:          "query",
 				Description: "Include related resources.",
-				Schema:      core.SchemaSummary{Type: "string"},
+				Schema:      core.SchemaSummary{Type: "string", Default: "owner"},
+			}, {
+				Name:        "accept",
+				In:          "header",
+				Required:    true,
+				Description: "Accept header.",
+				Schema:      core.SchemaSummary{Type: "string", Default: "application/vnd.example+json"},
 			}},
 			RequestBody: &core.OperationRequestBody{
 				Required: true,
@@ -1154,9 +1172,26 @@ func TestPublicDocsRenderEndpointDetails(t *testing.T) {
 		`<section class="grid gap-4">`,
 		`Path Parameters`,
 		`Query Parameters`,
-		`Endpoint parameters`,
+		`Header Parameters`,
+		`Request configuration`,
+		`data-manja-request-config-panel`,
+		`bg-surface-alt/40 dark:bg-surface-dark-alt/50`,
+		`x-collapse`,
+		`Server Variables`,
+		`Parameters`,
+		`Body`,
+		`data-manja-request-config-body`,
+		`name="server.hostname"`,
+		`value="HOSTNAME"`,
+		`name="server.protocol"`,
+		`value="http"`,
+		`name="parameters.include"`,
+		`value="owner"`,
+		`name="parameters.accept"`,
+		`value="application/vnd.example+json"`,
 		`todoId`,
 		`include`,
+		`accept`,
 		`path`,
 		`required`,
 		`Request body`,
@@ -1529,8 +1564,9 @@ func TestPublicDocsRenderGenericSchemaExamples(t *testing.T) {
 	body := renderPublicDocs(t, NewPublicServer(idx), "/?selected=operation-updatetodo")
 	for _, want := range []string{
 		`data-manja-example`,
-		`id="operation-updatetodo-request-body-application-json-example"`,
-		`Request Example: application/json`,
+		`data-manja-request-config-body`,
+		`id="operation-updatetodo-request-body-input"`,
+		`Body`,
 		`Response Example: 200 application/json`,
 		`type="application/json"`,
 		`"hasExplicitExample":true`,
@@ -1538,6 +1574,7 @@ func TestPublicDocsRenderGenericSchemaExamples(t *testing.T) {
 		`"skipNonRequired":false`,
 		`"maxSampleDepth":3`,
 		`/manja-assets/schema-example.js`,
+		`/manja-assets/request-composer.js`,
 	} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("generic endpoint example missing %q:\n%s", want, body)

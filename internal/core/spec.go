@@ -127,6 +127,7 @@ type SchemaSummary struct {
 	Type        string
 	Format      string
 	Description string
+	Default     string
 	Example     string
 	Properties  []SchemaProperty
 	Items       *SchemaSummary

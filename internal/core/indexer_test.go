@@ -352,6 +352,7 @@ paths:
           schema:
             type: string
             enum: [owner]
+            default: owner
       requestBody:
         required: true
         content:
@@ -414,7 +415,7 @@ components:
 	if op.Parameters[0].Name != "todoId" || op.Parameters[0].In != "path" || !op.Parameters[0].Required || op.Parameters[0].Schema.Type != "string" {
 		t.Fatalf("path parameter = %#v", op.Parameters[0])
 	}
-	if op.Parameters[1].Name != "include" || op.Parameters[1].In != "query" || op.Parameters[1].Schema.Type != "string" {
+	if op.Parameters[1].Name != "include" || op.Parameters[1].In != "query" || op.Parameters[1].Schema.Type != "string" || op.Parameters[1].Schema.Default != "owner" {
 		t.Fatalf("query parameter = %#v", op.Parameters[1])
 	}
 	if op.RequestBody == nil || !op.RequestBody.Required || len(op.RequestBody.MediaTypes) != 1 {

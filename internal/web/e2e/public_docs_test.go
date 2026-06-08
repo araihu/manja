@@ -84,6 +84,246 @@ func TestPublicDocsSearchKeyboard(t *testing.T) {
 	}
 }
 
+func TestRequestComposerUpdatesRequestSample(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping e2e test in short mode")
+	}
+	chdirRepoRoot(t)
+
+	const operationAnchor = "operation-list-global-webhooks"
+	idx := core.SpecIndex{
+		Title: "GitHub REST",
+		Overview: core.SpecOverview{
+			Servers: []core.SpecServer{{
+				URL: "{protocol}://{hostname}/api/v3",
+				Variables: []core.SpecServerVariable{{
+					Name:    "hostname",
+					Default: "HOSTNAME",
+				}, {
+					Name:    "protocol",
+					Default: "http",
+				}},
+			}},
+		},
+		Operations: []core.Operation{{
+			ID:      "listGlobalWebhooks",
+			Anchor:  operationAnchor,
+			Method:  "POST",
+			Path:    "/admin/hooks",
+			Summary: "List global webhooks",
+			Tags:    []string{"enterprise-admin"},
+			Parameters: []core.OperationParameter{{
+				Name:     "page",
+				In:       "query",
+				Schema:   core.SchemaSummary{Type: "integer", Default: "1"},
+				Example:  "1",
+				Required: false,
+			}, {
+				Name:     "accept",
+				In:       "header",
+				Required: true,
+				Schema:   core.SchemaSummary{Type: "string", Default: "application/vnd.github.superpro-preview+json"},
+			}},
+			RequestBody: &core.OperationRequestBody{
+				MediaTypes: []core.OperationMediaType{{
+					ContentType:     "application/json",
+					Schema:          core.SchemaSummary{Type: "object", JSON: `{"type":"object","properties":{"name":{"type":"string"}}}`},
+					Example:         "{\n  \"name\": \"web\"\n}",
+					ExampleProvided: true,
+				}},
+			},
+			Snippets: []core.RequestSnippet{{
+				Label:    "cURL",
+				Language: "shell",
+				Code:     "curl --request POST --url {protocol}://{hostname}/api/v3/admin/hooks",
+			}},
+		}},
+		Search: []core.SearchDocument{{
+			ID:      operationAnchor,
+			Title:   "POST /admin/hooks",
+			Href:    "#" + operationAnchor,
+			Kind:    "Operation",
+			Section: "enterprise-admin",
+		}},
+	}
+	server := httptestServer(t, web.NewPublicServer(idx))
+
+	pw, err := playwright.Run()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pw.Stop()
+	browser, err := pw.Chromium.Launch()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer browser.Close()
+	page, err := browser.NewPage(playwright.BrowserNewPageOptions{
+		Viewport: &playwright.Size{Width: 1440, Height: 900},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := page.Goto(server + "/?selected=" + operationAnchor + "#" + operationAnchor); err != nil {
+		t.Fatal(err)
+	}
+
+	sample := page.Locator("[data-manja-request-sample] .codeblock")
+	if err := sample.WaitFor(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := page.WaitForFunction(`() => document.querySelector('[data-manja-request-sample] .codeblock')?.textContent.includes("HOSTNAME/api/v3/admin/hooks?page=1")`, nil); err != nil {
+		t.Fatal(err)
+	}
+	if err := page.Locator(`[name="server.hostname"]`).Fill("github.example.test"); err != nil {
+		t.Fatal(err)
+	}
+	if err := page.Locator(`[name="parameters.page"]`).Fill("2"); err != nil {
+		t.Fatal(err)
+	}
+	if err := page.Locator(`[data-manja-request-body-input]`).Fill("{\n  \"name\": \"changed\"\n}"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := page.WaitForFunction(`() => {
+		const text = document.querySelector('[data-manja-request-sample] .codeblock')?.textContent || '';
+		return text.includes("github.example.test/api/v3/admin/hooks?page=2") &&
+			text.includes("accept: application/vnd.github.superpro-preview+json") &&
+			text.includes("content-type: application/json") &&
+			text.includes('"name": "changed"');
+	}`, nil); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestRequestComposerAccordionContentStaysInsideRail(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping e2e test in short mode")
+	}
+	chdirRepoRoot(t)
+
+	const operationAnchor = "operation-list-global-webhooks"
+	idx := core.SpecIndex{
+		Title: "GitHub REST",
+		Overview: core.SpecOverview{
+			Servers: []core.SpecServer{{
+				URL: "{protocol}://{hostname}/api/v3",
+				Variables: []core.SpecServerVariable{{
+					Name:        "hostname",
+					Description: "Self-hosted Enterprise Server or Enterprise Cloud hostname",
+					Default:     "HOSTNAME",
+				}, {
+					Name:        "protocol",
+					Description: "Self-hosted Enterprise Server or Enterprise Cloud protocol",
+					Default:     "http",
+				}},
+			}},
+		},
+		Operations: []core.Operation{{
+			ID:      "listGlobalWebhooks",
+			Anchor:  operationAnchor,
+			Method:  "GET",
+			Path:    "/admin/hooks",
+			Summary: "List global webhooks",
+			Tags:    []string{"enterprise-admin"},
+			Parameters: []core.OperationParameter{{
+				Name:        "accept",
+				In:          "header",
+				Required:    true,
+				Description: "This API is under preview and subject to change.",
+				Schema:      core.SchemaSummary{Type: "string", Default: "application/vnd.github.superpro-preview+json"},
+			}, {
+				Name:        "per_page",
+				In:          "query",
+				Description: "Results per page (max 100)",
+				Schema:      core.SchemaSummary{Type: "integer", Default: "30"},
+			}, {
+				Name:        "page",
+				In:          "query",
+				Description: "Page number of the results to fetch.",
+				Schema:      core.SchemaSummary{Type: "integer", Default: "1"},
+			}},
+			Snippets: []core.RequestSnippet{{
+				Label:    "cURL",
+				Language: "shell",
+				Code:     "curl --request GET --url {protocol}://{hostname}/api/v3/admin/hooks",
+			}},
+		}},
+		Search: []core.SearchDocument{{
+			ID:      operationAnchor,
+			Title:   "GET /admin/hooks",
+			Href:    "#" + operationAnchor,
+			Kind:    "Operation",
+			Section: "enterprise-admin",
+		}},
+	}
+	server := httptestServer(t, web.NewPublicServer(idx))
+
+	pw, err := playwright.Run()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pw.Stop()
+	browser, err := pw.Chromium.Launch()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer browser.Close()
+	page, err := browser.NewPage(playwright.BrowserNewPageOptions{
+		Viewport: &playwright.Size{Width: 1440, Height: 900},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := page.Goto(server + "/?selected=" + operationAnchor + "#" + operationAnchor); err != nil {
+		t.Fatal(err)
+	}
+	if err := page.Locator("[data-manja-request-config-panel]").WaitFor(); err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := page.Evaluate(`() => {
+		const composer = document.querySelector('[data-manja-request-composer]');
+		if (!composer) return { missing: true };
+		const bounds = composer.getBoundingClientRect();
+		const offenders = [];
+		for (const el of composer.querySelectorAll('*')) {
+			const rect = el.getBoundingClientRect();
+			if (!rect.width || !rect.height) continue;
+			if (rect.left < bounds.left - 1 || rect.right > bounds.right + 1) {
+				offenders.push({
+					tag: el.tagName.toLowerCase(),
+					id: el.id || '',
+					name: el.getAttribute('name') || '',
+					role: el.getAttribute('role') || '',
+					className: String(el.className || ''),
+					left: Math.round(rect.left),
+					right: Math.round(rect.right),
+					boundsLeft: Math.round(bounds.left),
+					boundsRight: Math.round(bounds.right),
+				});
+			}
+		}
+		return {
+			composerWidth: Math.round(bounds.width),
+			composerScrollWidth: composer.scrollWidth,
+			offenders,
+		};
+	}`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	metrics, ok := result.(map[string]any)
+	if !ok {
+		t.Fatalf("request composer overflow metrics should be a map, got %#v", result)
+	}
+	if metrics["missing"] == true {
+		t.Fatalf("request composer missing from page")
+	}
+	if offenders, _ := metrics["offenders"].([]any); len(offenders) > 0 {
+		t.Fatalf("request composer descendants should stay inside the examples rail, got metrics %#v", metrics)
+	}
+}
+
 func TestPublicDocsThemeSelectDropdownOverlaysContent(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping e2e test in short mode")
@@ -383,7 +623,7 @@ func TestPublicDocsSidebarTagGroupsToggleIndependently(t *testing.T) {
 	}
 }
 
-func TestPublicDocsContainsScrollInDocsPanes(t *testing.T) {
+func TestPublicDocsScrollsMainContentWithDocument(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping e2e test in short mode")
 	}
@@ -454,21 +694,22 @@ func TestPublicDocsContainsScrollInDocsPanes(t *testing.T) {
 		}
 	}
 	for _, key := range []string{"documentScrollableY", "bodyScrollableY"} {
-		if metrics[key] == true {
-			t.Fatalf("public docs should contain vertical scrolling inside docs panes; %s=true in metrics %#v", key, metrics)
+		if metrics[key] != true {
+			t.Fatalf("public docs should scroll selected content with the document; %s=false in metrics %#v", key, metrics)
 		}
 	}
-	if metrics["mainScrollableY"] != true {
-		t.Fatalf("public docs should scroll endpoint content inside the main pane, got metrics %#v", metrics)
+	if metrics["mainScrollableY"] == true {
+		t.Fatalf("public docs should not create an independent main content scrollbar, got metrics %#v", metrics)
 	}
 	if metrics["sidebarScrollableY"] != true {
 		t.Fatalf("test setup should keep long navigation scrollable inside the sidebar, got metrics %#v", metrics)
 	}
 	wantPaneHeight := metricNumber(t, metrics, "windowInnerHeight") - 64
-	for _, key := range []string{"mainRectHeight", "asideRectHeight"} {
-		if got := metricNumber(t, metrics, key); got != wantPaneHeight {
-			t.Fatalf("%s should fill the viewport below the header; want %v got %v, metrics %#v", key, wantPaneHeight, got, metrics)
-		}
+	if got := metricNumber(t, metrics, "asideRectHeight"); got != wantPaneHeight {
+		t.Fatalf("aside should keep the viewport-height navigation rail; want %v got %v, metrics %#v", wantPaneHeight, got, metrics)
+	}
+	if got := metricNumber(t, metrics, "mainRectHeight"); got <= wantPaneHeight {
+		t.Fatalf("main should grow with selected endpoint content instead of matching pane height; want > %v got %v, metrics %#v", wantPaneHeight, got, metrics)
 	}
 }
 

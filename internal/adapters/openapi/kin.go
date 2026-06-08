@@ -410,6 +410,7 @@ func schemaSummaryDepth(ref *openapi3.SchemaRef, depth int) core.SchemaSummary {
 	summary.Type = schemaType(schema)
 	summary.Format = schema.Format
 	summary.Description = schema.Description
+	summary.Default = exampleString(schema.Default)
 	summary.Example = exampleString(schema.Example)
 	if depth == 0 {
 		summary.JSON = schemaJSON(schema)
