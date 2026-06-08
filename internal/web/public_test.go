@@ -50,6 +50,8 @@ func TestPublicDocsRenderSearchAndOperations(t *testing.T) {
 		`Manja`,
 		`class="flex h-16`,
 		`h-[calc(100vh-4rem)] overflow-hidden`,
+		`hidden h-[calc(100vh-4rem)] w-72 shrink-0 lg:block`,
+		`class="min-w-0 flex-1 overflow-x-hidden overflow-y-auto p-6`,
 		`aria-label="API sections"`,
 		`aria-label="Documentation search"`,
 		`href="/?selected=operation-listPets#operation-listPets"`,

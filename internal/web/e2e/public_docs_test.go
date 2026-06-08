@@ -277,6 +277,163 @@ func TestPublicDocsSidebarNavigationSwapsMainContent(t *testing.T) {
 	}
 }
 
+func TestPublicDocsContainsScrollInDocsPanes(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping e2e test in short mode")
+	}
+	chdirRepoRoot(t)
+
+	idx := scrollStressIndex()
+	const selectedAnchor = "operation-listteams-00"
+	server := httptestServer(t, web.NewPublicServer(idx))
+
+	pw, err := playwright.Run()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pw.Stop()
+	browser, err := pw.Chromium.Launch()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer browser.Close()
+	page, err := browser.NewPage(playwright.BrowserNewPageOptions{
+		Viewport: &playwright.Size{Width: 1024, Height: 768},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := page.Goto(server + "/?selected=" + selectedAnchor + "#" + selectedAnchor); err != nil {
+		t.Fatal(err)
+	}
+	if err := page.Locator("#" + selectedAnchor + ":visible").WaitFor(); err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := page.Evaluate(`() => {
+		const documentScroller = document.scrollingElement;
+		const body = document.body;
+		const shell = body.firstElementChild;
+		const main = document.querySelector('main');
+		const aside = document.querySelector('aside');
+		const sidebar = document.querySelector('.sidebar-scroll');
+		const overflows = (scrollSize, clientSize) => scrollSize > clientSize + 1;
+
+		return {
+			documentScrollableX: overflows(documentScroller.scrollWidth, documentScroller.clientWidth),
+			documentScrollableY: overflows(documentScroller.scrollHeight, documentScroller.clientHeight),
+			bodyScrollableX: overflows(body.scrollWidth, window.innerWidth),
+			bodyScrollableY: overflows(body.scrollHeight, window.innerHeight),
+			mainScrollableY: main ? overflows(main.scrollHeight, main.clientHeight) : false,
+			sidebarScrollableY: sidebar ? overflows(sidebar.scrollHeight, sidebar.clientHeight) : false,
+			mainRectHeight: main ? Math.round(main.getBoundingClientRect().height) : 0,
+			asideRectHeight: aside ? Math.round(aside.getBoundingClientRect().height) : 0,
+			windowInnerHeight: window.innerHeight,
+			shellOverflow: shell ? getComputedStyle(shell).overflow : '',
+			mainOverflowY: main ? getComputedStyle(main).overflowY : '',
+			sidebarOverflowY: sidebar ? getComputedStyle(sidebar).overflowY : '',
+		};
+	}`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	metrics, ok := result.(map[string]any)
+	if !ok {
+		t.Fatalf("scroll metrics should be a map, got %#v", result)
+	}
+	for _, key := range []string{"documentScrollableX", "bodyScrollableX"} {
+		if metrics[key] == true {
+			t.Fatalf("public docs should not create document-level scrollbars; %s=true in metrics %#v", key, metrics)
+		}
+	}
+	for _, key := range []string{"documentScrollableY", "bodyScrollableY"} {
+		if metrics[key] == true {
+			t.Fatalf("public docs should contain vertical scrolling inside docs panes; %s=true in metrics %#v", key, metrics)
+		}
+	}
+	if metrics["mainScrollableY"] != true {
+		t.Fatalf("public docs should scroll endpoint content inside the main pane, got metrics %#v", metrics)
+	}
+	if metrics["sidebarScrollableY"] != true {
+		t.Fatalf("test setup should keep long navigation scrollable inside the sidebar, got metrics %#v", metrics)
+	}
+	wantPaneHeight := metricNumber(t, metrics, "windowInnerHeight") - 64
+	for _, key := range []string{"mainRectHeight", "asideRectHeight"} {
+		if got := metricNumber(t, metrics, key); got != wantPaneHeight {
+			t.Fatalf("%s should fill the viewport below the header; want %v got %v, metrics %#v", key, wantPaneHeight, got, metrics)
+		}
+	}
+}
+
+func metricNumber(t *testing.T, metrics map[string]any, key string) float64 {
+	t.Helper()
+	switch value := metrics[key].(type) {
+	case float64:
+		return value
+	case int:
+		return float64(value)
+	default:
+		t.Fatalf("metric %s should be numeric, got %#v", key, value)
+		return 0
+	}
+}
+
+func scrollStressIndex() core.SpecIndex {
+	operations := make([]core.Operation, 0, 48)
+	search := make([]core.SearchDocument, 0, 48)
+	for i := 0; i < 48; i++ {
+		anchor := fmt.Sprintf("operation-listteams-%02d", i)
+		operations = append(operations, core.Operation{
+			ID:          fmt.Sprintf("listTeams%02d", i),
+			Anchor:      anchor,
+			Method:      "GET",
+			Path:        fmt.Sprintf("/orgs/{org}/teams/%02d", i),
+			Summary:     fmt.Sprintf("List teams %02d", i),
+			Description: "Returns teams for an organization with membership metadata, permissions, and pagination details.",
+			Tags:        []string{"Teams"},
+			Parameters: []core.OperationParameter{{
+				Name:        "org",
+				In:          "path",
+				Required:    true,
+				Description: "The organization name.",
+				Schema:      core.SchemaSummary{Type: "string"},
+			}, {
+				Name:        "per_page",
+				In:          "query",
+				Description: "The number of results per page.",
+				Schema:      core.SchemaSummary{Type: "integer"},
+			}, {
+				Name:        "page",
+				In:          "query",
+				Description: "The page number of the results to fetch.",
+				Schema:      core.SchemaSummary{Type: "integer"},
+			}},
+			Responses: []core.OperationResponse{{
+				Status:      "200",
+				Description: "OK",
+			}, {
+				Status:      "404",
+				Description: "Not Found",
+			}},
+		})
+		search = append(search, core.SearchDocument{
+			ID:          anchor,
+			Title:       fmt.Sprintf("GET /orgs/{org}/teams/%02d", i),
+			Description: fmt.Sprintf("List teams %02d", i),
+			Href:        "#" + anchor,
+			Kind:        "Operation",
+			Section:     "Teams",
+		})
+	}
+
+	return core.SpecIndex{
+		Title:      "Teams API",
+		Version:    "1.0.0",
+		Operations: operations,
+		Search:     search,
+	}
+}
+
 func chdirRepoRoot(t *testing.T) {
 	t.Helper()
 	cwd, err := os.Getwd()

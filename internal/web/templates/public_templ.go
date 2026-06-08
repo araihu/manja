@@ -181,7 +181,7 @@ func PublicDocsWithOptions(idx core.SpecIndex, selectedID string, opts PublicDoc
 					return templ_7745c5c3_Err
 				}
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 6, "</div></div></header><div class=\"flex h-[calc(100vh-4rem)] overflow-hidden\"><aside class=\"hidden w-72 shrink-0 lg:block\" aria-label=\"API sections\"><div id=\"sidebar-nav-content\" class=\"h-full\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 6, "</div></div></header><div class=\"flex h-[calc(100vh-4rem)] overflow-hidden\"><aside class=\"hidden h-[calc(100vh-4rem)] w-72 shrink-0 lg:block\" aria-label=\"API sections\"><div id=\"sidebar-nav-content\" class=\"h-full\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
