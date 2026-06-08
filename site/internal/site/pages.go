@@ -9,7 +9,6 @@ type PageKey string
 
 const (
 	Home PageKey = "home"
-	Demo PageKey = "demo"
 	Docs PageKey = "docs"
 )
 
@@ -27,13 +26,6 @@ func Render(w io.Writer, key PageKey) error {
 
 func pageFor(key PageKey) page {
 	switch key {
-	case Demo:
-		return page{
-			Title:       "Manja Demo",
-			Description: "A live Manja OpenAPI renderer demo using a source-connected GitHub REST specification.",
-			Path:        "/demo",
-			Body:        demoBody,
-		}
 	case Docs:
 		return page{
 			Title:       "Manja Docs",
@@ -167,83 +159,6 @@ var homeBody = template.HTML(`
       <p>Branches, tags, commits, and singleton spec files become publication candidates without moving ownership out of source control.</p>
     </article>
   </div>
-</section>
-`)
-
-var demoBody = template.HTML(`
-<section class="page-hero shell">
-  <p class="eyebrow">Demo</p>
-  <h1>GitHub REST API demo</h1>
-  <p class="lead">A public OpenAPI reference rendered from a source-managed spec. The page keeps source metadata, version state, operations, schemas, examples, and read-only behavior in one scan-friendly surface.</p>
-</section>
-
-<section class="demo-shell shell">
-  <aside class="demo-sidebar" aria-label="Demo operations">
-    <div class="sidebar-title">GitHub REST API</div>
-    <a class="operation is-active" href="#list-teams"><span class="method get">GET</span><span>/repos/{owner}/{repo}/teams</span></a>
-    <a class="operation" href="#create-hook"><span class="method post">POST</span><span>/repos/{owner}/{repo}/hooks</span></a>
-    <a class="operation" href="#update-branch"><span class="method patch">PATCH</span><span>/repos/{owner}/{repo}/branches/{branch}</span></a>
-    <div class="sidebar-meta">
-      <span>Source</span>
-      <strong>github-v3-rest.json</strong>
-    </div>
-  </aside>
-
-  <article class="endpoint" id="list-teams">
-    <div class="endpoint-head">
-      <div>
-        <span class="method get">GET</span>
-        <h2>List teams</h2>
-      </div>
-      <span class="status-pill">last known good</span>
-    </div>
-    <p class="endpoint-path">/repos/{owner}/{repo}/teams</p>
-    <p class="endpoint-desc">Lists teams with access to a repository, including permission state and organization context. Readers can inspect shape and examples without Manja proxying upstream API requests.</p>
-
-    <div class="endpoint-grid">
-      <section class="detail-block">
-        <h3>Parameters</h3>
-        <dl class="field-list">
-          <div><dt>owner</dt><dd>string, required</dd></div>
-          <div><dt>repo</dt><dd>string, required</dd></div>
-          <div><dt>page</dt><dd>integer, optional</dd></div>
-        </dl>
-      </section>
-      <section class="detail-block">
-        <h3>Responses</h3>
-        <dl class="field-list">
-          <div><dt>200</dt><dd>array of Team</dd></div>
-          <div><dt>304</dt><dd>not modified</dd></div>
-          <div><dt>404</dt><dd>repository not found</dd></div>
-        </dl>
-      </section>
-    </div>
-
-    <section class="schema-block">
-      <div>
-        <h3>Team schema</h3>
-        <p>Objects stay navigable as named schemas, with required fields and nested examples kept close to the endpoint that returns them.</p>
-      </div>
-      <ul class="schema-tree" aria-label="Team schema fields">
-        <li><strong>id</strong><span>integer</span></li>
-        <li><strong>name</strong><span>string</span></li>
-        <li><strong>slug</strong><span>string</span></li>
-        <li><strong>permission</strong><span>pull | push | admin</span></li>
-      </ul>
-    </section>
-
-    <section class="code-panel" aria-label="Example response">
-      <div class="code-head"><span>Example response</span><span>application/json</span></div>
-      <pre><code>[
-  {
-    "id": 1,
-    "name": "Justice League",
-    "slug": "justice-league",
-    "permission": "admin"
-  }
-]</code></pre>
-    </section>
-  </article>
 </section>
 `)
 
