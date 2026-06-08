@@ -35,3 +35,27 @@ jobs:
         with:
           go-version-file: go.mod
       - run: go test -tags=integration ./internal/integration -v
+
+  deploy:
+    name: Trigger Fly deploy
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    needs: [test, integration]
+    runs-on: ubuntu-latest
+    concurrency: deploy-group
+    steps:
+      - name: Dispatch central deployment
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.FLY_DEPLOY_DISPATCH_TOKEN }}
+          script: |
+            await github.rest.repos.createDispatchEvent({
+              owner: 'araihu',
+              repo: 'fly-deploy',
+              event_type: 'manja-main',
+              client_payload: {
+                manja_ref: context.sha,
+                manja_sha: context.sha,
+                manja_run_id: String(context.runId),
+                source_repository: `${context.repo.owner}/${context.repo.repo}`,
+              },
+            })
