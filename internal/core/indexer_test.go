@@ -277,6 +277,9 @@ components:
 	if requestMedia.ContentType != "application/json" || requestMedia.Schema.Name != "TodoInput" {
 		t.Fatalf("request media = %#v", requestMedia)
 	}
+	if !strings.Contains(requestMedia.Schema.JSON, `"required":["name"]`) {
+		t.Fatalf("request schema JSON = %q", requestMedia.Schema.JSON)
+	}
 	if !strings.Contains(requestMedia.Example, `"name"`) || !strings.Contains(requestMedia.Example, `"completed"`) {
 		t.Fatalf("request example = %q", requestMedia.Example)
 	}
@@ -287,8 +290,14 @@ components:
 	if responseMedia.ContentType != "application/json" || responseMedia.Schema.Name != "Todo" {
 		t.Fatalf("response media = %#v", responseMedia)
 	}
+	if !strings.Contains(responseMedia.Schema.JSON, `"required":["id","name"]`) {
+		t.Fatalf("response schema JSON = %q", responseMedia.Schema.JSON)
+	}
 	if responseMedia.Schema.Properties[0].Name != "completed" {
 		t.Fatalf("response schema properties = %#v", responseMedia.Schema.Properties)
+	}
+	if idx.Schemas[0].Example.JSON == "" || !strings.Contains(idx.Schemas[0].Example.JSON, `"properties"`) {
+		t.Fatalf("schema example payload = %#v", idx.Schemas[0].Example)
 	}
 	if len(op.Security) != 1 || op.Security[0].Name != "bearerAuth" {
 		t.Fatalf("security = %#v", op.Security)

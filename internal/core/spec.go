@@ -87,6 +87,7 @@ type SchemaSummary struct {
 	Description string
 	Properties  []SchemaProperty
 	Items       *SchemaSummary
+	JSON        string
 }
 
 type SchemaProperty struct {
@@ -99,6 +100,12 @@ type SchemaProperty struct {
 type Schema struct {
 	Name        string
 	Description string
+	Example     SchemaExample
+}
+
+type SchemaExample struct {
+	JSON    string
+	Example string
 }
 
 type SearchDocument struct {

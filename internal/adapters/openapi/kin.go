@@ -70,7 +70,7 @@ func (Parser) Parse(ctx context.Context, file core.SpecFile, rev core.Revision) 
 			if schema != nil && schema.Value != nil {
 				description = schema.Value.Description
 			}
-			idx.Schemas = append(idx.Schemas, core.Schema{Name: name, Description: description})
+			idx.Schemas = append(idx.Schemas, core.Schema{Name: name, Description: description, Example: schemaExample(schema)})
 		}
 	}
 	sort.Slice(idx.Schemas, func(i, j int) bool { return idx.Schemas[i].Name < idx.Schemas[j].Name })
@@ -304,6 +304,9 @@ func schemaSummaryDepth(ref *openapi3.SchemaRef, depth int) core.SchemaSummary {
 	summary.Type = schemaType(schema)
 	summary.Format = schema.Format
 	summary.Description = schema.Description
+	if depth == 0 {
+		summary.JSON = schemaJSON(schema)
+	}
 	if schema.Items != nil {
 		items := schemaSummaryDepth(schema.Items, depth+1)
 		summary.Items = &items
@@ -367,6 +370,27 @@ func exampleString(value any) string {
 		}
 		return string(data)
 	}
+}
+
+func schemaExample(ref *openapi3.SchemaRef) core.SchemaExample {
+	if ref == nil || ref.Value == nil {
+		return core.SchemaExample{}
+	}
+	return core.SchemaExample{
+		JSON:    schemaJSON(ref.Value),
+		Example: exampleString(ref.Value.Example),
+	}
+}
+
+func schemaJSON(schema *openapi3.Schema) string {
+	if schema == nil {
+		return ""
+	}
+	data, err := json.Marshal(schema)
+	if err != nil {
+		return ""
+	}
+	return string(data)
 }
 
 func sampleWithOpenAPISampler(schema *openapi3.Schema) string {
