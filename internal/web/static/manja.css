@@ -19,6 +19,23 @@
   overflow-wrap: anywhere;
 }
 
+.manja-endpoint-detail-layout {
+  align-items: start;
+  display: grid;
+  gap: 2.5rem;
+  grid-template-columns: minmax(0, 1fr);
+  padding-top: 2.5rem;
+}
+
+.manja-endpoint-detail-layout > section {
+  min-width: 0;
+}
+
+.manja-endpoint-responses-section {
+  border-top: 1px solid var(--color-outline);
+  padding-top: 2.5rem;
+}
+
 .manja-schema-detail-layout {
   align-items: start;
   display: grid;
@@ -253,6 +270,17 @@ summary.manja-schema-row::marker {
 }
 
 @media (min-width: 1280px) {
+  .manja-endpoint-detail-layout {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .manja-endpoint-responses-section {
+    border-top: 0;
+    padding-top: 0;
+  }
+}
+
+@media (min-width: 1280px) {
   .manja-schema-detail-layout {
     gap: 3rem;
     grid-template-columns: minmax(0, 1fr) minmax(20rem, 28rem);
@@ -270,6 +298,10 @@ summary.manja-schema-row::marker {
 
 .dark .manja-schema-tree {
   color: var(--color-on-surface-dark);
+}
+
+.dark .manja-endpoint-responses-section {
+  border-top-color: var(--color-outline-dark);
 }
 
 .dark .manja-schema-row:hover {

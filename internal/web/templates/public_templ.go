@@ -1055,7 +1055,7 @@ func endpointSection(op core.Operation, exampleSpecJSON string) templ.Component 
 			return templ_7745c5c3_Err
 		}
 		if operationHasRequest(op) || len(op.Responses) > 0 {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 74, "<div class=\"grid gap-10 pt-10 xl:grid-cols-2 xl:items-start\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 74, "<div class=\"manja-endpoint-detail-layout\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -1125,7 +1125,7 @@ func endpointSection(op core.Operation, exampleSpecJSON string) templ.Component 
 				}
 			}
 			if len(op.Responses) > 0 {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 83, "<section class=\"grid gap-7 border-t border-outline pt-10 dark:border-outline-dark xl:border-t-0 xl:pt-0\" aria-label=\"Responses\"><h4 class=\"font-title text-2xl font-bold text-on-surface-strong dark:text-on-surface-dark-strong\">Responses</h4><div id=\"")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 83, "<section class=\"manja-endpoint-responses-section grid gap-7\" aria-label=\"Responses\"><h4 class=\"font-title text-2xl font-bold text-on-surface-strong dark:text-on-surface-dark-strong\">Responses</h4><div id=\"")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}

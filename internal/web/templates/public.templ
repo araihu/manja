@@ -354,7 +354,7 @@ templ endpointSection(op core.Operation, exampleSpecJSON string) {
 					}
 				</div>
 				if operationHasRequest(op) || len(op.Responses) > 0 {
-					<div class="grid gap-10 pt-10 xl:grid-cols-2 xl:items-start">
+					<div class="manja-endpoint-detail-layout">
 						if operationHasRequest(op) {
 							<section class="grid gap-8" aria-label="Request">
 								<h4 class="font-title text-2xl font-bold text-on-surface-strong dark:text-on-surface-dark-strong">Request</h4>
@@ -378,7 +378,7 @@ templ endpointSection(op core.Operation, exampleSpecJSON string) {
 							</section>
 						}
 						if len(op.Responses) > 0 {
-							<section class="grid gap-7 border-t border-outline pt-10 dark:border-outline-dark xl:border-t-0 xl:pt-0" aria-label="Responses">
+							<section class="manja-endpoint-responses-section grid gap-7" aria-label="Responses">
 								<h4 class="font-title text-2xl font-bold text-on-surface-strong dark:text-on-surface-dark-strong">Responses</h4>
 								<div id={ opID + "-responses" }>
 									@tabs.Tabs(responseTabsConfig(opID, op.Responses))
