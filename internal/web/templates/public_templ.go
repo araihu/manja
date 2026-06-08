@@ -2303,25 +2303,10 @@ func docsSearchConfig(docs []core.SearchDocument) searchfield.Config {
 		Label:          "Search docs",
 		Placeholder:    "Search operations and schemas",
 		GlobalShortcut: true,
-		Items:          searchItems(docs),
+		ItemsURL:       "/search.json",
 		MaxResults:     8,
 		EmptyText:      "No operations or schemas found.",
 	}
-}
-
-func searchItems(docs []core.SearchDocument) []searchfield.Item {
-	items := make([]searchfield.Item, 0, len(docs))
-	for _, doc := range docs {
-		items = append(items, searchfield.Item{
-			ID:          "search-" + doc.ID,
-			Title:       doc.Title,
-			Description: doc.Description,
-			Href:        selectedDocsHrefFromDoc(doc.Href),
-			Section:     doc.Section,
-			Keywords:    doc.Keywords,
-		})
-	}
-	return items
 }
 
 func responseTabsConfig(opID string, responses []core.OperationResponse) tabs.Config {

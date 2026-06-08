@@ -1,11 +1,13 @@
 package web
 
 import (
+	"encoding/json"
 	"encoding/xml"
 	"log/slog"
 	"mime"
 	"net"
 	"net/http"
+	"net/url"
 	"strings"
 
 	"github.com/araihu/goshtoso/assets"
@@ -26,6 +28,16 @@ type PublicOptions struct {
 }
 
 const openAPIJSONDownloadPath = "/openapi.json"
+const searchJSONPath = "/search.json"
+
+type searchJSONItem struct {
+	ID          string   `json:"id"`
+	Title       string   `json:"title"`
+	Description string   `json:"description,omitempty"`
+	Href        string   `json:"href,omitempty"`
+	Section     string   `json:"section,omitempty"`
+	Keywords    []string `json:"keywords,omitempty"`
+}
 
 func (opts PublicOptions) withDefaults() PublicOptions {
 	switch opts.EndpointSidebarLabel {
@@ -76,6 +88,33 @@ func sitemapLoc(r *http.Request, path string) (string, bool) {
 	return sitemapScheme(r) + "://" + host + path, true
 }
 
+func selectedDocsSearchHref(href string) string {
+	anchor, ok := strings.CutPrefix(strings.TrimSpace(href), "#")
+	if !ok {
+		return href
+	}
+	anchor = strings.TrimSpace(anchor)
+	if anchor == "" {
+		return "/"
+	}
+	return "/?selected=" + url.QueryEscape(anchor) + "#" + anchor
+}
+
+func searchJSONItems(docs []core.SearchDocument) []searchJSONItem {
+	items := make([]searchJSONItem, 0, len(docs))
+	for _, doc := range docs {
+		items = append(items, searchJSONItem{
+			ID:          "search-" + doc.ID,
+			Title:       doc.Title,
+			Description: doc.Description,
+			Href:        selectedDocsSearchHref(doc.Href),
+			Section:     doc.Section,
+			Keywords:    doc.Keywords,
+		})
+	}
+	return items
+}
+
 func NewPublicServer(idx core.SpecIndex) http.Handler {
 	return NewPublicServerWithOptions(idx, PublicOptions{})
 }
@@ -85,6 +124,24 @@ func NewPublicServerWithOptions(idx core.SpecIndex, opts PublicOptions) http.Han
 	mux := http.NewServeMux()
 	mux.Handle("/assets/", assets.Handler())
 	mux.Handle("/manja-assets/", http.StripPrefix("/manja-assets/", http.FileServer(http.Dir("internal/web/static"))))
+	mux.HandleFunc(searchJSONPath, func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != searchJSONPath {
+			http.NotFound(w, r)
+			return
+		}
+		if r.Method != http.MethodGet && r.Method != http.MethodHead {
+			w.Header().Set("Allow", strings.Join([]string{http.MethodGet, http.MethodHead}, ", "))
+			http.Error(w, http.StatusText(http.StatusMethodNotAllowed), http.StatusMethodNotAllowed)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		if r.Method == http.MethodHead {
+			return
+		}
+		if err := json.NewEncoder(w).Encode(searchJSONItems(idx.Search)); err != nil {
+			slog.ErrorContext(r.Context(), "render public search index", "error", err)
+		}
+	})
 	mux.HandleFunc(openAPIJSONDownloadPath, func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != openAPIJSONDownloadPath {
 			http.NotFound(w, r)
