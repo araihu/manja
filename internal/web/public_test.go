@@ -159,6 +159,53 @@ func TestPublicDocsRenderSearchAndOperations(t *testing.T) {
 	}
 }
 
+func TestPublicDocsOperationTagDisclosuresDoNotDrawRails(t *testing.T) {
+	idx := core.SpecIndex{
+		Title: "Petstore",
+		Operations: []core.Operation{
+			{ID: "listPets", Method: "GET", Path: "/pets", Summary: "List pets", Tags: []string{"Pets"}},
+			{ID: "createPet", Method: "POST", Path: "/pets", Summary: "Create pet", Tags: []string{"Pets"}},
+		},
+	}
+
+	body := renderPublicDocs(t, NewPublicServer(idx), "/?selected=operation-listPets")
+	petsControl := regexp.MustCompile(`<a href="#"[^>]*aria-controls="tag-pets-children"[^>]*>`).FindString(body)
+	if petsControl == "" {
+		t.Fatalf("operation tag group should render a Pets disclosure control:\n%s", body)
+	}
+	if !strings.Contains(petsControl, `data-manja-sidebar-tag="true"`) {
+		t.Fatalf("operation tag disclosure should be marked for rail-free styling:\n%s", petsControl)
+	}
+
+	childLink := regexp.MustCompile(`<a href="/\?selected=operation-listPets#operation-listPets"[^>]*>`).FindString(body)
+	if childLink == "" {
+		t.Fatalf("operation tag children should contain the selected endpoint link:\n%s", body)
+	}
+	if strings.Contains(childLink, `data-manja-sidebar-tag="true"`) {
+		t.Fatalf("operation child links should not be styled as tag disclosure controls:\n%s", childLink)
+	}
+	if !strings.Contains(childLink, `border-l`) {
+		t.Fatalf("operation child links should keep sidebar rails:\n%s", childLink)
+	}
+
+	css, err := os.ReadFile("static/manja.css")
+	if err != nil {
+		t.Fatal(err)
+	}
+	rule := regexp.MustCompile(`(?s)#sidebar-nav-content\s+a\[data-manja-sidebar-tag="true"\]\s*\{[^}]*\}`).FindString(string(css))
+	if rule == "" {
+		t.Fatalf("missing rail-free sidebar tag disclosure CSS rule")
+	}
+	for _, want := range []string{
+		`border-left-width: 0;`,
+		`padding-left: 0;`,
+	} {
+		if !strings.Contains(rule, want) {
+			t.Fatalf("sidebar tag disclosure CSS should include %q:\n%s", want, rule)
+		}
+	}
+}
+
 func TestPublicDocsServeSearchIndexJSON(t *testing.T) {
 	idx := core.SpecIndex{
 		Title: "Petstore",
@@ -460,6 +507,45 @@ func TestPublicDocsFragmentRequestReturnsOnlyMainContent(t *testing.T) {
 	for _, reject := range []string{`<!doctype html>`, `<html`, `id="main-content"`, `hx-swap-oob`, `id="sidebar-nav-content"`} {
 		if strings.Contains(body, reject) {
 			t.Fatalf("fragment response should not include shell/sidebar marker %q:\n%s", reject, body)
+		}
+	}
+}
+
+func TestPublicDocsRendersPoweredByFooterInFullPageAndFragments(t *testing.T) {
+	idx := core.SpecIndex{
+		Title: "Petstore",
+		Operations: []core.Operation{
+			{ID: "listPets", Method: "GET", Path: "/pets", Summary: "List pets", Tags: []string{"Pets"}},
+		},
+	}
+	srv := NewPublicServer(idx)
+
+	full := renderPublicDocs(t, srv, "/?selected=operation-listPets")
+	for _, want := range []string{
+		`<footer aria-label="Powered by Manja"`,
+		`Powered by`,
+		`href="https://manja.araihu.com"`,
+		`>Manja</a>`,
+	} {
+		if !strings.Contains(full, want) {
+			t.Fatalf("full page missing powered-by footer marker %q:\n%s", want, full)
+		}
+	}
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/?selected=operation-listPets", nil)
+	req.Header.Set("HX-Request", "true")
+	srv.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("fragment status = %d", rec.Code)
+	}
+	fragment := rec.Body.String()
+	for _, want := range []string{
+		`<footer aria-label="Powered by Manja"`,
+		`href="https://manja.araihu.com"`,
+	} {
+		if !strings.Contains(fragment, want) {
+			t.Fatalf("fragment response missing powered-by footer marker %q:\n%s", want, fragment)
 		}
 	}
 }
