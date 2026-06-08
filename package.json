@@ -4,7 +4,7 @@
   "scripts": {
     "dev": "node scripts/dev-server.mjs",
     "dev:build": "go run github.com/a-h/templ/cmd/templ generate && npm run examples:build && npm run css:build --if-present && go build -o ./tmp/manja-dev ./cmd/manja",
-    "examples:build": "node scripts/build-schema-example-asset.mjs",
+    "examples:build": "node scripts/build-schema-example-asset.mjs && node scripts/build-request-composer-asset.mjs",
     "examples:test": "node --test internal/web/static/schema-example-hydrator.test.mjs internal/web/static/request-composer.test.mjs",
     "api:bundle": "redocly bundle api/openapi.yaml -o api/dist/openapi.yaml",
     "api:lint": "redocly lint api/openapi.yaml"
@@ -12,6 +12,10 @@
   "devDependencies": {
     "@readme/httpsnippet": "^11.1.0",
     "@redocly/cli": "^1.34.5",
-    "openapi-sampler": "^1.7.4"
+    "buffer": "^6.0.3",
+    "esbuild": "^0.28.0",
+    "highlight.js": "^11.11.1",
+    "openapi-sampler": "^1.7.4",
+    "url": "^0.11.4"
   }
 }
