@@ -893,11 +893,12 @@ func sidebarSections(idx core.SpecIndex, selectedAnchor string, labelMode Endpoi
 		items := make([]sidebar.Item, 0, len(tagOrder))
 		for _, tag := range tagOrder {
 			items = append(items, sidebar.Item{
-				ID:    "tag-" + anchorFragment(tag),
-				Label: tag,
-				Href:  "#",
-				Open:  tagOpen[tag],
-				Items: tagItems[tag],
+				ID:        "tag-" + anchorFragment(tag),
+				Label:     tag,
+				Href:      "#",
+				Open:      tagOpen[tag],
+				Items:     tagItems[tag],
+				LinkAttrs: sidebarTagAttrs(tag),
 			})
 		}
 		sections = append(sections, sidebar.Section{Title: "Operations", Collapsible: true, Items: items})
@@ -1011,6 +1012,15 @@ func sidebarTitleAttrs(label string) templpkg.Attributes {
 		return nil
 	}
 	return templpkg.Attributes{"title": label}
+}
+
+func sidebarTagAttrs(label string) templpkg.Attributes {
+	attrs := sidebarTitleAttrs(label)
+	if attrs == nil {
+		attrs = templpkg.Attributes{}
+	}
+	attrs["data-manja-sidebar-tag"] = "true"
+	return attrs
 }
 
 func sidebarNavigationAttrs(label string, href string) templpkg.Attributes {

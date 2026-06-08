@@ -19,6 +19,11 @@
   overflow-wrap: anywhere;
 }
 
+#sidebar-nav-content a[data-manja-sidebar-tag="true"] {
+  border-left-width: 0;
+  padding-left: 0;
+}
+
 .manja-endpoint-shell-layout {
   align-items: start;
   display: grid;
