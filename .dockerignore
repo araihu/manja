@@ -1,0 +1,12 @@
+.git
+.github
+.manja
+.superpowers
+api/dist
+bin
+node_modules
+tmp
+vendor
+*.test
+go.work
+go.work.sum
