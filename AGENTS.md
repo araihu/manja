@@ -88,18 +88,19 @@ Rules:
   `MANJA_DEV_PROXY_PORT`, `--app-port`, or `--proxy-port`.
 - Keep `.air.toml` as the single watcher config. Its build command is
   `npm run dev:build`, which regenerates templ output, rebuilds the schema
-  example asset, runs `npm run css:build --if-present`, and builds
-  `./tmp/manja-dev`.
+  example and request composer assets, runs `npm run css:build --if-present`,
+  and builds `./tmp/manja-dev`.
 - Never add generated outputs to Air watch triggers. In particular, keep
-  `_templ.go`, `internal/web/static/schema-example.js`, generated CSS,
-  `api/dist`, `.manja`, `tmp`, `vendor`, `node_modules`, and `.git` excluded
-  unless you are deliberately changing the dev-loop contract.
+  `_templ.go`, `internal/web/static/schema-example.js`,
+  `internal/web/static/request-composer.js`, generated CSS, `api/dist`,
+  `.manja`, `tmp`, `vendor`, `node_modules`, and `.git` excluded unless you
+  are deliberately changing the dev-loop contract.
 - If you change `.air.toml`, `scripts/dev-server.mjs`, generated output paths,
-  templ generation, schema-example bundling, or CSS build behavior, stress-test
-  for rebuild loops before merging. Run `npm run dev`, wait for the initial
-  build to settle, touch representative source files (`.templ`, source CSS/JS,
-  or Go), and confirm generated writes do not trigger repeated builds while the
-  server is idle.
+  templ generation, schema-example bundling, request-composer bundling, or CSS
+  build behavior, stress-test for rebuild loops before merging. Run
+  `npm run dev`, wait for the initial build to settle, touch representative
+  source files (`.templ`, source CSS/JS, or Go), and confirm generated writes do
+  not trigger repeated builds while the server is idle.
 
 When the worktree PR merges into `main`, stop any server process started for
 that worktree before removing it. Cleanup should include removing the worktree
@@ -149,6 +150,8 @@ Never hand-edit generated files:
 
 - `internal/web/templates/*_templ.go` - regenerate with
   `go run github.com/a-h/templ/cmd/templ generate`
+- `internal/web/static/request-composer.js` - regenerate with
+  `npm run examples:build`
 - `internal/web/api.gen.go` - regenerate from `api/dist/openapi.yaml` with
   `oapi-codegen`
 - `api/dist/openapi.yaml` - regenerate with `npm run api:bundle`; it is ignored

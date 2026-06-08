@@ -79,6 +79,14 @@ type requestConfigBody struct {
 	Config ExampleConfig
 }
 
+type requestSampleTarget struct {
+	Value    string
+	Label    string
+	Target   string
+	Client   string
+	Language string
+}
+
 templ PublicDocs(idx core.SpecIndex, selectedID string) {
 	@PublicDocsWithOptions(idx, selectedID, PublicDocsOptions{})
 }
@@ -515,10 +523,29 @@ templ requestComposer(opID string, op core.Operation, servers []core.SpecServer,
 		}
 		if snippet.Label != "" || snippet.Code != "" {
 			<div data-manja-request-sample class="min-w-0">
-				@codeExample("Request Sample: "+snippet.Label, snippet.Language, snippet.Code)
+				@requestSampleTargetSelect(opID)
+				@codeExample("Request Sample: "+requestSampleTargets()[0].Label, snippet.Language, snippet.Code)
 			</div>
 		}
 		@templpkg.JSONScript(opID+"-request-composer-payload", requestComposerPayload(op, server, body))
+	</div>
+}
+
+templ requestSampleTargetSelect(opID string) {
+	<div
+		data-manja-request-sample-target
+		x-data="{ requestSampleTarget: 'shell:curl' }"
+		x-init="$watch('requestSampleTarget', value => $el.dispatchEvent(new CustomEvent('manja-request-sample-target-change', { detail: { value: value }, bubbles: true })))"
+		class="mb-2 max-w-xs"
+	>
+		@selectfield.Select(selectfield.Config{
+			ID:          opID + "-request-sample-target",
+			Name:        "requestSampleTarget",
+			Placeholder: "Request sample",
+			Options:     requestSampleTargetOptions(),
+			Alpine:      &selectfield.AlpineConfig{Model: "requestSampleTarget"},
+			RootClass:   "w-full",
+		})
 	</div>
 }
 
@@ -1566,13 +1593,69 @@ func requestConfigBodyFor(op core.Operation, opID string, exampleSpecJSON string
 
 func requestComposerPayload(op core.Operation, server core.SpecServer, body requestConfigBody) map[string]any {
 	payload := map[string]any{
-		"method":      strings.ToUpper(op.Method),
-		"urlTemplate": requestComposerURLTemplate(server, op),
-		"parameters":  requestComposerParameters(op.Parameters),
+		"method":        strings.ToUpper(op.Method),
+		"urlTemplate":   requestComposerURLTemplate(server, op),
+		"parameters":    requestComposerParameters(op.Parameters),
+		"sampleTargets": requestSampleTargetsPayload(),
 	}
 	if body.Has {
 		payload["bodyContentType"] = body.Media.ContentType
 		payload["body"] = schemaExamplePayload(body.Config)
+	}
+	return payload
+}
+
+func requestSampleTargets() []requestSampleTarget {
+	return []requestSampleTarget{
+		{Value: "shell:curl", Label: "Shell / cURL", Target: "shell", Client: "curl", Language: "shell"},
+		{Value: "shell:httpie", Label: "Shell / HTTPie", Target: "shell", Client: "httpie", Language: "shell"},
+		{Value: "shell:wget", Label: "Shell / Wget", Target: "shell", Client: "wget", Language: "shell"},
+		{Value: "javascript:fetch", Label: "JavaScript / fetch", Target: "javascript", Client: "fetch", Language: "javascript"},
+		{Value: "javascript:axios", Label: "JavaScript / Axios", Target: "javascript", Client: "axios", Language: "javascript"},
+		{Value: "node:fetch", Label: "Node.js / fetch", Target: "node", Client: "fetch", Language: "javascript"},
+		{Value: "python:requests", Label: "Python / Requests", Target: "python", Client: "requests", Language: "python"},
+		{Value: "go:native", Label: "Go / NewRequest", Target: "go", Client: "native", Language: "go"},
+		{Value: "java:okhttp", Label: "Java / OkHttp", Target: "java", Client: "okhttp", Language: "java"},
+		{Value: "php:curl", Label: "PHP / cURL", Target: "php", Client: "curl", Language: "php"},
+		{Value: "ruby:native", Label: "Ruby / net::http", Target: "ruby", Client: "native", Language: "ruby"},
+		{Value: "csharp:restsharp", Label: "C# / RestSharp", Target: "csharp", Client: "restsharp", Language: "csharp"},
+		{Value: "powershell:webrequest", Label: "Powershell / Invoke-WebRequest", Target: "powershell", Client: "webrequest", Language: "powershell"},
+		{Value: "powershell:restmethod", Label: "Powershell / Invoke-RestMethod", Target: "powershell", Client: "restmethod", Language: "powershell"},
+		{Value: "swift:urlsession", Label: "Swift / URLSession", Target: "swift", Client: "urlsession", Language: "swift"},
+		{Value: "kotlin:okhttp", Label: "Kotlin / OkHttp", Target: "kotlin", Client: "okhttp", Language: "kotlin"},
+		{Value: "http:http1.1", Label: "HTTP / HTTP/1.1", Target: "http", Client: "http1.1", Language: "http"},
+		{Value: "c:libcurl", Label: "C / Libcurl", Target: "c", Client: "libcurl", Language: "c"},
+		{Value: "clojure:clj_http", Label: "Clojure / clj-http", Target: "clojure", Client: "clj_http", Language: "clojure"},
+		{Value: "objc:nsurlsession", Label: "Objective-C / NSURLSession", Target: "objc", Client: "nsurlsession", Language: "objc"},
+		{Value: "ocaml:cohttp", Label: "OCaml / CoHTTP", Target: "ocaml", Client: "cohttp", Language: "ocaml"},
+		{Value: "r:httr", Label: "R / httr", Target: "r", Client: "httr", Language: "r"},
+	}
+}
+
+func requestSampleTargetOptions() []selectfield.Option {
+	targets := requestSampleTargets()
+	options := make([]selectfield.Option, 0, len(targets))
+	for i, target := range targets {
+		options = append(options, selectfield.Option{
+			Value:    target.Value,
+			Label:    target.Label,
+			Selected: i == 0,
+		})
+	}
+	return options
+}
+
+func requestSampleTargetsPayload() []map[string]string {
+	targets := requestSampleTargets()
+	payload := make([]map[string]string, 0, len(targets))
+	for _, target := range targets {
+		payload = append(payload, map[string]string{
+			"value":    target.Value,
+			"label":    target.Label,
+			"target":   target.Target,
+			"client":   target.Client,
+			"language": target.Language,
+		})
 	}
 	return payload
 }

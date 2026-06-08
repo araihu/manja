@@ -87,6 +87,14 @@ type requestConfigBody struct {
 	Config ExampleConfig
 }
 
+type requestSampleTarget struct {
+	Value    string
+	Label    string
+	Target   string
+	Client   string
+	Language string
+}
+
 func PublicDocs(idx core.SpecIndex, selectedID string) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
@@ -201,7 +209,7 @@ func PublicDocsWithOptions(idx core.SpecIndex, selectedID string, opts PublicDoc
 				var templ_7745c5c3_Var4 string
 				templ_7745c5c3_Var4, templ_7745c5c3_Err = templ.JoinStringErrs(idx.Version)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/public.templ`, Line: 120, Col: 198}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/public.templ`, Line: 128, Col: 198}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var4))
 				if templ_7745c5c3_Err != nil {
@@ -309,7 +317,7 @@ func PublicDocsFragmentContent(idx core.SpecIndex, selectedID string, opts Publi
 		var templ_7745c5c3_Var7 string
 		templ_7745c5c3_Var7, templ_7745c5c3_Err = templ.JoinStringErrs(idx.Title)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/public.templ`, Line: 149, Col: 32}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/public.templ`, Line: 157, Col: 32}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var7))
 		if templ_7745c5c3_Err != nil {
@@ -527,7 +535,7 @@ func overviewSection(idx core.SpecIndex, opts PublicDocsOptions) templ.Component
 		var templ_7745c5c3_Var13 string
 		templ_7745c5c3_Var13, templ_7745c5c3_Err = templ.JoinStringErrs(idx.Title)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/public.templ`, Line: 218, Col: 179}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/public.templ`, Line: 226, Col: 179}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var13))
 		if templ_7745c5c3_Err != nil {
@@ -545,7 +553,7 @@ func overviewSection(idx core.SpecIndex, opts PublicDocsOptions) templ.Component
 			var templ_7745c5c3_Var14 string
 			templ_7745c5c3_Var14, templ_7745c5c3_Err = templ.JoinStringErrs(idx.Version)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/public.templ`, Line: 221, Col: 235}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/public.templ`, Line: 229, Col: 235}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var14))
 			if templ_7745c5c3_Err != nil {
@@ -568,7 +576,7 @@ func overviewSection(idx core.SpecIndex, opts PublicDocsOptions) templ.Component
 			var templ_7745c5c3_Var15 string
 			templ_7745c5c3_Var15, templ_7745c5c3_Err = templ.ResolveAttributeValue(overviewSpecFilename(idx.SpecDownload))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/public.templ`, Line: 226, Col: 78}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/public.templ`, Line: 234, Col: 78}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var15)
 			if templ_7745c5c3_Err != nil {
@@ -594,7 +602,7 @@ func overviewSection(idx core.SpecIndex, opts PublicDocsOptions) templ.Component
 		var templ_7745c5c3_Var16 string
 		templ_7745c5c3_Var16, templ_7745c5c3_Err = templ.JoinStringErrs(pluralizedCount(len(idx.Operations), "endpoint"))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/public.templ`, Line: 235, Col: 157}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/public.templ`, Line: 243, Col: 157}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var16))
 		if templ_7745c5c3_Err != nil {
@@ -607,7 +615,7 @@ func overviewSection(idx core.SpecIndex, opts PublicDocsOptions) templ.Component
 		var templ_7745c5c3_Var17 string
 		templ_7745c5c3_Var17, templ_7745c5c3_Err = templ.JoinStringErrs(pluralizedCount(len(idx.Schemas), "schema"))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/public.templ`, Line: 239, Col: 152}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/public.templ`, Line: 247, Col: 152}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var17))
 		if templ_7745c5c3_Err != nil {
@@ -630,7 +638,7 @@ func overviewSection(idx core.SpecIndex, opts PublicDocsOptions) templ.Component
 				var templ_7745c5c3_Var18 string
 				templ_7745c5c3_Var18, templ_7745c5c3_Err = templ.JoinStringErrs(server.URL)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/public.templ`, Line: 254, Col: 104}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/public.templ`, Line: 262, Col: 104}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var18))
 				if templ_7745c5c3_Err != nil {
@@ -666,7 +674,7 @@ func overviewSection(idx core.SpecIndex, opts PublicDocsOptions) templ.Component
 						var templ_7745c5c3_Var19 string
 						templ_7745c5c3_Var19, templ_7745c5c3_Err = templ.JoinStringErrs(server.Description)
 						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/public.templ`, Line: 264, Col: 81}
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/public.templ`, Line: 272, Col: 81}
 						}
 						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var19))
 						if templ_7745c5c3_Err != nil {
@@ -695,7 +703,7 @@ func overviewSection(idx core.SpecIndex, opts PublicDocsOptions) templ.Component
 						var templ_7745c5c3_Var20 string
 						templ_7745c5c3_Var20, templ_7745c5c3_Err = templ.JoinStringErrs(variable.Name)
 						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/public.templ`, Line: 273, Col: 96}
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/public.templ`, Line: 281, Col: 96}
 						}
 						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var20))
 						if templ_7745c5c3_Err != nil {
@@ -727,7 +735,7 @@ func overviewSection(idx core.SpecIndex, opts PublicDocsOptions) templ.Component
 								var templ_7745c5c3_Var21 string
 								templ_7745c5c3_Var21, templ_7745c5c3_Err = templ.JoinStringErrs(variable.Description)
 								if templ_7745c5c3_Err != nil {
-									return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/public.templ`, Line: 282, Col: 86}
+									return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/public.templ`, Line: 290, Col: 86}
 								}
 								_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var21))
 								if templ_7745c5c3_Err != nil {
@@ -747,7 +755,7 @@ func overviewSection(idx core.SpecIndex, opts PublicDocsOptions) templ.Component
 							var templ_7745c5c3_Var22 string
 							templ_7745c5c3_Var22, templ_7745c5c3_Err = templ.JoinStringErrs(variable.Default)
 							if templ_7745c5c3_Err != nil {
-								return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/public.templ`, Line: 288, Col: 139}
+								return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/public.templ`, Line: 296, Col: 139}
 							}
 							_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var22))
 							if templ_7745c5c3_Err != nil {
@@ -791,7 +799,7 @@ func overviewSection(idx core.SpecIndex, opts PublicDocsOptions) templ.Component
 				var templ_7745c5c3_Var23 templ.SafeURL
 				templ_7745c5c3_Var23, templ_7745c5c3_Err = templ.JoinURLErrs(templpkg.URL(overviewContactHref(idx.Overview.Contact)))
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/public.templ`, Line: 307, Col: 72}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/public.templ`, Line: 315, Col: 72}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var23))
 				if templ_7745c5c3_Err != nil {
@@ -804,7 +812,7 @@ func overviewSection(idx core.SpecIndex, opts PublicDocsOptions) templ.Component
 				var templ_7745c5c3_Var24 string
 				templ_7745c5c3_Var24, templ_7745c5c3_Err = templ.JoinStringErrs(overviewContactLabel(idx.Overview.Contact))
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/public.templ`, Line: 307, Col: 224}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/public.templ`, Line: 315, Col: 224}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var24))
 				if templ_7745c5c3_Err != nil {
@@ -824,7 +832,7 @@ func overviewSection(idx core.SpecIndex, opts PublicDocsOptions) templ.Component
 					var templ_7745c5c3_Var25 templ.SafeURL
 					templ_7745c5c3_Var25, templ_7745c5c3_Err = templ.JoinURLErrs(templpkg.URL(idx.Overview.License.URL))
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/public.templ`, Line: 311, Col: 56}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/public.templ`, Line: 319, Col: 56}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var25))
 					if templ_7745c5c3_Err != nil {
@@ -837,7 +845,7 @@ func overviewSection(idx core.SpecIndex, opts PublicDocsOptions) templ.Component
 					var templ_7745c5c3_Var26 string
 					templ_7745c5c3_Var26, templ_7745c5c3_Err = templ.JoinStringErrs(overviewLicenseLabel(idx.Overview.License))
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/public.templ`, Line: 311, Col: 208}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/public.templ`, Line: 319, Col: 208}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var26))
 					if templ_7745c5c3_Err != nil {
@@ -855,7 +863,7 @@ func overviewSection(idx core.SpecIndex, opts PublicDocsOptions) templ.Component
 					var templ_7745c5c3_Var27 string
 					templ_7745c5c3_Var27, templ_7745c5c3_Err = templ.JoinStringErrs(overviewLicenseLabel(idx.Overview.License))
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/public.templ`, Line: 313, Col: 125}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/public.templ`, Line: 321, Col: 125}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var27))
 					if templ_7745c5c3_Err != nil {
@@ -875,7 +883,7 @@ func overviewSection(idx core.SpecIndex, opts PublicDocsOptions) templ.Component
 				var templ_7745c5c3_Var28 templ.SafeURL
 				templ_7745c5c3_Var28, templ_7745c5c3_Err = templ.JoinURLErrs(templpkg.URL(idx.Overview.TermsOfService))
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/public.templ`, Line: 317, Col: 58}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/public.templ`, Line: 325, Col: 58}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var28))
 				if templ_7745c5c3_Err != nil {
@@ -912,7 +920,7 @@ func overviewSection(idx core.SpecIndex, opts PublicDocsOptions) templ.Component
 			var templ_7745c5c3_Var29 string
 			templ_7745c5c3_Var29, templ_7745c5c3_Err = templ.JoinStringErrs(idx.Overview.Description)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/public.templ`, Line: 328, Col: 34}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/public.templ`, Line: 336, Col: 34}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var29))
 			if templ_7745c5c3_Err != nil {
@@ -1078,7 +1086,7 @@ func endpointSection(op core.Operation, servers []core.SpecServer, exampleSpecJS
 		var templ_7745c5c3_Var33 string
 		templ_7745c5c3_Var33, templ_7745c5c3_Err = templ.ResolveAttributeValue(opID)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/public.templ`, Line: 409, Col: 19}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/public.templ`, Line: 417, Col: 19}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var33)
 		if templ_7745c5c3_Err != nil {
@@ -1109,7 +1117,7 @@ func endpointSection(op core.Operation, servers []core.SpecServer, exampleSpecJS
 		var templ_7745c5c3_Var34 string
 		templ_7745c5c3_Var34, templ_7745c5c3_Err = templ.JoinStringErrs(operationTitle(op))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/public.templ`, Line: 418, Col: 165}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/public.templ`, Line: 426, Col: 165}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var34))
 		if templ_7745c5c3_Err != nil {
@@ -1130,7 +1138,7 @@ func endpointSection(op core.Operation, servers []core.SpecServer, exampleSpecJS
 		var templ_7745c5c3_Var35 string
 		templ_7745c5c3_Var35, templ_7745c5c3_Err = templ.JoinStringErrs(op.Path)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/public.templ`, Line: 421, Col: 134}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/public.templ`, Line: 429, Col: 134}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var35))
 		if templ_7745c5c3_Err != nil {
@@ -1161,7 +1169,7 @@ func endpointSection(op core.Operation, servers []core.SpecServer, exampleSpecJS
 			var templ_7745c5c3_Var36 string
 			templ_7745c5c3_Var36, templ_7745c5c3_Err = templ.JoinStringErrs(op.Description)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/public.templ`, Line: 428, Col: 113}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/public.templ`, Line: 436, Col: 113}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var36))
 			if templ_7745c5c3_Err != nil {
@@ -1253,7 +1261,7 @@ func endpointSection(op core.Operation, servers []core.SpecServer, exampleSpecJS
 							var templ_7745c5c3_Var39 string
 							templ_7745c5c3_Var39, templ_7745c5c3_Err = templ.JoinStringErrs(op.RequestBody.Description)
 							if templ_7745c5c3_Err != nil {
-								return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/public.templ`, Line: 453, Col: 113}
+								return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/public.templ`, Line: 461, Col: 113}
 							}
 							_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var39))
 							if templ_7745c5c3_Err != nil {
@@ -1287,7 +1295,7 @@ func endpointSection(op core.Operation, servers []core.SpecServer, exampleSpecJS
 				var templ_7745c5c3_Var40 string
 				templ_7745c5c3_Var40, templ_7745c5c3_Err = templ.ResolveAttributeValue(opID + "-responses")
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/public.templ`, Line: 464, Col: 37}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/public.templ`, Line: 472, Col: 37}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var40)
 				if templ_7745c5c3_Err != nil {
@@ -1395,7 +1403,7 @@ func requestComposer(opID string, op core.Operation, servers []core.SpecServer, 
 			var templ_7745c5c3_Var42 string
 			templ_7745c5c3_Var42, templ_7745c5c3_Err = templ.ResolveAttributeValue(opID + "-request-config-heading")
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/public.templ`, Line: 505, Col: 126}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/public.templ`, Line: 513, Col: 126}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var42)
 			if templ_7745c5c3_Err != nil {
@@ -1408,7 +1416,7 @@ func requestComposer(opID string, op core.Operation, servers []core.SpecServer, 
 			var templ_7745c5c3_Var43 string
 			templ_7745c5c3_Var43, templ_7745c5c3_Err = templ.ResolveAttributeValue(opID + "-request-config-heading")
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/public.templ`, Line: 506, Col: 44}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/public.templ`, Line: 514, Col: 44}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var43)
 			if templ_7745c5c3_Err != nil {
@@ -1438,7 +1446,11 @@ func requestComposer(opID string, op core.Operation, servers []core.SpecServer, 
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = codeExample("Request Sample: "+snippet.Label, snippet.Language, snippet.Code).Render(ctx, templ_7745c5c3_Buffer)
+			templ_7745c5c3_Err = requestSampleTargetSelect(opID).Render(ctx, templ_7745c5c3_Buffer)
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			templ_7745c5c3_Err = codeExample("Request Sample: "+requestSampleTargets()[0].Label, snippet.Language, snippet.Code).Render(ctx, templ_7745c5c3_Buffer)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -1452,6 +1464,50 @@ func requestComposer(opID string, op core.Operation, servers []core.SpecServer, 
 			return templ_7745c5c3_Err
 		}
 		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 111, "</div>")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		return nil
+	})
+}
+
+func requestSampleTargetSelect(opID string) templ.Component {
+	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
+		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
+		if templ_7745c5c3_CtxErr := ctx.Err(); templ_7745c5c3_CtxErr != nil {
+			return templ_7745c5c3_CtxErr
+		}
+		templ_7745c5c3_Buffer, templ_7745c5c3_IsBuffer := templruntime.GetBuffer(templ_7745c5c3_W)
+		if !templ_7745c5c3_IsBuffer {
+			defer func() {
+				templ_7745c5c3_BufErr := templruntime.ReleaseBuffer(templ_7745c5c3_Buffer)
+				if templ_7745c5c3_Err == nil {
+					templ_7745c5c3_Err = templ_7745c5c3_BufErr
+				}
+			}()
+		}
+		ctx = templ.InitializeContext(ctx)
+		templ_7745c5c3_Var44 := templ.GetChildren(ctx)
+		if templ_7745c5c3_Var44 == nil {
+			templ_7745c5c3_Var44 = templ.NopComponent
+		}
+		ctx = templ.ClearChildren(ctx)
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 112, "<div data-manja-request-sample-target x-data=\"{ requestSampleTarget: 'shell:curl' }\" x-init=\"$watch('requestSampleTarget', value => $el.dispatchEvent(new CustomEvent('manja-request-sample-target-change', { detail: { value: value }, bubbles: true })))\" class=\"mb-2 max-w-xs\">")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = selectfield.Select(selectfield.Config{
+			ID:          opID + "-request-sample-target",
+			Name:        "requestSampleTarget",
+			Placeholder: "Request sample",
+			Options:     requestSampleTargetOptions(),
+			Alpine:      &selectfield.AlpineConfig{Model: "requestSampleTarget"},
+			RootClass:   "w-full",
+		}).Render(ctx, templ_7745c5c3_Buffer)
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 113, "</div>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -1512,12 +1568,12 @@ func requestConfigFieldsContent(fields []schemaform.Field, namePrefix string) te
 			}()
 		}
 		ctx = templ.InitializeContext(ctx)
-		templ_7745c5c3_Var44 := templ.GetChildren(ctx)
-		if templ_7745c5c3_Var44 == nil {
-			templ_7745c5c3_Var44 = templ.NopComponent
+		templ_7745c5c3_Var45 := templ.GetChildren(ctx)
+		if templ_7745c5c3_Var45 == nil {
+			templ_7745c5c3_Var45 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 112, "<div class=\"manja-request-config-fields\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 114, "<div class=\"manja-request-config-fields\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -1528,7 +1584,7 @@ func requestConfigFieldsContent(fields []schemaform.Field, namePrefix string) te
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 113, "</div>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 115, "</div>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -1552,35 +1608,35 @@ func requestSecurityContent(security []core.OperationSecurity) templ.Component {
 			}()
 		}
 		ctx = templ.InitializeContext(ctx)
-		templ_7745c5c3_Var45 := templ.GetChildren(ctx)
-		if templ_7745c5c3_Var45 == nil {
-			templ_7745c5c3_Var45 = templ.NopComponent
+		templ_7745c5c3_Var46 := templ.GetChildren(ctx)
+		if templ_7745c5c3_Var46 == nil {
+			templ_7745c5c3_Var46 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 114, "<div class=\"grid gap-3 text-sm\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 116, "<div class=\"grid gap-3 text-sm\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		for _, item := range security {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 115, "<div class=\"grid grid-cols-[6rem_1rem_minmax(0,1fr)] gap-2\"><span class=\"truncate font-mono text-on-surface-dark-strong\">security</span> <span class=\"text-on-surface-dark-muted\">:</span> <span class=\"truncate text-on-surface-dark-muted\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 117, "<div class=\"grid grid-cols-[6rem_1rem_minmax(0,1fr)] gap-2\"><span class=\"truncate font-mono text-on-surface-dark-strong\">security</span> <span class=\"text-on-surface-dark-muted\">:</span> <span class=\"truncate text-on-surface-dark-muted\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			var templ_7745c5c3_Var46 string
-			templ_7745c5c3_Var46, templ_7745c5c3_Err = templ.JoinStringErrs(securityLabel(item))
+			var templ_7745c5c3_Var47 string
+			templ_7745c5c3_Var47, templ_7745c5c3_Err = templ.JoinStringErrs(securityLabel(item))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/public.templ`, Line: 577, Col: 75}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/public.templ`, Line: 604, Col: 75}
 			}
-			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var46))
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var47))
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 116, "</span></div>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 118, "</span></div>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 117, "</div>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 119, "</div>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -1604,51 +1660,51 @@ func requestConfigBodyContent(opID string, cfg ExampleConfig) templ.Component {
 			}()
 		}
 		ctx = templ.InitializeContext(ctx)
-		templ_7745c5c3_Var47 := templ.GetChildren(ctx)
-		if templ_7745c5c3_Var47 == nil {
-			templ_7745c5c3_Var47 = templ.NopComponent
+		templ_7745c5c3_Var48 := templ.GetChildren(ctx)
+		if templ_7745c5c3_Var48 == nil {
+			templ_7745c5c3_Var48 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 118, "<div class=\"grid gap-2\" data-manja-request-config-body><label class=\"sr-only\" for=\"")
-		if templ_7745c5c3_Err != nil {
-			return templ_7745c5c3_Err
-		}
-		var templ_7745c5c3_Var48 string
-		templ_7745c5c3_Var48, templ_7745c5c3_Err = templ.ResolveAttributeValue(opID + "-request-body-input")
-		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/public.templ`, Line: 585, Col: 59}
-		}
-		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var48)
-		if templ_7745c5c3_Err != nil {
-			return templ_7745c5c3_Err
-		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 119, "\">Request body JSON</label> <textarea id=\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 120, "<div class=\"grid gap-2\" data-manja-request-config-body><label class=\"sr-only\" for=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var49 string
 		templ_7745c5c3_Var49, templ_7745c5c3_Err = templ.ResolveAttributeValue(opID + "-request-body-input")
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/public.templ`, Line: 587, Col: 36}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/public.templ`, Line: 612, Col: 59}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var49)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 120, "\" data-manja-request-body-input spellcheck=\"false\" rows=\"10\" class=\"min-h-48 w-full resize-y rounded-radius border border-outline-dark bg-surface-dark px-3 py-2 font-mono text-xs leading-5 text-on-surface-dark-strong outline-none placeholder:text-on-surface-dark-muted focus:ring-2 focus:ring-primary-dark\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 121, "\">Request body JSON</label> <textarea id=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var50 string
-		templ_7745c5c3_Var50, templ_7745c5c3_Err = templ.JoinStringErrs(exampleFallback(cfg))
+		templ_7745c5c3_Var50, templ_7745c5c3_Err = templ.ResolveAttributeValue(opID + "-request-body-input")
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/public.templ`, Line: 592, Col: 25}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/public.templ`, Line: 614, Col: 36}
 		}
-		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var50))
+		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var50)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 121, "</textarea>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 122, "\" data-manja-request-body-input spellcheck=\"false\" rows=\"10\" class=\"min-h-48 w-full resize-y rounded-radius border border-outline-dark bg-surface-dark px-3 py-2 font-mono text-xs leading-5 text-on-surface-dark-strong outline-none placeholder:text-on-surface-dark-muted focus:ring-2 focus:ring-primary-dark\">")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		var templ_7745c5c3_Var51 string
+		templ_7745c5c3_Var51, templ_7745c5c3_Err = templ.JoinStringErrs(exampleFallback(cfg))
+		if templ_7745c5c3_Err != nil {
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/public.templ`, Line: 619, Col: 25}
+		}
+		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var51))
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 123, "</textarea>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -1656,7 +1712,7 @@ func requestConfigBodyContent(opID string, cfg ExampleConfig) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 122, "<p data-manja-request-body-status class=\"sr-only\" aria-live=\"polite\"></p></div>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 124, "<p data-manja-request-body-status class=\"sr-only\" aria-live=\"polite\"></p></div>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -1680,9 +1736,9 @@ func schemaSection(schema core.Schema, exampleSpecJSON string, opts PublicDocsOp
 			}()
 		}
 		ctx = templ.InitializeContext(ctx)
-		templ_7745c5c3_Var51 := templ.GetChildren(ctx)
-		if templ_7745c5c3_Var51 == nil {
-			templ_7745c5c3_Var51 = templ.NopComponent
+		templ_7745c5c3_Var52 := templ.GetChildren(ctx)
+		if templ_7745c5c3_Var52 == nil {
+			templ_7745c5c3_Var52 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
 		summary := schema.Summary
@@ -1692,39 +1748,39 @@ func schemaSection(schema core.Schema, exampleSpecJSON string, opts PublicDocsOp
 		if summary.Description == "" {
 			summary.Description = schema.Description
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 123, "<section id=\"")
-		if templ_7745c5c3_Err != nil {
-			return templ_7745c5c3_Err
-		}
-		var templ_7745c5c3_Var52 string
-		templ_7745c5c3_Var52, templ_7745c5c3_Err = templ.ResolveAttributeValue(schemaAnchor(schema))
-		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/public.templ`, Line: 606, Col: 35}
-		}
-		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var52)
-		if templ_7745c5c3_Err != nil {
-			return templ_7745c5c3_Err
-		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 124, "\" class=\"scroll-mt-24\"><div class=\"max-w-3xl border-b border-outline pb-8 dark:border-outline-dark\"><p class=\"font-mono text-sm font-semibold uppercase text-on-surface-muted dark:text-on-surface-dark-muted\">Schema</p><h3 class=\"manja-doc-title mt-4 font-title text-4xl font-bold leading-tight text-on-surface-strong dark:text-on-surface-dark-strong lg:text-5xl\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 125, "<section id=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var53 string
-		templ_7745c5c3_Var53, templ_7745c5c3_Err = templ.JoinStringErrs(schema.Name)
+		templ_7745c5c3_Var53, templ_7745c5c3_Err = templ.ResolveAttributeValue(schemaAnchor(schema))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/public.templ`, Line: 609, Col: 161}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/public.templ`, Line: 633, Col: 35}
 		}
-		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var53))
+		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var53)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 125, "</h3>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 126, "\" class=\"scroll-mt-24\"><div class=\"max-w-3xl border-b border-outline pb-8 dark:border-outline-dark\"><p class=\"font-mono text-sm font-semibold uppercase text-on-surface-muted dark:text-on-surface-dark-muted\">Schema</p><h3 class=\"manja-doc-title mt-4 font-title text-4xl font-bold leading-tight text-on-surface-strong dark:text-on-surface-dark-strong lg:text-5xl\">")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		var templ_7745c5c3_Var54 string
+		templ_7745c5c3_Var54, templ_7745c5c3_Err = templ.JoinStringErrs(schema.Name)
+		if templ_7745c5c3_Err != nil {
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/public.templ`, Line: 636, Col: 161}
+		}
+		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var54))
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 127, "</h3>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		if summary.Description != "" {
 			if hasMarkdown(opts.MarkdownRenderer, summary.Description) {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 126, "<div class=\"mt-6 max-w-[70ch]\">")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 128, "<div class=\"mt-6 max-w-[70ch]\">")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
@@ -1732,37 +1788,37 @@ func schemaSection(schema core.Schema, exampleSpecJSON string, opts PublicDocsOp
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 127, "</div>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 129, "</div>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 			} else {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 128, "<p class=\"mt-6 max-w-[70ch] text-base leading-7 text-on-surface dark:text-on-surface-dark\">")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 130, "<p class=\"mt-6 max-w-[70ch] text-base leading-7 text-on-surface dark:text-on-surface-dark\">")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				var templ_7745c5c3_Var54 string
-				templ_7745c5c3_Var54, templ_7745c5c3_Err = templ.JoinStringErrs(summary.Description)
+				var templ_7745c5c3_Var55 string
+				templ_7745c5c3_Var55, templ_7745c5c3_Err = templ.JoinStringErrs(summary.Description)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/public.templ`, Line: 616, Col: 117}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/public.templ`, Line: 643, Col: 117}
 				}
-				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var54))
+				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var55))
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 129, "</p>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 131, "</p>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 			}
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 130, "</div>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 132, "</div>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		cfg := schemaPageExampleConfig(schema, exampleSpecJSON)
 		if hasSchemaExample(cfg) {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 131, "<div class=\"manja-schema-detail-layout\"><div class=\"manja-schema-tree-panel\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 133, "<div class=\"manja-schema-detail-layout\"><div class=\"manja-schema-tree-panel\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -1770,7 +1826,7 @@ func schemaSection(schema core.Schema, exampleSpecJSON string, opts PublicDocsOp
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 132, "</div><aside class=\"manja-schema-example-panel\" aria-label=\"Schema example\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 134, "</div><aside class=\"manja-schema-example-panel\" aria-label=\"Schema example\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -1778,7 +1834,7 @@ func schemaSection(schema core.Schema, exampleSpecJSON string, opts PublicDocsOp
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 133, "</aside></div>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 135, "</aside></div>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -1788,7 +1844,7 @@ func schemaSection(schema core.Schema, exampleSpecJSON string, opts PublicDocsOp
 				return templ_7745c5c3_Err
 			}
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 134, "</section>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 136, "</section>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -1812,18 +1868,18 @@ func responsePanel(opID string, response core.OperationResponse, exampleSpecJSON
 			}()
 		}
 		ctx = templ.InitializeContext(ctx)
-		templ_7745c5c3_Var55 := templ.GetChildren(ctx)
-		if templ_7745c5c3_Var55 == nil {
-			templ_7745c5c3_Var55 = templ.NopComponent
+		templ_7745c5c3_Var56 := templ.GetChildren(ctx)
+		if templ_7745c5c3_Var56 == nil {
+			templ_7745c5c3_Var56 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 135, "<section class=\"grid gap-4\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 137, "<section class=\"grid gap-4\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		if response.Description != "" {
 			if hasMarkdown(opts.MarkdownRenderer, response.Description) {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 136, "<div class=\"max-w-[70ch]\">")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 138, "<div class=\"max-w-[70ch]\">")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
@@ -1831,25 +1887,25 @@ func responsePanel(opID string, response core.OperationResponse, exampleSpecJSON
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 137, "</div>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 139, "</div>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 			} else {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 138, "<p class=\"text-base font-medium text-on-surface dark:text-on-surface-dark\">")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 140, "<p class=\"text-base font-medium text-on-surface dark:text-on-surface-dark\">")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				var templ_7745c5c3_Var56 string
-				templ_7745c5c3_Var56, templ_7745c5c3_Err = templ.JoinStringErrs(response.Description)
+				var templ_7745c5c3_Var57 string
+				templ_7745c5c3_Var57, templ_7745c5c3_Err = templ.JoinStringErrs(response.Description)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/public.templ`, Line: 644, Col: 101}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/public.templ`, Line: 671, Col: 101}
 				}
-				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var56))
+				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var57))
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 139, "</p>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 141, "</p>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
@@ -1859,7 +1915,7 @@ func responsePanel(opID string, response core.OperationResponse, exampleSpecJSON
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 140, "</section>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 142, "</section>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -1883,54 +1939,54 @@ func mediaTypeList(idPrefix string, label string, mediaTypes []core.OperationMed
 			}()
 		}
 		ctx = templ.InitializeContext(ctx)
-		templ_7745c5c3_Var57 := templ.GetChildren(ctx)
-		if templ_7745c5c3_Var57 == nil {
-			templ_7745c5c3_Var57 = templ.NopComponent
+		templ_7745c5c3_Var58 := templ.GetChildren(ctx)
+		if templ_7745c5c3_Var58 == nil {
+			templ_7745c5c3_Var58 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
 		if len(mediaTypes) > 0 {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 141, "<div class=\"grid gap-4\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 143, "<div class=\"grid gap-4\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			for _, media := range mediaTypes {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 142, "<div class=\"border-t border-outline pt-6 pb-5 dark:border-outline-dark\"><div class=\"flex flex-wrap items-center gap-3\"><span class=\"font-mono text-xs font-semibold text-on-surface-strong dark:text-on-surface-dark-strong\">")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 144, "<div class=\"border-t border-outline pt-6 pb-5 dark:border-outline-dark\"><div class=\"flex flex-wrap items-center gap-3\"><span class=\"font-mono text-xs font-semibold text-on-surface-strong dark:text-on-surface-dark-strong\">")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				var templ_7745c5c3_Var58 string
-				templ_7745c5c3_Var58, templ_7745c5c3_Err = templ.JoinStringErrs(media.ContentType)
+				var templ_7745c5c3_Var59 string
+				templ_7745c5c3_Var59, templ_7745c5c3_Err = templ.JoinStringErrs(media.ContentType)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/public.templ`, Line: 657, Col: 127}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/public.templ`, Line: 684, Col: 127}
 				}
-				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var58))
+				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var59))
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 143, "</span> ")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 145, "</span> ")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 				if schemaInline(media.Schema) != "" {
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 144, "<span class=\"font-mono text-xs text-on-surface-muted dark:text-on-surface-dark-muted\">")
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 146, "<span class=\"font-mono text-xs text-on-surface-muted dark:text-on-surface-dark-muted\">")
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
-					var templ_7745c5c3_Var59 string
-					templ_7745c5c3_Var59, templ_7745c5c3_Err = templ.JoinStringErrs(schemaInline(media.Schema))
+					var templ_7745c5c3_Var60 string
+					templ_7745c5c3_Var60, templ_7745c5c3_Err = templ.JoinStringErrs(schemaInline(media.Schema))
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/public.templ`, Line: 659, Col: 121}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/public.templ`, Line: 686, Col: 121}
 					}
-					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var59))
+					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var60))
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 145, "</span>")
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 147, "</span>")
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 146, "</div>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 148, "</div>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
@@ -1938,12 +1994,12 @@ func mediaTypeList(idPrefix string, label string, mediaTypes []core.OperationMed
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 147, "</div>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 149, "</div>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 148, "</div>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 150, "</div>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -1968,56 +2024,56 @@ func responseMediaTypeList(opID string, response core.OperationResponse, example
 			}()
 		}
 		ctx = templ.InitializeContext(ctx)
-		templ_7745c5c3_Var60 := templ.GetChildren(ctx)
-		if templ_7745c5c3_Var60 == nil {
-			templ_7745c5c3_Var60 = templ.NopComponent
+		templ_7745c5c3_Var61 := templ.GetChildren(ctx)
+		if templ_7745c5c3_Var61 == nil {
+			templ_7745c5c3_Var61 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
 		if len(response.MediaTypes) > 0 {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 149, "<div class=\"grid gap-4\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 151, "<div class=\"grid gap-4\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			for _, media := range response.MediaTypes {
 				idPrefix := opID + "-response-" + anchorFragment(response.Status)
 				cfg := mediaSchemaExampleConfig(idPrefix+"-"+anchorFragment(media.ContentType)+"-example", "Response Example: "+response.Status+" "+media.ContentType, media, exampleSpecJSON)
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 150, "<div class=\"border-t border-outline pt-6 pb-5 dark:border-outline-dark\"><div class=\"manja-response-panel-layout\"><div class=\"manja-response-panel-main grid gap-4\"><div class=\"flex flex-wrap items-center gap-3\"><span class=\"font-mono text-xs font-semibold text-on-surface-strong dark:text-on-surface-dark-strong\">")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 152, "<div class=\"border-t border-outline pt-6 pb-5 dark:border-outline-dark\"><div class=\"manja-response-panel-layout\"><div class=\"manja-response-panel-main grid gap-4\"><div class=\"flex flex-wrap items-center gap-3\"><span class=\"font-mono text-xs font-semibold text-on-surface-strong dark:text-on-surface-dark-strong\">")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				var templ_7745c5c3_Var61 string
-				templ_7745c5c3_Var61, templ_7745c5c3_Err = templ.JoinStringErrs(media.ContentType)
+				var templ_7745c5c3_Var62 string
+				templ_7745c5c3_Var62, templ_7745c5c3_Err = templ.JoinStringErrs(media.ContentType)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/public.templ`, Line: 679, Col: 129}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/public.templ`, Line: 706, Col: 129}
 				}
-				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var61))
+				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var62))
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 151, "</span> ")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 153, "</span> ")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 				if schemaInline(media.Schema) != "" {
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 152, "<span class=\"font-mono text-xs text-on-surface-muted dark:text-on-surface-dark-muted\">")
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 154, "<span class=\"font-mono text-xs text-on-surface-muted dark:text-on-surface-dark-muted\">")
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
-					var templ_7745c5c3_Var62 string
-					templ_7745c5c3_Var62, templ_7745c5c3_Err = templ.JoinStringErrs(schemaInline(media.Schema))
+					var templ_7745c5c3_Var63 string
+					templ_7745c5c3_Var63, templ_7745c5c3_Err = templ.JoinStringErrs(schemaInline(media.Schema))
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/public.templ`, Line: 681, Col: 122}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/public.templ`, Line: 708, Col: 122}
 					}
-					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var62))
+					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var63))
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 153, "</span>")
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 155, "</span>")
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 154, "</div>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 156, "</div>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
@@ -2025,25 +2081,25 @@ func responseMediaTypeList(opID string, response core.OperationResponse, example
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 155, "</div>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 157, "</div>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 				if hasSchemaExample(cfg) {
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 156, "<aside class=\"manja-response-panel-example\" aria-label=\"")
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 158, "<aside class=\"manja-response-panel-example\" aria-label=\"")
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
-					var templ_7745c5c3_Var63 string
-					templ_7745c5c3_Var63, templ_7745c5c3_Err = templ.ResolveAttributeValue("Response " + response.Status + " " + media.ContentType + " example")
+					var templ_7745c5c3_Var64 string
+					templ_7745c5c3_Var64, templ_7745c5c3_Err = templ.ResolveAttributeValue("Response " + response.Status + " " + media.ContentType + " example")
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/public.templ`, Line: 687, Col: 132}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/public.templ`, Line: 714, Col: 132}
 					}
-					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var63)
+					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var64)
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 157, "\">")
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 159, "\">")
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
@@ -2051,17 +2107,17 @@ func responseMediaTypeList(opID string, response core.OperationResponse, example
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 158, "</aside>")
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 160, "</aside>")
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 159, "</div></div>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 161, "</div></div>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 160, "</div>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 162, "</div>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -2086,26 +2142,26 @@ func paramGroup(idPrefix string, title string, parameters []core.OperationParame
 			}()
 		}
 		ctx = templ.InitializeContext(ctx)
-		templ_7745c5c3_Var64 := templ.GetChildren(ctx)
-		if templ_7745c5c3_Var64 == nil {
-			templ_7745c5c3_Var64 = templ.NopComponent
+		templ_7745c5c3_Var65 := templ.GetChildren(ctx)
+		if templ_7745c5c3_Var65 == nil {
+			templ_7745c5c3_Var65 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
 		if len(parameters) > 0 {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 161, "<section class=\"grid gap-4\"><h5 class=\"font-title text-lg font-bold text-on-surface-strong dark:text-on-surface-dark-strong\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 163, "<section class=\"grid gap-4\"><h5 class=\"font-title text-lg font-bold text-on-surface-strong dark:text-on-surface-dark-strong\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			var templ_7745c5c3_Var65 string
-			templ_7745c5c3_Var65, templ_7745c5c3_Err = templ.JoinStringErrs(title)
+			var templ_7745c5c3_Var66 string
+			templ_7745c5c3_Var66, templ_7745c5c3_Err = templ.JoinStringErrs(title)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/public.templ`, Line: 701, Col: 107}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/public.templ`, Line: 728, Col: 107}
 			}
-			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var65))
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var66))
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 162, "</h5><div>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 164, "</h5><div>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -2113,7 +2169,7 @@ func paramGroup(idPrefix string, title string, parameters []core.OperationParame
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 163, "</div></section>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 165, "</div></section>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -2138,13 +2194,13 @@ func schemaProperties(id string, caption string, schema core.SchemaSummary, opts
 			}()
 		}
 		ctx = templ.InitializeContext(ctx)
-		templ_7745c5c3_Var66 := templ.GetChildren(ctx)
-		if templ_7745c5c3_Var66 == nil {
-			templ_7745c5c3_Var66 = templ.NopComponent
+		templ_7745c5c3_Var67 := templ.GetChildren(ctx)
+		if templ_7745c5c3_Var67 == nil {
+			templ_7745c5c3_Var67 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
 		if schemaTreeHasContent(schema) {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 164, "<div class=\"mt-4\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 166, "<div class=\"mt-4\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -2152,7 +2208,7 @@ func schemaProperties(id string, caption string, schema core.SchemaSummary, opts
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 165, "</div>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 167, "</div>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -2177,43 +2233,43 @@ func schemaTree(id string, caption string, schema core.SchemaSummary, opts Publi
 			}()
 		}
 		ctx = templ.InitializeContext(ctx)
-		templ_7745c5c3_Var67 := templ.GetChildren(ctx)
-		if templ_7745c5c3_Var67 == nil {
-			templ_7745c5c3_Var67 = templ.NopComponent
+		templ_7745c5c3_Var68 := templ.GetChildren(ctx)
+		if templ_7745c5c3_Var68 == nil {
+			templ_7745c5c3_Var68 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 166, "<section id=\"")
-		if templ_7745c5c3_Err != nil {
-			return templ_7745c5c3_Err
-		}
-		var templ_7745c5c3_Var68 string
-		templ_7745c5c3_Var68, templ_7745c5c3_Err = templ.ResolveAttributeValue(id)
-		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/public.templ`, Line: 718, Col: 17}
-		}
-		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var68)
-		if templ_7745c5c3_Err != nil {
-			return templ_7745c5c3_Err
-		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 167, "\" aria-label=\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 168, "<section id=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var69 string
-		templ_7745c5c3_Var69, templ_7745c5c3_Err = templ.ResolveAttributeValue(caption + " schema tree")
+		templ_7745c5c3_Var69, templ_7745c5c3_Err = templ.ResolveAttributeValue(id)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/public.templ`, Line: 718, Col: 57}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/public.templ`, Line: 745, Col: 17}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var69)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 168, "\" class=\"manja-schema-tree\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 169, "\" aria-label=\"")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		var templ_7745c5c3_Var70 string
+		templ_7745c5c3_Var70, templ_7745c5c3_Err = templ.ResolveAttributeValue(caption + " schema tree")
+		if templ_7745c5c3_Err != nil {
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/public.templ`, Line: 745, Col: 57}
+		}
+		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var70)
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 170, "\" class=\"manja-schema-tree\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		if schemaTreeExpandable(schema) {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 169, "<div class=\"manja-schema-root\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 171, "<div class=\"manja-schema-root\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -2221,7 +2277,7 @@ func schemaTree(id string, caption string, schema core.SchemaSummary, opts Publi
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 170, "</div>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 172, "</div>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -2231,7 +2287,7 @@ func schemaTree(id string, caption string, schema core.SchemaSummary, opts Publi
 				return templ_7745c5c3_Err
 			}
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 171, "</section>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 173, "</section>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -2255,58 +2311,28 @@ func schemaTreeNode(name string, required bool, schema core.SchemaSummary, root 
 			}()
 		}
 		ctx = templ.InitializeContext(ctx)
-		templ_7745c5c3_Var70 := templ.GetChildren(ctx)
-		if templ_7745c5c3_Var70 == nil {
-			templ_7745c5c3_Var70 = templ.NopComponent
+		templ_7745c5c3_Var71 := templ.GetChildren(ctx)
+		if templ_7745c5c3_Var71 == nil {
+			templ_7745c5c3_Var71 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
 		displayName := schemaTreeDisplayName(name, schema)
 		if schemaTreeExpandable(schema) {
 			if root {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 172, "<details open data-schema-tree-node=\"")
-				if templ_7745c5c3_Err != nil {
-					return templ_7745c5c3_Err
-				}
-				var templ_7745c5c3_Var71 string
-				templ_7745c5c3_Var71, templ_7745c5c3_Err = templ.ResolveAttributeValue(displayName)
-				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/public.templ`, Line: 733, Col: 52}
-				}
-				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var71)
-				if templ_7745c5c3_Err != nil {
-					return templ_7745c5c3_Err
-				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 173, "\" class=\"manja-schema-node manja-schema-node-root\">")
-				if templ_7745c5c3_Err != nil {
-					return templ_7745c5c3_Err
-				}
-				templ_7745c5c3_Err = schemaTreeSummary(displayName, required, schema, opts).Render(ctx, templ_7745c5c3_Buffer)
-				if templ_7745c5c3_Err != nil {
-					return templ_7745c5c3_Err
-				}
-				templ_7745c5c3_Err = schemaTreeChildren(schema, opts).Render(ctx, templ_7745c5c3_Buffer)
-				if templ_7745c5c3_Err != nil {
-					return templ_7745c5c3_Err
-				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 174, "</details>")
-				if templ_7745c5c3_Err != nil {
-					return templ_7745c5c3_Err
-				}
-			} else {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 175, "<details open data-schema-tree-row=\"")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 174, "<details open data-schema-tree-node=\"")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 				var templ_7745c5c3_Var72 string
 				templ_7745c5c3_Var72, templ_7745c5c3_Err = templ.ResolveAttributeValue(displayName)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/public.templ`, Line: 738, Col: 51}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/public.templ`, Line: 760, Col: 52}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var72)
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 176, "\" class=\"manja-schema-node\">")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 175, "\" class=\"manja-schema-node manja-schema-node-root\">")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
@@ -2318,57 +2344,57 @@ func schemaTreeNode(name string, required bool, schema core.SchemaSummary, root 
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 177, "</details>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 176, "</details>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-			}
-		} else {
-			if root {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 178, "<div data-schema-tree-node=\"")
+			} else {
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 177, "<details open data-schema-tree-row=\"")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 				var templ_7745c5c3_Var73 string
 				templ_7745c5c3_Var73, templ_7745c5c3_Err = templ.ResolveAttributeValue(displayName)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/public.templ`, Line: 745, Col: 43}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/public.templ`, Line: 765, Col: 51}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var73)
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 179, "\" class=\"manja-schema-node manja-schema-node-root\"><div class=\"manja-schema-row\"><span class=\"manja-schema-branch\" aria-hidden=\"true\"></span>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 178, "\" class=\"manja-schema-node\">")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = schemaTreeLabel(displayName, schema, opts).Render(ctx, templ_7745c5c3_Buffer)
+				templ_7745c5c3_Err = schemaTreeSummary(displayName, required, schema, opts).Render(ctx, templ_7745c5c3_Buffer)
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = schemaTreeRequired(required).Render(ctx, templ_7745c5c3_Buffer)
+				templ_7745c5c3_Err = schemaTreeChildren(schema, opts).Render(ctx, templ_7745c5c3_Buffer)
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 180, "</div></div>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 179, "</details>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-			} else {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 181, "<div data-schema-tree-row=\"")
+			}
+		} else {
+			if root {
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 180, "<div data-schema-tree-node=\"")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 				var templ_7745c5c3_Var74 string
 				templ_7745c5c3_Var74, templ_7745c5c3_Err = templ.ResolveAttributeValue(displayName)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/public.templ`, Line: 753, Col: 42}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/public.templ`, Line: 772, Col: 43}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var74)
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 182, "\" class=\"manja-schema-node\"><div class=\"manja-schema-row\"><span class=\"manja-schema-branch\" aria-hidden=\"true\"></span>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 181, "\" class=\"manja-schema-node manja-schema-node-root\"><div class=\"manja-schema-row\"><span class=\"manja-schema-branch\" aria-hidden=\"true\"></span>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
@@ -2380,7 +2406,37 @@ func schemaTreeNode(name string, required bool, schema core.SchemaSummary, root 
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 183, "</div></div>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 182, "</div></div>")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+			} else {
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 183, "<div data-schema-tree-row=\"")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				var templ_7745c5c3_Var75 string
+				templ_7745c5c3_Var75, templ_7745c5c3_Err = templ.ResolveAttributeValue(displayName)
+				if templ_7745c5c3_Err != nil {
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/public.templ`, Line: 780, Col: 42}
+				}
+				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var75)
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 184, "\" class=\"manja-schema-node\"><div class=\"manja-schema-row\"><span class=\"manja-schema-branch\" aria-hidden=\"true\"></span>")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				templ_7745c5c3_Err = schemaTreeLabel(displayName, schema, opts).Render(ctx, templ_7745c5c3_Buffer)
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				templ_7745c5c3_Err = schemaTreeRequired(required).Render(ctx, templ_7745c5c3_Buffer)
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 185, "</div></div>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
@@ -2406,12 +2462,12 @@ func schemaTreeSummary(name string, required bool, schema core.SchemaSummary, op
 			}()
 		}
 		ctx = templ.InitializeContext(ctx)
-		templ_7745c5c3_Var75 := templ.GetChildren(ctx)
-		if templ_7745c5c3_Var75 == nil {
-			templ_7745c5c3_Var75 = templ.NopComponent
+		templ_7745c5c3_Var76 := templ.GetChildren(ctx)
+		if templ_7745c5c3_Var76 == nil {
+			templ_7745c5c3_Var76 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 184, "<summary class=\"manja-schema-row\"><span class=\"manja-schema-branch\" aria-hidden=\"true\"></span> <span class=\"manja-schema-caret\" aria-hidden=\"true\"></span>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 186, "<summary class=\"manja-schema-row\"><span class=\"manja-schema-branch\" aria-hidden=\"true\"></span> <span class=\"manja-schema-caret\" aria-hidden=\"true\"></span>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -2423,7 +2479,7 @@ func schemaTreeSummary(name string, required bool, schema core.SchemaSummary, op
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 185, "</summary>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 187, "</summary>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -2447,54 +2503,54 @@ func schemaTreeLabel(name string, schema core.SchemaSummary, opts PublicDocsOpti
 			}()
 		}
 		ctx = templ.InitializeContext(ctx)
-		templ_7745c5c3_Var76 := templ.GetChildren(ctx)
-		if templ_7745c5c3_Var76 == nil {
-			templ_7745c5c3_Var76 = templ.NopComponent
+		templ_7745c5c3_Var77 := templ.GetChildren(ctx)
+		if templ_7745c5c3_Var77 == nil {
+			templ_7745c5c3_Var77 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 186, "<div class=\"manja-schema-label\"><div class=\"manja-schema-heading\"><span class=\"manja-schema-name\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 188, "<div class=\"manja-schema-label\"><div class=\"manja-schema-heading\"><span class=\"manja-schema-name\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		var templ_7745c5c3_Var77 string
-		templ_7745c5c3_Var77, templ_7745c5c3_Err = templ.JoinStringErrs(name)
+		var templ_7745c5c3_Var78 string
+		templ_7745c5c3_Var78, templ_7745c5c3_Err = templ.JoinStringErrs(name)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/public.templ`, Line: 776, Col: 41}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/public.templ`, Line: 803, Col: 41}
 		}
-		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var77))
+		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var78))
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 187, "</span> ")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 189, "</span> ")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		if schemaInline(schema) != "" {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 188, "<span class=\"manja-schema-type\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 190, "<span class=\"manja-schema-type\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			var templ_7745c5c3_Var78 string
-			templ_7745c5c3_Var78, templ_7745c5c3_Err = templ.JoinStringErrs(schemaInline(schema))
+			var templ_7745c5c3_Var79 string
+			templ_7745c5c3_Var79, templ_7745c5c3_Err = templ.JoinStringErrs(schemaInline(schema))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/public.templ`, Line: 778, Col: 58}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/public.templ`, Line: 805, Col: 58}
 			}
-			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var78))
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var79))
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 189, "</span>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 191, "</span>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 190, "</div>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 192, "</div>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		if schema.Description != "" {
 			if hasMarkdown(opts.MarkdownRenderer, schema.Description) {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 191, "<div class=\"manja-schema-description\">")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 193, "<div class=\"manja-schema-description\">")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
@@ -2502,25 +2558,25 @@ func schemaTreeLabel(name string, schema core.SchemaSummary, opts PublicDocsOpti
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 192, "</div>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 194, "</div>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 			} else {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 193, "<p class=\"manja-schema-description\">")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 195, "<p class=\"manja-schema-description\">")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				var templ_7745c5c3_Var79 string
-				templ_7745c5c3_Var79, templ_7745c5c3_Err = templ.JoinStringErrs(schema.Description)
+				var templ_7745c5c3_Var80 string
+				templ_7745c5c3_Var80, templ_7745c5c3_Err = templ.JoinStringErrs(schema.Description)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/public.templ`, Line: 787, Col: 60}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/public.templ`, Line: 814, Col: 60}
 				}
-				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var79))
+				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var80))
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 194, "</p>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 196, "</p>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
@@ -2528,44 +2584,44 @@ func schemaTreeLabel(name string, schema core.SchemaSummary, opts PublicDocsOpti
 		}
 		if schema.Example != "" {
 			if schemaTreeExampleBlock(schema.Example) {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 195, "<div class=\"manja-schema-example manja-schema-example-block\"><span>Example:</span><pre><code>")
-				if templ_7745c5c3_Err != nil {
-					return templ_7745c5c3_Err
-				}
-				var templ_7745c5c3_Var80 string
-				templ_7745c5c3_Var80, templ_7745c5c3_Err = templ.JoinStringErrs(schema.Example)
-				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/public.templ`, Line: 794, Col: 32}
-				}
-				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var80))
-				if templ_7745c5c3_Err != nil {
-					return templ_7745c5c3_Err
-				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 196, "</code></pre></div>")
-				if templ_7745c5c3_Err != nil {
-					return templ_7745c5c3_Err
-				}
-			} else {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 197, "<p class=\"manja-schema-example manja-schema-example-inline\"><span>Example:</span> <code>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 197, "<div class=\"manja-schema-example manja-schema-example-block\"><span>Example:</span><pre><code>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 				var templ_7745c5c3_Var81 string
 				templ_7745c5c3_Var81, templ_7745c5c3_Err = templ.JoinStringErrs(schema.Example)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/public.templ`, Line: 799, Col: 27}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/public.templ`, Line: 821, Col: 32}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var81))
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 198, "</code></p>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 198, "</code></pre></div>")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+			} else {
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 199, "<p class=\"manja-schema-example manja-schema-example-inline\"><span>Example:</span> <code>")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				var templ_7745c5c3_Var82 string
+				templ_7745c5c3_Var82, templ_7745c5c3_Err = templ.JoinStringErrs(schema.Example)
+				if templ_7745c5c3_Err != nil {
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/public.templ`, Line: 826, Col: 27}
+				}
+				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var82))
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 200, "</code></p>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 			}
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 199, "</div>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 201, "</div>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -2589,13 +2645,13 @@ func schemaTreeRequired(required bool) templ.Component {
 			}()
 		}
 		ctx = templ.InitializeContext(ctx)
-		templ_7745c5c3_Var82 := templ.GetChildren(ctx)
-		if templ_7745c5c3_Var82 == nil {
-			templ_7745c5c3_Var82 = templ.NopComponent
+		templ_7745c5c3_Var83 := templ.GetChildren(ctx)
+		if templ_7745c5c3_Var83 == nil {
+			templ_7745c5c3_Var83 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
 		if required {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 200, "<span class=\"manja-schema-required\">required</span>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 202, "<span class=\"manja-schema-required\">required</span>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -2620,12 +2676,12 @@ func schemaTreeChildren(schema core.SchemaSummary, opts PublicDocsOptions) templ
 			}()
 		}
 		ctx = templ.InitializeContext(ctx)
-		templ_7745c5c3_Var83 := templ.GetChildren(ctx)
-		if templ_7745c5c3_Var83 == nil {
-			templ_7745c5c3_Var83 = templ.NopComponent
+		templ_7745c5c3_Var84 := templ.GetChildren(ctx)
+		if templ_7745c5c3_Var84 == nil {
+			templ_7745c5c3_Var84 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 201, "<div class=\"manja-schema-children\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 203, "<div class=\"manja-schema-children\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -2633,7 +2689,7 @@ func schemaTreeChildren(schema core.SchemaSummary, opts PublicDocsOptions) templ
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 202, "</div>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 204, "</div>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -2657,9 +2713,9 @@ func schemaTreeChildNodes(schema core.SchemaSummary, opts PublicDocsOptions) tem
 			}()
 		}
 		ctx = templ.InitializeContext(ctx)
-		templ_7745c5c3_Var84 := templ.GetChildren(ctx)
-		if templ_7745c5c3_Var84 == nil {
-			templ_7745c5c3_Var84 = templ.NopComponent
+		templ_7745c5c3_Var85 := templ.GetChildren(ctx)
+		if templ_7745c5c3_Var85 == nil {
+			templ_7745c5c3_Var85 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
 		if schema.Items != nil && schemaTreeExpandable(*schema.Items) {
@@ -2694,9 +2750,9 @@ func codeExample(label string, language string, code string) templ.Component {
 			}()
 		}
 		ctx = templ.InitializeContext(ctx)
-		templ_7745c5c3_Var85 := templ.GetChildren(ctx)
-		if templ_7745c5c3_Var85 == nil {
-			templ_7745c5c3_Var85 = templ.NopComponent
+		templ_7745c5c3_Var86 := templ.GetChildren(ctx)
+		if templ_7745c5c3_Var86 == nil {
+			templ_7745c5c3_Var86 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
 		templ_7745c5c3_Err = codeblock.CodeBlock(codeblock.Config{
@@ -2728,25 +2784,25 @@ func schemaExample(cfg ExampleConfig) templ.Component {
 			}()
 		}
 		ctx = templ.InitializeContext(ctx)
-		templ_7745c5c3_Var86 := templ.GetChildren(ctx)
-		if templ_7745c5c3_Var86 == nil {
-			templ_7745c5c3_Var86 = templ.NopComponent
+		templ_7745c5c3_Var87 := templ.GetChildren(ctx)
+		if templ_7745c5c3_Var87 == nil {
+			templ_7745c5c3_Var87 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 203, "<div id=\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 205, "<div id=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		var templ_7745c5c3_Var87 string
-		templ_7745c5c3_Var87, templ_7745c5c3_Err = templ.ResolveAttributeValue(cfg.ID)
+		var templ_7745c5c3_Var88 string
+		templ_7745c5c3_Var88, templ_7745c5c3_Err = templ.ResolveAttributeValue(cfg.ID)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/public.templ`, Line: 837, Col: 17}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/public.templ`, Line: 864, Col: 17}
 		}
-		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var87)
+		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var88)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 204, "\" data-manja-example>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 206, "\" data-manja-example>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -2764,7 +2820,7 @@ func schemaExample(cfg ExampleConfig) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 205, "<p data-manja-example-status class=\"sr-only\" aria-live=\"polite\"></p></div>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 207, "<p data-manja-example-status class=\"sr-only\" aria-live=\"polite\"></p></div>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -2788,12 +2844,12 @@ func docsSearchField(docs []core.SearchDocument) templ.Component {
 			}()
 		}
 		ctx = templ.InitializeContext(ctx)
-		templ_7745c5c3_Var88 := templ.GetChildren(ctx)
-		if templ_7745c5c3_Var88 == nil {
-			templ_7745c5c3_Var88 = templ.NopComponent
+		templ_7745c5c3_Var89 := templ.GetChildren(ctx)
+		if templ_7745c5c3_Var89 == nil {
+			templ_7745c5c3_Var89 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 206, "<div class=\"shrink-0 px-4 py-3\" aria-label=\"Documentation search\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 208, "<div class=\"shrink-0 px-4 py-3\" aria-label=\"Documentation search\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -2801,7 +2857,7 @@ func docsSearchField(docs []core.SearchDocument) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 207, "</div>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 209, "</div>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -2825,12 +2881,12 @@ func docsSearchOpenSlot() templ.Component {
 			}()
 		}
 		ctx = templ.InitializeContext(ctx)
-		templ_7745c5c3_Var89 := templ.GetChildren(ctx)
-		if templ_7745c5c3_Var89 == nil {
-			templ_7745c5c3_Var89 = templ.NopComponent
+		templ_7745c5c3_Var90 := templ.GetChildren(ctx)
+		if templ_7745c5c3_Var90 == nil {
+			templ_7745c5c3_Var90 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 208, "<div class=\"shrink-0 px-4 py-3\" aria-label=\"Documentation search\"><button type=\"button\" class=\"flex min-h-10 w-full items-center gap-2 rounded-radius border border-outline bg-surface px-3 text-left text-sm text-on-surface-muted transition hover:border-outline-strong hover:text-on-surface-strong focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary dark:border-outline-dark dark:bg-surface-dark/50 dark:text-on-surface-dark-muted dark:hover:border-outline-dark-strong dark:hover:text-on-surface-dark-strong dark:focus-visible:outline-primary-dark\" x-on:click=\"window.dispatchEvent(new CustomEvent('goshtoso-search-open', { detail: { id: 'docs-search' } }))\" aria-haspopup=\"dialog\" aria-controls=\"docs-search-dialog\"><svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" stroke=\"currentColor\" fill=\"none\" stroke-width=\"2\" class=\"size-5 shrink-0\" aria-hidden=\"true\"><path stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z\"></path></svg> <span class=\"min-w-0 flex-1 truncate\">Search docs</span></button></div>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 210, "<div class=\"shrink-0 px-4 py-3\" aria-label=\"Documentation search\"><button type=\"button\" class=\"flex min-h-10 w-full items-center gap-2 rounded-radius border border-outline bg-surface px-3 text-left text-sm text-on-surface-muted transition hover:border-outline-strong hover:text-on-surface-strong focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary dark:border-outline-dark dark:bg-surface-dark/50 dark:text-on-surface-dark-muted dark:hover:border-outline-dark-strong dark:hover:text-on-surface-dark-strong dark:focus-visible:outline-primary-dark\" x-on:click=\"window.dispatchEvent(new CustomEvent('goshtoso-search-open', { detail: { id: 'docs-search' } }))\" aria-haspopup=\"dialog\" aria-controls=\"docs-search-dialog\"><svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" stroke=\"currentColor\" fill=\"none\" stroke-width=\"2\" class=\"size-5 shrink-0\" aria-hidden=\"true\"><path stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z\"></path></svg> <span class=\"min-w-0 flex-1 truncate\">Search docs</span></button></div>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -2895,9 +2951,9 @@ func parameterDescriptionCell(renderer core.MarkdownRenderer, description string
 			}()
 		}
 		ctx = templ.InitializeContext(ctx)
-		templ_7745c5c3_Var90 := templ.GetChildren(ctx)
-		if templ_7745c5c3_Var90 == nil {
-			templ_7745c5c3_Var90 = templ.NopComponent
+		templ_7745c5c3_Var91 := templ.GetChildren(ctx)
+		if templ_7745c5c3_Var91 == nil {
+			templ_7745c5c3_Var91 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
 		if strings.TrimSpace(description) != "" {
@@ -2907,40 +2963,40 @@ func parameterDescriptionCell(renderer core.MarkdownRenderer, description string
 					return templ_7745c5c3_Err
 				}
 			} else {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 209, "<p>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 211, "<p>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				var templ_7745c5c3_Var91 string
-				templ_7745c5c3_Var91, templ_7745c5c3_Err = templ.JoinStringErrs(description)
+				var templ_7745c5c3_Var92 string
+				templ_7745c5c3_Var92, templ_7745c5c3_Err = templ.JoinStringErrs(description)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/public.templ`, Line: 919, Col: 19}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/public.templ`, Line: 946, Col: 19}
 				}
-				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var91))
+				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var92))
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 210, "</p>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 212, "</p>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 			}
 		}
 		if strings.TrimSpace(example) != "" {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 211, "<p class=\"mt-2 text-xs text-on-surface-muted dark:text-on-surface-dark-muted\">Example: <code class=\"ml-1 rounded-radius bg-surface-alt px-1.5 py-0.5 font-mono text-xs text-on-surface-strong dark:bg-surface-dark-alt dark:text-on-surface-dark-strong\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 213, "<p class=\"mt-2 text-xs text-on-surface-muted dark:text-on-surface-dark-muted\">Example: <code class=\"ml-1 rounded-radius bg-surface-alt px-1.5 py-0.5 font-mono text-xs text-on-surface-strong dark:bg-surface-dark-alt dark:text-on-surface-dark-strong\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			var templ_7745c5c3_Var92 string
-			templ_7745c5c3_Var92, templ_7745c5c3_Err = templ.JoinStringErrs(example)
+			var templ_7745c5c3_Var93 string
+			templ_7745c5c3_Var93, templ_7745c5c3_Err = templ.JoinStringErrs(example)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/public.templ`, Line: 925, Col: 174}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/public.templ`, Line: 952, Col: 174}
 			}
-			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var92))
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var93))
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 212, "</code></p>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 214, "</code></p>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -3302,9 +3358,9 @@ func methodBadge(method string) templ.Component {
 			}()
 		}
 		ctx = templ.InitializeContext(ctx)
-		templ_7745c5c3_Var93 := templ.GetChildren(ctx)
-		if templ_7745c5c3_Var93 == nil {
-			templ_7745c5c3_Var93 = templ.NopComponent
+		templ_7745c5c3_Var94 := templ.GetChildren(ctx)
+		if templ_7745c5c3_Var94 == nil {
+			templ_7745c5c3_Var94 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
 		templ_7745c5c3_Err = badge.Badge(badge.Config{
@@ -3377,12 +3433,12 @@ func themeSelectIcon() templ.Component {
 			}()
 		}
 		ctx = templ.InitializeContext(ctx)
-		templ_7745c5c3_Var94 := templ.GetChildren(ctx)
-		if templ_7745c5c3_Var94 == nil {
-			templ_7745c5c3_Var94 = templ.NopComponent
+		templ_7745c5c3_Var95 := templ.GetChildren(ctx)
+		if templ_7745c5c3_Var95 == nil {
+			templ_7745c5c3_Var95 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 213, "<svg xmlns=\"http://www.w3.org/2000/svg\" class=\"size-4 shrink-0\" fill=\"none\" viewBox=\"0 0 24 24\" stroke=\"currentColor\" aria-hidden=\"true\"><path stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"2\" d=\"M7 21a4 4 0 0 1-4-4V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v12a4 4 0 0 1-4 4Zm0 0h12a2 2 0 0 0 2-2v-4a2 2 0 0 0-2-2h-2.343M11 7.343l1.657-1.657a2 2 0 0 1 2.828 0l2.829 2.829a2 2 0 0 1 0 2.828l-8.486 8.485M7 17h.01\"></path></svg>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 215, "<svg xmlns=\"http://www.w3.org/2000/svg\" class=\"size-4 shrink-0\" fill=\"none\" viewBox=\"0 0 24 24\" stroke=\"currentColor\" aria-hidden=\"true\"><path stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"2\" d=\"M7 21a4 4 0 0 1-4-4V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v12a4 4 0 0 1-4 4Zm0 0h12a2 2 0 0 0 2-2v-4a2 2 0 0 0-2-2h-2.343M11 7.343l1.657-1.657a2 2 0 0 1 2.828 0l2.829 2.829a2 2 0 0 1 0 2.828l-8.486 8.485M7 17h.01\"></path></svg>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -3406,12 +3462,12 @@ func themeToggle() templ.Component {
 			}()
 		}
 		ctx = templ.InitializeContext(ctx)
-		templ_7745c5c3_Var95 := templ.GetChildren(ctx)
-		if templ_7745c5c3_Var95 == nil {
-			templ_7745c5c3_Var95 = templ.NopComponent
+		templ_7745c5c3_Var96 := templ.GetChildren(ctx)
+		if templ_7745c5c3_Var96 == nil {
+			templ_7745c5c3_Var96 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 214, "<button id=\"darkModeToggleBtn\" type=\"button\" aria-label=\"dark mode toggle\" x-on:click=\"toggleDarkMode()\" x-bind:aria-pressed=\"darkMode.toString()\" class=\"inline-flex size-10 shrink-0 items-center justify-center rounded-radius border border-outline bg-surface text-on-surface transition hover:bg-surface-alt focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary dark:border-outline-dark dark:bg-surface-dark dark:text-on-surface-dark dark:hover:bg-surface-dark-alt dark:focus-visible:outline-primary-dark\"><svg x-show=\"darkMode\" xmlns=\"http://www.w3.org/2000/svg\" class=\"size-5\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" aria-hidden=\"true\"><circle cx=\"12\" cy=\"12\" r=\"4\"></circle> <path stroke-linecap=\"round\" d=\"M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41\"></path></svg> <svg x-show=\"!darkMode\" xmlns=\"http://www.w3.org/2000/svg\" class=\"size-5\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" aria-hidden=\"true\"><path stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79Z\"></path></svg></button>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 216, "<button id=\"darkModeToggleBtn\" type=\"button\" aria-label=\"dark mode toggle\" x-on:click=\"toggleDarkMode()\" x-bind:aria-pressed=\"darkMode.toString()\" class=\"inline-flex size-10 shrink-0 items-center justify-center rounded-radius border border-outline bg-surface text-on-surface transition hover:bg-surface-alt focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary dark:border-outline-dark dark:bg-surface-dark dark:text-on-surface-dark dark:hover:bg-surface-dark-alt dark:focus-visible:outline-primary-dark\"><svg x-show=\"darkMode\" xmlns=\"http://www.w3.org/2000/svg\" class=\"size-5\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" aria-hidden=\"true\"><circle cx=\"12\" cy=\"12\" r=\"4\"></circle> <path stroke-linecap=\"round\" d=\"M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41\"></path></svg> <svg x-show=\"!darkMode\" xmlns=\"http://www.w3.org/2000/svg\" class=\"size-5\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" aria-hidden=\"true\"><path stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79Z\"></path></svg></button>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -3646,13 +3702,69 @@ func requestConfigBodyFor(op core.Operation, opID string, exampleSpecJSON string
 
 func requestComposerPayload(op core.Operation, server core.SpecServer, body requestConfigBody) map[string]any {
 	payload := map[string]any{
-		"method":      strings.ToUpper(op.Method),
-		"urlTemplate": requestComposerURLTemplate(server, op),
-		"parameters":  requestComposerParameters(op.Parameters),
+		"method":        strings.ToUpper(op.Method),
+		"urlTemplate":   requestComposerURLTemplate(server, op),
+		"parameters":    requestComposerParameters(op.Parameters),
+		"sampleTargets": requestSampleTargetsPayload(),
 	}
 	if body.Has {
 		payload["bodyContentType"] = body.Media.ContentType
 		payload["body"] = schemaExamplePayload(body.Config)
+	}
+	return payload
+}
+
+func requestSampleTargets() []requestSampleTarget {
+	return []requestSampleTarget{
+		{Value: "shell:curl", Label: "Shell / cURL", Target: "shell", Client: "curl", Language: "shell"},
+		{Value: "shell:httpie", Label: "Shell / HTTPie", Target: "shell", Client: "httpie", Language: "shell"},
+		{Value: "shell:wget", Label: "Shell / Wget", Target: "shell", Client: "wget", Language: "shell"},
+		{Value: "javascript:fetch", Label: "JavaScript / fetch", Target: "javascript", Client: "fetch", Language: "javascript"},
+		{Value: "javascript:axios", Label: "JavaScript / Axios", Target: "javascript", Client: "axios", Language: "javascript"},
+		{Value: "node:fetch", Label: "Node.js / fetch", Target: "node", Client: "fetch", Language: "javascript"},
+		{Value: "python:requests", Label: "Python / Requests", Target: "python", Client: "requests", Language: "python"},
+		{Value: "go:native", Label: "Go / NewRequest", Target: "go", Client: "native", Language: "go"},
+		{Value: "java:okhttp", Label: "Java / OkHttp", Target: "java", Client: "okhttp", Language: "java"},
+		{Value: "php:curl", Label: "PHP / cURL", Target: "php", Client: "curl", Language: "php"},
+		{Value: "ruby:native", Label: "Ruby / net::http", Target: "ruby", Client: "native", Language: "ruby"},
+		{Value: "csharp:restsharp", Label: "C# / RestSharp", Target: "csharp", Client: "restsharp", Language: "csharp"},
+		{Value: "powershell:webrequest", Label: "Powershell / Invoke-WebRequest", Target: "powershell", Client: "webrequest", Language: "powershell"},
+		{Value: "powershell:restmethod", Label: "Powershell / Invoke-RestMethod", Target: "powershell", Client: "restmethod", Language: "powershell"},
+		{Value: "swift:urlsession", Label: "Swift / URLSession", Target: "swift", Client: "urlsession", Language: "swift"},
+		{Value: "kotlin:okhttp", Label: "Kotlin / OkHttp", Target: "kotlin", Client: "okhttp", Language: "kotlin"},
+		{Value: "http:http1.1", Label: "HTTP / HTTP/1.1", Target: "http", Client: "http1.1", Language: "http"},
+		{Value: "c:libcurl", Label: "C / Libcurl", Target: "c", Client: "libcurl", Language: "c"},
+		{Value: "clojure:clj_http", Label: "Clojure / clj-http", Target: "clojure", Client: "clj_http", Language: "clojure"},
+		{Value: "objc:nsurlsession", Label: "Objective-C / NSURLSession", Target: "objc", Client: "nsurlsession", Language: "objc"},
+		{Value: "ocaml:cohttp", Label: "OCaml / CoHTTP", Target: "ocaml", Client: "cohttp", Language: "ocaml"},
+		{Value: "r:httr", Label: "R / httr", Target: "r", Client: "httr", Language: "r"},
+	}
+}
+
+func requestSampleTargetOptions() []selectfield.Option {
+	targets := requestSampleTargets()
+	options := make([]selectfield.Option, 0, len(targets))
+	for i, target := range targets {
+		options = append(options, selectfield.Option{
+			Value:    target.Value,
+			Label:    target.Label,
+			Selected: i == 0,
+		})
+	}
+	return options
+}
+
+func requestSampleTargetsPayload() []map[string]string {
+	targets := requestSampleTargets()
+	payload := make([]map[string]string, 0, len(targets))
+	for _, target := range targets {
+		payload = append(payload, map[string]string{
+			"value":    target.Value,
+			"label":    target.Label,
+			"target":   target.Target,
+			"client":   target.Client,
+			"language": target.Language,
+		})
 	}
 	return payload
 }
@@ -3732,9 +3844,9 @@ func responseStatusBadge(status string) templ.Component {
 			}()
 		}
 		ctx = templ.InitializeContext(ctx)
-		templ_7745c5c3_Var96 := templ.GetChildren(ctx)
-		if templ_7745c5c3_Var96 == nil {
-			templ_7745c5c3_Var96 = templ.NopComponent
+		templ_7745c5c3_Var97 := templ.GetChildren(ctx)
+		if templ_7745c5c3_Var97 == nil {
+			templ_7745c5c3_Var97 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
 		templ_7745c5c3_Err = badge.Badge(badge.Config{

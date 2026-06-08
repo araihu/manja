@@ -1212,12 +1212,18 @@ func TestPublicDocsRenderEndpointDetails(t *testing.T) {
 		`bg-danger/10`,
 		`text-danger`,
 		`text-xs px-2 py-1 bg-danger/10`,
-		`Request Sample: cURL`,
+		`Request Sample: Shell / cURL`,
 		`Response Example`,
 		`cURL`,
+		`data-manja-request-sample-target`,
+		`name="requestSampleTarget"`,
+		`Shell / cURL`,
+		`JavaScript / fetch`,
+		`Python / Requests`,
+		`Go / NewRequest`,
 		`curl --request PUT`,
 		`&#34;name&#34;`,
-		`aria-label="Copy Request Sample: cURL code"`,
+		`aria-label="Copy Request Sample: Shell / cURL code"`,
 		`class="codeblock overflow-x-auto"`,
 		`id="operation-updatetodo-path-parameters"`,
 		`id="operation-updatetodo-query-parameters"`,
@@ -1303,6 +1309,30 @@ func TestPublicDocsEndpointDetailCSSStacksRequestAndResponses(t *testing.T) {
 	} {
 		if strings.Contains(string(css), reject) {
 			t.Fatalf("endpoint detail layout should keep Request and Responses stacked, got %q in CSS", reject)
+		}
+	}
+}
+
+func TestPublicDocsRequestSampleHighlightCSSUsesThemeTokens(t *testing.T) {
+	css, err := os.ReadFile("static/manja.css")
+	if err != nil {
+		t.Fatal(err)
+	}
+	source := string(css)
+	for _, want := range []string{
+		`.codeblock .hljs-keyword`,
+		`.codeblock .hljs-string`,
+		`.codeblock .hljs-comment`,
+		`display: contents;`,
+		`var(--color-purple-700)`,
+		`var(--color-blue-700)`,
+		`var(--color-on-surface-muted)`,
+		`var(--color-purple-400)`,
+		`var(--color-blue-400)`,
+		`var(--color-on-surface-dark-muted)`,
+	} {
+		if !strings.Contains(source, want) {
+			t.Fatalf("request sample highlight CSS should use theme token marker %q", want)
 		}
 	}
 }

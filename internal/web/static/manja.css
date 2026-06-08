@@ -53,6 +53,88 @@
   min-width: 0;
 }
 
+.codeblock [class^="hljs-"],
+.codeblock [class*=" hljs-"] {
+  display: contents;
+}
+
+.codeblock .hljs-title,
+.codeblock .hljs-section,
+.codeblock .hljs-name,
+.codeblock .hljs-selector-tag,
+.codeblock .hljs-selector-id,
+.codeblock .hljs-selector-class {
+  color: var(--color-pink-700);
+}
+
+.dark .codeblock .hljs-title,
+.dark .codeblock .hljs-section,
+.dark .codeblock .hljs-name,
+.dark .codeblock .hljs-selector-tag,
+.dark .codeblock .hljs-selector-id,
+.dark .codeblock .hljs-selector-class {
+  color: var(--color-pink-400);
+}
+
+.codeblock .hljs-keyword,
+.codeblock .hljs-built_in,
+.codeblock .hljs-type,
+.codeblock .hljs-attr,
+.codeblock .hljs-attribute,
+.codeblock .hljs-variable,
+.codeblock .hljs-template-variable,
+.codeblock .hljs-params,
+.codeblock .hljs-property {
+  color: var(--color-purple-700);
+}
+
+.dark .codeblock .hljs-keyword,
+.dark .codeblock .hljs-built_in,
+.dark .codeblock .hljs-type,
+.dark .codeblock .hljs-attr,
+.dark .codeblock .hljs-attribute,
+.dark .codeblock .hljs-variable,
+.dark .codeblock .hljs-template-variable,
+.dark .codeblock .hljs-params,
+.dark .codeblock .hljs-property {
+  color: var(--color-purple-400);
+}
+
+.codeblock .hljs-string,
+.codeblock .hljs-regexp,
+.codeblock .hljs-symbol,
+.codeblock .hljs-bullet,
+.codeblock .hljs-number,
+.codeblock .hljs-literal,
+.codeblock .hljs-link {
+  color: var(--color-blue-700);
+}
+
+.dark .codeblock .hljs-string,
+.dark .codeblock .hljs-regexp,
+.dark .codeblock .hljs-symbol,
+.dark .codeblock .hljs-bullet,
+.dark .codeblock .hljs-number,
+.dark .codeblock .hljs-literal,
+.dark .codeblock .hljs-link {
+  color: var(--color-blue-400);
+}
+
+.codeblock .hljs-comment,
+.codeblock .hljs-quote,
+.codeblock .hljs-meta,
+.codeblock .hljs-doctag {
+  color: var(--color-on-surface-muted);
+  font-style: italic;
+}
+
+.dark .codeblock .hljs-comment,
+.dark .codeblock .hljs-quote,
+.dark .codeblock .hljs-meta,
+.dark .codeblock .hljs-doctag {
+  color: var(--color-on-surface-dark-muted);
+}
+
 .manja-endpoint-detail-layout {
   align-items: start;
   display: grid;
