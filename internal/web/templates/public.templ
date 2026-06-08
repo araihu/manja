@@ -1,6 +1,7 @@
 package templates
 
 import (
+	"encoding/json"
 	"net/url"
 	"strconv"
 	"strings"
@@ -43,6 +44,23 @@ func (opts PublicDocsOptions) withDefaults() PublicDocsOptions {
 		opts.EndpointSidebarLabel = EndpointSidebarLabelAuto
 		return opts
 	}
+}
+
+type ExampleOptions struct {
+	SkipNonRequired bool `json:"skipNonRequired"`
+	Quiet           bool `json:"quiet"`
+	MaxSampleDepth  int  `json:"maxSampleDepth"`
+}
+
+type ExampleConfig struct {
+	ID              string
+	Label           string
+	Language        string
+	SchemaJSON      string
+	ExampleJSON     string
+	ExplicitExample bool
+	SpecJSON        string
+	Options         ExampleOptions
 }
 
 templ PublicDocs(idx core.SpecIndex, selectedID string) {
@@ -104,12 +122,12 @@ templ selectedDocsContent(idx core.SpecIndex, selected selectedDocsItem) {
 	} else if selected.Kind == "operation" {
 		<section aria-labelledby="operations-heading" class="grid gap-16">
 			<h2 id="operations-heading" data-toc-heading class="sr-only">Operations</h2>
-			@endpointSection(selected.Operation)
+			@endpointSection(selected.Operation, idx.ExampleSpecJSON)
 		</section>
 	} else if selected.Kind == "schema" {
 		<section aria-labelledby="schemas-heading">
 			<h2 id="schemas-heading" data-toc-heading class="sr-only">Schemas</h2>
-			@schemaSection(selected.Schema)
+			@schemaSection(selected.Schema, idx.ExampleSpecJSON)
 		</section>
 	} else {
 		<section class="rounded-radius border border-outline bg-surface-alt p-6 dark:border-outline-dark dark:bg-surface-dark-alt">
@@ -281,7 +299,7 @@ func overviewLicenseLabel(license core.SpecLicense) string {
 	return firstNonEmpty(license.Name, license.Identifier)
 }
 
-templ endpointSection(op core.Operation) {
+templ endpointSection(op core.Operation, exampleSpecJSON string) {
 	{{ opID := operationAnchor(op) }}
 	<section id={ opID } class="scroll-mt-24">
 		<div class="grid gap-10 xl:grid-cols-[minmax(0,50rem)_24rem] xl:items-start 2xl:grid-cols-[minmax(0,54rem)_26rem]">
@@ -367,15 +385,17 @@ templ endpointSection(op core.Operation) {
 						}
 						if op.RequestBody != nil {
 							for _, media := range op.RequestBody.MediaTypes {
-								if media.Example != "" {
-									@codeExample("Request Example: "+media.ContentType, "json", media.Example)
+								{{ cfg := mediaSchemaExampleConfig(opID+"-request-body-"+anchorFragment(media.ContentType)+"-example", "Request Example: "+media.ContentType, media, exampleSpecJSON) }}
+								if hasSchemaExample(cfg) {
+									@schemaExample(cfg)
 								}
 							}
 						}
 						for _, response := range op.Responses {
 							for _, media := range response.MediaTypes {
-								if media.Example != "" {
-									@codeExample("Response Example: "+response.Status+" "+media.ContentType, "json", media.Example)
+								{{ cfg := mediaSchemaExampleConfig(opID+"-response-"+anchorFragment(response.Status)+"-"+anchorFragment(media.ContentType)+"-example", "Response Example: "+response.Status+" "+media.ContentType, media, exampleSpecJSON) }}
+								if hasSchemaExample(cfg) {
+									@schemaExample(cfg)
 								}
 							}
 						}
@@ -386,7 +406,7 @@ templ endpointSection(op core.Operation) {
 	</section>
 }
 
-templ schemaSection(schema core.Schema) {
+templ schemaSection(schema core.Schema, exampleSpecJSON string) {
 	{{ summary := schema.Summary }}
 	if summary.Name == "" {
 		{{ summary.Name = schema.Name }}
@@ -403,6 +423,12 @@ templ schemaSection(schema core.Schema) {
 			}
 		</div>
 		@schemaTree(schemaAnchor(schema)+"-tree", schema.Name, summary)
+		{{ cfg := schemaPageExampleConfig(schema, exampleSpecJSON) }}
+		if hasSchemaExample(cfg) {
+			<div class="mt-8 max-w-3xl">
+				@schemaExample(cfg)
+			</div>
+		}
 	</section>
 }
 
@@ -568,6 +594,20 @@ templ codeExample(label string, language string, code string) {
 	})
 }
 
+templ schemaExample(cfg ExampleConfig) {
+	<div id={ cfg.ID } data-manja-example>
+		@codeblock.CodeBlock(codeblock.Config{
+			ID: cfg.ID+"-code",
+			Label: cfg.Label,
+			Language: exampleLanguage(cfg),
+			Code: exampleFallback(cfg),
+			MaxHeight: "24rem",
+		})
+		@templpkg.JSONScript(cfg.ID+"-payload", schemaExamplePayload(cfg))
+		<p data-manja-example-status class="sr-only" aria-live="polite"></p>
+	</div>
+}
+
 templ docsSearchField(docs []core.SearchDocument) {
 	<div class="shrink-0 px-4 py-3" aria-label="Documentation search">
 		@searchfield.SearchField(docsSearchConfig(docs))
@@ -677,6 +717,85 @@ func mediaTypeTableID(idPrefix string, media core.OperationMediaType) string {
 		contentType = "media"
 	}
 	return idPrefix + "-" + contentType + "-schema"
+}
+
+func mediaSchemaExampleConfig(id string, label string, media core.OperationMediaType, specJSON string) ExampleConfig {
+	return ExampleConfig{
+		ID:          id,
+		Label:       label,
+		Language:    "json",
+		SchemaJSON:  media.Schema.JSON,
+		ExampleJSON: media.Example,
+		ExplicitExample: media.ExampleProvided,
+		SpecJSON:    specJSON,
+		Options:     defaultExampleOptions(),
+	}
+}
+
+func schemaPageExampleConfig(schema core.Schema, specJSON string) ExampleConfig {
+	return ExampleConfig{
+		ID:          schemaAnchor(schema) + "-example",
+		Label:       "Example: " + schema.Name,
+		Language:    "json",
+		SchemaJSON:  schema.Example.JSON,
+		ExampleJSON: schema.Example.Example,
+		ExplicitExample: schema.Example.Provided,
+		SpecJSON:    specJSON,
+		Options: ExampleOptions{
+			SkipNonRequired: false,
+			Quiet:           true,
+			MaxSampleDepth:  4,
+		},
+	}
+}
+
+func defaultExampleOptions() ExampleOptions {
+	return ExampleOptions{
+		SkipNonRequired: false,
+		Quiet:           true,
+		MaxSampleDepth:  3,
+	}
+}
+
+func hasSchemaExample(cfg ExampleConfig) bool {
+	return strings.TrimSpace(cfg.SchemaJSON) != "" || strings.TrimSpace(cfg.ExampleJSON) != ""
+}
+
+func exampleLanguage(cfg ExampleConfig) string {
+	if strings.TrimSpace(cfg.Language) != "" {
+		return cfg.Language
+	}
+	return "json"
+}
+
+func exampleFallback(cfg ExampleConfig) string {
+	if strings.TrimSpace(cfg.ExampleJSON) != "" {
+		return cfg.ExampleJSON
+	}
+	return "Example unavailable"
+}
+
+func schemaExamplePayload(cfg ExampleConfig) map[string]any {
+	payload := map[string]any{
+		"options": cfg.Options,
+	}
+	if cfg.ExplicitExample && strings.TrimSpace(cfg.ExampleJSON) != "" {
+		payload["hasExplicitExample"] = true
+	}
+	var schema any
+	if strings.TrimSpace(cfg.SchemaJSON) != "" {
+		if err := json.Unmarshal([]byte(cfg.SchemaJSON), &schema); err != nil {
+			schema = nil
+		}
+	}
+	payload["schema"] = schema
+	if strings.TrimSpace(cfg.SpecJSON) != "" {
+		var spec any
+		if err := json.Unmarshal([]byte(cfg.SpecJSON), &spec); err == nil {
+			payload["spec"] = spec
+		}
+	}
+	return payload
 }
 
 func sidebarSections(idx core.SpecIndex, selectedAnchor string, labelMode EndpointSidebarLabelMode) []sidebar.Section {
@@ -1004,14 +1123,14 @@ func operationHasRail(op core.Operation) bool {
 	}
 	if op.RequestBody != nil {
 		for _, media := range op.RequestBody.MediaTypes {
-			if strings.TrimSpace(media.Example) != "" {
+			if strings.TrimSpace(media.Example) != "" || strings.TrimSpace(media.Schema.JSON) != "" {
 				return true
 			}
 		}
 	}
 	for _, response := range op.Responses {
 		for _, media := range response.MediaTypes {
-			if strings.TrimSpace(media.Example) != "" {
+			if strings.TrimSpace(media.Example) != "" || strings.TrimSpace(media.Schema.JSON) != "" {
 				return true
 			}
 		}

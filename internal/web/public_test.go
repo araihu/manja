@@ -677,7 +677,8 @@ func TestPublicDocsSearchTargetsVisibleSectionsWithUniqueIDs(t *testing.T) {
 
 func TestPublicDocsRenderEndpointDetails(t *testing.T) {
 	idx := core.SpecIndex{
-		Title: "Todos",
+		Title:           "Todos",
+		ExampleSpecJSON: `{"components":{"schemas":{"Todo":{"type":"object","properties":{"id":{"type":"string"}}}}}}`,
 		Operations: []core.Operation{{
 			ID:          "updateTodo",
 			Anchor:      "operation-updatetodo",
@@ -822,10 +823,88 @@ func TestPublicDocsRenderEndpointDetails(t *testing.T) {
 	}
 }
 
-func renderPublicDocs(t *testing.T, handler http.Handler) string {
+func TestPublicDocsRenderGenericSchemaExamples(t *testing.T) {
+	idx := core.SpecIndex{
+		Title:           "Todos",
+		ExampleSpecJSON: `{"components":{"schemas":{"Todo":{"type":"object","properties":{"id":{"type":"string"}}}}}}`,
+		Operations: []core.Operation{{
+			ID:      "updateTodo",
+			Anchor:  "operation-updatetodo",
+			Method:  "PUT",
+			Path:    "/todos/{todoId}",
+			Summary: "Update Todo",
+			RequestBody: &core.OperationRequestBody{MediaTypes: []core.OperationMediaType{{
+				ContentType: "application/json",
+				Schema: core.SchemaSummary{
+					Name: "TodoInput",
+					Type: "object",
+					JSON: `{"type":"object","required":["name"],"properties":{"name":{"type":"string"},"done":{"type":"boolean"}}}`,
+				},
+				Example:         "{\n  \"name\": \"fallback\"\n}",
+				ExampleProvided: true,
+			}}},
+			Responses: []core.OperationResponse{{Status: "200", MediaTypes: []core.OperationMediaType{{
+				ContentType: "application/json",
+				Schema: core.SchemaSummary{
+					Name: "Todo",
+					Type: "object",
+					JSON: `{"type":"object","required":["id"],"properties":{"id":{"type":"string"}}}`,
+				},
+				Example:         "{\n  \"id\": \"fallback\"\n}",
+				ExampleProvided: true,
+			}}}},
+		}},
+		Schemas: []core.Schema{{Name: "Todo", Description: "A todo.", Example: core.SchemaExample{
+			JSON:     `{"type":"object","required":["id"],"properties":{"id":{"type":"string"},"name":{"type":"string"}}}`,
+			Example:  "{\n  \"id\": \"fallback\"\n}",
+			Provided: true,
+		}}},
+	}
+
+	body := renderPublicDocs(t, NewPublicServer(idx), "/?selected=operation-updatetodo")
+	for _, want := range []string{
+		`data-manja-example`,
+		`id="operation-updatetodo-request-body-application-json-example"`,
+		`Request Example: application/json`,
+		`Response Example: 200 application/json`,
+		`type="application/json"`,
+		`"hasExplicitExample":true`,
+		`"spec":{"components":{"schemas":{"Todo"`,
+		`"skipNonRequired":false`,
+		`"maxSampleDepth":3`,
+		`/manja-assets/schema-example.js`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("generic endpoint example missing %q:\n%s", want, body)
+		}
+	}
+
+	body = renderPublicDocs(t, NewPublicServer(idx), "/?selected=schema-todo")
+	for _, want := range []string{
+		`id="schema-todo-example"`,
+		`Example: Todo`,
+		`data-manja-example`,
+		`"maxSampleDepth":4`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("generic schema example missing %q:\n%s", want, body)
+		}
+	}
+	for _, reject := range []string{"Try It", "Send API Request", "<form", "Execute request"} {
+		if strings.Contains(body, reject) {
+			t.Fatalf("example component should stay read-only, got %q:\n%s", reject, body)
+		}
+	}
+}
+
+func renderPublicDocs(t *testing.T, handler http.Handler, targets ...string) string {
 	t.Helper()
+	target := "/"
+	if len(targets) > 0 {
+		target = targets[0]
+	}
 	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	req := httptest.NewRequest(http.MethodGet, target, nil)
 	handler.ServeHTTP(rec, req)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d", rec.Code)

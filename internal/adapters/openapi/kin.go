@@ -34,11 +34,12 @@ func (Parser) Parse(ctx context.Context, file core.SpecFile, rev core.Revision) 
 	}
 
 	idx := core.SpecIndex{
-		RevisionID:   rev.ID,
-		Title:        doc.Info.Title,
-		Version:      doc.Info.Version,
-		Overview:     overview(doc.Info, doc.Servers),
-		SpecDownload: download,
+		RevisionID:      rev.ID,
+		Title:           doc.Info.Title,
+		Version:         doc.Info.Version,
+		Overview:        overview(doc.Info, doc.Servers),
+		SpecDownload:    download,
+		ExampleSpecJSON: exampleSpecJSON(doc),
 	}
 
 	serverURL := firstServerURL(doc.Servers)
@@ -80,6 +81,7 @@ func (Parser) Parse(ctx context.Context, file core.SpecFile, rev core.Revision) 
 				Name:        name,
 				Description: summary.Description,
 				Summary:     summary,
+				Example:     schemaExample(schema),
 			})
 		}
 	}
@@ -276,44 +278,46 @@ func operationMediaTypes(content openapi3.Content, inferExamples bool) []core.Op
 			continue
 		}
 		summary := schemaSummary(media.Schema)
+		example, exampleProvided := mediaExample(media, inferExamples)
 		mediaTypes = append(mediaTypes, core.OperationMediaType{
-			ContentType: contentType,
-			Schema:      summary,
-			Example:     mediaExample(media, inferExamples),
+			ContentType:     contentType,
+			Schema:          summary,
+			Example:         example,
+			ExampleProvided: exampleProvided,
 		})
 	}
 	return mediaTypes
 }
 
-func mediaExample(media *openapi3.MediaType, inferExamples bool) string {
+func mediaExample(media *openapi3.MediaType, inferExamples bool) (string, bool) {
 	if media == nil {
-		return ""
+		return "", false
 	}
 	if example := exampleString(media.Example); example != "" {
-		return example
+		return example, true
 	}
 	for _, key := range sortedExampleKeys(media.Examples) {
 		ref := media.Examples[key]
 		if ref != nil && ref.Value != nil {
 			if example := exampleString(ref.Value.Value); example != "" {
-				return example
+				return example, true
 			}
 		}
 	}
 	if media.Schema != nil && media.Schema.Value != nil {
-		if example := exampleString(media.Schema.Value.Example); example != "" {
-			return example
+		if example, provided := schemaProvidedExample(media.Schema.Value); provided {
+			return example, true
 		}
 		if inferExamples {
 			if example := sampleWithOpenAPISampler(media.Schema.Value); example != "" {
-				return example
+				return example, false
 			}
 		}
 		if example := exampleString(simpleSample(media.Schema.Value)); example != "" {
-			return example
+			return example, false
 		}
 	}
-	return ""
+	return "", false
 }
 
 func sortedExampleKeys(examples openapi3.Examples) []string {
@@ -404,6 +408,9 @@ func schemaSummaryDepth(ref *openapi3.SchemaRef, depth int) core.SchemaSummary {
 	summary.Format = schema.Format
 	summary.Description = schema.Description
 	summary.Example = exampleString(schema.Example)
+	if depth == 0 {
+		summary.JSON = schemaJSON(schema)
+	}
 	if schema.Items != nil {
 		items := schemaSummaryDepth(schema.Items, depth+1)
 		summary.Items = &items
@@ -467,6 +474,59 @@ func exampleString(value any) string {
 		}
 		return string(data)
 	}
+}
+
+func schemaExample(ref *openapi3.SchemaRef) core.SchemaExample {
+	if ref == nil || ref.Value == nil {
+		return core.SchemaExample{}
+	}
+	example, provided := schemaProvidedExample(ref.Value)
+	return core.SchemaExample{
+		JSON:     schemaJSON(ref.Value),
+		Example:  example,
+		Provided: provided,
+	}
+}
+
+func schemaProvidedExample(schema *openapi3.Schema) (string, bool) {
+	if schema == nil {
+		return "", false
+	}
+	if example := exampleString(schema.Example); example != "" {
+		return example, true
+	}
+	for _, candidate := range schema.Examples {
+		if example := exampleString(candidate); example != "" {
+			return example, true
+		}
+	}
+	return "", false
+}
+
+func schemaJSON(schema *openapi3.Schema) string {
+	if schema == nil {
+		return ""
+	}
+	data, err := json.Marshal(schema)
+	if err != nil {
+		return ""
+	}
+	return string(data)
+}
+
+func exampleSpecJSON(doc *openapi3.T) string {
+	if doc == nil || doc.Components == nil || len(doc.Components.Schemas) == 0 {
+		return ""
+	}
+	data, err := json.Marshal(map[string]any{
+		"components": map[string]any{
+			"schemas": doc.Components.Schemas,
+		},
+	})
+	if err != nil {
+		return ""
+	}
+	return string(data)
 }
 
 func sampleWithOpenAPISampler(schema *openapi3.Schema) string {

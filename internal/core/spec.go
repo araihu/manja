@@ -16,16 +16,17 @@ type Revision struct {
 }
 
 type SpecIndex struct {
-	ProjectID    string
-	RevisionID   string
-	Title        string
-	Version      string
-	Overview     SpecOverview
-	SpecDownload SpecDownload
-	Operations   []Operation
-	Schemas      []Schema
-	Search       []SearchDocument
-	PublicRoutes []PublicRoute
+	ProjectID       string
+	RevisionID      string
+	Title           string
+	Version         string
+	Overview        SpecOverview
+	SpecDownload    SpecDownload
+	Operations      []Operation
+	Schemas         []Schema
+	Search          []SearchDocument
+	PublicRoutes    []PublicRoute
+	ExampleSpecJSON string
 }
 
 type SpecDownload struct {
@@ -104,9 +105,10 @@ type OperationResponse struct {
 }
 
 type OperationMediaType struct {
-	ContentType string
-	Schema      SchemaSummary
-	Example     string
+	ContentType     string
+	Schema          SchemaSummary
+	Example         string
+	ExampleProvided bool
 }
 
 type OperationSecurity struct {
@@ -128,6 +130,7 @@ type SchemaSummary struct {
 	Example     string
 	Properties  []SchemaProperty
 	Items       *SchemaSummary
+	JSON        string
 }
 
 type SchemaProperty struct {
@@ -141,6 +144,13 @@ type Schema struct {
 	Name        string
 	Description string
 	Summary     SchemaSummary
+	Example     SchemaExample
+}
+
+type SchemaExample struct {
+	JSON     string
+	Example  string
+	Provided bool
 }
 
 type SearchDocument struct {

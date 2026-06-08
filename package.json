@@ -2,6 +2,8 @@
   "name": "manja",
   "private": true,
   "scripts": {
+    "examples:build": "node scripts/build-schema-example-asset.mjs",
+    "examples:test": "node --test internal/web/static/schema-example-hydrator.test.mjs",
     "api:bundle": "redocly bundle api/openapi.yaml -o api/dist/openapi.yaml",
     "api:lint": "redocly lint api/openapi.yaml"
   },

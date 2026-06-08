@@ -424,8 +424,14 @@ components:
 	if requestMedia.ContentType != "application/json" || requestMedia.Schema.Name != "TodoInput" {
 		t.Fatalf("request media = %#v", requestMedia)
 	}
+	if !strings.Contains(requestMedia.Schema.JSON, `"required":["name"]`) {
+		t.Fatalf("request schema JSON = %q", requestMedia.Schema.JSON)
+	}
 	if !strings.Contains(requestMedia.Example, `"name"`) || !strings.Contains(requestMedia.Example, `"completed"`) {
 		t.Fatalf("request example = %q", requestMedia.Example)
+	}
+	if requestMedia.ExampleProvided {
+		t.Fatalf("request media should mark generated fallback example as not provided: %#v", requestMedia)
 	}
 	if len(op.Responses) != 2 || op.Responses[0].Status != "200" || op.Responses[1].Status != "404" {
 		t.Fatalf("responses = %#v", op.Responses)
@@ -434,8 +440,20 @@ components:
 	if responseMedia.ContentType != "application/json" || responseMedia.Schema.Name != "Todo" {
 		t.Fatalf("response media = %#v", responseMedia)
 	}
+	if !strings.Contains(responseMedia.Schema.JSON, `"required":["id","name"]`) {
+		t.Fatalf("response schema JSON = %q", responseMedia.Schema.JSON)
+	}
 	if responseMedia.Schema.Properties[0].Name != "completed" {
 		t.Fatalf("response schema properties = %#v", responseMedia.Schema.Properties)
+	}
+	if responseMedia.ExampleProvided {
+		t.Fatalf("response media should mark generated fallback example as not provided: %#v", responseMedia)
+	}
+	if idx.Schemas[0].Example.JSON == "" || !strings.Contains(idx.Schemas[0].Example.JSON, `"properties"`) {
+		t.Fatalf("schema example payload = %#v", idx.Schemas[0].Example)
+	}
+	if !strings.Contains(idx.ExampleSpecJSON, `"#/components/schemas/Todo"`) && !strings.Contains(idx.ExampleSpecJSON, `"Todo"`) {
+		t.Fatalf("example spec JSON = %q", idx.ExampleSpecJSON)
 	}
 	if len(op.Security) != 1 || op.Security[0].Name != "bearerAuth" {
 		t.Fatalf("security = %#v", op.Security)
