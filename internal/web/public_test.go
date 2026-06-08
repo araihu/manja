@@ -313,6 +313,21 @@ func TestPublicDocsRendersSelectedSidebarItemOnly(t *testing.T) {
 			t.Fatalf("selected operation page missing %q:\n%s", want, body)
 		}
 	}
+	breadcrumb := regexp.MustCompile(`(?s)<nav[^>]*aria-label="breadcrumb"[^>]*>.*?</nav>`).FindString(body)
+	if breadcrumb == "" {
+		t.Fatalf("selected operation page should render breadcrumb navigation:\n%s", body)
+	}
+	for _, want := range []string{`href="/?selected=overview#overview"`, `>Home<`, `Pets`, `aria-current="page"`, `Create pet`} {
+		if !strings.Contains(breadcrumb, want) {
+			t.Fatalf("selected operation breadcrumb missing %q:\n%s", want, breadcrumb)
+		}
+	}
+	if strings.Contains(breadcrumb, `href="/?selected=operation-createPet#operation-createPet"`) {
+		t.Fatalf("selected operation breadcrumb should not link the current page:\n%s", breadcrumb)
+	}
+	if strings.Contains(body, `class="rounded-radius border border-outline px-2 py-1 text-xs font-medium text-on-surface-muted dark:border-outline-dark dark:text-on-surface-dark-muted">Pets</span>`) {
+		t.Fatalf("selected operation page should use breadcrumbs instead of the old tag pill:\n%s", body)
+	}
 	for _, reject := range []string{`<section id="operation-listPets"`, `Listing body`, `<section id="schema-pet"`} {
 		if strings.Contains(body, reject) {
 			t.Fatalf("selected operation page should not render %q:\n%s", reject, body)

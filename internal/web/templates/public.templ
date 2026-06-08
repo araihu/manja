@@ -8,6 +8,7 @@ import (
 
 	templpkg "github.com/a-h/templ"
 	"github.com/araihu/goshtoso/components/badge"
+	"github.com/araihu/goshtoso/components/breadcrumbs"
 	"github.com/araihu/goshtoso/components/codeblock"
 	searchfield "github.com/araihu/goshtoso/components/search"
 	selectfield "github.com/araihu/goshtoso/components/select"
@@ -107,6 +108,7 @@ templ PublicDocsWithOptions(idx core.SpecIndex, selectedID string, opts PublicDo
 				<main class="min-w-0 flex-1 overflow-x-hidden overflow-y-auto p-6 lg:px-10 lg:py-8">
 					<div id="main-content" class="mx-auto max-w-[100rem]">
 						<h1 class="sr-only">{ idx.Title } OpenAPI docs</h1>
+						@selectedDocsBreadcrumbs(idx, selected)
 						@selectedDocsContent(idx, selected)
 					</div>
 				</main>
@@ -134,6 +136,16 @@ templ selectedDocsContent(idx core.SpecIndex, selected selectedDocsItem) {
 			<h2 class="font-title text-2xl font-bold text-on-surface-strong dark:text-on-surface-dark-strong">No public documentation</h2>
 			<p class="mt-2 text-sm text-on-surface-muted dark:text-on-surface-dark-muted">Publish a spec with operations or schemas to populate this view.</p>
 		</section>
+	}
+}
+
+templ selectedDocsBreadcrumbs(idx core.SpecIndex, selected selectedDocsItem) {
+	if selected.Kind == "operation" {
+		@breadcrumbs.Breadcrumbs(breadcrumbs.Config{
+			Items:    operationBreadcrumbItems(idx, selected.Operation, selected.Anchor),
+			Current: operationTitle(selected.Operation),
+			NavClass: "mb-8",
+		})
 	}
 }
 
@@ -304,14 +316,11 @@ templ endpointSection(op core.Operation, exampleSpecJSON string) {
 		<div class="grid gap-10 xl:grid-cols-[minmax(0,50rem)_24rem] xl:items-start 2xl:grid-cols-[minmax(0,54rem)_26rem]">
 			<div class="min-w-0">
 				<div class="border-b border-outline pb-8 dark:border-outline-dark">
-					<div class="flex flex-wrap items-center gap-2">
-						for _, tag := range op.Tags {
-							<span class="rounded-radius border border-outline px-2 py-1 text-xs font-medium text-on-surface-muted dark:border-outline-dark dark:text-on-surface-dark-muted">{ tag }</span>
-						}
-						if op.Deprecated {
+					if op.Deprecated {
+						<div class="flex flex-wrap items-center gap-2">
 							@badge.Badge(badge.Config{Label: "Deprecated", Variant: badge.Warning, Style: badge.StyleSoft, Size: badge.SizeSM})
-						}
-					</div>
+						</div>
+					}
 					<h3 class="manja-doc-title mt-4 font-title text-4xl font-bold leading-tight text-on-surface-strong dark:text-on-surface-dark-strong lg:text-5xl">{ operationTitle(op) }</h3>
 					<div aria-label="Endpoint route" class="mt-6 inline-flex max-w-full items-center gap-3 rounded-radius border border-outline bg-surface-alt px-3 py-2 dark:border-outline-dark dark:bg-surface-dark-alt">
 						@methodBadge(op.Method)
@@ -880,6 +889,46 @@ func selectedDocsItemFor(idx core.SpecIndex, selectedID string) selectedDocsItem
 		return selectedDocsItem{Anchor: anchor, Kind: "schema", Schema: idx.Schemas[0]}
 	}
 	return selectedDocsItem{Anchor: "overview", Kind: "overview"}
+}
+
+func operationBreadcrumbItems(idx core.SpecIndex, op core.Operation, fallbackAnchor string) []breadcrumbs.Item {
+	items := []breadcrumbs.Item{{
+		Label: "Home",
+		Href:  selectedDocsHref("overview"),
+	}}
+	tag := operationBreadcrumbTag(op)
+	if tag != "" {
+		items = append(items, breadcrumbs.Item{
+			Label: tag,
+			Href:  operationTagBreadcrumbHref(idx, tag, fallbackAnchor),
+		})
+	}
+	return items
+}
+
+func operationBreadcrumbTag(op core.Operation) string {
+	for _, tag := range op.Tags {
+		if tag = strings.TrimSpace(tag); tag != "" {
+			return tag
+		}
+	}
+	return "Untagged"
+}
+
+func operationTagBreadcrumbHref(idx core.SpecIndex, tag string, fallbackAnchor string) string {
+	tag = strings.TrimSpace(tag)
+	for _, op := range idx.Operations {
+		tags := op.Tags
+		if len(tags) == 0 {
+			tags = []string{"Untagged"}
+		}
+		for _, opTag := range tags {
+			if strings.EqualFold(strings.TrimSpace(opTag), tag) {
+				return selectedDocsHref(operationAnchor(op))
+			}
+		}
+	}
+	return selectedDocsHref(fallbackAnchor)
 }
 
 func selectedDocsHref(anchor string) string {
