@@ -43,32 +43,67 @@ go test ./...
 # Integration tests that require container runtime access.
 go test -tags=integration ./internal/integration -v
 
-# Run the local public docs server.
-go run ./cmd/manja -data-dir .manja/data
+# Run the local public docs server with Air reload and per-worktree ports.
+npm run dev
 ```
 
-Open <http://localhost:8080>. By default the server renders the GitHub REST
-fixture from `internal/adapters/openapi/testdata/github-v3-rest.json`; pass
-`-spec <path>` to use another OpenAPI file.
-
-## Session Servers and Cleanup
-
-After making changes during an active session, bring the public docs server up
-from the task worktree so the current state is inspectable. Use the first free
-port starting at `8080`, then increment upward until one is available:
+`npm run dev` prints both the raw app URL and the Air reload proxy URL. Open and
+share the proxy URL. By default the server renders the GitHub REST fixture from
+`internal/adapters/openapi/testdata/github-v3-rest.json`; pass extra `manja`
+arguments after `--`, for example:
 
 ```bash
-port=8080
-while lsof -nP -iTCP:"$port" -sTCP:LISTEN >/dev/null 2>&1; do
-  port=$((port + 1))
-done
-go run ./cmd/manja -addr "127.0.0.1:${port}" -data-dir .manja/data
+npm run dev -- -spec internal/adapters/openapi/testdata/github-v3-rest.json
 ```
 
-Share the resulting `http://127.0.0.1:<port>` URL in the session. When the
-worktree PR merges into `main`, stop any server process started for that
-worktree before removing it. Cleanup should include removing the worktree and
-pruning stale worktree metadata:
+Use `go run ./cmd/manja -data-dir .manja/data` only when you deliberately need a
+non-reloading raw server.
+
+## Air Development Workflow
+
+Use Air for local auto reload. Do not default to `templ generate --watch` for
+normal sessions: templ's watcher handles `.templ` and Go rebuilds, but Manja's
+dev loop also needs schema-example bundling and optional Tailwind CSS output.
+
+The standard command is:
+
+```bash
+npm run dev
+```
+
+This runs `scripts/dev-server.mjs`, which chooses stable available ports per
+worktree, passes them to Air, and runs the Air proxy. Inspect the chosen ports
+without starting the server with:
+
+```bash
+node scripts/dev-server.mjs --print-ports
+```
+
+Rules:
+
+- Open and share the Air proxy URL, not the raw app URL, so browser reload is
+  active.
+- Let the launcher allocate ports for parallel worktrees. Pin ports only when a
+  task explicitly needs it, using `MANJA_DEV_APP_PORT`,
+  `MANJA_DEV_PROXY_PORT`, `--app-port`, or `--proxy-port`.
+- Keep `.air.toml` as the single watcher config. Its build command is
+  `npm run dev:build`, which regenerates templ output, rebuilds the schema
+  example asset, runs `npm run css:build --if-present`, and builds
+  `./tmp/manja-dev`.
+- Never add generated outputs to Air watch triggers. In particular, keep
+  `_templ.go`, `internal/web/static/schema-example.js`, generated CSS,
+  `api/dist`, `.manja`, `tmp`, `vendor`, `node_modules`, and `.git` excluded
+  unless you are deliberately changing the dev-loop contract.
+- If you change `.air.toml`, `scripts/dev-server.mjs`, generated output paths,
+  templ generation, schema-example bundling, or CSS build behavior, stress-test
+  for rebuild loops before merging. Run `npm run dev`, wait for the initial
+  build to settle, touch representative source files (`.templ`, source CSS/JS,
+  or Go), and confirm generated writes do not trigger repeated builds while the
+  server is idle.
+
+When the worktree PR merges into `main`, stop any server process started for
+that worktree before removing it. Cleanup should include removing the worktree
+and pruning stale worktree metadata:
 
 ```bash
 git worktree remove /tmp/manja-<short-slug>
