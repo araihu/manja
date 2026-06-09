@@ -701,13 +701,16 @@ templ requestSecurityContent(security []core.OperationSecurity) {
 templ requestConfigBodyContent(opID string, cfg ExampleConfig) {
 	<div class="grid gap-2" data-manja-request-config-body>
 		<label class="sr-only" for={ opID + "-request-body-input" }>Request body JSON</label>
-		<textarea
-			id={ opID + "-request-body-input" }
-			data-manja-request-body-input
-			spellcheck="false"
-			rows="10"
-			class="min-h-48 w-full resize-y rounded-radius border border-outline bg-surface px-3 py-2 font-mono text-xs leading-5 text-on-surface-strong outline-none placeholder:text-on-surface-muted focus:ring-2 focus:ring-primary dark:border-outline-dark dark:bg-surface-dark dark:text-on-surface-dark-strong dark:placeholder:text-on-surface-dark-muted dark:focus:ring-primary-dark"
-		>{ exampleFallback(cfg) }</textarea>
+		<div class="manja-request-body-editor relative" data-manja-request-body-editor>
+			<pre aria-hidden="true" class="codeblock manja-request-body-highlight pointer-events-none absolute inset-0 min-h-48 overflow-hidden whitespace-pre-wrap break-words rounded-radius border border-transparent px-3 py-2 font-mono text-xs leading-5"><code data-manja-request-body-highlight></code></pre>
+			<textarea
+				id={ opID + "-request-body-input" }
+				data-manja-request-body-input
+				spellcheck="false"
+				rows="10"
+				class="relative min-h-48 w-full resize-y rounded-radius border border-outline bg-surface px-3 py-2 font-mono text-xs leading-5 text-on-surface-strong outline-none placeholder:text-on-surface-muted focus:ring-2 focus:ring-primary dark:border-outline-dark dark:bg-surface-dark dark:text-on-surface-dark-strong dark:placeholder:text-on-surface-dark-muted dark:focus:ring-primary-dark"
+			>{ exampleFallback(cfg) }</textarea>
+		</div>
 		@templpkg.JSONScript(opID+"-request-body-payload", schemaExamplePayload(cfg))
 		<p data-manja-request-body-status class="sr-only" aria-live="polite"></p>
 	</div>

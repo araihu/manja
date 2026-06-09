@@ -58,12 +58,18 @@
     const bodyInput = root.querySelector('[data-manja-request-body-input]');
     const sampleTarget = root.querySelector('[data-manja-request-sample-target]') ||
       root.querySelector('[name="requestSampleTarget"]');
+    const bodyHighlight = root.querySelector('[data-manja-request-body-highlight]');
     hydrateBodyInput(root, bodyInput, payload.body, sampler, logger);
+    updateBodyHighlight(bodyInput, bodyHighlight, syntaxHighlighter, logger);
+    if (bodyInput && bodyHighlight) {
+      bodyInput.addEventListener('scroll', () => syncBodyHighlightScroll(bodyInput, bodyHighlight));
+    }
 
     const render = () => {
       const state = collectState(root, payload, bodyInput);
       const target = selectedSampleTarget(payload, sampleTarget);
       setCode(sampleCode, buildRequestSample(state, target, snippetGenerator, logger), target, syntaxHighlighter, logger);
+      updateBodyHighlight(bodyInput, bodyHighlight, syntaxHighlighter, logger);
       setRequestSampleTitle(root, target);
     };
 
@@ -92,6 +98,31 @@
       });
     }
     render();
+  }
+
+  function updateBodyHighlight(bodyInput, bodyHighlight, syntaxHighlighter, logger) {
+    if (!bodyInput || !bodyHighlight) {
+      return;
+    }
+    const value = bodyInput.value || '';
+    const highlighted = highlightCode(value, 'json', syntaxHighlighter, logger);
+    bodyHighlight.textContent = value;
+    if (highlighted) {
+      bodyHighlight.innerHTML = highlighted;
+      const editor = bodyInput.closest && bodyInput.closest('[data-manja-request-body-editor]');
+      if (editor && editor.dataset) {
+        editor.dataset.manjaRequestBodyHighlighted = 'true';
+      }
+      syncBodyHighlightScroll(bodyInput, bodyHighlight);
+    }
+  }
+
+  function syncBodyHighlightScroll(bodyInput, bodyHighlight) {
+    const scroller = bodyHighlight.parentElement || bodyHighlight;
+    if (scroller) {
+      scroller.scrollTop = bodyInput.scrollTop || 0;
+      scroller.scrollLeft = bodyInput.scrollLeft || 0;
+    }
   }
 
   function hydrateBodyInput(root, bodyInput, bodyPayload, sampler, logger) {

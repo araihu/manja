@@ -153,6 +153,40 @@ test('highlights request sample code for the selected target language', () => {
   assert.equal(root.code.innerHTML, '<span class="hljs-keyword">import</span> requests');
 });
 
+test('highlights the editable JSON request body', () => {
+  const highlights = [];
+  const root = fakeRoot({
+    method: 'POST',
+    urlTemplate: 'https://api.example.test/hooks',
+    parameters: [],
+    bodyContentType: 'application/json',
+  }, {
+    body: '{\n  "name": "web"\n}',
+  });
+
+  hydrateRequestComposers({
+    roots: [root],
+    syntaxHighlighter(code, language) {
+      highlights.push({ code, language });
+      return '<span class="hljs-attr">"name"</span>: <span class="hljs-string">"web"</span>';
+    },
+  });
+
+  assert.deepEqual(highlights.at(-1), {
+    code: '{\n  "name": "web"\n}',
+    language: 'json',
+  });
+  assert.equal(root.body.highlight.innerHTML, '<span class="hljs-attr">"name"</span>: <span class="hljs-string">"web"</span>');
+
+  root.body.value = '{\n  "name": "changed"\n}';
+  root.body.dispatch('input');
+
+  assert.deepEqual(highlights.at(-1), {
+    code: '{\n  "name": "changed"\n}',
+    language: 'json',
+  });
+});
+
 test('rerenders when the custom select wrapper updates its hidden input', async () => {
   const root = fakeRoot({
     method: 'POST',
@@ -263,6 +297,7 @@ function fakeRoot(payload, options = {}) {
       if (selector === '[data-manja-request-sample] .codeblock code') return code;
       if (selector === '[data-manja-request-sample] .codeblock') return code;
       if (selector === '[data-manja-request-body-input]') return body;
+      if (selector === '[data-manja-request-body-highlight]') return body?.highlight || null;
       if (selector === '[data-manja-request-body-status]') return status;
       if (selector === '[data-manja-request-sample-target]') return options.sampleTargetWrapper ? sampleTargetWrapper : sampleTarget;
       const name = selector.match(/^\[name="(.+)"\]$/)?.[1];
@@ -297,11 +332,28 @@ function fakeInput(name, value) {
 }
 
 function fakeTextarea(value) {
+  const listeners = {};
+  const highlightScroller = { scrollTop: 0, scrollLeft: 0 };
+  const highlight = { innerHTML: '', textContent: '', parentElement: highlightScroller };
+  const editor = { dataset: {} };
   return {
     name: 'body',
     value,
     type: 'textarea',
-    addEventListener() {},
+    scrollTop: 0,
+    scrollLeft: 0,
+    nextElementSibling: highlight,
+    highlight,
+    addEventListener(event, handler) {
+      listeners[event] = handler;
+    },
+    dispatch(event) {
+      listeners[event]?.();
+    },
+    closest(selector) {
+      if (selector === '[data-manja-request-body-editor]') return editor;
+      return null;
+    },
   };
 }
 

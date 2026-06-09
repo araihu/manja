@@ -24,6 +24,7 @@ const vendor = await build({
       import powershell from 'highlight.js/lib/languages/powershell';
       import swift from 'highlight.js/lib/languages/swift';
       import kotlin from 'highlight.js/lib/languages/kotlin';
+      import json from 'highlight.js/lib/languages/json';
       import http from 'highlight.js/lib/languages/http';
       import c from 'highlight.js/lib/languages/c';
       import clojure from 'highlight.js/lib/languages/clojure';
@@ -46,6 +47,7 @@ const vendor = await build({
         powershell,
         swift,
         kotlin,
+        json,
         http,
         c,
         clojure,
