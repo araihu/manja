@@ -173,6 +173,8 @@ type SearchDocument struct {
 	Description string
 	Href        string
 	Kind        string
+	Method      string
+	Path        string
 	Section     string
 	Keywords    []string
 }

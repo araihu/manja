@@ -717,6 +717,8 @@ func buildSearch(idx core.SpecIndex) []core.SearchDocument {
 			Description: firstNonEmpty(op.Summary, op.Description),
 			Href:        "#" + anchor,
 			Kind:        "Operation",
+			Method:      op.Method,
+			Path:        op.Path,
 			Section:     strings.Join(op.Tags, ", "),
 			Keywords:    []string{op.ID, op.Method, op.Path, strings.Join(op.Tags, " ")},
 		})
