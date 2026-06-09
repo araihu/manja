@@ -3305,7 +3305,7 @@ func sidebarSections(idx core.SpecIndex, selectedAnchor string, labelMode Endpoi
 				LinkAttrs: sidebarNavigationAttrs(label, href),
 			})
 		}
-		sections = append(sections, sidebar.Section{Title: "Schemas", Items: items})
+		sections = append(sections, sidebar.Section{Title: "Schemas", Items: items, IndentItems: true})
 	}
 	return sections
 }
