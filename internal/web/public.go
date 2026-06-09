@@ -107,7 +107,36 @@ func selectedDocsSearchHref(href string) string {
 	return "/?selected=" + url.QueryEscape(anchor) + "#" + anchor
 }
 
-func searchJSONItems(ctx context.Context, docs []core.SearchDocument, renderer core.MarkdownRenderer) ([]searchJSONItem, error) {
+func publicRouteHrefsByAnchor(routes []core.PublicRoute) map[string]string {
+	hrefs := make(map[string]string, len(routes))
+	for _, route := range routes {
+		_, anchor, ok := strings.Cut(strings.TrimSpace(route.Path), "#")
+		anchor = strings.TrimSpace(anchor)
+		if !ok || anchor == "" {
+			continue
+		}
+		hrefs[anchor] = route.Path
+	}
+	return hrefs
+}
+
+func searchDocumentAnchor(href string) (string, bool) {
+	anchor, ok := strings.CutPrefix(strings.TrimSpace(href), "#")
+	anchor = strings.TrimSpace(anchor)
+	return anchor, ok && anchor != ""
+}
+
+func publicRouteSearchHref(href string, routeHrefs map[string]string) string {
+	if anchor, ok := searchDocumentAnchor(href); ok {
+		if routeHref, found := routeHrefs[anchor]; found {
+			return routeHref
+		}
+	}
+	return selectedDocsSearchHref(href)
+}
+
+func searchJSONItems(ctx context.Context, docs []core.SearchDocument, publicRoutes []core.PublicRoute, renderer core.MarkdownRenderer) ([]searchJSONItem, error) {
+	routeHrefs := publicRouteHrefsByAnchor(publicRoutes)
 	items := make([]searchJSONItem, 0, len(docs))
 	for _, doc := range docs {
 		description, err := markdownPlainText(ctx, renderer, doc.Description)
@@ -118,7 +147,7 @@ func searchJSONItems(ctx context.Context, docs []core.SearchDocument, renderer c
 			ID:          "search-" + doc.ID,
 			Title:       doc.Title,
 			Description: description,
-			Href:        selectedDocsSearchHref(doc.Href),
+			Href:        publicRouteSearchHref(doc.Href, routeHrefs),
 			Section:     doc.Section,
 			Keywords:    doc.Keywords,
 		})
@@ -161,7 +190,7 @@ func NewPublicServerWithOptions(idx core.SpecIndex, opts PublicOptions) http.Han
 		if r.Method == http.MethodHead {
 			return
 		}
-		items, err := searchJSONItems(r.Context(), idx.Search, opts.MarkdownRenderer)
+		items, err := searchJSONItems(r.Context(), idx.Search, idx.PublicRoutes, opts.MarkdownRenderer)
 		if err != nil {
 			slog.ErrorContext(r.Context(), "render public search markdown", "error", err)
 			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
