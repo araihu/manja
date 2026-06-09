@@ -47,8 +47,10 @@ go test -tags=integration ./internal/integration -v
 npm run dev
 ```
 
-`npm run dev` prints both the raw app URL and the Air reload proxy URL. Open and
-share the proxy URL. By default the server renders the GitHub REST fixture from
+`npm run dev` prints the raw renderer URL, the Air reload proxy URL, and the
+product site URL. Open and share the product site URL when the task asks for the
+site; use the Air proxy URL when you are inspecting the standalone renderer. By
+default the renderer uses the GitHub REST fixture from
 `internal/adapters/openapi/testdata/github-v3-rest.json`; pass extra `manja`
 arguments after `--`, for example:
 
@@ -72,8 +74,9 @@ npm run dev
 ```
 
 This runs `scripts/dev-server.mjs`, which chooses stable available ports per
-worktree, passes them to Air, and runs the Air proxy. Inspect the chosen ports
-without starting the server with:
+worktree, passes the renderer ports to Air, runs the Air proxy, and starts the
+product site server from the `site/` module. Inspect the chosen ports without
+starting the servers with:
 
 ```bash
 node scripts/dev-server.mjs --print-ports
@@ -81,11 +84,13 @@ node scripts/dev-server.mjs --print-ports
 
 Rules:
 
-- Open and share the Air proxy URL, not the raw app URL, so browser reload is
-  active.
+- Open and share the product site URL for site/docs work. Open the Air proxy
+  URL, not the raw app URL, when inspecting the standalone renderer so browser
+  reload is active.
 - Let the launcher allocate ports for parallel worktrees. Pin ports only when a
   task explicitly needs it, using `MANJA_DEV_APP_PORT`,
-  `MANJA_DEV_PROXY_PORT`, `--app-port`, or `--proxy-port`.
+  `MANJA_DEV_PROXY_PORT`, `MANJA_DEV_SITE_PORT`, `--app-port`, `--proxy-port`,
+  or `--site-port`.
 - Keep `.air.toml` as the single watcher config. Its build command is
   `npm run dev:build`, which regenerates templ output, rebuilds the schema
   example and request composer assets, runs `npm run css:build --if-present`,
@@ -97,10 +102,11 @@ Rules:
   are deliberately changing the dev-loop contract.
 - If you change `.air.toml`, `scripts/dev-server.mjs`, generated output paths,
   templ generation, schema-example bundling, request-composer bundling, or CSS
-  build behavior, stress-test for rebuild loops before merging. Run
+  build behavior, stress-test server startup and rebuild loops before merging. Run
   `npm run dev`, wait for the initial build to settle, touch representative
   source files (`.templ`, source CSS/JS, or Go), and confirm generated writes do
-  not trigger repeated builds while the server is idle.
+  not trigger repeated builds while the servers are idle. Confirm both the
+  product site URL and Air proxy URL return HTTP 200.
 
 When the worktree PR merges into `main`, stop any server process started for
 that worktree before removing it. Cleanup should include removing the worktree

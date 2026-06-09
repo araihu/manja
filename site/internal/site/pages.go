@@ -149,6 +149,7 @@ var docsBody = template.HTML(`
 <section class="docs-layout shell">
   <aside class="docs-nav" aria-label="Docs sections">
     <a href="#run-locally">Run locally</a>
+    <a href="#run-with-docker">Run with Docker</a>
     <a href="#source">Point at source</a>
     <a href="#versions">Handle versions</a>
     <a href="#publication">Publish deliberately</a>
@@ -163,6 +164,30 @@ var docsBody = template.HTML(`
         <pre><code>go run ./cmd/manja \
   -spec internal/adapters/openapi/testdata/github-v3-rest.json \
   -data-dir .manja/data</code></pre>
+      </div>
+    </section>
+
+    <section id="run-with-docker">
+      <h2>Run with Docker</h2>
+      <p>Published images are available from GitHub Container Registry as <code>ghcr.io/araihu/manja</code>. The <code>main</code> tag follows the latest successful build from <code>main</code>; release builds also publish semver tags.</p>
+      <div class="code-panel">
+        <div class="code-head"><span>Command</span><span>shell</span></div>
+        <pre><code>docker run --rm \
+  -p 8080:8080 \
+  -v manja-data:/var/lib/manja \
+  ghcr.io/araihu/manja:main</code></pre>
+      </div>
+      <p>The image starts with the bundled GitHub REST API fixture. To render your own spec, mount it into the container and pass the same Manja flags used by the local binary.</p>
+      <div class="code-panel">
+        <div class="code-head"><span>Custom spec</span><span>shell</span></div>
+        <pre><code>docker run --rm \
+  -p 8080:8080 \
+  -v "$PWD/openapi.yaml:/spec/openapi.yaml:ro" \
+  -v manja-data:/var/lib/manja \
+  ghcr.io/araihu/manja:main \
+  -addr :8080 \
+  -spec /spec/openapi.yaml \
+  -data-dir /var/lib/manja</code></pre>
       </div>
     </section>
 

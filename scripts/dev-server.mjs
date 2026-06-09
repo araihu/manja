@@ -6,6 +6,7 @@ import net from 'node:net';
 const DEFAULT_HOST = '127.0.0.1';
 const DEFAULT_APP_PORT_BASE = 8080;
 const DEFAULT_PROXY_PORT_BASE = 7331;
+const DEFAULT_SITE_PORT_BASE = 8180;
 const DEFAULT_PORT_RANGE = 400;
 
 function usage() {
@@ -15,6 +16,7 @@ Options:
   --host <host>          Host for Manja and the Air proxy. Default: 127.0.0.1
   --app-port <port>      Use this exact Manja application port.
   --proxy-port <port>    Use this exact Air proxy port.
+  --site-port <port>     Use this exact product site port.
   --print-ports          Print selected ports and exit.
   --help                 Show this help.
 
@@ -22,8 +24,10 @@ Environment:
   MANJA_DEV_HOST              Host override.
   MANJA_DEV_APP_PORT          Exact Manja application port.
   MANJA_DEV_PROXY_PORT        Exact Air proxy port.
+  MANJA_DEV_SITE_PORT         Exact product site port.
   MANJA_DEV_APP_PORT_BASE     Start of automatic app port range. Default: 8080
   MANJA_DEV_PROXY_PORT_BASE   Start of automatic proxy port range. Default: 7331
+  MANJA_DEV_SITE_PORT_BASE    Start of automatic site port range. Default: 8180
   MANJA_DEV_PORT_RANGE        Automatic range size. Default: 400
 
 Unknown arguments are passed to cmd/manja, for example:
@@ -56,12 +60,18 @@ function parseArgs(argv) {
     proxyPort: process.env.MANJA_DEV_PROXY_PORT
       ? parsePort(process.env.MANJA_DEV_PROXY_PORT, 'MANJA_DEV_PROXY_PORT')
       : null,
+    sitePort: process.env.MANJA_DEV_SITE_PORT
+      ? parsePort(process.env.MANJA_DEV_SITE_PORT, 'MANJA_DEV_SITE_PORT')
+      : null,
     appPortBase: process.env.MANJA_DEV_APP_PORT_BASE
       ? parsePort(process.env.MANJA_DEV_APP_PORT_BASE, 'MANJA_DEV_APP_PORT_BASE')
       : DEFAULT_APP_PORT_BASE,
     proxyPortBase: process.env.MANJA_DEV_PROXY_PORT_BASE
       ? parsePort(process.env.MANJA_DEV_PROXY_PORT_BASE, 'MANJA_DEV_PROXY_PORT_BASE')
       : DEFAULT_PROXY_PORT_BASE,
+    sitePortBase: process.env.MANJA_DEV_SITE_PORT_BASE
+      ? parsePort(process.env.MANJA_DEV_SITE_PORT_BASE, 'MANJA_DEV_SITE_PORT_BASE')
+      : DEFAULT_SITE_PORT_BASE,
     portRange: process.env.MANJA_DEV_PORT_RANGE
       ? parsePositiveInteger(process.env.MANJA_DEV_PORT_RANGE, 'MANJA_DEV_PORT_RANGE')
       : DEFAULT_PORT_RANGE,
@@ -108,6 +118,14 @@ function parseArgs(argv) {
       options.proxyPort = parsePort(arg.slice('--proxy-port='.length), '--proxy-port');
       continue;
     }
+    if (arg === '--site-port') {
+      options.sitePort = parsePort(argv[++i], '--site-port');
+      continue;
+    }
+    if (arg.startsWith('--site-port=')) {
+      options.sitePort = parsePort(arg.slice('--site-port='.length), '--site-port');
+      continue;
+    }
     options.manjaArgs.push(arg);
   }
 
@@ -119,6 +137,9 @@ function parseArgs(argv) {
   }
   if (options.proxyPortBase + options.portRange - 1 > 65535) {
     throw new Error('automatic proxy port range exceeds 65535');
+  }
+  if (options.sitePortBase + options.portRange - 1 > 65535) {
+    throw new Error('automatic site port range exceeds 65535');
   }
 
   return options;
@@ -157,11 +178,14 @@ async function choosePorts(options) {
   if (options.proxyPort) {
     await assertAvailable(options.host, options.proxyPort, 'Air proxy');
   }
-  if (options.appPort && options.proxyPort) {
-    if (options.appPort === options.proxyPort) {
-      throw new Error('app and proxy ports must be different');
+  if (options.sitePort) {
+    await assertAvailable(options.host, options.sitePort, 'Product site');
+  }
+  if (options.appPort && options.proxyPort && options.sitePort) {
+    if (new Set([options.appPort, options.proxyPort, options.sitePort]).size !== 3) {
+      throw new Error('app, proxy, and site ports must be different');
     }
-    return { appPort: options.appPort, proxyPort: options.proxyPort };
+    return { appPort: options.appPort, proxyPort: options.proxyPort, sitePort: options.sitePort };
   }
 
   const cwd = await realpath(process.cwd());
@@ -170,17 +194,19 @@ async function choosePorts(options) {
     const candidateOffset = (offset + i) % options.portRange;
     const appPort = options.appPort || options.appPortBase + candidateOffset;
     const proxyPort = options.proxyPort || options.proxyPortBase + candidateOffset;
-    if (appPort === proxyPort) {
+    const sitePort = options.sitePort || options.sitePortBase + candidateOffset;
+    if (new Set([appPort, proxyPort, sitePort]).size !== 3) {
       continue;
     }
     if ((options.appPort || await canListen(options.host, appPort)) &&
-        (options.proxyPort || await canListen(options.host, proxyPort))) {
-      return { appPort, proxyPort };
+        (options.proxyPort || await canListen(options.host, proxyPort)) &&
+        (options.sitePort || await canListen(options.host, sitePort))) {
+      return { appPort, proxyPort, sitePort };
     }
   }
 
   throw new Error(
-    `no available app/proxy port pair found in ${options.appPortBase}-${options.appPortBase + options.portRange - 1} and ${options.proxyPortBase}-${options.proxyPortBase + options.portRange - 1}`,
+    `no available app/proxy/site port set found in ${options.appPortBase}-${options.appPortBase + options.portRange - 1}, ${options.proxyPortBase}-${options.proxyPortBase + options.portRange - 1}, and ${options.sitePortBase}-${options.sitePortBase + options.portRange - 1}`,
   );
 }
 
@@ -209,34 +235,62 @@ function buildAirArgs(options, ports) {
   ];
 }
 
+function buildSiteArgs(options, ports) {
+  return [
+    'run',
+    './cmd/server',
+    '-addr',
+    `${options.host}:${ports.sitePort}`,
+  ];
+}
+
 function spawnAir(options, ports) {
   const proxyURL = `http://${options.host}:${ports.proxyPort}`;
   const appURL = `http://${options.host}:${ports.appPort}`;
+  const siteURL = `http://${options.host}:${ports.sitePort}`;
   const airArgs = buildAirArgs(options, ports);
+  const siteArgs = buildSiteArgs(options, ports);
 
   console.log(`Manja app: ${appURL}`);
   console.log(`Air reload proxy: ${proxyURL}`);
-  console.log(`Open ${proxyURL}`);
+  console.log(`Manja site: ${siteURL}`);
+  console.log(`Open ${siteURL}`);
 
-  const child = spawn('go', airArgs, {
+  const air = spawn('go', airArgs, {
     stdio: 'inherit',
     env: {
       ...process.env,
       MANJA_DEV_APP_URL: appURL,
       MANJA_DEV_PROXY_URL: proxyURL,
+      MANJA_DEV_SITE_URL: siteURL,
     },
   });
+  const site = spawn('go', siteArgs, { stdio: 'inherit', cwd: 'site' });
+
+  let exiting = false;
+  function shutdown(signal) {
+    if (exiting) {
+      return;
+    }
+    exiting = true;
+    air.kill(signal);
+    site.kill(signal);
+  }
 
   for (const signal of ['SIGINT', 'SIGTERM']) {
     process.on(signal, () => {
-      child.kill(signal);
+      shutdown(signal);
     });
   }
 
-  child.on('exit', (code, signal) => {
+  function exitFromChild(code, signal) {
     const signalExitCodes = { SIGINT: 130, SIGTERM: 143 };
+    shutdown(signal || 'SIGTERM');
     process.exit(code ?? signalExitCodes[signal] ?? 1);
-  });
+  }
+
+  air.on('exit', exitFromChild);
+  site.on('exit', exitFromChild);
 }
 
 try {
@@ -251,9 +305,12 @@ try {
     console.log(JSON.stringify({
       appPort: ports.appPort,
       proxyPort: ports.proxyPort,
+      sitePort: ports.sitePort,
       appURL: `http://${options.host}:${ports.appPort}`,
       proxyURL: `http://${options.host}:${ports.proxyPort}`,
+      siteURL: `http://${options.host}:${ports.sitePort}`,
       airArgs: buildAirArgs(options, ports),
+      siteArgs: buildSiteArgs(options, ports),
     }, null, 2));
     process.exit(0);
   }
