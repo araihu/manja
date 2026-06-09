@@ -142,9 +142,100 @@ templ PublicDocsWithOptions(idx core.SpecIndex, selectedID string, opts PublicDo
 					</div>
 				</main>
 				@searchfield.SearchModal(docsSearchConfig(idx.Search))
+				@manjaFuzzySearchScript()
 			</div>
 		</div>
 	}
+}
+
+templ manjaFuzzySearchScript() {
+	<script>
+		(function () {
+			var baseSearchModal = window.goshtosoSearchModal;
+			if (!baseSearchModal || baseSearchModal.__manjaFuzzy) return;
+
+			function compact(value) {
+				return String(value || "").toLowerCase().replace(/[^a-z0-9]+/g, "");
+			}
+
+			function fuzzyScore(query, value) {
+				var needle = compact(query);
+				var haystack = compact(value);
+				if (!needle || !haystack) return -1;
+				var direct = haystack.indexOf(needle);
+				if (direct >= 0) return direct;
+				var cursor = 0;
+				var first = -1;
+				var last = -1;
+				var gaps = 0;
+				for (var i = 0; i < haystack.length && cursor < needle.length; i++) {
+					if (haystack[i] !== needle[cursor]) continue;
+					if (first < 0) first = i;
+					if (last >= 0) gaps += i - last - 1;
+					last = i;
+					cursor++;
+				}
+				if (cursor !== needle.length) return -1;
+				return 20 + first + gaps + Math.max(0, haystack.length - needle.length) / 10;
+			}
+
+			function resultScore(term, title, text) {
+				term = String(term || "").trim().toLowerCase();
+				title = String(title || "");
+				text = String(text || "");
+				if (!term) return -1;
+				if (title.toLowerCase().indexOf(term) !== -1) return 0;
+				if (text.toLowerCase().indexOf(term) !== -1) return 100;
+				var titleScore = fuzzyScore(term, title);
+				if (titleScore >= 0) return 200 + titleScore;
+				var textScore = fuzzyScore(term, text);
+				if (textScore >= 0) return 400 + textScore;
+				return -1;
+			}
+
+			function rankedMatches(values, scoreFor) {
+				var matches = [];
+				values.forEach(function (value, index) {
+					var score = scoreFor(value);
+					if (score >= 0) matches.push({ value: value, index: index, score: score });
+				});
+				matches.sort(function (a, b) {
+					if (a.score !== b.score) return a.score - b.score;
+					return a.index - b.index;
+				});
+				return matches.map(function (match) { return match.value; });
+			}
+
+			window.goshtosoSearchModal = function () {
+				var state = baseSearchModal.apply(this, arguments);
+				state.matches = function (el) {
+					return resultScore(this.query, el && el.dataset && el.dataset.searchTitle, el && el.dataset && el.dataset.searchText) >= 0;
+				};
+				state.matchedDOMResults = function () {
+					var term = this.query.trim().toLowerCase();
+					if (!term) return [];
+					if (term === this.cachedDOMTerm) return this.cachedDOMResults;
+					this.cachedDOMTerm = term;
+					this.cachedDOMResults = rankedMatches(this.allResults(), function (el) {
+						return resultScore(term, el.dataset.searchTitle, el.dataset.searchText);
+					}).slice(0, this.maxResults);
+					return this.cachedDOMResults;
+				};
+				state.matchedClientResults = function () {
+					var term = this.query.trim().toLowerCase();
+					if (!term) return [];
+					if (term === this.cachedClientTerm) return this.cachedClientResults;
+					this.cachedClientTerm = term;
+					this.cachedClientResults = rankedMatches(this.clientItems, function (item) {
+						return resultScore(term, item.title, item.searchText);
+					}).slice(0, this.maxResults);
+					return this.cachedClientResults;
+				};
+				return state;
+			};
+			window.goshtosoSearchModal.__manjaFuzzy = true;
+		})();
+	</script>
 }
 
 templ PublicDocsFragmentWithOptions(idx core.SpecIndex, selectedID string, opts PublicDocsOptions) {

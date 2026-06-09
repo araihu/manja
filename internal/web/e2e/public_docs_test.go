@@ -85,6 +85,66 @@ func TestPublicDocsSearchKeyboard(t *testing.T) {
 	}
 }
 
+func TestPublicDocsSearchMatchesFuzzyQueries(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping e2e test in short mode")
+	}
+
+	const operationAnchor = "operation-listpets"
+	idx := core.SpecIndex{
+		Title:   "Petstore",
+		Version: "1.0.0",
+		Operations: []core.Operation{{
+			ID:      "listPets",
+			Method:  "GET",
+			Path:    "/pets",
+			Summary: "List pets",
+			Tags:    []string{"Pets"},
+			Anchor:  operationAnchor,
+		}},
+		Search: []core.SearchDocument{{
+			ID:          operationAnchor,
+			Title:       "GET /pets",
+			Description: "List pets",
+			Href:        "#" + operationAnchor,
+			Kind:        "Operation",
+			Section:     "Pets",
+		}},
+	}
+	server := httptestServer(t, web.NewPublicServer(idx))
+
+	pw, err := playwright.Run()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pw.Stop()
+	browser, err := pw.Chromium.Launch()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer browser.Close()
+	page, err := browser.NewPage()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := page.Goto(server); err != nil {
+		t.Fatal(err)
+	}
+	if err := page.Keyboard().Press("Control+K"); err != nil {
+		t.Fatal(err)
+	}
+	input := page.Locator("#docs-search-input")
+	if err := input.WaitFor(); err != nil {
+		t.Fatal(err)
+	}
+	if err := input.Fill("lst pts"); err != nil {
+		t.Fatal(err)
+	}
+	if err := page.Locator("#search-operation-listpets:visible").WaitFor(); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestRequestComposerUpdatesRequestSample(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping e2e test in short mode")
