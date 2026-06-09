@@ -3480,7 +3480,7 @@ func methodBadge(method string) templ.Component {
 }
 
 func methodBadgeClass(method string) string {
-	return badge.Config{Variant: methodBadgeVariant(method), Size: badge.SizeSM}.VariantClasses()
+	return badge.Config{Variant: methodBadgeVariant(method), Size: badge.SizeSM}.SoftVariantClasses()
 }
 
 func methodBadgeVariant(method string) badge.Variant {
@@ -3956,7 +3956,6 @@ func responseStatusBadge(status string) templ.Component {
 		templ_7745c5c3_Err = badge.Badge(badge.Config{
 			Label:     status,
 			Variant:   responseBadgeVariant(status),
-			Style:     badge.StyleSoft,
 			RootClass: "font-mono font-bold",
 		}).Render(ctx, templ_7745c5c3_Buffer)
 		if templ_7745c5c3_Err != nil {

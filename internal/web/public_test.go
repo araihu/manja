@@ -74,13 +74,13 @@ func TestPublicDocsRenderSearchAndOperations(t *testing.T) {
 	if strings.Contains(body, `<section id="operation-createPet"`) {
 		t.Fatalf("operation page should render only the selected sidebar item, got create operation content:\n%s", body)
 	}
-	sidebarMethodBadge := regexp.MustCompile(`<a href="/\?selected=operation-listPets#operation-listPets"[^>]*><span class="min-w-0 flex-1 truncate">List pets</span>\s*<sup[^>]*ml-auto shrink-0[^"]*border-primary[^"]*bg-primary[^"]*text-on-primary[^"]*"[^>]*>GET</sup>`)
+	sidebarMethodBadge := regexp.MustCompile(`<a href="/\?selected=operation-listPets#operation-listPets"[^>]*><span class="min-w-0 flex-1 truncate">List pets</span>\s*<sup[^>]*ml-auto shrink-0[^"]*border-primary[^"]*bg-surface[^"]*text-primary[^"]*"[^>]*>GET</sup>`)
 	if !sidebarMethodBadge.MatchString(body) {
-		t.Fatalf("operation sidebar item should render flex endpoint label with right-aligned Goshtoso method badge:\n%s", body)
+		t.Fatalf("operation sidebar item should render flex endpoint label with right-aligned soft Goshtoso method badge:\n%s", body)
 	}
-	postMethodBadge := regexp.MustCompile(`<a href="/\?selected=operation-createPet#operation-createPet"[^>]*><span class="min-w-0 flex-1 truncate">Create pet</span>\s*<sup[^>]*border-success[^"]*bg-success[^"]*text-on-success[^"]*"[^>]*>POST</sup>`)
+	postMethodBadge := regexp.MustCompile(`<a href="/\?selected=operation-createPet#operation-createPet"[^>]*><span class="min-w-0 flex-1 truncate">Create pet</span>\s*<sup[^>]*border-success[^"]*bg-surface[^"]*text-success[^"]*"[^>]*>POST</sup>`)
 	if !postMethodBadge.MatchString(body) {
-		t.Fatalf("POST sidebar method badge should use Goshtoso success styling:\n%s", body)
+		t.Fatalf("POST sidebar method badge should use Goshtoso soft success styling:\n%s", body)
 	}
 	pageMethodBadge := regexp.MustCompile(`<span class="[^"]*rounded-radius[^"]*w-fit[^"]*font-medium[^"]*text-\[10px\][^"]*px-1\.5[^"]*py-0\.5[^"]*border-primary[^"]*bg-primary[^"]*text-on-primary[^"]*font-mono[^"]*font-bold[^"]*">GET</span>`)
 	if !pageMethodBadge.MatchString(body) {
@@ -1303,12 +1303,12 @@ func TestPublicDocsRenderEndpointDetails(t *testing.T) {
 		`<aside class="manja-endpoint-examples-rail" aria-label="Endpoint examples">`,
 		`<div class="manja-endpoint-examples-rail-content">`,
 		`aria-label="200"`,
-		`bg-success/10`,
-		`text-success`,
-		`text-xs px-2 py-1 bg-success/10`,
-		`bg-warning/10`,
-		`text-warning`,
-		`text-xs px-2 py-1 bg-warning/10`,
+		`bg-success`,
+		`text-on-success`,
+		`border border-success bg-success text-on-success`,
+		`bg-warning`,
+		`text-on-warning`,
+		`border border-warning bg-warning text-on-warning`,
 		`Request Sample: Shell / cURL`,
 		`Response Example`,
 		`cURL`,
@@ -1361,12 +1361,12 @@ func TestPublicDocsRenderEndpointDetails(t *testing.T) {
 			t.Fatalf("endpoint detail view should not render stale dark-only styling %q:\n%s", reject, body)
 		}
 	}
-	for _, statusBadge := range []string{
-		`border border-success bg-surface text-success`,
-		`border border-warning bg-surface text-warning`,
+	for status, statusBadge := range map[string]*regexp.Regexp{
+		"200": regexp.MustCompile(`<span class="[^"]*border border-success bg-success text-on-success[^"]*">200</span>`),
+		"404": regexp.MustCompile(`<span class="[^"]*border border-warning bg-warning text-on-warning[^"]*">404</span>`),
 	} {
-		if count := strings.Count(body, statusBadge); count != 1 {
-			t.Fatalf("response status badge %q should render once in the tab, got %d:\n%s", statusBadge, count, body)
+		if count := len(statusBadge.FindAllString(body, -1)); count != 1 {
+			t.Fatalf("response status badge %q should render once in the tab, got %d:\n%s", status, count, body)
 		}
 	}
 	rail := htmlBetween(t, body, `<aside class="manja-endpoint-examples-rail"`, `</aside>`)
@@ -1522,8 +1522,8 @@ func TestPublicDocsEndpointResponsesOnlyUsesSingleDetailColumn(t *testing.T) {
 	for _, want := range []string{
 		`<div class="manja-endpoint-detail-layout manja-endpoint-detail-layout-single">`,
 		`aria-label="200"`,
-		`bg-success/10`,
-		`text-success`,
+		`bg-success`,
+		`text-on-success`,
 		`Request Sample: cURL`,
 	} {
 		if !strings.Contains(body, want) {
@@ -1531,12 +1531,12 @@ func TestPublicDocsEndpointResponsesOnlyUsesSingleDetailColumn(t *testing.T) {
 		}
 	}
 	if strings.Contains(body, `rounded-radius px-3 py-1 font-mono text-xs font-bold bg-success`) {
-		t.Fatalf("response status should use Goshtoso soft badge, not custom status pill:\n%s", body)
+		t.Fatalf("response status should use Goshtoso solid badge, not custom status pill:\n%s", body)
 	}
 	if strings.Contains(body, `size-1.5 rounded-full bg-success`) {
-		t.Fatalf("response status should use one soft badge treatment without dot indicators:\n%s", body)
+		t.Fatalf("response status should use one solid badge treatment without dot indicators:\n%s", body)
 	}
-	if count := strings.Count(body, `border border-success bg-surface text-success`); count != 1 {
+	if count := len(regexp.MustCompile(`<span class="[^"]*border border-success bg-success text-on-success[^"]*">200</span>`).FindAllString(body, -1)); count != 1 {
 		t.Fatalf("response status badge should render once in the tab, got %d:\n%s", count, body)
 	}
 }
@@ -1576,11 +1576,11 @@ func TestPublicDocsResponseStatusBadgesUseStatusClassHierarchy(t *testing.T) {
 		`aria-label="302"`,
 		`aria-label="404"`,
 		`aria-label="500"`,
-		`border border-outline bg-surface text-on-surface`,
-		`border border-success bg-surface text-success`,
-		`border border-primary bg-surface text-primary`,
-		`border border-warning bg-surface text-warning`,
-		`border border-danger bg-surface text-danger`,
+		`border border-outline bg-surface-alt text-on-surface`,
+		`border border-success bg-success text-on-success`,
+		`border border-primary bg-primary text-on-primary`,
+		`border border-warning bg-warning text-on-warning`,
+		`border border-danger bg-danger text-on-danger`,
 	} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("status hierarchy missing %q:\n%s", want, body)
@@ -1626,10 +1626,10 @@ func TestPublicDocsMethodBadgesUseSideEffectHierarchy(t *testing.T) {
 
 	body := renderPublicDocs(t, NewPublicServer(idx), "/")
 	for _, want := range []string{
-		`border-primary bg-primary text-on-primary`,
-		`border-success bg-success text-on-success`,
-		`border-warning bg-warning text-on-warning`,
-		`border-danger bg-danger text-on-danger`,
+		`border-primary bg-surface text-primary`,
+		`border-success bg-surface text-success`,
+		`border-warning bg-surface text-warning`,
+		`border-danger bg-surface text-danger`,
 		`>GET</sup>`,
 		`>POST</sup>`,
 		`>PUT</sup>`,
@@ -1637,7 +1637,23 @@ func TestPublicDocsMethodBadgesUseSideEffectHierarchy(t *testing.T) {
 		`>DELETE</sup>`,
 	} {
 		if !strings.Contains(body, want) {
-			t.Fatalf("method hierarchy missing %q:\n%s", want, body)
+			t.Fatalf("sidebar method hierarchy missing %q:\n%s", want, body)
+		}
+	}
+	for _, item := range []struct {
+		anchor  string
+		method  string
+		classes string
+	}{
+		{"operation-read", "GET", `border-primary bg-primary text-on-primary`},
+		{"operation-create", "POST", `border-success bg-success text-on-success`},
+		{"operation-replace", "PUT", `border-warning bg-warning text-on-warning`},
+		{"operation-update", "PATCH", `border-warning bg-warning text-on-warning`},
+		{"operation-delete", "DELETE", `border-danger bg-danger text-on-danger`},
+	} {
+		endpointBody := renderPublicDocs(t, NewPublicServer(idx), "/?selected="+item.anchor)
+		if !strings.Contains(endpointBody, item.classes) || !strings.Contains(endpointBody, ">"+item.method+"</span>") {
+			t.Fatalf("endpoint method badge for %s should stay solid with %q:\n%s", item.method, item.classes, endpointBody)
 		}
 	}
 }
