@@ -239,11 +239,14 @@ func TestRequestComposerUpdatesRequestSample(t *testing.T) {
 	themeResult, err := page.Evaluate(`() => {
 		const panel = document.querySelector('[data-manja-request-config-panel]');
 		const heading = panel?.querySelector('[id$="-request-config-heading"]');
+		const editor = panel?.querySelector('[data-manja-request-body-editor]');
 		const textarea = panel?.querySelector('[data-manja-request-body-input]');
+		const bodyHighlight = panel?.querySelector('[data-manja-request-body-highlight]');
 		const readStyles = () => ({
 			headingColor: getComputedStyle(heading).color,
-			textareaBackground: getComputedStyle(textarea).backgroundColor,
-			textareaColor: getComputedStyle(textarea).color,
+			editorBackground: getComputedStyle(editor).backgroundColor,
+			editorBorderColor: getComputedStyle(editor).borderColor,
+			textareaCaretColor: getComputedStyle(textarea).caretColor,
 		});
 		document.documentElement.classList.remove('dark');
 		const light = readStyles();
@@ -253,10 +256,14 @@ func TestRequestComposerUpdatesRequestSample(t *testing.T) {
 			panelForcedDark: panel.classList.contains('dark'),
 			lightHeadingColor: light.headingColor,
 			darkHeadingColor: dark.headingColor,
-			lightTextareaBackground: light.textareaBackground,
-			darkTextareaBackground: dark.textareaBackground,
-			lightTextareaColor: light.textareaColor,
-			darkTextareaColor: dark.textareaColor,
+			lightEditorBackground: light.editorBackground,
+			darkEditorBackground: dark.editorBackground,
+			lightEditorBorderColor: light.editorBorderColor,
+			darkEditorBorderColor: dark.editorBorderColor,
+			lightTextareaCaretColor: light.textareaCaretColor,
+			darkTextareaCaretColor: dark.textareaCaretColor,
+			bodyHighlighted: editor?.dataset.manjaRequestBodyHighlighted === 'true',
+			bodyTokenCount: bodyHighlight?.querySelectorAll('[class^="hljs-"], [class*=" hljs-"]').length || 0,
 		};
 	}`)
 	if err != nil {
@@ -272,8 +279,12 @@ func TestRequestComposerUpdatesRequestSample(t *testing.T) {
 	if themeStyles["lightHeadingColor"] == themeStyles["darkHeadingColor"] {
 		t.Fatalf("request config heading should react to dark mode, got %#v", themeStyles)
 	}
-	if themeStyles["lightTextareaBackground"] == themeStyles["darkTextareaBackground"] || themeStyles["lightTextareaColor"] == themeStyles["darkTextareaColor"] {
-		t.Fatalf("request config body input should react to dark mode, got %#v", themeStyles)
+	if themeStyles["lightEditorBackground"] == themeStyles["darkEditorBackground"] || themeStyles["lightEditorBorderColor"] == themeStyles["darkEditorBorderColor"] || themeStyles["lightTextareaCaretColor"] == themeStyles["darkTextareaCaretColor"] {
+		t.Fatalf("request config body editor should react to dark mode, got %#v", themeStyles)
+	}
+	bodyTokenCount := numericValue(themeStyles["bodyTokenCount"])
+	if themeStyles["bodyHighlighted"] != true || bodyTokenCount == 0 {
+		t.Fatalf("request config body should be syntax highlighted, got %#v", themeStyles)
 	}
 	if _, err := page.WaitForFunction(`() => document.querySelector('[data-manja-request-sample] .codeblock')?.textContent.includes("HOSTNAME/api/v3/admin/hooks?page=1")`, nil); err != nil {
 		t.Fatal(err)
@@ -1041,4 +1052,17 @@ func httptestServer(t *testing.T, handler http.Handler) string {
 	go func() { _ = srv.Serve(listener) }()
 	t.Cleanup(func() { _ = srv.Shutdown(context.Background()) })
 	return "http://" + listener.Addr().String()
+}
+
+func numericValue(value any) int {
+	switch typed := value.(type) {
+	case int:
+		return typed
+	case int64:
+		return int(typed)
+	case float64:
+		return int(typed)
+	default:
+		return 0
+	}
 }
