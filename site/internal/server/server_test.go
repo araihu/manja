@@ -27,6 +27,8 @@ func TestRoutesRender(t *testing.T) {
 				"Point Manja at your spec.",
 				"Source-connected OpenAPI publishing",
 				"Versions stay close to source",
+				`href="/demo" target="_blank" rel="noopener"`,
+				`href="/demo" target="_blank" rel="noopener">View live demo</a>`,
 			},
 		},
 		{
