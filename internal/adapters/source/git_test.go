@@ -47,6 +47,64 @@ func TestGitSourceReportsMissingSpecAtRef(t *testing.T) {
 	}
 }
 
+func TestGitSourceDoesNotLeakHTTPSTokenInCloneErrors(t *testing.T) {
+	src := Git{
+		Repo:     "http://127.0.0.1:1/manja/missing.git",
+		Ref:      "main",
+		Path:     "openapi.yaml",
+		Username: "manja",
+		Token:    "super-secret-token",
+	}
+
+	_, _, err := src.Fetch(context.Background())
+	if err == nil {
+		t.Fatal("expected clone error")
+	}
+	if strings.Contains(err.Error(), "super-secret-token") {
+		t.Fatalf("error leaked token: %v", err)
+	}
+}
+
+func TestGitSourceFetchesSpecFromLocalBareRepositoryRefs(t *testing.T) {
+	worktree := initGitRepo(t)
+	writeGitFile(t, worktree, "docs/openapi.yaml", "openapi: 3.1.0\ninfo:\n  title: Branch API\n  version: v1\npaths: {}\n")
+	branchCommit := gitTestOutput(t, worktree, "rev-parse", "HEAD")
+	git(t, worktree, "tag", "v1")
+
+	writeGitFile(t, worktree, "docs/openapi.yaml", "openapi: 3.1.0\ninfo:\n  title: Commit API\n  version: v2\npaths: {}\n")
+	headCommit := gitTestOutput(t, worktree, "rev-parse", "HEAD")
+
+	bare := filepath.Join(t.TempDir(), "repo.git")
+	git(t, worktree, "clone", "--bare", ".", bare)
+
+	tests := []struct {
+		name       string
+		ref        string
+		wantTitle  string
+		wantCommit string
+	}{
+		{name: "branch", ref: "main", wantTitle: "Commit API", wantCommit: headCommit},
+		{name: "tag", ref: "v1", wantTitle: "Branch API", wantCommit: branchCommit},
+		{name: "commit", ref: branchCommit, wantTitle: "Branch API", wantCommit: branchCommit},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			src := Git{Repo: bare, Ref: tt.ref, Path: "docs/openapi.yaml"}
+			spec, rev, err := src.Fetch(context.Background())
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !strings.Contains(string(spec.Bytes), tt.wantTitle) {
+				t.Fatalf("spec bytes = %q", spec.Bytes)
+			}
+			if rev.Ref != tt.ref || rev.CommitSHA != tt.wantCommit || rev.ID == "" {
+				t.Fatalf("revision = %#v, want commit %q", rev, tt.wantCommit)
+			}
+		})
+	}
+}
+
 func initGitRepo(t *testing.T) string {
 	t.Helper()
 	repo := t.TempDir()

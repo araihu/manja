@@ -5,6 +5,8 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"net/url"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
@@ -13,9 +15,13 @@ import (
 )
 
 type Git struct {
-	Repo string
-	Ref  string
-	Path string
+	Repo     string
+	Ref      string
+	Path     string
+	Username string
+	Token    string
+	// SSHPrivateKey is PEM/OpenSSH private key material used for SSH clone URLs.
+	SSHPrivateKey string
 }
 
 func (g Git) Fetch(ctx context.Context) (core.SpecFile, core.Revision, error) {
@@ -28,16 +34,22 @@ func (g Git) Fetch(ctx context.Context) (core.SpecFile, core.Revision, error) {
 	if g.Path == "" {
 		return core.SpecFile{}, core.Revision{}, fmt.Errorf("git source spec path is required")
 	}
+	repo, cleanup, err := gitWorktree(ctx, g.cloneURL(), g.SSHPrivateKey)
+	if err != nil {
+		return core.SpecFile{}, core.Revision{}, err
+	}
+	defer cleanup()
+
 	ref := g.Ref
 	if ref == "" {
 		ref = "HEAD"
 	}
 
-	commit, err := gitOutput(ctx, g.Repo, "rev-parse", ref)
+	commit, err := gitOutput(ctx, repo, "rev-parse", ref)
 	if err != nil {
 		return core.SpecFile{}, core.Revision{}, fmt.Errorf("resolve git ref %q: %w", ref, err)
 	}
-	data, err := gitOutputBytes(ctx, g.Repo, "show", commit+":"+g.Path)
+	data, err := gitOutputBytes(ctx, repo, "show", commit+":"+g.Path)
 	if err != nil {
 		return core.SpecFile{}, core.Revision{}, fmt.Errorf("read git spec %q at %q: %w", g.Path, ref, err)
 	}
@@ -55,6 +67,58 @@ func (g Git) Fetch(ctx context.Context) (core.SpecFile, core.Revision, error) {
 			Ref:       ref,
 			CommitSHA: commit,
 		}, nil
+}
+
+func (g Git) cloneURL() string {
+	if g.Username == "" && g.Token == "" {
+		return g.Repo
+	}
+	parsed, err := url.Parse(g.Repo)
+	if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") {
+		return g.Repo
+	}
+	if g.Username != "" {
+		parsed.User = url.UserPassword(g.Username, g.Token)
+	} else {
+		parsed.User = url.User(g.Token)
+	}
+	return parsed.String()
+}
+
+func gitWorktree(ctx context.Context, repo, sshPrivateKey string) (string, func(), error) {
+	if info, err := os.Stat(repo); err == nil && info.IsDir() {
+		return repo, func() {}, nil
+	}
+
+	baseDir, err := os.MkdirTemp("", "manja-git-source-*")
+	if err != nil {
+		return "", func() {}, fmt.Errorf("create git source checkout: %w", err)
+	}
+	dir := filepath.Join(baseDir, "checkout")
+	cleanup := func() { _ = os.RemoveAll(baseDir) }
+	env, envCleanup, err := gitSSHEnv(sshPrivateKey, baseDir)
+	if err != nil {
+		cleanup()
+		return "", func() {}, err
+	}
+	defer envCleanup()
+	if _, err := gitOutputBytesRedacted(ctx, "", env, []string{"clone", "--no-checkout", "--quiet", redactURL(repo), dir}, "clone", "--no-checkout", "--quiet", repo, dir); err != nil {
+		cleanup()
+		return "", func() {}, fmt.Errorf("clone git source %q: %w", redactURL(repo), err)
+	}
+	return dir, cleanup, nil
+}
+
+func gitSSHEnv(privateKey, dir string) ([]string, func(), error) {
+	if privateKey == "" {
+		return nil, func() {}, nil
+	}
+	keyPath := filepath.Join(dir, "ssh-key")
+	if err := os.WriteFile(keyPath, []byte(privateKey), 0o600); err != nil {
+		return nil, func() {}, fmt.Errorf("write git ssh key: %w", err)
+	}
+	command := fmt.Sprintf("ssh -i %s -o IdentitiesOnly=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null", keyPath)
+	return []string{"GIT_SSH_COMMAND=" + command}, func() { _ = os.Remove(keyPath) }, nil
 }
 
 func specFormat(path string) string {
@@ -75,10 +139,35 @@ func gitOutput(ctx context.Context, repo string, args ...string) (string, error)
 }
 
 func gitOutputBytes(ctx context.Context, repo string, args ...string) ([]byte, error) {
-	cmd := exec.CommandContext(ctx, "git", append([]string{"-C", repo}, args...)...)
+	return gitOutputBytesRedacted(ctx, repo, nil, args, args...)
+}
+
+func gitOutputBytesRedacted(ctx context.Context, repo string, env []string, displayArgs []string, args ...string) ([]byte, error) {
+	fullArgs := args
+	if repo != "" {
+		fullArgs = append([]string{"-C", repo}, args...)
+		displayArgs = append([]string{"-C", repo}, displayArgs...)
+	}
+	cmd := exec.CommandContext(ctx, "git", fullArgs...)
+	if len(env) > 0 {
+		cmd.Env = append(os.Environ(), env...)
+	}
 	out, err := cmd.CombinedOutput()
 	if err != nil {
-		return nil, fmt.Errorf("git %s: %w: %s", strings.Join(args, " "), err, strings.TrimSpace(string(out)))
+		return nil, fmt.Errorf("git %s: %w: %s", strings.Join(displayArgs, " "), err, strings.TrimSpace(string(out)))
 	}
 	return out, nil
+}
+
+func redactURL(raw string) string {
+	parsed, err := url.Parse(raw)
+	if err != nil || parsed.User == nil {
+		return raw
+	}
+	if username := parsed.User.Username(); username != "" {
+		parsed.User = url.UserPassword(username, "xxxxx")
+	} else {
+		parsed.User = url.User("xxxxx")
+	}
+	return parsed.String()
 }
