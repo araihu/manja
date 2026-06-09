@@ -225,6 +225,24 @@ func TestPublicDocsOperationTagDisclosuresDoNotDrawRails(t *testing.T) {
 	}
 }
 
+func TestPublicDocsSchemaSidebarChildrenIndentLikeTagChildren(t *testing.T) {
+	idx := core.SpecIndex{
+		Title: "Schema Labels",
+		Schemas: []core.Schema{
+			{Name: "workflow", Summary: core.SchemaSummary{Name: "Workflow"}},
+		},
+	}
+
+	body := renderPublicDocs(t, NewPublicServer(idx), "/?selected=schema-workflow")
+	schemaSection := regexp.MustCompile(`(?s)<div data-sidebar-section="Schemas">.*?</div></div>`).FindString(body)
+	if schemaSection == "" {
+		t.Fatalf("schema sidebar section should render:\n%s", body)
+	}
+	if !strings.Contains(schemaSection, `<div class="ml-4 flex flex-col">`) {
+		t.Fatalf("schema sidebar children should use Goshtoso nested item indentation:\n%s", schemaSection)
+	}
+}
+
 func TestPublicDocsServeSearchIndexJSON(t *testing.T) {
 	idx := core.SpecIndex{
 		Title: "Petstore",
