@@ -71,7 +71,7 @@ var pageTemplate = template.Must(template.New("page").Parse(`<!doctype html>
         <span>Manja</span>
       </a>
       <div class="nav-actions">
-        <a href="/demo"{{if eq .Path "/demo"}} aria-current="page"{{end}}>Demo</a>
+        <a href="/demo" target="_blank" rel="noopener"{{if eq .Path "/demo"}} aria-current="page"{{end}}>Demo</a>
         <a href="/docs"{{if eq .Path "/docs"}} aria-current="page"{{end}}>Docs</a>
         <a href="https://github.com/araihu/manja" rel="noopener">GitHub</a>
         <button class="theme-toggle" type="button" aria-label="Toggle color mode" aria-pressed="false" data-theme-toggle>
@@ -100,7 +100,7 @@ var homeBody = template.HTML(`
     <h1>Point Manja at your spec.</h1>
     <p class="lead">Manja tracks the source, understands revisions, renders the OpenAPI reference, and keeps the public version stable. Say where the spec lives; the rest should fall into place without asking developers to change their workflow.</p>
     <div class="actions">
-      <a class="button button-primary" href="/demo">View live demo</a>
+      <a class="button button-primary" href="/demo" target="_blank" rel="noopener">View live demo</a>
       <a class="button button-secondary" href="/docs">Read setup docs</a>
     </div>
   </div>
