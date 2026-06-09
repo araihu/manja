@@ -391,21 +391,41 @@ components:
 		t.Fatalf("status = %d, body = %s", rec.Code, rec.Body.String())
 	}
 	var got []struct {
-		ID   string `json:"id"`
-		Href string `json:"href"`
+		ID     string `json:"id"`
+		Href   string `json:"href"`
+		Kind   string `json:"kind"`
+		Method string `json:"method"`
+		Path   string `json:"path"`
 	}
 	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
 		t.Fatal(err)
 	}
-	hrefs := make(map[string]string, len(got))
+	items := make(map[string]struct {
+		ID     string `json:"id"`
+		Href   string `json:"href"`
+		Kind   string `json:"kind"`
+		Method string `json:"method"`
+		Path   string `json:"path"`
+	}, len(got))
 	for _, item := range got {
-		hrefs[item.ID] = item.Href
+		items[item.ID] = item
 	}
-	if hrefs["search-operation-getwidgets"] != wantOperation {
-		t.Fatalf("operation search href = %q, want %q; items = %#v", hrefs["search-operation-getwidgets"], wantOperation, got)
+	operation := items["search-operation-getwidgets"]
+	if operation.Href != wantOperation {
+		t.Fatalf("operation search href = %q, want %q; items = %#v", operation.Href, wantOperation, got)
 	}
-	if hrefs["search-schema-Widget"] != wantSchema {
-		t.Fatalf("schema search href = %q, want %q; items = %#v", hrefs["search-schema-Widget"], wantSchema, got)
+	if operation.Kind != "Operation" || operation.Method != "GET" || operation.Path != "/widgets" {
+		t.Fatalf("operation search metadata = %#v, want kind Operation, method GET, path /widgets", operation)
+	}
+	schema := items["search-schema-Widget"]
+	if schema.Href != wantSchema {
+		t.Fatalf("schema search href = %q, want %q; items = %#v", schema.Href, wantSchema, got)
+	}
+	if schema.Kind != "Schema" {
+		t.Fatalf("schema search kind = %q, want Schema; item = %#v", schema.Kind, schema)
+	}
+	if schema.Method != "" || schema.Path != "" {
+		t.Fatalf("schema search should not emit method/path metadata: %#v", schema)
 	}
 }
 

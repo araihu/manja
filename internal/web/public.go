@@ -39,6 +39,9 @@ type searchJSONItem struct {
 	Title       string   `json:"title"`
 	Description string   `json:"description,omitempty"`
 	Href        string   `json:"href,omitempty"`
+	Kind        string   `json:"kind,omitempty"`
+	Method      string   `json:"method,omitempty"`
+	Path        string   `json:"path,omitempty"`
 	Section     string   `json:"section,omitempty"`
 	Keywords    []string `json:"keywords,omitempty"`
 }
@@ -148,6 +151,9 @@ func searchJSONItems(ctx context.Context, docs []core.SearchDocument, publicRout
 			Title:       doc.Title,
 			Description: description,
 			Href:        publicRouteSearchHref(doc.Href, routeHrefs),
+			Kind:        doc.Kind,
+			Method:      doc.Method,
+			Path:        doc.Path,
 			Section:     doc.Section,
 			Keywords:    doc.Keywords,
 		})
