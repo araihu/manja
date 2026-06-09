@@ -749,19 +749,28 @@ func buildPublicRoutes(idx core.SpecIndex) []core.PublicRoute {
 	for _, op := range idx.Operations {
 		anchor := operationAnchor(op)
 		routes = append(routes, core.PublicRoute{
-			Path:        "#" + anchor,
+			Path:        selectedDocsRoutePath(anchor),
 			Title:       op.Method + " " + op.Path,
 			Description: firstNonEmpty(op.Summary, op.Description),
 		})
 	}
 	for _, schema := range idx.Schemas {
+		anchor := "schema-" + strings.ToLower(schema.Name)
 		routes = append(routes, core.PublicRoute{
-			Path:        "#schema-" + strings.ToLower(schema.Name),
+			Path:        selectedDocsRoutePath(anchor),
 			Title:       schema.Name,
 			Description: schema.Description,
 		})
 	}
 	return routes
+}
+
+func selectedDocsRoutePath(anchor string) string {
+	anchor = strings.TrimSpace(anchor)
+	if anchor == "" {
+		return "/"
+	}
+	return "/?selected=" + url.QueryEscape(anchor) + "#" + anchor
 }
 
 func operationAnchor(op core.Operation) string {

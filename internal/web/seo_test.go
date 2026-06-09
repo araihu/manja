@@ -1,11 +1,14 @@
 package web
 
 import (
+	"context"
 	"encoding/xml"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
+	openapiadapter "github.com/araihu/manja/internal/adapters/openapi"
 	"github.com/araihu/manja/internal/core"
 )
 
@@ -18,14 +21,34 @@ type sitemapTestURL struct {
 }
 
 func TestSitemapUsesPublicRoutes(t *testing.T) {
-	idx := core.SpecIndex{
-		Title: "Petstore",
-		PublicRoutes: []core.PublicRoute{
-			{Path: "/", Title: "Petstore"},
-			{Path: "/operations/listPets", Title: "GET /pets"},
-			{Path: "#operation-listpets", Title: "GET /pets anchor"},
-			{Path: "", Title: "empty route"},
-		},
+	spec := []byte(`
+openapi: 3.1.0
+info:
+  title: Widget API
+  version: 1.0.0
+paths:
+  /widgets:
+    get:
+      operationId: getWidgets
+      summary: List widgets
+      responses:
+        "200":
+          description: ok
+components:
+  schemas:
+    Widget:
+      type: object
+      description: A widget resource.
+`)
+	parser := openapiadapter.Parser{}
+	idx, err := parser.Parse(context.Background(), core.SpecFile{
+		SourceID: "src1",
+		Path:     "widgets.yaml",
+		Format:   "yaml",
+		Bytes:    spec,
+	}, core.Revision{ID: "rev1", SourceID: "src1", Ref: "main"})
+	if err != nil {
+		t.Fatal(err)
 	}
 	srv := NewPublicServer(idx)
 	rec := httptest.NewRecorder()
@@ -49,7 +72,8 @@ func TestSitemapUsesPublicRoutes(t *testing.T) {
 
 	want := []string{
 		"https://docs.example.test/",
-		"https://docs.example.test/operations/listPets",
+		"https://docs.example.test/?selected=operation-getwidgets#operation-getwidgets",
+		"https://docs.example.test/?selected=schema-widget#schema-widget",
 	}
 	if len(locs) != len(want) {
 		t.Fatalf("locs = %#v, want %#v", locs, want)
@@ -57,6 +81,14 @@ func TestSitemapUsesPublicRoutes(t *testing.T) {
 	for i := range want {
 		if locs[i] != want[i] {
 			t.Fatalf("locs = %#v, want %#v", locs, want)
+		}
+	}
+	for _, loc := range locs {
+		if strings.Contains(loc, "#schema-") || strings.Contains(loc, "#operation-") {
+			continue
+		}
+		if loc != "https://docs.example.test/" {
+			t.Fatalf("sitemap loc is not a canonical docs URL: %q", loc)
 		}
 	}
 }
