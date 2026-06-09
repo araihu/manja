@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -41,6 +42,28 @@ func TestNewWithOptionsSyncsSpecBeforeServingPublicDocs(t *testing.T) {
 		t.Fatalf("body = %s", body)
 	}
 
+	rec = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodGet, "/manage", nil)
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("management status = %d", rec.Code)
+	}
+	if body := rec.Body.String(); !containsAll(body, "Management", "Synced API", "source1", "startup", "success") {
+		t.Fatalf("management body = %s", body)
+	}
+
+	form := url.Values{
+		"visibility": {"public"},
+		"path":       {"/synced/v1"},
+	}
+	rec = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodPost, "/manage/publication", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusSeeOther {
+		t.Fatalf("publication status = %d", rec.Code)
+	}
+
 	revisions := entries(t, filepath.Join(dataDir, "revisions"))
 	if len(revisions) != 1 {
 		t.Fatalf("revisions = %#v", revisions)
@@ -49,6 +72,12 @@ func TestNewWithOptionsSyncsSpecBeforeServingPublicDocs(t *testing.T) {
 	readJSON(t, filepath.Join(dataDir, "revisions", revisions[0]), &rev)
 	if rev.ID == "" || rev.SourceID != "source1" || rev.Ref != "file" {
 		t.Fatalf("revision = %#v", rev)
+	}
+
+	var pub core.Publication
+	readJSON(t, filepath.Join(dataDir, "publications", "project1-"+rev.ID+".json"), &pub)
+	if pub.ProjectID != "project1" || pub.RevisionID != rev.ID || !pub.Public || pub.Path != "/synced/v1" {
+		t.Fatalf("publication = %#v", pub)
 	}
 
 	blobPath := filepath.Join(dataDir, "blobs", "specs", rev.ID+".yaml")
