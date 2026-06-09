@@ -313,6 +313,51 @@ components:
 	}
 }
 
+func TestOpenAPIParserAddsSchemasToPublicRoutes(t *testing.T) {
+	spec := []byte(`
+openapi: 3.1.0
+info:
+  title: Routed Schemas
+  version: 1.0.0
+paths:
+  /widgets:
+    get:
+      summary: List widgets
+      responses:
+        "200":
+          description: ok
+components:
+  schemas:
+    Widget:
+      type: object
+      description: A widget resource.
+    WidgetEvent:
+      type: object
+      description: A widget event.
+`)
+	parser := openapiadapter.Parser{}
+	idx, err := parser.Parse(context.Background(), core.SpecFile{
+		SourceID: "src1",
+		Path:     "routed-schemas.yaml",
+		Format:   "yaml",
+		Bytes:    spec,
+	}, core.Revision{ID: "rev1", SourceID: "src1", Ref: "main"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var paths []string
+	for _, route := range idx.PublicRoutes {
+		paths = append(paths, route.Path)
+	}
+	got := strings.Join(paths, " ")
+	for _, want := range []string{"/", "#operation-get-widgets", "#schema-widget", "#schema-widgetevent"} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("public routes missing %q: %#v", want, idx.PublicRoutes)
+		}
+	}
+}
+
 func TestOpenAPIParserIgnoresInvalidExamplesForDocsIndexing(t *testing.T) {
 	spec := []byte(`
 openapi: 3.0.3
