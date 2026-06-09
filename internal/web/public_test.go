@@ -74,7 +74,7 @@ func TestPublicDocsRenderSearchAndOperations(t *testing.T) {
 	if strings.Contains(body, `<section id="operation-createPet"`) {
 		t.Fatalf("operation page should render only the selected sidebar item, got create operation content:\n%s", body)
 	}
-	sidebarMethodBadge := regexp.MustCompile(`<a href="/\?selected=operation-listPets#operation-listPets"[^>]*><span class="min-w-0 flex-1 truncate">List pets</span>\s*<sup[^>]*ml-auto shrink-0[^"]*border-info[^"]*bg-info[^"]*text-on-info[^"]*"[^>]*>GET</sup>`)
+	sidebarMethodBadge := regexp.MustCompile(`<a href="/\?selected=operation-listPets#operation-listPets"[^>]*><span class="min-w-0 flex-1 truncate">List pets</span>\s*<sup[^>]*ml-auto shrink-0[^"]*border-primary[^"]*bg-primary[^"]*text-on-primary[^"]*"[^>]*>GET</sup>`)
 	if !sidebarMethodBadge.MatchString(body) {
 		t.Fatalf("operation sidebar item should render flex endpoint label with right-aligned Goshtoso method badge:\n%s", body)
 	}
@@ -82,7 +82,7 @@ func TestPublicDocsRenderSearchAndOperations(t *testing.T) {
 	if !postMethodBadge.MatchString(body) {
 		t.Fatalf("POST sidebar method badge should use Goshtoso success styling:\n%s", body)
 	}
-	pageMethodBadge := regexp.MustCompile(`<span class="[^"]*rounded-radius[^"]*w-fit[^"]*font-medium[^"]*text-\[10px\][^"]*px-1\.5[^"]*py-0\.5[^"]*border-info[^"]*bg-info[^"]*text-on-info[^"]*font-mono[^"]*font-bold[^"]*">GET</span>`)
+	pageMethodBadge := regexp.MustCompile(`<span class="[^"]*rounded-radius[^"]*w-fit[^"]*font-medium[^"]*text-\[10px\][^"]*px-1\.5[^"]*py-0\.5[^"]*border-primary[^"]*bg-primary[^"]*text-on-primary[^"]*font-mono[^"]*font-bold[^"]*">GET</span>`)
 	if !pageMethodBadge.MatchString(body) {
 		t.Fatalf("operation cards should render methods with Goshtoso badge component classes:\n%s", body)
 	}
@@ -1236,9 +1236,9 @@ func TestPublicDocsRenderEndpointDetails(t *testing.T) {
 		`bg-success/10`,
 		`text-success`,
 		`text-xs px-2 py-1 bg-success/10`,
-		`bg-danger/10`,
-		`text-danger`,
-		`text-xs px-2 py-1 bg-danger/10`,
+		`bg-warning/10`,
+		`text-warning`,
+		`text-xs px-2 py-1 bg-warning/10`,
 		`Request Sample: Shell / cURL`,
 		`Response Example`,
 		`cURL`,
@@ -1293,7 +1293,7 @@ func TestPublicDocsRenderEndpointDetails(t *testing.T) {
 	}
 	for _, statusBadge := range []string{
 		`border border-success bg-surface text-success`,
-		`border border-danger bg-surface text-danger`,
+		`border border-warning bg-surface text-warning`,
 	} {
 		if count := strings.Count(body, statusBadge); count != 1 {
 			t.Fatalf("response status badge %q should render once in the tab, got %d:\n%s", statusBadge, count, body)
@@ -1468,6 +1468,107 @@ func TestPublicDocsEndpointResponsesOnlyUsesSingleDetailColumn(t *testing.T) {
 	}
 	if count := strings.Count(body, `border border-success bg-surface text-success`); count != 1 {
 		t.Fatalf("response status badge should render once in the tab, got %d:\n%s", count, body)
+	}
+}
+
+func TestPublicDocsResponseStatusBadgesUseStatusClassHierarchy(t *testing.T) {
+	idx := core.SpecIndex{
+		Title: "Status API",
+		Operations: []core.Operation{{
+			ID:      "statuses",
+			Anchor:  "operation-statuses",
+			Method:  "GET",
+			Path:    "/statuses",
+			Summary: "Get statuses",
+			Responses: []core.OperationResponse{{
+				Status:      "102",
+				Description: "Processing.",
+			}, {
+				Status:      "200",
+				Description: "OK.",
+			}, {
+				Status:      "302",
+				Description: "Redirect.",
+			}, {
+				Status:      "404",
+				Description: "Missing.",
+			}, {
+				Status:      "500",
+				Description: "Server error.",
+			}},
+		}},
+	}
+
+	body := renderPublicDocs(t, NewPublicServer(idx), "/?selected=operation-statuses")
+	for _, want := range []string{
+		`aria-label="102"`,
+		`aria-label="200"`,
+		`aria-label="302"`,
+		`aria-label="404"`,
+		`aria-label="500"`,
+		`border border-outline bg-surface text-on-surface`,
+		`border border-success bg-surface text-success`,
+		`border border-primary bg-surface text-primary`,
+		`border border-warning bg-surface text-warning`,
+		`border border-danger bg-surface text-danger`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("status hierarchy missing %q:\n%s", want, body)
+		}
+	}
+}
+
+func TestPublicDocsMethodBadgesUseSideEffectHierarchy(t *testing.T) {
+	idx := core.SpecIndex{
+		Title: "Method API",
+		Operations: []core.Operation{{
+			ID:      "read",
+			Anchor:  "operation-read",
+			Method:  "GET",
+			Path:    "/resource",
+			Summary: "Read resource",
+		}, {
+			ID:      "create",
+			Anchor:  "operation-create",
+			Method:  "POST",
+			Path:    "/resource",
+			Summary: "Create resource",
+		}, {
+			ID:      "replace",
+			Anchor:  "operation-replace",
+			Method:  "PUT",
+			Path:    "/resource",
+			Summary: "Replace resource",
+		}, {
+			ID:      "update",
+			Anchor:  "operation-update",
+			Method:  "PATCH",
+			Path:    "/resource",
+			Summary: "Update resource",
+		}, {
+			ID:      "delete",
+			Anchor:  "operation-delete",
+			Method:  "DELETE",
+			Path:    "/resource",
+			Summary: "Delete resource",
+		}},
+	}
+
+	body := renderPublicDocs(t, NewPublicServer(idx), "/")
+	for _, want := range []string{
+		`border-primary bg-primary text-on-primary`,
+		`border-success bg-success text-on-success`,
+		`border-warning bg-warning text-on-warning`,
+		`border-danger bg-danger text-on-danger`,
+		`>GET</sup>`,
+		`>POST</sup>`,
+		`>PUT</sup>`,
+		`>PATCH</sup>`,
+		`>DELETE</sup>`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("method hierarchy missing %q:\n%s", want, body)
+		}
 	}
 }
 
