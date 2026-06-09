@@ -294,6 +294,121 @@ func TestPublicDocsServeSearchIndexJSON(t *testing.T) {
 	}
 }
 
+func TestPublicDocsServeSearchIndexJSONPrefersPublicRouteForMatchingAnchor(t *testing.T) {
+	idx := core.SpecIndex{
+		Title: "Petstore",
+		Search: []core.SearchDocument{{
+			ID:          "operation-listPets",
+			Title:       "GET /pets",
+			Description: "List pets",
+			Href:        "#operation-listPets",
+			Kind:        "Operation",
+			Section:     "Pets",
+		}},
+		PublicRoutes: []core.PublicRoute{{
+			Path:        "/docs?selected=operation-listPets#operation-listPets",
+			Title:       "GET /pets",
+			Description: "List pets",
+		}},
+	}
+	srv := NewPublicServer(idx)
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/search.json", nil)
+
+	srv.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", rec.Code, rec.Body.String())
+	}
+	var got []struct {
+		ID   string `json:"id"`
+		Href string `json:"href"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 {
+		t.Fatalf("search documents = %d, want 1: %#v", len(got), got)
+	}
+	if got[0].Href != "/docs?selected=operation-listPets#operation-listPets" {
+		t.Fatalf("search href = %q, want route-index href", got[0].Href)
+	}
+}
+
+func TestPublicDocsSearchIndexUsesPublicRoutes(t *testing.T) {
+	spec := []byte(`
+openapi: 3.1.0
+info:
+  title: Widget API
+  version: 1.0.0
+paths:
+  /widgets:
+    get:
+      operationId: getWidgets
+      summary: List widgets
+      responses:
+        "200":
+          description: ok
+components:
+  schemas:
+    Widget:
+      type: object
+      description: A widget resource.
+`)
+	parser := openapiadapter.Parser{}
+	idx, err := parser.Parse(context.Background(), core.SpecFile{
+		SourceID: "src1",
+		Path:     "widgets.yaml",
+		Format:   "yaml",
+		Bytes:    spec,
+	}, core.Revision{ID: "rev1", SourceID: "src1", Ref: "main"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	wantOperation := "/?selected=operation-getwidgets#operation-getwidgets"
+	wantSchema := "/?selected=schema-widget#schema-widget"
+	for _, want := range []string{wantOperation, wantSchema} {
+		found := false
+		for _, route := range idx.PublicRoutes {
+			if route.Path == want {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Fatalf("public routes missing %q: %#v", want, idx.PublicRoutes)
+		}
+	}
+
+	srv := NewPublicServer(idx)
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/search.json", nil)
+
+	srv.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", rec.Code, rec.Body.String())
+	}
+	var got []struct {
+		ID   string `json:"id"`
+		Href string `json:"href"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatal(err)
+	}
+	hrefs := make(map[string]string, len(got))
+	for _, item := range got {
+		hrefs[item.ID] = item.Href
+	}
+	if hrefs["search-operation-getwidgets"] != wantOperation {
+		t.Fatalf("operation search href = %q, want %q; items = %#v", hrefs["search-operation-getwidgets"], wantOperation, got)
+	}
+	if hrefs["search-schema-Widget"] != wantSchema {
+		t.Fatalf("schema search href = %q, want %q; items = %#v", hrefs["search-schema-Widget"], wantSchema, got)
+	}
+}
+
 func TestPublicDocsRenderOverviewByDefault(t *testing.T) {
 	idx := core.SpecIndex{
 		Title:   "Petstore",
