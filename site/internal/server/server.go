@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/araihu/manja/internal/app"
+	"github.com/araihu/manja/internal/core"
 	"github.com/araihu/manja/site/internal/site"
 )
 
@@ -15,6 +16,7 @@ type Options struct {
 	SpecPath  string
 	DataDir   string
 	StaticDir string
+	Branding  core.DocsBranding
 }
 
 // New returns the standalone Manja product site handler.
@@ -62,6 +64,7 @@ func demoHandler(ctx context.Context, opts Options) http.Handler {
 		SpecPath:  opts.specPath(),
 		DataDir:   opts.dataDir(),
 		StaticDir: opts.staticDir(),
+		Branding:  opts.Branding,
 	})
 	if err != nil {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

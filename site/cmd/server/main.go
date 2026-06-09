@@ -6,6 +6,7 @@ import (
 	"log"
 	"net/http"
 
+	"github.com/araihu/manja/internal/core"
 	"github.com/araihu/manja/site/internal/server"
 )
 
@@ -14,6 +15,11 @@ func main() {
 	spec := flag.String("spec", "", "OpenAPI spec path for the /demo renderer")
 	dataDir := flag.String("data-dir", "", "local Manja data directory for the /demo renderer")
 	staticDir := flag.String("static-dir", "", "Manja renderer static asset directory for /demo")
+	brandName := flag.String("brand-name", "", "public docs brand name for /demo")
+	brandLogo := flag.String("brand-logo", "", "public docs brand logo URL for /demo")
+	brandLogoAlt := flag.String("brand-logo-alt", "", "public docs brand logo alt text for /demo")
+	brandHomeURL := flag.String("brand-home-url", "", "public docs brand home URL for /demo")
+	brandFavicon := flag.String("brand-favicon", "", "public docs favicon URL for /demo")
 	flag.Parse()
 
 	log.Printf("manja site listening on %s", *addr)
@@ -21,5 +27,14 @@ func main() {
 		SpecPath:  *spec,
 		DataDir:   *dataDir,
 		StaticDir: *staticDir,
+		Branding: core.DocsBranding{
+			DisplayName: *brandName,
+			Logo: core.DocsBrandingLogo{
+				Src:     *brandLogo,
+				Alt:     *brandLogoAlt,
+				HomeURL: *brandHomeURL,
+			},
+			Favicon: *brandFavicon,
+		},
 	})))
 }

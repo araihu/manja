@@ -37,6 +37,7 @@ func (Parser) Parse(ctx context.Context, file core.SpecFile, rev core.Revision) 
 		RevisionID:      rev.ID,
 		Title:           doc.Info.Title,
 		Version:         doc.Info.Version,
+		Branding:        branding(doc.Info),
 		Overview:        overview(doc.Info, doc.Servers),
 		SpecDownload:    download,
 		ExampleSpecJSON: exampleSpecJSON(doc),
@@ -128,6 +129,41 @@ func jsonSpecFilename(path string) string {
 		return "openapi.json"
 	}
 	return name + ".json"
+}
+
+func branding(info *openapi3.Info) core.DocsBranding {
+	if info == nil {
+		return core.DocsBranding{}
+	}
+	logo := logoExtension(info.Extensions["x-logo"])
+	if logo.Src == "" {
+		return core.DocsBranding{}
+	}
+	logo.Alt = firstNonEmpty(logo.Alt, info.Title)
+	return core.DocsBranding{
+		DisplayName: info.Title,
+		Logo:        logo,
+	}
+}
+
+func logoExtension(value any) core.DocsBrandingLogo {
+	object, ok := value.(map[string]any)
+	if !ok {
+		return core.DocsBrandingLogo{}
+	}
+	return core.DocsBrandingLogo{
+		Src:     extensionString(object["url"]),
+		Alt:     extensionString(object["altText"]),
+		HomeURL: extensionString(object["href"]),
+	}
+}
+
+func extensionString(value any) string {
+	text, ok := value.(string)
+	if !ok {
+		return ""
+	}
+	return strings.TrimSpace(text)
 }
 
 func overview(info *openapi3.Info, servers openapi3.Servers) core.SpecOverview {

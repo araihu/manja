@@ -45,6 +45,43 @@ func TestOpenAPIParserBuildsSearchIndex(t *testing.T) {
 	}
 }
 
+func TestOpenAPIParserExtractsLogoBrandingExtension(t *testing.T) {
+	spec := []byte(`
+openapi: 3.1.0
+info:
+  title: Branded API
+  version: 1.0.0
+  x-logo:
+    url: https://cdn.example.test/logo.svg
+    altText: Branded API logo
+    href: https://developers.example.test
+paths: {}
+`)
+	parser := openapiadapter.Parser{}
+	idx, err := parser.Parse(context.Background(), core.SpecFile{
+		SourceID: "src1",
+		Path:     "branded.yaml",
+		Format:   "yaml",
+		Bytes:    spec,
+	}, core.Revision{ID: "rev1", SourceID: "src1", Ref: "main"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if idx.Branding.DisplayName != "Branded API" {
+		t.Fatalf("branding display name = %q", idx.Branding.DisplayName)
+	}
+	if idx.Branding.Logo.Src != "https://cdn.example.test/logo.svg" {
+		t.Fatalf("branding logo src = %q", idx.Branding.Logo.Src)
+	}
+	if idx.Branding.Logo.Alt != "Branded API logo" {
+		t.Fatalf("branding logo alt = %q", idx.Branding.Logo.Alt)
+	}
+	if idx.Branding.Logo.HomeURL != "https://developers.example.test" {
+		t.Fatalf("branding logo home URL = %q", idx.Branding.Logo.HomeURL)
+	}
+}
+
 func TestOpenAPIParserBuildsStableAnchorsWithoutOperationID(t *testing.T) {
 	spec := []byte(`
 openapi: 3.1.0

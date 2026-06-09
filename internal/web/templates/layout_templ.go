@@ -8,7 +8,11 @@ package templates
 import "github.com/a-h/templ"
 import templruntime "github.com/a-h/templ/runtime"
 
-import "github.com/araihu/goshtoso/components/head"
+import (
+	templpkg "github.com/a-h/templ"
+	"github.com/araihu/goshtoso/components/head"
+	"github.com/araihu/manja/internal/core"
+)
 
 func Layout(title string) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
@@ -31,20 +35,72 @@ func Layout(title string) templ.Component {
 			templ_7745c5c3_Var1 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
+		templ_7745c5c3_Err = LayoutWithBranding(title, core.DocsBranding{}).Render(ctx, templ_7745c5c3_Buffer)
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		return nil
+	})
+}
+
+func LayoutWithBranding(title string, branding core.DocsBranding) templ.Component {
+	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
+		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
+		if templ_7745c5c3_CtxErr := ctx.Err(); templ_7745c5c3_CtxErr != nil {
+			return templ_7745c5c3_CtxErr
+		}
+		templ_7745c5c3_Buffer, templ_7745c5c3_IsBuffer := templruntime.GetBuffer(templ_7745c5c3_W)
+		if !templ_7745c5c3_IsBuffer {
+			defer func() {
+				templ_7745c5c3_BufErr := templruntime.ReleaseBuffer(templ_7745c5c3_Buffer)
+				if templ_7745c5c3_Err == nil {
+					templ_7745c5c3_Err = templ_7745c5c3_BufErr
+				}
+			}()
+		}
+		ctx = templ.InitializeContext(ctx)
+		templ_7745c5c3_Var2 := templ.GetChildren(ctx)
+		if templ_7745c5c3_Var2 == nil {
+			templ_7745c5c3_Var2 = templ.NopComponent
+		}
+		ctx = templ.ClearChildren(ctx)
 		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<!doctype html><html lang=\"en\" data-theme=\"manja\" x-data=\"{\n\t\t\ttheme: localStorage.getItem('theme') || 'manja',\n\t\t\tdarkMode: (function() {\n\t\t\t\tconst stored = localStorage.getItem('darkMode');\n\t\t\t\tif (stored !== null) return stored === 'true';\n\t\t\t\treturn window.matchMedia('(prefers-color-scheme: dark)').matches;\n\t\t\t})(),\n\t\t\tsetTheme(name) { this.theme = name; document.documentElement.setAttribute('data-theme', name); },\n\t\t\tapplyDarkMode(on) { document.documentElement.classList.toggle('dark', on); },\n\t\t\ttoggleDarkMode() { this.darkMode = !this.darkMode; }\n\t\t}\" x-init=\"\n\t\t\tdocument.documentElement.setAttribute('data-theme', theme);\n\t\t\tapplyDarkMode(darkMode);\n\t\t\t$watch('theme', value => {\n\t\t\t\tlocalStorage.setItem('theme', value);\n\t\t\t\tdocument.documentElement.setAttribute('data-theme', value);\n\t\t\t});\n\t\t\t$watch('darkMode', value => {\n\t\t\t\tlocalStorage.setItem('darkMode', value ? 'true' : 'false');\n\t\t\t\tapplyDarkMode(value);\n\t\t\t});\n\t\t\"><head><meta charset=\"UTF-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\"><title>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		var templ_7745c5c3_Var2 string
-		templ_7745c5c3_Var2, templ_7745c5c3_Err = templ.JoinStringErrs(title)
+		var templ_7745c5c3_Var3 string
+		templ_7745c5c3_Var3, templ_7745c5c3_Err = templ.JoinStringErrs(title)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/layout.templ`, Line: 37, Col: 17}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/layout.templ`, Line: 45, Col: 17}
 		}
-		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var2))
+		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var3))
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 2, "</title><script>\n\t\t\t\t(function() {\n\t\t\t\t\ttry {\n\t\t\t\t\t\tdocument.documentElement.setAttribute('data-theme', localStorage.getItem('theme') || 'manja');\n\t\t\t\t\t\tvar d = localStorage.getItem('darkMode');\n\t\t\t\t\t\tvar on = d !== null ? d === 'true' : window.matchMedia('(prefers-color-scheme: dark)').matches;\n\t\t\t\t\t\tdocument.documentElement.classList.toggle('dark', on);\n\t\t\t\t\t} catch (e) {}\n\t\t\t\t})();\n\t\t\t</script>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 2, "</title>")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		if branding.Favicon != "" {
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 3, "<link rel=\"icon\" href=\"")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			var templ_7745c5c3_Var4 templ.SafeURL
+			templ_7745c5c3_Var4, templ_7745c5c3_Err = templ.JoinURLErrs(templpkg.URL(branding.Favicon))
+			if templ_7745c5c3_Err != nil {
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/layout.templ`, Line: 47, Col: 58}
+			}
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var4))
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 4, "\">")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 5, "<script>\n\t\t\t\t(function() {\n\t\t\t\t\ttry {\n\t\t\t\t\t\tdocument.documentElement.setAttribute('data-theme', localStorage.getItem('theme') || 'manja');\n\t\t\t\t\t\tvar d = localStorage.getItem('darkMode');\n\t\t\t\t\t\tvar on = d !== null ? d === 'true' : window.matchMedia('(prefers-color-scheme: dark)').matches;\n\t\t\t\t\t\tdocument.documentElement.classList.toggle('dark', on);\n\t\t\t\t\t} catch (e) {}\n\t\t\t\t})();\n\t\t\t</script>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -52,15 +108,15 @@ func Layout(title string) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 3, "<script>\n\t\t\t\t(function () {\n\t\t\t\t\tvar pendingSidebarHref = \"\";\n\t\t\t\t\tvar sidebarLinkClasses = {\n\t\t\t\t\t\titem: {\n\t\t\t\t\t\t\tactive: \"flex items-center gap-2 py-2 text-base font-medium text-primary dark:text-primary-dark\".split(\" \"),\n\t\t\t\t\t\t\tinactive: \"flex items-center gap-2 py-2 text-base text-on-surface transition-colors hover:text-on-surface-strong dark:text-on-surface-dark dark:hover:text-on-surface-dark-strong\".split(\" \"),\n\t\t\t\t\t\t\ticonActive: \"shrink-0 size-8 rounded-sm p-1.5 bg-primary/10 text-primary dark:bg-primary-dark/10 dark:text-primary-dark\".split(\" \"),\n\t\t\t\t\t\t\ticonInactive: \"shrink-0 size-8 rounded-sm p-1.5 bg-surface-alt text-on-surface dark:bg-surface-dark-alt dark:text-on-surface-dark\".split(\" \")\n\t\t\t\t\t\t},\n\t\t\t\t\t\tsection: {\n\t\t\t\t\t\t\tactive: \"pointer-events-none flex items-center gap-2 border-l-2 border-primary py-2.5 pl-4 text-sm font-bold text-primary dark:border-primary-dark dark:text-primary-dark\".split(\" \"),\n\t\t\t\t\t\t\tinactive: \"flex items-center gap-2 border-l border-outline py-2.5 pl-4 text-sm font-medium text-on-surface transition duration-200 hover:border-l-2 hover:border-outline-strong hover:text-on-surface-strong dark:border-outline-dark dark:text-on-surface-dark dark:hover:border-outline-dark-strong dark:hover:text-on-surface-dark-strong\".split(\" \")\n\t\t\t\t\t\t}\n\t\t\t\t\t};\n\n\t\t\t\t\tfunction sidebarLinkFromEvent(event) {\n\t\t\t\t\t\tvar detail = event && event.detail;\n\t\t\t\t\t\tvar element = detail && (detail.elt || (detail.requestConfig && detail.requestConfig.elt));\n\t\t\t\t\t\tif (!element || !element.closest) return null;\n\t\t\t\t\t\treturn element.closest('[data-manja-sidebar-nav=\"true\"]');\n\t\t\t\t\t}\n\n\t\t\t\t\tfunction normalizeHref(href) {\n\t\t\t\t\t\ttry {\n\t\t\t\t\t\t\tvar url = new URL(href, window.location.origin);\n\t\t\t\t\t\t\treturn url.pathname + url.search + url.hash;\n\t\t\t\t\t\t} catch (e) {\n\t\t\t\t\t\t\treturn href || \"\";\n\t\t\t\t\t\t}\n\t\t\t\t\t}\n\n\t\t\t\t\tfunction activeMarker(link) {\n\t\t\t\t\t\tfor (var i = 0; i < link.children.length; i++) {\n\t\t\t\t\t\t\tvar child = link.children[i];\n\t\t\t\t\t\t\tif (child.classList && child.classList.contains('sr-only') && child.textContent.trim() === 'active') {\n\t\t\t\t\t\t\t\treturn child;\n\t\t\t\t\t\t\t}\n\t\t\t\t\t\t}\n\t\t\t\t\t\treturn null;\n\t\t\t\t\t}\n\n\t\t\t\t\tfunction directIcon(link) {\n\t\t\t\t\t\tfor (var i = 0; i < link.children.length; i++) {\n\t\t\t\t\t\t\tvar child = link.children[i];\n\t\t\t\t\t\t\tif (child.classList && child.classList.contains('size-8')) {\n\t\t\t\t\t\t\t\treturn child;\n\t\t\t\t\t\t\t}\n\t\t\t\t\t\t}\n\t\t\t\t\t\treturn null;\n\t\t\t\t\t}\n\n\t\t\t\t\tfunction classProfile(link) {\n\t\t\t\t\t\tif (link.closest('[data-sidebar-section]')) return sidebarLinkClasses.section;\n\t\t\t\t\t\treturn sidebarLinkClasses.item;\n\t\t\t\t\t}\n\n\t\t\t\t\tfunction setSidebarLinkActive(link, active) {\n\t\t\t\t\t\tvar profile = classProfile(link);\n\t\t\t\t\t\tlink.classList.remove.apply(link.classList, profile.active.concat(profile.inactive));\n\t\t\t\t\t\tlink.classList.add.apply(link.classList, active ? profile.active : profile.inactive);\n\t\t\t\t\t\tif (active) {\n\t\t\t\t\t\t\tlink.setAttribute('aria-current', 'page');\n\t\t\t\t\t\t\tif (!activeMarker(link)) {\n\t\t\t\t\t\t\t\tvar marker = document.createElement('span');\n\t\t\t\t\t\t\t\tmarker.className = 'sr-only';\n\t\t\t\t\t\t\t\tmarker.textContent = 'active';\n\t\t\t\t\t\t\t\tlink.appendChild(marker);\n\t\t\t\t\t\t\t}\n\t\t\t\t\t\t} else {\n\t\t\t\t\t\t\tlink.removeAttribute('aria-current');\n\t\t\t\t\t\t\tvar marker = activeMarker(link);\n\t\t\t\t\t\t\tif (marker) marker.remove();\n\t\t\t\t\t\t}\n\n\t\t\t\t\t\tvar icon = directIcon(link);\n\t\t\t\t\t\tif (!icon || !profile.iconActive || !profile.iconInactive) return;\n\t\t\t\t\t\ticon.classList.remove.apply(icon.classList, profile.iconActive.concat(profile.iconInactive));\n\t\t\t\t\t\ticon.classList.add.apply(icon.classList, active ? profile.iconActive : profile.iconInactive);\n\t\t\t\t\t}\n\n\t\t\t\t\tfunction updateSidebarActiveLink(href) {\n\t\t\t\t\t\thref = normalizeHref(href);\n\t\t\t\t\t\tif (!href) return;\n\t\t\t\t\t\tvar links = document.querySelectorAll('[data-manja-sidebar-nav=\"true\"][href]');\n\t\t\t\t\t\tvar matched = false;\n\t\t\t\t\t\tfor (var i = 0; i < links.length; i++) {\n\t\t\t\t\t\t\tvar link = links[i];\n\t\t\t\t\t\t\tvar active = normalizeHref(link.getAttribute('href')) === href;\n\t\t\t\t\t\t\tsetSidebarLinkActive(link, active);\n\t\t\t\t\t\t\tmatched = matched || active;\n\t\t\t\t\t\t}\n\t\t\t\t\t\tif (!matched) {\n\t\t\t\t\t\t\tfor (var j = 0; j < links.length; j++) setSidebarLinkActive(links[j], false);\n\t\t\t\t\t\t}\n\t\t\t\t\t}\n\n\t\t\t\t\tdocument.addEventListener('htmx:beforeRequest', function (e) {\n\t\t\t\t\t\tvar link = sidebarLinkFromEvent(e);\n\t\t\t\t\t\tif (link) pendingSidebarHref = link.getAttribute('href') || \"\";\n\t\t\t\t\t});\n\n\t\t\t\t\tdocument.addEventListener('htmx:afterSwap', function (e) {\n\t\t\t\t\t\tvar target = e && e.detail && e.detail.target;\n\t\t\t\t\t\tif (!target || target.id !== 'main-content') return;\n\t\t\t\t\t\tupdateSidebarActiveLink(pendingSidebarHref || (window.location.pathname + window.location.search + window.location.hash));\n\t\t\t\t\t\tpendingSidebarHref = \"\";\n\t\t\t\t\t\twindow.scrollTo({ top: 0 });\n\t\t\t\t\t});\n\t\t\t\t})();\n\t\t\t</script><link rel=\"stylesheet\" href=\"/manja-assets/manja.css\"><script defer src=\"/manja-assets/schema-example.js\"></script><script defer src=\"/manja-assets/request-composer.js\"></script><style>[x-cloak] { display: none !important; }</style></head><body class=\"min-h-screen bg-surface text-on-surface dark:bg-surface-dark dark:text-on-surface-dark\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 6, "<script>\n\t\t\t\t(function () {\n\t\t\t\t\tvar pendingSidebarHref = \"\";\n\t\t\t\t\tvar sidebarLinkClasses = {\n\t\t\t\t\t\titem: {\n\t\t\t\t\t\t\tactive: \"flex items-center gap-2 py-2 text-base font-medium text-primary dark:text-primary-dark\".split(\" \"),\n\t\t\t\t\t\t\tinactive: \"flex items-center gap-2 py-2 text-base text-on-surface transition-colors hover:text-on-surface-strong dark:text-on-surface-dark dark:hover:text-on-surface-dark-strong\".split(\" \"),\n\t\t\t\t\t\t\ticonActive: \"shrink-0 size-8 rounded-sm p-1.5 bg-primary/10 text-primary dark:bg-primary-dark/10 dark:text-primary-dark\".split(\" \"),\n\t\t\t\t\t\t\ticonInactive: \"shrink-0 size-8 rounded-sm p-1.5 bg-surface-alt text-on-surface dark:bg-surface-dark-alt dark:text-on-surface-dark\".split(\" \")\n\t\t\t\t\t\t},\n\t\t\t\t\t\tsection: {\n\t\t\t\t\t\t\tactive: \"pointer-events-none flex items-center gap-2 border-l-2 border-primary py-2.5 pl-4 text-sm font-bold text-primary dark:border-primary-dark dark:text-primary-dark\".split(\" \"),\n\t\t\t\t\t\t\tinactive: \"flex items-center gap-2 border-l border-outline py-2.5 pl-4 text-sm font-medium text-on-surface transition duration-200 hover:border-l-2 hover:border-outline-strong hover:text-on-surface-strong dark:border-outline-dark dark:text-on-surface-dark dark:hover:border-outline-dark-strong dark:hover:text-on-surface-dark-strong\".split(\" \")\n\t\t\t\t\t\t}\n\t\t\t\t\t};\n\n\t\t\t\t\tfunction sidebarLinkFromEvent(event) {\n\t\t\t\t\t\tvar detail = event && event.detail;\n\t\t\t\t\t\tvar element = detail && (detail.elt || (detail.requestConfig && detail.requestConfig.elt));\n\t\t\t\t\t\tif (!element || !element.closest) return null;\n\t\t\t\t\t\treturn element.closest('[data-manja-sidebar-nav=\"true\"]');\n\t\t\t\t\t}\n\n\t\t\t\t\tfunction normalizeHref(href) {\n\t\t\t\t\t\ttry {\n\t\t\t\t\t\t\tvar url = new URL(href, window.location.origin);\n\t\t\t\t\t\t\treturn url.pathname + url.search + url.hash;\n\t\t\t\t\t\t} catch (e) {\n\t\t\t\t\t\t\treturn href || \"\";\n\t\t\t\t\t\t}\n\t\t\t\t\t}\n\n\t\t\t\t\tfunction activeMarker(link) {\n\t\t\t\t\t\tfor (var i = 0; i < link.children.length; i++) {\n\t\t\t\t\t\t\tvar child = link.children[i];\n\t\t\t\t\t\t\tif (child.classList && child.classList.contains('sr-only') && child.textContent.trim() === 'active') {\n\t\t\t\t\t\t\t\treturn child;\n\t\t\t\t\t\t\t}\n\t\t\t\t\t\t}\n\t\t\t\t\t\treturn null;\n\t\t\t\t\t}\n\n\t\t\t\t\tfunction directIcon(link) {\n\t\t\t\t\t\tfor (var i = 0; i < link.children.length; i++) {\n\t\t\t\t\t\t\tvar child = link.children[i];\n\t\t\t\t\t\t\tif (child.classList && child.classList.contains('size-8')) {\n\t\t\t\t\t\t\t\treturn child;\n\t\t\t\t\t\t\t}\n\t\t\t\t\t\t}\n\t\t\t\t\t\treturn null;\n\t\t\t\t\t}\n\n\t\t\t\t\tfunction classProfile(link) {\n\t\t\t\t\t\tif (link.closest('[data-sidebar-section]')) return sidebarLinkClasses.section;\n\t\t\t\t\t\treturn sidebarLinkClasses.item;\n\t\t\t\t\t}\n\n\t\t\t\t\tfunction setSidebarLinkActive(link, active) {\n\t\t\t\t\t\tvar profile = classProfile(link);\n\t\t\t\t\t\tlink.classList.remove.apply(link.classList, profile.active.concat(profile.inactive));\n\t\t\t\t\t\tlink.classList.add.apply(link.classList, active ? profile.active : profile.inactive);\n\t\t\t\t\t\tif (active) {\n\t\t\t\t\t\t\tlink.setAttribute('aria-current', 'page');\n\t\t\t\t\t\t\tif (!activeMarker(link)) {\n\t\t\t\t\t\t\t\tvar marker = document.createElement('span');\n\t\t\t\t\t\t\t\tmarker.className = 'sr-only';\n\t\t\t\t\t\t\t\tmarker.textContent = 'active';\n\t\t\t\t\t\t\t\tlink.appendChild(marker);\n\t\t\t\t\t\t\t}\n\t\t\t\t\t\t} else {\n\t\t\t\t\t\t\tlink.removeAttribute('aria-current');\n\t\t\t\t\t\t\tvar marker = activeMarker(link);\n\t\t\t\t\t\t\tif (marker) marker.remove();\n\t\t\t\t\t\t}\n\n\t\t\t\t\t\tvar icon = directIcon(link);\n\t\t\t\t\t\tif (!icon || !profile.iconActive || !profile.iconInactive) return;\n\t\t\t\t\t\ticon.classList.remove.apply(icon.classList, profile.iconActive.concat(profile.iconInactive));\n\t\t\t\t\t\ticon.classList.add.apply(icon.classList, active ? profile.iconActive : profile.iconInactive);\n\t\t\t\t\t}\n\n\t\t\t\t\tfunction updateSidebarActiveLink(href) {\n\t\t\t\t\t\thref = normalizeHref(href);\n\t\t\t\t\t\tif (!href) return;\n\t\t\t\t\t\tvar links = document.querySelectorAll('[data-manja-sidebar-nav=\"true\"][href]');\n\t\t\t\t\t\tvar matched = false;\n\t\t\t\t\t\tfor (var i = 0; i < links.length; i++) {\n\t\t\t\t\t\t\tvar link = links[i];\n\t\t\t\t\t\t\tvar active = normalizeHref(link.getAttribute('href')) === href;\n\t\t\t\t\t\t\tsetSidebarLinkActive(link, active);\n\t\t\t\t\t\t\tmatched = matched || active;\n\t\t\t\t\t\t}\n\t\t\t\t\t\tif (!matched) {\n\t\t\t\t\t\t\tfor (var j = 0; j < links.length; j++) setSidebarLinkActive(links[j], false);\n\t\t\t\t\t\t}\n\t\t\t\t\t}\n\n\t\t\t\t\tdocument.addEventListener('htmx:beforeRequest', function (e) {\n\t\t\t\t\t\tvar link = sidebarLinkFromEvent(e);\n\t\t\t\t\t\tif (link) pendingSidebarHref = link.getAttribute('href') || \"\";\n\t\t\t\t\t});\n\n\t\t\t\t\tdocument.addEventListener('htmx:afterSwap', function (e) {\n\t\t\t\t\t\tvar target = e && e.detail && e.detail.target;\n\t\t\t\t\t\tif (!target || target.id !== 'main-content') return;\n\t\t\t\t\t\tupdateSidebarActiveLink(pendingSidebarHref || (window.location.pathname + window.location.search + window.location.hash));\n\t\t\t\t\t\tpendingSidebarHref = \"\";\n\t\t\t\t\t\twindow.scrollTo({ top: 0 });\n\t\t\t\t\t});\n\t\t\t\t})();\n\t\t\t</script><link rel=\"stylesheet\" href=\"/manja-assets/manja.css\"><script defer src=\"/manja-assets/schema-example.js\"></script><script defer src=\"/manja-assets/request-composer.js\"></script><style>[x-cloak] { display: none !important; }</style></head><body class=\"min-h-screen bg-surface text-on-surface dark:bg-surface-dark dark:text-on-surface-dark\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templ_7745c5c3_Var1.Render(ctx, templ_7745c5c3_Buffer)
+		templ_7745c5c3_Err = templ_7745c5c3_Var2.Render(ctx, templ_7745c5c3_Buffer)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 4, "</body></html>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 7, "</body></html>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
