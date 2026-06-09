@@ -61,6 +61,29 @@ func NewWithOptions(ctx context.Context, opts Options) (http.Handler, error) {
 			StaticDir:            opts.StaticDir,
 			Branding:             opts.Branding,
 		},
+		Management: web.ManagementOptions{
+			Store: store,
+			Project: core.Project{
+				ID:   opts.ProjectID,
+				Name: result.Index.Title,
+				SEO: core.ProjectSEO{
+					Robots: "index,follow",
+				},
+				Theme: core.ThemeSettings{
+					Theme:    "manja",
+					DarkMode: "auto",
+				},
+				SourceIDs: []string{opts.SourceID},
+			},
+			Source: core.Source{
+				ID:        opts.SourceID,
+				ProjectID: opts.ProjectID,
+				Kind:      "file",
+				SpecPath:  opts.SpecPath,
+			},
+			Revision:   result.Revision,
+			SyncRecord: result.Record,
+		},
 	}), nil
 }
 

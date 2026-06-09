@@ -7,7 +7,8 @@ import (
 )
 
 type Options struct {
-	Public PublicOptions
+	Public     PublicOptions
+	Management ManagementOptions
 }
 
 func NewServer(idx core.SpecIndex) http.Handler {
@@ -16,6 +17,9 @@ func NewServer(idx core.SpecIndex) http.Handler {
 
 func NewServerWithOptions(idx core.SpecIndex, opts Options) http.Handler {
 	mux := http.NewServeMux()
+	management := NewManagementServer(idx, opts.Management)
+	mux.Handle("/manage", management)
+	mux.Handle("/manage/publication", management)
 	mux.Handle("/", NewPublicServerWithOptions(idx, opts.Public))
 	mux.Handle("/api/", NewAPIServer())
 	return mux
