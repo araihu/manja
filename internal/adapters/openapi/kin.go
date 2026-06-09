@@ -710,11 +710,11 @@ func buildSearch(idx core.SpecIndex) []core.SearchDocument {
 	docs := make([]core.SearchDocument, 0, len(idx.Operations)+len(idx.Schemas)+1)
 	for _, op := range idx.Operations {
 		anchor := operationAnchor(op)
-		title := fmt.Sprintf("%s %s", op.Method, op.Path)
+		title := firstNonEmpty(op.Summary, op.Path, fmt.Sprintf("%s %s", op.Method, op.Path))
 		docs = append(docs, core.SearchDocument{
 			ID:          anchor,
 			Title:       title,
-			Description: firstNonEmpty(op.Summary, op.Description),
+			Description: searchDescription(title, op.Description),
 			Href:        "#" + anchor,
 			Kind:        "Operation",
 			Method:      op.Method,
@@ -744,6 +744,17 @@ func buildSearch(idx core.SpecIndex) []core.SearchDocument {
 		Keywords:    []string{"overview", idx.Title},
 	})
 	return docs
+}
+
+func searchDescription(title string, candidates ...string) string {
+	normalizedTitle := strings.TrimSpace(title)
+	for _, candidate := range candidates {
+		candidate = strings.TrimSpace(candidate)
+		if candidate != "" && candidate != normalizedTitle {
+			return candidate
+		}
+	}
+	return ""
 }
 
 func buildPublicRoutes(idx core.SpecIndex) []core.PublicRoute {

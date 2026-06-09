@@ -34,7 +34,7 @@ func TestOpenAPIParserBuildsSearchIndex(t *testing.T) {
 	if idx.Operations[0].Anchor != "operation-listpets" {
 		t.Fatalf("first operation anchor = %q", idx.Operations[0].Anchor)
 	}
-	if idx.Search[0].Title != "GET /pets" {
+	if idx.Search[0].Title != "List pets" {
 		t.Fatalf("first search title = %q", idx.Search[0].Title)
 	}
 	if idx.Search[0].Href != "#"+idx.Operations[0].Anchor || idx.PublicRoutes[1].Path != "/?selected="+idx.Operations[0].Anchor+"#"+idx.Operations[0].Anchor {
