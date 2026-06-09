@@ -27,6 +27,7 @@ type Options struct {
 	SpecPath             string
 	DataDir              string
 	StaticDir            string
+	Branding             core.DocsBranding
 	EndpointSidebarLabel EndpointSidebarLabelMode
 }
 
@@ -58,6 +59,7 @@ func NewWithOptions(ctx context.Context, opts Options) (http.Handler, error) {
 			EndpointSidebarLabel: web.EndpointSidebarLabelMode(opts.EndpointSidebarLabel),
 			MarkdownRenderer:     markdownadapter.NewRenderer(),
 			StaticDir:            opts.StaticDir,
+			Branding:             opts.Branding,
 		},
 	}), nil
 }

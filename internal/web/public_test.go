@@ -362,6 +362,76 @@ func TestPublicDocsRenderOverviewByDefault(t *testing.T) {
 	}
 }
 
+func TestPublicDocsBrandingDefaultsToManjaAssets(t *testing.T) {
+	idx := core.SpecIndex{
+		Title:   "Petstore",
+		Version: "1.0.0",
+	}
+
+	body := renderPublicDocs(t, NewPublicServer(idx))
+
+	for _, want := range []string{
+		`<title>Petstore</title>`,
+		`<link rel="icon" href="/manja-assets/favicon.svg">`,
+		`href="/" class="flex min-w-0 items-center gap-2`,
+		`<img src="/manja-assets/manja-mark.svg" alt="" width="32" height="32"`,
+		`<span>Manja</span>`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("default branding missing %q:\n%s", want, body)
+		}
+	}
+}
+
+func TestPublicDocsBrandingUsesOptionsOverSpecAndDefaults(t *testing.T) {
+	idx := core.SpecIndex{
+		Title: "Spec API",
+		Branding: core.DocsBranding{
+			DisplayName: "Spec Brand",
+			Logo: core.DocsBrandingLogo{
+				Src:     "https://cdn.example.test/spec-logo.svg",
+				Alt:     "Spec Brand logo",
+				HomeURL: "https://spec.example.test",
+			},
+			Favicon: "https://cdn.example.test/spec-favicon.svg",
+		},
+	}
+
+	body := renderPublicDocs(t, NewPublicServerWithOptions(idx, PublicOptions{
+		Branding: core.DocsBranding{
+			DisplayName: "Acme Developers",
+			Logo: core.DocsBrandingLogo{
+				Src:     "https://cdn.example.test/acme-logo.svg",
+				Alt:     "Acme Developers",
+				HomeURL: "https://developers.example.test",
+			},
+			Favicon: "https://cdn.example.test/acme-favicon.svg",
+		},
+	}))
+
+	for _, want := range []string{
+		`<title>Spec API</title>`,
+		`<link rel="icon" href="https://cdn.example.test/acme-favicon.svg">`,
+		`href="https://developers.example.test" class="flex min-w-0 items-center gap-2`,
+		`<img src="https://cdn.example.test/acme-logo.svg" alt="Acme Developers" width="32" height="32"`,
+		`<span>Acme Developers</span>`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("custom branding missing %q:\n%s", want, body)
+		}
+	}
+	for _, reject := range []string{
+		`Spec Brand`,
+		`https://cdn.example.test/spec-logo.svg`,
+		`https://cdn.example.test/spec-favicon.svg`,
+		`/manja-assets/manja-mark.svg`,
+	} {
+		if strings.Contains(body, reject) {
+			t.Fatalf("custom branding should override %q:\n%s", reject, body)
+		}
+	}
+}
+
 func TestPublicDocsRenderMarkdownDescriptions(t *testing.T) {
 	idx := core.SpecIndex{
 		Title: "Markdown API",

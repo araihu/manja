@@ -28,6 +28,7 @@ type PublicOptions struct {
 	EndpointSidebarLabel EndpointSidebarLabelMode
 	MarkdownRenderer     core.MarkdownRenderer
 	StaticDir            string
+	Branding             core.DocsBranding
 }
 
 const openAPIJSONDownloadPath = "/openapi.json"
@@ -142,6 +143,7 @@ func NewPublicServer(idx core.SpecIndex) http.Handler {
 
 func NewPublicServerWithOptions(idx core.SpecIndex, opts PublicOptions) http.Handler {
 	opts = opts.withDefaults()
+	idx.Branding = docsBranding(idx.Branding, opts.Branding)
 	mux := http.NewServeMux()
 	mux.Handle("/assets/", assets.Handler())
 	mux.Handle("/manja-assets/", http.StripPrefix("/manja-assets/", http.FileServer(http.Dir(opts.StaticDir))))
@@ -235,4 +237,40 @@ func NewPublicServerWithOptions(idx core.SpecIndex, opts PublicOptions) http.Han
 		}
 	})
 	return mux
+}
+
+func docsBranding(specBranding core.DocsBranding, optionBranding core.DocsBranding) core.DocsBranding {
+	branding := core.DocsBranding{
+		DisplayName: "Manja",
+		Logo: core.DocsBrandingLogo{
+			Src:     "/manja-assets/manja-mark.svg",
+			HomeURL: "/",
+		},
+		Favicon: "/manja-assets/favicon.svg",
+	}
+	branding = mergeDocsBranding(branding, specBranding)
+	branding = mergeDocsBranding(branding, optionBranding)
+	if strings.TrimSpace(branding.Logo.HomeURL) == "" {
+		branding.Logo.HomeURL = "/"
+	}
+	return branding
+}
+
+func mergeDocsBranding(base core.DocsBranding, override core.DocsBranding) core.DocsBranding {
+	if strings.TrimSpace(override.DisplayName) != "" {
+		base.DisplayName = strings.TrimSpace(override.DisplayName)
+	}
+	if strings.TrimSpace(override.Logo.Src) != "" {
+		base.Logo.Src = strings.TrimSpace(override.Logo.Src)
+	}
+	if strings.TrimSpace(override.Logo.Alt) != "" {
+		base.Logo.Alt = strings.TrimSpace(override.Logo.Alt)
+	}
+	if strings.TrimSpace(override.Logo.HomeURL) != "" {
+		base.Logo.HomeURL = strings.TrimSpace(override.Logo.HomeURL)
+	}
+	if strings.TrimSpace(override.Favicon) != "" {
+		base.Favicon = strings.TrimSpace(override.Favicon)
+	}
+	return base
 }

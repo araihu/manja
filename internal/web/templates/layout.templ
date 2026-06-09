@@ -1,8 +1,16 @@
 package templates
 
-import "github.com/araihu/goshtoso/components/head"
+import (
+	templpkg "github.com/a-h/templ"
+	"github.com/araihu/goshtoso/components/head"
+	"github.com/araihu/manja/internal/core"
+)
 
 templ Layout(title string) {
+	@LayoutWithBranding(title, core.DocsBranding{})
+}
+
+templ LayoutWithBranding(title string, branding core.DocsBranding) {
 	<!DOCTYPE html>
 	<html
 		lang="en"
@@ -35,6 +43,9 @@ templ Layout(title string) {
 			<meta charset="UTF-8"/>
 			<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 			<title>{ title }</title>
+			if branding.Favicon != "" {
+				<link rel="icon" href={ templpkg.URL(branding.Favicon) }/>
+			}
 			<script>
 				(function() {
 					try {

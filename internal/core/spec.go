@@ -20,6 +20,7 @@ type SpecIndex struct {
 	RevisionID      string
 	Title           string
 	Version         string
+	Branding        DocsBranding
 	Overview        SpecOverview
 	SpecDownload    SpecDownload
 	Operations      []Operation
@@ -27,6 +28,18 @@ type SpecIndex struct {
 	Search          []SearchDocument
 	PublicRoutes    []PublicRoute
 	ExampleSpecJSON string
+}
+
+type DocsBranding struct {
+	DisplayName string
+	Logo        DocsBrandingLogo
+	Favicon     string
+}
+
+type DocsBrandingLogo struct {
+	Src     string
+	Alt     string
+	HomeURL string
 }
 
 type SpecDownload struct {
