@@ -37,7 +37,7 @@ func TestOpenAPIParserBuildsSearchIndex(t *testing.T) {
 	if idx.Search[0].Title != "GET /pets" {
 		t.Fatalf("first search title = %q", idx.Search[0].Title)
 	}
-	if idx.Search[0].Href != "#"+idx.Operations[0].Anchor || idx.PublicRoutes[1].Path != idx.Search[0].Href {
+	if idx.Search[0].Href != "#"+idx.Operations[0].Anchor || idx.PublicRoutes[1].Path != "/?selected="+idx.Operations[0].Anchor+"#"+idx.Operations[0].Anchor {
 		t.Fatalf("operation anchor mismatch: operation = %q, search = %q, route = %q", idx.Operations[0].Anchor, idx.Search[0].Href, idx.PublicRoutes[1].Path)
 	}
 	if len(idx.Schemas) != 1 || idx.Schemas[0].Name != "Pet" {
@@ -135,7 +135,7 @@ components:
 	if idx.Operations[1].Anchor != idx.Search[1].ID {
 		t.Fatalf("second operation anchor = %q, search id = %q", idx.Operations[1].Anchor, idx.Search[1].ID)
 	}
-	if idx.PublicRoutes[1].Path != idx.Search[0].Href || idx.PublicRoutes[2].Path != idx.Search[1].Href {
+	if idx.PublicRoutes[1].Path != "/?selected="+idx.Operations[0].Anchor+"#"+idx.Operations[0].Anchor || idx.PublicRoutes[2].Path != "/?selected="+idx.Operations[1].Anchor+"#"+idx.Operations[1].Anchor {
 		t.Fatalf("public route paths = %#v, search hrefs = %#v", idx.PublicRoutes, idx.Search[:2])
 	}
 }
@@ -351,7 +351,12 @@ components:
 		paths = append(paths, route.Path)
 	}
 	got := strings.Join(paths, " ")
-	for _, want := range []string{"/", "#operation-get-widgets", "#schema-widget", "#schema-widgetevent"} {
+	for _, want := range []string{
+		"/",
+		"/?selected=operation-get-widgets#operation-get-widgets",
+		"/?selected=schema-widget#schema-widget",
+		"/?selected=schema-widgetevent#schema-widgetevent",
+	} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("public routes missing %q: %#v", want, idx.PublicRoutes)
 		}
