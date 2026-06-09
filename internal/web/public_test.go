@@ -391,21 +391,25 @@ components:
 		t.Fatalf("status = %d, body = %s", rec.Code, rec.Body.String())
 	}
 	var got []struct {
-		ID     string `json:"id"`
-		Href   string `json:"href"`
-		Kind   string `json:"kind"`
-		Method string `json:"method"`
-		Path   string `json:"path"`
+		ID          string `json:"id"`
+		Title       string `json:"title"`
+		Description string `json:"description"`
+		Href        string `json:"href"`
+		Kind        string `json:"kind"`
+		Method      string `json:"method"`
+		Path        string `json:"path"`
 	}
 	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
 		t.Fatal(err)
 	}
 	items := make(map[string]struct {
-		ID     string `json:"id"`
-		Href   string `json:"href"`
-		Kind   string `json:"kind"`
-		Method string `json:"method"`
-		Path   string `json:"path"`
+		ID          string `json:"id"`
+		Title       string `json:"title"`
+		Description string `json:"description"`
+		Href        string `json:"href"`
+		Kind        string `json:"kind"`
+		Method      string `json:"method"`
+		Path        string `json:"path"`
 	}, len(got))
 	for _, item := range got {
 		items[item.ID] = item
@@ -413,6 +417,12 @@ components:
 	operation := items["search-operation-getwidgets"]
 	if operation.Href != wantOperation {
 		t.Fatalf("operation search href = %q, want %q; items = %#v", operation.Href, wantOperation, got)
+	}
+	if operation.Title != "List widgets" {
+		t.Fatalf("operation search title = %q, want List widgets", operation.Title)
+	}
+	if operation.Description != "" {
+		t.Fatalf("operation search description = %q, want empty when it duplicates title", operation.Description)
 	}
 	if operation.Kind != "Operation" || operation.Method != "GET" || operation.Path != "/widgets" {
 		t.Fatalf("operation search metadata = %#v, want kind Operation, method GET, path /widgets", operation)
