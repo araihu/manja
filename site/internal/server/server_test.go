@@ -45,6 +45,8 @@ func TestRoutesRender(t *testing.T) {
 			want: []string{
 				"Setup docs",
 				"go run ./cmd/manja",
+				"ghcr.io/araihu/manja:main",
+				`href="#run-with-docker"`,
 				"last-known-good",
 			},
 		},
@@ -74,6 +76,16 @@ func TestStaticAssetsRender(t *testing.T) {
 	css := get(t, srv.URL+"/static/site.css", http.StatusOK)
 	if !strings.Contains(css, "--accent: #18d6a7") {
 		t.Fatalf("site.css did not include Manja accent token")
+	}
+	for _, want := range []string{
+		".docs-content section {\n  min-width: 0;",
+		"overflow-wrap: anywhere;",
+		".code-panel {\n  background: #101920;",
+		"overflow-x: auto;",
+	} {
+		if !strings.Contains(css, want) {
+			t.Fatalf("site.css did not include docs overflow guard %q", want)
+		}
 	}
 
 	favicon := get(t, srv.URL+"/static/favicon.svg", http.StatusOK)

@@ -31,17 +31,55 @@ that npm script exists, and restarts Manja.
 Generated templ Go files, static CSS bundles, and the schema example JS bundle
 are excluded from the watcher so build outputs do not trigger rebuild loops.
 
-The dev launcher chooses available app and proxy ports per worktree, then prints
-the URLs before starting Air. Open the printed Air reload proxy URL, not the app
-URL. To pin ports explicitly, run:
+The dev launcher chooses available app, proxy, and product site ports per
+worktree, then prints the URLs before starting Air and the site server. Open the
+printed product site URL for landing/docs work. Open the Air reload proxy URL,
+not the app URL, when you want the standalone renderer with reload. To pin ports
+explicitly, run:
 
 ```bash
-npm run dev -- --app-port 8080 --proxy-port 7331
+npm run dev -- --app-port 8080 --proxy-port 7331 --site-port 8180
 ```
 
-Use `npm run dev -- --print-ports` to inspect the selected pair without
-starting Air. Extra flags are passed through to Manja:
+Use `npm run dev -- --print-ports` to inspect the selected ports without
+starting the servers. Extra flags are passed through to Manja:
 
 ```bash
 npm run dev -- -spec internal/adapters/openapi/testdata/petstore.yaml
+```
+
+## Docker Image
+
+Manja images are published to GitHub Container Registry as
+`ghcr.io/araihu/manja`. The `main` tag follows the latest successful build from
+`main`; release tags also publish semver tags such as `1`, `1.2`, and `1.2.3`.
+
+Run the image with its bundled GitHub REST API fixture:
+
+```bash
+docker run --rm -p 8080:8080 ghcr.io/araihu/manja:main
+```
+
+Open <http://localhost:8080>. The container stores local publication metadata in
+`/var/lib/manja`; mount it when you want state to survive container restarts:
+
+```bash
+docker run --rm \
+  -p 8080:8080 \
+  -v manja-data:/var/lib/manja \
+  ghcr.io/araihu/manja:main
+```
+
+To render your own OpenAPI document, mount the file and pass the same Manja
+flags you would use with the local binary:
+
+```bash
+docker run --rm \
+  -p 8080:8080 \
+  -v "$PWD/openapi.yaml:/spec/openapi.yaml:ro" \
+  -v manja-data:/var/lib/manja \
+  ghcr.io/araihu/manja:main \
+  -addr :8080 \
+  -spec /spec/openapi.yaml \
+  -data-dir /var/lib/manja
 ```
