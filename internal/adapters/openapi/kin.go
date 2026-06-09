@@ -754,6 +754,13 @@ func buildPublicRoutes(idx core.SpecIndex) []core.PublicRoute {
 			Description: firstNonEmpty(op.Summary, op.Description),
 		})
 	}
+	for _, schema := range idx.Schemas {
+		routes = append(routes, core.PublicRoute{
+			Path:        "#schema-" + strings.ToLower(schema.Name),
+			Title:       schema.Name,
+			Description: schema.Description,
+		})
+	}
 	return routes
 }
 
