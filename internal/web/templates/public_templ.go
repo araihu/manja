@@ -3416,13 +3416,13 @@ func methodBadgeClass(method string) string {
 func methodBadgeVariant(method string) badge.Variant {
 	switch strings.ToUpper(strings.TrimSpace(method)) {
 	case "GET":
-		return badge.Info
+		return badge.Primary
 	case "POST":
 		return badge.Success
 	case "PUT":
 		return badge.Warning
 	case "PATCH":
-		return badge.Secondary
+		return badge.Warning
 	case "DELETE":
 		return badge.Danger
 	default:
@@ -3898,16 +3898,16 @@ func responseStatusBadge(status string) templ.Component {
 
 func responseBadgeVariant(status string) badge.Variant {
 	trimmed := strings.TrimSpace(status)
-	if strings.HasPrefix(trimmed, "1") {
-		return badge.Info
-	}
 	if strings.HasPrefix(trimmed, "2") {
 		return badge.Success
 	}
 	if strings.HasPrefix(trimmed, "3") {
+		return badge.Primary
+	}
+	if strings.HasPrefix(trimmed, "4") {
 		return badge.Warning
 	}
-	if strings.HasPrefix(trimmed, "4") || strings.HasPrefix(trimmed, "5") {
+	if strings.HasPrefix(trimmed, "5") {
 		return badge.Danger
 	}
 	return badge.Default
