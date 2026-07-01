@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"path/filepath"
 
@@ -24,12 +25,23 @@ const (
 type Options struct {
 	ProjectID            string
 	SourceID             string
+	SourceKind           string
 	SpecPath             string
+	GitRepo              string
+	GitRef               string
+	GitUsername          string
+	GitToken             string
+	GitSSHPrivateKey     string
 	DataDir              string
 	StaticDir            string
 	Branding             core.DocsBranding
 	EndpointSidebarLabel EndpointSidebarLabelMode
 }
+
+const (
+	SourceKindFile = "file"
+	SourceKindGit  = "git"
+)
 
 func New(ctx context.Context, specPath string) (http.Handler, error) {
 	return NewWithOptions(ctx, Options{SpecPath: specPath})
@@ -37,7 +49,10 @@ func New(ctx context.Context, specPath string) (http.Handler, error) {
 
 func NewWithOptions(ctx context.Context, opts Options) (http.Handler, error) {
 	opts = opts.withDefaults()
-	src := sourceadapter.File{Path: opts.SpecPath}
+	src, source, err := opts.source()
+	if err != nil {
+		return nil, err
+	}
 	store := storeadapter.NewFileStore(opts.DataDir)
 	syncer := core.Syncer{
 		Source: src,
@@ -75,12 +90,7 @@ func NewWithOptions(ctx context.Context, opts Options) (http.Handler, error) {
 				},
 				SourceIDs: []string{opts.SourceID},
 			},
-			Source: core.Source{
-				ID:        opts.SourceID,
-				ProjectID: opts.ProjectID,
-				Kind:      "file",
-				SpecPath:  opts.SpecPath,
-			},
+			Source:     source,
 			Revision:   result.Revision,
 			SyncRecord: result.Record,
 		},
@@ -88,11 +98,22 @@ func NewWithOptions(ctx context.Context, opts Options) (http.Handler, error) {
 }
 
 func (o Options) withDefaults() Options {
+	if o.SourceKind == "" {
+		if o.GitRepo != "" {
+			o.SourceKind = SourceKindGit
+		} else {
+			o.SourceKind = SourceKindFile
+		}
+	}
 	if o.ProjectID == "" {
 		o.ProjectID = "default"
 	}
 	if o.SourceID == "" {
-		o.SourceID = "default"
+		if o.SourceKind == SourceKindGit && o.GitRepo != "" {
+			o.SourceID = o.GitRepo
+		} else {
+			o.SourceID = "default"
+		}
 	}
 	if o.DataDir == "" {
 		o.DataDir = filepath.Join(".manja", "data")
@@ -103,4 +124,34 @@ func (o Options) withDefaults() Options {
 		o.EndpointSidebarLabel = EndpointSidebarLabelAuto
 	}
 	return o
+}
+
+func (o Options) source() (core.SourceFetcher, core.Source, error) {
+	source := core.Source{
+		ID:        o.SourceID,
+		ProjectID: o.ProjectID,
+		Kind:      o.SourceKind,
+		SpecPath:  o.SpecPath,
+	}
+	switch o.SourceKind {
+	case SourceKindFile:
+		return sourceadapter.File{Path: o.SpecPath}, source, nil
+	case SourceKindGit:
+		if o.GitRepo == "" {
+			return nil, core.Source{}, fmt.Errorf("git source repo is required")
+		}
+		if source.ID == "" {
+			source.ID = o.GitRepo
+		}
+		return sourceadapter.Git{
+			Repo:          o.GitRepo,
+			Ref:           o.GitRef,
+			Path:          o.SpecPath,
+			Username:      o.GitUsername,
+			Token:         o.GitToken,
+			SSHPrivateKey: o.GitSSHPrivateKey,
+		}, source, nil
+	default:
+		return nil, core.Source{}, fmt.Errorf("unsupported source kind %q", o.SourceKind)
+	}
 }

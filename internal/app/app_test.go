@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -100,6 +101,56 @@ func TestNewWithOptionsSyncsSpecBeforeServingPublicDocs(t *testing.T) {
 	}
 }
 
+func TestNewWithOptionsSyncsGitSourceBeforeServingPublicDocs(t *testing.T) {
+	ctx := context.Background()
+	dataDir := t.TempDir()
+	repo := initAppGitRepo(t)
+	writeAppGitFile(t, repo, "docs/openapi.yaml", "openapi: 3.1.0\ninfo:\n  title: Git Synced API\n  version: v2\npaths: {}\n")
+	commit := appGitOutput(t, repo, "rev-parse", "HEAD")
+
+	handler, err := NewWithOptions(ctx, Options{
+		ProjectID:  "project1",
+		SourceKind: "git",
+		GitRepo:    repo,
+		GitRef:     "main",
+		SpecPath:   "docs/openapi.yaml",
+		DataDir:    dataDir,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d", rec.Code)
+	}
+	if body := rec.Body.String(); !containsAll(body, "Git Synced API", "OpenAPI docs") {
+		t.Fatalf("body = %s", body)
+	}
+
+	rec = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodGet, "/manage", nil)
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("management status = %d", rec.Code)
+	}
+	if body := rec.Body.String(); !containsAll(body, "Management", "Git Synced API", repo, "git", "docs/openapi.yaml", "main", commit, "success") {
+		t.Fatalf("management body = %s", body)
+	}
+
+	revisions := entries(t, filepath.Join(dataDir, "revisions"))
+	if len(revisions) != 1 {
+		t.Fatalf("revisions = %#v", revisions)
+	}
+	var rev core.Revision
+	readJSON(t, filepath.Join(dataDir, "revisions", revisions[0]), &rev)
+	if rev.ID == "" || rev.SourceID != repo || rev.Ref != "main" || rev.CommitSHA != commit {
+		t.Fatalf("revision = %#v, want source %q ref main commit %q", rev, repo, commit)
+	}
+}
+
 func entries(t *testing.T, path string) []string {
 	t.Helper()
 	dirEntries, err := os.ReadDir(path)
@@ -131,4 +182,42 @@ func containsAll(body string, wants ...string) bool {
 		}
 	}
 	return true
+}
+
+func initAppGitRepo(t *testing.T) string {
+	t.Helper()
+	repo := t.TempDir()
+	appGit(t, repo, "init", "-b", "main")
+	appGit(t, repo, "config", "user.email", "manja@example.test")
+	appGit(t, repo, "config", "user.name", "Manja Test")
+	return repo
+}
+
+func writeAppGitFile(t *testing.T, repo, name, body string) {
+	t.Helper()
+	path := filepath.Join(repo, filepath.FromSlash(name))
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	appGit(t, repo, "add", name)
+	appGit(t, repo, "commit", "-m", "add spec")
+}
+
+func appGit(t *testing.T, repo string, args ...string) {
+	t.Helper()
+	_ = appGitOutput(t, repo, args...)
+}
+
+func appGitOutput(t *testing.T, repo string, args ...string) string {
+	t.Helper()
+	cmd := exec.Command("git", args...)
+	cmd.Dir = repo
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("git %v failed: %v\n%s", args, err, out)
+	}
+	return strings.TrimSpace(string(out))
 }
