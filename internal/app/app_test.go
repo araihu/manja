@@ -151,6 +151,81 @@ func TestNewWithOptionsSyncsGitSourceBeforeServingPublicDocs(t *testing.T) {
 	}
 }
 
+func TestNewWithOptionsManagesGitRefDiscoveryAndSyncPublication(t *testing.T) {
+	ctx := context.Background()
+	dataDir := t.TempDir()
+	repo := initAppGitRepo(t)
+	writeAppGitFile(t, repo, "docs/openapi.yaml", "openapi: 3.1.0\ninfo:\n  title: Main API\n  version: v1\npaths: {}\n")
+	appGit(t, repo, "tag", "v1.0.0")
+	appGit(t, repo, "checkout", "-b", "release/v2")
+	writeAppGitFile(t, repo, "docs/openapi.yaml", "openapi: 3.1.0\ninfo:\n  title: Release API\n  version: v2\npaths: {}\n")
+	releaseCommit := appGitOutput(t, repo, "rev-parse", "HEAD")
+	appGit(t, repo, "checkout", "main")
+
+	handler, err := NewWithOptions(ctx, Options{
+		ProjectID:  "project1",
+		SourceKind: "git",
+		GitRepo:    repo,
+		GitRef:     "main",
+		SpecPath:   "docs/openapi.yaml",
+		DataDir:    dataDir,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/manage", nil)
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("management status = %d", rec.Code)
+	}
+	if body := rec.Body.String(); !containsAll(body, "Main API", "Available refs", "release/v2", "v1.0.0") {
+		t.Fatalf("management body = %s", body)
+	}
+
+	form := url.Values{
+		"ref":     {"release/v2"},
+		"publish": {"public"},
+		"path":    {"/release/v2"},
+	}
+	rec = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodPost, "/manage/sync", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusSeeOther {
+		t.Fatalf("sync status = %d", rec.Code)
+	}
+
+	rec = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodGet, "/manage", nil)
+	handler.ServeHTTP(rec, req)
+	if body := rec.Body.String(); !containsAll(body, "Release API", "release/v2", releaseCommit, "/release/v2", "Public") {
+		t.Fatalf("updated management body = %s", body)
+	}
+
+	revisions := entries(t, filepath.Join(dataDir, "revisions"))
+	if len(revisions) != 2 {
+		t.Fatalf("revisions = %#v", revisions)
+	}
+	var releaseRevision core.Revision
+	for _, name := range revisions {
+		var rev core.Revision
+		readJSON(t, filepath.Join(dataDir, "revisions", name), &rev)
+		if rev.Ref == "release/v2" {
+			releaseRevision = rev
+		}
+	}
+	if releaseRevision.ID == "" || releaseRevision.CommitSHA != releaseCommit {
+		t.Fatalf("release revision = %#v, want commit %q", releaseRevision, releaseCommit)
+	}
+	var pub core.Publication
+	readJSON(t, filepath.Join(dataDir, "publications", "project1-"+releaseRevision.ID+".json"), &pub)
+	if pub.ProjectID != "project1" || pub.RevisionID != releaseRevision.ID || !pub.Public || pub.Path != "/release/v2" {
+		t.Fatalf("publication = %#v", pub)
+	}
+}
+
 func entries(t *testing.T, path string) []string {
 	t.Helper()
 	dirEntries, err := os.ReadDir(path)

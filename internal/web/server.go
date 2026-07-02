@@ -20,6 +20,7 @@ func NewServerWithOptions(idx core.SpecIndex, opts Options) http.Handler {
 	management := NewManagementServer(idx, opts.Management)
 	mux.Handle("/manage", management)
 	mux.Handle("/manage/publication", management)
+	mux.Handle("/manage/sync", management)
 	mux.Handle("/", NewPublicServerWithOptions(idx, opts.Public))
 	mux.Handle("/api/", NewAPIServer())
 	return mux

@@ -336,6 +336,108 @@ func TestManagementPublicationPostSavesPublicationAndUpdatesOverview(t *testing.
 	}
 }
 
+func TestManagementSyncPostSyncsSelectedGitRefAndCanPublish(t *testing.T) {
+	store := &fakeManagementPublicationStore{}
+	var syncedRef string
+	srv := NewServerWithOptions(core.SpecIndex{}, Options{
+		Management: ManagementOptions{
+			Store: store,
+			SyncAction: func(_ context.Context, spec ManagedSpec, ref string) (ManagedSpec, error) {
+				syncedRef = ref
+				spec.Index = core.SpecIndex{
+					ProjectID:  "payments",
+					RevisionID: "rev-release",
+					Title:      "Payments Release API",
+					Version:    "v2",
+				}
+				spec.Revision = core.Revision{
+					ID:        "rev-release",
+					SourceID:  "repo-payments",
+					Ref:       ref,
+					CommitSHA: "def456",
+				}
+				spec.SyncRecord = core.SyncRecord{
+					ProjectID:  "payments",
+					SourceID:   "repo-payments",
+					RevisionID: "rev-release",
+					Trigger:    "manual",
+					Result:     core.SyncResultSuccess,
+				}
+				return spec, nil
+			},
+			Specs: []ManagedSpec{{
+				ID:      "payments-api",
+				Index:   core.SpecIndex{ProjectID: "payments", RevisionID: "rev-main", Title: "Payments API", Version: "v1"},
+				Project: core.Project{ID: "payments", Name: "Payments"},
+				Source: core.Source{
+					ID:        "repo-payments",
+					ProjectID: "payments",
+					Kind:      "git",
+					SpecPath:  "docs/openapi.yaml",
+				},
+				Revision: core.Revision{ID: "rev-main", SourceID: "repo-payments", Ref: "main", CommitSHA: "abc123"},
+				Candidates: []core.RevisionCandidate{
+					{SourceID: "repo-payments", Ref: "main", Kind: "branch", CommitSHA: "abc123"},
+					{SourceID: "repo-payments", Ref: "release/v2", Kind: "branch", CommitSHA: "def456"},
+					{SourceID: "repo-payments", Ref: "v1.0.0", Kind: "tag", CommitSHA: "abc123"},
+				},
+			}},
+		},
+	})
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/manage", nil)
+	srv.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d", rec.Code)
+	}
+	body := rec.Body.String()
+	for _, want := range []string{
+		"Available refs",
+		`action="/manage/sync"`,
+		`name="ref"`,
+		`value="release/v2"`,
+		"branch",
+		"tag",
+		"v1.0.0",
+		"Sync selected ref",
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("body missing %q:\n%s", want, body)
+		}
+	}
+
+	form := url.Values{
+		"spec_id": {"payments-api"},
+		"ref":     {"release/v2"},
+		"publish": {"public"},
+		"path":    {"/payments/v2"},
+	}
+	rec = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodPost, "/manage/sync", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	srv.ServeHTTP(rec, req)
+	if rec.Code != http.StatusSeeOther {
+		t.Fatalf("sync status = %d, want %d", rec.Code, http.StatusSeeOther)
+	}
+	if syncedRef != "release/v2" {
+		t.Fatalf("synced ref = %q", syncedRef)
+	}
+	if store.saved.ProjectID != "payments" || store.saved.RevisionID != "rev-release" || !store.saved.Public || store.saved.Path != "/payments/v2" {
+		t.Fatalf("saved publication = %#v", store.saved)
+	}
+
+	rec = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodGet, "/manage", nil)
+	srv.ServeHTTP(rec, req)
+	body = rec.Body.String()
+	for _, want := range []string{"Payments Release API", "release/v2", "def456", "/payments/v2", "Public"} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("updated overview missing %q:\n%s", want, body)
+		}
+	}
+}
+
 func TestManagementPublicationPostCanMakeRevisionPrivate(t *testing.T) {
 	store := &fakeManagementPublicationStore{}
 	srv := NewServerWithOptions(core.SpecIndex{}, Options{
