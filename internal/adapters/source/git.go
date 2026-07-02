@@ -69,6 +69,82 @@ func (g Git) Fetch(ctx context.Context) (core.SpecFile, core.Revision, error) {
 		}, nil
 }
 
+func (g Git) Discover(ctx context.Context) ([]core.RevisionCandidate, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	if g.Repo == "" {
+		return nil, fmt.Errorf("git source repo is required")
+	}
+	repo, cleanup, err := gitWorktree(ctx, g.cloneURL(), g.SSHPrivateKey)
+	if err != nil {
+		return nil, err
+	}
+	defer cleanup()
+
+	out, err := gitOutput(ctx, repo, "for-each-ref", "--format=%(refname)%00%(objectname)%00%(*objectname)", "refs/heads", "refs/remotes", "refs/tags")
+	if err != nil {
+		return nil, fmt.Errorf("discover git refs: %w", err)
+	}
+	lines := strings.Split(strings.TrimSpace(out), "\n")
+	candidates := make([]core.RevisionCandidate, 0, len(lines))
+	seen := map[string]bool{}
+	for _, line := range lines {
+		if strings.TrimSpace(line) == "" {
+			continue
+		}
+		refname, rest, ok := strings.Cut(line, "\x00")
+		if !ok {
+			continue
+		}
+		commit, peeled, ok := strings.Cut(rest, "\x00")
+		if !ok {
+			continue
+		}
+		kind, ref, ok := gitCandidateRef(refname)
+		if !ok {
+			continue
+		}
+		if kind == "tag" && strings.TrimSpace(peeled) != "" {
+			commit = peeled
+		}
+		key := kind + "\x00" + ref
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+		candidates = append(candidates, core.RevisionCandidate{
+			SourceID:  g.Repo,
+			Ref:       ref,
+			Kind:      kind,
+			CommitSHA: strings.TrimSpace(commit),
+		})
+	}
+	return candidates, nil
+}
+
+func gitCandidateRef(refname string) (string, string, bool) {
+	refname = strings.TrimSpace(refname)
+	if ref, ok := strings.CutPrefix(refname, "refs/heads/"); ok {
+		return "branch", ref, ref != ""
+	}
+	if ref, ok := strings.CutPrefix(refname, "refs/remotes/"); ok {
+		if ref == "HEAD" || strings.HasSuffix(ref, "/HEAD") {
+			return "", "", false
+		}
+		_, branch, ok := strings.Cut(ref, "/")
+		if !ok {
+			return "", "", false
+		}
+		ref = branch
+		return "branch", ref, ref != ""
+	}
+	if ref, ok := strings.CutPrefix(refname, "refs/tags/"); ok {
+		return "tag", ref, ref != ""
+	}
+	return "", "", false
+}
+
 func (g Git) cloneURL() string {
 	if g.Username == "" && g.Token == "" {
 		return g.Repo

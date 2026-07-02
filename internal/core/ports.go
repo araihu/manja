@@ -33,6 +33,10 @@ type SourceFetcher interface {
 	Fetch(context.Context) (SpecFile, Revision, error)
 }
 
+type SourceDiscoverer interface {
+	Discover(context.Context) ([]RevisionCandidate, error)
+}
+
 type Parser interface {
 	Parse(context.Context, SpecFile, Revision) (SpecIndex, error)
 }

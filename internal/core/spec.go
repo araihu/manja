@@ -15,6 +15,13 @@ type Revision struct {
 	Version   string
 }
 
+type RevisionCandidate struct {
+	SourceID  string
+	Ref       string
+	Kind      string
+	CommitSHA string
+}
+
 type SpecIndex struct {
 	ProjectID       string
 	RevisionID      string

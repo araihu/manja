@@ -105,6 +105,109 @@ func TestGitSourceFetchesSpecFromLocalBareRepositoryRefs(t *testing.T) {
 	}
 }
 
+func TestGitSourceDiscoversBranchAndTagRefs(t *testing.T) {
+	worktree := initGitRepo(t)
+	writeGitFile(t, worktree, "docs/openapi.yaml", "openapi: 3.1.0\ninfo:\n  title: Main API\n  version: v1\npaths: {}\n")
+	mainCommit := gitTestOutput(t, worktree, "rev-parse", "HEAD")
+	git(t, worktree, "tag", "v1.0.0")
+	git(t, worktree, "tag", "-a", "v1.0.1", "-m", "release v1.0.1")
+	git(t, worktree, "checkout", "-b", "release/v2")
+	writeGitFile(t, worktree, "docs/openapi.yaml", "openapi: 3.1.0\ninfo:\n  title: Release API\n  version: v2\npaths: {}\n")
+	releaseCommit := gitTestOutput(t, worktree, "rev-parse", "HEAD")
+
+	bare := filepath.Join(t.TempDir(), "repo.git")
+	git(t, worktree, "clone", "--bare", ".", bare)
+
+	src := Git{Repo: bare, Path: "docs/openapi.yaml"}
+	candidates, err := src.Discover(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	want := map[string]struct {
+		kind   string
+		commit string
+	}{
+		"main":       {kind: "branch", commit: mainCommit},
+		"release/v2": {kind: "branch", commit: releaseCommit},
+		"v1.0.0":     {kind: "tag", commit: mainCommit},
+		"v1.0.1":     {kind: "tag", commit: mainCommit},
+	}
+	if len(candidates) != len(want) {
+		t.Fatalf("candidates = %#v, want %d", candidates, len(want))
+	}
+	for _, candidate := range candidates {
+		expected, ok := want[candidate.Ref]
+		if !ok {
+			t.Fatalf("unexpected candidate %#v", candidate)
+		}
+		if candidate.SourceID != bare || candidate.Kind != expected.kind || candidate.CommitSHA != expected.commit {
+			t.Fatalf("candidate = %#v, want kind %q commit %q source %q", candidate, expected.kind, expected.commit, bare)
+		}
+	}
+}
+
+func TestGitSourceDiscoversRemoteBranchesWithoutRemoteName(t *testing.T) {
+	repo := initGitRepo(t)
+	writeGitFile(t, repo, "docs/openapi.yaml", "openapi: 3.1.0\ninfo:\n  title: Main API\n  version: v1\npaths: {}\n")
+	commit := gitTestOutput(t, repo, "rev-parse", "HEAD")
+	git(t, repo, "update-ref", "refs/remotes/upstream/feature/remote", commit)
+
+	src := Git{Repo: repo, Path: "docs/openapi.yaml"}
+	candidates, err := src.Discover(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for _, candidate := range candidates {
+		if candidate.Ref == "upstream/feature/remote" {
+			t.Fatalf("remote branch should be normalized without remote name: %#v", candidates)
+		}
+		if candidate.Ref == "feature/remote" && candidate.Kind == "branch" && candidate.CommitSHA == commit {
+			return
+		}
+	}
+	t.Fatalf("missing normalized feature/remote branch in candidates %#v", candidates)
+}
+
+func TestGitSourceDiscoversRemoteBranchesFromClonedRepository(t *testing.T) {
+	worktree := initGitRepo(t)
+	writeGitFile(t, worktree, "docs/openapi.yaml", "openapi: 3.1.0\ninfo:\n  title: Main API\n  version: v1\npaths: {}\n")
+	mainCommit := gitTestOutput(t, worktree, "rev-parse", "HEAD")
+	git(t, worktree, "checkout", "-b", "feature/ref-discovery")
+	writeGitFile(t, worktree, "docs/openapi.yaml", "openapi: 3.1.0\ninfo:\n  title: Feature API\n  version: v2\npaths: {}\n")
+	featureCommit := gitTestOutput(t, worktree, "rev-parse", "HEAD")
+
+	bare := filepath.Join(t.TempDir(), "repo.git")
+	git(t, worktree, "clone", "--bare", ".", bare)
+
+	src := Git{Repo: "file://" + bare, Path: "docs/openapi.yaml"}
+	candidates, err := src.Discover(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	got := map[string]string{}
+	counts := map[string]int{}
+	for _, candidate := range candidates {
+		if candidate.Kind == "branch" {
+			got[candidate.Ref] = candidate.CommitSHA
+			counts[candidate.Ref]++
+		}
+	}
+	if got["main"] != mainCommit || got["feature/ref-discovery"] != featureCommit {
+		t.Fatalf("branch candidates = %#v, want main %q and feature/ref-discovery %q", got, mainCommit, featureCommit)
+	}
+	for ref, count := range counts {
+		if count != 1 {
+			t.Fatalf("branch %q appeared %d times in candidates %#v", ref, count, candidates)
+		}
+	}
+	if _, found := got["origin/HEAD"]; found {
+		t.Fatalf("branch candidates should not include origin/HEAD: %#v", got)
+	}
+}
+
 func initGitRepo(t *testing.T) string {
 	t.Helper()
 	repo := t.TempDir()

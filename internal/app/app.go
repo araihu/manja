@@ -69,6 +69,13 @@ func NewWithOptions(ctx context.Context, opts Options) (http.Handler, error) {
 	if err != nil {
 		return nil, err
 	}
+	candidates, discoveryErr := discoverSourceRefs(ctx, src)
+	managementRecord := result.Record
+	if discoveryErr != nil {
+		managementRecord.Result = core.SyncResultFailure
+		managementRecord.ErrorSummary = discoveryErr.Error()
+	}
+	syncAction := managementSyncAction(opts, store, candidates)
 	return web.NewServerWithOptions(result.Index, web.Options{
 		Public: web.PublicOptions{
 			EndpointSidebarLabel: web.EndpointSidebarLabelMode(opts.EndpointSidebarLabel),
@@ -77,7 +84,8 @@ func NewWithOptions(ctx context.Context, opts Options) (http.Handler, error) {
 			Branding:             opts.Branding,
 		},
 		Management: web.ManagementOptions{
-			Store: store,
+			Store:      store,
+			SyncAction: syncAction,
 			Project: core.Project{
 				ID:   opts.ProjectID,
 				Name: result.Index.Title,
@@ -92,9 +100,68 @@ func NewWithOptions(ctx context.Context, opts Options) (http.Handler, error) {
 			},
 			Source:     source,
 			Revision:   result.Revision,
-			SyncRecord: result.Record,
+			Candidates: candidates,
+			SyncRecord: managementRecord,
 		},
 	}), nil
+}
+
+func discoverSourceRefs(ctx context.Context, src core.SourceFetcher) ([]core.RevisionCandidate, error) {
+	discoverer, ok := src.(core.SourceDiscoverer)
+	if !ok {
+		return nil, nil
+	}
+	return discoverer.Discover(ctx)
+}
+
+func managementSyncAction(opts Options, store *storeadapter.FileStore, candidates []core.RevisionCandidate) web.ManagementSyncAction {
+	if opts.SourceKind != SourceKindGit {
+		return nil
+	}
+	return func(ctx context.Context, spec web.ManagedSpec, ref string) (web.ManagedSpec, error) {
+		syncOpts := opts
+		syncOpts.GitRef = ref
+		src, source, err := syncOpts.source()
+		if err != nil {
+			return web.ManagedSpec{}, err
+		}
+		syncer := core.Syncer{
+			Source: src,
+			Parser: openapiadapter.Parser{},
+			Store:  store,
+			Blobs:  store,
+			Cache:  cacheadapter.NewMemory(),
+		}
+		result, err := syncer.Sync(ctx, core.SyncRequest{
+			ProjectID: opts.ProjectID,
+			SourceID:  opts.SourceID,
+			Trigger:   "manual",
+		})
+		if err != nil {
+			return web.ManagedSpec{}, err
+		}
+		refreshedCandidates, discoveryErr := discoverSourceRefs(ctx, src)
+		if discoveryErr != nil {
+			refreshedCandidates = candidates
+		}
+		spec.Index = result.Index
+		spec.Project.ID = firstNonBlankApp(spec.Project.ID, opts.ProjectID)
+		spec.Project.Name = result.Index.Title
+		spec.Source = source
+		spec.Revision = result.Revision
+		spec.Candidates = refreshedCandidates
+		spec.SyncRecord = result.Record
+		return spec, nil
+	}
+}
+
+func firstNonBlankApp(values ...string) string {
+	for _, value := range values {
+		if value != "" {
+			return value
+		}
+	}
+	return ""
 }
 
 func (o Options) withDefaults() Options {

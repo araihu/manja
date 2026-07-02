@@ -28,6 +28,7 @@ type ManagedSpecModel struct {
 	Project     core.Project
 	Source      core.Source
 	Revision    core.Revision
+	Candidates  []core.RevisionCandidate
 	Publication core.Publication
 	SyncRecord  core.SyncRecord
 }
@@ -157,6 +158,35 @@ templ ManagementOverview(model ManagementOverviewModel) {
 	}
 }
 
+templ managementSyncForm(spec ManagedSpecModel, idPrefix string) {
+	<form method="post" action="/manage/sync" class="mt-5 grid gap-4 border-t border-outline pt-4 dark:border-outline-dark">
+		<input type="hidden" name="spec_id" value={ spec.ID }/>
+		<div class="grid gap-2">
+			<label for={ idPrefix + "-sync-ref" } class="text-xs font-semibold uppercase tracking-normal text-on-surface-muted dark:text-on-surface-dark-muted">Available refs</label>
+			<select id={ idPrefix + "-sync-ref" } name="ref" class="min-h-10 rounded-radius border border-outline bg-surface px-3 py-2 font-mono text-sm text-on-surface-strong focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary dark:border-outline-dark dark:bg-surface-dark dark:text-on-surface-dark-strong">
+				for _, candidate := range spec.Candidates {
+					<option value={ candidate.Ref } selected?={ candidate.Ref == spec.Revision.Ref }>{ managementCandidateLabel(candidate) }</option>
+				}
+			</select>
+		</div>
+		<label class="flex items-center gap-2 text-sm font-medium text-on-surface-strong dark:text-on-surface-dark-strong">
+			<input type="checkbox" name="publish" value="public" class="size-4 rounded border-outline text-primary focus-visible:outline-primary dark:border-outline-dark"/>
+			<span>Publish synced revision</span>
+		</label>
+		@textinput.TextInput(textinput.Config{
+			ID:          idPrefix + "-sync-public-path",
+			Name:        "path",
+			Label:       "Public path",
+			Placeholder: "/docs/v1",
+			Value:       managementPublicationPathValue(spec.Publication, spec.Project),
+			RootClass:   "font-mono",
+		})
+		@button.Button(button.Config{Variant: button.Primary, Type: "submit", RootClass: "w-fit"}) {
+			Sync selected ref
+		}
+	</form>
+}
+
 templ managementSpecRow(spec ManagedSpecModel) {
 	<div class="grid gap-4 px-4 py-4 lg:grid-cols-[minmax(14rem,1.2fr)_minmax(12rem,1fr)_minmax(10rem,0.8fr)_minmax(15rem,1.1fr)] lg:items-start">
 		<div class="min-w-0">
@@ -182,27 +212,32 @@ templ managementSpecRow(spec ManagedSpecModel) {
 			@managementTerm("Result", spec.SyncRecord.Result)
 			@managementTerm("Error", spec.SyncRecord.ErrorSummary)
 		</dl>
-		<form method="post" action="/manage/publication" class="grid gap-3">
-			<input type="hidden" name="spec_id" value={ spec.ID }/>
-			<fieldset class="grid gap-2">
-				<legend class="text-xs font-semibold uppercase tracking-normal text-on-surface-muted dark:text-on-surface-dark-muted">Visibility</legend>
-				@radio.RadioBar() {
-					@radio.Radio(radio.Config{ID: "management-visibility-public-" + spec.ID, Name: "visibility", Value: "public", Label: "Public", Checked: spec.Publication.Public, Variant: radio.Primary, Segmented: true})
-					@radio.Radio(radio.Config{ID: "management-visibility-private-" + spec.ID, Name: "visibility", Value: "private", Label: "Private", Checked: !spec.Publication.Public, Variant: radio.Primary, Segmented: true})
-				}
-			</fieldset>
-			@textinput.TextInput(textinput.Config{
-				ID:          "management-public-path-" + spec.ID,
-				Name:        "path",
-				Label:       "Public path",
-				Placeholder: "/docs/v1",
-				Value:       managementPublicationPathValue(spec.Publication, spec.Project),
-				RootClass:   "font-mono",
-			})
-			@button.Button(button.Config{Variant: button.Primary, Type: "submit", RootClass: "w-fit"}) {
-				Save publication
+		<div class="grid gap-4">
+			if len(spec.Candidates) > 0 {
+				@managementSyncForm(spec, "management-" + spec.ID)
 			}
-		</form>
+			<form method="post" action="/manage/publication" class="grid gap-3">
+				<input type="hidden" name="spec_id" value={ spec.ID }/>
+				<fieldset class="grid gap-2">
+					<legend class="text-xs font-semibold uppercase tracking-normal text-on-surface-muted dark:text-on-surface-dark-muted">Visibility</legend>
+					@radio.RadioBar() {
+						@radio.Radio(radio.Config{ID: "management-visibility-public-" + spec.ID, Name: "visibility", Value: "public", Label: "Public", Checked: spec.Publication.Public, Variant: radio.Primary, Segmented: true})
+						@radio.Radio(radio.Config{ID: "management-visibility-private-" + spec.ID, Name: "visibility", Value: "private", Label: "Private", Checked: !spec.Publication.Public, Variant: radio.Primary, Segmented: true})
+					}
+				</fieldset>
+				@textinput.TextInput(textinput.Config{
+					ID:          "management-public-path-" + spec.ID,
+					Name:        "path",
+					Label:       "Public path",
+					Placeholder: "/docs/v1",
+					Value:       managementPublicationPathValue(spec.Publication, spec.Project),
+					RootClass:   "font-mono",
+				})
+				@button.Button(button.Config{Variant: button.Primary, Type: "submit", RootClass: "w-fit"}) {
+					Save publication
+				}
+			</form>
+		</div>
 	</div>
 }
 
@@ -273,6 +308,11 @@ func managementCredentialLabel(source core.Source) string {
 		return "not configured"
 	}
 	return "configured"
+}
+
+func managementCandidateLabel(candidate core.RevisionCandidate) string {
+	parts := []string{candidate.Ref, candidate.Kind, candidate.CommitSHA}
+	return strings.Join(compactStrings(parts), " ")
 }
 
 func managementPublicationLabel(pub core.Publication) string {
