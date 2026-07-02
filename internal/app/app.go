@@ -140,12 +140,16 @@ func managementSyncAction(opts Options, store *storeadapter.FileStore, candidate
 		if err != nil {
 			return web.ManagedSpec{}, err
 		}
+		refreshedCandidates, discoveryErr := discoverSourceRefs(ctx, src)
+		if discoveryErr != nil {
+			refreshedCandidates = candidates
+		}
 		spec.Index = result.Index
 		spec.Project.ID = firstNonBlankApp(spec.Project.ID, opts.ProjectID)
 		spec.Project.Name = result.Index.Title
 		spec.Source = source
 		spec.Revision = result.Revision
-		spec.Candidates = candidates
+		spec.Candidates = refreshedCandidates
 		spec.SyncRecord = result.Record
 		return spec, nil
 	}

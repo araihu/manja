@@ -264,6 +264,47 @@ func TestNewWithOptionsManagesGitRefDiscoveryAndSyncPublication(t *testing.T) {
 	}
 }
 
+func TestNewWithOptionsRefreshesGitCandidatesAfterManualSync(t *testing.T) {
+	ctx := context.Background()
+	dataDir := t.TempDir()
+	repo := initAppGitRepo(t)
+	writeAppGitFile(t, repo, "docs/openapi.yaml", "openapi: 3.1.0\ninfo:\n  title: Main API\n  version: v1\npaths: {}\n")
+
+	handler, err := NewWithOptions(ctx, Options{
+		ProjectID:  "project1",
+		SourceKind: "git",
+		GitRepo:    repo,
+		GitRef:     "main",
+		SpecPath:   "docs/openapi.yaml",
+		DataDir:    dataDir,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	appGit(t, repo, "checkout", "-b", "release/v2")
+	writeAppGitFile(t, repo, "docs/openapi.yaml", "openapi: 3.1.0\ninfo:\n  title: Release API\n  version: v2\npaths: {}\n")
+	appGit(t, repo, "checkout", "main")
+
+	form := url.Values{
+		"ref": {"main"},
+	}
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/manage/sync", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusSeeOther {
+		t.Fatalf("sync status = %d", rec.Code)
+	}
+
+	rec = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodGet, "/manage", nil)
+	handler.ServeHTTP(rec, req)
+	if body := rec.Body.String(); !strings.Contains(body, "release/v2") {
+		t.Fatalf("management body missing refreshed ref:\n%s", body)
+	}
+}
+
 func entries(t *testing.T, path string) []string {
 	t.Helper()
 	dirEntries, err := os.ReadDir(path)

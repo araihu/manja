@@ -110,6 +110,7 @@ func TestGitSourceDiscoversBranchAndTagRefs(t *testing.T) {
 	writeGitFile(t, worktree, "docs/openapi.yaml", "openapi: 3.1.0\ninfo:\n  title: Main API\n  version: v1\npaths: {}\n")
 	mainCommit := gitTestOutput(t, worktree, "rev-parse", "HEAD")
 	git(t, worktree, "tag", "v1.0.0")
+	git(t, worktree, "tag", "-a", "v1.0.1", "-m", "release v1.0.1")
 	git(t, worktree, "checkout", "-b", "release/v2")
 	writeGitFile(t, worktree, "docs/openapi.yaml", "openapi: 3.1.0\ninfo:\n  title: Release API\n  version: v2\npaths: {}\n")
 	releaseCommit := gitTestOutput(t, worktree, "rev-parse", "HEAD")
@@ -130,6 +131,7 @@ func TestGitSourceDiscoversBranchAndTagRefs(t *testing.T) {
 		"main":       {kind: "branch", commit: mainCommit},
 		"release/v2": {kind: "branch", commit: releaseCommit},
 		"v1.0.0":     {kind: "tag", commit: mainCommit},
+		"v1.0.1":     {kind: "tag", commit: mainCommit},
 	}
 	if len(candidates) != len(want) {
 		t.Fatalf("candidates = %#v, want %d", candidates, len(want))
@@ -143,6 +145,29 @@ func TestGitSourceDiscoversBranchAndTagRefs(t *testing.T) {
 			t.Fatalf("candidate = %#v, want kind %q commit %q source %q", candidate, expected.kind, expected.commit, bare)
 		}
 	}
+}
+
+func TestGitSourceDiscoversRemoteBranchesWithoutRemoteName(t *testing.T) {
+	repo := initGitRepo(t)
+	writeGitFile(t, repo, "docs/openapi.yaml", "openapi: 3.1.0\ninfo:\n  title: Main API\n  version: v1\npaths: {}\n")
+	commit := gitTestOutput(t, repo, "rev-parse", "HEAD")
+	git(t, repo, "update-ref", "refs/remotes/upstream/feature/remote", commit)
+
+	src := Git{Repo: repo, Path: "docs/openapi.yaml"}
+	candidates, err := src.Discover(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for _, candidate := range candidates {
+		if candidate.Ref == "upstream/feature/remote" {
+			t.Fatalf("remote branch should be normalized without remote name: %#v", candidates)
+		}
+		if candidate.Ref == "feature/remote" && candidate.Kind == "branch" && candidate.CommitSHA == commit {
+			return
+		}
+	}
+	t.Fatalf("missing normalized feature/remote branch in candidates %#v", candidates)
 }
 
 func TestGitSourceDiscoversRemoteBranchesFromClonedRepository(t *testing.T) {

@@ -82,7 +82,7 @@ func (g Git) Discover(ctx context.Context) ([]core.RevisionCandidate, error) {
 	}
 	defer cleanup()
 
-	out, err := gitOutput(ctx, repo, "for-each-ref", "--format=%(refname)%00%(objectname)", "refs/heads", "refs/remotes", "refs/tags")
+	out, err := gitOutput(ctx, repo, "for-each-ref", "--format=%(refname)%00%(objectname)%00%(*objectname)", "refs/heads", "refs/remotes", "refs/tags")
 	if err != nil {
 		return nil, fmt.Errorf("discover git refs: %w", err)
 	}
@@ -93,13 +93,20 @@ func (g Git) Discover(ctx context.Context) ([]core.RevisionCandidate, error) {
 		if strings.TrimSpace(line) == "" {
 			continue
 		}
-		refname, commit, ok := strings.Cut(line, "\x00")
+		refname, rest, ok := strings.Cut(line, "\x00")
+		if !ok {
+			continue
+		}
+		commit, peeled, ok := strings.Cut(rest, "\x00")
 		if !ok {
 			continue
 		}
 		kind, ref, ok := gitCandidateRef(refname)
 		if !ok {
 			continue
+		}
+		if kind == "tag" && strings.TrimSpace(peeled) != "" {
+			commit = peeled
 		}
 		key := kind + "\x00" + ref
 		if seen[key] {
@@ -122,10 +129,14 @@ func gitCandidateRef(refname string) (string, string, bool) {
 		return "branch", ref, ref != ""
 	}
 	if ref, ok := strings.CutPrefix(refname, "refs/remotes/"); ok {
-		ref = strings.TrimPrefix(ref, "origin/")
 		if ref == "HEAD" || strings.HasSuffix(ref, "/HEAD") {
 			return "", "", false
 		}
+		_, branch, ok := strings.Cut(ref, "/")
+		if !ok {
+			return "", "", false
+		}
+		ref = branch
 		return "branch", ref, ref != ""
 	}
 	if ref, ok := strings.CutPrefix(refname, "refs/tags/"); ok {

@@ -133,9 +133,6 @@ templ ManagementOverview(model ManagementOverviewModel) {
 							@managementTerm("Commit", model.Revision.CommitSHA)
 							@managementTerm("Version", model.Revision.Version)
 						</dl>
-						if len(model.Specs) > 0 && len(model.Specs[0].Candidates) > 0 {
-							@managementSyncForm(model.Specs[0], "management")
-						}
 					</div>
 					<div class="rounded-radius border border-outline bg-surface-alt p-4 dark:border-outline-dark dark:bg-surface-dark-alt">
 						<h2 class="text-base font-semibold text-on-surface-strong dark:text-on-surface-dark-strong">SEO and theme</h2>

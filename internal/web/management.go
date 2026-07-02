@@ -6,10 +6,13 @@ import (
 	"net/http"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/araihu/manja/internal/core"
 	"github.com/araihu/manja/internal/web/templates"
 )
+
+const managementSyncTimeout = 30 * time.Second
 
 type ManagementStore interface {
 	SavePublication(context.Context, core.Publication) error
@@ -160,7 +163,9 @@ func (s *managementServer) syncRef(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	updated, err := s.syncAction(r.Context(), spec, ref)
+	syncCtx, cancel := context.WithTimeout(r.Context(), managementSyncTimeout)
+	defer cancel()
+	updated, err := s.syncAction(syncCtx, spec, ref)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
@@ -169,6 +174,7 @@ func (s *managementServer) syncRef(w http.ResponseWriter, r *http.Request) {
 	if len(updated.Candidates) == 0 {
 		updated.Candidates = spec.Candidates
 	}
+	s.specs[specIndex] = updated
 	if strings.TrimSpace(r.FormValue("publish")) == "public" {
 		pub := updated.Publication
 		pub.ProjectID = firstNonBlank(pub.ProjectID, updated.Project.ID, updated.Index.ProjectID)
@@ -186,8 +192,8 @@ func (s *managementServer) syncRef(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		updated.Publication = pub
+		s.specs[specIndex] = updated
 	}
-	s.specs[specIndex] = updated
 	http.Redirect(w, r, "/manage", http.StatusSeeOther)
 }
 

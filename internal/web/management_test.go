@@ -431,10 +431,148 @@ func TestManagementSyncPostSyncsSelectedGitRefAndCanPublish(t *testing.T) {
 	req = httptest.NewRequest(http.MethodGet, "/manage", nil)
 	srv.ServeHTTP(rec, req)
 	body = rec.Body.String()
-	for _, want := range []string{"Payments Release API", "release/v2", "def456", "/payments/v2", "Public"} {
+	for _, want := range []string{"Payments Release API", "release/v2", "def456", "/payments/v2", ">Public<"} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("updated overview missing %q:\n%s", want, body)
 		}
+	}
+}
+
+func TestManagementSyncPostKeepsSyncedStateWhenPublicationSaveFails(t *testing.T) {
+	store := &fakeManagementPublicationStore{err: errors.New("unsafe path")}
+	srv := NewServerWithOptions(core.SpecIndex{}, Options{
+		Management: ManagementOptions{
+			Store: store,
+			SyncAction: func(_ context.Context, spec ManagedSpec, ref string) (ManagedSpec, error) {
+				spec.Index = core.SpecIndex{
+					ProjectID:  "payments",
+					RevisionID: "rev-release",
+					Title:      "Payments Release API",
+				}
+				spec.Revision = core.Revision{
+					ID:        "rev-release",
+					SourceID:  "repo-payments",
+					Ref:       ref,
+					CommitSHA: "def456",
+				}
+				return spec, nil
+			},
+			Specs: []ManagedSpec{{
+				ID:      "payments-api",
+				Index:   core.SpecIndex{ProjectID: "payments", RevisionID: "rev-main", Title: "Payments API"},
+				Project: core.Project{ID: "payments", Name: "Payments"},
+				Source:  core.Source{ID: "repo-payments", ProjectID: "payments", Kind: "git", SpecPath: "docs/openapi.yaml"},
+				Revision: core.Revision{
+					ID:        "rev-main",
+					SourceID:  "repo-payments",
+					Ref:       "main",
+					CommitSHA: "abc123",
+				},
+				Candidates: []core.RevisionCandidate{
+					{SourceID: "repo-payments", Ref: "main", Kind: "branch", CommitSHA: "abc123"},
+					{SourceID: "repo-payments", Ref: "release/v2", Kind: "branch", CommitSHA: "def456"},
+				},
+			}},
+		},
+	})
+
+	form := url.Values{
+		"spec_id": {"payments-api"},
+		"ref":     {"release/v2"},
+		"publish": {"public"},
+		"path":    {"unsafe"},
+	}
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/manage/sync", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	srv.ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("sync status = %d, want %d", rec.Code, http.StatusBadRequest)
+	}
+
+	rec = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodGet, "/manage", nil)
+	srv.ServeHTTP(rec, req)
+	body := rec.Body.String()
+	for _, want := range []string{"Payments Release API", "release/v2", "def456"} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("updated overview missing %q after publish failure:\n%s", want, body)
+		}
+	}
+}
+
+func TestManagementSyncPostPassesDeadlineToSyncAction(t *testing.T) {
+	var hasDeadline bool
+	srv := NewServerWithOptions(core.SpecIndex{}, Options{
+		Management: ManagementOptions{
+			SyncAction: func(ctx context.Context, spec ManagedSpec, ref string) (ManagedSpec, error) {
+				_, hasDeadline = ctx.Deadline()
+				return spec, nil
+			},
+			Specs: []ManagedSpec{{
+				ID:      "payments-api",
+				Index:   core.SpecIndex{ProjectID: "payments", RevisionID: "rev-main", Title: "Payments API"},
+				Project: core.Project{ID: "payments", Name: "Payments"},
+				Source:  core.Source{ID: "repo-payments", ProjectID: "payments", Kind: "git", SpecPath: "docs/openapi.yaml"},
+				Revision: core.Revision{
+					ID:        "rev-main",
+					SourceID:  "repo-payments",
+					Ref:       "main",
+					CommitSHA: "abc123",
+				},
+				Candidates: []core.RevisionCandidate{
+					{SourceID: "repo-payments", Ref: "main", Kind: "branch", CommitSHA: "abc123"},
+				},
+			}},
+		},
+	})
+
+	form := url.Values{
+		"spec_id": {"payments-api"},
+		"ref":     {"main"},
+	}
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/manage/sync", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	srv.ServeHTTP(rec, req)
+	if rec.Code != http.StatusSeeOther {
+		t.Fatalf("sync status = %d, want %d", rec.Code, http.StatusSeeOther)
+	}
+	if !hasDeadline {
+		t.Fatal("sync action context should have a deadline")
+	}
+}
+
+func TestManagementOverviewRendersOneSyncFormForSelectedSpec(t *testing.T) {
+	srv := NewServerWithOptions(core.SpecIndex{}, Options{
+		Management: ManagementOptions{
+			Specs: []ManagedSpec{{
+				ID:      "payments-api",
+				Index:   core.SpecIndex{ProjectID: "payments", RevisionID: "rev-main", Title: "Payments API"},
+				Project: core.Project{ID: "payments", Name: "Payments"},
+				Source:  core.Source{ID: "repo-payments", ProjectID: "payments", Kind: "git", SpecPath: "docs/openapi.yaml"},
+				Revision: core.Revision{
+					ID:        "rev-main",
+					SourceID:  "repo-payments",
+					Ref:       "main",
+					CommitSHA: "abc123",
+				},
+				Candidates: []core.RevisionCandidate{
+					{SourceID: "repo-payments", Ref: "main", Kind: "branch", CommitSHA: "abc123"},
+					{SourceID: "repo-payments", Ref: "release/v2", Kind: "branch", CommitSHA: "def456"},
+				},
+			}},
+		},
+	})
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/manage", nil)
+	srv.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d", rec.Code)
+	}
+	if count := strings.Count(rec.Body.String(), `action="/manage/sync"`); count != 1 {
+		t.Fatalf("sync form count = %d, body:\n%s", count, rec.Body.String())
 	}
 }
 
