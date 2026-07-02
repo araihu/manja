@@ -55,6 +55,10 @@ func TestPublicDocsRenderSearchAndOperations(t *testing.T) {
 		`flex min-h-0 flex-1 overflow-clip`,
 		`hidden h-full w-72 shrink-0 lg:block`,
 		`class="min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden p-6`,
+		`document.documentElement.classList.add('boot')`,
+		`data-boot-anim="header"`,
+		`data-boot-anim="sidebar"`,
+		`data-boot-anim="main"`,
 		`aria-label="API sections"`,
 		`aria-label="Documentation search"`,
 		`href="/?selected=operation-listPets#operation-listPets"`,
@@ -175,6 +179,23 @@ func TestPublicDocsRenderSearchAndOperations(t *testing.T) {
 	}
 	if strings.Contains(body, `data-theme="goshtoso"`) || strings.Contains(body, `|| 'goshtoso'`) {
 		t.Fatalf("public docs should default to the Manja theme, not Goshtoso:\n%s", body)
+	}
+
+	css, err := os.ReadFile("static/manja.css")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{
+		`html.boot [data-boot-anim="header"]`,
+		`html.boot [data-boot-anim="sidebar"]`,
+		`html.boot [data-boot-anim="main"]`,
+		`#main-content.htmx-swapping`,
+		`#main-content > .htmx-added`,
+		`@media (prefers-reduced-motion: reduce)`,
+	} {
+		if !strings.Contains(string(css), want) {
+			t.Fatalf("public docs transition CSS missing %q:\n%s", want, css)
+		}
 	}
 }
 
@@ -873,7 +894,7 @@ func TestPublicDocsFragmentRequestReturnsOnlyMainContent(t *testing.T) {
 		`id="sidebar-nav-content"`,
 		`hx-get="/?selected=operation-createPet#operation-createPet"`,
 		`hx-target="#main-content"`,
-		`hx-swap="innerHTML"`,
+		`hx-swap="innerHTML swap:120ms settle:240ms"`,
 		`hx-push-url="true"`,
 	} {
 		if !strings.Contains(full, want) {

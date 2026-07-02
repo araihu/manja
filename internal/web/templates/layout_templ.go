@@ -100,7 +100,7 @@ func LayoutWithBranding(title string, branding core.DocsBranding) templ.Componen
 				return templ_7745c5c3_Err
 			}
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 5, "<script>\n\t\t\t\t(function() {\n\t\t\t\t\ttry {\n\t\t\t\t\t\tdocument.documentElement.setAttribute('data-theme', localStorage.getItem('theme') || 'manja');\n\t\t\t\t\t\tvar d = localStorage.getItem('darkMode');\n\t\t\t\t\t\tvar on = d !== null ? d === 'true' : window.matchMedia('(prefers-color-scheme: dark)').matches;\n\t\t\t\t\t\tdocument.documentElement.classList.toggle('dark', on);\n\t\t\t\t\t} catch (e) {}\n\t\t\t\t})();\n\t\t\t</script>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 5, "<script>\n\t\t\t\t(function() {\n\t\t\t\t\ttry {\n\t\t\t\t\tdocument.documentElement.setAttribute('data-theme', localStorage.getItem('theme') || 'manja');\n\t\t\t\t\tvar d = localStorage.getItem('darkMode');\n\t\t\t\t\tvar on = d !== null ? d === 'true' : window.matchMedia('(prefers-color-scheme: dark)').matches;\n\t\t\t\t\tdocument.documentElement.classList.toggle('dark', on);\n\t\t\t\t\tdocument.documentElement.classList.add('boot');\n\t\t\t\t\taddEventListener('DOMContentLoaded', function () {\n\t\t\t\t\t\tsetTimeout(function () {\n\t\t\t\t\t\t\tdocument.documentElement.classList.remove('boot');\n\t\t\t\t\t\t}, 600);\n\t\t\t\t\t});\n\t\t\t\t} catch (e) {}\n\t\t\t\t})();\n\t\t\t</script>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}

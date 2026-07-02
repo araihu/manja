@@ -49,11 +49,17 @@ templ LayoutWithBranding(title string, branding core.DocsBranding) {
 			<script>
 				(function() {
 					try {
-						document.documentElement.setAttribute('data-theme', localStorage.getItem('theme') || 'manja');
-						var d = localStorage.getItem('darkMode');
-						var on = d !== null ? d === 'true' : window.matchMedia('(prefers-color-scheme: dark)').matches;
-						document.documentElement.classList.toggle('dark', on);
-					} catch (e) {}
+					document.documentElement.setAttribute('data-theme', localStorage.getItem('theme') || 'manja');
+					var d = localStorage.getItem('darkMode');
+					var on = d !== null ? d === 'true' : window.matchMedia('(prefers-color-scheme: dark)').matches;
+					document.documentElement.classList.toggle('dark', on);
+					document.documentElement.classList.add('boot');
+					addEventListener('DOMContentLoaded', function () {
+						setTimeout(function () {
+							document.documentElement.classList.remove('boot');
+						}, 600);
+					});
+				} catch (e) {}
 				})();
 			</script>
 			@head.Dependencies()

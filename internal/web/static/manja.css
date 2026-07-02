@@ -62,6 +62,80 @@
   padding-left: 0;
 }
 
+@keyframes manjaFadeIn {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes manjaSlideDown {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes manjaSlideRight {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+html.boot [data-boot-anim="header"] {
+  animation: manjaSlideDown 260ms ease-out both;
+}
+
+html.boot [data-boot-anim="sidebar"] {
+  animation: manjaSlideRight 320ms ease-out 60ms both;
+}
+
+html.boot [data-boot-anim="main"] {
+  animation: manjaFadeIn 320ms ease-out 120ms both;
+}
+
+#main-content.htmx-swapping {
+  opacity: 0;
+  transform: translate3d(0, 4px, 0);
+  transition:
+    opacity 120ms ease-out,
+    transform 120ms ease-out;
+}
+
+#main-content > .htmx-added {
+  opacity: 0;
+  transform: translate3d(0, 6px, 0);
+}
+
+#main-content > * {
+  transition:
+    opacity 220ms ease-out,
+    transform 220ms ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html.boot [data-boot-anim] {
+    animation: none;
+  }
+
+  #main-content.htmx-swapping,
+  #main-content > .htmx-added,
+  #main-content > * {
+    transform: none;
+    transition: none;
+  }
+}
+
 .manja-endpoint-shell-layout {
   align-items: start;
   display: grid;
