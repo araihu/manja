@@ -298,9 +298,6 @@ func managementOverviewModel(specs []ManagedSpec) templates.ManagementOverviewMo
 }
 
 func managementRefAllowed(candidates []core.RevisionCandidate, ref string) bool {
-	if len(candidates) == 0 {
-		return true
-	}
 	for _, candidate := range candidates {
 		if candidate.Ref == ref {
 			return true

@@ -151,6 +151,44 @@ func TestNewWithOptionsSyncsGitSourceBeforeServingPublicDocs(t *testing.T) {
 	}
 }
 
+func TestNewWithOptionsShowsGitDiscoveryErrorsInManagementState(t *testing.T) {
+	ctx := context.Background()
+	dataDir := t.TempDir()
+	installFailingDiscoveryGit(t)
+
+	handler, err := NewWithOptions(ctx, Options{
+		ProjectID:  "project1",
+		SourceKind: "git",
+		GitRepo:    "https://example.test/repo.git",
+		GitRef:     "main",
+		SpecPath:   "docs/openapi.yaml",
+		DataDir:    dataDir,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("public docs status = %d", rec.Code)
+	}
+	if body := rec.Body.String(); !containsAll(body, "Discovery Fallback API", "OpenAPI docs") {
+		t.Fatalf("public docs body = %s", body)
+	}
+
+	rec = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodGet, "/manage", nil)
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("management status = %d", rec.Code)
+	}
+	if body := rec.Body.String(); !containsAll(body, "Discovery Fallback API", "failure", "discover refs failed") {
+		t.Fatalf("management body = %s", body)
+	}
+}
+
 func TestNewWithOptionsManagesGitRefDiscoveryAndSyncPublication(t *testing.T) {
 	ctx := context.Background()
 	dataDir := t.TempDir()
@@ -279,6 +317,47 @@ func writeAppGitFile(t *testing.T, repo, name, body string) {
 	}
 	appGit(t, repo, "add", name)
 	appGit(t, repo, "commit", "-m", "add spec")
+}
+
+func installFailingDiscoveryGit(t *testing.T) {
+	t.Helper()
+	dir := t.TempDir()
+	path := filepath.Join(dir, "git")
+	script := `#!/bin/sh
+set -eu
+if [ "${1:-}" = "-C" ]; then
+	shift 2
+fi
+case "${1:-}" in
+	clone)
+		mkdir -p "$5"
+		;;
+	rev-parse)
+		printf '%s\n' "abc123abc123abc123abc123abc123abc123abcd"
+		;;
+	show)
+		cat <<'EOF'
+openapi: 3.1.0
+info:
+  title: Discovery Fallback API
+  version: v1
+paths: {}
+EOF
+		;;
+	for-each-ref)
+		printf '%s\n' "discover refs failed" >&2
+		exit 2
+		;;
+	*)
+		printf '%s\n' "unexpected git command: $*" >&2
+		exit 2
+		;;
+esac
+`
+	if err := os.WriteFile(path, []byte(script), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
 }
 
 func appGit(t *testing.T, repo string, args ...string) {

@@ -438,6 +438,49 @@ func TestManagementSyncPostSyncsSelectedGitRefAndCanPublish(t *testing.T) {
 	}
 }
 
+func TestManagementSyncPostRejectsRefWhenCandidatesUnavailable(t *testing.T) {
+	var called bool
+	srv := NewServerWithOptions(core.SpecIndex{}, Options{
+		Management: ManagementOptions{
+			SyncAction: func(_ context.Context, spec ManagedSpec, ref string) (ManagedSpec, error) {
+				called = true
+				return spec, nil
+			},
+			Specs: []ManagedSpec{{
+				ID:      "payments-api",
+				Index:   core.SpecIndex{ProjectID: "payments", RevisionID: "rev-main", Title: "Payments API"},
+				Project: core.Project{ID: "payments", Name: "Payments"},
+				Source:  core.Source{ID: "repo-payments", ProjectID: "payments", Kind: "git", SpecPath: "docs/openapi.yaml"},
+				Revision: core.Revision{
+					ID:        "rev-main",
+					SourceID:  "repo-payments",
+					Ref:       "main",
+					CommitSHA: "abc123",
+				},
+			}},
+		},
+	})
+
+	form := url.Values{
+		"spec_id": {"payments-api"},
+		"ref":     {"release/v2"},
+	}
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/manage/sync", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	srv.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusBadRequest)
+	}
+	if called {
+		t.Fatal("sync action should not be called for unavailable ref")
+	}
+	if !strings.Contains(rec.Body.String(), "ref is not available for this source") {
+		t.Fatalf("body = %s", rec.Body.String())
+	}
+}
+
 func TestManagementPublicationPostCanMakeRevisionPrivate(t *testing.T) {
 	store := &fakeManagementPublicationStore{}
 	srv := NewServerWithOptions(core.SpecIndex{}, Options{

@@ -69,9 +69,11 @@ func NewWithOptions(ctx context.Context, opts Options) (http.Handler, error) {
 	if err != nil {
 		return nil, err
 	}
-	candidates, err := discoverSourceRefs(ctx, src)
-	if err != nil {
-		return nil, err
+	candidates, discoveryErr := discoverSourceRefs(ctx, src)
+	managementRecord := result.Record
+	if discoveryErr != nil {
+		managementRecord.Result = core.SyncResultFailure
+		managementRecord.ErrorSummary = discoveryErr.Error()
 	}
 	syncAction := managementSyncAction(opts, store, candidates)
 	return web.NewServerWithOptions(result.Index, web.Options{
@@ -99,7 +101,7 @@ func NewWithOptions(ctx context.Context, opts Options) (http.Handler, error) {
 			Source:     source,
 			Revision:   result.Revision,
 			Candidates: candidates,
-			SyncRecord: result.Record,
+			SyncRecord: managementRecord,
 		},
 	}), nil
 }
