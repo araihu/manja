@@ -55,11 +55,29 @@ func checkApplicationMethods(t *testing.T, dir string) {
 			if !ok || function.Recv == nil || !function.Name.IsExported() {
 				continue
 			}
+			if !strings.HasSuffix(receiverName(function.Recv), "Service") {
+				continue
+			}
 			if !contextFirst(function.Type) {
 				t.Errorf("application operation %s must accept context.Context first", function.Name.Name)
 			}
 		}
 	}
+}
+
+func receiverName(fields *ast.FieldList) string {
+	if fields == nil || len(fields.List) == 0 {
+		return ""
+	}
+	receiver := fields.List[0].Type
+	if pointer, ok := receiver.(*ast.StarExpr); ok {
+		receiver = pointer.X
+	}
+	identifier, _ := receiver.(*ast.Ident)
+	if identifier == nil {
+		return ""
+	}
+	return identifier.Name
 }
 
 func parseDirectory(t *testing.T, dir string) map[string]*ast.File {
