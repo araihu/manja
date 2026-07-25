@@ -1015,9 +1015,12 @@ not wired.
 
 - [ ] **Step 6: Implement auth-first preview routing**
 
-Parse exactly two escaped path segments after `/preview/`, reject empty,
-slash-containing, dot, and dot-dot identities, authenticate before invoking
-`PreviewDocsResolver`, check `Actor.ProjectIDs`, and delegate to the
+Parse exactly two escaped identity segments after `/preview/`, then preserve
+the remaining revision-local renderer path for search, downloads, assets, and
+document fragments. Reject empty, slash-containing, dot, and dot-dot identity
+segments; reject additional identity segments, not valid local renderer path
+segments. Authenticate before invoking `PreviewDocsResolver`, check
+`Actor.ProjectIDs`, validate the local path, and delegate it to the
 base-path-aware renderer with `NoIndex=true`. Do not log resolver errors or
 render manager diagnostics to anonymous callers.
 

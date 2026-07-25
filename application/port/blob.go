@@ -24,8 +24,9 @@ func (k BlobKey) Valid() bool {
 	return err == nil
 }
 
-// BlobStore stores immutable bytes by content identity. Put must be idempotent:
-// identical bytes return the same key and may reuse the existing write.
+// BlobStore stores immutable bytes by content identity. Put must return exactly
+// ContentAddressedBlobKey(data), be idempotent, and may reuse the existing
+// write for identical bytes.
 //
 // Application services write a blob before entering UnitOfWork, then commit the
 // referencing metadata in the transaction. A failed transaction may leave an

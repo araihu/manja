@@ -422,22 +422,19 @@ Do not add speculative cloud-only ports.
 
 - [ ] **Step 4: Define opaque secret resolution**
 
-Use an opaque reference:
+Use an opaque reference in public configuration:
 
 ```go
 type SecretRef struct {
     Name string
 }
-
-type SecretResolver interface {
-    Resolve(context.Context, SecretRef) ([]byte, error)
-}
 ```
 
 The public source/application configuration carries `SecretRef`, never a raw
-token, password, or SSH private key. Self-hosted CLI options may accept
-credential file paths and construct the resolver/adapter outside
-`application`.
+token, password, SSH private key, or a resolver that returns raw bytes.
+Self-hosted CLI options may accept credential file paths and construct an
+internal source/secret adapter that resolves and consumes credentials outside
+`application`. Inject the resulting `SourceFetcher` into the public use case.
 
 - [ ] **Step 5: Prove incoming context identity**
 
@@ -808,7 +805,7 @@ git commit -m "build(release): verify Apache licensing artifacts"
 
 ## Final Review Gate
 
-Run fresh:
+Run the boundary gate fresh regardless of the provenance status:
 
 ```bash
 git status --short
@@ -822,11 +819,22 @@ go test ./...
 npm run api:bundle
 npm run api:lint
 go run github.com/a-h/templ/cmd/templ generate
+git status --short
+```
+
+Only when `docs/legal/provenance.md` is explicitly `PASS`, also run the
+licensing and artifact gate fresh:
+
+```bash
 npm run licenses:check
 npm run sbom:generate
+npm run release:package
 npm run release:test
 git status --short
 ```
+
+When provenance is `BLOCKED`, do not create or invoke those scripts. Report
+the licensing and artifact gate as blocked with the unresolved evidence.
 
 Run integration tests when the storage/source migration touches Forgejo or
 container-backed paths:

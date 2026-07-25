@@ -44,6 +44,12 @@ func TestReleaseServiceCommitsAcceptedFollowingTrackInvariant(t *testing.T) {
 	if len(store.publications) != 1 || len(store.auditEvents) != 1 || len(store.outbox) != 1 {
 		t.Fatalf("release evidence incomplete: publications=%d audit=%d outbox=%d", len(store.publications), len(store.auditEvents), len(store.outbox))
 	}
+	if event := store.auditEvents[0]; event.TrackID != "v1" || event.RevisionID != "revision-next" {
+		t.Fatalf("audit event lacks release identity: %#v", event)
+	}
+	if message := store.outbox[0]; message.TrackID != "v1" || message.RevisionID != "revision-next" {
+		t.Fatalf("outbox message lacks release identity: %#v", message)
+	}
 	for _, got := range store.contexts {
 		assertSameContexts(t, ctx, got)
 	}

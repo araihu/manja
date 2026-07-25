@@ -79,12 +79,14 @@ func (s *ReleaseService) Coordinate(ctx context.Context, command ReleaseCommand)
 		}
 		eventID := releaseEvidenceID(command, next.Generation)
 		if err := operational.AppendAuditEvent(transactionContext, domain.AuditEvent{
-			ID: eventID, ContractID: command.ContractID, Kind: "release.track.considered", ActorID: command.ActorID, OccurredAt: now,
+			ID: eventID, ContractID: command.ContractID, TrackID: command.TrackID, RevisionID: command.RevisionID,
+			Kind: "release.track.considered", ActorID: command.ActorID, OccurredAt: now,
 		}); err != nil {
 			return fmt.Errorf("append audit event: %w", err)
 		}
 		if err := operational.Enqueue(transactionContext, domain.OutboxMessage{
 			ID: "outbox-" + strings.TrimPrefix(eventID, "audit-"), ContractID: command.ContractID,
+			TrackID: command.TrackID, RevisionID: command.RevisionID,
 			Topic: "release.track.updated", CreatedAt: now,
 		}); err != nil {
 			return fmt.Errorf("enqueue release event: %w", err)

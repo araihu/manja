@@ -299,7 +299,9 @@ func matchingExceptions(layer PolicyLayer, finding SpecChange, evaluatedAt time.
 		if !evaluatedAt.Before(exception.ExpiresAt) {
 			continue
 		}
-		if exception.FindingID == finding.ID || exception.RuleID == finding.RuleID {
+		matchesFinding := exception.FindingID != "" && exception.FindingID == finding.ID
+		matchesRule := exception.RuleID != "" && exception.RuleID == finding.RuleID
+		if matchesFinding || matchesRule {
 			matching = append(matching, index)
 		}
 	}

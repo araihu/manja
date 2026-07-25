@@ -242,3 +242,23 @@ func TestEvaluateFindingsRejectsExpiredExceptionAtEvaluationTime(t *testing.T) {
 		t.Fatalf("result = %#v", result)
 	}
 }
+
+func TestEvaluateFindingsDoesNotMatchEmptyFindingIDToRuleException(t *testing.T) {
+	now := time.Date(2026, 7, 25, 12, 0, 0, 0, time.UTC)
+	policy, err := MergePolicy(PolicyLayer{
+		Name: "stable", Source: PolicySourceRepository,
+		Exceptions: []PolicyException{{
+			RuleID: RuleOperationRemoved, Reason: "operation migration", Author: "api-team",
+			ExpiresAt: now.Add(time.Hour), Source: PolicySourceRepository,
+		}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	result := EvaluateFindings(policy, []SpecChange{{
+		RuleID: RuleSchemaRemoved, Severity: SpecChangeBreaking, Subject: "Schema Customer",
+	}}, now)
+	if len(result.AppliedExceptions) != 0 {
+		t.Fatalf("unrelated rule exception matched empty finding id: %#v", result.AppliedExceptions)
+	}
+}

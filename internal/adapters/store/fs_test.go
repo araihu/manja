@@ -106,16 +106,70 @@ func TestFileStoreContentAddressedBlobSurvivesRestart(t *testing.T) {
 
 func TestFileStoreDiscardsIncompleteOperationalStagingOnRestart(t *testing.T) {
 	root := t.TempDir()
-	staging := filepath.Join(root, "operational", ".state-interrupted.tmp")
-	if err := os.MkdirAll(filepath.Dir(staging), 0o755); err != nil {
-		t.Fatal(err)
+	stagingFiles := []string{
+		filepath.Join(root, "operational", ".state-interrupted.tmp"),
+		filepath.Join(root, "blobs", "sha256", ".write-interrupted.tmp"),
 	}
-	if err := os.WriteFile(staging, []byte("partial"), 0o600); err != nil {
-		t.Fatal(err)
+	for _, staging := range stagingFiles {
+		if err := os.MkdirAll(filepath.Dir(staging), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(staging, []byte("partial"), 0o600); err != nil {
+			t.Fatal(err)
+		}
 	}
 	_ = NewFileStore(root)
-	if _, err := os.Stat(staging); !errors.Is(err, os.ErrNotExist) {
-		t.Fatalf("staging file after restart error = %v, want not exist", err)
+	for _, staging := range stagingFiles {
+		if _, err := os.Stat(staging); !errors.Is(err, os.ErrNotExist) {
+			t.Fatalf("staging file %q after restart error = %v, want not exist", staging, err)
+		}
+	}
+}
+
+func TestFileStoreMigratesCommittedLegacyOperationalState(t *testing.T) {
+	ctx := context.Background()
+	root := t.TempDir()
+	store := NewFileStore(root)
+	revision := core.ContractRevision{ID: "legacy-revision", SourceID: "source", Ref: "v1"}
+	publication := core.Publication{ProjectID: "payments", RevisionID: revision.ID, Public: true, Path: "/payments/v1"}
+	record := core.SyncRecord{ID: "legacy-sync", ProjectID: "payments", RevisionID: revision.ID, Result: core.SyncResultSuccess}
+	if err := store.writeJSON(ctx, "revisions", revision.ID+".json", revision); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.writeJSON(ctx, "publications", "payments-"+revision.ID+".json", publication); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.writeJSON(ctx, "sync-history", record.ID+".json", record); err != nil {
+		t.Fatal(err)
+	}
+
+	publication.Path = "/payments/stable"
+	if err := store.SavePublication(ctx, publication); err != nil {
+		t.Fatalf("migrate and update legacy publication: %v", err)
+	}
+	for _, namespace := range []string{"revisions", "publications", "sync-history"} {
+		if err := os.RemoveAll(filepath.Join(root, namespace)); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	restarted := NewFileStore(root)
+	gotRevision, err := restarted.Revision(ctx, revision.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if gotRevision.Ref != revision.Ref {
+		t.Fatalf("migrated revision = %#v", gotRevision)
+	}
+	gotPublication, err := restarted.Publication(ctx, publication.ProjectID, publication.RevisionID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if gotPublication.Path != publication.Path {
+		t.Fatalf("migrated publication = %#v", gotPublication)
+	}
+	if _, err := restarted.SyncRecord(ctx, record.ID); err != nil {
+		t.Fatalf("migrated sync record: %v", err)
 	}
 }
 

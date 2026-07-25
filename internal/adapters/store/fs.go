@@ -38,7 +38,7 @@ type operationalState struct {
 
 func NewFileStore(root string) *FileStore {
 	store := &FileStore{root: root}
-	store.discardIncompleteOperationalStaging()
+	store.discardIncompleteStaging()
 	return store
 }
 
@@ -56,11 +56,14 @@ func (s *FileStore) Within(ctx context.Context, callback func(context.Context, p
 	if err != nil {
 		return err
 	}
-	transaction := &operationalTransaction{state: state}
+	transaction := &operationalTransaction{
+		state:            state,
+		mutatedRevisions: make(map[string]struct{}),
+	}
 	if err := callback(ctx, transaction); err != nil {
 		return err
 	}
-	if err := s.validateOperationalState(ctx, transaction.state); err != nil {
+	if err := s.validateOperationalState(ctx, transaction.state, transaction.mutatedRevisions); err != nil {
 		return err
 	}
 	return s.publishOperationalState(ctx, transaction.state)
@@ -278,20 +281,69 @@ func (s *FileStore) loadOperationalState(ctx context.Context) (operationalState,
 	}
 	path := filepath.Join(s.root, "operational", "state.json")
 	data, err := os.ReadFile(path)
-	if errors.Is(err, fs.ErrNotExist) {
-		return state, nil
-	}
-	if err != nil {
+	migrateLegacy := errors.Is(err, fs.ErrNotExist)
+	if err != nil && !errors.Is(err, fs.ErrNotExist) {
 		return state, err
 	}
-	if err := json.Unmarshal(data, &state); err != nil {
-		return operationalState{}, fmt.Errorf("decode operational state: %w", err)
-	}
-	if state.Version != operationalStateVersion {
-		return operationalState{}, fmt.Errorf("unsupported operational state version %d", state.Version)
+	if err == nil {
+		if err := json.Unmarshal(data, &state); err != nil {
+			return operationalState{}, fmt.Errorf("decode operational state: %w", err)
+		}
+		if state.Version != operationalStateVersion {
+			return operationalState{}, fmt.Errorf("unsupported operational state version %d", state.Version)
+		}
 	}
 	state.initializeMaps()
+	if !migrateLegacy {
+		return state, nil
+	}
+	if err := mergeLegacyJSON(ctx, s, "revisions", state.Revisions, func(revision domain.ContractRevision) string {
+		return revision.ID
+	}); err != nil {
+		return operationalState{}, err
+	}
+	if err := mergeLegacyJSON(ctx, s, "publications", state.Publications, func(publication domain.Publication) string {
+		return publicationKey(publication.ProjectID, publication.RevisionID)
+	}); err != nil {
+		return operationalState{}, err
+	}
+	if err := mergeLegacyJSON(ctx, s, "sync-history", state.SyncRecords, func(record domain.SyncRecord) string {
+		return record.ID
+	}); err != nil {
+		return operationalState{}, err
+	}
 	return state, nil
+}
+
+func mergeLegacyJSON[T any](
+	ctx context.Context,
+	store *FileStore,
+	namespace string,
+	target map[string]T,
+	key func(T) string,
+) error {
+	directory := filepath.Join(store.root, namespace)
+	entries, err := os.ReadDir(directory)
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	for _, entry := range entries {
+		if entry.IsDir() || filepath.Ext(entry.Name()) != ".json" {
+			continue
+		}
+		var value T
+		if err := store.readJSON(ctx, namespace, entry.Name(), &value); err != nil {
+			return fmt.Errorf("read legacy %s record %q: %w", namespace, entry.Name(), err)
+		}
+		valueKey := key(value)
+		if _, exists := target[valueKey]; !exists {
+			target[valueKey] = value
+		}
+	}
+	return nil
 }
 
 func (s *FileStore) publishOperationalState(ctx context.Context, state operationalState) error {
@@ -343,8 +395,9 @@ func (s *FileStore) publishOperationalState(ctx context.Context, state operation
 	return directory.Sync()
 }
 
-func (s *FileStore) validateOperationalState(ctx context.Context, state operationalState) error {
-	for id, revision := range state.Revisions {
+func (s *FileStore) validateOperationalState(ctx context.Context, state operationalState, mutatedRevisions map[string]struct{}) error {
+	for id := range mutatedRevisions {
+		revision := state.Revisions[id]
 		if revision.SpecBlobKey == "" {
 			continue
 		}
@@ -397,13 +450,24 @@ func (s *FileStore) validateOperationalState(ctx context.Context, state operatio
 	return nil
 }
 
-func (s *FileStore) discardIncompleteOperationalStaging() {
+func (s *FileStore) discardIncompleteStaging() {
 	matches, err := filepath.Glob(filepath.Join(s.root, "operational", ".state-*.tmp"))
-	if err != nil {
-		return
+	if err == nil {
+		for _, match := range matches {
+			_ = os.Remove(match)
+		}
 	}
-	for _, match := range matches {
-		_ = os.Remove(match)
+	for _, namespace := range []string{"blobs", "operational", "projects", "publications", "revisions", "sync-history"} {
+		_ = filepath.WalkDir(filepath.Join(s.root, namespace), func(path string, entry fs.DirEntry, err error) error {
+			if err != nil || entry.IsDir() {
+				return nil
+			}
+			name := entry.Name()
+			if strings.HasPrefix(name, ".write-") && strings.HasSuffix(name, ".tmp") {
+				_ = os.Remove(path)
+			}
+			return nil
+		})
 	}
 }
 
@@ -464,7 +528,8 @@ func (s *FileStore) safeNamespacePath(namespace, name string) (string, error) {
 }
 
 type operationalTransaction struct {
-	state operationalState
+	state            operationalState
+	mutatedRevisions map[string]struct{}
 }
 
 func (t *operationalTransaction) SaveRevision(ctx context.Context, revision domain.ContractRevision) error {
@@ -475,6 +540,7 @@ func (t *operationalTransaction) SaveRevision(ctx context.Context, revision doma
 		return err
 	}
 	t.state.Revisions[revision.ID] = revision
+	t.mutatedRevisions[revision.ID] = struct{}{}
 	return nil
 }
 
@@ -625,9 +691,12 @@ func writeFileAtomically(filePath string, data []byte, mode fs.FileMode) error {
 		return err
 	}
 	temporaryPath := temporary.Name()
+	removeTemporary := true
 	defer func() {
 		_ = temporary.Close()
-		_ = os.Remove(temporaryPath)
+		if removeTemporary {
+			_ = os.Remove(temporaryPath)
+		}
 	}()
 	if err := temporary.Chmod(mode); err != nil {
 		return err
@@ -641,7 +710,16 @@ func writeFileAtomically(filePath string, data []byte, mode fs.FileMode) error {
 	if err := temporary.Close(); err != nil {
 		return err
 	}
-	return os.Rename(temporaryPath, filePath)
+	if err := os.Rename(temporaryPath, filePath); err != nil {
+		return err
+	}
+	removeTemporary = false
+	directory, err := os.Open(filepath.Dir(filePath))
+	if err != nil {
+		return err
+	}
+	defer directory.Close()
+	return directory.Sync()
 }
 
 func validateID(id string) error {

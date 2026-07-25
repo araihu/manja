@@ -91,6 +91,37 @@ func TestSyncCommitFailureLeavesOnlyReplaySafeBlob(t *testing.T) {
 	}
 }
 
+func TestSyncPreservesCommittedResultAndAttemptsEveryCacheInvalidation(t *testing.T) {
+	store := newTestOperationalStore()
+	cache := &syncCacheFake{fail: map[string]error{
+		"public:payments":            errors.New("public cache unavailable"),
+		"search:payments:revision-1": errors.New("search cache unavailable"),
+	}}
+	service, err := NewSyncService(SyncDependencies{
+		Source: &syncSourceFake{}, Parser: &syncParserFake{},
+		UnitOfWork: &testUnitOfWork{committed: store}, Blobs: newSyncBlobFake(nil),
+		Clock: &testClock{now: time.Date(2026, 7, 25, 13, 0, 0, 0, time.UTC)}, Cache: cache,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := service.Sync(context.Background(), SyncCommand{ContractID: "payments", SourceID: "source-main"})
+	var appErr *Error
+	if !errors.As(err, &appErr) || appErr.Kind != ErrorCache {
+		t.Fatalf("Sync error = %#v, want cache warning", err)
+	}
+	if result.Revision.ID != "revision-1" || result.Record.Result != domain.SyncResultSuccess {
+		t.Fatalf("cache warning discarded committed result: %#v", result)
+	}
+	if len(store.revisions) != 1 || len(store.syncRecords) != 1 {
+		t.Fatalf("cache warning changed committed state: revisions=%d sync=%d", len(store.revisions), len(store.syncRecords))
+	}
+	if !cache.deleted["public:payments"] || !cache.deleted["search:payments:revision-1"] {
+		t.Fatalf("cache invalidation stopped early: %#v", cache.deleted)
+	}
+}
+
 func TestSyncReplayUsesStableRecordAndBlobIdentity(t *testing.T) {
 	store := newTestOperationalStore()
 	blobs := newSyncBlobFake(nil)
@@ -212,6 +243,7 @@ func (s *syncBlobFake) Get(ctx context.Context, key port.BlobKey) ([]byte, error
 type syncCacheFake struct {
 	deleted  map[string]bool
 	contexts []context.Context
+	fail     map[string]error
 }
 
 func (c *syncCacheFake) Get(context.Context, string) ([]byte, bool, error) { return nil, false, nil }
@@ -222,5 +254,5 @@ func (c *syncCacheFake) Delete(ctx context.Context, key string) error {
 		c.deleted = map[string]bool{}
 	}
 	c.deleted[key] = true
-	return nil
+	return c.fail[key]
 }

@@ -3,6 +3,7 @@ package selfhosted
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -344,6 +345,19 @@ func TestNewWithOptionsRefreshesGitCandidatesAfterManualSync(t *testing.T) {
 	handler.ServeHTTP(rec, req)
 	if body := rec.Body.String(); !strings.Contains(body, "release/v2") {
 		t.Fatalf("management body missing refreshed ref:\n%s", body)
+	}
+}
+
+func TestCandidateMemoryRetainsLatestSuccessfulDiscovery(t *testing.T) {
+	startup := []core.RevisionCandidate{{Ref: "main"}}
+	refreshed := []core.RevisionCandidate{{Ref: "main"}, {Ref: "release/v2"}}
+	memory := newCandidateMemory(startup)
+	if got := memory.resolve(refreshed, nil); len(got) != 2 {
+		t.Fatalf("successful discovery = %#v", got)
+	}
+	got := memory.resolve(nil, errors.New("discovery unavailable"))
+	if len(got) != 2 || got[1].Ref != "release/v2" {
+		t.Fatalf("failure fallback = %#v, want latest successful discovery", got)
 	}
 }
 

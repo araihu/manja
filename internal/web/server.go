@@ -1,6 +1,7 @@
 package web
 
 import (
+	"log/slog"
 	"net/http"
 
 	"github.com/araihu/manja/application"
@@ -38,6 +39,7 @@ func publishedDocsPathHandler(public http.Handler, store ManagementStore) http.H
 	}
 	resolver, err := application.NewPublicResolver(resolverStore)
 	if err != nil {
+		slog.Error("construct public resolver", "error", err)
 		return public
 	}
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

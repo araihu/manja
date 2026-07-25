@@ -19,27 +19,62 @@ func TestPublicOperationsAreContextFirst(t *testing.T) {
 func checkPortInterfaces(t *testing.T, dir string) {
 	t.Helper()
 	files := parseDirectory(t, dir)
+	interfaces := make(map[string]*ast.InterfaceType)
 	for _, file := range files {
 		ast.Inspect(file, func(node ast.Node) bool {
 			typeSpec, ok := node.(*ast.TypeSpec)
-			if !ok || !typeSpec.Name.IsExported() {
+			if !ok {
 				return true
 			}
 			interfaceType, ok := typeSpec.Type.(*ast.InterfaceType)
 			if !ok {
 				return true
 			}
-			for _, field := range interfaceType.Methods.List {
-				if len(field.Names) == 0 || !field.Names[0].IsExported() {
-					continue
-				}
-				operation, ok := field.Type.(*ast.FuncType)
-				if !ok || !contextFirst(operation) {
-					t.Errorf("port operation %s.%s must accept context.Context first", typeSpec.Name.Name, field.Names[0].Name)
-				}
-			}
+			interfaces[typeSpec.Name.Name] = interfaceType
 			return false
 		})
+	}
+	for name, interfaceType := range interfaces {
+		if !ast.IsExported(name) {
+			continue
+		}
+		checkInterfaceMethods(t, name, interfaceType, interfaces, make(map[string]bool))
+	}
+}
+
+func checkInterfaceMethods(
+	t *testing.T,
+	rootName string,
+	interfaceType *ast.InterfaceType,
+	interfaces map[string]*ast.InterfaceType,
+	visiting map[string]bool,
+) {
+	t.Helper()
+	if visiting[rootName] {
+		return
+	}
+	visiting[rootName] = true
+	defer delete(visiting, rootName)
+	for _, field := range interfaceType.Methods.List {
+		if len(field.Names) != 0 {
+			if !field.Names[0].IsExported() {
+				continue
+			}
+			operation, ok := field.Type.(*ast.FuncType)
+			if !ok || !contextFirst(operation) {
+				t.Errorf("port operation %s.%s must accept context.Context first", rootName, field.Names[0].Name)
+			}
+			continue
+		}
+		embedded, ok := field.Type.(*ast.Ident)
+		if !ok {
+			continue
+		}
+		embeddedInterface, ok := interfaces[embedded.Name]
+		if !ok {
+			continue
+		}
+		checkInterfaceMethods(t, embedded.Name, embeddedInterface, interfaces, visiting)
 	}
 }
 

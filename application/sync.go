@@ -113,14 +113,19 @@ func (s *SyncService) Sync(ctx context.Context, command SyncCommand) (SyncResult
 	if err != nil {
 		return SyncResult{}, wrapError(ErrorTransaction, "commit sync", err)
 	}
+	result := SyncResult{Spec: spec, Revision: revision, Index: index, Record: record, BlobKey: blobKey}
 	if s.cache != nil {
+		var cacheErr error
 		for _, key := range []string{"public:" + command.ContractID, "search:" + command.ContractID + ":" + revision.ID} {
 			if err := s.cache.Delete(ctx, key); err != nil {
-				return SyncResult{}, wrapError(ErrorCache, "invalidate "+key, err)
+				cacheErr = errors.Join(cacheErr, fmt.Errorf("invalidate %s: %w", key, err))
 			}
 		}
+		if cacheErr != nil {
+			return result, wrapError(ErrorCache, "invalidate sync cache entries", cacheErr)
+		}
 	}
-	return SyncResult{Spec: spec, Revision: revision, Index: index, Record: record, BlobKey: blobKey}, nil
+	return result, nil
 }
 
 func (s *SyncService) recordFailure(

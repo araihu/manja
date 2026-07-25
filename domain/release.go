@@ -89,6 +89,8 @@ type ContractReview struct {
 type AuditEvent struct {
 	ID         string    `json:"id"`
 	ContractID string    `json:"contractId"`
+	TrackID    string    `json:"trackId,omitempty"`
+	RevisionID string    `json:"revisionId,omitempty"`
 	Kind       string    `json:"kind"`
 	ActorID    string    `json:"actorId,omitempty"`
 	OccurredAt time.Time `json:"occurredAt"`
@@ -97,6 +99,8 @@ type AuditEvent struct {
 type OutboxMessage struct {
 	ID         string    `json:"id"`
 	ContractID string    `json:"contractId"`
+	TrackID    string    `json:"trackId,omitempty"`
+	RevisionID string    `json:"revisionId,omitempty"`
 	Topic      string    `json:"topic"`
 	Payload    []byte    `json:"payload,omitempty"`
 	CreatedAt  time.Time `json:"createdAt"`

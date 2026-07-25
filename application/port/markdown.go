@@ -2,10 +2,13 @@ package port
 
 import (
 	"context"
-
-	"github.com/araihu/manja/domain"
 )
 
+type MarkdownResult struct {
+	HTML  string
+	Plain string
+}
+
 type MarkdownRenderer interface {
-	Render(context.Context, string) (domain.MarkdownResult, error)
+	Render(context.Context, string) (MarkdownResult, error)
 }

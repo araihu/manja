@@ -1,7 +1,6 @@
 package port
 
 import (
-	"context"
 	"fmt"
 	"strings"
 )
@@ -20,8 +19,4 @@ func (r SecretRef) Validate() error {
 		return fmt.Errorf("secret reference name must be normalized")
 	}
 	return nil
-}
-
-type SecretResolver interface {
-	Resolve(context.Context, SecretRef) ([]byte, error)
 }

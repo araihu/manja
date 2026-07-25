@@ -10,7 +10,7 @@ import (
 	"github.com/yuin/goldmark/extension"
 	"github.com/yuin/goldmark/parser"
 
-	core "github.com/araihu/manja/domain"
+	"github.com/araihu/manja/application/port"
 )
 
 type Renderer struct {
@@ -24,19 +24,19 @@ func NewRenderer() Renderer {
 	)}
 }
 
-func (r Renderer) Render(ctx context.Context, input string) (core.MarkdownResult, error) {
+func (r Renderer) Render(ctx context.Context, input string) (port.MarkdownResult, error) {
 	if err := ctx.Err(); err != nil {
-		return core.MarkdownResult{}, err
+		return port.MarkdownResult{}, err
 	}
 
 	sanitized := stripRawHTML(input)
 	var buf bytes.Buffer
 	if err := r.md.Convert([]byte(sanitized), &buf); err != nil {
-		return core.MarkdownResult{}, err
+		return port.MarkdownResult{}, err
 	}
 
 	html := `<div class="manja-markdown">` + buf.String() + `</div>`
-	return core.MarkdownResult{HTML: html, Plain: plainText(sanitized)}, nil
+	return port.MarkdownResult{HTML: html, Plain: plainText(sanitized)}, nil
 }
 
 var rawHTML = regexp.MustCompile(`(?is)<[^>]+>`)

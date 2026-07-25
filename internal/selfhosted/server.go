@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/araihu/manja/application"
@@ -145,6 +146,7 @@ func managementSyncAction(options Options, store *storeadapter.FileStore, candid
 	if options.SourceKind != SourceKindGit {
 		return nil
 	}
+	candidateState := newCandidateMemory(candidates)
 	return func(ctx context.Context, spec web.ManagedSpec, ref string) (web.ManagedSpec, error) {
 		syncOptions := options
 		syncOptions.GitRef = ref
@@ -157,9 +159,7 @@ func managementSyncAction(options Options, store *storeadapter.FileStore, candid
 			return web.ManagedSpec{}, err
 		}
 		refreshedCandidates, discoveryErr := discoverSourceRefs(ctx, sourceFetcher)
-		if discoveryErr != nil {
-			refreshedCandidates = candidates
-		}
+		refreshedCandidates = candidateState.resolve(refreshedCandidates, discoveryErr)
 		spec.Index = result.Index
 		spec.Project.ID = firstNonBlank(spec.Project.ID, options.ProjectID)
 		spec.Project.Name = result.Index.Title
@@ -169,6 +169,24 @@ func managementSyncAction(options Options, store *storeadapter.FileStore, candid
 		spec.SyncRecord = result.Record
 		return spec, nil
 	}
+}
+
+type candidateMemory struct {
+	mu        sync.Mutex
+	lastKnown []domain.RevisionCandidate
+}
+
+func newCandidateMemory(candidates []domain.RevisionCandidate) *candidateMemory {
+	return &candidateMemory{lastKnown: append([]domain.RevisionCandidate(nil), candidates...)}
+}
+
+func (m *candidateMemory) resolve(candidates []domain.RevisionCandidate, discoveryErr error) []domain.RevisionCandidate {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if discoveryErr == nil {
+		m.lastKnown = append(m.lastKnown[:0], candidates...)
+	}
+	return append([]domain.RevisionCandidate(nil), m.lastKnown...)
 }
 
 func managementPublishedIndexLoader(options Options, store *storeadapter.FileStore) web.ManagementPublishedIndexLoader {
