@@ -173,6 +173,28 @@ func TestFileStoreMigratesCommittedLegacyOperationalState(t *testing.T) {
 	}
 }
 
+func TestFileStoreValidatesMigratedLegacyRevisionBlobBeforeFirstCommit(t *testing.T) {
+	ctx := context.Background()
+	root := t.TempDir()
+	store := NewFileStore(root)
+	revision := core.ContractRevision{
+		ID: "legacy-revision", SourceID: "source",
+		SpecBlobKey: string(port.ContentAddressedBlobKey([]byte("missing legacy blob"))),
+	}
+	if err := store.writeJSON(ctx, "revisions", revision.ID+".json", revision); err != nil {
+		t.Fatal(err)
+	}
+	err := store.SavePublication(ctx, core.Publication{
+		ProjectID: "payments", RevisionID: revision.ID, Public: true, Path: "/payments/v1",
+	})
+	if err == nil {
+		t.Fatal("first manifest commit accepted a migrated revision with a missing blob")
+	}
+	if _, statErr := os.Stat(filepath.Join(root, "operational", "state.json")); !errors.Is(statErr, os.ErrNotExist) {
+		t.Fatalf("invalid migration published operational state: %v", statErr)
+	}
+}
+
 func TestFileStorePersistsProjectRevisionPublicationAndBlob(t *testing.T) {
 	ctx := context.Background()
 	fs := NewFileStore(t.TempDir())

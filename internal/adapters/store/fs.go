@@ -26,14 +26,15 @@ type FileStore struct {
 }
 
 type operationalState struct {
-	Version       int                                `json:"version"`
-	Revisions     map[string]domain.ContractRevision `json:"revisions"`
-	Reviews       map[string]domain.ContractReview   `json:"reviews"`
-	SyncRecords   map[string]domain.SyncRecord       `json:"syncRecords"`
-	ReleaseTracks map[string]domain.ReleaseTrack     `json:"releaseTracks"`
-	Publications  map[string]domain.Publication      `json:"publications"`
-	AuditEvents   map[string]domain.AuditEvent       `json:"auditEvents"`
-	Outbox        map[string]domain.OutboxMessage    `json:"outbox"`
+	Version           int                                `json:"version"`
+	Revisions         map[string]domain.ContractRevision `json:"revisions"`
+	Reviews           map[string]domain.ContractReview   `json:"reviews"`
+	SyncRecords       map[string]domain.SyncRecord       `json:"syncRecords"`
+	ReleaseTracks     map[string]domain.ReleaseTrack     `json:"releaseTracks"`
+	Publications      map[string]domain.Publication      `json:"publications"`
+	AuditEvents       map[string]domain.AuditEvent       `json:"auditEvents"`
+	Outbox            map[string]domain.OutboxMessage    `json:"outbox"`
+	migratedRevisions map[string]struct{}
 }
 
 func NewFileStore(root string) *FileStore {
@@ -58,7 +59,7 @@ func (s *FileStore) Within(ctx context.Context, callback func(context.Context, p
 	}
 	transaction := &operationalTransaction{
 		state:            state,
-		mutatedRevisions: make(map[string]struct{}),
+		mutatedRevisions: cloneIDSet(state.migratedRevisions),
 	}
 	if err := callback(ctx, transaction); err != nil {
 		return err
@@ -301,6 +302,9 @@ func (s *FileStore) loadOperationalState(ctx context.Context) (operationalState,
 		return revision.ID
 	}); err != nil {
 		return operationalState{}, err
+	}
+	for id := range state.Revisions {
+		state.migratedRevisions[id] = struct{}{}
 	}
 	if err := mergeLegacyJSON(ctx, s, "publications", state.Publications, func(publication domain.Publication) string {
 		return publicationKey(publication.ProjectID, publication.RevisionID)
@@ -672,6 +676,17 @@ func (s *operationalState) initializeMaps() {
 	if s.Outbox == nil {
 		s.Outbox = make(map[string]domain.OutboxMessage)
 	}
+	if s.migratedRevisions == nil {
+		s.migratedRevisions = make(map[string]struct{})
+	}
+}
+
+func cloneIDSet(values map[string]struct{}) map[string]struct{} {
+	cloned := make(map[string]struct{}, len(values))
+	for value := range values {
+		cloned[value] = struct{}{}
+	}
+	return cloned
 }
 
 func releaseTrackKey(contractID, trackID string) string {
