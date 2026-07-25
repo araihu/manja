@@ -36,6 +36,12 @@ func ConsiderReleaseRevision(track ReleaseTrack, revisionID string, accepted boo
 	}
 
 	next := track
+	if accepted && track.Mode == ReleaseModeFollowing && track.CurrentRevisionID == revisionID && track.CandidateRevisionID == "" {
+		return next, nil
+	}
+	if track.CandidateRevisionID == revisionID && (!accepted || track.Mode == ReleaseModePinned) {
+		return next, nil
+	}
 	next.Generation++
 	if !accepted || track.Mode == ReleaseModePinned {
 		next.CandidateRevisionID = revisionID
@@ -80,10 +86,15 @@ func validateReleaseTrack(track ReleaseTrack) error {
 }
 
 type ContractReview struct {
-	ID                  string       `json:"id"`
-	ContractID          string       `json:"contractId"`
-	CandidateRevisionID string       `json:"candidateRevisionId"`
-	Report              ReviewReport `json:"report"`
+	ID                      string       `json:"id"`
+	ContractID              string       `json:"contractId"`
+	BaselineRevisionID      string       `json:"baselineRevisionId"`
+	BaselineSpecDigest      string       `json:"baselineSpecDigest"`
+	BaselineContractDigest  string       `json:"baselineContractDigest"`
+	CandidateRevisionID     string       `json:"candidateRevisionId"`
+	CandidateSpecDigest     string       `json:"candidateSpecDigest"`
+	CandidateContractDigest string       `json:"candidateContractDigest"`
+	Report                  ReviewReport `json:"report"`
 }
 
 type AuditEvent struct {

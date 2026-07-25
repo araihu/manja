@@ -21,8 +21,14 @@ var errUnsafeStorePath = errors.New("unsafe store path")
 const operationalStateVersion = 1
 
 type FileStore struct {
-	root string
-	mu   sync.Mutex
+	root          string
+	mu            sync.Mutex
+	openDirectory func(string) (directorySyncer, error)
+}
+
+type directorySyncer interface {
+	Sync() error
+	Close() error
 }
 
 type operationalState struct {
@@ -38,7 +44,12 @@ type operationalState struct {
 }
 
 func NewFileStore(root string) *FileStore {
-	store := &FileStore{root: root}
+	store := &FileStore{
+		root: root,
+		openDirectory: func(path string) (directorySyncer, error) {
+			return os.Open(path)
+		},
+	}
 	store.discardIncompleteStaging()
 	return store
 }
@@ -391,12 +402,15 @@ func (s *FileStore) publishOperationalState(ctx context.Context, state operation
 		return err
 	}
 	removeTemporary = false
-	directory, err := os.Open(dir)
+	directory, err := s.openDirectory(dir)
 	if err != nil {
-		return err
+		return fmt.Errorf("%w: open operational state directory: %w", port.ErrCommitOutcomeUnknown, err)
 	}
 	defer directory.Close()
-	return directory.Sync()
+	if err := directory.Sync(); err != nil {
+		return fmt.Errorf("%w: sync operational state directory: %w", port.ErrCommitOutcomeUnknown, err)
+	}
+	return nil
 }
 
 func (s *FileStore) validateOperationalState(ctx context.Context, state operationalState, mutatedRevisions map[string]struct{}) error {
@@ -622,7 +636,17 @@ func (t *operationalTransaction) SavePublication(ctx context.Context, publicatio
 	if err := validatePublicPath(publication.Path); err != nil {
 		return err
 	}
-	t.state.Publications[publicationKey(publication.ProjectID, publication.RevisionID)] = publication
+	key := publicationKey(publication.ProjectID, publication.RevisionID)
+	if publication.Public {
+		for existingKey, existing := range t.state.Publications {
+			if existingKey == key || !existing.Public || existing.Path != publication.Path {
+				continue
+			}
+			existing.Public = false
+			t.state.Publications[existingKey] = existing
+		}
+	}
+	t.state.Publications[key] = publication
 	return nil
 }
 

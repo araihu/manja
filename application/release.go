@@ -61,6 +61,16 @@ func (s *ReleaseService) Coordinate(ctx context.Context, command ReleaseCommand)
 		if err != nil {
 			return fmt.Errorf("apply release transition: %w", err)
 		}
+		if next == track {
+			return nil
+		}
+		if command.Review.BaselineRevisionID != track.CurrentRevisionID {
+			return fmt.Errorf(
+				"validate release review baseline: review baseline %q does not match current revision %q",
+				command.Review.BaselineRevisionID,
+				track.CurrentRevisionID,
+			)
+		}
 		if err := operational.SaveReview(transactionContext, command.Review); err != nil {
 			return fmt.Errorf("save review: %w", err)
 		}
@@ -119,6 +129,22 @@ func validateReleaseCommand(command ReleaseCommand) error {
 	}
 	if command.SyncRecord.ProjectID != command.ContractID || command.SyncRecord.RevisionID != command.RevisionID {
 		return validationError("coordinate release", "sync identity does not match release command")
+	}
+	if err := domain.ValidateReleaseReviewReport(
+		command.Review.Report,
+		command.ContractID,
+		domain.SnapshotRef{
+			RevisionID:     command.Review.BaselineRevisionID,
+			SpecDigest:     command.Review.BaselineSpecDigest,
+			ContractDigest: command.Review.BaselineContractDigest,
+		},
+		domain.SnapshotRef{
+			RevisionID:     command.Review.CandidateRevisionID,
+			SpecDigest:     command.Review.CandidateSpecDigest,
+			ContractDigest: command.Review.CandidateContractDigest,
+		},
+	); err != nil {
+		return validationError("coordinate release", "invalid review evidence: "+err.Error())
 	}
 	if command.Accepted {
 		if command.Review.Report.Verdict != domain.VerdictPass {

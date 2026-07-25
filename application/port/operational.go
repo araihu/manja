@@ -9,11 +9,18 @@ import (
 	"github.com/araihu/manja/domain"
 )
 
-var ErrGenerationConflict = errors.New("operational generation conflict")
+var (
+	ErrGenerationConflict   = errors.New("operational generation conflict")
+	ErrCommitOutcomeUnknown = errors.New("operational commit outcome unknown")
+)
 
 // UnitOfWork provides one atomic boundary for consistency-sensitive operational
 // state. Implementations must roll back every callback mutation when the
-// callback or commit fails.
+// callback fails or commit fails before atomic publication. If atomic
+// publication succeeds but its durability cannot be confirmed, Within returns
+// an error wrapping ErrCommitOutcomeUnknown; callers must reload state and may
+// retry only idempotent operations because either the prior or next complete
+// state can survive restart.
 type UnitOfWork interface {
 	Within(context.Context, func(context.Context, OperationalStore) error) error
 }

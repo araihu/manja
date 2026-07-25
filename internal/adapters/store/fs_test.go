@@ -78,6 +78,73 @@ func TestFileStoreUnitOfWorkRejectsStaleReleaseTrackGeneration(t *testing.T) {
 	}
 }
 
+func TestFileStoreReportsIndeterminateCommitAfterManifestRename(t *testing.T) {
+	for _, tt := range []struct {
+		name      string
+		configure func(*FileStore)
+	}{
+		{
+			name: "open parent directory",
+			configure: func(store *FileStore) {
+				store.openDirectory = func(string) (directorySyncer, error) {
+					return nil, errors.New("forced directory open failure")
+				}
+			},
+		},
+		{
+			name: "sync parent directory",
+			configure: func(store *FileStore) {
+				store.openDirectory = func(string) (directorySyncer, error) {
+					return failingDirectorySyncer{err: errors.New("forced directory sync failure")}, nil
+				}
+			},
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			ctx := context.Background()
+			root := t.TempDir()
+			store := NewFileStore(root)
+			track := core.ReleaseTrack{
+				ID: "stable", ContractID: "payments", Mode: core.ReleaseModeFollowing, Generation: 1,
+			}
+			if err := store.Within(ctx, func(ctx context.Context, operational port.OperationalStore) error {
+				return operational.SaveReleaseTrack(ctx, 0, track)
+			}); err != nil {
+				t.Fatal(err)
+			}
+			tt.configure(store)
+
+			err := store.Within(ctx, func(ctx context.Context, operational port.OperationalStore) error {
+				current, err := operational.ReleaseTrack(ctx, "payments", "stable")
+				if err != nil {
+					return err
+				}
+				current.Generation = 2
+				return operational.SaveReleaseTrack(ctx, 1, current)
+			})
+			if !errors.Is(err, port.ErrCommitOutcomeUnknown) {
+				t.Fatalf("post-rename error = %v, want %v", err, port.ErrCommitOutcomeUnknown)
+			}
+
+			restarted := NewFileStore(root)
+			got, err := restarted.ReleaseTrack(ctx, "payments", "stable")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got.Generation != 2 {
+				t.Fatalf("recovered generation = %d, want atomically published generation 2", got.Generation)
+			}
+		})
+	}
+}
+
+type failingDirectorySyncer struct {
+	err error
+}
+
+func (f failingDirectorySyncer) Sync() error  { return f.err }
+func (f failingDirectorySyncer) Close() error { return nil }
+
 func TestFileStoreContentAddressedBlobSurvivesRestart(t *testing.T) {
 	ctx := context.Background()
 	root := t.TempDir()
@@ -293,6 +360,43 @@ func TestFileStoreReadsPublicPublicationByPath(t *testing.T) {
 	}
 	if got.ProjectID != "p1" || got.RevisionID != "r1" || !got.Public {
 		t.Fatalf("publication = %#v", got)
+	}
+}
+
+func TestFileStorePublicPublicationAdvancementRetiresPriorRoute(t *testing.T) {
+	ctx := context.Background()
+	root := t.TempDir()
+	store := NewFileStore(root)
+	for _, revisionID := range []string{"r1", "r2"} {
+		if err := store.SaveRevision(ctx, core.ContractRevision{ID: revisionID, SourceID: "s1"}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, revisionID := range []string{"r1", "r2"} {
+		if err := store.SavePublication(ctx, core.Publication{
+			ProjectID: "p1", RevisionID: revisionID, Public: true, Path: "/acme/payments/v1",
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	prior, err := store.Publication(ctx, "p1", "r1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if prior.Public {
+		t.Fatalf("prior revision remained public after route advancement: %#v", prior)
+	}
+
+	restarted := NewFileStore(root)
+	for attempt := 0; attempt < 256; attempt++ {
+		current, err := restarted.PublicPublicationByPath(ctx, "/acme/payments/v1")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if current.RevisionID != "r2" {
+			t.Fatalf("public lookup attempt %d resolved revision %q, want r2", attempt, current.RevisionID)
+		}
 	}
 }
 

@@ -76,6 +76,76 @@ type ReviewRequest struct {
 	EngineVersion string
 }
 
+// ValidateReleaseReviewReport binds canonical review evidence to one expected
+// release candidate. Release advancement accepts exactly one release-impact
+// comparison whose immutable baseline and candidate identities are complete.
+func ValidateReleaseReviewReport(report ReviewReport, contractID string, baseline, candidate SnapshotRef) error {
+	if report.SchemaVersion != ReviewSchemaVersion {
+		return fmt.Errorf("unsupported review schema version %q", report.SchemaVersion)
+	}
+	if report.ContractID != contractID {
+		return fmt.Errorf("review contract id %q does not match release contract id %q", report.ContractID, contractID)
+	}
+	if strings.TrimSpace(report.EngineVersion) == "" {
+		return fmt.Errorf("review engine version is required")
+	}
+	if !isLowerSHA256(report.PolicyDigest) {
+		return fmt.Errorf("review policy digest must be lowercase SHA-256")
+	}
+	if len(report.Comparisons) != 1 {
+		return fmt.Errorf("release review must contain exactly one comparison")
+	}
+	comparison := report.Comparisons[0]
+	if comparison.Kind != ComparisonReleaseImpact {
+		return fmt.Errorf("release review comparison kind %q is not %q", comparison.Kind, ComparisonReleaseImpact)
+	}
+	if err := validateExpectedSnapshotRef("baseline", comparison.Baseline, baseline); err != nil {
+		return err
+	}
+	if err := validateExpectedSnapshotRef("candidate", comparison.Candidate, candidate); err != nil {
+		return err
+	}
+	if comparison.Policy.Verdict != VerdictPass && comparison.Policy.Verdict != VerdictFail {
+		return fmt.Errorf("unsupported comparison verdict %q", comparison.Policy.Verdict)
+	}
+	if report.Verdict != comparison.Policy.Verdict {
+		return fmt.Errorf("review verdict %q does not match comparison verdict %q", report.Verdict, comparison.Policy.Verdict)
+	}
+	return nil
+}
+
+func validateExpectedSnapshotRef(role string, actual, expected SnapshotRef) error {
+	if err := validateSnapshotRef(role, actual); err != nil {
+		return err
+	}
+	if err := validateSnapshotRef("expected "+role, expected); err != nil {
+		return err
+	}
+	if actual.RevisionID != expected.RevisionID {
+		return fmt.Errorf("review %s revision id %q does not match expected revision %q", role, actual.RevisionID, expected.RevisionID)
+	}
+	if actual.SpecDigest != expected.SpecDigest {
+		return fmt.Errorf("review %s spec digest %q does not match expected digest %q", role, actual.SpecDigest, expected.SpecDigest)
+	}
+	if actual.ContractDigest != expected.ContractDigest {
+		return fmt.Errorf("review %s contract digest %q does not match expected digest %q", role, actual.ContractDigest, expected.ContractDigest)
+	}
+	return nil
+}
+
+func validateSnapshotRef(role string, ref SnapshotRef) error {
+	if strings.TrimSpace(ref.RevisionID) == "" {
+		return fmt.Errorf("review %s revision id is required", role)
+	}
+	if !isLowerSHA256(ref.SpecDigest) {
+		return fmt.Errorf("review %s spec digest must be lowercase SHA-256", role)
+	}
+	if !isLowerSHA256(ref.ContractDigest) {
+		return fmt.Errorf("review %s contract digest must be lowercase SHA-256", role)
+	}
+	return nil
+}
+
 // EvaluateReview produces a canonical dual-baseline report. The pull-request
 // comparison is always first; a supplied release baseline follows it.
 func EvaluateReview(request ReviewRequest) (ReviewReport, error) {
