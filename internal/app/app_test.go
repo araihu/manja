@@ -81,6 +81,16 @@ func TestNewWithOptionsSyncsSpecBeforeServingPublicDocs(t *testing.T) {
 		t.Fatalf("publication = %#v", pub)
 	}
 
+	rec = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodGet, "/synced/v1", nil)
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("published docs status = %d", rec.Code)
+	}
+	if body := rec.Body.String(); !containsAll(body, "Synced API", "OpenAPI docs") {
+		t.Fatalf("published docs body = %s", body)
+	}
+
 	blobPath := filepath.Join(dataDir, "blobs", "specs", rev.ID+".yaml")
 	blob, err := os.ReadFile(blobPath)
 	if err != nil {
@@ -193,10 +203,38 @@ func TestNewWithOptionsManagesGitRefDiscoveryAndSyncPublication(t *testing.T) {
 	ctx := context.Background()
 	dataDir := t.TempDir()
 	repo := initAppGitRepo(t)
-	writeAppGitFile(t, repo, "docs/openapi.yaml", "openapi: 3.1.0\ninfo:\n  title: Main API\n  version: v1\npaths: {}\n")
+	writeAppGitFile(t, repo, "docs/openapi.yaml", `openapi: 3.1.0
+info:
+  title: Main API
+  version: v1
+paths:
+  /customers:
+    get:
+      responses:
+        "200":
+          description: OK
+components:
+  schemas:
+    Customer:
+      type: object
+`)
 	appGit(t, repo, "tag", "v1.0.0")
 	appGit(t, repo, "checkout", "-b", "release/v2")
-	writeAppGitFile(t, repo, "docs/openapi.yaml", "openapi: 3.1.0\ninfo:\n  title: Release API\n  version: v2\npaths: {}\n")
+	writeAppGitFile(t, repo, "docs/openapi.yaml", `openapi: 3.1.0
+info:
+  title: Release API
+  version: v2
+paths:
+  /payments:
+    get:
+      responses:
+        "200":
+          description: OK
+components:
+  schemas:
+    Payment:
+      type: object
+`)
 	releaseCommit := appGitOutput(t, repo, "rev-parse", "HEAD")
 	appGit(t, repo, "checkout", "main")
 
@@ -240,6 +278,27 @@ func TestNewWithOptionsManagesGitRefDiscoveryAndSyncPublication(t *testing.T) {
 	handler.ServeHTTP(rec, req)
 	if body := rec.Body.String(); !containsAll(body, "Release API", "release/v2", releaseCommit, "/release/v2", "Public") {
 		t.Fatalf("updated management body = %s", body)
+	}
+	if body := rec.Body.String(); !containsAll(body, "Spec diff", "No contract breaks") {
+		t.Fatalf("published candidate diff body = %s", body)
+	}
+
+	form = url.Values{
+		"ref": {"main"},
+	}
+	rec = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodPost, "/manage/sync", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusSeeOther {
+		t.Fatalf("sync back status = %d", rec.Code)
+	}
+
+	rec = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodGet, "/manage", nil)
+	handler.ServeHTTP(rec, req)
+	if body := rec.Body.String(); !containsAll(body, "Main API", "/release/v2", "Removed endpoint", "GET /payments", "Added endpoint", "GET /customers", "Removed schema", "Payment", "Added schema", "Customer") {
+		t.Fatalf("candidate diff body = %s", body)
 	}
 
 	revisions := entries(t, filepath.Join(dataDir, "revisions"))

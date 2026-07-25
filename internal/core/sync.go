@@ -96,7 +96,7 @@ func (s Syncer) Sync(ctx context.Context, req SyncRequest) (SyncResult, error) {
 	idx.ProjectID = req.ProjectID
 	idx.RevisionID = rev.ID
 
-	if err := s.Blobs.Put(ctx, specBlobKey(rev, spec), spec.Bytes); err != nil {
+	if err := s.Blobs.Put(ctx, SpecBlobKey(rev, spec), spec.Bytes); err != nil {
 		record = record.withSpec(spec, rev)
 		return s.fail(ctx, record, err)
 	}
@@ -155,7 +155,7 @@ func syncRecordID(now time.Time, req SyncRequest) string {
 	return strings.Trim(strings.Join(parts, "-"), "-")
 }
 
-func specBlobKey(rev Revision, spec SpecFile) string {
+func SpecBlobKey(rev Revision, spec SpecFile) string {
 	ext := strings.TrimPrefix(strings.ToLower(filepath.Ext(spec.Path)), ".")
 	if ext == "" {
 		ext = strings.ToLower(spec.Format)

@@ -2,9 +2,12 @@ package app
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"io/fs"
 	"net/http"
 	"path/filepath"
+	"strings"
 
 	cacheadapter "github.com/araihu/manja/internal/adapters/cache"
 	markdownadapter "github.com/araihu/manja/internal/adapters/markdown"
@@ -75,6 +78,10 @@ func NewWithOptions(ctx context.Context, opts Options) (http.Handler, error) {
 		managementRecord.Result = core.SyncResultFailure
 		managementRecord.ErrorSummary = discoveryErr.Error()
 	}
+	publication, err := store.Publication(ctx, opts.ProjectID, result.Revision.ID)
+	if err != nil && !errors.Is(err, fs.ErrNotExist) {
+		return nil, err
+	}
 	syncAction := managementSyncAction(opts, store, candidates)
 	return web.NewServerWithOptions(result.Index, web.Options{
 		Public: web.PublicOptions{
@@ -84,8 +91,9 @@ func NewWithOptions(ctx context.Context, opts Options) (http.Handler, error) {
 			Branding:             opts.Branding,
 		},
 		Management: web.ManagementOptions{
-			Store:      store,
-			SyncAction: syncAction,
+			Store:                store,
+			SyncAction:           syncAction,
+			PublishedIndexLoader: managementPublishedIndexLoader(opts, store),
 			Project: core.Project{
 				ID:   opts.ProjectID,
 				Name: result.Index.Title,
@@ -98,10 +106,11 @@ func NewWithOptions(ctx context.Context, opts Options) (http.Handler, error) {
 				},
 				SourceIDs: []string{opts.SourceID},
 			},
-			Source:     source,
-			Revision:   result.Revision,
-			Candidates: candidates,
-			SyncRecord: managementRecord,
+			Source:      source,
+			Revision:    result.Revision,
+			Candidates:  candidates,
+			Publication: publication,
+			SyncRecord:  managementRecord,
 		},
 	}), nil
 }
@@ -155,13 +164,56 @@ func managementSyncAction(opts Options, store *storeadapter.FileStore, candidate
 	}
 }
 
+func managementPublishedIndexLoader(opts Options, store *storeadapter.FileStore) web.ManagementPublishedIndexLoader {
+	parser := openapiadapter.Parser{}
+	return func(ctx context.Context, spec web.ManagedSpec) (core.SpecIndex, bool, error) {
+		if !spec.Publication.Public || strings.TrimSpace(spec.Publication.RevisionID) == "" {
+			return core.SpecIndex{}, false, nil
+		}
+		if spec.Publication.RevisionID == spec.Revision.ID {
+			return spec.Index, true, nil
+		}
+		rev, err := store.Revision(ctx, spec.Publication.RevisionID)
+		if err != nil {
+			return core.SpecIndex{}, false, err
+		}
+		specPath := firstNonBlankApp(spec.Source.SpecPath, opts.SpecPath, "openapi.yaml")
+		file := core.SpecFile{
+			SourceID: rev.SourceID,
+			Path:     specPath,
+			Format:   specFormatApp(specPath),
+		}
+		data, err := store.Get(ctx, core.SpecBlobKey(rev, file))
+		if err != nil {
+			return core.SpecIndex{}, false, err
+		}
+		file.Bytes = data
+		idx, err := parser.Parse(ctx, file, rev)
+		if err != nil {
+			return core.SpecIndex{}, false, err
+		}
+		idx.ProjectID = firstNonBlankApp(spec.Project.ID, spec.Index.ProjectID, opts.ProjectID)
+		idx.RevisionID = rev.ID
+		return idx, true, nil
+	}
+}
+
 func firstNonBlankApp(values ...string) string {
 	for _, value := range values {
-		if value != "" {
+		if strings.TrimSpace(value) != "" {
 			return value
 		}
 	}
 	return ""
+}
+
+func specFormatApp(path string) string {
+	switch strings.ToLower(filepath.Ext(path)) {
+	case ".json":
+		return "json"
+	default:
+		return "yaml"
+	}
 }
 
 func (o Options) withDefaults() Options {

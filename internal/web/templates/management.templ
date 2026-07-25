@@ -2,177 +2,532 @@ package templates
 
 import (
 	"fmt"
+	"net/url"
 	"strings"
 	"time"
 
+	templpkg "github.com/a-h/templ"
 	"github.com/araihu/goshtoso/components/badge"
 	"github.com/araihu/goshtoso/components/button"
 	"github.com/araihu/goshtoso/components/radio"
+	selectfield "github.com/araihu/goshtoso/components/select"
+	"github.com/araihu/goshtoso/components/sidebar"
+	"github.com/araihu/goshtoso/components/table"
+	"github.com/araihu/goshtoso/components/tabs"
 	"github.com/araihu/goshtoso/components/textinput"
+	"github.com/araihu/goshtoso/components/toggle"
 	"github.com/araihu/manja/internal/core"
 )
 
 type ManagementOverviewModel struct {
-	Specs       []ManagedSpecModel
-	Project     core.Project
-	Source      core.Source
-	Revision    core.Revision
-	Publication core.Publication
-	SyncRecord  core.SyncRecord
+	Specs          []ManagedSpecModel
+	SelectedSpecID string
+	Project        core.Project
+	Source         core.Source
+	Revision       core.Revision
+	Publication    core.Publication
+	SyncRecord     core.SyncRecord
 }
 
 type ManagedSpecModel struct {
-	ID          string
-	Title       string
-	Version     string
-	Project     core.Project
-	Source      core.Source
-	Revision    core.Revision
-	Candidates  []core.RevisionCandidate
-	Publication core.Publication
-	SyncRecord  core.SyncRecord
+	ID            string
+	Title         string
+	Version       string
+	Operations    int
+	Schemas       int
+	Routes        int
+	Diff          core.SpecDiff
+	DiffAvailable bool
+	DiffMessage   string
+	Project       core.Project
+	Source        core.Source
+	Revision      core.Revision
+	Candidates    []core.RevisionCandidate
+	Publication   core.Publication
+	SyncRecord    core.SyncRecord
 }
 
 templ ManagementOverview(model ManagementOverviewModel) {
+	@managementShell(model, "overview") {
+		@ManagementOverviewContent(model)
+	}
+}
+
+templ ManagementSpecsPage(model ManagementOverviewModel) {
+	@managementShell(model, "specs") {
+		@ManagementSpecsContent(model)
+	}
+}
+
+templ ManagementSpecPage(model ManagementOverviewModel) {
+	@managementShell(model, "spec:" + model.SelectedSpecID) {
+		@ManagementSpecContent(model)
+	}
+}
+
+templ managementShell(model ManagementOverviewModel, active string) {
 	@LayoutWithBranding("Management", core.DocsBranding{}) {
-		<div class="min-h-screen bg-surface text-on-surface dark:bg-surface-dark dark:text-on-surface-dark">
-			<header class="border-b border-outline bg-surface dark:border-outline-dark dark:bg-surface-dark">
-				<div class="mx-auto flex max-w-7xl items-center justify-between gap-4 px-6 py-4">
-					<div class="min-w-0">
-						<p class="text-xs font-semibold uppercase tracking-normal text-on-surface-muted dark:text-on-surface-dark-muted">Management</p>
-						<h1 class="truncate text-2xl font-bold text-on-surface-strong dark:text-on-surface-dark-strong">Specs and sources</h1>
+		<div class="fixed inset-0 flex flex-col overflow-clip bg-surface text-on-surface dark:bg-surface-dark dark:text-on-surface-dark">
+			<header data-boot-anim="header" class="manja-docs-header relative z-50 shrink-0 border-b border-outline bg-surface dark:border-outline-dark dark:bg-surface-dark">
+				<div class="flex h-16 items-center justify-between gap-3 px-4 lg:px-8">
+					<div class="flex min-w-0 items-center gap-2">
+						@sidebar.Overlay(sidebar.OverlayConfig{
+							ID:                    "management-sidebar",
+							TriggerLabel:          "Open management sections",
+							RootClass:             "lg:hidden",
+							PanelPositionClass:    "fixed top-16 bottom-0 left-0",
+							PanelWidthClass:       "w-72 max-w-[85vw]",
+							BackdropPositionClass: "fixed inset-0",
+							Sidebar:               managementSidebarConfig(model, active, managementSidebarSearch("mobile"), "mobile"),
+						})
+						<a href="/manage" class="flex min-w-0 items-center gap-2 text-2xl font-bold font-title text-on-surface-strong dark:text-on-surface-dark-strong">
+							@managementLogoIcon()
+							<span class="truncate">Management</span>
+						</a>
 					</div>
-					<a href="/" class="inline-flex h-10 shrink-0 items-center justify-center rounded-radius border border-outline bg-surface-alt px-3 text-sm font-semibold text-on-surface-strong transition hover:bg-surface dark:border-outline-dark dark:bg-surface-dark-alt dark:text-on-surface-dark-strong dark:hover:bg-surface-dark">View docs</a>
+					<div class="flex min-w-0 items-center gap-3 text-sm text-on-surface-muted dark:text-on-surface-dark-muted">
+						<span class="hidden md:inline">Specs and sources</span>
+						<span class="rounded-radius border border-outline px-2 py-1 font-mono text-xs text-on-surface-strong dark:border-outline-dark dark:text-on-surface-dark-strong">{ managementSpecCount(len(model.Specs)) }</span>
+					</div>
 				</div>
 			</header>
-			<main class="mx-auto grid max-w-7xl gap-6 px-6 py-6">
-				<section class="grid gap-4" aria-labelledby="management-home-heading">
-					<div class="flex flex-wrap items-end justify-between gap-3">
-						<div>
-							<h2 id="management-home-heading" class="text-lg font-semibold text-on-surface-strong dark:text-on-surface-dark-strong">Managed specs</h2>
-							<p class="text-sm text-on-surface-muted dark:text-on-surface-dark-muted">{ managementSpecCount(len(model.Specs)) } across repositories and spec files.</p>
-						</div>
+			<div class="flex min-h-0 flex-1 overflow-clip">
+				<aside data-boot-anim="sidebar" class="hidden h-full w-72 shrink-0 lg:block" aria-label="Management sections">
+					<div id="management-sidebar-content" class="h-full">
+						@managementSidebar(model, active, "")
 					</div>
-					<div class="overflow-hidden rounded-radius border border-outline bg-surface-alt dark:border-outline-dark dark:bg-surface-dark-alt">
-						<div class="hidden grid-cols-[minmax(14rem,1.2fr)_minmax(12rem,1fr)_minmax(10rem,0.8fr)_minmax(15rem,1.1fr)] gap-4 border-b border-outline px-4 py-2 text-xs font-semibold uppercase tracking-normal text-on-surface-muted dark:border-outline-dark dark:text-on-surface-dark-muted lg:grid">
-							<div>Spec</div>
-							<div>Source</div>
-							<div>Sync</div>
-							<div>Publication</div>
-						</div>
-						<div class="divide-y divide-outline dark:divide-outline-dark">
-							for _, spec := range model.Specs {
-								@managementSpecRow(spec)
-							}
-						</div>
+				</aside>
+				<main id="page-scroll" data-boot-anim="main" class="min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden p-5 sm:p-6 lg:px-8 lg:py-8">
+					<div id="main-content" class="mx-auto max-w-7xl">
+						{ children... }
 					</div>
-				</section>
-				<section class="grid gap-3" aria-labelledby="management-docs-heading">
-					<div class="flex flex-wrap items-end justify-between gap-3">
-						<div>
-							<h2 id="management-docs-heading" class="text-lg font-semibold text-on-surface-strong dark:text-on-surface-dark-strong">{ managementSpecTitle(model) }</h2>
-							<p class="text-sm text-on-surface-muted dark:text-on-surface-dark-muted">Version { managementSpecVersion(model) }</p>
-						</div>
-						@badge.Badge(badge.Config{
-							Label:   managementPublicationLabel(model.Publication),
-							Variant: managementPublicationBadgeVariant(model.Publication),
-							Style:   badge.StyleSoft,
-						})
-					</div>
-					<div class="grid gap-3 md:grid-cols-3">
-						@managementFact("Project ID", model.Project.ID)
-						@managementFact("Source", managementSourceLabel(model.Source))
-						@managementFact("Revision", managementRevisionLabel(model.Revision))
-					</div>
-				</section>
-				<section class="grid gap-4 md:grid-cols-2" aria-label="Project configuration">
-					<div class="rounded-radius border border-outline bg-surface-alt p-4 dark:border-outline-dark dark:bg-surface-dark-alt">
-						<h2 class="text-base font-semibold text-on-surface-strong dark:text-on-surface-dark-strong">Source</h2>
-						<dl class="mt-4 grid gap-3">
-							@managementTerm("Source ID", model.Source.ID)
-							@managementTerm("Kind", model.Source.Kind)
-							@managementTerm("Spec path", model.Source.SpecPath)
-							@managementTerm("Credential", managementCredentialLabel(model.Source))
-						</dl>
-					</div>
-					<div class="rounded-radius border border-outline bg-surface-alt p-4 dark:border-outline-dark dark:bg-surface-dark-alt">
-						<h2 class="text-base font-semibold text-on-surface-strong dark:text-on-surface-dark-strong">Publication</h2>
-						<dl class="mt-4 grid gap-3">
-							@managementTerm("Visibility", managementPublicationLabel(model.Publication))
-							@managementTerm("Public path", model.Publication.Path)
-							@managementTerm("Hostname", model.Publication.Hostname)
-							@managementTerm("Revision ID", model.Publication.RevisionID)
-						</dl>
-						<form method="post" action="/manage/publication" class="mt-5 grid gap-4 border-t border-outline pt-4 dark:border-outline-dark">
-							<input type="hidden" name="spec_id" value={ managementSelectedSpecID(model) }/>
-							<fieldset class="grid gap-2">
-								<legend class="text-xs font-semibold uppercase tracking-normal text-on-surface-muted dark:text-on-surface-dark-muted">Visibility</legend>
-								@radio.RadioBar() {
-									@radio.Radio(radio.Config{ID: "management-visibility-public", Name: "visibility", Value: "public", Label: "Public", Checked: model.Publication.Public, Variant: radio.Primary, Segmented: true})
-									@radio.Radio(radio.Config{ID: "management-visibility-private", Name: "visibility", Value: "private", Label: "Private", Checked: !model.Publication.Public, Variant: radio.Primary, Segmented: true})
-								}
-							</fieldset>
-							@textinput.TextInput(textinput.Config{
-								ID:          "management-public-path",
-								Name:        "path",
-								Label:       "Public path",
-								Placeholder: "/docs/v1",
-								Value:       managementPublicationPathValue(model.Publication, model.Project),
-								RootClass:   "font-mono",
-							})
-							@button.Button(button.Config{Variant: button.Primary, Type: "submit", RootClass: "w-fit"}) {
-								Save publication
-							}
-						</form>
-					</div>
-					<div class="rounded-radius border border-outline bg-surface-alt p-4 dark:border-outline-dark dark:bg-surface-dark-alt">
-						<h2 class="text-base font-semibold text-on-surface-strong dark:text-on-surface-dark-strong">Revision</h2>
-						<dl class="mt-4 grid gap-3">
-							@managementTerm("Revision ID", model.Revision.ID)
-							@managementTerm("Ref", model.Revision.Ref)
-							@managementTerm("Commit", model.Revision.CommitSHA)
-							@managementTerm("Version", model.Revision.Version)
-						</dl>
-					</div>
-					<div class="rounded-radius border border-outline bg-surface-alt p-4 dark:border-outline-dark dark:bg-surface-dark-alt">
-						<h2 class="text-base font-semibold text-on-surface-strong dark:text-on-surface-dark-strong">SEO and theme</h2>
-						<dl class="mt-4 grid gap-3">
-							@managementTerm("Canonical base", model.Project.SEO.CanonicalBase)
-							@managementTerm("Robots", model.Project.SEO.Robots)
-							@managementTerm("Theme", model.Project.Theme.Theme)
-							@managementTerm("Dark mode", model.Project.Theme.DarkMode)
-						</dl>
-					</div>
-					<div class="rounded-radius border border-outline bg-surface-alt p-4 dark:border-outline-dark dark:bg-surface-dark-alt">
-						<h2 class="text-base font-semibold text-on-surface-strong dark:text-on-surface-dark-strong">Last sync</h2>
-						<dl class="mt-4 grid gap-3">
-							@managementTerm("Result", model.SyncRecord.Result)
-							@managementTerm("Trigger", model.SyncRecord.Trigger)
-							@managementTerm("Finished", managementTime(model.SyncRecord.FinishedAt))
-							@managementTerm("Error", model.SyncRecord.ErrorSummary)
-						</dl>
-					</div>
-				</section>
-			</main>
+				</main>
+				@managementSidebarScript()
+			</div>
 		</div>
 	}
 }
 
-templ managementSyncForm(spec ManagedSpecModel, idPrefix string) {
-	<form method="post" action="/manage/sync" class="mt-5 grid gap-4 border-t border-outline pt-4 dark:border-outline-dark">
-		<input type="hidden" name="spec_id" value={ spec.ID }/>
-		<div class="grid gap-2">
-			<label for={ idPrefix + "-sync-ref" } class="text-xs font-semibold uppercase tracking-normal text-on-surface-muted dark:text-on-surface-dark-muted">Available refs</label>
-			<select id={ idPrefix + "-sync-ref" } name="ref" class="min-h-10 rounded-radius border border-outline bg-surface px-3 py-2 font-mono text-sm text-on-surface-strong focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary dark:border-outline-dark dark:bg-surface-dark dark:text-on-surface-dark-strong">
-				for _, candidate := range spec.Candidates {
-					<option value={ candidate.Ref } selected?={ candidate.Ref == spec.Revision.Ref }>{ managementCandidateLabel(candidate) }</option>
+templ ManagementOverviewContent(model ManagementOverviewModel) {
+	{{ spec, hasSpec := managementSelectedSpec(model) }}
+	<div id="management-main-content" class="grid gap-7">
+		<section class="grid gap-5" aria-labelledby="management-home-heading">
+			<div class="max-w-3xl">
+				<p class="text-xs font-semibold uppercase tracking-normal text-on-surface-muted dark:text-on-surface-dark-muted">Management workbench</p>
+				<h1 id="management-home-heading" class="mt-2 font-title text-3xl font-bold leading-tight text-on-surface-strong dark:text-on-surface-dark-strong sm:text-4xl">Specs and publishing</h1>
+				<p class="mt-3 text-sm leading-6 text-on-surface-muted dark:text-on-surface-dark-muted">Select a spec, inspect its source freshness, and publish the docs route that belongs to that spec.</p>
+			</div>
+			<dl class="flex flex-wrap gap-2">
+				@managementPillMetric("Managed", fmt.Sprintf("%d", len(model.Specs)))
+				@managementPillMetric("Published", fmt.Sprintf("%d", managementPublishedSpecCount(model.Specs)))
+				@managementPillMetric("Selected", managementSpecTitle(model))
+			</dl>
+		</section>
+		if hasSpec {
+			@ManagementSpecPanel(spec)
+		}
+		<section class="overflow-clip rounded-radius border border-outline bg-surface-alt dark:border-outline-dark dark:bg-surface-dark-alt" aria-labelledby="management-overview-specs-heading">
+			<div class="flex flex-wrap items-end justify-between gap-3 border-b border-outline px-4 py-3 dark:border-outline-dark">
+				<div class="min-w-0">
+					<p class="text-xs font-semibold uppercase tracking-normal text-on-surface-muted dark:text-on-surface-dark-muted">Spec roster</p>
+					<h2 id="management-overview-specs-heading" class="mt-1 text-lg font-semibold text-on-surface-strong dark:text-on-surface-dark-strong">Choose what to manage</h2>
+					<p class="text-sm text-on-surface-muted dark:text-on-surface-dark-muted">Rows open the per-spec publication and sync workbench.</p>
+				</div>
+				<a href="/manage/specs" hx-get="/manage/specs" hx-target="#management-main-content" hx-swap="outerHTML" hx-push-url="true" class="inline-flex h-10 shrink-0 items-center justify-center rounded-radius border border-outline bg-surface-alt px-3 text-sm font-semibold text-on-surface-strong transition hover:bg-surface focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary dark:border-outline-dark dark:bg-surface-dark-alt dark:text-on-surface-dark-strong dark:hover:bg-surface-dark dark:focus-visible:outline-primary-dark">All specs</a>
+			</div>
+			@managementSpecsTable(model)
+		</section>
+	</div>
+}
+
+templ ManagementSpecsContent(model ManagementOverviewModel) {
+	<div id="management-main-content" class="grid gap-6">
+		<section class="overflow-clip rounded-radius border border-outline bg-surface-alt dark:border-outline-dark dark:bg-surface-dark-alt" aria-labelledby="management-specs-heading">
+			<div class="border-b border-outline px-4 py-4 dark:border-outline-dark">
+				<p class="text-xs font-semibold uppercase tracking-normal text-on-surface-muted dark:text-on-surface-dark-muted">Managed specs</p>
+				<h1 id="management-specs-heading" class="mt-2 font-title text-3xl font-bold leading-tight text-on-surface-strong dark:text-on-surface-dark-strong sm:text-4xl">Spec roster</h1>
+				<p class="mt-2 text-sm leading-6 text-on-surface-muted dark:text-on-surface-dark-muted">{ managementSpecCount(len(model.Specs)) } across repositories and spec files.</p>
+			</div>
+			@managementSpecsTable(model)
+		</section>
+	</div>
+}
+
+templ ManagementSpecContent(model ManagementOverviewModel) {
+	{{ spec, ok := managementSelectedSpec(model) }}
+	<div id="management-main-content" class="grid gap-6">
+		if ok {
+			@ManagementSpecPanel(spec)
+		} else {
+			<section class="rounded-radius border border-outline bg-surface-alt p-6 dark:border-outline-dark dark:bg-surface-dark-alt">
+				<h1 class="font-title text-2xl font-bold text-on-surface-strong dark:text-on-surface-dark-strong">Spec not found</h1>
+				<p class="mt-2 text-sm text-on-surface-muted dark:text-on-surface-dark-muted">Select a managed spec from the sidebar.</p>
+			</section>
+		}
+	</div>
+}
+
+templ ManagementSpecPanel(spec ManagedSpecModel) {
+	<section class="grid gap-5" aria-labelledby={ "management-spec-heading-" + spec.ID }>
+		@managementProductionHeader(spec)
+		@managementSpecTabs(spec)
+	</section>
+}
+
+templ managementProductionHeader(spec ManagedSpecModel) {
+	<section class="overflow-clip rounded-radius border border-outline bg-surface-alt dark:border-outline-dark dark:bg-surface-dark-alt" aria-labelledby={ "management-spec-heading-" + spec.ID }>
+		<div class="manja-management-production-layout p-5">
+			<div class="min-w-0">
+				<p class="text-xs font-semibold uppercase tracking-normal text-on-surface-muted dark:text-on-surface-dark-muted">Production docs</p>
+				<h1 id={ "management-spec-heading-" + spec.ID } class="mt-2 break-words font-title text-3xl font-bold leading-tight text-on-surface-strong dark:text-on-surface-dark-strong sm:text-4xl">{ spec.Title }</h1>
+				<p class="mt-2 text-sm leading-6 text-on-surface-muted dark:text-on-surface-dark-muted">Live route <code class="font-mono text-on-surface-strong dark:text-on-surface-dark-strong">{ managementProductionRoute(spec.Publication) }</code>.</p>
+			</div>
+			<div class="flex flex-wrap items-center gap-2 lg:justify-end">
+				@badge.Badge(badge.Config{
+					Label:   managementPublicationLabel(spec.Publication),
+					Variant: managementPublicationBadgeVariant(spec.Publication),
+					Style:   badge.StyleSoft,
+				})
+				<span class={ table.BadgeCellClasses(managementSyncTableColor(spec.SyncRecord)) }>{ managementValue(string(spec.SyncRecord.Result)) }</span>
+				if managementPublishedDocsHref(spec.Publication) != "" {
+					<a href={ templpkg.URL(managementPublishedDocsHref(spec.Publication)) } class="inline-flex h-10 shrink-0 items-center justify-center rounded-radius border border-outline bg-surface px-3 text-sm font-semibold text-on-surface-strong transition hover:bg-surface-alt focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary dark:border-outline-dark dark:bg-surface-dark dark:text-on-surface-dark-strong dark:hover:bg-surface-dark-alt dark:focus-visible:outline-primary-dark">View docs</a>
+				} else {
+					<span class="inline-flex min-h-10 shrink-0 items-center rounded-radius border border-dashed border-outline px-3 text-sm font-medium text-on-surface-muted dark:border-outline-dark dark:text-on-surface-dark-muted">Not public yet</span>
 				}
-			</select>
+			</div>
 		</div>
-		<label class="flex items-center gap-2 text-sm font-medium text-on-surface-strong dark:text-on-surface-dark-strong">
-			<input type="checkbox" name="publish" value="public" class="size-4 rounded border-outline text-primary focus-visible:outline-primary dark:border-outline-dark"/>
-			<span>Publish synced revision</span>
-		</label>
+	</section>
+}
+
+templ managementSpecTabs(spec ManagedSpecModel) {
+	@tabs.Tabs(tabs.Config{
+		ID:         "management-spec-tabs-" + spec.ID,
+		DefaultTab: "publish",
+		RootClass: "rounded-radius border border-outline bg-surface-alt dark:border-outline-dark dark:bg-surface-dark-alt",
+		Tabs: []tabs.Tab{
+			{
+				ID:      "publish",
+				Label:   "Publish",
+				Badge:   managementCandidateState(spec),
+				Content: managementPublishCandidatePanel(spec),
+			},
+			{
+				ID:      "diff",
+				Label:   "Diff",
+				Badge:   managementContractTabBadge(spec),
+				Content: managementContractDiffPanel(spec),
+			},
+			{
+				ID:      "route",
+				Label:   "Route",
+				Content: managementRouteSettingsPanel(spec),
+			},
+			{
+				ID:      "sync",
+				Label:   "Sync",
+				Content: managementSyncPanel(spec),
+			},
+			{
+				ID:      "history",
+				Label:   "History",
+				Content: managementReleaseHistory(spec),
+			},
+			{
+				ID:      "details",
+				Label:   "Details",
+				Content: managementSpecDetails(spec),
+			},
+		},
+	})
+}
+
+templ managementActionPanel(eyebrow string, title string, description string) {
+	<section class="overflow-clip rounded-radius border border-outline bg-surface-alt dark:border-outline-dark dark:bg-surface-dark-alt" aria-labelledby={ "management-panel-" + managementSlug(title) }>
+		<div class="border-b border-outline px-4 py-3 dark:border-outline-dark">
+			<p class="text-xs font-semibold uppercase tracking-normal text-on-surface-muted dark:text-on-surface-dark-muted">{ eyebrow }</p>
+			<h2 id={ "management-panel-" + managementSlug(title) } class="mt-1 text-lg font-semibold text-on-surface-strong dark:text-on-surface-dark-strong">{ title }</h2>
+			<p class="mt-1 text-sm text-on-surface-muted dark:text-on-surface-dark-muted">{ description }</p>
+		</div>
+		<div class="grid gap-4 p-4">
+			{ children... }
+		</div>
+	</section>
+}
+
+templ managementPublishCandidatePanel(spec ManagedSpecModel) {
+	@managementActionPanel("Candidate", "Publish candidate", "Promote the currently parsed OpenAPI revision to the production docs route.") {
+		<div class="grid gap-4">
+			<div class="flex flex-wrap items-start justify-between gap-3 rounded-radius border border-outline bg-surface px-3 py-3 dark:border-outline-dark dark:bg-surface-dark">
+				<div class="min-w-0">
+					<p class="text-xs font-semibold uppercase tracking-normal text-on-surface-muted dark:text-on-surface-dark-muted">Ready revision</p>
+					<p class="mt-1 break-words font-mono text-base font-semibold text-on-surface-strong dark:text-on-surface-dark-strong">{ managementRevisionLabel(spec.Revision) }</p>
+				</div>
+				<span class={ table.BadgeCellClasses(managementSyncTableColor(spec.SyncRecord)) }>{ managementCandidateState(spec) }</span>
+			</div>
+			<dl class="manja-management-candidate-grid">
+				@managementCompactMetric("Version", spec.Version)
+				@managementCompactMetric("Commit", managementCandidateRevisionID(spec.Revision))
+				@managementCompactMetric("Author", managementRevisionAuthor(spec.Revision))
+				@managementCompactMetric("Change", managementRevisionMessage(spec.Revision))
+				@managementCompactMetric("Endpoints", fmt.Sprintf("%d", spec.Operations))
+				@managementCompactMetric("Schemas", fmt.Sprintf("%d", spec.Schemas))
+			</dl>
+			<form
+				method="post"
+				action="/manage/publication"
+				hx-post="/manage/publication"
+				hx-target="#management-main-content"
+				hx-swap="outerHTML"
+				class="grid gap-4 border-t border-outline pt-4 dark:border-outline-dark"
+			>
+				<input type="hidden" name="spec_id" value={ spec.ID }/>
+				<input type="hidden" name="visibility" value="public"/>
+				<input type="hidden" name="path" value={ managementPublicationPathValue(spec.Publication, spec.Project) }/>
+				<input type="hidden" name="revision_id" value={ spec.Revision.ID }/>
+				<div class="grid gap-2 text-sm text-on-surface-muted dark:text-on-surface-dark-muted">
+					<p>Publish this revision at <code class="font-mono text-on-surface-strong dark:text-on-surface-dark-strong">{ managementPublicationPathValue(spec.Publication, spec.Project) }</code>.</p>
+					<p class="text-xs">Route settings below control the path, privacy, hostname, and indexing policy.</p>
+				</div>
+				@button.Button(button.Config{Variant: button.Primary, Type: "submit", RootClass: "w-fit"}) {
+					Publish this revision
+				}
+			</form>
+		</div>
+	}
+}
+
+templ managementContractDiffPanel(spec ManagedSpecModel) {
+	<section class="grid gap-3 rounded-radius border border-outline bg-surface px-3 py-3 dark:border-outline-dark dark:bg-surface-dark" aria-labelledby={ "management-contract-check-" + spec.ID }>
+		<div class="flex flex-wrap items-start justify-between gap-3">
+			<div class="min-w-0">
+				<p class="text-xs font-semibold uppercase tracking-normal text-on-surface-muted dark:text-on-surface-dark-muted">Spec diff</p>
+				<h3 id={ "management-contract-check-" + spec.ID } class="mt-1 text-sm font-semibold text-on-surface-strong dark:text-on-surface-dark-strong">Contract check</h3>
+				<p class="mt-1 text-sm leading-5 text-on-surface-muted dark:text-on-surface-dark-muted">{ managementContractDescription(spec) }</p>
+			</div>
+			<span class={ table.BadgeCellClasses(managementContractColor(spec)) }>{ managementContractLabel(spec) }</span>
+		</div>
+		<dl class="manja-management-contract-counts">
+			@managementCompactMetric("Breaking", managementChangeCountLabel(len(spec.Diff.BreakingChanges), "change"))
+			@managementCompactMetric("Additive", managementChangeCountLabel(len(spec.Diff.AdditiveChanges), "change"))
+		</dl>
+		if spec.DiffAvailable {
+			if len(spec.Diff.BreakingChanges) == 0 && len(spec.Diff.AdditiveChanges) == 0 {
+				<p class="rounded-radius border border-dashed border-outline px-3 py-4 text-center text-sm text-on-surface-muted dark:border-outline-dark dark:text-on-surface-dark-muted">No operation, response, parameter, body, or schema contract changes detected.</p>
+			} else {
+				<div class="grid gap-2 rounded-radius border border-outline bg-surface-alt px-3 py-2 dark:border-outline-dark dark:bg-surface-dark-alt">
+					<div class="flex flex-wrap items-baseline justify-between gap-2">
+						<p class="text-xs font-semibold uppercase tracking-normal text-on-surface-muted dark:text-on-surface-dark-muted">Candidate trace</p>
+						if strings.TrimSpace(managementRevisionAuthor(spec.Revision)) != "" {
+							<p class="font-mono text-xs text-on-surface-strong dark:text-on-surface-dark-strong">Candidate: { managementRevisionAuthor(spec.Revision) }</p>
+						}
+					</div>
+					<dl class="grid gap-2 sm:grid-cols-2">
+						@managementCompactMetric("Revision", managementRevisionLabel(spec.Revision))
+						@managementCompactMetric("Commit", managementRevisionEvidence(spec.Revision))
+					</dl>
+					if strings.TrimSpace(managementRevisionMessage(spec.Revision)) != "" {
+						<p class="break-words text-xs leading-5 text-on-surface-muted dark:text-on-surface-dark-muted">{ managementRevisionMessage(spec.Revision) }</p>
+					}
+				</div>
+				<ul class="grid gap-2">
+					for _, change := range managementContractChanges(spec.Diff) {
+						<li class="grid gap-1 rounded-radius border border-outline bg-surface-alt px-3 py-2 dark:border-outline-dark dark:bg-surface-dark-alt">
+							<div class="flex flex-wrap items-center gap-2">
+								<span class={ table.BadgeCellClasses(managementContractChangeColor(change)) }>{ change.Severity }</span>
+								<span class="text-sm font-semibold text-on-surface-strong dark:text-on-surface-dark-strong">{ change.Kind }</span>
+							</div>
+							<p class="break-words font-mono text-sm text-on-surface-strong dark:text-on-surface-dark-strong">{ change.Subject }</p>
+							if strings.TrimSpace(change.Description) != "" {
+								<p class="text-xs leading-5 text-on-surface-muted dark:text-on-surface-dark-muted">{ change.Description }</p>
+							}
+						</li>
+					}
+				</ul>
+			}
+		} else {
+			<p class="rounded-radius border border-dashed border-outline px-3 py-4 text-sm text-on-surface-muted dark:border-outline-dark dark:text-on-surface-dark-muted">{ managementValue(spec.DiffMessage) }</p>
+		}
+	</section>
+}
+
+templ managementRouteSettingsPanel(spec ManagedSpecModel) {
+	@managementActionPanel("Routing", "Route settings", "Control where this spec is exposed and whether readers can access it.") {
+		<div class="grid gap-3 rounded-radius border border-outline bg-surface px-3 py-3 dark:border-outline-dark dark:bg-surface-dark">
+			@managementStatusRow("Visibility") {
+				@badge.Badge(badge.Config{
+					Label:   managementPublicationLabel(spec.Publication),
+					Variant: managementPublicationBadgeVariant(spec.Publication),
+					Style:   badge.StyleSoft,
+				})
+			}
+			@managementStatusRow("Configured path") {
+				<span class="font-mono text-sm text-on-surface-strong dark:text-on-surface-dark-strong">{ managementPublicationPathValue(spec.Publication, spec.Project) }</span>
+			}
+			@managementStatusRow("Canonical base") {
+				<span class="font-mono text-sm text-on-surface-strong dark:text-on-surface-dark-strong">{ managementValue(spec.Project.SEO.CanonicalBase) }</span>
+			}
+			@managementStatusRow("Robots") {
+				<span class="font-mono text-sm text-on-surface-strong dark:text-on-surface-dark-strong">{ managementValue(spec.Project.SEO.Robots) }</span>
+			}
+		</div>
+		<form
+			method="post"
+			action="/manage/publication"
+			hx-post="/manage/publication"
+			hx-target="#management-main-content"
+			hx-swap="outerHTML"
+			class="grid gap-4 border-t border-outline pt-4 dark:border-outline-dark"
+		>
+			<input type="hidden" name="spec_id" value={ spec.ID }/>
+			<fieldset class="grid gap-2">
+				<legend class="text-xs font-semibold uppercase tracking-normal text-on-surface-muted dark:text-on-surface-dark-muted">Visibility</legend>
+				@radio.RadioBar() {
+					@radio.Radio(radio.Config{ID: "management-visibility-public-" + spec.ID, Name: "visibility", Value: "public", Label: "Public", Checked: spec.Publication.Public, Variant: radio.Primary, Segmented: true})
+					@radio.Radio(radio.Config{ID: "management-visibility-private-" + spec.ID, Name: "visibility", Value: "private", Label: "Private", Checked: !spec.Publication.Public, Variant: radio.Primary, Segmented: true})
+				}
+			</fieldset>
+			@textinput.TextInput(textinput.Config{
+				ID:          "management-public-path-" + spec.ID,
+				Name:        "path",
+				Label:       "Public path",
+				Placeholder: "/docs/v1",
+				Value:       managementPublicationPathValue(spec.Publication, spec.Project),
+				RootClass:   "font-mono",
+			})
+			@button.Button(button.Config{Variant: button.Alternate, Type: "submit", RootClass: "w-fit"}) {
+				Save route settings
+			}
+		</form>
+	}
+}
+
+templ managementSyncPanel(spec ManagedSpecModel) {
+	@managementActionPanel("Sync", "Source revision", "Choose a discovered source ref and optionally publish that revision in one pass.") {
+		<div class="grid gap-3 rounded-radius border border-outline bg-surface px-3 py-3 dark:border-outline-dark dark:bg-surface-dark">
+			@managementStatusRow("Result") {
+				<span class={ table.BadgeCellClasses(managementSyncTableColor(spec.SyncRecord)) }>{ managementValue(string(spec.SyncRecord.Result)) }</span>
+			}
+			@managementStatusRow("Finished") {
+				<span class="font-mono text-sm text-on-surface-strong dark:text-on-surface-dark-strong">{ managementTime(spec.SyncRecord.FinishedAt) }</span>
+			}
+			@managementStatusRow("Trigger") {
+				<span class="font-mono text-sm text-on-surface-strong dark:text-on-surface-dark-strong">{ managementValue(spec.SyncRecord.Trigger) }</span>
+			}
+		</div>
+		if len(spec.Candidates) > 0 {
+			@managementSyncForm(spec, "management-" + spec.ID)
+		} else {
+			<p class="rounded-radius border border-dashed border-outline px-3 py-8 text-center text-sm text-on-surface-muted dark:border-outline-dark dark:text-on-surface-dark-muted">No source refs have been discovered for this spec yet.</p>
+		}
+	}
+}
+
+templ managementReleaseHistory(spec ManagedSpecModel) {
+	<section class="overflow-clip rounded-radius border border-outline bg-surface dark:border-outline-dark dark:bg-surface-dark" aria-labelledby={ "management-release-history-" + spec.ID }>
+		<div class="border-b border-outline px-4 py-3 dark:border-outline-dark">
+			<p class="text-xs font-semibold uppercase tracking-normal text-on-surface-muted dark:text-on-surface-dark-muted">Release safety</p>
+			<h2 id={ "management-release-history-" + spec.ID } class="mt-1 text-lg font-semibold text-on-surface-strong dark:text-on-surface-dark-strong">Release history</h2>
+			<p class="mt-1 text-sm text-on-surface-muted dark:text-on-surface-dark-muted">Production docs keep serving the published revision until a newer candidate is explicitly promoted.</p>
+		</div>
+		<div class="manja-management-release-list p-4">
+			@managementReleaseRow("Published revision", managementReleaseTitle(spec), managementReleaseDescription(spec), managementPublicationTableColor(spec.Publication))
+			@managementReleaseRow("Last sync", managementSyncReleaseTitle(spec.SyncRecord), managementSyncReleaseDescription(spec.SyncRecord), managementSyncTableColor(spec.SyncRecord))
+			@managementReleaseRow("Rollback", "Previous release history", "Rollback controls will appear here once Manja persists multiple publication revisions.", "neutral")
+		</div>
+	</section>
+}
+
+templ managementReleaseRow(label string, title string, description string, color string) {
+	<div class="manja-management-release-row">
+		<div class="manja-management-release-marker">
+			<span class={ table.BadgeCellClasses(color) }>{ label }</span>
+		</div>
+		<div class="min-w-0">
+			<p class="font-mono text-sm font-semibold text-on-surface-strong dark:text-on-surface-dark-strong">{ title }</p>
+			<p class="mt-1 text-sm text-on-surface-muted dark:text-on-surface-dark-muted">{ description }</p>
+		</div>
+	</div>
+}
+
+templ managementSpecDetails(spec ManagedSpecModel) {
+	<section class="rounded-radius border border-outline bg-surface dark:border-outline-dark dark:bg-surface-dark" aria-labelledby={ "management-details-" + spec.ID }>
+		<div class="border-b border-outline px-4 py-3 dark:border-outline-dark">
+			<p class="text-xs font-semibold uppercase tracking-normal text-on-surface-muted dark:text-on-surface-dark-muted">Metadata</p>
+			<h2 id={ "management-details-" + spec.ID } class="mt-1 text-lg font-semibold text-on-surface-strong dark:text-on-surface-dark-strong">Source, revision, SEO, and theme details</h2>
+		</div>
+		<div class="manja-management-details-grid border-t border-outline p-4 dark:border-outline-dark">
+			@managementDetailsColumn("Source") {
+				@managementTerm("Source ID", spec.Source.ID)
+				@managementTerm("Kind", spec.Source.Kind)
+				@managementTerm("Spec path", spec.Source.SpecPath)
+				@managementTerm("Credential", managementCredentialLabel(spec.Source))
+			}
+			@managementDetailsColumn("Revision") {
+				@managementTerm("Revision ID", spec.Revision.ID)
+				@managementTerm("Ref", spec.Revision.Ref)
+				@managementTerm("Commit", spec.Revision.CommitSHA)
+				@managementTerm("Version", spec.Revision.Version)
+				@managementTerm("Error", spec.SyncRecord.ErrorSummary)
+			}
+			@managementDetailsColumn("SEO and theme") {
+				@managementTerm("Canonical base", spec.Project.SEO.CanonicalBase)
+				@managementTerm("Robots", spec.Project.SEO.Robots)
+				@managementTerm("Theme", spec.Project.Theme.Theme)
+				@managementTerm("Dark mode", spec.Project.Theme.DarkMode)
+				@managementTerm("Hostname", spec.Publication.Hostname)
+			}
+		</div>
+	</section>
+}
+
+templ managementDetailsColumn(title string) {
+	<div class="grid content-start gap-3">
+		<h3 class="text-sm font-semibold text-on-surface-strong dark:text-on-surface-dark-strong">{ title }</h3>
+		<dl class="grid gap-3">
+			{ children... }
+		</dl>
+	</div>
+}
+
+templ managementStatusRow(label string) {
+	<div class="flex flex-wrap items-center justify-between gap-2">
+		<span class="text-xs font-semibold uppercase tracking-normal text-on-surface-muted dark:text-on-surface-dark-muted">{ label }</span>
+		<div class="min-w-0">
+			{ children... }
+		</div>
+	</div>
+}
+
+templ managementSpecsTable(model ManagementOverviewModel) {
+	@table.Table(managementSpecsTableConfig(model))
+}
+
+templ managementSyncForm(spec ManagedSpecModel, idPrefix string) {
+	<form
+		method="post"
+		action="/manage/sync"
+		hx-post="/manage/sync"
+		hx-target="#management-main-content"
+		hx-swap="outerHTML"
+		class="grid gap-4 border-t border-outline pt-4 dark:border-outline-dark"
+	>
+		<input type="hidden" name="spec_id" value={ spec.ID }/>
+		@selectfield.Select(selectfield.Config{
+			ID:        idPrefix + "-sync-ref",
+			Name:      "ref",
+			Label:     "Available refs",
+			Options:   managementCandidateOptions(spec.Candidates, spec.Revision.Ref),
+			RootClass: "font-mono",
+		})
+		@toggle.Toggle(toggle.Config{
+			ID:        idPrefix + "-sync-publish",
+			Name:      "publish",
+			Value:     "public",
+			Label:     "Publish synced revision",
+			Variant:   toggle.Success,
+			Style:     toggle.StyleContainer,
+			RootClass: "w-full",
+		})
 		@textinput.TextInput(textinput.Config{
 			ID:          idPrefix + "-sync-public-path",
 			Name:        "path",
@@ -187,77 +542,405 @@ templ managementSyncForm(spec ManagedSpecModel, idPrefix string) {
 	</form>
 }
 
-templ managementSpecRow(spec ManagedSpecModel) {
-	<div class="grid gap-4 px-4 py-4 lg:grid-cols-[minmax(14rem,1.2fr)_minmax(12rem,1fr)_minmax(10rem,0.8fr)_minmax(15rem,1.1fr)] lg:items-start">
-		<div class="min-w-0">
-			<div class="flex flex-wrap items-center gap-2">
-				<h3 class="min-w-0 break-words text-sm font-semibold text-on-surface-strong dark:text-on-surface-dark-strong">{ spec.Title }</h3>
-				@badge.Badge(badge.Config{
-					Label:   managementPublicationLabel(spec.Publication),
-					Variant: managementPublicationBadgeVariant(spec.Publication),
-					Style:   badge.StyleSoft,
-				})
-			</div>
-			<p class="mt-1 font-mono text-xs text-on-surface-muted dark:text-on-surface-dark-muted">Version { spec.Version }</p>
-			<p class="mt-2 font-mono text-xs text-on-surface-muted dark:text-on-surface-dark-muted">{ managementValue(spec.Project.ID) }</p>
-		</div>
-		<dl class="grid gap-2">
-			@managementTerm("Source ID", spec.Source.ID)
-			@managementTerm("Kind", spec.Source.Kind)
-			@managementTerm("Spec path", spec.Source.SpecPath)
-		</dl>
-		<dl class="grid gap-2">
-			@managementTerm("Revision", managementRevisionLabel(spec.Revision))
-			@managementTerm("Commit", spec.Revision.CommitSHA)
-			@managementTerm("Result", spec.SyncRecord.Result)
-			@managementTerm("Error", spec.SyncRecord.ErrorSummary)
-		</dl>
-		<div class="grid gap-4">
-			if len(spec.Candidates) > 0 {
-				@managementSyncForm(spec, "management-" + spec.ID)
-			}
-			<form method="post" action="/manage/publication" class="grid gap-3">
-				<input type="hidden" name="spec_id" value={ spec.ID }/>
-				<fieldset class="grid gap-2">
-					<legend class="text-xs font-semibold uppercase tracking-normal text-on-surface-muted dark:text-on-surface-dark-muted">Visibility</legend>
-					@radio.RadioBar() {
-						@radio.Radio(radio.Config{ID: "management-visibility-public-" + spec.ID, Name: "visibility", Value: "public", Label: "Public", Checked: spec.Publication.Public, Variant: radio.Primary, Segmented: true})
-						@radio.Radio(radio.Config{ID: "management-visibility-private-" + spec.ID, Name: "visibility", Value: "private", Label: "Private", Checked: !spec.Publication.Public, Variant: radio.Primary, Segmented: true})
-					}
-				</fieldset>
-				@textinput.TextInput(textinput.Config{
-					ID:          "management-public-path-" + spec.ID,
-					Name:        "path",
-					Label:       "Public path",
-					Placeholder: "/docs/v1",
-					Value:       managementPublicationPathValue(spec.Publication, spec.Project),
-					RootClass:   "font-mono",
-				})
-				@button.Button(button.Config{Variant: button.Primary, Type: "submit", RootClass: "w-fit"}) {
-					Save publication
-				}
-			</form>
-		</div>
+templ managementFact(label string, value string) {
+	<div class="rounded-radius border border-outline bg-surface-alt px-4 py-3 dark:border-outline-dark dark:bg-surface-dark-alt">
+		<dt class="text-xs font-semibold uppercase tracking-normal text-on-surface-muted dark:text-on-surface-dark-muted">{ label }</dt>
+		<dd class="mt-1 min-w-0 break-words font-mono text-sm text-on-surface-strong dark:text-on-surface-dark-strong">{ managementValue(value) }</dd>
 	</div>
 }
 
-templ managementFact(label string, value string) {
-	<div class="rounded-radius border border-outline bg-surface-alt px-4 py-3 dark:border-outline-dark dark:bg-surface-dark-alt">
-		<p class="text-xs font-semibold uppercase tracking-normal text-on-surface-muted dark:text-on-surface-dark-muted">{ label }</p>
-		<p class="mt-1 min-w-0 break-words font-mono text-sm text-on-surface-strong dark:text-on-surface-dark-strong">{ managementValue(value) }</p>
+templ managementCompactMetric(label string, value string) {
+	<div class="grid grid-cols-[6rem_minmax(0,1fr)] items-baseline gap-3">
+		<dt class="text-xs font-semibold uppercase tracking-normal text-on-surface-muted dark:text-on-surface-dark-muted">{ label }</dt>
+		<dd class="min-w-0 truncate font-mono text-sm text-on-surface-strong dark:text-on-surface-dark-strong">{ managementValue(value) }</dd>
+	</div>
+}
+
+templ managementPillMetric(label string, value string) {
+	<div class="inline-flex max-w-full items-center gap-2 rounded-radius border border-outline bg-surface-alt px-3 py-1.5 dark:border-outline-dark dark:bg-surface-dark-alt">
+		<dt class="shrink-0 text-xs font-semibold uppercase tracking-normal text-on-surface-muted dark:text-on-surface-dark-muted">{ label }</dt>
+		<dd class="min-w-0 truncate font-mono text-sm text-on-surface-strong dark:text-on-surface-dark-strong">{ managementValue(value) }</dd>
 	</div>
 }
 
 templ managementTerm(label string, value string) {
-	<div class="grid gap-1 sm:grid-cols-[8rem_minmax(0,1fr)] sm:items-baseline">
+	<div class="manja-management-term">
 		<dt class="text-xs font-semibold uppercase tracking-normal text-on-surface-muted dark:text-on-surface-dark-muted">{ label }</dt>
 		<dd class="min-w-0 break-words font-mono text-sm text-on-surface-strong dark:text-on-surface-dark-strong">{ managementValue(value) }</dd>
 	</div>
 }
 
+templ managementSidebar(model ManagementOverviewModel, active string, idPrefix string) {
+	@sidebar.Sidebar(managementSidebarConfig(model, active, managementSidebarSearch(idPrefix), idPrefix))
+}
+
+templ managementSidebarSearch(idPrefix string) {
+	<div class="shrink-0 px-4 py-3">
+		<div class="relative">
+			<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" stroke="currentColor" fill="none" stroke-width="2" class="absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-on-surface-muted dark:text-on-surface-dark-muted" aria-hidden="true">
+				<path stroke-linecap="round" stroke-linejoin="round" d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z"></path>
+			</svg>
+			<input id={ managementSidebarSearchID(idPrefix) } data-management-sidebar-search type="search" class="w-full rounded-radius border border-outline bg-surface py-1.5 pl-9 pr-3 text-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary dark:border-outline-dark dark:bg-surface-dark/50 dark:focus-visible:outline-primary-dark" name="search" aria-label="Filter managed specs" placeholder="Filter specs"/>
+		</div>
+	</div>
+}
+
+templ managementLogoIcon() {
+	<span class="inline-flex size-8 shrink-0 items-center justify-center rounded-radius bg-primary/10 text-primary dark:bg-primary-dark/10 dark:text-primary-dark" aria-hidden="true">
+		<svg xmlns="http://www.w3.org/2000/svg" class="size-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+			<path stroke-linecap="round" stroke-linejoin="round" d="M9 12h6M9 16h6M8 4h8l3 3v13H5V4h3Z"></path>
+		</svg>
+	</span>
+}
+
+templ managementOverviewIcon() {
+	<svg xmlns="http://www.w3.org/2000/svg" class="size-full" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true">
+		<path stroke-linecap="round" stroke-linejoin="round" d="M4 6.5A2.5 2.5 0 0 1 6.5 4h11A2.5 2.5 0 0 1 20 6.5v11a2.5 2.5 0 0 1-2.5 2.5h-11A2.5 2.5 0 0 1 4 17.5v-11Z"></path>
+		<path stroke-linecap="round" stroke-linejoin="round" d="M8 9h8M8 13h5"></path>
+	</svg>
+}
+
+templ managementSpecsIcon() {
+	<svg xmlns="http://www.w3.org/2000/svg" class="size-full" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true">
+		<path stroke-linecap="round" stroke-linejoin="round" d="M5 7h14M5 12h14M5 17h14"></path>
+	</svg>
+}
+
+templ managementSidebarScript() {
+	<style>
+		#management-main-content [role="tablist"] + div > [role="tabpanel"] {
+			display: none;
+		}
+		#management-main-content [role="tablist"] + div > [role="tabpanel"]:first-child {
+			display: block;
+		}
+		#management-main-content [role="tablist"]:has([role="tab"][aria-selected="true"]) + div > [role="tabpanel"]:first-child {
+			display: none;
+		}
+		#management-main-content [role="tablist"]:has([role="tab"]:nth-child(1)[aria-selected="true"]) + div > [role="tabpanel"]:nth-child(1),
+		#management-main-content [role="tablist"]:has([role="tab"]:nth-child(2)[aria-selected="true"]) + div > [role="tabpanel"]:nth-child(2),
+		#management-main-content [role="tablist"]:has([role="tab"]:nth-child(3)[aria-selected="true"]) + div > [role="tabpanel"]:nth-child(3),
+		#management-main-content [role="tablist"]:has([role="tab"]:nth-child(4)[aria-selected="true"]) + div > [role="tabpanel"]:nth-child(4),
+		#management-main-content [role="tablist"]:has([role="tab"]:nth-child(5)[aria-selected="true"]) + div > [role="tabpanel"]:nth-child(5),
+		#management-main-content [role="tablist"]:has([role="tab"]:nth-child(6)[aria-selected="true"]) + div > [role="tabpanel"]:nth-child(6) {
+			display: block;
+		}
+	</style>
+	<script>
+		(function () {
+			var activeItemClasses = "pointer-events-none flex items-center gap-2 border-l-2 border-primary py-2.5 pl-4 text-sm font-bold text-primary dark:border-primary-dark dark:text-primary-dark".split(" ");
+			var inactiveItemClasses = "flex items-center gap-2 border-l border-outline py-2.5 pl-4 text-sm font-medium text-on-surface transition duration-200 hover:border-l-2 hover:border-outline-strong hover:text-on-surface-strong dark:border-outline-dark dark:text-on-surface-dark dark:hover:border-outline-dark-strong dark:hover:text-on-surface-dark-strong".split(" ");
+			var activeTopClasses = "flex items-center gap-2 py-2 text-base font-medium text-primary dark:text-primary-dark".split(" ");
+			var inactiveTopClasses = "flex items-center gap-2 py-2 text-base text-on-surface transition-colors hover:text-on-surface-strong dark:text-on-surface-dark dark:hover:text-on-surface-dark-strong".split(" ");
+			var topIconActive = "shrink-0 size-8 rounded-sm p-1.5 bg-primary/10 text-primary dark:bg-primary-dark/10 dark:text-primary-dark".split(" ");
+			var topIconInactive = "shrink-0 size-8 rounded-sm p-1.5 bg-surface-alt text-on-surface dark:bg-surface-dark-alt dark:text-on-surface-dark".split(" ");
+
+			function cleanPath(href) {
+				try {
+					var url = new URL(href, window.location.origin);
+					var path = url.pathname.replace(/^\/demo(?=\/|$)/, "");
+					return path + url.search + url.hash;
+				} catch (e) {
+					return href || "";
+				}
+			}
+
+			function activeMarker(link) {
+				var markers = link.querySelectorAll(".sr-only");
+				for (var i = 0; i < markers.length; i++) {
+					if (markers[i].textContent.trim() === "active") return markers[i];
+				}
+				return null;
+			}
+
+			function setClasses(node, active, top) {
+				var activeClasses = top ? activeTopClasses : activeItemClasses;
+				var inactiveClasses = top ? inactiveTopClasses : inactiveItemClasses;
+				node.classList.remove.apply(node.classList, activeClasses.concat(inactiveClasses));
+				node.classList.add.apply(node.classList, active ? activeClasses : inactiveClasses);
+				if (active) {
+					node.setAttribute("aria-current", "page");
+					if (!activeMarker(node)) {
+						var marker = document.createElement("span");
+						marker.className = "sr-only";
+						marker.textContent = "active";
+						node.appendChild(marker);
+					}
+				} else {
+					node.removeAttribute("aria-current");
+					var marker = activeMarker(node);
+					if (marker) marker.remove();
+				}
+				if (!top) return;
+				var icon = node.querySelector(".size-8");
+				if (!icon) return;
+				icon.classList.remove.apply(icon.classList, topIconActive.concat(topIconInactive));
+				icon.classList.add.apply(icon.classList, active ? topIconActive : topIconInactive);
+			}
+
+			function refreshActive() {
+				var current = cleanPath(window.location.href);
+				var links = document.querySelectorAll("[data-management-nav][href]");
+				for (var i = 0; i < links.length; i++) {
+					var link = links[i];
+					setClasses(link, cleanPath(link.getAttribute("href")) === current, link.getAttribute("data-management-nav") === "top");
+				}
+			}
+
+			function filterSidebar(input) {
+				var term = input.value.trim().toLowerCase();
+				var scope = input.closest("nav") || document;
+				var links = scope.querySelectorAll("[data-management-search]");
+				for (var i = 0; i < links.length; i++) {
+					var haystack = (links[i].getAttribute("data-management-search") || links[i].textContent || "").toLowerCase();
+					links[i].hidden = term !== "" && haystack.indexOf(term) === -1;
+				}
+			}
+
+			var tabClassNames = {
+				active: "font-bold text-primary border-b-2 border-primary dark:border-primary-dark dark:text-primary-dark".split(" "),
+				inactive: "text-on-surface font-medium dark:text-on-surface-dark dark:hover:border-b-outline-dark-strong dark:hover:text-on-surface-dark-strong hover:border-b-2 hover:border-b-outline-strong hover:text-on-surface-strong".split(" "),
+				badgeActive: "border-primary bg-primary/10 dark:bg-primary-dark dark:border-primary-dark dark:text-on-primary-dark".split(" "),
+				badgeInactive: "border-outline dark:border-outline-dark bg-surface-alt dark:bg-surface-dark-alt".split(" ")
+			};
+
+			function setManagementTabClasses(tab, active) {
+				try {
+					tab.classList.remove.apply(tab.classList, tabClassNames.active.concat(tabClassNames.inactive));
+					tab.classList.add.apply(tab.classList, active ? tabClassNames.active : tabClassNames.inactive);
+				} catch (error) {}
+				var badge = tab.querySelector("span.text-xs.font-medium");
+				if (!badge) return;
+				try {
+					badge.classList.remove.apply(badge.classList, tabClassNames.badgeActive.concat(tabClassNames.badgeInactive));
+					badge.classList.add.apply(badge.classList, active ? tabClassNames.badgeActive : tabClassNames.badgeInactive);
+				} catch (error) {}
+			}
+
+			function bindManagementTabs(scope) {
+				scope = scope || document;
+				var lists = scope.querySelectorAll("[role='tablist']");
+				for (var i = 0; i < lists.length; i++) {
+					(function (tablist) {
+						var tabs = Array.prototype.slice.call(tablist.querySelectorAll("[role='tab']"));
+						if (!tabs.length) return;
+						function selectTab(selected, attempt) {
+							attempt = attempt || 0;
+							var missingPanel = false;
+							var updatedPanels = 0;
+							for (var j = 0; j < tabs.length; j++) {
+								var tab = tabs[j];
+								var active = tab === selected;
+								var panel = document.getElementById(tab.getAttribute("aria-controls") || "");
+								tab.setAttribute("aria-selected", active ? "true" : "false");
+								tab.setAttribute("tabindex", active ? "0" : "-1");
+								setManagementTabClasses(tab, active);
+								if (panel) {
+									updatedPanels++;
+									panel.style.display = active ? "block" : "none";
+								} else {
+									missingPanel = true;
+								}
+							}
+							if ((missingPanel || updatedPanels === 0) && attempt < 4) {
+								setTimeout(function () {
+									selectTab(selected, attempt + 1);
+								}, 25);
+							}
+						}
+						for (var j = 0; j < tabs.length; j++) {
+							var tab = tabs[j];
+							if (tab.dataset.managementTabBound === "true") continue;
+							tab.dataset.managementTabBound = "true";
+							tab.addEventListener("click", function (event) {
+								var selected = event.currentTarget;
+								selectTab(selected, 0);
+								requestAnimationFrame(function () {
+									selectTab(selected, 0);
+								});
+							});
+						}
+						var activeTab = tabs.filter(function (tab) { return tab.getAttribute("aria-selected") === "true"; })[0] || tabs[0];
+						selectTab(activeTab, 0);
+					})(lists[i]);
+				}
+			}
+
+			function bindManagementTabsSoon(scope) {
+				bindManagementTabs(scope);
+				requestAnimationFrame(function () {
+					bindManagementTabs(scope && scope.isConnected ? scope : document);
+				});
+			}
+
+			function initializeSwappedControls(target) {
+				if (!target || !window.Alpine || typeof window.Alpine.initTree !== "function") return;
+				window.Alpine.initTree(target);
+			}
+
+			function destroySwappedControls(target) {
+				if (!target || !window.Alpine || typeof window.Alpine.destroyTree !== "function") return;
+				window.Alpine.destroyTree(target);
+			}
+
+			document.addEventListener("input", function (event) {
+				if (event.target && event.target.matches("[data-management-sidebar-search]")) filterSidebar(event.target);
+			});
+			document.addEventListener("htmx:beforeCleanupElement", function (event) {
+				var target = event && event.detail && event.detail.elt;
+				if (!target || target.id !== "management-main-content") return;
+				destroySwappedControls(target);
+			});
+			document.addEventListener("htmx:afterSwap", function (event) {
+				var content = document.getElementById("management-main-content");
+				if (!content) return;
+				initializeSwappedControls(content);
+				bindManagementTabsSoon(content);
+				refreshActive();
+				var scroll = document.getElementById("page-scroll");
+				if (scroll) scroll.scrollTo({ top: 0 });
+			});
+			document.addEventListener("htmx:pushedIntoHistory", refreshActive);
+			window.addEventListener("popstate", refreshActive);
+			bindManagementTabsSoon(document);
+			refreshActive();
+		})();
+	</script>
+}
+
+func managementSidebarConfig(model ManagementOverviewModel, active string, searchSlot templpkg.Component, idPrefix string) sidebar.Config {
+	specItems := make([]sidebar.Item, 0, len(model.Specs))
+	for _, spec := range model.Specs {
+		href := managementSpecDetailHref(spec.ID)
+		specItems = append(specItems, sidebar.Item{
+			ID:        managementSidebarItemID(idPrefix, "spec-"+spec.ID),
+			Label:     spec.Title,
+			Href:      href,
+			Active:    active == "spec:"+spec.ID,
+			Badge:     managementPublicationLabel(spec.Publication),
+			LinkAttrs: managementSidebarLinkAttrs("spec", managementSidebarSpecSearchText(spec), href),
+		})
+	}
+	return sidebar.Config{
+		Items: []sidebar.Item{
+			{
+				ID:        managementSidebarItemID(idPrefix, "overview"),
+				Label:     "Overview",
+				Icon:      managementOverviewIcon(),
+				Href:      "/manage",
+				Active:    active == "overview",
+				LinkAttrs: managementSidebarLinkAttrs("top", "Overview", "/manage"),
+			},
+			{
+				ID:        managementSidebarItemID(idPrefix, "specs"),
+				Label:     "Specs",
+				Icon:      managementSpecsIcon(),
+				Href:      "/manage/specs",
+				Active:    active == "specs",
+				LinkAttrs: managementSidebarLinkAttrs("top", "Specs", "/manage/specs"),
+			},
+		},
+		SectionsTitle: "Management",
+		Sections: []sidebar.Section{{
+			Title:       "Specs",
+			Items:       specItems,
+			IndentItems: true,
+		}},
+		SearchSlot: searchSlot,
+	}
+}
+
+func managementSidebarLinkAttrs(kind string, search string, href string) templpkg.Attributes {
+	return templpkg.Attributes{
+		"data-management-nav":    kind,
+		"data-management-search": search,
+		"hx-get":                 href,
+		"hx-target":              "#management-main-content",
+		"hx-swap":                "outerHTML",
+		"hx-push-url":            "true",
+	}
+}
+
+func managementSpecsTableConfig(model ManagementOverviewModel) table.Config {
+	rows := make([]table.Row, 0, len(model.Specs))
+	for _, spec := range model.Specs {
+		rows = append(rows, table.Row{
+			ID: spec.ID,
+			Cells: map[string]table.Cell{
+				"spec": {
+					Text:        spec.Title,
+					Description: "Version " + spec.Version + " - " + managementValue(spec.Project.ID),
+				},
+				"source": {
+					Text:        managementSourceLabel(spec.Source),
+					Description: managementValue(spec.Source.SpecPath),
+				},
+				"revision": {
+					Text:        managementRevisionLabel(spec.Revision),
+					Description: managementValue(spec.Revision.CommitSHA),
+					Code:        true,
+				},
+				"publication": {
+					Component: managementTableStatusCell(
+						managementPublicationLabel(spec.Publication),
+						managementValue(spec.Publication.Path),
+						managementPublicationTableColor(spec.Publication),
+					),
+				},
+				"sync": {
+					Component: managementTableStatusCell(
+						managementValue(string(spec.SyncRecord.Result)),
+						managementSyncTableDescription(spec.SyncRecord),
+						managementSyncTableColor(spec.SyncRecord),
+					),
+				},
+			},
+			HTMX: &table.RowHTMXConfig{
+				Get:     managementSpecDetailHref(spec.ID),
+				Target:  "#management-main-content",
+				Swap:    "outerHTML",
+				PushURL: true,
+			},
+		})
+	}
+	return table.Config{
+		ID:      "management-specs-table",
+		Caption: "Managed specs",
+		Columns: []table.Column{
+			{Key: "spec", Label: "Spec", Width: "min-w-[18rem]"},
+			{Key: "source", Label: "Source", Width: "min-w-[14rem]"},
+			{Key: "revision", Label: "Revision", Width: "min-w-[12rem]"},
+			{Key: "publication", Label: "Publication", Width: "min-w-[10rem]"},
+			{Key: "sync", Label: "Sync", Width: "min-w-[10rem]"},
+		},
+		Rows: rows,
+	}
+}
+
+templ managementTableStatusCell(label string, description string, color string) {
+	<div class="flex flex-col items-start gap-1">
+		<span class={ table.BadgeCellClasses(color) }>{ label }</span>
+		<span class="text-xs text-on-surface-muted dark:text-on-surface-dark-muted">{ description }</span>
+	</div>
+}
+
+func managementSelectedSpec(model ManagementOverviewModel) (ManagedSpecModel, bool) {
+	if len(model.Specs) == 0 {
+		return ManagedSpecModel{}, false
+	}
+	if strings.TrimSpace(model.SelectedSpecID) != "" {
+		for _, spec := range model.Specs {
+			if spec.ID == model.SelectedSpecID {
+				return spec, true
+			}
+		}
+	}
+	return model.Specs[0], true
+}
+
 func managementSpecTitle(model ManagementOverviewModel) string {
-	if len(model.Specs) > 0 && strings.TrimSpace(model.Specs[0].Title) != "" {
-		return model.Specs[0].Title
+	if spec, ok := managementSelectedSpec(model); ok && strings.TrimSpace(spec.Title) != "" {
+		return spec.Title
 	}
 	if strings.TrimSpace(model.Project.Name) != "" {
 		return model.Project.Name
@@ -266,8 +949,8 @@ func managementSpecTitle(model ManagementOverviewModel) string {
 }
 
 func managementSpecVersion(model ManagementOverviewModel) string {
-	if len(model.Specs) > 0 && strings.TrimSpace(model.Specs[0].Version) != "" {
-		return model.Specs[0].Version
+	if spec, ok := managementSelectedSpec(model); ok && strings.TrimSpace(spec.Version) != "" {
+		return spec.Version
 	}
 	if strings.TrimSpace(model.Revision.Version) != "" {
 		return model.Revision.Version
@@ -276,8 +959,8 @@ func managementSpecVersion(model ManagementOverviewModel) string {
 }
 
 func managementSelectedSpecID(model ManagementOverviewModel) string {
-	if len(model.Specs) > 0 {
-		return model.Specs[0].ID
+	if spec, ok := managementSelectedSpec(model); ok {
+		return spec.ID
 	}
 	return "current"
 }
@@ -287,6 +970,16 @@ func managementSpecCount(count int) string {
 		return "1 spec"
 	}
 	return fmt.Sprintf("%d specs", count)
+}
+
+func managementPublishedSpecCount(specs []ManagedSpecModel) int {
+	count := 0
+	for _, spec := range specs {
+		if spec.Publication.Public {
+			count++
+		}
+	}
+	return count
 }
 
 func managementSourceLabel(source core.Source) string {
@@ -311,8 +1004,20 @@ func managementCredentialLabel(source core.Source) string {
 }
 
 func managementCandidateLabel(candidate core.RevisionCandidate) string {
-	parts := []string{candidate.Ref, candidate.Kind, candidate.CommitSHA}
+	parts := []string{candidate.Ref, candidate.Kind, managementShortReference(candidate.CommitSHA), candidate.AuthorName}
 	return strings.Join(compactStrings(parts), " ")
+}
+
+func managementCandidateOptions(candidates []core.RevisionCandidate, selectedRef string) []selectfield.Option {
+	options := make([]selectfield.Option, 0, len(candidates))
+	for _, candidate := range candidates {
+		options = append(options, selectfield.Option{
+			Value:    candidate.Ref,
+			Label:    managementCandidateLabel(candidate),
+			Selected: candidate.Ref == selectedRef,
+		})
+	}
+	return options
 }
 
 func managementPublicationLabel(pub core.Publication) string {
@@ -329,6 +1034,207 @@ func managementPublicationBadgeVariant(pub core.Publication) badge.Variant {
 	return badge.Warning
 }
 
+func managementPublicationTableColor(pub core.Publication) string {
+	if pub.Public {
+		return "success"
+	}
+	return "warning"
+}
+
+func managementSyncTableColor(record core.SyncRecord) string {
+	switch record.Result {
+	case core.SyncResultSuccess:
+		return "success"
+	case core.SyncResultFailure:
+		return "danger"
+	default:
+		return "neutral"
+	}
+}
+
+func managementSyncTableDescription(record core.SyncRecord) string {
+	if strings.TrimSpace(record.ErrorSummary) != "" {
+		return record.ErrorSummary
+	}
+	return managementTime(record.FinishedAt)
+}
+
+func managementProductionRoute(pub core.Publication) string {
+	if !pub.Public {
+		return "not published"
+	}
+	return managementValue(pub.Path)
+}
+
+func managementCandidateState(spec ManagedSpecModel) string {
+	if spec.SyncRecord.Result == core.SyncResultFailure {
+		return "needs attention"
+	}
+	if strings.TrimSpace(spec.Revision.ID) != "" || strings.TrimSpace(spec.Revision.Ref) != "" {
+		return "ready"
+	}
+	return "pending"
+}
+
+func managementCandidateRevisionID(rev core.Revision) string {
+	for _, value := range []string{rev.CommitSHA, rev.ID, rev.Ref} {
+		if strings.TrimSpace(value) != "" {
+			return managementShortReference(value)
+		}
+	}
+	return ""
+}
+
+func managementRevisionAuthor(rev core.Revision) string {
+	author := strings.TrimSpace(rev.AuthorName)
+	email := strings.TrimSpace(rev.AuthorEmail)
+	switch {
+	case author != "" && email != "":
+		return author + " <" + email + ">"
+	case author != "":
+		return author
+	case email != "":
+		return email
+	default:
+		return ""
+	}
+}
+
+func managementRevisionMessage(rev core.Revision) string {
+	return strings.TrimSpace(rev.Message)
+}
+
+func managementRevisionEvidence(rev core.Revision) string {
+	for _, value := range []string{rev.CommitSHA, rev.ID} {
+		if strings.TrimSpace(value) != "" {
+			return managementShortReference(value)
+		}
+	}
+	return ""
+}
+
+func managementShortReference(value string) string {
+	value = strings.TrimSpace(value)
+	if len(value) <= 12 {
+		return value
+	}
+	return value[:12]
+}
+
+func managementContractLabel(spec ManagedSpecModel) string {
+	if !spec.DiffAvailable {
+		if spec.Publication.Public {
+			return "Diff unavailable"
+		}
+		return "No baseline"
+	}
+	if len(spec.Diff.BreakingChanges) > 0 {
+		return fmt.Sprintf("%d breaking", len(spec.Diff.BreakingChanges))
+	}
+	return "No contract breaks"
+}
+
+func managementContractColor(spec ManagedSpecModel) string {
+	if !spec.DiffAvailable {
+		return "warning"
+	}
+	if len(spec.Diff.BreakingChanges) > 0 {
+		return "danger"
+	}
+	return "success"
+}
+
+func managementContractDescription(spec ManagedSpecModel) string {
+	if !spec.DiffAvailable {
+		return managementValue(spec.DiffMessage)
+	}
+	if len(spec.Diff.BreakingChanges) > 0 {
+		return "Candidate has contract-breaking changes against the production revision."
+	}
+	if len(spec.Diff.AdditiveChanges) > 0 {
+		return "Only additive contract changes detected against the production revision."
+	}
+	return "Candidate matches the production contract."
+}
+
+func managementContractTabBadge(spec ManagedSpecModel) string {
+	if !spec.DiffAvailable {
+		return ""
+	}
+	if len(spec.Diff.BreakingChanges) > 0 {
+		return fmt.Sprintf("%d breaking", len(spec.Diff.BreakingChanges))
+	}
+	if len(spec.Diff.AdditiveChanges) > 0 {
+		return fmt.Sprintf("%d additive", len(spec.Diff.AdditiveChanges))
+	}
+	return "clean"
+}
+
+func managementContractChanges(diff core.SpecDiff) []core.SpecChange {
+	total := len(diff.BreakingChanges) + len(diff.AdditiveChanges)
+	changes := make([]core.SpecChange, 0, total)
+	changes = append(changes, diff.BreakingChanges...)
+	changes = append(changes, diff.AdditiveChanges...)
+	return changes
+}
+
+func managementContractChangeColor(change core.SpecChange) string {
+	switch change.Severity {
+	case core.SpecChangeBreaking:
+		return "danger"
+	case core.SpecChangeAdditive:
+		return "success"
+	default:
+		return "neutral"
+	}
+}
+
+func managementChangeCountLabel(count int, singular string) string {
+	if count == 1 {
+		return "1 " + singular
+	}
+	return fmt.Sprintf("%d %ss", count, singular)
+}
+
+func managementReleaseTitle(spec ManagedSpecModel) string {
+	if !spec.Publication.Public {
+		return "No production release"
+	}
+	parts := compactStrings([]string{spec.Publication.RevisionID, spec.Publication.Path})
+	if len(parts) == 0 {
+		return "No production release"
+	}
+	return strings.Join(parts, " at ")
+}
+
+func managementReleaseDescription(spec ManagedSpecModel) string {
+	if !spec.Publication.Public {
+		return "Promote a parsed revision when you are ready to expose this docs route."
+	}
+	return "Readers are pinned to this docs revision until another candidate is promoted."
+}
+
+func managementSyncReleaseTitle(record core.SyncRecord) string {
+	parts := compactStrings([]string{string(record.Result)})
+	if !record.FinishedAt.IsZero() {
+		parts = append(parts, managementTime(record.FinishedAt))
+	}
+	if len(parts) == 0 {
+		return "not synced"
+	}
+	return strings.Join(parts, " · ")
+}
+
+func managementSyncReleaseDescription(record core.SyncRecord) string {
+	if strings.TrimSpace(record.ErrorSummary) != "" {
+		return record.ErrorSummary
+	}
+	if strings.TrimSpace(record.Trigger) != "" {
+		return "Triggered by " + record.Trigger + ". A failed sync will not replace the production docs revision."
+	}
+	return "A failed sync will not replace the production docs revision."
+}
+
 func managementPublicationPathValue(pub core.Publication, project core.Project) string {
 	if strings.TrimSpace(pub.Path) != "" {
 		return pub.Path
@@ -336,7 +1242,72 @@ func managementPublicationPathValue(pub core.Publication, project core.Project) 
 	if strings.TrimSpace(project.Slug) != "" {
 		return "/" + strings.Trim(strings.TrimSpace(project.Slug), "/")
 	}
-	return ""
+	return "/"
+}
+
+func managementPublishedDocsHref(pub core.Publication) string {
+	if !pub.Public {
+		return ""
+	}
+	path := strings.TrimSpace(pub.Path)
+	if path == "" || !strings.HasPrefix(path, "/") {
+		return ""
+	}
+	return path
+}
+
+func managementSpecDetailHref(specID string) string {
+	if strings.TrimSpace(specID) == "" {
+		return "/manage"
+	}
+	return "/manage/spec/" + url.PathEscape(specID)
+}
+
+func managementSidebarItemID(prefix string, id string) string {
+	if strings.TrimSpace(prefix) == "" {
+		return id
+	}
+	return prefix + "-" + id
+}
+
+func managementSidebarSearchID(prefix string) string {
+	if strings.TrimSpace(prefix) == "" {
+		return "management-sidebar-search"
+	}
+	return prefix + "-management-sidebar-search"
+}
+
+func managementSidebarSpecSearchText(spec ManagedSpecModel) string {
+	return strings.Join(compactStrings([]string{
+		spec.Title,
+		spec.Version,
+		spec.ID,
+		spec.Project.ID,
+		spec.Source.ID,
+		spec.Source.Kind,
+		spec.Source.SpecPath,
+		spec.Revision.Ref,
+		spec.Revision.CommitSHA,
+		managementPublicationLabel(spec.Publication),
+	}), " ")
+}
+
+func managementSlug(value string) string {
+	value = strings.TrimSpace(strings.ToLower(value))
+	var b strings.Builder
+	lastDash := false
+	for _, r := range value {
+		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') {
+			b.WriteRune(r)
+			lastDash = false
+			continue
+		}
+		if !lastDash {
+			b.WriteByte('-')
+			lastDash = true
+		}
+	}
+	return strings.Trim(b.String(), "-")
 }
 
 func managementTime(t time.Time) string {

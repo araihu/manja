@@ -31,6 +31,9 @@ func TestGitSourceFetchesSpecAtRef(t *testing.T) {
 	if rev.Ref != "HEAD" || rev.CommitSHA != commit || rev.ID == "" {
 		t.Fatalf("revision = %#v, commit %q", rev, commit)
 	}
+	if rev.AuthorName != "Manja Test" || rev.AuthorEmail != "manja@example.test" || rev.Message != "add spec" {
+		t.Fatalf("revision author metadata = %#v", rev)
+	}
 }
 
 func TestGitSourceReportsMissingSpecAtRef(t *testing.T) {
@@ -143,6 +146,9 @@ func TestGitSourceDiscoversBranchAndTagRefs(t *testing.T) {
 		}
 		if candidate.SourceID != bare || candidate.Kind != expected.kind || candidate.CommitSHA != expected.commit {
 			t.Fatalf("candidate = %#v, want kind %q commit %q source %q", candidate, expected.kind, expected.commit, bare)
+		}
+		if candidate.AuthorName != "Manja Test" || candidate.AuthorEmail != "manja@example.test" || candidate.Message == "" {
+			t.Fatalf("candidate author metadata = %#v", candidate)
 		}
 	}
 }

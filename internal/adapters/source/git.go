@@ -53,6 +53,10 @@ func (g Git) Fetch(ctx context.Context) (core.SpecFile, core.Revision, error) {
 	if err != nil {
 		return core.SpecFile{}, core.Revision{}, fmt.Errorf("read git spec %q at %q: %w", g.Path, ref, err)
 	}
+	info, err := gitCommitInfo(ctx, repo, commit)
+	if err != nil {
+		return core.SpecFile{}, core.Revision{}, fmt.Errorf("read git commit info %q: %w", commit, err)
+	}
 
 	sum := sha256.Sum256([]byte(commit + ":" + g.Path))
 	id := "git-" + hex.EncodeToString(sum[:])[:16]
@@ -62,10 +66,13 @@ func (g Git) Fetch(ctx context.Context) (core.SpecFile, core.Revision, error) {
 			Format:   specFormat(g.Path),
 			Bytes:    data,
 		}, core.Revision{
-			ID:        id,
-			SourceID:  g.Repo,
-			Ref:       ref,
-			CommitSHA: commit,
+			ID:          id,
+			SourceID:    g.Repo,
+			Ref:         ref,
+			CommitSHA:   commit,
+			AuthorName:  info.AuthorName,
+			AuthorEmail: info.AuthorEmail,
+			Message:     info.Message,
 		}, nil
 }
 
@@ -108,19 +115,55 @@ func (g Git) Discover(ctx context.Context) ([]core.RevisionCandidate, error) {
 		if kind == "tag" && strings.TrimSpace(peeled) != "" {
 			commit = peeled
 		}
+		info, err := gitCommitInfo(ctx, repo, commit)
+		if err != nil {
+			return nil, fmt.Errorf("read git commit info %q: %w", commit, err)
+		}
 		key := kind + "\x00" + ref
 		if seen[key] {
 			continue
 		}
 		seen[key] = true
 		candidates = append(candidates, core.RevisionCandidate{
-			SourceID:  g.Repo,
-			Ref:       ref,
-			Kind:      kind,
-			CommitSHA: strings.TrimSpace(commit),
+			SourceID:    g.Repo,
+			Ref:         ref,
+			Kind:        kind,
+			CommitSHA:   strings.TrimSpace(commit),
+			AuthorName:  info.AuthorName,
+			AuthorEmail: info.AuthorEmail,
+			Message:     info.Message,
 		})
 	}
 	return candidates, nil
+}
+
+type gitCommitDetails struct {
+	AuthorName  string
+	AuthorEmail string
+	Message     string
+}
+
+func gitCommitInfo(ctx context.Context, repo, commit string) (gitCommitDetails, error) {
+	out, err := gitOutput(ctx, repo, "show", "-s", "--format=%an%x00%ae%x00%s", commit)
+	if err != nil {
+		return gitCommitDetails{}, err
+	}
+	name, rest, ok := strings.Cut(out, "\x00")
+	if !ok {
+		return gitCommitDetails{Message: strings.TrimSpace(out)}, nil
+	}
+	email, message, ok := strings.Cut(rest, "\x00")
+	if !ok {
+		return gitCommitDetails{
+			AuthorName: strings.TrimSpace(name),
+			Message:    strings.TrimSpace(rest),
+		}, nil
+	}
+	return gitCommitDetails{
+		AuthorName:  strings.TrimSpace(name),
+		AuthorEmail: strings.TrimSpace(email),
+		Message:     strings.TrimSpace(message),
+	}, nil
 }
 
 func gitCandidateRef(refname string) (string, string, bool) {

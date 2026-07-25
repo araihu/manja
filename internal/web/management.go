@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"net/url"
 	"strings"
 	"sync"
 	"time"
@@ -19,44 +20,56 @@ type ManagementStore interface {
 }
 
 type ManagementSyncAction func(context.Context, ManagedSpec, string) (ManagedSpec, error)
+type ManagementPublishedIndexLoader func(context.Context, ManagedSpec) (core.SpecIndex, bool, error)
 
 type ManagementOptions struct {
-	Store       ManagementStore
-	SyncAction  ManagementSyncAction
-	Specs       []ManagedSpec
-	Project     core.Project
-	Source      core.Source
-	Revision    core.Revision
-	Candidates  []core.RevisionCandidate
-	Publication core.Publication
-	SyncRecord  core.SyncRecord
+	Store                ManagementStore
+	SyncAction           ManagementSyncAction
+	PublishedIndexLoader ManagementPublishedIndexLoader
+	Specs                []ManagedSpec
+	Project              core.Project
+	Source               core.Source
+	Revision             core.Revision
+	Candidates           []core.RevisionCandidate
+	Publication          core.Publication
+	PublishedIndex       core.SpecIndex
+	SyncRecord           core.SyncRecord
 }
 
 type ManagedSpec struct {
-	ID          string
-	Index       core.SpecIndex
-	Project     core.Project
-	Source      core.Source
-	Revision    core.Revision
-	Candidates  []core.RevisionCandidate
-	Publication core.Publication
-	SyncRecord  core.SyncRecord
+	ID             string
+	Index          core.SpecIndex
+	PublishedIndex core.SpecIndex
+	Project        core.Project
+	Source         core.Source
+	Revision       core.Revision
+	Candidates     []core.RevisionCandidate
+	Publication    core.Publication
+	SyncRecord     core.SyncRecord
 }
 
 func NewManagementServer(idx core.SpecIndex, opts ManagementOptions) http.Handler {
-	srv := &managementServer{store: opts.Store, syncAction: opts.SyncAction, specs: normalizeManagedSpecs(idx, opts)}
+	srv := &managementServer{
+		store:                opts.Store,
+		syncAction:           opts.SyncAction,
+		publishedIndexLoader: opts.PublishedIndexLoader,
+		specs:                normalizeManagedSpecs(idx, opts),
+	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("/manage", srv.overview)
+	mux.HandleFunc("/manage/specs", srv.specsOverview)
+	mux.HandleFunc("/manage/spec/", srv.specDetail)
 	mux.HandleFunc("/manage/publication", srv.updatePublication)
 	mux.HandleFunc("/manage/sync", srv.syncRef)
 	return mux
 }
 
 type managementServer struct {
-	store      ManagementStore
-	syncAction ManagementSyncAction
-	specs      []ManagedSpec
-	mu         sync.RWMutex
+	store                ManagementStore
+	syncAction           ManagementSyncAction
+	publishedIndexLoader ManagementPublishedIndexLoader
+	specs                []ManagedSpec
+	mu                   sync.RWMutex
 }
 
 func (s *managementServer) overview(w http.ResponseWriter, r *http.Request) {
@@ -70,7 +83,66 @@ func (s *managementServer) overview(w http.ResponseWriter, r *http.Request) {
 	specs := cloneManagedSpecs(s.specs)
 	s.mu.RUnlock()
 
-	if err := templates.ManagementOverview(managementOverviewModel(specs)).Render(r.Context(), w); err != nil {
+	model := s.managementOverviewModel(r.Context(), specs, "")
+	component := templates.ManagementOverview(model)
+	if managementWantsFragment(r) {
+		component = templates.ManagementOverviewContent(model)
+	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	if err := component.Render(r.Context(), w); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+	}
+}
+
+func (s *managementServer) specsOverview(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		w.Header().Set("Allow", http.MethodGet)
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+
+	s.mu.RLock()
+	specs := cloneManagedSpecs(s.specs)
+	s.mu.RUnlock()
+
+	model := s.managementOverviewModel(r.Context(), specs, "")
+	component := templates.ManagementSpecsPage(model)
+	if managementWantsFragment(r) {
+		component = templates.ManagementSpecsContent(model)
+	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	if err := component.Render(r.Context(), w); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+	}
+}
+
+func (s *managementServer) specDetail(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		w.Header().Set("Allow", http.MethodGet)
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+	specID := strings.Trim(strings.TrimPrefix(r.URL.Path, "/manage/spec/"), "/")
+	if specID == "" {
+		http.NotFound(w, r)
+		return
+	}
+
+	s.mu.RLock()
+	specs := cloneManagedSpecs(s.specs)
+	s.mu.RUnlock()
+	if _, ok := managedSpecByID(specs, specID); !ok {
+		http.NotFound(w, r)
+		return
+	}
+
+	model := s.managementOverviewModel(r.Context(), specs, specID)
+	component := templates.ManagementSpecPage(model)
+	if managementWantsFragment(r) {
+		component = templates.ManagementSpecContent(model)
+	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	if err := component.Render(r.Context(), w); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
 }
@@ -112,7 +184,11 @@ func (s *managementServer) updatePublication(w http.ResponseWriter, r *http.Requ
 	spec := s.specs[specIndex]
 	pub := spec.Publication
 	pub.ProjectID = firstNonBlank(pub.ProjectID, spec.Project.ID, spec.Index.ProjectID)
-	pub.RevisionID = firstNonBlank(pub.RevisionID, spec.Revision.ID, spec.Index.RevisionID)
+	if revisionID := strings.TrimSpace(r.FormValue("revision_id")); revisionID != "" {
+		pub.RevisionID = revisionID
+	} else {
+		pub.RevisionID = firstNonBlank(pub.RevisionID, spec.Revision.ID, spec.Index.RevisionID)
+	}
 	pub.Path = strings.TrimSpace(r.FormValue("path"))
 	pub.Public = strings.TrimSpace(r.FormValue("visibility")) == "public"
 	if pub.ProjectID == "" || pub.RevisionID == "" {
@@ -126,7 +202,7 @@ func (s *managementServer) updatePublication(w http.ResponseWriter, r *http.Requ
 		}
 	}
 	s.specs[specIndex].Publication = pub
-	http.Redirect(w, r, "/manage", http.StatusSeeOther)
+	s.respondManagementMutation(w, r, cloneManagedSpecs(s.specs), s.specs[specIndex].ID)
 }
 
 func (s *managementServer) syncRef(w http.ResponseWriter, r *http.Request) {
@@ -194,7 +270,21 @@ func (s *managementServer) syncRef(w http.ResponseWriter, r *http.Request) {
 		updated.Publication = pub
 		s.specs[specIndex] = updated
 	}
-	http.Redirect(w, r, "/manage", http.StatusSeeOther)
+	s.respondManagementMutation(w, r, cloneManagedSpecs(s.specs), s.specs[specIndex].ID)
+}
+
+func (s *managementServer) respondManagementMutation(w http.ResponseWriter, r *http.Request, specs []ManagedSpec, selectedSpecID string) {
+	redirectPath := managementSpecRedirectPath(ManagedSpec{ID: selectedSpecID})
+	if managementWantsFragment(r) {
+		model := s.managementOverviewModel(r.Context(), specs, selectedSpecID)
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		w.Header().Set("HX-Push-Url", redirectPath)
+		if err := templates.ManagementSpecContent(model).Render(r.Context(), w); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+		}
+		return
+	}
+	http.Redirect(w, r, redirectPath, http.StatusSeeOther)
 }
 
 func (s *managementServer) managedSpecIndex(specID string) (int, error) {
@@ -216,13 +306,14 @@ func normalizeManagedSpecs(idx core.SpecIndex, opts ManagementOptions) []Managed
 	specs := opts.Specs
 	if len(specs) == 0 {
 		specs = []ManagedSpec{{
-			Index:       idx,
-			Project:     opts.Project,
-			Source:      opts.Source,
-			Revision:    opts.Revision,
-			Candidates:  opts.Candidates,
-			Publication: opts.Publication,
-			SyncRecord:  opts.SyncRecord,
+			Index:          idx,
+			PublishedIndex: opts.PublishedIndex,
+			Project:        opts.Project,
+			Source:         opts.Source,
+			Revision:       opts.Revision,
+			Candidates:     opts.Candidates,
+			Publication:    opts.Publication,
+			SyncRecord:     opts.SyncRecord,
 		}}
 	}
 
@@ -275,25 +366,42 @@ func cloneManagedSpecs(specs []ManagedSpec) []ManagedSpec {
 	return cloned
 }
 
-func managementOverviewModel(specs []ManagedSpec) templates.ManagementOverviewModel {
+func (s *managementServer) managementOverviewModel(ctx context.Context, specs []ManagedSpec, selectedSpecID string) templates.ManagementOverviewModel {
 	model := templates.ManagementOverviewModel{
-		Specs: make([]templates.ManagedSpecModel, 0, len(specs)),
+		Specs:          make([]templates.ManagedSpecModel, 0, len(specs)),
+		SelectedSpecID: selectedSpecID,
 	}
 	for _, spec := range specs {
+		diff, diffAvailable, diffMessage := s.managementSpecDiff(ctx, spec)
 		model.Specs = append(model.Specs, templates.ManagedSpecModel{
-			ID:          spec.ID,
-			Title:       managementSpecTitle(spec),
-			Version:     managementSpecVersion(spec),
-			Project:     spec.Project,
-			Source:      spec.Source,
-			Revision:    spec.Revision,
-			Candidates:  spec.Candidates,
-			Publication: spec.Publication,
-			SyncRecord:  spec.SyncRecord,
+			ID:            spec.ID,
+			Title:         managementSpecTitle(spec),
+			Version:       managementSpecVersion(spec),
+			Operations:    len(spec.Index.Operations),
+			Schemas:       len(spec.Index.Schemas),
+			Routes:        len(spec.Index.PublicRoutes),
+			Diff:          diff,
+			DiffAvailable: diffAvailable,
+			DiffMessage:   diffMessage,
+			Project:       spec.Project,
+			Source:        spec.Source,
+			Revision:      spec.Revision,
+			Candidates:    spec.Candidates,
+			Publication:   spec.Publication,
+			SyncRecord:    spec.SyncRecord,
 		})
 	}
 	if len(model.Specs) > 0 {
 		selected := model.Specs[0]
+		if selectedSpecID != "" {
+			for _, spec := range model.Specs {
+				if spec.ID == selectedSpecID {
+					selected = spec
+					break
+				}
+			}
+		}
+		model.SelectedSpecID = selected.ID
 		model.Project = selected.Project
 		model.Source = selected.Source
 		model.Revision = selected.Revision
@@ -301,6 +409,61 @@ func managementOverviewModel(specs []ManagedSpec) templates.ManagementOverviewMo
 		model.SyncRecord = selected.SyncRecord
 	}
 	return model
+}
+
+func (s *managementServer) managementSpecDiff(ctx context.Context, spec ManagedSpec) (core.SpecDiff, bool, string) {
+	if !spec.Publication.Public || strings.TrimSpace(spec.Publication.RevisionID) == "" {
+		return core.SpecDiff{}, false, "Publish once to create a production baseline for contract checks."
+	}
+	baseline, ok, err := s.managementBaselineIndex(ctx, spec)
+	if err != nil {
+		return core.SpecDiff{}, false, "Could not load the production baseline: " + err.Error()
+	}
+	if !ok {
+		return core.SpecDiff{}, false, "Production baseline is not available for this revision yet."
+	}
+	return core.DiffSpecIndexes(baseline, spec.Index), true, ""
+}
+
+func (s *managementServer) managementBaselineIndex(ctx context.Context, spec ManagedSpec) (core.SpecIndex, bool, error) {
+	if hasManagementSpecIndex(spec.PublishedIndex) {
+		return spec.PublishedIndex, true, nil
+	}
+	if strings.TrimSpace(spec.Publication.RevisionID) != "" && spec.Publication.RevisionID == spec.Revision.ID {
+		return spec.Index, true, nil
+	}
+	if s.publishedIndexLoader == nil {
+		return core.SpecIndex{}, false, nil
+	}
+	return s.publishedIndexLoader(ctx, spec)
+}
+
+func hasManagementSpecIndex(idx core.SpecIndex) bool {
+	return strings.TrimSpace(idx.RevisionID) != "" ||
+		strings.TrimSpace(idx.Title) != "" ||
+		len(idx.Operations) > 0 ||
+		len(idx.Schemas) > 0 ||
+		len(idx.PublicRoutes) > 0
+}
+
+func managedSpecByID(specs []ManagedSpec, id string) (ManagedSpec, bool) {
+	for _, spec := range specs {
+		if spec.ID == id {
+			return spec, true
+		}
+	}
+	return ManagedSpec{}, false
+}
+
+func managementSpecRedirectPath(spec ManagedSpec) string {
+	if strings.TrimSpace(spec.ID) == "" {
+		return "/manage"
+	}
+	return "/manage/spec/" + url.PathEscape(spec.ID)
+}
+
+func managementWantsFragment(r *http.Request) bool {
+	return strings.EqualFold(r.Header.Get("HX-Request"), "true")
 }
 
 func managementRefAllowed(candidates []core.RevisionCandidate, ref string) bool {
@@ -357,6 +520,7 @@ func firstNonBlank(values ...string) string {
 
 func compactManagedSpecIDParts(values ...string) []string {
 	parts := make([]string, 0, len(values))
+	seen := map[string]bool{}
 	for _, value := range values {
 		value = strings.TrimSpace(strings.ToLower(value))
 		if value == "" {
@@ -376,8 +540,9 @@ func compactManagedSpecIDParts(values ...string) []string {
 			}
 		}
 		part := strings.Trim(b.String(), "-")
-		if part != "" {
+		if part != "" && !seen[part] {
 			parts = append(parts, part)
+			seen[part] = true
 		}
 	}
 	return parts

@@ -123,6 +123,108 @@ html.boot [data-boot-anim="main"] {
     transform 220ms ease-out;
 }
 
+.manja-management-facts {
+  display: grid;
+  gap: 0.75rem;
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.manja-management-actions {
+  align-items: start;
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.manja-management-production-layout,
+.manja-management-live-route,
+.manja-management-deploy-grid,
+.manja-management-candidate-grid,
+.manja-management-contract-counts {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.manja-management-details-grid {
+  display: grid;
+  gap: 1.25rem;
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.manja-management-release-list {
+  display: grid;
+  gap: 0;
+}
+
+.manja-management-release-row {
+  display: grid;
+  gap: 0.75rem;
+  grid-template-columns: minmax(6rem, auto) minmax(0, 1fr);
+  min-width: 0;
+  padding-block: 0.875rem;
+}
+
+.manja-management-release-row + .manja-management-release-row {
+  border-top: 1px solid var(--color-outline);
+}
+
+.dark .manja-management-release-row + .manja-management-release-row {
+  border-top-color: var(--color-outline-dark);
+}
+
+.manja-management-release-marker {
+  min-width: 0;
+}
+
+.manja-management-term {
+  display: grid;
+  gap: 0.25rem;
+  min-width: 0;
+}
+
+@media (min-width: 720px) {
+  .manja-management-live-route {
+    align-items: center;
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .manja-management-candidate-grid,
+  .manja-management-contract-counts {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
+
+  .manja-management-facts {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
+
+  .manja-management-term {
+    align-items: baseline;
+    grid-template-columns: 8rem minmax(0, 1fr);
+  }
+}
+
+@media (min-width: 1120px) {
+  .manja-management-production-layout {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .manja-management-facts {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .manja-management-details-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 1480px) {
+  .manja-management-deploy-grid,
+  .manja-management-actions {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   html.boot [data-boot-anim] {
     animation: none;
@@ -819,4 +921,25 @@ summary.manja-schema-row::marker {
 .dark .manja-markdown blockquote {
   border-left-color: var(--color-outline-dark);
   color: var(--color-on-surface-dark-muted);
+}
+
+#management-main-content [role="tablist"] + div > [role="tabpanel"] {
+  display: none;
+}
+
+#management-main-content [role="tablist"] + div > [role="tabpanel"]:first-child {
+  display: block;
+}
+
+#management-main-content [role="tablist"]:has([role="tab"][aria-selected="true"]) + div > [role="tabpanel"]:first-child {
+  display: none;
+}
+
+#management-main-content [role="tablist"]:has([role="tab"]:nth-child(1)[aria-selected="true"]) + div > [role="tabpanel"]:nth-child(1),
+#management-main-content [role="tablist"]:has([role="tab"]:nth-child(2)[aria-selected="true"]) + div > [role="tabpanel"]:nth-child(2),
+#management-main-content [role="tablist"]:has([role="tab"]:nth-child(3)[aria-selected="true"]) + div > [role="tabpanel"]:nth-child(3),
+#management-main-content [role="tablist"]:has([role="tab"]:nth-child(4)[aria-selected="true"]) + div > [role="tabpanel"]:nth-child(4),
+#management-main-content [role="tablist"]:has([role="tab"]:nth-child(5)[aria-selected="true"]) + div > [role="tabpanel"]:nth-child(5),
+#management-main-content [role="tablist"]:has([role="tab"]:nth-child(6)[aria-selected="true"]) + div > [role="tabpanel"]:nth-child(6) {
+  display: block;
 }

@@ -34,12 +34,43 @@ func TestRoutesRender(t *testing.T) {
 		{
 			path: "/demo",
 			want: []string{
-				"GitHub v3 REST API",
+				"Acme Payments API",
 				"Search docs",
 				"Operations",
-				`href="/demo/?selected=overview#overview"`,
-				`href="/demo/manja-assets/manja.css"`,
-				`data-search-source-url="/demo/search.json"`,
+				`href="/demo/payments/v1/?selected=overview#overview"`,
+				`href="/demo/payments/v1/manja-assets/manja.css"`,
+				`data-search-source-url="/demo/payments/v1/search.json"`,
+			},
+		},
+		{
+			path: "/demo/manage",
+			want: []string{
+				"Management",
+				"Spec roster",
+				"3 specs",
+				"Acme Payments API",
+				"Acme Identity API",
+				"Acme Notifications API",
+				"Production docs",
+				"Publish candidate",
+				"Route settings",
+				"Release history",
+				"Spec diff",
+				"Contract check",
+				"6 breaking",
+				"Ada Lovelace",
+				"Removed endpoint",
+				"GET /customers",
+				"Required parameter added",
+				"api-version (header)",
+				"Added schema",
+				"Refund",
+				`role="tab"`,
+				`id="management-specs-table"`,
+				`href="/demo/manage/specs"`,
+				`hx-post="/demo/manage/publication"`,
+				`hx-target="#management-main-content"`,
+				`placeholder="/docs/v1"`,
 			},
 		},
 		{
@@ -69,6 +100,91 @@ func TestRoutesRender(t *testing.T) {
 	}
 }
 
+func TestDemoManagementRedirectsStayMounted(t *testing.T) {
+	t.Parallel()
+
+	srv := httptest.NewServer(newTestServer(t))
+	t.Cleanup(srv.Close)
+
+	form := strings.NewReader("visibility=public&path=%2Fpayments%2Fv1")
+	req, err := http.NewRequest(http.MethodPost, srv.URL+"/demo/manage/publication", form)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	client := &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error {
+		return http.ErrUseLastResponse
+	}}
+	resp, err := client.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusSeeOther {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("status = %d, want %d; body: %s", resp.StatusCode, http.StatusSeeOther, body)
+	}
+	if got := resp.Header.Get("Location"); !strings.HasPrefix(got, "/demo/manage/spec/") {
+		t.Fatalf("Location = %q, want /demo/manage/spec/...", got)
+	}
+
+	body := get(t, srv.URL+"/demo/payments/v1", http.StatusOK)
+	if !strings.Contains(body, "Acme Payments API") {
+		t.Fatalf("published demo route did not render docs:\n%s", body)
+	}
+}
+
+func TestDemoManagementHTMXMutationStaysMounted(t *testing.T) {
+	t.Parallel()
+
+	srv := httptest.NewServer(newTestServer(t))
+	t.Cleanup(srv.Close)
+
+	form := strings.NewReader("visibility=public&path=%2Fpayments%2Fv1")
+	req, err := http.NewRequest(http.MethodPost, srv.URL+"/demo/manage/publication", form)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Set("HX-Request", "true")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want %d; body: %s", resp.StatusCode, http.StatusOK, body)
+	}
+	if got := resp.Header.Get("HX-Push-Url"); !strings.HasPrefix(got, "/demo/manage/spec/") {
+		t.Fatalf("HX-Push-Url = %q, want /demo/manage/spec/...", got)
+	}
+	bodyText := string(body)
+	for _, want := range []string{
+		`id="management-main-content"`,
+		`href="/demo/payments/v1"`,
+		`hx-post="/demo/manage/publication"`,
+		`placeholder="/docs/v1"`,
+	} {
+		if !strings.Contains(bodyText, want) {
+			t.Fatalf("fragment missing %q:\n%s", want, bodyText)
+		}
+	}
+	for _, reject := range []string{
+		`placeholder="/demo/docs/v1"`,
+		"<!doctype html>",
+	} {
+		if strings.Contains(bodyText, reject) {
+			t.Fatalf("fragment should not include %q:\n%s", reject, bodyText)
+		}
+	}
+}
+
 func TestStaticAssetsRender(t *testing.T) {
 	t.Parallel()
 
@@ -95,14 +211,75 @@ func TestStaticAssetsRender(t *testing.T) {
 		t.Fatalf("favicon.svg did not render as svg")
 	}
 
-	demoCSS := get(t, srv.URL+"/demo/manja-assets/manja.css", http.StatusOK)
+	demoCSS := get(t, srv.URL+"/demo/payments/v1/manja-assets/manja.css", http.StatusOK)
 	if !strings.Contains(demoCSS, "--color-surface") {
 		t.Fatalf("demo renderer CSS did not render")
 	}
 
-	searchJSON := get(t, srv.URL+"/demo/search.json", http.StatusOK)
-	if !strings.Contains(searchJSON, `"href":"/demo/?selected=`) {
+	searchJSON := get(t, srv.URL+"/demo/payments/v1/search.json", http.StatusOK)
+	if !strings.Contains(searchJSON, `"href":"/demo/payments/v1/?selected=`) {
 		t.Fatalf("demo search index did not keep result hrefs under /demo")
+	}
+}
+
+func TestDemoManagementShowsPerSpecContractOutcomes(t *testing.T) {
+	t.Parallel()
+
+	srv := httptest.NewServer(newTestServer(t))
+	t.Cleanup(srv.Close)
+
+	payments := get(t, srv.URL+"/demo/manage/spec/payments-api", http.StatusOK)
+	for _, want := range []string{
+		"Acme Payments API",
+		"Publish",
+		"Diff",
+		"Route",
+		"Sync",
+		"History",
+		"Details",
+		"Added schema",
+		"Refund",
+		`role="tab"`,
+	} {
+		if !strings.Contains(payments, want) {
+			t.Fatalf("payments detail missing %q:\n%s", want, payments)
+		}
+	}
+	if strings.Contains(payments, "and 1 more changes") {
+		t.Fatalf("payments detail should render the full diff instead of a hidden-count placeholder:\n%s", payments)
+	}
+
+	identity := get(t, srv.URL+"/demo/manage/spec/identity-api", http.StatusOK)
+	for _, want := range []string{
+		"Acme Identity API",
+		"Only additive contract changes",
+		"Bruno Dias",
+		"Add group directory endpoints",
+		"Added endpoint",
+		"GET /groups",
+		"Response status added",
+		"GET /users 206",
+	} {
+		if !strings.Contains(identity, want) {
+			t.Fatalf("identity detail missing %q:\n%s", want, identity)
+		}
+	}
+
+	notifications := get(t, srv.URL+"/demo/manage/spec/notifications-api", http.StatusOK)
+	for _, want := range []string{
+		"Acme Notifications API",
+		"3 breaking",
+		"Carla Mendes",
+		"Require delivery templates for message sends",
+		"Required parameter added",
+		"POST /messages X-Delivery-Policy (header)",
+		"Request body became required",
+		"Response status removed",
+		"POST /messages 400",
+	} {
+		if !strings.Contains(notifications, want) {
+			t.Fatalf("notifications detail missing %q:\n%s", want, notifications)
+		}
 	}
 }
 
@@ -119,7 +296,6 @@ func newTestServer(t *testing.T) http.Handler {
 	t.Helper()
 
 	return server.NewWithOptions(t.Context(), server.Options{
-		SpecPath:  filepath.Join("..", "..", "..", "internal", "adapters", "openapi", "testdata", "github-v3-rest.json"),
 		DataDir:   t.TempDir(),
 		StaticDir: filepath.Join("..", "..", "..", "internal", "web", "static"),
 	})

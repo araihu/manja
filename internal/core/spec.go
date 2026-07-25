@@ -8,18 +8,24 @@ type SpecFile struct {
 }
 
 type Revision struct {
-	ID        string
-	SourceID  string
-	Ref       string
-	CommitSHA string
-	Version   string
+	ID          string
+	SourceID    string
+	Ref         string
+	CommitSHA   string
+	Version     string
+	AuthorName  string
+	AuthorEmail string
+	Message     string
 }
 
 type RevisionCandidate struct {
-	SourceID  string
-	Ref       string
-	Kind      string
-	CommitSHA string
+	SourceID    string
+	Ref         string
+	Kind        string
+	CommitSHA   string
+	AuthorName  string
+	AuthorEmail string
+	Message     string
 }
 
 type SpecIndex struct {

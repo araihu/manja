@@ -60,6 +60,16 @@ func page(w http.ResponseWriter, r *http.Request) {
 }
 
 func demoHandler(ctx context.Context, opts Options) http.Handler {
+	if opts.SpecPath == "" {
+		handler, err := newDemoWorkbench(ctx, opts)
+		if err != nil {
+			return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+			})
+		}
+		return handler
+	}
+
 	handler, err := app.NewWithOptions(ctx, app.Options{
 		SpecPath:  opts.specPath(),
 		DataDir:   opts.dataDir(),
@@ -164,6 +174,12 @@ func (w *prefixingResponseWriter) flush() {
 	if status == 0 {
 		status = http.StatusOK
 	}
+	if location := w.Header().Get("Location"); strings.HasPrefix(location, "/") && !strings.HasPrefix(location, w.prefix+"/") {
+		w.Header().Set("Location", w.prefix+location)
+	}
+	if pushURL := w.Header().Get("HX-Push-Url"); strings.HasPrefix(pushURL, "/") && !strings.HasPrefix(pushURL, w.prefix+"/") {
+		w.Header().Set("HX-Push-Url", w.prefix+pushURL)
+	}
 	body := w.body.Bytes()
 	contentType := w.Header().Get("Content-Type")
 	switch {
@@ -179,7 +195,50 @@ func (w *prefixingResponseWriter) flush() {
 }
 
 func prefixHTMLPaths(body []byte, prefix string) []byte {
-	return []byte(strings.ReplaceAll(string(body), `="/`, `="`+prefix+`/`))
+	html := string(body)
+	for _, attr := range []string{
+		"action",
+		"data-search-source-url",
+		"href",
+		"hx-delete",
+		"hx-get",
+		"hx-patch",
+		"hx-post",
+		"hx-put",
+		"src",
+		"sse-connect",
+	} {
+		html = prefixHTMLAttributePaths(html, attr, prefix)
+	}
+	return []byte(html)
+}
+
+func prefixHTMLAttributePaths(html string, attr string, prefix string) string {
+	needle := attr + `="/`
+	var out strings.Builder
+	for {
+		idx := strings.Index(html, needle)
+		if idx == -1 {
+			out.WriteString(html)
+			return out.String()
+		}
+		valueStart := idx + len(attr) + len(`="`)
+		valueEnd := strings.IndexByte(html[valueStart:], '"')
+		if valueEnd == -1 {
+			out.WriteString(html)
+			return out.String()
+		}
+		valueEnd += valueStart
+		value := html[valueStart:valueEnd]
+		out.WriteString(html[:valueStart])
+		if strings.HasPrefix(value, prefix+"/") || value == prefix {
+			out.WriteString(value)
+		} else {
+			out.WriteString(prefix)
+			out.WriteString(value)
+		}
+		html = html[valueEnd:]
+	}
 }
 
 func prefixJSONPaths(body []byte, prefix string) []byte {
