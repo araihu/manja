@@ -2,6 +2,8 @@
 
 FROM golang:1.26.1-alpine AS build
 
+ARG MANJA_VERSION=dev
+
 WORKDIR /src
 RUN apk add --no-cache ca-certificates git
 
@@ -9,7 +11,7 @@ COPY go.mod go.sum ./
 RUN go mod download
 
 COPY . .
-RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/manja ./cmd/manja
+RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w -X main.version=${MANJA_VERSION}" -o /out/manja ./cmd/manja
 
 FROM alpine:3.22
 

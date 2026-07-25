@@ -67,10 +67,17 @@ contracts:
           schema.removed: fail
 ```
 
+Build the binary first so the shell receives Manja's exact `0`, `1`, or `2`
+status:
+
+```bash
+go build -o ./bin/manja ./cmd/manja
+```
+
 Review local files:
 
 ```bash
-go run ./cmd/manja check \
+./bin/manja check \
   --config .manja.yaml \
   --contract payments \
   --target-file ./baselines/target.yaml \
@@ -82,7 +89,7 @@ go run ./cmd/manja check \
 Or load the configured spec path from refs in a local Git checkout:
 
 ```bash
-go run ./cmd/manja check \
+./bin/manja check \
   --config .manja.yaml \
   --contract payments \
   --repo . \

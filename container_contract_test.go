@@ -10,7 +10,9 @@ func TestContainerImageContract(t *testing.T) {
 	dockerfile := readFile(t, "Dockerfile")
 	assertContains(t, dockerfile, "FROM golang:1.26.1-alpine AS build")
 	assertContains(t, dockerfile, "FROM alpine:")
+	assertContains(t, dockerfile, "ARG MANJA_VERSION=dev")
 	assertContains(t, dockerfile, "CGO_ENABLED=0 GOOS=linux go build")
+	assertContains(t, dockerfile, `-X main.version=${MANJA_VERSION}`)
 	assertContains(t, dockerfile, "apk add --no-cache ca-certificates git")
 	assertContains(t, dockerfile, "internal/web/static")
 	assertContains(t, dockerfile, "internal/adapters/openapi/testdata/github-v3-rest.json")
@@ -30,6 +32,8 @@ func TestContainerPublishWorkflowContract(t *testing.T) {
 	assertContains(t, workflow, "type=semver,pattern={{version}}")
 	assertContains(t, workflow, "type=semver,pattern={{major}}.{{minor}}")
 	assertContains(t, workflow, "type=semver,pattern={{major}}")
+	assertContains(t, workflow, "build-args: |")
+	assertContains(t, workflow, "MANJA_VERSION=${{ github.ref_type == 'tag' && github.ref_name || github.sha }}")
 }
 
 func readFile(t *testing.T, path string) string {
