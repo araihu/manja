@@ -41,6 +41,10 @@ type Parser interface {
 	Parse(context.Context, SpecFile, Revision) (SpecIndex, error)
 }
 
+type ContractSnapshotBuilder interface {
+	Build(context.Context, string, SpecFile, Revision) (ContractSnapshot, error)
+}
+
 type MarkdownRenderer interface {
 	Render(context.Context, string) (MarkdownResult, error)
 }

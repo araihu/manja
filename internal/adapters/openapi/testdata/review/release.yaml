@@ -1,0 +1,26 @@
+openapi: 3.1.0
+info:
+  title: Payments API
+  version: 1.0.0
+paths:
+  /payments:
+    get:
+      responses:
+        "200":
+          description: Payments
+    post:
+      responses:
+        "200":
+          description: Payment created
+components:
+  schemas:
+    Payment:
+      type: object
+      properties:
+        id:
+          type: string
+    Error:
+      type: object
+      properties:
+        message:
+          type: string
