@@ -219,6 +219,115 @@ means rendering arbitrary mutable source state directly.
 
 Manja keeps ports-first, hexagonal boundaries.
 
+### Open Core And Public Extension Boundary
+
+The canonical public repository and Go module remain
+`github.com/araihu/manja`. The public repository is the complete, useful
+self-hosted product rather than a reduced community edition. Its target license
+is Apache License 2.0, subject to the provenance and copyright-authority gate
+below. The repository must not describe itself as Apache-licensed until that
+gate passes and the required license materials are present.
+
+A future proprietary `github.com/araihu/manja-cloud` repository may import
+Manja as an ordinary Go module and provide hosted authentication,
+tenant-scoped persistence, authorization, billing, managed queues, provider
+installations, custom domains, managed secrets, and a separate cloud
+composition root. This design does not create that repository or implement any
+hosted product behavior.
+
+The public extension surface is intentional:
+
+```text
+github.com/araihu/manja/domain
+github.com/araihu/manja/application
+github.com/araihu/manja/application/port
+github.com/araihu/manja/contracttest
+```
+
+- `domain` owns provider-neutral entities, value objects, validation,
+  comparison, policy, and pure state transitions. It does not import HTTP,
+  SQL, filesystem, Git, Goshtoso, generated transport types, or adapters.
+- `application` owns reusable commands, queries, orchestration, and public
+  application errors. Constructors receive ports; they do not select or
+  construct infrastructure.
+- `application/port` owns stable infrastructure contracts for operational
+  transactions, blobs, sources, parsing, secrets, identity and authorization,
+  clocks, identifiers, caches, and asynchronous work where needed.
+- `contracttest` provides public conformance suites for replaceable adapters.
+  It does not provision environments or require self-hosted credentials.
+
+Self-hosted implementations and transport wiring may remain under
+`internal/adapters`, `internal/web`, and `cmd/manja`. `cmd/manja`, or a narrow
+self-hosted internal composition package called only from it, selects concrete
+adapters. Reusable application behavior must not remain trapped under
+`internal/core` or `internal/app`, because an unrelated Go module cannot import
+those packages. The `site` module is not proof of external compatibility: its
+module path remains below `github.com/araihu/manja` and therefore shares Go's
+internal-package visibility boundary.
+
+All public application and port operations accept `context.Context` first and
+propagate the incoming context unchanged. A future cloud adapter may read an
+already validated tenant scope from context, but context is not authorization
+and the public domain does not gain speculative `tenant_id`,
+`organization_id`, billing, subscription, or entitlement fields.
+
+Consistency-sensitive work must be expressible through a coarse
+context-propagating `UnitOfWork`. When revision creation, snapshot metadata,
+review evidence, sync records, release-track mutation, publication, audit
+events, and outbox work form one invariant, the public port must allow them to
+commit atomically. Blob and cache writes may sit outside that transaction only
+when ordering, idempotency, orphan handling, and recovery are documented.
+
+Raw Git tokens and SSH private keys are self-hosted composition inputs, not
+reusable application options. Public application code receives opaque secret
+references and resolves them through an injected port when needed. The secret
+contract must support filesystem, Vault/OpenBao, External Secrets Operator, or
+cloud secret-manager adapters without changing domain types.
+
+Do not automatically export `internal/web`. If an external consumer proves a
+need to reuse rendering, promote only stable view models and rendering behavior
+to a small public presentation package. Self-hosted routes, generated handlers,
+sessions, and authentication middleware remain internal. The canonical `api/`
+description is a public compatibility contract; generated Go transport types
+remain implementation details unless deliberately promoted. Public Go,
+OpenAPI, and CLI breaking changes follow semantic-versioning discipline.
+
+The governing extension test for every new reusable capability is:
+
+> Can `github.com/araihu/manja-cloud` import this capability and inject
+> tenant-aware proprietary infrastructure without modifying or forking
+> Manja's public domain and application logic?
+
+If not, revise the boundary without implementing the SaaS product.
+
+### Licensing And Redistribution Gate
+
+Apache-2.0 publication is gated by evidence, not metadata alone:
+
+1. Confirm the real copyright owner and their authority to license all existing
+   code and documentation.
+2. Audit copied fixtures, generated sources, logos, fonts, JavaScript bundles,
+   and other redistributed assets for provenance and license obligations.
+3. Only after that audit, add the unmodified Apache License 2.0 text as root
+   `LICENSE` and an accurate root `NOTICE` with the real holder, year range, and
+   required attributions only.
+4. Maintain `THIRD_PARTY_NOTICES.md`, or a generated equivalent release
+   inventory, for shipped dependencies and assets. Test-only dependencies must
+   not be described as redistributed production code.
+5. Include `LICENSE`, `NOTICE`, and applicable third-party notices in source
+   archives, release binaries, OCI images, and bundled site/frontend artifacts.
+6. Add automated Go and npm dependency-license checks plus reproducible SBOM
+   generation for shipped artifacts.
+7. Add Apache-2.0 repository/package metadata only after the files and audit are
+   complete. Establish DCO or an equally clear inbound-contribution policy
+   before accepting external contributions; evaluate a CLA only if future dual
+   licensing is a real goal.
+
+The public `site` module may remain with the self-hosted product under the same
+public license. Future proprietary cloud marketing, signup, account, and
+billing pages belong outside this repository. No proprietary cloud code,
+credentials, or commercial-license exceptions belong in Manja.
+
 ### Shared Contract Analysis Core
 
 The CLI and server use the same deterministic core:
@@ -581,7 +690,47 @@ silently change their canonical path.
 ## Delivery Decomposition
 
 This umbrella design is deliberately not one implementation plan. It creates
-four subprojects, each with its own spec and plan.
+four product subprojects, each with its own spec and plan, plus one mandatory
+architecture-and-licensing checkpoint before further server capability is
+added.
+
+### Architecture Checkpoint: Open Core Extension Surface And Licensing
+
+This checkpoint precedes Subproject 2 and all later server slices. It does not
+create a cloud product. Its scope is:
+
+- provenance and copyright-authority inventory
+- external-module and architecture compatibility tests
+- promotion of reusable domain, application, and port packages out of
+  `internal`
+- an injected self-hosted composition root
+- a coarse operational `UnitOfWork` and explicit blob consistency model
+- public adapter conformance suites
+- context and opaque-secret boundaries
+- public Go/OpenAPI/CLI compatibility policy
+- `LICENSE`, `NOTICE`, third-party notices, license/SBOM gates, and artifact
+  packaging only after the provenance gate passes
+
+The detailed plan is
+`docs/superpowers/plans/2026-07-25-open-core-extension-surface-and-licensing.md`.
+Subproject 2 must use the promoted public packages and ports; it must not add
+new reusable release behavior to `internal/core` or `internal/app`.
+
+### Dependency Checkpoint: Goshtoso v0.0.12 Consumer Migration
+
+After the Open Core checkpoint and before Subproject 2 changes web templates,
+upgrade both Manja Go modules to exactly Goshtoso v0.0.12 using the tagged
+changelog, migration guide, component model, and Go reference. This is a
+separate consumer migration, not part of the public domain/application
+boundary and not a dependency-only bump.
+
+The checkpoint includes the Go 1.26.5 minimum, a complete inventory of Manja's
+component usage, migration from removed `Variant`/`Style` and config APIs,
+composition in place of removed renderer internals, templ regeneration,
+mechanical old-API scans, root/site tests, and direct/HTMX/light/dark/theme
+browser smoke coverage. Record Goshtoso source dives as snags. The detailed
+plan is
+`docs/superpowers/plans/2026-07-25-goshtoso-v0.0.12-consumer-migration.md`.
 
 ### Subproject 1: Contract Review Core And Offline CLI
 
@@ -635,8 +784,11 @@ Scope:
 - migration away from the current per-spec publication tabs
 
 Subprojects 3 and 4 depend on the core model. Connected review also depends on
-release-track baselines. No subproject should be expanded to implement the
-remaining roadmap prematurely.
+release-track baselines. The Open Core checkpoint is a prerequisite for
+Subprojects 2, 3, and 4. The Goshtoso v0.0.12 consumer migration follows it and
+precedes Subproject 2 web work so component breakage stays isolated from
+release-track behavior. No subproject should be expanded to implement the
+remaining roadmap or a hosted SaaS product prematurely.
 
 ## Testing Strategy
 
@@ -664,6 +816,25 @@ remaining roadmap prematurely.
 - legacy publication migration tests
 - public route, search, sitemap, and renderer regressions
 
+### Public Extension And Licensing
+
+- an unrelated `example.com/manja-extension` fixture run with `GOWORK=off`
+- import tests for `domain`, `application`, `application/port`, and
+  `contracttest`
+- dependency-direction tests forbidding public imports of `internal`, adapters,
+  generated HTTP types, and infrastructure drivers
+- constructor tests proving all reusable infrastructure is injected
+- context-spy tests proving incoming contexts reach every called port unchanged
+- public-domain scans forbidding tenant, organization, billing, subscription,
+  and entitlement concepts
+- transaction contract tests proving consistency-sensitive release invariants
+  are expressible through `UnitOfWork`
+- conformance tests for self-hosted and in-memory port implementations
+- license/provenance inventory checks for Go, npm, generated, copied, and static
+  assets
+- release-archive, binary, OCI, and site-artifact checks for required notices
+- Go and npm license policy plus SBOM generation gates
+
 ### Provider Adapters And UI
 
 - provider event to normalized context contract tests
@@ -673,6 +844,11 @@ remaining roadmap prematurely.
 - Dex integration tests for authenticated management and preview behavior
 - end-to-end candidate, review, preview, promotion, and following-track flows
 - accessible navigation and visible-target route tests
+- exact Goshtoso v0.0.12 resolution in root and `site/` modules
+- mechanical removed-API scans and drift-free templ regeneration
+- direct-load and HTMX smoke tests for affected public/management pages
+- light/dark checks for Manja, Goshtoso, Minimal, and other advertised themes
+- console/network checks plus disabled/loading/error interaction states
 
 ## Acceptance Criteria
 
@@ -695,3 +871,12 @@ The product direction is realized when:
    CI systems.
 9. Management clearly distinguishes pull requests, branches, tags, revisions,
    previews, reviews, and release tracks.
+10. An unrelated Go module can import the public domain, application, port, and
+    contract-test packages, inject in-memory adapters, and execute review and
+    sync use cases with `GOWORK=off`.
+11. Public application packages construct no adapters, preserve incoming
+    contexts, expose transaction boundaries capable of protecting release
+    invariants, and contain no speculative SaaS domain concepts.
+12. Manja claims Apache-2.0 licensing only after authority and provenance are
+    confirmed, and every shipped artifact carries the required license and
+    notice material with machine-verifiable dependency and SBOM evidence.

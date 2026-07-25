@@ -4,13 +4,20 @@
 
 **Goal:** Replace mutable publication lookup with persistent release tracks that serve immutable last-known-good revisions, advance through deterministic pinned/following transitions, survive restarts and failed syncs, and expose authenticated no-index previews for stored revisions.
 
-**Architecture:** Add provider-neutral release-track and stored-review types plus pure transition functions in `internal/core`; keep filesystem persistence behind narrow release/revision ports and use generation-checked atomic JSON replacement for track state. Application services load immutable revision artifacts, evaluate release-impact reviews with the shared analysis/policy core, migrate legacy publications, and resolve both public track docs and authenticated revision previews through callbacks consumed by `internal/web`. Repository `.manja.yaml` remains portable policy; a separate deployment-owned release config contains paths, hostnames, ref bindings, modes, and server-added policy.
+**Architecture:** This slice follows the Open Core extension-surface checkpoint. Add provider-neutral release-track and stored-review types plus pure transition functions in public `domain`; keep filesystem persistence behind `application/port.UnitOfWork` and use generation-checked atomic operational transactions for track state, review evidence, publication, audit, and outbox. Public `application` services load immutable revision artifacts, evaluate release-impact reviews with the shared analysis/policy core, migrate legacy publications, and resolve both public track docs and authenticated revision previews through callbacks consumed by `internal/web`. Self-hosted adapter selection remains in `internal/selfhosted`/`cmd/manja`. Repository `.manja.yaml` remains portable policy; a separate deployment-owned release config contains paths, hostnames, ref bindings, modes, and server-added policy.
 
-**Tech Stack:** Go 1.26.1, standard-library `crypto/sha256`, `crypto/subtle`, `encoding/json`, `net/http`, `sync`, and filesystem primitives; existing kin-openapi parser, templ v0.3.1020, Goshtoso v0.0.10, and YAML v3.0.1.
+**Tech Stack:** Go 1.26.5 or newer, standard-library `crypto/sha256`, `crypto/subtle`, `encoding/json`, `net/http`, `sync`, and filesystem primitives; existing kin-openapi parser, templ v0.3.1020, exactly Goshtoso v0.0.12, and YAML v3.0.1.
 
 ## Global Constraints
 
+- Complete `docs/superpowers/plans/2026-07-25-open-core-extension-surface-and-licensing.md` first on its own branch and merge its verified compatibility checkpoint before implementing this slice. Rebase this plan's implementation worktree onto that resulting `origin/main`.
+- Then complete `docs/superpowers/plans/2026-07-25-goshtoso-v0.0.12-consumer-migration.md` on its own branch and merge its verified consumer checkpoint before this slice edits public or management templates.
 - Work only in `/tmp/manja-release-tracks-previews` on `codex/release-tracks-previews`, created from `origin/main` at `58fb3ddbb2ee47d20d5daa5c13acfbf7b6c9fa85`.
+- The path/branch constraint above describes this planning checkpoint. When implementation resumes after the prerequisite merge, create a fresh dedicated release-tracks worktree from the new `origin/main`; do not reuse the planning worktree.
+- Put new reusable behavior in `domain`, `application`, and `application/port`. Do not recreate it under `internal/core` or `internal/app`.
+- Every application and port operation accepts `context.Context` first and propagates the incoming context unchanged.
+- Persist review, sync, track, publication, audit, and outbox mutations through the public operational `UnitOfWork`. Content-addressed blobs may be written first under the prerequisite plan's documented replay/orphan model.
+- Keep raw preview/source credentials in self-hosted composition; public application configuration uses only opaque secret references.
 - Treat the current `Project.ID` as the contract identity at compatibility boundaries; new release types use `ContractID` and do not introduce provider-specific objects.
 - A ref is never public state. Public routing resolves `hostname/path -> ReleaseTrack -> CurrentRevisionID -> stored immutable blob -> parser/index`.
 - Pinned tracks only change `CurrentRevisionID` through explicit `PromoteRelease`; following tracks only advance after a passing persisted release-impact review.
@@ -27,19 +34,19 @@
 
 ## File Structure
 
-- `internal/core/release.go`: release-track, stored-review, and history types; validation; deterministic IDs; pinned/following transitions.
-- `internal/core/release_test.go`: domain invariants, replay idempotency, generation behavior, and last-known-good preservation.
-- `internal/core/review.go`: release-impact-only evaluation using the existing canonical report and policy projection.
-- `internal/core/spec.go`: immutable revision artifact metadata needed after restart.
-- `internal/core/sync.go`: populate immutable revision metadata before persistence.
-- `internal/core/ports.go`: narrow contract-revision and release-state persistence ports alongside the legacy store.
+- `domain/release.go`: release-track, stored-review, and history types; validation; deterministic IDs; pinned/following transitions.
+- `domain/release_test.go`: domain invariants, replay idempotency, generation behavior, and last-known-good preservation.
+- `domain/review.go`: release-impact-only evaluation using the existing canonical report and policy projection.
+- `domain/spec.go`: immutable revision artifact metadata needed after restart.
+- `application/sync.go`: populate immutable revision metadata before persistence.
+- `application/port/operational.go`: transaction-scoped revision, review, release, publication, audit, and outbox persistence.
 - `internal/adapters/store/fs.go`: contract-scoped revision lookup, atomic release/review storage, compare-and-swap updates, deterministic listing, and legacy publication listing.
 - `internal/adapters/config/server.go`: strict deployment-owned release-track and preview-auth configuration.
 - `internal/adapters/config/testdata/server.yaml`: two-track server fixture using `v1` and `v2`.
 - `internal/adapters/auth/basic.go`: constant-time HTTP Basic authenticator backed by an injected password or password file.
-- `internal/app/revisiondocs.go`: load a stored revision, blob, parser index, and contract snapshot after restart.
-- `internal/app/release.go`: migrate legacy publications, reconcile configured track definitions, evaluate mapped sync results, persist reviews, and apply track transitions.
-- `internal/app/app.go`: recovery-first startup, release sync wiring, dynamic docs resolvers, and compatibility management state.
+- `application/revisiondocs.go`: load a stored revision, blob, parser index, and contract snapshot after restart.
+- `application/release.go`: migrate legacy publications, reconcile configured track definitions, evaluate mapped sync results, persist reviews, and apply track transitions.
+- `internal/selfhosted/server.go`: recovery-first startup, release sync wiring, dynamic docs resolvers, adapter selection, and compatibility management state.
 - `internal/web/docs.go`: public-track request matching, preview path parsing/authentication, path rewriting, and response policy.
 - `internal/web/public.go`: renderer base-path and indexability options.
 - `internal/web/templates/layout.templ`: optional robots metadata.
@@ -52,10 +59,10 @@
 ### Task 1: Canonical Release Reviews And Pure Track Transitions
 
 **Files:**
-- Create: `internal/core/release.go`
-- Create: `internal/core/release_test.go`
-- Modify: `internal/core/review.go`
-- Modify: `internal/core/review_test.go`
+- Create: `domain/release.go`
+- Create: `domain/release_test.go`
+- Modify: `domain/review.go`
+- Modify: `domain/review_test.go`
 
 **Interfaces:**
 - Consumes: `ContractSnapshot`, `EffectivePolicy`, `EvaluateFindings`, `ReviewReport`, and `CanonicalReviewJSON`.
@@ -105,7 +112,7 @@ authorized workflow.
 Run:
 
 ```bash
-go test ./internal/core -run TestEvaluateReleaseReview -count=1
+go test ./domain -run TestEvaluateReleaseReview -count=1
 ```
 
 Expected: compile failure because `ReleaseReviewRequest` and
@@ -204,7 +211,7 @@ Cover:
 Run:
 
 ```bash
-go test ./internal/core -run 'Test(ConsiderReleaseReview|PromoteRelease|NewStoredReview|ValidateReleaseTrack)' -count=1
+go test ./domain -run 'Test(ConsiderReleaseReview|PromoteRelease|NewStoredReview|ValidateReleaseTrack)' -count=1
 ```
 
 Expected: compile failure because release types and functions do not exist.
@@ -233,7 +240,7 @@ the accepted candidate, following mode atomically projects it as current.
 Run:
 
 ```bash
-go test ./internal/core -run 'Release|Review|Policy|ContractSnapshot' -count=1
+go test ./domain -run 'Release|Review|Policy|ContractSnapshot' -count=1
 ```
 
 Expected: PASS.
@@ -241,7 +248,7 @@ Expected: PASS.
 - [ ] **Step 8: Commit core release behavior**
 
 ```bash
-git add internal/core/release.go internal/core/release_test.go internal/core/review.go internal/core/review_test.go
+git add domain/release.go domain/release_test.go domain/review.go domain/review_test.go
 git commit -m "feat(core): model deterministic release tracks"
 ```
 
@@ -250,17 +257,19 @@ git commit -m "feat(core): model deterministic release tracks"
 ### Task 2: Immutable Revision Artifact Metadata
 
 **Files:**
-- Modify: `internal/core/spec.go`
-- Modify: `internal/core/sync.go`
-- Modify: `internal/core/sync_test.go`
-- Modify: `internal/core/ports.go`
+- Modify: `domain/spec.go`
+- Modify: `application/sync.go`
+- Modify: `application/sync_test.go`
+- Modify: `application/port/operational.go`
 - Modify: `internal/adapters/store/fs.go`
 - Modify: `internal/adapters/store/fs_test.go`
 
 **Interfaces:**
-- Produces: restart-safe revision artifact metadata and
-  `ContractRevisionStore.ContractRevision`.
-- Preserves: legacy `Store.Revision(ctx, revisionID)` while migration is active.
+- Produces: restart-safe revision artifact metadata,
+  `port.RevisionReader.ContractRevision`, and transactional revision writes
+  through `port.OperationalStore`.
+- Preserves: the self-hosted adapter's legacy
+  `Revision(ctx, revisionID)` compatibility method while migration is active.
 
 - [ ] **Step 1: Write failing sync metadata and immutability tests**
 
@@ -286,7 +295,7 @@ type Revision struct {
 ```
 
 Assert `SpecDigest` is lowercase SHA-256 of raw bytes, `BlobKey` equals
-`SpecBlobKey`, and `CreatedAt` uses the injected `Syncer.Now`. Add filesystem
+`SpecBlobKey`, and `CreatedAt` uses the injected clock port. Add filesystem
 tests that:
 
 - save and load the same revision under
@@ -301,45 +310,48 @@ tests that:
 Run:
 
 ```bash
-go test ./internal/core ./internal/adapters/store -run 'Revision|Sync.*Metadata' -count=1
+go test ./domain ./application ./internal/adapters/store -run 'Revision|Sync.*Metadata' -count=1
 ```
 
 Expected: assertions or compile failure because contract/artifact fields and
 contract-scoped lookup do not exist.
 
-- [ ] **Step 3: Add the narrow contract-revision port**
+- [ ] **Step 3: Add the read port and use the transactional write port**
 
 Add without expanding every existing store fake:
 
 ```go
-type ContractRevisionStore interface {
-	SaveRevision(context.Context, Revision) error
-	ContractRevision(context.Context, string, string) (Revision, error)
+type RevisionReader interface {
+	ContractRevision(context.Context, string, string) (domain.Revision, error)
 }
 ```
 
-Keep the existing `Store` interface for current sync/management compatibility.
+`OperationalStore.SaveRevision` remains the only public write boundary. Keep
+the adapter's legacy flat lookup private for migration compatibility.
 
 - [ ] **Step 4: Populate immutable metadata before blob/revision persistence**
 
 After parse succeeds and before `Blobs.Put`, normalize `Revision.ContractID`,
 `SourceID`, `SpecPath`, `SpecFormat`, `SpecDigest`, `BlobKey`, and `CreatedAt`.
-Use the same prepared revision in the blob key, revision file, sync record, and
-returned `SyncResult`. Do not persist a revision if blob storage fails.
+Use the same prepared revision in the blob key, operational transaction, sync
+record, and returned `SyncResult`. Do not enter `UnitOfWork` if blob storage
+fails; transaction failure may leave only the content-addressed orphan defined
+by the prerequisite plan.
 
 - [ ] **Step 5: Implement contract-scoped immutable filesystem storage**
 
 Use `revisions/{contractID}/{revisionID}.json` for revisions carrying a contract
-ID. Under the store mutex, read any existing record and compare every immutable
-field; return a descriptive conflict instead of overwriting different content.
-Write identical replays as no-ops. Keep legacy flat lookup only for migration.
+ID. Inside the file adapter's `UnitOfWork`, read any existing record and compare
+every immutable field; return a descriptive conflict instead of overwriting
+different content. Write identical replays as no-ops. Keep legacy flat lookup
+only for migration.
 
 - [ ] **Step 6: Run sync/store and full core tests**
 
 Run:
 
 ```bash
-go test ./internal/core ./internal/adapters/store -count=1
+go test ./domain ./application ./internal/adapters/store -count=1
 ```
 
 Expected: PASS.
@@ -347,7 +359,7 @@ Expected: PASS.
 - [ ] **Step 7: Commit immutable revision metadata**
 
 ```bash
-git add internal/core/spec.go internal/core/sync.go internal/core/sync_test.go internal/core/ports.go internal/adapters/store/fs.go internal/adapters/store/fs_test.go
+git add domain/spec.go application/sync.go application/sync_test.go application/port/operational.go internal/adapters/store/fs.go internal/adapters/store/fs_test.go
 git commit -m "feat(store): persist immutable revision artifacts"
 ```
 
@@ -356,13 +368,14 @@ git commit -m "feat(store): persist immutable revision artifacts"
 ### Task 3: Atomic Release And Review Persistence
 
 **Files:**
-- Modify: `internal/core/ports.go`
+- Modify: `application/port/operational.go`
 - Modify: `internal/adapters/store/fs.go`
 - Modify: `internal/adapters/store/fs_test.go`
 
 **Interfaces:**
-- Produces: `ReleaseStore`, atomic compare-and-swap track updates, deterministic
-  listing, public request lookup, and persisted canonical reviews.
+- Produces: the filesystem implementation of `port.UnitOfWork`, atomic
+  generation-checked release transactions, deterministic read models, public
+  request lookup, and persisted canonical reviews.
 
 - [ ] **Step 1: Write failing persistence and recovery tests**
 
@@ -389,49 +402,51 @@ go test ./internal/adapters/store -run 'ReleaseTrack|StoredReview|PublicRelease'
 
 Expected: compile failure because release persistence does not exist.
 
-- [ ] **Step 3: Add focused release ports**
+- [ ] **Step 3: Extend the operational transaction and read ports**
 
 Add:
 
 ```go
-type ReleaseStore interface {
-	SaveReleaseTrack(context.Context, ReleaseTrack) error
-	ReleaseTrack(context.Context, string, string) (ReleaseTrack, error)
-	ReleaseTracks(context.Context, string) ([]ReleaseTrack, error)
-	PublicReleaseTrack(context.Context, string, string) (ReleaseTrack, error)
-	CompareAndSwapReleaseTrack(context.Context, uint64, ReleaseTrack) error
-	SaveStoredReview(context.Context, StoredReview) error
-	StoredReview(context.Context, string, string) (StoredReview, error)
+type ReleaseReader interface {
+	ReleaseTrack(context.Context, string, string) (domain.ReleaseTrack, error)
+	ReleaseTracks(context.Context, string) ([]domain.ReleaseTrack, error)
+	PublicReleaseTrack(context.Context, string, string) (domain.ReleaseTrack, error)
+	StoredReview(context.Context, string, string) (domain.StoredReview, error)
 }
 
-type LegacyPublicationStore interface {
-	SavePublication(context.Context, Publication) error
-	Publications(context.Context) ([]Publication, error)
-}
-
-type LegacyRevisionStore interface {
-	ContractRevisionStore
-	Revision(context.Context, string) (Revision, error)
+type OperationalStore interface {
+	SaveRevision(context.Context, domain.Revision) error
+	SaveStoredReview(context.Context, domain.StoredReview) error
+	SaveSyncRecord(context.Context, domain.SyncRecord) error
+	SaveReleaseTrack(context.Context, uint64, domain.ReleaseTrack) error
+	SavePublication(context.Context, domain.Publication) error
+	AppendAuditEvent(context.Context, domain.AuditEvent) error
+	Enqueue(context.Context, domain.OutboxMessage) error
 }
 ```
 
 `PublicReleaseTrack` accepts request hostname and path; it returns only tracks
 with a non-empty current revision and an exact hostname plus longest safe path
-prefix match.
+prefix match. Legacy publication/revision readers remain private adapter
+interfaces used only by migration.
 
-- [ ] **Step 4: Replace direct JSON writes with atomic replacement**
+- [ ] **Step 4: Replace direct JSON writes with one atomic operational transaction**
 
-Implement `writeJSONAtomic`:
+Implement the filesystem `UnitOfWork` so a callback stages revision, review,
+sync, track, publication, audit, and outbox changes together:
 
-1. marshal complete JSON plus one newline
-2. create a temp file in the destination directory
-3. chmod `0600`, write, `Sync`, and close
-4. rename over the destination
-5. remove the temp file on every error path
+1. load and validate expected generations under the store write lock
+2. apply callback mutations to an isolated in-memory or transaction-directory snapshot
+3. marshal complete JSON documents plus one newline
+4. write, chmod `0600`, fsync, and close all temporary files
+5. atomically publish a transaction manifest or complete state snapshot
+6. remove or recover incomplete staging on startup
 
 Guard release/review reads and writes with a `sync.RWMutex` on `FileStore`.
-Perform generation read/check/write while holding the write lock. Do not expose
-temp files through list methods.
+Perform generation read/check/write and the complete callback while holding the
+write lock. A callback error, stale generation, audit error, or outbox error
+publishes none of its staged records. Do not expose temp files through list
+methods.
 
 - [ ] **Step 5: Implement deterministic paths and route collision checks**
 
@@ -460,7 +475,7 @@ Expected: PASS.
 - [ ] **Step 7: Commit release persistence**
 
 ```bash
-git add internal/core/ports.go internal/adapters/store/fs.go internal/adapters/store/fs_test.go
+git add application/port/operational.go internal/adapters/store/fs.go internal/adapters/store/fs_test.go
 git commit -m "feat(store): persist atomic release state"
 ```
 
@@ -472,12 +487,12 @@ git commit -m "feat(store): persist atomic release state"
 - Create: `internal/adapters/config/server.go`
 - Create: `internal/adapters/config/server_test.go`
 - Create: `internal/adapters/config/testdata/server.yaml`
-- Create: `internal/app/migration.go`
-- Create: `internal/app/migration_test.go`
+- Create: `application/migration.go`
+- Create: `application/migration_test.go`
 
 **Interfaces:**
 - Consumes: repository `ContractConfig.PolicyLayer`, legacy publications,
-  contract revisions, and `ReleaseStore`.
+  contract revisions, release read ports, and `UnitOfWork`.
 - Produces: strict deployment track definitions, idempotent config
   reconciliation, and publication-to-pinned-track migration.
 
@@ -545,7 +560,7 @@ type ServerTrackConfig struct {
 }
 
 func LoadServer(path string) (ServerFile, error)
-func (f ServerFile) ReleaseTracks(now time.Time) ([]core.ReleaseTrack, error)
+func (f ServerFile) ReleaseTracks(now time.Time) ([]domain.ReleaseTrack, error)
 ```
 
 Keep repository profiles out of this file; store only the selected profile
@@ -572,7 +587,7 @@ Cover:
 Run:
 
 ```bash
-go test ./internal/app -run 'Migration|LegacyPublication' -count=1
+go test ./application -run 'Migration|LegacyPublication' -count=1
 ```
 
 Expected: compile failure because the migrator does not exist.
@@ -583,33 +598,35 @@ Add:
 
 ```go
 type ReleaseMigrator struct {
-	Legacy   core.LegacyPublicationStore
-	Revisions core.LegacyRevisionStore
-	Releases core.ReleaseStore
-	Now      func() time.Time
+	Legacy     LegacyPublicationReader
+	Revisions  LegacyRevisionReader
+	UnitOfWork port.UnitOfWork
+	Clock      port.Clock
 }
 
 func (m ReleaseMigrator) Migrate(ctx context.Context) error
 func (m ReleaseMigrator) SeedImplicitRoot(ctx context.Context, contractID, sourceID, revisionID string) error
 
 type TrackReconciler struct {
-	Releases core.ReleaseStore
-	Now      func() time.Time
+	Releases  port.ReleaseReader
+	UnitOfWork port.UnitOfWork
+	Clock      port.Clock
 }
 
-func (r TrackReconciler) Reconcile(ctx context.Context, definitions []core.ReleaseTrack) error
+func (r TrackReconciler) Reconcile(ctx context.Context, definitions []domain.ReleaseTrack) error
 ```
 
 Reconciliation may update route, hostname, ref selector, mode, policy profile,
 and server policy while preserving current/candidate revisions, generation, and
-history. Use compare-and-swap; never reset public state from configuration.
+history. Check the expected generation and save inside `UnitOfWork`; never reset
+public state from configuration.
 
 - [ ] **Step 7: Run config, migration, and store tests**
 
 Run:
 
 ```bash
-go test ./internal/adapters/config ./internal/adapters/store ./internal/app -run 'Server|Release|Migration|Publication' -count=1
+go test ./internal/adapters/config ./internal/adapters/store ./application -run 'Server|Release|Migration|Publication' -count=1
 ```
 
 Expected: PASS.
@@ -617,7 +634,7 @@ Expected: PASS.
 - [ ] **Step 8: Commit configuration and migration**
 
 ```bash
-git add internal/adapters/config/server.go internal/adapters/config/server_test.go internal/adapters/config/testdata/server.yaml internal/app/migration.go internal/app/migration_test.go
+git add internal/adapters/config/server.go internal/adapters/config/server_test.go internal/adapters/config/testdata/server.yaml application/migration.go application/migration_test.go
 git commit -m "feat(release): migrate publications to tracks"
 ```
 
@@ -626,15 +643,16 @@ git commit -m "feat(release): migrate publications to tracks"
 ### Task 5: Restart-Safe Revision Loading And Release Coordination
 
 **Files:**
-- Create: `internal/app/revisiondocs.go`
-- Create: `internal/app/revisiondocs_test.go`
-- Create: `internal/app/release.go`
-- Create: `internal/app/release_test.go`
-- Modify: `internal/core/ports.go`
+- Create: `application/revisiondocs.go`
+- Create: `application/revisiondocs_test.go`
+- Create: `application/release.go`
+- Create: `application/release_test.go`
+- Modify: `application/port/operational.go`
 
 **Interfaces:**
-- Consumes: `ContractRevisionStore`, `BlobStore`, `Parser`,
-  `ContractSnapshotBuilder`, repository policy, and `ReleaseStore`.
+- Consumes: `port.RevisionReader`, `port.BlobStore`, `port.Parser`,
+  `port.ContractSnapshotBuilder`, repository policy, `port.ReleaseReader`, and
+  `port.UnitOfWork`.
 - Produces: `RevisionDocsService.Load`, `ReleaseService.ApplySyncResult`,
   `ReleaseService.Promote`, and read-only public/preview resolvers.
 
@@ -644,17 +662,17 @@ Require:
 
 ```go
 type RevisionDocs struct {
-	Revision core.Revision
-	File     core.SpecFile
-	Index    core.SpecIndex
-	Snapshot core.ContractSnapshot
+	Revision domain.Revision
+	File     domain.SpecFile
+	Index    domain.SpecIndex
+	Snapshot domain.ContractSnapshot
 }
 
 type RevisionDocsService struct {
-	Revisions core.ContractRevisionStore
-	Blobs     core.BlobStore
-	Parser    core.Parser
-	Snapshots core.ContractSnapshotBuilder
+	Revisions port.RevisionReader
+	Blobs     port.BlobStore
+	Parser    port.Parser
+	Snapshots port.ContractSnapshotBuilder
 }
 
 func (s RevisionDocsService) Load(context.Context, string, string) (RevisionDocs, error)
@@ -669,7 +687,7 @@ stored revision does not fetch a source or mutate release state.
 Run:
 
 ```bash
-go test ./internal/app -run TestRevisionDocsService -count=1
+go test ./application -run TestRevisionDocsService -count=1
 ```
 
 Expected: compile failure because the service does not exist.
@@ -688,15 +706,16 @@ Define:
 
 ```go
 type ReleaseService struct {
-	Releases     core.ReleaseStore
+	Releases     port.ReleaseReader
+	UnitOfWork   port.UnitOfWork
 	Docs         RevisionDocsService
-	Snapshots    core.ContractSnapshotBuilder
-	RepoPolicies func(contractID, profile string) (core.PolicyLayer, error)
-	Now          func() time.Time
+	Snapshots    port.ContractSnapshotBuilder
+	RepoPolicies RepositoryPolicyReader
+	Clock         port.Clock
 	EngineVersion string
 }
 
-func (s ReleaseService) ApplySyncResult(context.Context, core.SyncResult) error
+func (s ReleaseService) ApplySyncResult(context.Context, domain.SyncResult) error
 func (s ReleaseService) Promote(context.Context, string, string, string, string) error
 ```
 
@@ -706,11 +725,12 @@ Tests must prove:
   revision are considered
 - current baseline is loaded from storage, never from mutable source state
 - repository and server policy merge monotonically
-- review is saved before track compare-and-swap
+- review, sync evidence, generation-checked track state, publication, audit,
+  and outbox are committed together in one `UnitOfWork`
 - pinned pass records candidate only
 - following pass advances current
 - failed policy saves review evidence but preserves current
-- parse/snapshot/policy/review-save/CAS failures preserve current
+- parse/snapshot/policy/transaction/audit/outbox failures preserve current
 - repeating the same sync produces no duplicate event or generation
 - two concurrent generation attempts allow one winner and force the loser to
   reload/re-evaluate once; a second stale result returns a conflict
@@ -721,7 +741,7 @@ Tests must prove:
 Run:
 
 ```bash
-go test ./internal/app -run 'TestReleaseService' -count=1
+go test ./application -run 'TestReleaseService' -count=1
 ```
 
 Expected: compile failure because the coordinator does not exist.
@@ -735,9 +755,10 @@ For each matching track:
 3. merge selected repository policy with the track server layer
 4. call `EvaluateReleaseReview`
 5. call `NewStoredReview`
-6. persist the review
-7. compute the pure transition
-8. compare-and-swap the whole track document
+6. compute the pure transition
+7. enter `UnitOfWork`
+8. reload/check expected generation, persist review and sync evidence, save the
+   whole track/publication, append audit, and enqueue work atomically
 
 Sort tracks by contract/ID before processing. Continue independent tracks after
 a policy rejection, but return joined infrastructure errors after all tracks
@@ -748,7 +769,7 @@ have been attempted. Never let failure on `v2` change `v1`.
 Run:
 
 ```bash
-go test ./internal/app ./internal/core ./internal/adapters/store -count=1
+go test ./application ./domain ./internal/adapters/store -count=1
 ```
 
 Expected: PASS.
@@ -756,7 +777,7 @@ Expected: PASS.
 - [ ] **Step 8: Commit revision loading and release coordination**
 
 ```bash
-git add internal/app/revisiondocs.go internal/app/revisiondocs_test.go internal/app/release.go internal/app/release_test.go internal/core/ports.go
+git add application/revisiondocs.go application/revisiondocs_test.go application/release.go application/release_test.go application/port/operational.go
 git commit -m "feat(release): coordinate reviewed track advancement"
 ```
 
@@ -848,12 +869,12 @@ Define web-level callbacks:
 
 ```go
 type ResolvedTrackDocs struct {
-	Track core.ReleaseTrack
-	Index core.SpecIndex
+	Track domain.ReleaseTrack
+	Index domain.SpecIndex
 }
 
 type PublicDocsResolver func(context.Context, string, string) (ResolvedTrackDocs, error)
-type PreviewDocsResolver func(context.Context, string, string) (core.SpecIndex, error)
+type PreviewDocsResolver func(context.Context, string, string) (domain.SpecIndex, error)
 ```
 
 Test two tracks of one contract serving different titles/versions and search
@@ -934,7 +955,7 @@ type BasicAuthenticator struct {
 }
 
 func LoadBasicAuthenticator(username, passwordFile string, contractIDs []string) (BasicAuthenticator, error)
-func (a BasicAuthenticator) Authenticate(*http.Request) (core.Actor, error)
+func (a BasicAuthenticator) Authenticate(*http.Request) (domain.Actor, error)
 ```
 
 Test missing/malformed headers, wrong username, wrong password, empty secret,
@@ -955,7 +976,7 @@ Expected: package or compile failure.
 
 Read the password once at startup, trim one trailing CRLF/LF only, reject empty
 credentials, copy secret bytes, compare SHA-256 digests with
-`subtle.ConstantTimeCompare`, and return a `core.Actor` whose project/contract
+`subtle.ConstantTimeCompare`, and return a `domain.Actor` whose project/contract
 scope is a sorted copy. Never include supplied credentials in errors.
 
 - [ ] **Step 4: Write failing preview route tests**
@@ -963,7 +984,7 @@ scope is a sorted copy. Never include supplied credentials in errors.
 Add:
 
 ```go
-type PreviewAuthenticator func(*http.Request) (core.Actor, error)
+type PreviewAuthenticator func(*http.Request) (domain.Actor, error)
 ```
 
 Test:
@@ -1022,8 +1043,8 @@ git commit -m "feat(preview): authenticate immutable revision docs"
 ### Task 8: Recovery-First Server Wiring And End-To-End Verification
 
 **Files:**
-- Modify: `internal/app/app.go`
-- Modify: `internal/app/app_test.go`
+- Modify: `internal/selfhosted/server.go`
+- Modify: `internal/selfhosted/server_test.go`
 - Modify: `cmd/manja/main.go`
 - Modify: `cmd/manja/main_test.go`
 - Modify: `README.md`
@@ -1068,7 +1089,7 @@ Expected: assertions fail because new flags are not parsed.
 - [ ] **Step 3: Write failing recovery-first application tests**
 
 Use a persisted track/current revision plus a source that fails and require
-`NewWithOptions` to return a handler that still serves last-known-good public
+`selfhosted.NewServer` to return a handler that still serves last-known-good public
 docs. Add cases for:
 
 - no stored state plus source failure returns an error
@@ -1093,7 +1114,7 @@ docs. Add cases for:
 Run:
 
 ```bash
-go test ./internal/app -run 'Recovery|ReleaseTrack|Preview|LastKnownGood' -count=1
+go test ./internal/selfhosted -run 'Recovery|ReleaseTrack|Preview|LastKnownGood' -count=1
 ```
 
 Expected: assertions fail because startup remains source-first and uses one
@@ -1139,7 +1160,7 @@ Persist two revisions and two tracks, start the real HTTP handler, and assert:
 Run:
 
 ```bash
-go test ./internal/app ./internal/web ./internal/web/e2e ./cmd/manja -count=1
+go test ./internal/selfhosted ./internal/web ./internal/web/e2e ./cmd/manja -count=1
 ```
 
 Expected: PASS.
@@ -1206,7 +1227,7 @@ state explicitly that only existing Manja template helpers were changed.
 - [ ] **Step 12: Commit wiring and docs**
 
 ```bash
-git add internal/app/app.go internal/app/app_test.go cmd/manja/main.go cmd/manja/main_test.go README.md internal/web/e2e/release_tracks_test.go
+git add internal/selfhosted/server.go internal/selfhosted/server_test.go cmd/manja/main.go cmd/manja/main_test.go README.md internal/web/e2e/release_tracks_test.go
 git commit -m "feat(release): wire tracks and authenticated previews"
 ```
 
