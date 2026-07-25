@@ -1,4 +1,4 @@
-package core
+package domain
 
 type SpecFile struct {
 	SourceID string
@@ -7,7 +7,7 @@ type SpecFile struct {
 	Bytes    []byte
 }
 
-type Revision struct {
+type ContractRevision struct {
 	ID          string
 	SourceID    string
 	Ref         string
@@ -18,6 +18,10 @@ type Revision struct {
 	Message     string
 }
 
+// Revision is retained as a source-compatible name for the immutable contract
+// revision used by the existing self-hosted surface.
+type Revision = ContractRevision
+
 type RevisionCandidate struct {
 	SourceID    string
 	Ref         string
@@ -26,6 +30,11 @@ type RevisionCandidate struct {
 	AuthorName  string
 	AuthorEmail string
 	Message     string
+}
+
+type ReviewInputLocator struct {
+	File   string
+	GitRef string
 }
 
 type SpecIndex struct {
