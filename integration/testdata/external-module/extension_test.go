@@ -1,0 +1,291 @@
+package extension_test
+
+import (
+	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"errors"
+	"testing"
+	"time"
+
+	"github.com/araihu/manja/application"
+	"github.com/araihu/manja/application/port"
+	"github.com/araihu/manja/contracttest"
+	"github.com/araihu/manja/domain"
+)
+
+type contextKey struct{}
+
+func TestUnrelatedModuleExecutesReviewAndSync(t *testing.T) {
+	ctx := context.WithValue(context.Background(), contextKey{}, "extension")
+	loader := &memoryInputLoader{}
+	builder := &memorySnapshotBuilder{}
+	check, err := application.NewCheckService(application.CheckDependencies{
+		Inputs:    loader,
+		Snapshots: builder,
+	})
+	if err != nil {
+		t.Fatalf("construct check service: %v", err)
+	}
+	policy, err := domain.MergePolicy(domain.PolicyLayer{
+		Name:   "repository-default",
+		Source: domain.PolicySourceRepository,
+	})
+	if err != nil {
+		t.Fatalf("merge policy: %v", err)
+	}
+	report, err := check.Run(ctx, application.CheckRequest{
+		ContractID:    "payments",
+		SpecPath:      "openapi.yaml",
+		Target:        domain.ReviewInputLocator{File: "target.yaml"},
+		Candidate:     domain.ReviewInputLocator{File: "candidate.yaml"},
+		Policy:        policy,
+		EvaluatedAt:   time.Date(2026, 7, 25, 12, 0, 0, 0, time.UTC),
+		EngineVersion: "extension-test",
+	})
+	if err != nil {
+		t.Fatalf("run public review: %v", err)
+	}
+	if report.Verdict != domain.VerdictPass {
+		t.Fatalf("review verdict = %q, want pass", report.Verdict)
+	}
+
+	operational := newMemoryOperationalStore()
+	uow := &memoryUnitOfWork{store: operational}
+	blobs := newMemoryBlobStore()
+	source := &memorySource{}
+	parser := &memoryParser{}
+	clock := &fixedClock{now: time.Date(2026, 7, 25, 13, 0, 0, 0, time.UTC)}
+	syncer, err := application.NewSyncService(application.SyncDependencies{
+		Source:     source,
+		Parser:     parser,
+		UnitOfWork: uow,
+		Blobs:      blobs,
+		Clock:      clock,
+	})
+	if err != nil {
+		t.Fatalf("construct sync service: %v", err)
+	}
+	result, err := syncer.Sync(ctx, application.SyncCommand{
+		ContractID: "payments",
+		SourceID:   "source-main",
+		Trigger:    "extension-test",
+	})
+	if err != nil {
+		t.Fatalf("run public sync: %v", err)
+	}
+	if result.Record.Result != domain.SyncResultSuccess {
+		t.Fatalf("sync result = %q, want success", result.Record.Result)
+	}
+	for name, got := range map[string]context.Context{
+		"review loader":    loader.contexts[0],
+		"snapshot builder": builder.contexts[0],
+		"sync source":      source.ctx,
+		"sync parser":      parser.ctx,
+		"blob store":       blobs.ctx,
+		"unit of work":     uow.ctx,
+		"clock":            clock.ctx,
+	} {
+		if got != ctx {
+			t.Fatalf("%s received replacement context", name)
+		}
+	}
+}
+
+func TestPublicContractSuitesAreUsableByUnrelatedModule(t *testing.T) {
+	contracttest.UnitOfWork(t, func(testing.TB) port.UnitOfWork {
+		return &memoryUnitOfWork{store: newMemoryOperationalStore()}
+	})
+	contracttest.BlobStore(t, func(testing.TB) port.BlobStore {
+		return newMemoryBlobStore()
+	})
+}
+
+type memoryInputLoader struct {
+	contexts []context.Context
+}
+
+func (l *memoryInputLoader) Load(ctx context.Context, _ string, locator domain.ReviewInputLocator) (domain.SpecFile, domain.ContractRevision, error) {
+	l.contexts = append(l.contexts, ctx)
+	return domain.SpecFile{Path: locator.File, Bytes: []byte(locator.File)}, domain.ContractRevision{ID: locator.File}, nil
+}
+
+type memorySnapshotBuilder struct {
+	contexts []context.Context
+}
+
+func (b *memorySnapshotBuilder) Build(ctx context.Context, contractID string, file domain.SpecFile, revision domain.ContractRevision) (domain.ContractSnapshot, error) {
+	b.contexts = append(b.contexts, ctx)
+	return domain.NewContractSnapshot(contractID, revision.ID, file.Bytes, domain.SpecIndex{}), nil
+}
+
+type memorySource struct {
+	ctx context.Context
+}
+
+func (s *memorySource) Fetch(ctx context.Context) (domain.SpecFile, domain.ContractRevision, error) {
+	s.ctx = ctx
+	return domain.SpecFile{
+			SourceID: "source-main",
+			Path:     "openapi.yaml",
+			Format:   "yaml",
+			Bytes:    []byte("openapi: 3.1.0\n"),
+		}, domain.ContractRevision{
+			ID:       "revision-1",
+			SourceID: "source-main",
+			Ref:      "main",
+		}, nil
+}
+
+type memoryParser struct {
+	ctx context.Context
+}
+
+func (p *memoryParser) Parse(ctx context.Context, _ domain.SpecFile, revision domain.ContractRevision) (domain.SpecIndex, error) {
+	p.ctx = ctx
+	return domain.SpecIndex{RevisionID: revision.ID, Title: "Payments"}, nil
+}
+
+type fixedClock struct {
+	now time.Time
+	ctx context.Context
+}
+
+func (c *fixedClock) Now(ctx context.Context) time.Time {
+	c.ctx = ctx
+	return c.now
+}
+
+type memoryBlobStore struct {
+	ctx   context.Context
+	blobs map[port.BlobKey][]byte
+}
+
+func newMemoryBlobStore() *memoryBlobStore {
+	return &memoryBlobStore{blobs: map[port.BlobKey][]byte{}}
+}
+
+func (s *memoryBlobStore) Put(ctx context.Context, data []byte) (port.BlobKey, error) {
+	s.ctx = ctx
+	sum := sha256.Sum256(data)
+	key := port.BlobKey("sha256:" + hex.EncodeToString(sum[:]))
+	s.blobs[key] = append([]byte(nil), data...)
+	return key, nil
+}
+
+func (s *memoryBlobStore) Get(ctx context.Context, key port.BlobKey) ([]byte, error) {
+	s.ctx = ctx
+	data, ok := s.blobs[key]
+	if !ok {
+		return nil, errors.New("blob not found")
+	}
+	return append([]byte(nil), data...), nil
+}
+
+type memoryUnitOfWork struct {
+	ctx   context.Context
+	store *memoryOperationalStore
+}
+
+func (u *memoryUnitOfWork) Within(ctx context.Context, fn func(context.Context, port.OperationalStore) error) error {
+	u.ctx = ctx
+	staged := u.store.clone()
+	if err := fn(ctx, staged); err != nil {
+		return err
+	}
+	*u.store = *staged
+	return nil
+}
+
+type memoryOperationalStore struct {
+	revisions    map[string]domain.ContractRevision
+	reviews      map[string]domain.ContractReview
+	syncRecords  map[string]domain.SyncRecord
+	tracks       map[string]domain.ReleaseTrack
+	publications map[string]domain.Publication
+	auditEvents  []domain.AuditEvent
+	outbox       []domain.OutboxMessage
+}
+
+func newMemoryOperationalStore() *memoryOperationalStore {
+	return &memoryOperationalStore{
+		revisions:    map[string]domain.ContractRevision{},
+		reviews:      map[string]domain.ContractReview{},
+		syncRecords:  map[string]domain.SyncRecord{},
+		tracks:       map[string]domain.ReleaseTrack{},
+		publications: map[string]domain.Publication{},
+	}
+}
+
+func (s *memoryOperationalStore) clone() *memoryOperationalStore {
+	next := newMemoryOperationalStore()
+	for key, value := range s.revisions {
+		next.revisions[key] = value
+	}
+	for key, value := range s.reviews {
+		next.reviews[key] = value
+	}
+	for key, value := range s.syncRecords {
+		next.syncRecords[key] = value
+	}
+	for key, value := range s.tracks {
+		next.tracks[key] = value
+	}
+	for key, value := range s.publications {
+		next.publications[key] = value
+	}
+	next.auditEvents = append([]domain.AuditEvent(nil), s.auditEvents...)
+	next.outbox = append([]domain.OutboxMessage(nil), s.outbox...)
+	return next
+}
+
+func (s *memoryOperationalStore) SaveRevision(_ context.Context, revision domain.ContractRevision) error {
+	s.revisions[revision.ID] = revision
+	return nil
+}
+
+func (s *memoryOperationalStore) SaveReview(_ context.Context, review domain.ContractReview) error {
+	s.reviews[review.ID] = review
+	return nil
+}
+
+func (s *memoryOperationalStore) SaveSyncRecord(_ context.Context, record domain.SyncRecord) error {
+	s.syncRecords[record.ID] = record
+	return nil
+}
+
+func (s *memoryOperationalStore) ReleaseTrack(_ context.Context, contractID, trackID string) (domain.ReleaseTrack, error) {
+	track, ok := s.tracks[contractID+"/"+trackID]
+	if !ok {
+		return domain.ReleaseTrack{}, errors.New("track not found")
+	}
+	return track, nil
+}
+
+func (s *memoryOperationalStore) SaveReleaseTrack(_ context.Context, expectedGeneration uint64, track domain.ReleaseTrack) error {
+	key := track.ContractID + "/" + track.ID
+	current, ok := s.tracks[key]
+	if ok && current.Generation != expectedGeneration {
+		return port.ErrGenerationConflict
+	}
+	if !ok && expectedGeneration != 0 {
+		return port.ErrGenerationConflict
+	}
+	s.tracks[key] = track
+	return nil
+}
+
+func (s *memoryOperationalStore) SavePublication(_ context.Context, publication domain.Publication) error {
+	s.publications[publication.ProjectID+"/"+publication.RevisionID] = publication
+	return nil
+}
+
+func (s *memoryOperationalStore) AppendAuditEvent(_ context.Context, event domain.AuditEvent) error {
+	s.auditEvents = append(s.auditEvents, event)
+	return nil
+}
+
+func (s *memoryOperationalStore) Enqueue(_ context.Context, message domain.OutboxMessage) error {
+	s.outbox = append(s.outbox, message)
+	return nil
+}
