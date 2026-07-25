@@ -328,6 +328,14 @@ public license. Future proprietary cloud marketing, signup, account, and
 billing pages belong outside this repository. No proprietary cloud code,
 credentials, or commercial-license exceptions belong in Manja.
 
+Checkpoint status on 2026-07-25: **BLOCKED**. Git authorship does not establish
+whether the individual author or an employer owns the existing work, and copied,
+generated, bundled, image, and container inputs still require redistribution
+evidence. See `docs/legal/provenance.md` and
+`docs/legal/shipped-artifacts.md`. Until that record becomes `PASS`, the
+repository must not add Apache-2.0 license files, notices, badges, or package
+metadata. Safe public package-boundary work may continue independently.
+
 ### Shared Contract Analysis Core
 
 The CLI and server use the same deterministic core:
