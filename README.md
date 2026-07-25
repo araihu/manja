@@ -48,6 +48,55 @@ starting the servers. Extra flags are passed through to Manja:
 npm run dev -- -spec internal/adapters/openapi/testdata/petstore.yaml
 ```
 
+## Contract review
+
+Manja can compare a candidate OpenAPI contract with target and release
+baselines entirely offline. Add a repository-owned `.manja.yaml`:
+
+```yaml
+version: 1
+contracts:
+  payments:
+    spec: docs/openapi.yaml
+    defaultPolicy: stable
+    policies:
+      stable:
+        requireReleaseBaseline: true
+        rules:
+          operation.removed: fail
+          schema.removed: fail
+```
+
+Review local files:
+
+```bash
+go run ./cmd/manja check \
+  --config .manja.yaml \
+  --contract payments \
+  --target-file ./baselines/target.yaml \
+  --candidate-file ./docs/openapi.yaml \
+  --release-file ./baselines/release.yaml \
+  --format text
+```
+
+Or load the configured spec path from refs in a local Git checkout:
+
+```bash
+go run ./cmd/manja check \
+  --config .manja.yaml \
+  --contract payments \
+  --repo . \
+  --target-ref origin/main \
+  --candidate-ref HEAD \
+  --release-ref v1.0.0 \
+  --format json
+```
+
+Exit code `0` means policy passed, `1` means analysis completed with a policy
+failure, and `2` means configuration, input, parsing, or execution failed.
+GitHub Actions and connected Manja review are later subprojects; these examples
+work locally and in any CI environment with the repository checked out.
+
 ## Docker Image
 
 Manja images are published to GitHub Container Registry as

@@ -3,6 +3,8 @@ package main
 import (
 	"context"
 	"flag"
+	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"os"
@@ -16,17 +18,36 @@ type cliConfig struct {
 	Options app.Options
 }
 
-func main() {
-	cfg, err := configFromArgs(os.Args[1:])
+var serve = func(ctx context.Context, cfg cliConfig) error {
+	handler, err := app.NewWithOptions(ctx, cfg.Options)
 	if err != nil {
-		log.Fatal(err)
-	}
-	handler, err := app.NewWithOptions(context.Background(), cfg.Options)
-	if err != nil {
-		log.Fatal(err)
+		return err
 	}
 	log.Printf("manja listening on %s", cfg.Addr)
-	log.Fatal(http.ListenAndServe(cfg.Addr, handler))
+	return http.ListenAndServe(cfg.Addr, handler)
+}
+
+func main() {
+	os.Exit(run(context.Background(), os.Args[1:], os.Stdout, os.Stderr))
+}
+
+func run(ctx context.Context, args []string, stdout, stderr io.Writer) int {
+	if len(args) > 0 && args[0] == "check" {
+		return runCheck(ctx, args[1:], stdout, stderr)
+	}
+	if err := runServer(ctx, args); err != nil {
+		fmt.Fprintf(stderr, "manja: %v\n", err)
+		return 1
+	}
+	return 0
+}
+
+func runServer(ctx context.Context, args []string) error {
+	cfg, err := configFromArgs(args)
+	if err != nil {
+		return err
+	}
+	return serve(ctx, cfg)
 }
 
 func optionsFromArgs(args []string) (app.Options, error) {
