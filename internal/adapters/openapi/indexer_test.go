@@ -1,4 +1,4 @@
-package core_test
+package openapi_test
 
 import (
 	"context"
@@ -6,12 +6,12 @@ import (
 	"strings"
 	"testing"
 
+	core "github.com/araihu/manja/domain"
 	openapiadapter "github.com/araihu/manja/internal/adapters/openapi"
-	"github.com/araihu/manja/internal/core"
 )
 
 func TestOpenAPIParserBuildsSearchIndex(t *testing.T) {
-	data, err := os.ReadFile("../adapters/openapi/testdata/petstore.yaml")
+	data, err := os.ReadFile("testdata/petstore.yaml")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -552,7 +552,7 @@ components:
 }
 
 func TestOpenAPIParserIndexesGitHubRESTFixture(t *testing.T) {
-	data, err := os.ReadFile("../adapters/openapi/testdata/github-v3-rest.json")
+	data, err := os.ReadFile("testdata/github-v3-rest.json")
 	if err != nil {
 		t.Fatal(err)
 	}

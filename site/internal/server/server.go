@@ -7,8 +7,8 @@ import (
 	"os"
 	"strings"
 
-	"github.com/araihu/manja/internal/app"
-	"github.com/araihu/manja/internal/core"
+	core "github.com/araihu/manja/domain"
+	app "github.com/araihu/manja/internal/selfhosted"
 	"github.com/araihu/manja/site/internal/site"
 )
 

@@ -20,7 +20,8 @@ import (
 	"github.com/araihu/goshtoso/components/table"
 	"github.com/araihu/goshtoso/components/tabs"
 
-	"github.com/araihu/manja/internal/core"
+	"github.com/araihu/manja/application/port"
+	core "github.com/araihu/manja/domain"
 )
 
 type selectedDocsItem struct {
@@ -39,7 +40,7 @@ const (
 
 type PublicDocsOptions struct {
 	EndpointSidebarLabel EndpointSidebarLabelMode
-	MarkdownRenderer     core.MarkdownRenderer
+	MarkdownRenderer     port.MarkdownRenderer
 }
 
 const (
@@ -500,11 +501,11 @@ func docsBrandingHomeURL(branding core.DocsBranding) string {
 	return firstNonEmpty(branding.Logo.HomeURL, "/")
 }
 
-func hasMarkdown(renderer core.MarkdownRenderer, input string) bool {
+func hasMarkdown(renderer port.MarkdownRenderer, input string) bool {
 	return renderer != nil && strings.TrimSpace(input) != ""
 }
 
-func renderedMarkdown(renderer core.MarkdownRenderer, input string) templpkg.Component {
+func renderedMarkdown(renderer port.MarkdownRenderer, input string) templpkg.Component {
 	return templpkg.ComponentFunc(func(ctx context.Context, w io.Writer) error {
 		result, err := renderer.Render(ctx, input)
 		if err != nil {
@@ -1043,7 +1044,7 @@ func responseTabID(response core.OperationResponse) string {
 	return "response-" + id
 }
 
-templ parameterDescriptionCell(renderer core.MarkdownRenderer, description string, example string) {
+templ parameterDescriptionCell(renderer port.MarkdownRenderer, description string, example string) {
 	if strings.TrimSpace(description) != "" {
 		if hasMarkdown(renderer, description) {
 			@renderedMarkdown(renderer, description)
@@ -1059,7 +1060,7 @@ templ parameterDescriptionCell(renderer core.MarkdownRenderer, description strin
 	}
 }
 
-func parameterTableConfig(idPrefix string, title string, parameters []core.OperationParameter, renderer core.MarkdownRenderer) table.Config {
+func parameterTableConfig(idPrefix string, title string, parameters []core.OperationParameter, renderer port.MarkdownRenderer) table.Config {
 	rows := make([]table.Row, 0, len(parameters))
 	for _, param := range parameters {
 		required := "optional"

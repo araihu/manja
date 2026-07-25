@@ -31,3 +31,9 @@ type OperationalStore interface {
 	AppendAuditEvent(context.Context, domain.AuditEvent) error
 	Enqueue(context.Context, domain.OutboxMessage) error
 }
+
+// PublicationReader resolves the self-hosted public route without exposing a
+// concrete persistence adapter to the application layer.
+type PublicationReader interface {
+	PublicPublicationByPath(context.Context, string) (domain.Publication, error)
+}

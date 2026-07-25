@@ -3,6 +3,9 @@ package architecture_test
 import (
 	"encoding/json"
 	"errors"
+	"go/ast"
+	"go/parser"
+	"go/token"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -87,6 +90,53 @@ func TestPortAndContracttestDependencyDirection(t *testing.T) {
 				continue
 			}
 			t.Errorf("%s depends on forbidden package %q", target.path, dependency.ImportPath)
+		}
+	}
+}
+
+func TestPublicApplicationOptionsDoNotExposeRawCredentials(t *testing.T) {
+	root := repositoryRoot(t)
+	for _, relative := range []string{"application", filepath.Join("application", "port")} {
+		packages, err := parser.ParseDir(token.NewFileSet(), filepath.Join(root, relative), func(info os.FileInfo) bool {
+			return filepath.Ext(info.Name()) == ".go" && !strings.HasSuffix(info.Name(), "_test.go")
+		}, 0)
+		if err != nil {
+			t.Fatalf("parse %s: %v", relative, err)
+		}
+		for _, pkg := range packages {
+			for filename, file := range pkg.Files {
+				ast.Inspect(file, func(node ast.Node) bool {
+					field, ok := node.(*ast.Field)
+					if !ok {
+						return true
+					}
+					for _, name := range field.Names {
+						if !name.IsExported() {
+							continue
+						}
+						normalized := strings.ToLower(name.Name)
+						for _, forbidden := range []string{"password", "privatekey", "token", "secretvalue", "secretbytes"} {
+							if strings.Contains(normalized, forbidden) {
+								t.Errorf("%s: exported public field %s may expose raw credential material", filename, name.Name)
+							}
+						}
+					}
+					return true
+				})
+			}
+		}
+	}
+}
+
+func TestLegacyInternalReusePackagesAreRemoved(t *testing.T) {
+	root := repositoryRoot(t)
+	for _, relative := range []string{filepath.Join("internal", "app"), filepath.Join("internal", "core")} {
+		matches, err := filepath.Glob(filepath.Join(root, relative, "*.go"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(matches) != 0 {
+			t.Errorf("legacy reusable package %s still contains %v", relative, matches)
 		}
 	}
 }

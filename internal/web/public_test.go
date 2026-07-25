@@ -12,9 +12,9 @@ import (
 	"strings"
 	"testing"
 
+	core "github.com/araihu/manja/domain"
 	markdownadapter "github.com/araihu/manja/internal/adapters/markdown"
 	openapiadapter "github.com/araihu/manja/internal/adapters/openapi"
-	"github.com/araihu/manja/internal/core"
 )
 
 func TestPublicDocsRenderSearchAndOperations(t *testing.T) {

@@ -11,7 +11,7 @@ import templruntime "github.com/a-h/templ/runtime"
 import (
 	templpkg "github.com/a-h/templ"
 	"github.com/araihu/goshtoso/components/head"
-	"github.com/araihu/manja/internal/core"
+	core "github.com/araihu/manja/domain"
 )
 
 func Layout(title string) templ.Component {

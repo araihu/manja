@@ -9,8 +9,8 @@ import (
 	"net/http"
 	"os"
 
-	"github.com/araihu/manja/internal/app"
-	"github.com/araihu/manja/internal/core"
+	core "github.com/araihu/manja/domain"
+	app "github.com/araihu/manja/internal/selfhosted"
 )
 
 type cliConfig struct {

@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/araihu/manja/internal/core"
+	core "github.com/araihu/manja/domain"
 )
 
 const yamlSpec = "openapi: 3.1.0\ninfo:\n  title: Review API\n  version: v1\npaths: {}\n"

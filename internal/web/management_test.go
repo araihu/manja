@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/araihu/manja/internal/core"
+	core "github.com/araihu/manja/domain"
 )
 
 func TestManagementOverviewShowsProjectSyncAndPublicationState(t *testing.T) {

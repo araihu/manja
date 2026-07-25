@@ -8,8 +8,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/araihu/manja/internal/app"
-	"github.com/araihu/manja/internal/core"
+	core "github.com/araihu/manja/domain"
+	app "github.com/araihu/manja/internal/selfhosted"
 )
 
 func TestRunServerPreservesExistingFlagsAndStartsServer(t *testing.T) {

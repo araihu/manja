@@ -10,7 +10,7 @@ import (
 	"github.com/yuin/goldmark/extension"
 	"github.com/yuin/goldmark/parser"
 
-	"github.com/araihu/manja/internal/core"
+	core "github.com/araihu/manja/domain"
 )
 
 type Renderer struct {

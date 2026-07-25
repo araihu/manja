@@ -6,7 +6,7 @@ import (
 	"encoding/hex"
 	"os"
 
-	"github.com/araihu/manja/internal/core"
+	core "github.com/araihu/manja/domain"
 )
 
 type File struct {

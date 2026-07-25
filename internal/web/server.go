@@ -3,7 +3,9 @@ package web
 import (
 	"net/http"
 
-	"github.com/araihu/manja/internal/core"
+	"github.com/araihu/manja/application"
+	"github.com/araihu/manja/application/port"
+	core "github.com/araihu/manja/domain"
 )
 
 type Options struct {
@@ -30,11 +32,14 @@ func NewServerWithOptions(idx core.SpecIndex, opts Options) http.Handler {
 }
 
 func publishedDocsPathHandler(public http.Handler, store ManagementStore) http.Handler {
-	resolverStore, ok := store.(core.Store)
+	resolverStore, ok := store.(port.PublicationReader)
 	if !ok {
 		return public
 	}
-	resolver := core.PublicResolver{Store: resolverStore}
+	resolver, err := application.NewPublicResolver(resolverStore)
+	if err != nil {
+		return public
+	}
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/" {
 			if _, err := resolver.PublicationByPath(r.Context(), r.URL.Path); err == nil {

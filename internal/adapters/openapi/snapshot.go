@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/araihu/manja/internal/core"
+	core "github.com/araihu/manja/domain"
 )
 
 // SnapshotBuilder builds normalized contract snapshots from OpenAPI files.

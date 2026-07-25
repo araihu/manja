@@ -9,13 +9,16 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"time"
 
+	"github.com/araihu/manja/application"
+	"github.com/araihu/manja/application/port"
+	core "github.com/araihu/manja/domain"
 	cacheadapter "github.com/araihu/manja/internal/adapters/cache"
 	markdownadapter "github.com/araihu/manja/internal/adapters/markdown"
 	openapiadapter "github.com/araihu/manja/internal/adapters/openapi"
 	sourceadapter "github.com/araihu/manja/internal/adapters/source"
 	storeadapter "github.com/araihu/manja/internal/adapters/store"
-	"github.com/araihu/manja/internal/core"
 	"github.com/araihu/manja/internal/web"
 )
 
@@ -248,7 +251,11 @@ func (h *demoWorkbenchHandler) indexForRevision(ctx context.Context, cfg demoSpe
 		Path:     demoSpecPath,
 		Format:   "yaml",
 	}
-	data, err := h.store.Get(ctx, core.SpecBlobKey(rev, file))
+	revisions, err := application.NewRevisionService(h.store)
+	if err != nil {
+		return core.SpecIndex{}, false, err
+	}
+	data, err := revisions.LoadSpec(ctx, rev)
 	if err != nil {
 		return core.SpecIndex{}, false, err
 	}
@@ -286,22 +293,26 @@ func (h *demoWorkbenchHandler) syncAction(ctx context.Context, spec web.ManagedS
 	return spec, nil
 }
 
-func syncDemoSpec(ctx context.Context, store *storeadapter.FileStore, cfg demoSpecConfig, ref string, trigger string) (core.SyncResult, error) {
-	syncer := core.Syncer{
+func syncDemoSpec(ctx context.Context, store *storeadapter.FileStore, cfg demoSpecConfig, ref string, trigger string) (application.SyncResult, error) {
+	service, err := application.NewSyncService(application.SyncDependencies{
 		Source: sourceadapter.Git{
 			Repo: cfg.Repo,
 			Ref:  ref,
 			Path: demoSpecPath,
 		},
-		Parser: openapiadapter.Parser{},
-		Store:  store,
-		Blobs:  store,
-		Cache:  cacheadapter.NewMemory(),
+		Parser:     openapiadapter.Parser{},
+		UnitOfWork: store,
+		Blobs:      store,
+		Cache:      cacheadapter.NewMemory(),
+		Clock:      demoClock{},
+	})
+	if err != nil {
+		return application.SyncResult{}, err
 	}
-	return syncer.Sync(ctx, core.SyncRequest{
-		ProjectID: cfg.Seed.ProjectID,
-		SourceID:  cfg.Source.ID,
-		Trigger:   trigger,
+	return service.Sync(ctx, application.SyncCommand{
+		ContractID: cfg.Seed.ProjectID,
+		SourceID:   cfg.Source.ID,
+		Trigger:    trigger,
 	})
 }
 
@@ -311,6 +322,14 @@ func discoverDemoCandidates(ctx context.Context, cfg demoSpecConfig) ([]core.Rev
 		Path: demoSpecPath,
 	}.Discover(ctx)
 }
+
+type demoClock struct{}
+
+func (demoClock) Now(context.Context) time.Time {
+	return time.Now().UTC()
+}
+
+var _ port.Clock = demoClock{}
 
 func createDemoGitRepo(ctx context.Context, root string, seed demoSpecSeed) (string, error) {
 	worktree := filepath.Join(root, seed.ID+"-worktree")

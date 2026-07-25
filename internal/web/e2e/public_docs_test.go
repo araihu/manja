@@ -11,8 +11,8 @@ import (
 
 	"github.com/playwright-community/playwright-go"
 
+	core "github.com/araihu/manja/domain"
 	openapiadapter "github.com/araihu/manja/internal/adapters/openapi"
-	"github.com/araihu/manja/internal/core"
 	"github.com/araihu/manja/internal/web"
 )
 

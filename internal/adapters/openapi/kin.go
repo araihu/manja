@@ -14,7 +14,7 @@ import (
 
 	"github.com/getkin/kin-openapi/openapi3"
 
-	"github.com/araihu/manja/internal/core"
+	core "github.com/araihu/manja/domain"
 )
 
 type Parser struct{}

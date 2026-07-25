@@ -5,7 +5,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/araihu/manja/internal/core"
+	core "github.com/araihu/manja/domain"
 )
 
 func TestSnapshotBuilderBuildsNormalizedOpenAPIContract(t *testing.T) {

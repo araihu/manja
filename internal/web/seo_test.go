@@ -8,8 +8,8 @@ import (
 	"strings"
 	"testing"
 
+	core "github.com/araihu/manja/domain"
 	openapiadapter "github.com/araihu/manja/internal/adapters/openapi"
-	"github.com/araihu/manja/internal/core"
 )
 
 type sitemapTestURLSet struct {

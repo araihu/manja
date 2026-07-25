@@ -9,7 +9,7 @@ import (
 	"time"
 	"unicode"
 
-	"github.com/araihu/manja/internal/core"
+	core "github.com/araihu/manja/domain"
 )
 
 func TestWriteJSONUsesCanonicalReviewJSON(t *testing.T) {

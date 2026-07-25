@@ -13,7 +13,8 @@ import (
 
 	"github.com/araihu/goshtoso/assets"
 
-	"github.com/araihu/manja/internal/core"
+	"github.com/araihu/manja/application/port"
+	core "github.com/araihu/manja/domain"
 	"github.com/araihu/manja/internal/web/templates"
 )
 
@@ -26,7 +27,7 @@ const (
 
 type PublicOptions struct {
 	EndpointSidebarLabel EndpointSidebarLabelMode
-	MarkdownRenderer     core.MarkdownRenderer
+	MarkdownRenderer     port.MarkdownRenderer
 	StaticDir            string
 	Branding             core.DocsBranding
 }
@@ -138,7 +139,7 @@ func publicRouteSearchHref(href string, routeHrefs map[string]string) string {
 	return selectedDocsSearchHref(href)
 }
 
-func searchJSONItems(ctx context.Context, docs []core.SearchDocument, publicRoutes []core.PublicRoute, renderer core.MarkdownRenderer) ([]searchJSONItem, error) {
+func searchJSONItems(ctx context.Context, docs []core.SearchDocument, publicRoutes []core.PublicRoute, renderer port.MarkdownRenderer) ([]searchJSONItem, error) {
 	routeHrefs := publicRouteHrefsByAnchor(publicRoutes)
 	items := make([]searchJSONItem, 0, len(docs))
 	for _, doc := range docs {
@@ -161,7 +162,7 @@ func searchJSONItems(ctx context.Context, docs []core.SearchDocument, publicRout
 	return items, nil
 }
 
-func markdownPlainText(ctx context.Context, renderer core.MarkdownRenderer, value string) (string, error) {
+func markdownPlainText(ctx context.Context, renderer port.MarkdownRenderer, value string) (string, error) {
 	if renderer == nil || strings.TrimSpace(value) == "" {
 		return value, nil
 	}

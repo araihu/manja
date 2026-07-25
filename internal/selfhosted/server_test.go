@@ -1,4 +1,4 @@
-package app
+package selfhosted
 
 import (
 	"context"
@@ -12,7 +12,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/araihu/manja/internal/core"
+	"github.com/araihu/manja/application/port"
+	core "github.com/araihu/manja/domain"
+	storeadapter "github.com/araihu/manja/internal/adapters/store"
 )
 
 func TestNewWithOptionsSyncsSpecBeforeServingPublicDocs(t *testing.T) {
@@ -65,18 +67,13 @@ func TestNewWithOptionsSyncsSpecBeforeServingPublicDocs(t *testing.T) {
 		t.Fatalf("publication status = %d", rec.Code)
 	}
 
-	revisions := entries(t, filepath.Join(dataDir, "revisions"))
-	if len(revisions) != 1 {
-		t.Fatalf("revisions = %#v", revisions)
-	}
-	var rev core.Revision
-	readJSON(t, filepath.Join(dataDir, "revisions", revisions[0]), &rev)
+	state := readOperationalState(t, dataDir)
+	rev := onlyRevision(t, state)
 	if rev.ID == "" || rev.SourceID != "source1" || rev.Ref != "file" {
 		t.Fatalf("revision = %#v", rev)
 	}
 
-	var pub core.Publication
-	readJSON(t, filepath.Join(dataDir, "publications", "project1-"+rev.ID+".json"), &pub)
+	pub := publicationForRevision(t, state, rev.ID)
 	if pub.ProjectID != "project1" || pub.RevisionID != rev.ID || !pub.Public || pub.Path != "/synced/v1" {
 		t.Fatalf("publication = %#v", pub)
 	}
@@ -91,8 +88,7 @@ func TestNewWithOptionsSyncsSpecBeforeServingPublicDocs(t *testing.T) {
 		t.Fatalf("published docs body = %s", body)
 	}
 
-	blobPath := filepath.Join(dataDir, "blobs", "specs", rev.ID+".yaml")
-	blob, err := os.ReadFile(blobPath)
+	blob, err := storeadapter.NewFileStore(dataDir).Get(ctx, port.BlobKey(rev.SpecBlobKey))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -100,12 +96,7 @@ func TestNewWithOptionsSyncsSpecBeforeServingPublicDocs(t *testing.T) {
 		t.Fatalf("blob = %q", blob)
 	}
 
-	records := entries(t, filepath.Join(dataDir, "sync-history"))
-	if len(records) != 1 {
-		t.Fatalf("records = %#v", records)
-	}
-	var record core.SyncRecord
-	readJSON(t, filepath.Join(dataDir, "sync-history", records[0]), &record)
+	record := onlySyncRecord(t, state)
 	if record.Result != core.SyncResultSuccess || record.ProjectID != "project1" || record.SourceID != "source1" || record.RevisionID != rev.ID {
 		t.Fatalf("sync record = %#v", record)
 	}
@@ -150,12 +141,7 @@ func TestNewWithOptionsSyncsGitSourceBeforeServingPublicDocs(t *testing.T) {
 		t.Fatalf("management body = %s", body)
 	}
 
-	revisions := entries(t, filepath.Join(dataDir, "revisions"))
-	if len(revisions) != 1 {
-		t.Fatalf("revisions = %#v", revisions)
-	}
-	var rev core.Revision
-	readJSON(t, filepath.Join(dataDir, "revisions", revisions[0]), &rev)
+	rev := onlyRevision(t, readOperationalState(t, dataDir))
 	if rev.ID == "" || rev.SourceID != repo || rev.Ref != "main" || rev.CommitSHA != commit {
 		t.Fatalf("revision = %#v, want source %q ref main commit %q", rev, repo, commit)
 	}
@@ -301,14 +287,12 @@ components:
 		t.Fatalf("candidate diff body = %s", body)
 	}
 
-	revisions := entries(t, filepath.Join(dataDir, "revisions"))
-	if len(revisions) != 2 {
-		t.Fatalf("revisions = %#v", revisions)
+	state := readOperationalState(t, dataDir)
+	if len(state.Revisions) != 2 {
+		t.Fatalf("revisions = %#v", state.Revisions)
 	}
 	var releaseRevision core.Revision
-	for _, name := range revisions {
-		var rev core.Revision
-		readJSON(t, filepath.Join(dataDir, "revisions", name), &rev)
+	for _, rev := range state.Revisions {
 		if rev.Ref == "release/v2" {
 			releaseRevision = rev
 		}
@@ -316,8 +300,7 @@ components:
 	if releaseRevision.ID == "" || releaseRevision.CommitSHA != releaseCommit {
 		t.Fatalf("release revision = %#v, want commit %q", releaseRevision, releaseCommit)
 	}
-	var pub core.Publication
-	readJSON(t, filepath.Join(dataDir, "publications", "project1-"+releaseRevision.ID+".json"), &pub)
+	pub := publicationForRevision(t, state, releaseRevision.ID)
 	if pub.ProjectID != "project1" || pub.RevisionID != releaseRevision.ID || !pub.Public || pub.Path != "/release/v2" {
 		t.Fatalf("publication = %#v", pub)
 	}
@@ -364,17 +347,50 @@ func TestNewWithOptionsRefreshesGitCandidatesAfterManualSync(t *testing.T) {
 	}
 }
 
-func entries(t *testing.T, path string) []string {
+type persistedOperationalState struct {
+	Revisions    map[string]core.ContractRevision `json:"revisions"`
+	SyncRecords  map[string]core.SyncRecord       `json:"syncRecords"`
+	Publications map[string]core.Publication      `json:"publications"`
+}
+
+func readOperationalState(t *testing.T, dataDir string) persistedOperationalState {
 	t.Helper()
-	dirEntries, err := os.ReadDir(path)
-	if err != nil {
-		t.Fatal(err)
+	var state persistedOperationalState
+	readJSON(t, filepath.Join(dataDir, "operational", "state.json"), &state)
+	return state
+}
+
+func onlyRevision(t *testing.T, state persistedOperationalState) core.ContractRevision {
+	t.Helper()
+	if len(state.Revisions) != 1 {
+		t.Fatalf("revisions = %#v", state.Revisions)
 	}
-	names := make([]string, 0, len(dirEntries))
-	for _, entry := range dirEntries {
-		names = append(names, entry.Name())
+	for _, revision := range state.Revisions {
+		return revision
 	}
-	return names
+	return core.ContractRevision{}
+}
+
+func onlySyncRecord(t *testing.T, state persistedOperationalState) core.SyncRecord {
+	t.Helper()
+	if len(state.SyncRecords) != 1 {
+		t.Fatalf("sync records = %#v", state.SyncRecords)
+	}
+	for _, record := range state.SyncRecords {
+		return record
+	}
+	return core.SyncRecord{}
+}
+
+func publicationForRevision(t *testing.T, state persistedOperationalState, revisionID string) core.Publication {
+	t.Helper()
+	for _, publication := range state.Publications {
+		if publication.RevisionID == revisionID {
+			return publication
+		}
+	}
+	t.Fatalf("publication for revision %q not found in %#v", revisionID, state.Publications)
+	return core.Publication{}
 }
 
 func readJSON(t *testing.T, path string, value any) {

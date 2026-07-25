@@ -2,11 +2,112 @@ package store
 
 import (
 	"context"
+	"errors"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
-	"github.com/araihu/manja/internal/core"
+	"github.com/araihu/manja/application/port"
+	core "github.com/araihu/manja/domain"
 )
+
+func TestFileStoreUnitOfWorkRollsBackEveryOperationalMutation(t *testing.T) {
+	ctx := context.Background()
+	store := NewFileStore(t.TempDir())
+	key, err := store.Put(ctx, []byte("openapi: 3.1.0\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantErr := errors.New("stop transaction")
+	err = store.Within(ctx, func(txCtx context.Context, operational port.OperationalStore) error {
+		if txCtx != ctx {
+			t.Fatal("unit of work replaced the incoming context")
+		}
+		if err := operational.SaveRevision(txCtx, core.ContractRevision{ID: "r1", SourceID: "s1", SpecBlobKey: string(key)}); err != nil {
+			return err
+		}
+		if err := operational.SaveSyncRecord(txCtx, core.SyncRecord{ID: "sync-1", RevisionID: "r1"}); err != nil {
+			return err
+		}
+		return wantErr
+	})
+	if !errors.Is(err, wantErr) {
+		t.Fatalf("Within error = %v, want %v", err, wantErr)
+	}
+	if _, err := store.Revision(ctx, "r1"); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("rolled-back revision lookup error = %v, want not exist", err)
+	}
+	if _, err := store.SyncRecord(ctx, "sync-1"); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("rolled-back sync lookup error = %v, want not exist", err)
+	}
+}
+
+func TestFileStoreUnitOfWorkRejectsStaleReleaseTrackGeneration(t *testing.T) {
+	ctx := context.Background()
+	store := NewFileStore(t.TempDir())
+	track := core.ReleaseTrack{ID: "stable", ContractID: "payments", Mode: core.ReleaseModeFollowing, Generation: 1}
+	if err := store.Within(ctx, func(ctx context.Context, operational port.OperationalStore) error {
+		return operational.SaveReleaseTrack(ctx, 0, track)
+	}); err != nil {
+		t.Fatal(err)
+	}
+	err := store.Within(ctx, func(ctx context.Context, operational port.OperationalStore) error {
+		track.Generation = 2
+		return operational.SaveReleaseTrack(ctx, 0, track)
+	})
+	if !errors.Is(err, port.ErrGenerationConflict) {
+		t.Fatalf("stale generation error = %v, want %v", err, port.ErrGenerationConflict)
+	}
+	got, err := store.ReleaseTrack(ctx, "payments", "stable")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Generation != 1 {
+		t.Fatalf("generation after rejected transaction = %d, want 1", got.Generation)
+	}
+}
+
+func TestFileStoreContentAddressedBlobSurvivesRestart(t *testing.T) {
+	ctx := context.Background()
+	root := t.TempDir()
+	want := []byte("openapi: 3.1.0\n")
+	first := NewFileStore(root)
+	key, err := first.Put(ctx, want)
+	if err != nil {
+		t.Fatal(err)
+	}
+	replayKey, err := first.Put(ctx, want)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if replayKey != key || key != port.ContentAddressedBlobKey(want) {
+		t.Fatalf("blob keys = %q and %q, want %q", key, replayKey, port.ContentAddressedBlobKey(want))
+	}
+	restarted := NewFileStore(root)
+	got, err := restarted.Get(ctx, key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != string(want) {
+		t.Fatalf("restarted blob = %q, want %q", got, want)
+	}
+}
+
+func TestFileStoreDiscardsIncompleteOperationalStagingOnRestart(t *testing.T) {
+	root := t.TempDir()
+	staging := filepath.Join(root, "operational", ".state-interrupted.tmp")
+	if err := os.MkdirAll(filepath.Dir(staging), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(staging, []byte("partial"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	_ = NewFileStore(root)
+	if _, err := os.Stat(staging); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("staging file after restart error = %v, want not exist", err)
+	}
+}
 
 func TestFileStorePersistsProjectRevisionPublicationAndBlob(t *testing.T) {
 	ctx := context.Background()
@@ -40,13 +141,6 @@ func TestFileStorePersistsProjectRevisionPublicationAndBlob(t *testing.T) {
 	if err := fs.SavePublication(ctx, pub); err != nil {
 		t.Fatal(err)
 	}
-	var gotPub core.Publication
-	if err := fs.readJSON(ctx, "publications", "p1-r1.json", &gotPub); err != nil {
-		t.Fatal(err)
-	}
-	if gotPub.ProjectID != "p1" || gotPub.RevisionID != "r1" || !gotPub.Public || gotPub.Path != "/acme/payments/v1" {
-		t.Fatalf("publication = %+v", gotPub)
-	}
 	readPub, err := fs.Publication(ctx, "p1", "r1")
 	if err != nil {
 		t.Fatal(err)
@@ -55,10 +149,11 @@ func TestFileStorePersistsProjectRevisionPublicationAndBlob(t *testing.T) {
 		t.Fatalf("read publication = %+v", readPub)
 	}
 
-	if err := fs.Put(ctx, "specs/r1.yaml", []byte("openapi: 3.1.0")); err != nil {
+	key, err := fs.Put(ctx, []byte("openapi: 3.1.0"))
+	if err != nil {
 		t.Fatal(err)
 	}
-	blob, err := fs.Get(ctx, "specs/r1.yaml")
+	blob, err := fs.Get(ctx, key)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -82,8 +177,8 @@ func TestFileStorePersistsProjectRevisionPublicationAndBlob(t *testing.T) {
 	if err := fs.SaveSyncRecord(ctx, record); err != nil {
 		t.Fatal(err)
 	}
-	var gotRecord core.SyncRecord
-	if err := fs.readJSON(ctx, "sync-history", "sync-1.json", &gotRecord); err != nil {
+	gotRecord, err := fs.SyncRecord(ctx, "sync-1")
+	if err != nil {
 		t.Fatal(err)
 	}
 	if gotRecord.ProjectID != "p1" || gotRecord.Result != core.SyncResultSuccess || gotRecord.CommitSHA != "abc123" {
@@ -94,6 +189,9 @@ func TestFileStorePersistsProjectRevisionPublicationAndBlob(t *testing.T) {
 func TestFileStoreReadsPublicPublicationByPath(t *testing.T) {
 	ctx := context.Background()
 	fs := NewFileStore(t.TempDir())
+	if err := fs.SaveRevision(ctx, core.ContractRevision{ID: "r1", SourceID: "s1"}); err != nil {
+		t.Fatal(err)
+	}
 	pub := core.Publication{
 		ProjectID:  "p1",
 		RevisionID: "r1",
@@ -115,6 +213,9 @@ func TestFileStoreReadsPublicPublicationByPath(t *testing.T) {
 func TestFileStorePublicPublicationByPathRejectsPrivateAndInvalidPaths(t *testing.T) {
 	ctx := context.Background()
 	fs := NewFileStore(t.TempDir())
+	if err := fs.SaveRevision(ctx, core.ContractRevision{ID: "r1", SourceID: "s1"}); err != nil {
+		t.Fatal(err)
+	}
 	pub := core.Publication{
 		ProjectID:  "p1",
 		RevisionID: "r1",
@@ -143,17 +244,11 @@ func TestFileStoreRejectsBlobNamespaceTraversal(t *testing.T) {
 	if err := fs.SaveProject(ctx, project); err != nil {
 		t.Fatal(err)
 	}
-	if err := fs.Put(ctx, "../projects/p1.json", []byte(`{"Name":"Owned"}`)); err == nil {
-		t.Fatal("Put accepted blob key that escapes blob namespace")
-	}
-	if _, err := fs.Get(ctx, "../projects/p1.json"); err == nil {
+	if _, err := fs.Get(ctx, port.BlobKey("../projects/p1.json")); err == nil {
 		t.Fatal("Get accepted blob key that escapes blob namespace")
 	}
-	if err := fs.Put(ctx, "/projects/p1.json", []byte(`{"Name":"Owned"}`)); err == nil {
-		t.Fatal("Put accepted absolute blob key")
-	}
-	if err := fs.Put(ctx, "specs/../projects/p1.json", []byte(`{"Name":"Owned"}`)); err == nil {
-		t.Fatal("Put accepted blob key containing traversal")
+	if _, err := fs.Get(ctx, port.BlobKey("sha256:not-a-digest")); err == nil {
+		t.Fatal("Get accepted malformed content-addressed key")
 	}
 	gotProject, err := fs.Project(ctx, "p1")
 	if err != nil {

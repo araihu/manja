@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/araihu/manja/internal/core"
+	core "github.com/araihu/manja/domain"
 	"gopkg.in/yaml.v3"
 )
 

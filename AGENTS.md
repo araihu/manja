@@ -169,18 +169,25 @@ or oapi-codegen output unless the generator itself is being changed.
 
 ## Architecture
 
-- Keep domain behavior in `internal/core`.
-- Keep orchestration in `internal/app`.
+- Keep provider-neutral domain behavior in the public `domain` package.
+- Keep reusable orchestration in the public `application` package and its
+  context-first infrastructure contracts in `application/port`.
 - Keep persistence, source, parser, Markdown, and cache details in
   `internal/adapters`.
+- Keep concrete self-hosted wiring in `internal/selfhosted`; `cmd/manja` is the
+  executable composition entry point. Raw credentials must terminate at this
+  composition boundary or an internal secret/source adapter, while public APIs
+  use opaque secret references.
 - Keep HTTP routing and server-rendered public docs in `internal/web`.
 - Keep the management REST API narrow and API-first; only add API surface that a
   real integration needs.
 
-Prefer ports-first boundaries over wiring concrete adapters into domain code.
-Use filesystem-backed adapters for the local vertical slice, and make source
-sync behavior preserve last-known-good publication state when parsing or source
-access fails.
+Prefer ports-first boundaries over wiring concrete adapters into domain or
+application code. Consistency-sensitive operational changes cross one coarse
+`UnitOfWork`; immutable specs use content-addressed blob keys written before
+metadata commits. Use filesystem-backed adapters for the local vertical slice,
+and make source sync behavior preserve last-known-good publication state when
+parsing or source access fails.
 
 ## Public Docs UI
 
