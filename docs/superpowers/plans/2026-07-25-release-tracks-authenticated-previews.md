@@ -4,7 +4,7 @@
 
 **Goal:** Replace mutable publication lookup with persistent release tracks that serve immutable last-known-good revisions, advance through deterministic pinned/following transitions, survive restarts and failed syncs, and expose authenticated no-index previews for stored revisions.
 
-**Architecture:** This slice follows the Open Core extension-surface checkpoint. Add provider-neutral release-track and stored-review types plus pure transition functions in public `domain`; keep filesystem persistence behind `application/port.UnitOfWork` and use generation-checked atomic operational transactions for track state, review evidence, publication, audit, and outbox. Public `application` services load immutable revision artifacts, evaluate release-impact reviews with the shared analysis/policy core, migrate legacy publications, and resolve both public track docs and authenticated revision previews through callbacks consumed by `internal/web`. Self-hosted adapter selection remains in `internal/selfhosted`/`cmd/manja`. Repository `.manja.yaml` remains portable policy; a separate deployment-owned release config contains paths, hostnames, ref bindings, modes, and server-added policy.
+**Architecture:** This slice follows the Open Core extension-surface checkpoint. Extend its provider-neutral release track with stored-review types and richer pure transition functions in public `domain`; keep filesystem persistence behind `application/port.UnitOfWork` and extend the existing generation-checked atomic operational transaction for track state, review evidence, publication, audit, and outbox. Public `application` services load immutable revision artifacts, evaluate release-impact reviews with the shared analysis/policy core, migrate legacy publications, and resolve both public track docs and authenticated revision previews through callbacks consumed by `internal/web`. Self-hosted adapter selection remains in `internal/selfhosted`/`cmd/manja`. Repository `.manja.yaml` remains portable policy; a separate deployment-owned release config contains paths, hostnames, ref bindings, modes, and server-added policy.
 
 **Tech Stack:** Go 1.26.5 or newer, standard-library `crypto/sha256`, `crypto/subtle`, `encoding/json`, `net/http`, `sync`, and filesystem primitives; existing kin-openapi parser, templ v0.3.1020, exactly Goshtoso v0.0.12, and YAML v3.0.1.
 
@@ -32,9 +32,37 @@
 - Keep canonical review schema `manja.review/v1`; the new server-side release review uses the same report model with one `release_impact` comparison.
 - Record any Goshtoso component/helper/docs/generated-templ source dive as a snag before the review gate.
 
+## Predecessor State At Implementation Handoff
+
+The Open Core predecessor already publishes the first release boundary. This
+plan extends that API; it does not recreate it or use its existence as an
+expected RED condition:
+
+- `domain/release.go` already defines `ReleaseMode`, the minimal
+  `ReleaseTrack`, `ConsiderReleaseRevision`, and `PromoteReleaseRevision`.
+- `domain/review.go` already defines canonical `manja.review/v1` reports and
+  release-evidence validation for contract, candidate, baseline, digest, and
+  comparison identity.
+- `application/release.go` already exposes constructor-injected
+  `ReleaseService.Coordinate`, including evidence binding, idempotent replay,
+  transactional publication retirement, audit, and outbox writes.
+- `application/port.UnitOfWork` and the filesystem adapter already provide one
+  generation-checked operational manifest. Callback and pre-publication
+  failures roll back; a post-rename durability failure is explicitly reported
+  as `port.ErrCommitOutcomeUnknown` and requires reload plus idempotent replay.
+- `OperationalStore` already persists revisions, `ContractReview`, sync
+  records, tracks, publications, audit events, and outbox messages. This slice
+  evolves `ContractReview` into the richer track-scoped `StoredReview` model and
+  adds deterministic listing and route-resolution reads.
+
+When implementation starts from the merged predecessor, first run the existing
+release/application/store tests as characterization tests. New RED steps must
+fail on the specifically missing richer behavior described below, not because
+the predecessor files, track type, service, or atomic manifest are absent.
+
 ## File Structure
 
-- `domain/release.go`: release-track, stored-review, and history types; validation; deterministic IDs; pinned/following transitions.
+- `domain/release.go`: extend the existing release-track transitions with stored-review/history types, validation, and deterministic IDs.
 - `domain/release_test.go`: domain invariants, replay idempotency, generation behavior, and last-known-good preservation.
 - `domain/review.go`: release-impact-only evaluation using the existing canonical report and policy projection.
 - `domain/spec.go`: immutable revision artifact metadata needed after restart.
@@ -45,7 +73,7 @@
 - `internal/adapters/config/testdata/server.yaml`: two-track server fixture using `v1` and `v2`.
 - `internal/adapters/auth/basic.go`: constant-time HTTP Basic authenticator backed by an injected password or password file.
 - `application/revisiondocs.go`: load a stored revision, blob, parser index, and contract snapshot after restart.
-- `application/release.go`: migrate legacy publications, reconcile configured track definitions, evaluate mapped sync results, persist reviews, and apply track transitions.
+- `application/release.go`: extend the existing `ReleaseService` to migrate legacy publications, reconcile configured track definitions, evaluate mapped sync results, persist reviews, and apply richer track transitions.
 - `internal/selfhosted/server.go`: recovery-first startup, release sync wiring, dynamic docs resolvers, adapter selection, and compatibility management state.
 - `internal/web/docs.go`: public-track request matching, preview path parsing/authentication, path rewriting, and response policy.
 - `internal/web/public.go`: renderer base-path and indexability options.
@@ -59,8 +87,8 @@
 ### Task 1: Canonical Release Reviews And Pure Track Transitions
 
 **Files:**
-- Create: `domain/release.go`
-- Create: `domain/release_test.go`
+- Modify: `domain/release.go`
+- Modify: `domain/release_test.go`
 - Modify: `domain/review.go`
 - Modify: `domain/review_test.go`
 
@@ -143,16 +171,11 @@ and new review tests are green.
 
 - [ ] **Step 4: Write failing track transition tests**
 
-Use these public shapes in the tests:
+Extend the predecessor's public shapes in the tests. Retain `ReleaseMode` and
+its `ReleaseModePinned` / `ReleaseModeFollowing` constants; do not introduce a
+duplicate advancement-mode type:
 
 ```go
-type AdvancementMode string
-
-const (
-	AdvancementPinned    AdvancementMode = "pinned"
-	AdvancementFollowing AdvancementMode = "following"
-)
-
 type StoredReview struct {
 	ID                  string       `json:"id"`
 	ContractID          string       `json:"contractId"`
@@ -179,12 +202,12 @@ type ReleaseTrack struct {
 	ID                    string          `json:"id"`
 	ContractID            string          `json:"contractId"`
 	SourceID              string          `json:"sourceId"`
-	RefSelector           string          `json:"refSelector,omitempty"`
+	BoundRef              string          `json:"boundRef,omitempty"`
 	PublicPath            string          `json:"publicPath"`
 	Hostname              string          `json:"hostname,omitempty"`
 	PolicyProfile         string          `json:"policyProfile"`
 	ServerPolicy          PolicyLayer     `json:"serverPolicy"`
-	Mode                  AdvancementMode `json:"mode"`
+	Mode                  ReleaseMode     `json:"mode"`
 	CurrentRevisionID     string          `json:"currentRevisionId,omitempty"`
 	CandidateRevisionID   string          `json:"candidateRevisionId,omitempty"`
 	CandidateReviewID     string          `json:"candidateReviewId,omitempty"`
@@ -214,11 +237,13 @@ Run:
 go test ./domain -run 'Test(ConsiderReleaseReview|PromoteRelease|NewStoredReview|ValidateReleaseTrack)' -count=1
 ```
 
-Expected: compile failure because release types and functions do not exist.
+Expected: compile failures for the new `StoredReview`, `ReleaseEvent`, and
+review-aware transition APIs, plus assertion failures for validation/history
+fields not yet present on the existing `ReleaseTrack`.
 
 - [ ] **Step 6: Implement minimal provider-neutral release state**
 
-Implement:
+Extend the existing `ReleaseTrack` and implement:
 
 ```go
 func NewStoredReview(track ReleaseTrack, sourceRef string, report ReviewReport, createdAt time.Time) (StoredReview, error)
@@ -226,6 +251,11 @@ func ValidateReleaseTrack(track ReleaseTrack) error
 func ConsiderReleaseReview(track ReleaseTrack, review StoredReview) (next ReleaseTrack, changed bool, err error)
 func PromoteRelease(track ReleaseTrack, review StoredReview, actorID string, occurredAt time.Time) (next ReleaseTrack, changed bool, err error)
 ```
+
+Keep `ConsiderReleaseRevision` and `PromoteReleaseRevision` as compatibility
+entry points while predecessor call sites migrate. They must preserve their
+existing idempotent replay semantics and delegate to shared transition helpers
+where possible; do not replace `ReleaseMode` with another public enum.
 
 Hash the canonical report plus NUL-delimited contract, track, baseline,
 candidate, and source-ref identities for `StoredReview.ID`. Hash the event kind,
@@ -400,7 +430,10 @@ Run:
 go test ./internal/adapters/store -run 'ReleaseTrack|StoredReview|PublicRelease' -count=1
 ```
 
-Expected: compile failure because release persistence does not exist.
+Expected: compile failures for `StoredReview`, deterministic track listing, and
+public-track lookup, plus assertion failures for route collision and immutable
+review behavior. Basic generation-checked track persistence and the atomic
+manifest already exist from the predecessor.
 
 - [ ] **Step 3: Extend the operational transaction and read ports**
 
@@ -430,9 +463,9 @@ with a non-empty current revision and an exact hostname plus longest safe path
 prefix match. Legacy publication/revision readers remain private adapter
 interfaces used only by migration.
 
-- [ ] **Step 4: Replace direct JSON writes with one atomic operational transaction**
+- [ ] **Step 4: Extend the atomic operational transaction**
 
-Implement the filesystem `UnitOfWork` so a callback stages revision, review,
+Extend the filesystem `UnitOfWork`, which already stages revision, review,
 sync, track, publication, audit, and outbox changes together:
 
 1. load and validate expected generations under the store write lock
@@ -444,9 +477,12 @@ sync, track, publication, audit, and outbox changes together:
 
 Guard release/review reads and writes with a `sync.RWMutex` on `FileStore`.
 Perform generation read/check/write and the complete callback while holding the
-write lock. A callback error, stale generation, audit error, or outbox error
-publishes none of its staged records. Do not expose temp files through list
-methods.
+write lock. A callback error, stale generation, audit error, outbox error, or
+any failure before manifest rename publishes none of its staged records. A
+failure opening or syncing the parent directory after rename must continue to
+wrap `port.ErrCommitOutcomeUnknown`; recovery reloads the complete manifest and
+replays only deterministic/idempotent operations. Do not expose temp files
+through list methods.
 
 - [ ] **Step 5: Implement deterministic paths and route collision checks**
 
@@ -645,8 +681,8 @@ git commit -m "feat(release): migrate publications to tracks"
 **Files:**
 - Create: `application/revisiondocs.go`
 - Create: `application/revisiondocs_test.go`
-- Create: `application/release.go`
-- Create: `application/release_test.go`
+- Modify: `application/release.go`
+- Modify: `application/release_test.go`
 - Modify: `application/port/operational.go`
 
 **Interfaces:**
@@ -702,22 +738,27 @@ build the snapshot from the same bytes. Wrap errors by stage:
 
 - [ ] **Step 4: Write failing release coordinator tests**
 
-Define:
+Extend the constructor-injected predecessor service instead of redefining it
+with exported dependency fields:
 
 ```go
-type ReleaseService struct {
-	Releases     port.ReleaseReader
-	UnitOfWork   port.UnitOfWork
-	Docs         RevisionDocsService
-	Snapshots    port.ContractSnapshotBuilder
-	RepoPolicies RepositoryPolicyReader
-	Clock         port.Clock
+type ReleaseDependencies struct {
+	Releases      port.ReleaseReader
+	UnitOfWork    port.UnitOfWork
+	Docs          RevisionDocsService
+	RepoPolicies  RepositoryPolicyReader
+	Clock          port.Clock
 	EngineVersion string
 }
 
-func (s ReleaseService) ApplySyncResult(context.Context, domain.SyncResult) error
-func (s ReleaseService) Promote(context.Context, string, string, string, string) error
+func NewReleaseService(ReleaseDependencies) (*ReleaseService, error)
+func (s *ReleaseService) ApplySyncResult(context.Context, domain.SyncResult) error
+func (s *ReleaseService) Promote(context.Context, string, string, string, string) error
 ```
+
+Preserve `ReleaseService.Coordinate` as the narrow transactional compatibility
+entry point until all predecessor call sites and external fixtures use the
+richer methods. Keep its review-evidence and replay tests green.
 
 Tests must prove:
 
@@ -744,7 +785,9 @@ Run:
 go test ./application -run 'TestReleaseService' -count=1
 ```
 
-Expected: compile failure because the coordinator does not exist.
+Expected: compile failures for `ApplySyncResult`, `Promote`, and their added
+dependencies, plus behavior failures for multi-track evaluation. The basic
+`ReleaseService.Coordinate` predecessor already exists.
 
 - [ ] **Step 6: Implement review-first, generation-checked coordination**
 
