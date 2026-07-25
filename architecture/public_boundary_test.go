@@ -41,6 +41,9 @@ func TestDomainImportsOnlyStandardLibrary(t *testing.T) {
 }
 
 func TestApplicationDependencyDirection(t *testing.T) {
+	if !hasProductionGoFiles(t, filepath.Join(repositoryRoot(t), "application")) {
+		return
+	}
 	allowed := map[string]bool{
 		modulePath + "/application":      true,
 		modulePath + "/application/port": true,
@@ -75,6 +78,10 @@ func TestPortAndContracttestDependencyDirection(t *testing.T) {
 			},
 		},
 	} {
+		relative := strings.TrimPrefix(target.path, modulePath+"/")
+		if !hasProductionGoFiles(t, filepath.Join(repositoryRoot(t), filepath.FromSlash(relative))) {
+			continue
+		}
 		for _, dependency := range packageDependencies(t, target.path) {
 			if dependency.Standard || target.allowed[dependency.ImportPath] {
 				continue
@@ -82,6 +89,20 @@ func TestPortAndContracttestDependencyDirection(t *testing.T) {
 			t.Errorf("%s depends on forbidden package %q", target.path, dependency.ImportPath)
 		}
 	}
+}
+
+func hasProductionGoFiles(t *testing.T, dir string) bool {
+	t.Helper()
+	matches, err := filepath.Glob(filepath.Join(dir, "*.go"))
+	if err != nil {
+		t.Fatalf("list Go files in %s: %v", dir, err)
+	}
+	for _, match := range matches {
+		if !strings.HasSuffix(match, "_test.go") {
+			return true
+		}
+	}
+	return false
 }
 
 func packageDependencies(t *testing.T, packagePath string) []listedPackage {

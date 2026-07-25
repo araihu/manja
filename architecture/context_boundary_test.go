@@ -45,6 +45,9 @@ func checkPortInterfaces(t *testing.T, dir string) {
 
 func checkApplicationMethods(t *testing.T, dir string) {
 	t.Helper()
+	if !hasProductionGoFiles(t, dir) {
+		return
+	}
 	files := parseDirectory(t, dir)
 	for _, file := range files {
 		for _, declaration := range file.Decls {

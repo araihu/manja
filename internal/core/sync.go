@@ -9,11 +9,6 @@ import (
 	"time"
 )
 
-const (
-	SyncResultSuccess = "success"
-	SyncResultFailure = "failure"
-)
-
 type SyncRequest struct {
 	ProjectID string
 	SourceID  string
@@ -25,21 +20,6 @@ type SyncResult struct {
 	Revision Revision
 	Index    SpecIndex
 	Record   SyncRecord
-}
-
-type SyncRecord struct {
-	ID           string
-	ProjectID    string
-	SourceID     string
-	RevisionID   string
-	Trigger      string
-	Ref          string
-	CommitSHA    string
-	SpecPath     string
-	Result       string
-	ErrorSummary string
-	StartedAt    time.Time
-	FinishedAt   time.Time
 }
 
 type Syncer struct {
@@ -74,7 +54,7 @@ func (s Syncer) Sync(ctx context.Context, req SyncRequest) (SyncResult, error) {
 	}
 
 	spec, rev, err := s.Source.Fetch(ctx)
-	record = record.withSpec(spec, rev)
+	record = syncRecordWithSpec(record, spec, rev)
 	if record.SourceID == "" {
 		record.SourceID = req.SourceID
 	}
@@ -90,18 +70,18 @@ func (s Syncer) Sync(ctx context.Context, req SyncRequest) (SyncResult, error) {
 
 	idx, err := s.Parser.Parse(ctx, spec, rev)
 	if err != nil {
-		record = record.withSpec(spec, rev)
+		record = syncRecordWithSpec(record, spec, rev)
 		return s.fail(ctx, record, err)
 	}
 	idx.ProjectID = req.ProjectID
 	idx.RevisionID = rev.ID
 
 	if err := s.Blobs.Put(ctx, SpecBlobKey(rev, spec), spec.Bytes); err != nil {
-		record = record.withSpec(spec, rev)
+		record = syncRecordWithSpec(record, spec, rev)
 		return s.fail(ctx, record, err)
 	}
 	if err := s.Store.SaveRevision(ctx, rev); err != nil {
-		record = record.withSpec(spec, rev)
+		record = syncRecordWithSpec(record, spec, rev)
 		return s.fail(ctx, record, err)
 	}
 	if s.Cache != nil {
@@ -109,7 +89,7 @@ func (s Syncer) Sync(ctx context.Context, req SyncRequest) (SyncResult, error) {
 		s.Cache.Delete("search:" + req.ProjectID + ":" + rev.ID)
 	}
 
-	record = record.withSpec(spec, rev)
+	record = syncRecordWithSpec(record, spec, rev)
 	record.Result = SyncResultSuccess
 	record.FinishedAt = s.now()
 	if err := s.Store.SaveSyncRecord(ctx, record); err != nil {
@@ -135,7 +115,7 @@ func (s Syncer) now() time.Time {
 	return time.Now().UTC()
 }
 
-func (r SyncRecord) withSpec(spec SpecFile, rev Revision) SyncRecord {
+func syncRecordWithSpec(r SyncRecord, spec SpecFile, rev Revision) SyncRecord {
 	r.SpecPath = spec.Path
 	r.RevisionID = rev.ID
 	r.Ref = rev.Ref

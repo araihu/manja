@@ -62,6 +62,7 @@ type ReleaseTrack = domain.ReleaseTrack
 type ContractReview = domain.ContractReview
 type AuditEvent = domain.AuditEvent
 type OutboxMessage = domain.OutboxMessage
+type SyncRecord = domain.SyncRecord
 
 const (
 	SpecChangeAdditive                = domain.SpecChangeAdditive
@@ -90,6 +91,8 @@ const (
 	ComparisonReleaseImpact           = domain.ComparisonReleaseImpact
 	ReleaseModePinned                 = domain.ReleaseModePinned
 	ReleaseModeFollowing              = domain.ReleaseModeFollowing
+	SyncResultSuccess                 = domain.SyncResultSuccess
+	SyncResultFailure                 = domain.SyncResultFailure
 )
 
 var NewContractSnapshot = domain.NewContractSnapshot

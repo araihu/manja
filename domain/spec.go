@@ -10,6 +10,7 @@ type SpecFile struct {
 type ContractRevision struct {
 	ID          string
 	SourceID    string
+	SpecBlobKey string `json:"specBlobKey,omitempty"`
 	Ref         string
 	CommitSHA   string
 	Version     string
