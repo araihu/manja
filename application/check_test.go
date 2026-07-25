@@ -1,4 +1,4 @@
-package app
+package application
 
 import (
 	"context"
@@ -8,8 +8,20 @@ import (
 	"testing"
 	"time"
 
-	"github.com/araihu/manja/internal/core"
+	core "github.com/araihu/manja/domain"
 )
+
+func TestNewCheckServiceRejectsMissingDependencies(t *testing.T) {
+	for _, deps := range []CheckDependencies{
+		{},
+		{Inputs: &checkInputLoaderFake{}},
+		{Snapshots: &checkSnapshotBuilderFake{}},
+	} {
+		if _, err := NewCheckService(deps); err == nil {
+			t.Fatalf("NewCheckService(%#v) succeeded, want error", deps)
+		}
+	}
+}
 
 func TestCheckServiceLoadsBuildsAndEvaluatesAllInputs(t *testing.T) {
 	targetLocator := core.ReviewInputLocator{File: "target.yaml"}

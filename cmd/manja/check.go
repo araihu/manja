@@ -8,12 +8,12 @@ import (
 	"strings"
 	"time"
 
+	"github.com/araihu/manja/application"
+	"github.com/araihu/manja/domain"
 	configadapter "github.com/araihu/manja/internal/adapters/config"
 	openapiadapter "github.com/araihu/manja/internal/adapters/openapi"
 	"github.com/araihu/manja/internal/adapters/reviewformat"
 	"github.com/araihu/manja/internal/adapters/reviewinput"
-	"github.com/araihu/manja/internal/app"
-	"github.com/araihu/manja/internal/core"
 )
 
 var version = "dev"
@@ -23,9 +23,9 @@ type checkConfig struct {
 	ContractID    string
 	PolicyName    string
 	RepoDir       string
-	Target        core.ReviewInputLocator
-	Candidate     core.ReviewInputLocator
-	Release       *core.ReviewInputLocator
+	Target        domain.ReviewInputLocator
+	Candidate     domain.ReviewInputLocator
+	Release       *domain.ReviewInputLocator
 	Format        string
 	EvaluatedAt   time.Time
 	HasEvaluation bool
@@ -49,7 +49,7 @@ func runCheck(ctx context.Context, args []string, stdout, stderr io.Writer) int 
 	if err != nil {
 		return writeCheckError(stderr, err)
 	}
-	policy, err := core.MergePolicy(layer)
+	policy, err := domain.MergePolicy(layer)
 	if err != nil {
 		return writeCheckError(stderr, fmt.Errorf("merge policy: %w", err))
 	}
@@ -58,11 +58,14 @@ func runCheck(ctx context.Context, args []string, stdout, stderr io.Writer) int 
 	if !cfg.HasEvaluation {
 		evaluatedAt = time.Now().UTC()
 	}
-	service := app.CheckService{
+	service, err := application.NewCheckService(application.CheckDependencies{
 		Inputs:    reviewinput.Loader{RepoDir: cfg.RepoDir},
 		Snapshots: openapiadapter.SnapshotBuilder{},
+	})
+	if err != nil {
+		return writeCheckError(stderr, err)
 	}
-	report, err := service.Run(ctx, app.CheckRequest{
+	report, err := service.Run(ctx, application.CheckRequest{
 		ContractID:    cfg.ContractID,
 		SpecPath:      contract.Spec,
 		Target:        cfg.Target,
@@ -78,7 +81,7 @@ func runCheck(ctx context.Context, args []string, stdout, stderr io.Writer) int 
 	if err := reviewformat.Write(stdout, cfg.Format, report); err != nil {
 		return writeCheckError(stderr, fmt.Errorf("write report: %w", err))
 	}
-	if report.Verdict == core.VerdictFail {
+	if report.Verdict == domain.VerdictFail {
 		return 1
 	}
 	return 0
@@ -150,21 +153,21 @@ func checkConfigFromArgs(args []string) (checkConfig, error) {
 	}, nil
 }
 
-func requiredCheckLocator(role, file, ref string) (core.ReviewInputLocator, error) {
+func requiredCheckLocator(role, file, ref string) (domain.ReviewInputLocator, error) {
 	if strings.TrimSpace(file) != "" && strings.TrimSpace(ref) != "" {
-		return core.ReviewInputLocator{}, fmt.Errorf("%s must set exactly one of --%s-file or --%s-ref", role, role, role)
+		return domain.ReviewInputLocator{}, fmt.Errorf("%s must set exactly one of --%s-file or --%s-ref", role, role, role)
 	}
 	locator, present, err := checkLocator(role, file, ref)
 	if err != nil {
-		return core.ReviewInputLocator{}, err
+		return domain.ReviewInputLocator{}, err
 	}
 	if !present {
-		return core.ReviewInputLocator{}, fmt.Errorf("%s must set exactly one of --%s-file or --%s-ref", role, role, role)
+		return domain.ReviewInputLocator{}, fmt.Errorf("%s must set exactly one of --%s-file or --%s-ref", role, role, role)
 	}
 	return locator, nil
 }
 
-func optionalCheckLocator(role, file, ref string) (*core.ReviewInputLocator, error) {
+func optionalCheckLocator(role, file, ref string) (*domain.ReviewInputLocator, error) {
 	locator, present, err := checkLocator(role, file, ref)
 	if err != nil {
 		return nil, err
@@ -175,19 +178,19 @@ func optionalCheckLocator(role, file, ref string) (*core.ReviewInputLocator, err
 	return &locator, nil
 }
 
-func checkLocator(role, file, ref string) (core.ReviewInputLocator, bool, error) {
+func checkLocator(role, file, ref string) (domain.ReviewInputLocator, bool, error) {
 	hasFile := strings.TrimSpace(file) != ""
 	hasRef := strings.TrimSpace(ref) != ""
 	if hasFile && hasRef {
-		return core.ReviewInputLocator{}, false, fmt.Errorf("%s must set at most one of --%s-file or --%s-ref", role, role, role)
+		return domain.ReviewInputLocator{}, false, fmt.Errorf("%s must set at most one of --%s-file or --%s-ref", role, role, role)
 	}
 	if hasFile {
-		return core.ReviewInputLocator{File: file}, true, nil
+		return domain.ReviewInputLocator{File: file}, true, nil
 	}
 	if hasRef {
-		return core.ReviewInputLocator{GitRef: ref}, true, nil
+		return domain.ReviewInputLocator{GitRef: ref}, true, nil
 	}
-	return core.ReviewInputLocator{}, false, nil
+	return domain.ReviewInputLocator{}, false, nil
 }
 
 func writeCheckError(stderr io.Writer, err error) int {

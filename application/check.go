@@ -1,4 +1,4 @@
-package app
+package application
 
 import (
 	"context"
@@ -6,51 +6,67 @@ import (
 	"strings"
 	"time"
 
-	"github.com/araihu/manja/internal/core"
+	"github.com/araihu/manja/application/port"
+	"github.com/araihu/manja/domain"
 )
 
 // CheckRequest identifies the repository contract inputs for one offline review.
 type CheckRequest struct {
 	ContractID    string
 	SpecPath      string
-	Target        core.ReviewInputLocator
-	Candidate     core.ReviewInputLocator
-	Release       *core.ReviewInputLocator
-	Policy        core.EffectivePolicy
+	Target        domain.ReviewInputLocator
+	Candidate     domain.ReviewInputLocator
+	Release       *domain.ReviewInputLocator
+	Policy        domain.EffectivePolicy
 	EvaluatedAt   time.Time
 	EngineVersion string
 }
 
 // CheckService loads, snapshots, and evaluates contract review inputs.
 type CheckService struct {
-	Inputs    core.ReviewInputLoader
-	Snapshots core.ContractSnapshotBuilder
+	Inputs    port.ReviewInputLoader
+	Snapshots port.ContractSnapshotBuilder
+}
+
+type CheckDependencies struct {
+	Inputs    port.ReviewInputLoader
+	Snapshots port.ContractSnapshotBuilder
+}
+
+func NewCheckService(dependencies CheckDependencies) (*CheckService, error) {
+	if dependencies.Inputs == nil {
+		return nil, dependencyError("construct check service", "input loader is required")
+	}
+	if dependencies.Snapshots == nil {
+		return nil, dependencyError("construct check service", "snapshot builder is required")
+	}
+	return &CheckService{Inputs: dependencies.Inputs, Snapshots: dependencies.Snapshots}, nil
 }
 
 // Run performs one offline contract review.
-func (s CheckService) Run(ctx context.Context, request CheckRequest) (core.ReviewReport, error) {
+func (s CheckService) Run(ctx context.Context, request CheckRequest) (domain.ReviewReport, error) {
 	if err := s.validate(request); err != nil {
-		return core.ReviewReport{}, err
+		return domain.ReviewReport{}, err
 	}
 
 	target, err := s.loadSnapshot(ctx, request, "target", request.Target)
 	if err != nil {
-		return core.ReviewReport{}, err
+		return domain.ReviewReport{}, err
 	}
 	candidate, err := s.loadSnapshot(ctx, request, "candidate", request.Candidate)
 	if err != nil {
-		return core.ReviewReport{}, err
+		return domain.ReviewReport{}, err
 	}
-	var release *core.ContractSnapshot
+	var release *domain.ContractSnapshot
 	if request.Release != nil {
 		snapshot, err := s.loadSnapshot(ctx, request, "release", *request.Release)
 		if err != nil {
-			return core.ReviewReport{}, err
+			return domain.ReviewReport{}, err
 		}
 		release = &snapshot
 	}
 
-	report, err := core.EvaluateReview(core.ReviewRequest{
+	report, err := domain.EvaluateReview(domain.ReviewRequest{
 		ContractID:    request.ContractID,
 		Target:        target,
 		Candidate:     candidate,
@@ -60,7 +76,7 @@ func (s CheckService) Run(ctx context.Context, request CheckRequest) (core.Revie
 		EngineVersion: request.EngineVersion,
 	})
 	if err != nil {
-		return core.ReviewReport{}, fmt.Errorf("evaluate review: %w", err)
+		return domain.ReviewReport{}, wrapError(ErrorEvaluation, "evaluate review", err)
 	}
 	return report, nil
 }
@@ -101,7 +117,7 @@ func (s CheckService) validate(request CheckRequest) error {
 	return nil
 }
 
-func validateCheckLocator(role string, locator core.ReviewInputLocator) error {
+func validateCheckLocator(role string, locator domain.ReviewInputLocator) error {
 	hasFile := strings.TrimSpace(locator.File) != ""
 	hasRef := strings.TrimSpace(locator.GitRef) != ""
 	if !hasFile && !hasRef {
@@ -117,15 +133,15 @@ func (s CheckService) loadSnapshot(
 	ctx context.Context,
 	request CheckRequest,
 	role string,
-	locator core.ReviewInputLocator,
-) (core.ContractSnapshot, error) {
+	locator domain.ReviewInputLocator,
+) (domain.ContractSnapshot, error) {
 	file, revision, err := s.Inputs.Load(ctx, request.SpecPath, locator)
 	if err != nil {
-		return core.ContractSnapshot{}, fmt.Errorf("load %s: %w", role, err)
+		return domain.ContractSnapshot{}, wrapError(ErrorInput, "load "+role, err)
 	}
 	snapshot, err := s.Snapshots.Build(ctx, request.ContractID, file, revision)
 	if err != nil {
-		return core.ContractSnapshot{}, fmt.Errorf("build %s: %w", role, err)
+		return domain.ContractSnapshot{}, wrapError(ErrorEvaluation, "build "+role, err)
 	}
 	return snapshot, nil
 }
