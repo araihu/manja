@@ -2,6 +2,24 @@ package core
 
 import "testing"
 
+func TestDiffContractSnapshotsUsesStableRuleAndFindingIDs(t *testing.T) {
+	baseline := NewContractSnapshot("payments", "base", []byte("base"), SpecIndex{
+		Operations: []Operation{{Method: "GET", Path: "/payments"}},
+	})
+	candidate := NewContractSnapshot("payments", "head", []byte("head"), SpecIndex{})
+
+	first := DiffContractSnapshots(baseline, candidate)
+	second := DiffContractSnapshots(baseline, candidate)
+
+	change := first.BreakingChanges[0]
+	if change.RuleID != RuleOperationRemoved {
+		t.Fatalf("rule = %q", change.RuleID)
+	}
+	if change.ID == "" || change.ID != second.BreakingChanges[0].ID {
+		t.Fatalf("finding ids are not stable: %#v %#v", first, second)
+	}
+}
+
 func TestDiffSpecIndexesFlagsBreakingAndAdditiveContractChanges(t *testing.T) {
 	baseline := SpecIndex{
 		RevisionID: "rev-live",
