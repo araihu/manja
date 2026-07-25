@@ -71,6 +71,7 @@ Build the binary first so the shell receives Manja's exact `0`, `1`, or `2`
 status:
 
 ```bash
+mkdir -p ./bin
 go build -o ./bin/manja ./cmd/manja
 ```
 
