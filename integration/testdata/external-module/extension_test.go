@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
+	"sync"
 	"testing"
 	"time"
 
@@ -50,9 +51,9 @@ func TestUnrelatedModuleExecutesReviewAndSync(t *testing.T) {
 		t.Fatalf("review verdict = %q, want pass", report.Verdict)
 	}
 
-	operational := newMemoryOperationalStore()
-	uow := &memoryUnitOfWork{store: operational}
 	blobs := newMemoryBlobStore()
+	operational := newMemoryOperationalStore()
+	uow := &memoryUnitOfWork{store: operational, blobs: blobs}
 	source := &memorySource{}
 	parser := &memoryParser{}
 	clock := &fixedClock{now: time.Date(2026, 7, 25, 13, 0, 0, 0, time.UTC)}
@@ -94,7 +95,7 @@ func TestUnrelatedModuleExecutesReviewAndSync(t *testing.T) {
 
 func TestPublicContractSuitesAreUsableByUnrelatedModule(t *testing.T) {
 	contracttest.UnitOfWork(t, func(testing.TB) port.UnitOfWork {
-		return &memoryUnitOfWork{store: newMemoryOperationalStore()}
+		return &memoryUnitOfWork{store: newMemoryOperationalStore(), blobs: newMemoryBlobStore()}
 	})
 	contracttest.BlobStore(t, func(testing.TB) port.BlobStore {
 		return newMemoryBlobStore()
@@ -167,6 +168,9 @@ func newMemoryBlobStore() *memoryBlobStore {
 
 func (s *memoryBlobStore) Put(ctx context.Context, data []byte) (port.BlobKey, error) {
 	s.ctx = ctx
+	if err := ctx.Err(); err != nil {
+		return "", err
+	}
 	sum := sha256.Sum256(data)
 	key := port.BlobKey("sha256:" + hex.EncodeToString(sum[:]))
 	s.blobs[key] = append([]byte(nil), data...)
@@ -175,6 +179,9 @@ func (s *memoryBlobStore) Put(ctx context.Context, data []byte) (port.BlobKey, e
 
 func (s *memoryBlobStore) Get(ctx context.Context, key port.BlobKey) ([]byte, error) {
 	s.ctx = ctx
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	data, ok := s.blobs[key]
 	if !ok {
 		return nil, errors.New("blob not found")
@@ -184,14 +191,26 @@ func (s *memoryBlobStore) Get(ctx context.Context, key port.BlobKey) ([]byte, er
 
 type memoryUnitOfWork struct {
 	ctx   context.Context
+	mu    sync.Mutex
 	store *memoryOperationalStore
+	blobs *memoryBlobStore
 }
 
 func (u *memoryUnitOfWork) Within(ctx context.Context, fn func(context.Context, port.OperationalStore) error) error {
+	u.mu.Lock()
+	defer u.mu.Unlock()
 	u.ctx = ctx
 	staged := u.store.clone()
 	if err := fn(ctx, staged); err != nil {
 		return err
+	}
+	for _, revision := range staged.revisions {
+		if revision.SpecBlobKey == "" {
+			continue
+		}
+		if _, ok := u.blobs.blobs[port.BlobKey(revision.SpecBlobKey)]; !ok {
+			return errors.New("revision references missing blob")
+		}
 	}
 	*u.store = *staged
 	return nil

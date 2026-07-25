@@ -9,8 +9,18 @@ import (
 	"time"
 
 	"github.com/araihu/manja/application/port"
+	"github.com/araihu/manja/contracttest"
 	core "github.com/araihu/manja/domain"
 )
+
+func TestFileStorePublicContracts(t *testing.T) {
+	contracttest.UnitOfWork(t, func(t testing.TB) port.UnitOfWork {
+		return NewFileStore(t.TempDir())
+	})
+	contracttest.BlobStore(t, func(t testing.TB) port.BlobStore {
+		return NewFileStore(t.TempDir())
+	})
+}
 
 func TestFileStoreUnitOfWorkRollsBackEveryOperationalMutation(t *testing.T) {
 	ctx := context.Background()

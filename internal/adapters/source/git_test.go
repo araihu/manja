@@ -2,12 +2,39 @@ package source
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/araihu/manja/contracttest"
+	"github.com/araihu/manja/domain"
 )
+
+func TestGitSourcePublicContract(t *testing.T) {
+	contracttest.SourceFetcher(t, func(t testing.TB) contracttest.SourceFixture {
+		repo := initGitRepo(t)
+		const specPath = "docs/openapi.yaml"
+		data := []byte("openapi: 3.1.0\ninfo:\n  title: Contract\n  version: v1\npaths: {}\n")
+		writeGitFile(t, repo, specPath, string(data))
+		commit := gitTestOutput(t, repo, "rev-parse", "HEAD")
+		digest := sha256.Sum256([]byte(commit + ":" + specPath))
+		return contracttest.SourceFixture{
+			Fetcher:  Git{Repo: repo, Ref: "HEAD", Path: specPath},
+			WantSpec: domain.SpecFile{SourceID: repo, Path: specPath, Format: "yaml", Bytes: data},
+			WantRevision: domain.ContractRevision{
+				ID: "git-" + hex.EncodeToString(digest[:])[:16], SourceID: repo, Ref: "HEAD", CommitSHA: commit,
+				AuthorName: "Manja Test", AuthorEmail: "manja@example.test", Message: "add spec",
+			},
+			WantCandidates: []domain.RevisionCandidate{
+				{SourceID: repo, Ref: "main", Kind: "branch", CommitSHA: commit, AuthorName: "Manja Test", AuthorEmail: "manja@example.test", Message: "add spec"},
+			},
+		}
+	})
+}
 
 func TestGitSourceFetchesSpecAtRef(t *testing.T) {
 	repo := initGitRepo(t)
@@ -214,7 +241,7 @@ func TestGitSourceDiscoversRemoteBranchesFromClonedRepository(t *testing.T) {
 	}
 }
 
-func initGitRepo(t *testing.T) string {
+func initGitRepo(t testing.TB) string {
 	t.Helper()
 	repo := t.TempDir()
 	git(t, repo, "init", "-b", "main")
@@ -223,7 +250,7 @@ func initGitRepo(t *testing.T) string {
 	return repo
 }
 
-func writeGitFile(t *testing.T, repo, name, body string) {
+func writeGitFile(t testing.TB, repo, name, body string) {
 	t.Helper()
 	path := filepath.Join(repo, filepath.FromSlash(name))
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
@@ -236,12 +263,12 @@ func writeGitFile(t *testing.T, repo, name, body string) {
 	git(t, repo, "commit", "-m", "add spec")
 }
 
-func git(t *testing.T, repo string, args ...string) {
+func git(t testing.TB, repo string, args ...string) {
 	t.Helper()
 	_ = gitTestOutput(t, repo, args...)
 }
 
-func gitTestOutput(t *testing.T, repo string, args ...string) string {
+func gitTestOutput(t testing.TB, repo string, args ...string) string {
 	t.Helper()
 	cmd := exec.Command("git", args...)
 	cmd.Dir = repo
