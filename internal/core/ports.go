@@ -45,6 +45,15 @@ type ContractSnapshotBuilder interface {
 	Build(context.Context, string, SpecFile, Revision) (ContractSnapshot, error)
 }
 
+type ReviewInputLocator struct {
+	File   string
+	GitRef string
+}
+
+type ReviewInputLoader interface {
+	Load(context.Context, string, ReviewInputLocator) (SpecFile, Revision, error)
+}
+
 type MarkdownRenderer interface {
 	Render(context.Context, string) (MarkdownResult, error)
 }
