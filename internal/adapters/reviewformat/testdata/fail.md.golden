@@ -1,0 +1,30 @@
+# Contract review: payments
+
+- Engine: test
+- Evaluated at: 2026-07-25T12:00:00Z
+- Verdict: fail
+
+## Pull-request delta
+
+- Baseline: target
+- Candidate: head
+- Verdict: fail
+- Findings:
+  - `fail` `operation.removed` `GET /payments`: Endpoint exists in production docs but is missing from the candidate.
+- Applied exceptions:
+  - Reason: v2 migration
+    Author: api-team
+    Expires: 2026-07-26T00:00:00Z
+
+## Release impact
+
+- Baseline: release
+- Candidate: head
+- Verdict: fail
+- Findings:
+  - `fail` `operation.removed` `GET /payments`: Endpoint exists in production docs but is missing from the candidate.
+- Applied exceptions: none
+
+## Effective policy
+
+- Digest: policy-digest

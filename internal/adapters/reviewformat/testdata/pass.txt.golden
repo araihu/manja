@@ -1,0 +1,10 @@
+Contract: payments
+Engine: test
+Evaluated at: 2026-07-25T12:00:00Z
+Verdict: pass
+
+Pull-request delta (target -> head): pass
+  Findings: none
+  Applied exceptions: none
+
+Effective policy digest: policy-digest

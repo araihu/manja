@@ -1,0 +1,17 @@
+Contract: payments
+Engine: test
+Evaluated at: 2026-07-25T12:00:00Z
+Verdict: fail
+
+Pull-request delta (target -> head): fail
+  Findings:
+  - fail operation.removed GET /payments: Endpoint exists in production docs but is missing from the candidate.
+  Applied exceptions:
+  - reason: v2 migration; author: api-team; expires: 2026-07-26T00:00:00Z
+
+Release impact (release -> head): fail
+  Findings:
+  - fail operation.removed GET /payments: Endpoint exists in production docs but is missing from the candidate.
+  Applied exceptions: none
+
+Effective policy digest: policy-digest
