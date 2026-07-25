@@ -1,0 +1,16 @@
+version: 1
+contracts:
+  payments:
+    spec: internal/adapters/openapi/testdata/review/candidate.yaml
+    defaultPolicy: stable
+    policies:
+      stable:
+        requireReleaseBaseline: true
+        rules:
+          operation.removed: fail
+          schema.removed: warn
+        exceptions:
+          - finding: 4f6c9c3f
+            reason: Existing v1 client migration
+            author: api-platform
+            expires: 2026-08-31T23:59:59Z
