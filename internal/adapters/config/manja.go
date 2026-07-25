@@ -140,6 +140,9 @@ func (f File) validate() error {
 				return fmt.Errorf("contract %q: %w", id, err)
 			}
 		}
+		if _, err := contract.PolicyLayer(""); err != nil {
+			return fmt.Errorf("contract %q default policy: %w", id, err)
+		}
 	}
 	return nil
 }

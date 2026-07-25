@@ -157,16 +157,8 @@ func TestContractAndPolicySelectionRejectUnknownValues(t *testing.T) {
 	}
 
 	missingDefault := strings.Replace(validConfig, "defaultPolicy: stable", "defaultPolicy: unknown", 1)
-	loaded, err = Load(writeConfig(t, missingDefault))
-	if err != nil {
-		t.Fatal(err)
-	}
-	contract, err = loaded.Contract("payments")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := contract.PolicyLayer(""); err == nil {
-		t.Fatal("PolicyLayer succeeded for missing default profile")
+	if _, err := Load(writeConfig(t, missingDefault)); err == nil {
+		t.Fatal("Load succeeded for missing default profile")
 	}
 }
 
