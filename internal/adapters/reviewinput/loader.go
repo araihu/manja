@@ -2,6 +2,7 @@
 package reviewinput
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"fmt"
@@ -64,22 +65,30 @@ func (l Loader) loadGitRef(
 		return core.SpecFile{}, core.Revision{}, fmt.Errorf("unsafe git ref %q", ref)
 	}
 
-	commitOutput, err := exec.CommandContext(
-		ctx, "git", "-C", l.RepoDir, "rev-parse", "--verify", ref+"^{commit}",
-	).CombinedOutput()
+	commitOutput, diagnostic, err := gitCommandOutput(
+		ctx, l.RepoDir, "rev-parse", "--verify", "--end-of-options", ref+"^{commit}",
+	)
 	if err != nil {
 		return core.SpecFile{}, core.Revision{}, fmt.Errorf(
-			"resolve git ref %q: %w: %s", ref, err, strings.TrimSpace(string(commitOutput)),
+			"resolve git ref %q: %w: %s", ref, err, diagnostic,
 		)
+	}
+	if diagnostic != "" {
+		return core.SpecFile{}, core.Revision{}, fmt.Errorf("ambiguous git ref %q: %s", ref, diagnostic)
 	}
 	commit := strings.TrimSpace(string(commitOutput))
 
-	data, err := exec.CommandContext(
-		ctx, "git", "-C", l.RepoDir, "show", ref+":"+filepath.ToSlash(specPath),
-	).CombinedOutput()
+	data, diagnostic, err := gitCommandOutput(
+		ctx, l.RepoDir, "show", commit+":"+filepath.ToSlash(specPath),
+	)
 	if err != nil {
 		return core.SpecFile{}, core.Revision{}, fmt.Errorf(
-			"read git spec %q at %q: %w: %s", specPath, ref, err, strings.TrimSpace(string(data)),
+			"read git spec %q at %q: %w: %s", specPath, ref, err, diagnostic,
+		)
+	}
+	if diagnostic != "" {
+		return core.SpecFile{}, core.Revision{}, fmt.Errorf(
+			"read git spec %q at %q: unexpected git diagnostic: %s", specPath, ref, diagnostic,
 		)
 	}
 
@@ -92,6 +101,16 @@ func (l Loader) loadGitRef(
 			Ref:       ref,
 			CommitSHA: commit,
 		}, nil
+}
+
+func gitCommandOutput(ctx context.Context, repo string, args ...string) ([]byte, string, error) {
+	cmd := exec.CommandContext(ctx, "git", append([]string{"-C", repo}, args...)...)
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	err := cmd.Run()
+	return stdout.Bytes(), strings.TrimSpace(stderr.String()), err
 }
 
 func unsafeGitSpecPath(path string) bool {

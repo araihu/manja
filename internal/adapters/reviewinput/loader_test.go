@@ -49,6 +49,39 @@ func TestLoaderLoadsGitRefInput(t *testing.T) {
 	}
 }
 
+func TestLoaderRejectsAmbiguousGitRef(t *testing.T) {
+	repo, commit := initReviewInputGitRepo(t)
+	gitReviewInput(t, repo, "branch", "collision", commit)
+	gitReviewInput(t, repo, "tag", "collision", commit)
+
+	_, _, err := (Loader{RepoDir: repo}).Load(context.Background(), "docs/openapi.yaml",
+		core.ReviewInputLocator{GitRef: "collision"})
+	if err == nil || !strings.Contains(err.Error(), "ambiguous git ref") {
+		t.Fatalf("error = %v, want ambiguous git ref", err)
+	}
+}
+
+func TestLoaderReadsGitSpecFromResolvedCommitWhenRefMoves(t *testing.T) {
+	repo, resolvedCommit := initReviewInputGitRepo(t)
+	const movedSpec = "openapi: 3.1.0\ninfo:\n  title: Moved Ref API\n  version: v2\npaths: {}\n"
+	writeReviewInputGitSpec(t, repo, movedSpec, "move review spec")
+	movedCommit := gitReviewInput(t, repo, "rev-parse", "HEAD")
+	gitReviewInput(t, repo, "branch", "moving", resolvedCommit)
+	installMovingRefGitWrapper(t, movedCommit)
+
+	file, rev, err := (Loader{RepoDir: repo}).Load(context.Background(), "docs/openapi.yaml",
+		core.ReviewInputLocator{GitRef: "moving"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(file.Bytes) != yamlSpec {
+		t.Fatalf("spec bytes = %q, want bytes from resolved commit", file.Bytes)
+	}
+	if rev.ID != resolvedCommit || rev.CommitSHA != resolvedCommit || rev.Ref != "moving" {
+		t.Fatalf("revision = %#v, want resolved commit %q and ref moving", rev, resolvedCommit)
+	}
+}
+
 func TestLoaderInfersJSONFormat(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "candidate.json")
 	if err := os.WriteFile(path, []byte("{}\n"), 0o600); err != nil {
@@ -111,6 +144,12 @@ func TestLoaderRejectsInvalidInputs(t *testing.T) {
 			wantError: "resolve git ref",
 		},
 		{
+			name:      "missing Git tree spec",
+			specPath:  "docs/missing.yaml",
+			locator:   core.ReviewInputLocator{GitRef: "HEAD"},
+			wantError: "read git spec",
+		},
+		{
 			name:      "missing file",
 			specPath:  "docs/openapi.yaml",
 			locator:   core.ReviewInputLocator{File: missing},
@@ -134,16 +173,48 @@ func initReviewInputGitRepo(t *testing.T) (string, string) {
 	gitReviewInput(t, repo, "init")
 	gitReviewInput(t, repo, "config", "user.email", "manja@example.test")
 	gitReviewInput(t, repo, "config", "user.name", "Manja Test")
+	writeReviewInputGitSpec(t, repo, yamlSpec, "add review spec")
+	return repo, gitReviewInput(t, repo, "rev-parse", "HEAD")
+}
+
+func writeReviewInputGitSpec(t *testing.T, repo, body, message string) {
+	t.Helper()
 	path := filepath.Join(repo, "docs", "openapi.yaml")
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(path, []byte(yamlSpec), 0o600); err != nil {
+	if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	gitReviewInput(t, repo, "add", "docs/openapi.yaml")
-	gitReviewInput(t, repo, "commit", "-m", "add review spec")
-	return repo, gitReviewInput(t, repo, "rev-parse", "HEAD")
+	gitReviewInput(t, repo, "commit", "-m", message)
+}
+
+func installMovingRefGitWrapper(t *testing.T, movedCommit string) {
+	t.Helper()
+	realGit, err := exec.LookPath("git")
+	if err != nil {
+		t.Fatal(err)
+	}
+	wrapperDir := t.TempDir()
+	wrapperPath := filepath.Join(wrapperDir, "git")
+	const wrapper = `#!/bin/sh
+if [ "$3" = "rev-parse" ]; then
+  "$MANJA_TEST_REAL_GIT" "$@"
+  status=$?
+  if [ "$status" -eq 0 ]; then
+    "$MANJA_TEST_REAL_GIT" -C "$2" update-ref refs/heads/moving "$MANJA_TEST_MOVED_COMMIT"
+  fi
+  exit "$status"
+fi
+exec "$MANJA_TEST_REAL_GIT" "$@"
+`
+	if err := os.WriteFile(wrapperPath, []byte(wrapper), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("MANJA_TEST_REAL_GIT", realGit)
+	t.Setenv("MANJA_TEST_MOVED_COMMIT", movedCommit)
+	t.Setenv("PATH", wrapperDir+string(os.PathListSeparator)+os.Getenv("PATH"))
 }
 
 func gitReviewInput(t *testing.T, repo string, args ...string) string {
