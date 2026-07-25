@@ -6,6 +6,8 @@ import (
 	"time"
 )
 
+const policyTestFindingID = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+
 func TestMergePolicyInitializesRepositoryDefaults(t *testing.T) {
 	effective, err := MergePolicy(PolicyLayer{
 		Name:   "stable",
@@ -99,7 +101,7 @@ func TestMergePolicyRejectsMalformedException(t *testing.T) {
 		Name:   "stable",
 		Source: PolicySourceRepository,
 		Exceptions: []PolicyException{{
-			FindingID: "finding-1",
+			FindingID: policyTestFindingID,
 			RuleID:    RuleOperationRemoved,
 			Reason:    "migration",
 			Author:    "api-team",
@@ -112,14 +114,71 @@ func TestMergePolicyRejectsMalformedException(t *testing.T) {
 	}
 }
 
+func TestMergePolicyRejectsUnknownRuleIdentifiers(t *testing.T) {
+	expiresAt := time.Date(2026, 7, 26, 0, 0, 0, 0, time.UTC)
+	tests := []struct {
+		name  string
+		layer PolicyLayer
+	}{
+		{
+			name: "configured rule",
+			layer: PolicyLayer{
+				Name: "stable", Source: PolicySourceRepository,
+				Rules: map[string]RuleLevel{"operation.aded": RuleLevelFail},
+			},
+		},
+		{
+			name: "rule-scoped exception",
+			layer: PolicyLayer{
+				Name: "stable", Source: PolicySourceRepository,
+				Exceptions: []PolicyException{{
+					RuleID: "operation.aded", Reason: "typo", Author: "api-team",
+					ExpiresAt: expiresAt, Source: PolicySourceRepository,
+				}},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := MergePolicy(tt.layer)
+			if err == nil || !strings.Contains(err.Error(), "unknown rule") {
+				t.Fatalf("error = %v, want unknown rule", err)
+			}
+		})
+	}
+}
+
+func TestMergePolicyRejectsMalformedFindingExceptionIDs(t *testing.T) {
+	expiresAt := time.Date(2026, 7, 26, 0, 0, 0, 0, time.UTC)
+	for name, findingID := range map[string]string{
+		"truncated": "4f6c9c3f",
+		"uppercase": strings.Repeat("A", 64),
+		"non-hex":   strings.Repeat("a", 63) + "g",
+	} {
+		t.Run(name, func(t *testing.T) {
+			_, err := MergePolicy(PolicyLayer{
+				Name: "stable", Source: PolicySourceRepository,
+				Exceptions: []PolicyException{{
+					FindingID: findingID, Reason: "migration", Author: "api-team",
+					ExpiresAt: expiresAt, Source: PolicySourceRepository,
+				}},
+			})
+			if err == nil || !strings.Contains(err.Error(), "finding id") {
+				t.Fatalf("error = %v, want invalid finding id", err)
+			}
+		})
+	}
+}
+
 func TestEvaluateFindingsAppliesOnlySameLayerUnexpiredException(t *testing.T) {
 	now := time.Date(2026, 7, 25, 12, 0, 0, 0, time.UTC)
-	finding := SpecChange{ID: "finding-1", RuleID: RuleOperationRemoved, Severity: SpecChangeBreaking}
+	finding := SpecChange{ID: policyTestFindingID, RuleID: RuleOperationRemoved, Severity: SpecChangeBreaking}
 	repo := PolicyLayer{
 		Name: "stable", Source: PolicySourceRepository,
 		Rules: map[string]RuleLevel{RuleOperationRemoved: RuleLevelFail},
 		Exceptions: []PolicyException{{
-			FindingID: "finding-1", Reason: "v2 migration", Author: "api-team",
+			FindingID: policyTestFindingID, Reason: "v2 migration", Author: "api-team",
 			ExpiresAt: now.Add(time.Hour), Source: PolicySourceRepository,
 		}},
 	}
@@ -139,14 +198,14 @@ func TestEvaluateFindingsAppliesOnlySameLayerUnexpiredException(t *testing.T) {
 
 func TestEvaluateFindingsKeepsRepositoryFailureWhenServerExceptionApplies(t *testing.T) {
 	now := time.Date(2026, 7, 25, 12, 0, 0, 0, time.UTC)
-	finding := SpecChange{ID: "finding-1", RuleID: RuleOperationRemoved, Severity: SpecChangeBreaking}
+	finding := SpecChange{ID: policyTestFindingID, RuleID: RuleOperationRemoved, Severity: SpecChangeBreaking}
 	effective, err := MergePolicy(
 		PolicyLayer{Name: "stable", Source: PolicySourceRepository},
 		PolicyLayer{
 			Name: "public-v1", Source: PolicySourceServer,
 			Rules: map[string]RuleLevel{RuleOperationRemoved: RuleLevelFail},
 			Exceptions: []PolicyException{{
-				FindingID: "finding-1", Reason: "track migration", Author: "release-team",
+				FindingID: policyTestFindingID, Reason: "track migration", Author: "release-team",
 				ExpiresAt: now.Add(time.Hour), Source: PolicySourceServer,
 			}},
 		},
@@ -166,11 +225,11 @@ func TestEvaluateFindingsKeepsRepositoryFailureWhenServerExceptionApplies(t *tes
 
 func TestEvaluateFindingsRejectsExpiredExceptionAtEvaluationTime(t *testing.T) {
 	now := time.Date(2026, 7, 25, 12, 0, 0, 0, time.UTC)
-	finding := SpecChange{ID: "finding-1", RuleID: RuleOperationRemoved, Severity: SpecChangeBreaking}
+	finding := SpecChange{ID: policyTestFindingID, RuleID: RuleOperationRemoved, Severity: SpecChangeBreaking}
 	effective, err := MergePolicy(PolicyLayer{
 		Name: "stable", Source: PolicySourceRepository,
 		Exceptions: []PolicyException{{
-			FindingID: "finding-1", Reason: "expired migration", Author: "api-team",
+			FindingID: policyTestFindingID, Reason: "expired migration", Author: "api-team",
 			ExpiresAt: now, Source: PolicySourceRepository,
 		}},
 	})

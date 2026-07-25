@@ -43,22 +43,51 @@ type EffectivePolicy struct {
 }
 
 type FindingDecision struct {
-	Finding  SpecChange `json:"finding"`
-	Level    RuleLevel  `json:"level"`
-	Source   string     `json:"source"`
-	Excepted bool       `json:"excepted"`
+	Finding   SpecChange `json:"finding"`
+	Level     RuleLevel  `json:"level"`
+	Source    string     `json:"source"`
+	LayerName string     `json:"layerName"`
+	Excepted  bool       `json:"excepted"`
+}
+
+type PolicyExceptionDisposition struct {
+	LayerName   string          `json:"layerName"`
+	Disposition string          `json:"disposition"`
+	Exception   PolicyException `json:"exception"`
 }
 
 type PolicyResult struct {
-	Verdict           string            `json:"verdict"`
-	Decisions         []FindingDecision `json:"decisions"`
-	AppliedExceptions []PolicyException `json:"appliedExceptions,omitempty"`
+	Verdict               string                       `json:"verdict"`
+	Decisions             []FindingDecision            `json:"decisions"`
+	AppliedExceptions     []PolicyException            `json:"appliedExceptions,omitempty"`
+	ExceptionDispositions []PolicyExceptionDisposition `json:"exceptionDispositions,omitempty"`
 }
 
 const (
 	VerdictPass = "pass"
 	VerdictFail = "fail"
+
+	ExceptionDispositionApplied       = "applied"
+	ExceptionDispositionExpired       = "expired"
+	ExceptionDispositionNotApplicable = "not_applicable"
 )
+
+type supportedRule struct {
+	ID           string
+	DefaultLevel RuleLevel
+}
+
+var supportedRuleRegistry = []supportedRule{
+	{ID: RuleOperationRemoved, DefaultLevel: RuleLevelFail},
+	{ID: RuleOperationAdded, DefaultLevel: RuleLevelAllow},
+	{ID: RuleRequiredParameterAdded, DefaultLevel: RuleLevelFail},
+	{ID: RuleParameterBecameRequired, DefaultLevel: RuleLevelFail},
+	{ID: RuleRequestBodyBecameRequired, DefaultLevel: RuleLevelFail},
+	{ID: RuleResponseStatusRemoved, DefaultLevel: RuleLevelFail},
+	{ID: RuleResponseStatusAdded, DefaultLevel: RuleLevelAllow},
+	{ID: RuleSchemaRemoved, DefaultLevel: RuleLevelFail},
+	{ID: RuleSchemaAdded, DefaultLevel: RuleLevelAllow},
+}
 
 // MergePolicy composes one repository policy with zero or more server policies.
 // Server policy is monotonic: it can retain or increase repository severity,
@@ -104,6 +133,23 @@ func MergePolicy(layers ...PolicyLayer) (EffectivePolicy, error) {
 func EvaluateFindings(policy EffectivePolicy, findings []SpecChange, evaluatedAt time.Time) PolicyResult {
 	result := PolicyResult{Verdict: VerdictPass}
 	seenExceptions := map[policyExceptionReference]bool{}
+	dispositionIndexes := map[policyExceptionReference]int{}
+
+	for layerIndex, layer := range policy.Layers {
+		for exceptionIndex, exception := range layer.Exceptions {
+			disposition := ExceptionDispositionNotApplicable
+			if !evaluatedAt.Before(exception.ExpiresAt) {
+				disposition = ExceptionDispositionExpired
+			}
+			reference := policyExceptionReference{layer: layerIndex, exception: exceptionIndex}
+			dispositionIndexes[reference] = len(result.ExceptionDispositions)
+			result.ExceptionDispositions = append(result.ExceptionDispositions, PolicyExceptionDisposition{
+				LayerName:   layer.Name,
+				Disposition: disposition,
+				Exception:   clonePolicyException(exception),
+			})
+		}
+	}
 
 	for _, finding := range findings {
 		for layerIndex, layer := range policy.Layers {
@@ -114,19 +160,21 @@ func EvaluateFindings(policy EffectivePolicy, findings []SpecChange, evaluatedAt
 
 			matching := matchingExceptions(layer, finding, evaluatedAt)
 			decision := FindingDecision{
-				Finding:  finding,
-				Level:    level,
-				Source:   layer.Source,
-				Excepted: len(matching) > 0,
+				Finding:   finding,
+				Level:     level,
+				Source:    layer.Source,
+				LayerName: layer.Name,
+				Excepted:  len(matching) > 0,
 			}
 			result.Decisions = append(result.Decisions, decision)
 			for _, exceptionIndex := range matching {
 				reference := policyExceptionReference{layer: layerIndex, exception: exceptionIndex}
+				result.ExceptionDispositions[dispositionIndexes[reference]].Disposition = ExceptionDispositionApplied
 				if seenExceptions[reference] {
 					continue
 				}
 				seenExceptions[reference] = true
-				result.AppliedExceptions = append(result.AppliedExceptions, layer.Exceptions[exceptionIndex])
+				result.AppliedExceptions = append(result.AppliedExceptions, clonePolicyException(layer.Exceptions[exceptionIndex]))
 			}
 			if level == RuleLevelFail && !decision.Excepted {
 				result.Verdict = VerdictFail
@@ -160,6 +208,9 @@ func validateLayer(layer PolicyLayer) error {
 		if strings.TrimSpace(ruleID) == "" {
 			return fmt.Errorf("rule id is required")
 		}
+		if !isSupportedRuleID(ruleID) {
+			return fmt.Errorf("unknown rule %q", ruleID)
+		}
 		if !validRuleLevel(layer.Rules[ruleID]) {
 			return fmt.Errorf("rule %q has invalid level %q", ruleID, layer.Rules[ruleID])
 		}
@@ -178,6 +229,12 @@ func validatePolicyException(exception PolicyException, layerSource string) erro
 	if hasFindingID == hasRuleID {
 		return fmt.Errorf("exactly one finding id or rule id is required")
 	}
+	if hasFindingID && !isLowerSHA256(exception.FindingID) {
+		return fmt.Errorf("finding id must be exactly 64 lowercase hexadecimal characters")
+	}
+	if hasRuleID && !isSupportedRuleID(exception.RuleID) {
+		return fmt.Errorf("unknown rule %q", exception.RuleID)
+	}
 	if strings.TrimSpace(exception.Reason) == "" {
 		return fmt.Errorf("reason is required")
 	}
@@ -194,17 +251,20 @@ func validatePolicyException(exception PolicyException, layerSource string) erro
 }
 
 func repositoryDefaultRules() map[string]RuleLevel {
-	return map[string]RuleLevel{
-		RuleOperationRemoved:          RuleLevelFail,
-		RuleOperationAdded:            RuleLevelAllow,
-		RuleRequiredParameterAdded:    RuleLevelFail,
-		RuleParameterBecameRequired:   RuleLevelFail,
-		RuleRequestBodyBecameRequired: RuleLevelFail,
-		RuleResponseStatusRemoved:     RuleLevelFail,
-		RuleResponseStatusAdded:       RuleLevelAllow,
-		RuleSchemaRemoved:             RuleLevelFail,
-		RuleSchemaAdded:               RuleLevelAllow,
+	rules := make(map[string]RuleLevel, len(supportedRuleRegistry))
+	for _, rule := range supportedRuleRegistry {
+		rules[rule.ID] = rule.DefaultLevel
 	}
+	return rules
+}
+
+func isSupportedRuleID(ruleID string) bool {
+	for _, rule := range supportedRuleRegistry {
+		if rule.ID == ruleID {
+			return true
+		}
+	}
+	return false
 }
 
 func contributionLevel(layer PolicyLayer, finding SpecChange) (RuleLevel, bool) {
@@ -273,7 +333,16 @@ func clonePolicyLayer(layer PolicyLayer) PolicyLayer {
 	for ruleID, level := range layer.Rules {
 		cloned.Rules[ruleID] = level
 	}
-	cloned.Exceptions = append([]PolicyException(nil), layer.Exceptions...)
+	cloned.Exceptions = make([]PolicyException, len(layer.Exceptions))
+	for index, exception := range layer.Exceptions {
+		cloned.Exceptions[index] = clonePolicyException(exception)
+	}
+	return cloned
+}
+
+func clonePolicyException(exception PolicyException) PolicyException {
+	cloned := exception
+	cloned.ExpiresAt = exception.ExpiresAt.UTC()
 	return cloned
 }
 

@@ -33,16 +33,35 @@ type ComparisonReport struct {
 	Policy    PolicyResult `json:"policy"`
 }
 
+type EffectivePolicyProjection struct {
+	RequireReleaseBaseline bool                    `json:"requireReleaseBaseline"`
+	Layers                 []PolicyLayerProjection `json:"layers"`
+}
+
+type PolicyLayerProjection struct {
+	Name                   string                 `json:"name"`
+	Source                 string                 `json:"source"`
+	RequireReleaseBaseline bool                   `json:"requireReleaseBaseline"`
+	Rules                  []PolicyRuleProjection `json:"rules"`
+	Exceptions             []PolicyException      `json:"exceptions"`
+}
+
+type PolicyRuleProjection struct {
+	RuleID string    `json:"ruleId"`
+	Level  RuleLevel `json:"level"`
+}
+
 // ReviewReport is the map-free canonical output of an offline contract
 // compatibility review.
 type ReviewReport struct {
-	SchemaVersion string             `json:"schemaVersion"`
-	EngineVersion string             `json:"engineVersion"`
-	ContractID    string             `json:"contractId"`
-	EvaluatedAt   time.Time          `json:"evaluatedAt"`
-	PolicyDigest  string             `json:"policyDigest"`
-	Verdict       string             `json:"verdict"`
-	Comparisons   []ComparisonReport `json:"comparisons"`
+	SchemaVersion   string                    `json:"schemaVersion"`
+	EngineVersion   string                    `json:"engineVersion"`
+	ContractID      string                    `json:"contractId"`
+	EvaluatedAt     time.Time                 `json:"evaluatedAt"`
+	EffectivePolicy EffectivePolicyProjection `json:"effectivePolicy"`
+	PolicyDigest    string                    `json:"policyDigest"`
+	Verdict         string                    `json:"verdict"`
+	Comparisons     []ComparisonReport        `json:"comparisons"`
 }
 
 // ReviewRequest supplies the target baseline, candidate, and optional release
@@ -64,26 +83,52 @@ func EvaluateReview(request ReviewRequest) (ReviewReport, error) {
 		return ReviewReport{}, err
 	}
 
-	policy, policyDigest, err := canonicalReviewPolicy(request.Policy)
+	target, err := validateAndCloneContractSnapshot(request.Target)
+	if err != nil {
+		return ReviewReport{}, fmt.Errorf("validate target snapshot: %w", err)
+	}
+	candidate, err := validateAndCloneContractSnapshot(request.Candidate)
+	if err != nil {
+		return ReviewReport{}, fmt.Errorf("validate candidate snapshot: %w", err)
+	}
+	var release *ContractSnapshot
+	if request.Release != nil {
+		validated, err := validateAndCloneContractSnapshot(*request.Release)
+		if err != nil {
+			return ReviewReport{}, fmt.Errorf("validate release snapshot: %w", err)
+		}
+		release = &validated
+	}
+
+	effectivePolicy, err := normalizeEffectivePolicy(request.Policy)
+	if err != nil {
+		return ReviewReport{}, fmt.Errorf("validate effective policy: %w", err)
+	}
+	if effectivePolicy.RequireReleaseBaseline && release == nil {
+		return ReviewReport{}, fmt.Errorf("release baseline is required by policy")
+	}
+
+	policy, policyProjection, policyDigest, err := canonicalReviewPolicy(effectivePolicy)
 	if err != nil {
 		return ReviewReport{}, fmt.Errorf("canonicalize policy: %w", err)
 	}
 
 	evaluatedAt := request.EvaluatedAt.UTC()
 	report := ReviewReport{
-		SchemaVersion: ReviewSchemaVersion,
-		EngineVersion: request.EngineVersion,
-		ContractID:    request.ContractID,
-		EvaluatedAt:   evaluatedAt,
-		PolicyDigest:  policyDigest,
-		Verdict:       VerdictPass,
+		SchemaVersion:   ReviewSchemaVersion,
+		EngineVersion:   request.EngineVersion,
+		ContractID:      request.ContractID,
+		EvaluatedAt:     evaluatedAt,
+		EffectivePolicy: policyProjection,
+		PolicyDigest:    policyDigest,
+		Verdict:         VerdictPass,
 		Comparisons: []ComparisonReport{
-			evaluateComparison(ComparisonPullRequest, request.Target, request.Candidate, policy, evaluatedAt),
+			evaluateComparison(ComparisonPullRequest, target, candidate, policy, evaluatedAt),
 		},
 	}
-	if request.Release != nil {
+	if release != nil {
 		report.Comparisons = append(report.Comparisons,
-			evaluateComparison(ComparisonReleaseImpact, *request.Release, request.Candidate, policy, evaluatedAt),
+			evaluateComparison(ComparisonReleaseImpact, *release, candidate, policy, evaluatedAt),
 		)
 	}
 	for _, comparison := range report.Comparisons {
@@ -111,10 +156,22 @@ func validateReviewRequest(request ReviewRequest) error {
 	if strings.TrimSpace(request.EngineVersion) == "" {
 		return fmt.Errorf("engine version is required")
 	}
-	if request.Policy.RequireReleaseBaseline && request.Release == nil {
-		return fmt.Errorf("release baseline is required by policy")
-	}
 	return nil
+}
+
+func normalizeEffectivePolicy(policy EffectivePolicy) (EffectivePolicy, error) {
+	normalized, err := MergePolicy(policy.Layers...)
+	if err != nil {
+		return EffectivePolicy{}, err
+	}
+	if normalized.RequireReleaseBaseline != policy.RequireReleaseBaseline {
+		return EffectivePolicy{}, fmt.Errorf(
+			"release baseline aggregate %t does not match policy layers %t",
+			policy.RequireReleaseBaseline,
+			normalized.RequireReleaseBaseline,
+		)
+	}
+	return normalized, nil
 }
 
 func evaluateComparison(kind string, baseline, candidate ContractSnapshot, policy EffectivePolicy, evaluatedAt time.Time) ComparisonReport {
@@ -151,6 +208,9 @@ func sortPolicyResult(result *PolicyResult) {
 		if left.Source != right.Source {
 			return left.Source < right.Source
 		}
+		if left.LayerName != right.LayerName {
+			return left.LayerName < right.LayerName
+		}
 		if left.Level != right.Level {
 			return left.Level < right.Level
 		}
@@ -158,6 +218,19 @@ func sortPolicyResult(result *PolicyResult) {
 	})
 	sort.Slice(result.AppliedExceptions, func(i, j int) bool {
 		return comparePolicyExceptions(result.AppliedExceptions[i], result.AppliedExceptions[j]) < 0
+	})
+	sort.Slice(result.ExceptionDispositions, func(i, j int) bool {
+		left, right := result.ExceptionDispositions[i], result.ExceptionDispositions[j]
+		if left.Exception.Source != right.Exception.Source {
+			return left.Exception.Source < right.Exception.Source
+		}
+		if left.LayerName != right.LayerName {
+			return left.LayerName < right.LayerName
+		}
+		if comparison := comparePolicyExceptions(left.Exception, right.Exception); comparison != 0 {
+			return comparison < 0
+		}
+		return left.Disposition < right.Disposition
 	})
 }
 
@@ -186,74 +259,79 @@ func CanonicalReviewJSON(report ReviewReport) ([]byte, error) {
 	return json.Marshal(report)
 }
 
-type canonicalPolicy struct {
-	RequireReleaseBaseline bool                   `json:"requireReleaseBaseline"`
-	Layers                 []canonicalPolicyLayer `json:"layers"`
-}
-
-type canonicalPolicyLayer struct {
-	Name                   string                `json:"name"`
-	Source                 string                `json:"source"`
-	RequireReleaseBaseline bool                  `json:"requireReleaseBaseline"`
-	Rules                  []canonicalPolicyRule `json:"rules"`
-	Exceptions             []PolicyException     `json:"exceptions"`
-}
-
-type canonicalPolicyRule struct {
-	ID    string    `json:"id"`
-	Level RuleLevel `json:"level"`
-}
-
 type sortablePolicyLayer struct {
-	layer PolicyLayer
-	key   string
+	layer      PolicyLayer
+	projection PolicyLayerProjection
+	key        string
 }
 
-func canonicalReviewPolicy(policy EffectivePolicy) (EffectivePolicy, string, error) {
+func canonicalReviewPolicy(policy EffectivePolicy) (EffectivePolicy, EffectivePolicyProjection, string, error) {
 	sortedLayers := make([]sortablePolicyLayer, 0, len(policy.Layers))
 	for _, layer := range policy.Layers {
 		cloned := clonePolicyLayer(layer)
 		sort.Slice(cloned.Exceptions, func(i, j int) bool {
 			return comparePolicyExceptions(cloned.Exceptions[i], cloned.Exceptions[j]) < 0
 		})
-		canonicalLayer := canonicalizePolicyLayer(cloned)
-		encoded, err := json.Marshal(canonicalLayer)
+		projection := projectPolicyLayer(cloned)
+		encoded, err := json.Marshal(projection)
 		if err != nil {
-			return EffectivePolicy{}, "", err
+			return EffectivePolicy{}, EffectivePolicyProjection{}, "", err
 		}
-		sortedLayers = append(sortedLayers, sortablePolicyLayer{layer: cloned, key: string(encoded)})
+		sortedLayers = append(sortedLayers, sortablePolicyLayer{
+			layer:      cloned,
+			projection: projection,
+			key:        string(encoded),
+		})
 	}
 	sort.Slice(sortedLayers, func(i, j int) bool {
+		leftRank := policySourceRank(sortedLayers[i].layer.Source)
+		rightRank := policySourceRank(sortedLayers[j].layer.Source)
+		if leftRank != rightRank {
+			return leftRank < rightRank
+		}
+		if sortedLayers[i].layer.Name != sortedLayers[j].layer.Name {
+			return sortedLayers[i].layer.Name < sortedLayers[j].layer.Name
+		}
 		return sortedLayers[i].key < sortedLayers[j].key
 	})
 
 	normalized := EffectivePolicy{RequireReleaseBaseline: policy.RequireReleaseBaseline}
-	projection := canonicalPolicy{RequireReleaseBaseline: normalized.RequireReleaseBaseline}
+	projection := EffectivePolicyProjection{RequireReleaseBaseline: normalized.RequireReleaseBaseline}
 	for _, sorted := range sortedLayers {
 		normalized.Layers = append(normalized.Layers, sorted.layer)
-		projection.Layers = append(projection.Layers, canonicalizePolicyLayer(sorted.layer))
+		projection.Layers = append(projection.Layers, sorted.projection)
 	}
 	encoded, err := json.Marshal(projection)
 	if err != nil {
-		return EffectivePolicy{}, "", err
+		return EffectivePolicy{}, EffectivePolicyProjection{}, "", err
 	}
-	return normalized, sha256Hex(encoded), nil
+	return normalized, projection, sha256Hex(encoded), nil
 }
 
-func canonicalizePolicyLayer(layer PolicyLayer) canonicalPolicyLayer {
-	canonical := canonicalPolicyLayer{
+func projectPolicyLayer(layer PolicyLayer) PolicyLayerProjection {
+	projection := PolicyLayerProjection{
 		Name:                   layer.Name,
 		Source:                 layer.Source,
 		RequireReleaseBaseline: layer.RequireReleaseBaseline,
 		Exceptions:             append([]PolicyException(nil), layer.Exceptions...),
 	}
 	for _, ruleID := range sortedRuleIDs(layer.Rules) {
-		canonical.Rules = append(canonical.Rules, canonicalPolicyRule{ID: ruleID, Level: layer.Rules[ruleID]})
+		projection.Rules = append(projection.Rules, PolicyRuleProjection{
+			RuleID: ruleID,
+			Level:  layer.Rules[ruleID],
+		})
 	}
-	sort.Slice(canonical.Exceptions, func(i, j int) bool {
-		return comparePolicyExceptions(canonical.Exceptions[i], canonical.Exceptions[j]) < 0
+	sort.Slice(projection.Exceptions, func(i, j int) bool {
+		return comparePolicyExceptions(projection.Exceptions[i], projection.Exceptions[j]) < 0
 	})
-	return canonical
+	return projection
+}
+
+func policySourceRank(source string) int {
+	if source == PolicySourceRepository {
+		return 0
+	}
+	return 1
 }
 
 func comparePolicyExceptions(left, right PolicyException) int {

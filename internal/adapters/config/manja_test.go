@@ -10,6 +10,8 @@ import (
 	"github.com/araihu/manja/internal/core"
 )
 
+const configTestFindingID = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+
 const validConfig = `
 version: 1
 contracts:
@@ -23,7 +25,7 @@ contracts:
           operation.removed: fail
           schema.removed: warn
         exceptions:
-          - finding: 4f6c9c3f
+          - finding: ` + configTestFindingID + `
             reason: Existing v1 client migration
             author: api-platform
             expires: 2026-08-31T23:59:59Z
@@ -59,7 +61,7 @@ func TestLoadBuildsRepositoryPolicyLayer(t *testing.T) {
 	}
 	exception := layer.Exceptions[0]
 	wantExpiry := time.Date(2026, 8, 31, 23, 59, 59, 0, time.UTC)
-	if exception.FindingID != "4f6c9c3f" || exception.RuleID != "" || exception.ExpiresAt != wantExpiry || exception.ExpiresAt.Location() != time.UTC {
+	if exception.FindingID != configTestFindingID || exception.RuleID != "" || exception.ExpiresAt != wantExpiry || exception.ExpiresAt.Location() != time.UTC {
 		t.Fatalf("exception = %#v", exception)
 	}
 }
@@ -119,7 +121,7 @@ func TestLoadRejectsInvalidExceptionAndRuleLevel(t *testing.T) {
 	}{
 		{
 			name: "finding and rule",
-			data: strings.Replace(validConfig, "          - finding: 4f6c9c3f\n", "          - finding: 4f6c9c3f\n            rule: operation.removed\n", 1),
+			data: strings.Replace(validConfig, "          - finding: "+configTestFindingID+"\n", "          - finding: "+configTestFindingID+"\n            rule: operation.removed\n", 1),
 		},
 		{
 			name: "invalid level",
@@ -135,6 +137,47 @@ func TestLoadRejectsInvalidExceptionAndRuleLevel(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			if _, err := Load(writeConfig(t, tt.data)); err == nil {
 				t.Fatal("Load succeeded")
+			}
+		})
+	}
+}
+
+func TestLoadRejectsUnknownRuleIdentifiers(t *testing.T) {
+	tests := []struct {
+		name string
+		data string
+	}{
+		{
+			name: "configured rule",
+			data: strings.Replace(validConfig, "operation.removed: fail", "operation.aded: fail", 1),
+		},
+		{
+			name: "rule-scoped exception",
+			data: strings.Replace(validConfig, "finding: "+configTestFindingID, "rule: operation.aded", 1),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := Load(writeConfig(t, tt.data))
+			if err == nil || !strings.Contains(err.Error(), "unknown rule") {
+				t.Fatalf("Load error = %v, want unknown rule", err)
+			}
+		})
+	}
+}
+
+func TestLoadRejectsMalformedFindingExceptionIDs(t *testing.T) {
+	for name, findingID := range map[string]string{
+		"truncated": "4f6c9c3f",
+		"uppercase": strings.Repeat("A", 64),
+		"non-hex":   strings.Repeat("a", 63) + "g",
+	} {
+		t.Run(name, func(t *testing.T) {
+			data := strings.Replace(validConfig, configTestFindingID, findingID, 1)
+			_, err := Load(writeConfig(t, data))
+			if err == nil || !strings.Contains(err.Error(), "finding id") {
+				t.Fatalf("Load error = %v, want invalid finding id", err)
 			}
 		})
 	}

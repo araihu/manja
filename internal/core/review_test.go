@@ -2,6 +2,8 @@ package core
 
 import (
 	"bytes"
+	"encoding/json"
+	"strings"
 	"testing"
 	"time"
 )
@@ -85,6 +87,134 @@ func TestEvaluateReviewRejectsInvalidRequestMetadata(t *testing.T) {
 	}
 }
 
+func TestEvaluateReviewRejectsMalformedEffectivePolicy(t *testing.T) {
+	tests := []struct {
+		name        string
+		policy      EffectivePolicy
+		withRelease bool
+		want        string
+	}{
+		{
+			name: "server-only policy",
+			policy: EffectivePolicy{Layers: []PolicyLayer{{
+				Name: "public-v1", Source: PolicySourceServer,
+				Rules: map[string]RuleLevel{RuleOperationRemoved: RuleLevelFail},
+			}}},
+			want: "first policy layer must be repository",
+		},
+		{
+			name: "invalid level",
+			policy: EffectivePolicy{Layers: []PolicyLayer{{
+				Name: "stable", Source: PolicySourceRepository,
+				Rules: map[string]RuleLevel{RuleOperationRemoved: "block"},
+			}}},
+			want: "invalid level",
+		},
+		{
+			name: "false aggregate omits layer requirement",
+			policy: EffectivePolicy{Layers: []PolicyLayer{{
+				Name: "stable", Source: PolicySourceRepository, RequireReleaseBaseline: true,
+			}}},
+			want: "release baseline aggregate",
+		},
+		{
+			name: "true aggregate invents layer requirement",
+			policy: EffectivePolicy{
+				Layers: []PolicyLayer{{
+					Name: "stable", Source: PolicySourceRepository,
+				}},
+				RequireReleaseBaseline: true,
+			},
+			withRelease: true,
+			want:        "release baseline aggregate",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			request := reviewRequestForTest(tt.policy)
+			if tt.withRelease {
+				release := request.Target
+				request.Release = &release
+			}
+			_, err := EvaluateReview(request)
+			if err == nil || !strings.Contains(err.Error(), tt.want) {
+				t.Fatalf("EvaluateReview error = %v, want containing %q", err, tt.want)
+			}
+		})
+	}
+}
+
+func TestEvaluateReviewRejectsMalformedContractSnapshots(t *testing.T) {
+	policy, err := MergePolicy(PolicyLayer{Name: "stable", Source: PolicySourceRepository})
+	if err != nil {
+		t.Fatal(err)
+	}
+	valid := NewContractSnapshot("payments", "target", []byte("target"), SpecIndex{
+		Operations: []Operation{
+			{Method: "GET", Path: "/payments"},
+			{Method: "POST", Path: "/payments"},
+		},
+		Schemas: []Schema{{Name: "Error"}, {Name: "Payment"}},
+	})
+
+	tests := []struct {
+		name   string
+		mutate func(*ContractSnapshot)
+		want   string
+	}{
+		{
+			name: "missing revision identity",
+			mutate: func(snapshot *ContractSnapshot) {
+				snapshot.RevisionID = " "
+			},
+			want: "revision id",
+		},
+		{
+			name: "malformed spec digest",
+			mutate: func(snapshot *ContractSnapshot) {
+				snapshot.SpecDigest = strings.Repeat("A", 64)
+			},
+			want: "spec digest",
+		},
+		{
+			name: "stale contract digest",
+			mutate: func(snapshot *ContractSnapshot) {
+				snapshot.ContractDigest = strings.Repeat("0", 64)
+			},
+			want: "contract digest",
+		},
+		{
+			name: "non-normalized surface",
+			mutate: func(snapshot *ContractSnapshot) {
+				snapshot.Operations[0].Method = "get"
+			},
+			want: "normalized",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			target := valid
+			target.Operations = append([]ContractOperation(nil), valid.Operations...)
+			target.Schemas = append([]string(nil), valid.Schemas...)
+			tt.mutate(&target)
+			request := ReviewRequest{
+				ContractID:    "payments",
+				Target:        target,
+				Candidate:     valid,
+				Policy:        policy,
+				EvaluatedAt:   time.Date(2026, 7, 25, 12, 0, 0, 0, time.UTC),
+				EngineVersion: "test",
+			}
+			_, err := EvaluateReview(request)
+			if err == nil || !strings.Contains(err.Error(), tt.want) {
+				t.Fatalf("EvaluateReview error = %v, want containing %q", err, tt.want)
+			}
+		})
+	}
+}
+
 func TestCanonicalReviewJSONIsStable(t *testing.T) {
 	at := time.Date(2026, 7, 25, 12, 0, 0, 0, time.UTC)
 	policy, err := MergePolicy(
@@ -127,6 +257,167 @@ func TestCanonicalReviewJSONIsStable(t *testing.T) {
 	}
 	if report.PolicyDigest == "" {
 		t.Fatal("PolicyDigest is empty")
+	}
+}
+
+func TestEvaluateReviewReportsEffectivePolicyAndLayerProvenance(t *testing.T) {
+	at := time.Date(2026, 7, 25, 12, 0, 0, 0, time.UTC)
+	policy, err := MergePolicy(
+		PolicyLayer{Name: "stable", Source: PolicySourceRepository},
+		PolicyLayer{
+			Name: "public-v1", Source: PolicySourceServer,
+			Rules: map[string]RuleLevel{RuleOperationRemoved: RuleLevelFail},
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	report, err := EvaluateReview(ReviewRequest{
+		ContractID: "payments",
+		Target: NewContractSnapshot("payments", "target", []byte("target"), SpecIndex{
+			Operations: []Operation{{Method: "GET", Path: "/payments"}},
+		}),
+		Candidate:     NewContractSnapshot("payments", "head", []byte("head"), SpecIndex{}),
+		Policy:        policy,
+		EvaluatedAt:   at,
+		EngineVersion: "test",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(report.EffectivePolicy.Layers) != 2 {
+		t.Fatalf("effective policy = %#v", report.EffectivePolicy)
+	}
+	repository := report.EffectivePolicy.Layers[0]
+	server := report.EffectivePolicy.Layers[1]
+	if repository.Name != "stable" || repository.Source != PolicySourceRepository || len(repository.Rules) != len(supportedRuleRegistry) {
+		t.Fatalf("repository policy evidence = %#v", repository)
+	}
+	if server.Name != "public-v1" || server.Source != PolicySourceServer ||
+		len(server.Rules) != 1 || server.Rules[0].RuleID != RuleOperationRemoved || server.Rules[0].Level != RuleLevelFail {
+		t.Fatalf("server policy evidence = %#v", server)
+	}
+	decisionLayers := map[string]string{}
+	for _, decision := range report.Comparisons[0].Policy.Decisions {
+		decisionLayers[decision.Source] = decision.LayerName
+	}
+	if decisionLayers[PolicySourceRepository] != "stable" || decisionLayers[PolicySourceServer] != "public-v1" {
+		t.Fatalf("decision layer provenance = %#v", decisionLayers)
+	}
+	projectionJSON, err := json.Marshal(report.EffectivePolicy)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := sha256Hex(projectionJSON); report.PolicyDigest != want {
+		t.Fatalf("policy digest = %q, want digest of embedded projection %q", report.PolicyDigest, want)
+	}
+}
+
+func TestEvaluateReviewReportsExceptionDispositions(t *testing.T) {
+	at := time.Date(2026, 7, 25, 12, 0, 0, 0, time.UTC)
+	appliedID := stableFindingID(RuleOperationRemoved, "GET /payments")
+	unmatchedID := strings.Repeat("f", 64)
+	policy, err := MergePolicy(PolicyLayer{
+		Name: "stable", Source: PolicySourceRepository,
+		Exceptions: []PolicyException{
+			{
+				FindingID: appliedID, Reason: "applied", Author: "api-team",
+				ExpiresAt: at.Add(time.Hour), Source: PolicySourceRepository,
+			},
+			{
+				RuleID: RuleOperationRemoved, Reason: "expired", Author: "api-team",
+				ExpiresAt: at, Source: PolicySourceRepository,
+			},
+			{
+				FindingID: unmatchedID, Reason: "unmatched", Author: "api-team",
+				ExpiresAt: at.Add(time.Hour), Source: PolicySourceRepository,
+			},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	report, err := EvaluateReview(ReviewRequest{
+		ContractID: "payments",
+		Target: NewContractSnapshot("payments", "target", []byte("target"), SpecIndex{
+			Operations: []Operation{{Method: "GET", Path: "/payments"}},
+		}),
+		Candidate:     NewContractSnapshot("payments", "head", []byte("head"), SpecIndex{}),
+		Policy:        policy,
+		EvaluatedAt:   at,
+		EngineVersion: "test",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	result := report.Comparisons[0].Policy
+	got := map[string]PolicyExceptionDisposition{}
+	for _, disposition := range result.ExceptionDispositions {
+		got[disposition.Exception.Reason] = disposition
+	}
+	for reason, want := range map[string]string{
+		"applied":   ExceptionDispositionApplied,
+		"expired":   ExceptionDispositionExpired,
+		"unmatched": ExceptionDispositionNotApplicable,
+	} {
+		disposition, ok := got[reason]
+		if !ok || disposition.Disposition != want || disposition.LayerName != "stable" {
+			t.Fatalf("disposition %q = %#v, all = %#v", reason, disposition, result.ExceptionDispositions)
+		}
+	}
+	if len(result.AppliedExceptions) != 1 || result.AppliedExceptions[0].Reason != "applied" {
+		t.Fatalf("applied exceptions = %#v", result.AppliedExceptions)
+	}
+}
+
+func TestEvaluateReviewCanonicalizesEquivalentExceptionExpiryOffsets(t *testing.T) {
+	at := time.Date(2026, 7, 25, 12, 0, 0, 0, time.UTC)
+	expiryUTC := time.Date(2026, 7, 26, 0, 0, 0, 0, time.UTC)
+	expiryOffset := time.Date(2026, 7, 25, 21, 0, 0, 0, time.FixedZone("minus-three", -3*60*60))
+	buildPolicy := func(expiry time.Time) EffectivePolicy {
+		t.Helper()
+		policy, err := MergePolicy(PolicyLayer{
+			Name: "stable", Source: PolicySourceRepository,
+			Exceptions: []PolicyException{{
+				RuleID: RuleSchemaAdded, Reason: "migration", Author: "api-team",
+				ExpiresAt: expiry, Source: PolicySourceRepository,
+			}},
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return policy
+	}
+	buildReport := func(policy EffectivePolicy) ReviewReport {
+		t.Helper()
+		snapshot := NewContractSnapshot("payments", "target", []byte("target"), SpecIndex{})
+		report, err := EvaluateReview(ReviewRequest{
+			ContractID: "payments", Target: snapshot, Candidate: snapshot,
+			Policy: policy, EvaluatedAt: at, EngineVersion: "test",
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return report
+	}
+
+	first := buildReport(buildPolicy(expiryUTC))
+	second := buildReport(buildPolicy(expiryOffset))
+	if first.PolicyDigest != second.PolicyDigest {
+		t.Fatalf("policy digests differ: %q != %q", first.PolicyDigest, second.PolicyDigest)
+	}
+	firstJSON, err := CanonicalReviewJSON(first)
+	if err != nil {
+		t.Fatal(err)
+	}
+	secondJSON, err := CanonicalReviewJSON(second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(firstJSON, secondJSON) {
+		t.Fatalf("canonical JSON differs:\n%s\n%s", firstJSON, secondJSON)
 	}
 }
 

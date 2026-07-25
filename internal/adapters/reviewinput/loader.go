@@ -104,7 +104,12 @@ func (l Loader) loadGitRef(
 }
 
 func gitCommandOutput(ctx context.Context, repo string, args ...string) ([]byte, string, error) {
-	cmd := exec.CommandContext(ctx, "git", append([]string{"-C", repo}, args...)...)
+	gitArgs := []string{
+		"--no-replace-objects",
+		"-c", "core.warnAmbiguousRefs=true",
+		"-C", repo,
+	}
+	cmd := exec.CommandContext(ctx, "git", append(gitArgs, args...)...)
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
 	cmd.Stdout = &stdout

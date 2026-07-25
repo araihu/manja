@@ -4,8 +4,10 @@ import (
 	"bytes"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
+	"unicode"
 
 	"github.com/araihu/manja/internal/core"
 )
@@ -88,6 +90,72 @@ func TestWriteRejectsUnknownFormat(t *testing.T) {
 	var got bytes.Buffer
 	if err := Write(&got, "yaml", passReport()); err == nil {
 		t.Fatal("Write() error = nil")
+	}
+}
+
+func TestWriteTextAndMarkdownEscapeUntrustedContent(t *testing.T) {
+	report := failReport()
+	report.ContractID = "payments\n# forged\x1b[31m\u202e"
+	report.EngineVersion = "v1\t*bold*"
+	report.Comparisons[0].Baseline.RevisionID = "target\r\n## forged"
+	report.Comparisons[0].Policy.Decisions[0].Finding.RuleID = "operation.`removed`\n- injected"
+	report.Comparisons[0].Policy.Decisions[0].Finding.Subject = "GET `/payments` **spoof**"
+	report.Comparisons[0].Policy.Decisions[0].Finding.Description = "removed\n## injected <script>\x00"
+	report.Comparisons[0].Policy.AppliedExceptions[0].Reason = "reason\n## injected `ticks` *em* \x1b[2J"
+	report.Comparisons[0].Policy.AppliedExceptions[0].Author = "author\r> quote\u202e\u2028separator"
+
+	var text bytes.Buffer
+	if err := Write(&text, FormatText, report); err != nil {
+		t.Fatal(err)
+	}
+	assertNoUnsafeControls(t, text.String())
+	for _, want := range []string{
+		`Contract: payments\n# forged\u001b[31m\u202e`,
+		`Engine: v1\t*bold*`,
+		`target\r\n## forged`,
+		`removed\n## injected <script>\u0000`,
+		`reason\n## injected ` + "`ticks`" + ` *em* \u001b[2J`,
+		`author\r> quote\u202e\u2028separator`,
+	} {
+		if !strings.Contains(text.String(), want) {
+			t.Fatalf("text output missing %q:\n%s", want, text.String())
+		}
+	}
+
+	var markdown bytes.Buffer
+	if err := Write(&markdown, FormatMarkdown, report); err != nil {
+		t.Fatal(err)
+	}
+	assertNoUnsafeControls(t, markdown.String())
+	for _, want := range []string{
+		`payments\\n\# forged\\u001b\[31m\\u202e`,
+		`v1\\t\*bold\*`,
+		"``operation.`removed`\\n- injected``",
+		"``GET `/payments` **spoof**``",
+		`removed\\n\#\# injected \<script\>\\u0000`,
+		`reason\\n\#\# injected \` + "`ticks\\`" + ` \*em\* \\u001b\[2J`,
+		`author\\r\> quote\\u202e\\u2028separator`,
+	} {
+		if !strings.Contains(markdown.String(), want) {
+			t.Fatalf("markdown output missing %q:\n%s", want, markdown.String())
+		}
+	}
+	for _, forgedBlock := range []string{"\n# forged", "\n## injected", "\n- injected"} {
+		if strings.Contains(markdown.String(), forgedBlock) {
+			t.Fatalf("markdown contains injected structure %q:\n%s", forgedBlock, markdown.String())
+		}
+	}
+	if !strings.HasSuffix(markdown.String(), "\n") || strings.HasSuffix(markdown.String(), "\n\n") {
+		t.Fatalf("markdown must end with exactly one newline: %q", markdown.String())
+	}
+}
+
+func assertNoUnsafeControls(t *testing.T, value string) {
+	t.Helper()
+	for _, char := range value {
+		if char != '\n' && (unicode.Is(unicode.Cc, char) || unicode.Is(unicode.Cf, char)) {
+			t.Fatalf("output contains unsafe control/format character %U: %q", char, value)
+		}
 	}
 }
 
