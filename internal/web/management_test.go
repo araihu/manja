@@ -933,6 +933,25 @@ func TestManagementOverviewRendersOneSyncFormForSelectedSpec(t *testing.T) {
 	if count := strings.Count(rec.Body.String(), `action="/manage/sync"`); count != 1 {
 		t.Fatalf("sync form count = %d, body:\n%s", count, rec.Body.String())
 	}
+	body := rec.Body.String()
+	for _, want := range []string{
+		`id="management-visibility-public-payments-api"`,
+		`type="radio" name="visibility" value="public"`,
+		`id="management-visibility-private-payments-api"`,
+		`value="private" class="absolute inset-0 h-full w-full cursor-pointer opacity-0 disabled:cursor-not-allowed" checked`,
+		`id="management-payments-api-sync-publish"`,
+		`type="checkbox" class="peer sr-only" role="switch" name="publish" value="public"`,
+		`peer-checked:bg-success`,
+		`type="submit"`,
+		`w-fit`,
+		`Publish this revision`,
+		`Save route settings`,
+		`Sync selected ref`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("management Goshtoso control semantics missing %q:\n%s", want, body)
+		}
+	}
 }
 
 func TestManagementSyncPostRejectsRefWhenCandidatesUnavailable(t *testing.T) {

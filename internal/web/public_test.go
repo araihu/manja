@@ -1454,6 +1454,7 @@ func TestPublicDocsRenderEndpointDetails(t *testing.T) {
 		`Header Parameters`,
 		`Request configuration`,
 		`data-manja-request-config-panel`,
+		`allowMultiple: true`,
 		`px-1 text-sm font-semibold text-on-surface-strong dark:text-on-surface-dark-strong`,
 		`bg-surface-alt/40 dark:bg-surface-dark-alt/50`,
 		`x-collapse`,
