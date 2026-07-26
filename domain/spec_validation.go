@@ -2,7 +2,15 @@ package domain
 
 import (
 	"fmt"
+	"strings"
 	"unicode/utf8"
+)
+
+// These bounds keep validation of untrusted parser output deterministic and
+// stack-safe while remaining well above practical OpenAPI schema nesting.
+const (
+	maxSpecSchemaSummaryDepth = 64
+	maxSpecSchemaSummaryNodes = 4096
 )
 
 // ValidateContractRevision verifies all provider-neutral immutable revision
@@ -80,6 +88,9 @@ func ValidateSyncRecord(record SyncRecord) error {
 // as UTF-8, while compatibility and navigation surface identities are
 // canonical.
 func ValidateSpecIndex(index SpecIndex) error {
+	if err := validateSpecIndexSchemaSummaries(index); err != nil {
+		return err
+	}
 	if err := validateUTF8Strings("spec index", index); err != nil {
 		return err
 	}
@@ -132,9 +143,6 @@ func ValidateSpecIndex(index SpecIndex) error {
 				return err
 			}
 			if err := ValidateCanonicalIdentity(parameterPrefix+" location", parameter.In, false); err != nil {
-				return err
-			}
-			if err := validateSchemaSummaryIdentities(parameterPrefix+" schema", parameter.Schema); err != nil {
 				return err
 			}
 		}
@@ -192,9 +200,6 @@ func ValidateSpecIndex(index SpecIndex) error {
 		if err := ValidateCanonicalIdentity(prefix+" name", schema.Name, false); err != nil {
 			return err
 		}
-		if err := validateSchemaSummaryIdentities(prefix+" summary", schema.Summary); err != nil {
-			return err
-		}
 	}
 	for searchIndex, document := range index.Search {
 		prefix := fmt.Sprintf("spec search document %d", searchIndex)
@@ -224,17 +229,94 @@ func ValidateSpecIndex(index SpecIndex) error {
 			return err
 		}
 	}
+	if err := validateSpecIndexSurfaceUniqueness(index); err != nil {
+		return err
+	}
 	return nil
 }
 
 func validateOperationMediaTypeIdentities(prefix string, media OperationMediaType) error {
-	if err := ValidateCanonicalIdentity(prefix+" content type", media.ContentType, false); err != nil {
-		return err
-	}
-	return validateSchemaSummaryIdentities(prefix+" schema", media.Schema)
+	return ValidateCanonicalIdentity(prefix+" content type", media.ContentType, false)
 }
 
-func validateSchemaSummaryIdentities(prefix string, schema SchemaSummary) error {
+type specSchemaSummaryValidator struct {
+	active     map[*SchemaSummary]struct{}
+	memoHeight map[*SchemaSummary]int
+	nodes      int
+}
+
+func validateSpecIndexSchemaSummaries(index SpecIndex) error {
+	validator := specSchemaSummaryValidator{
+		active:     make(map[*SchemaSummary]struct{}),
+		memoHeight: make(map[*SchemaSummary]int),
+	}
+	for operationIndex, operation := range index.Operations {
+		prefix := fmt.Sprintf("spec operation %d", operationIndex)
+		for parameterIndex, parameter := range operation.Parameters {
+			if err := validator.validateRoot(
+				fmt.Sprintf("%s parameter %d schema", prefix, parameterIndex),
+				parameter.Schema,
+			); err != nil {
+				return err
+			}
+		}
+		if operation.RequestBody != nil {
+			for mediaIndex, media := range operation.RequestBody.MediaTypes {
+				if err := validator.validateRoot(
+					fmt.Sprintf("%s request media %d schema", prefix, mediaIndex),
+					media.Schema,
+				); err != nil {
+					return err
+				}
+			}
+		}
+		for responseIndex, response := range operation.Responses {
+			for mediaIndex, media := range response.MediaTypes {
+				if err := validator.validateRoot(
+					fmt.Sprintf("%s response %d media %d schema", prefix, responseIndex, mediaIndex),
+					media.Schema,
+				); err != nil {
+					return err
+				}
+			}
+		}
+	}
+	for schemaIndex, schema := range index.Schemas {
+		if err := validator.validateRoot(
+			fmt.Sprintf("spec schema %d summary", schemaIndex),
+			schema.Summary,
+		); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (v *specSchemaSummaryValidator) validateRoot(prefix string, schema SchemaSummary) error {
+	_, err := v.validateValue(prefix, schema, 1)
+	return err
+}
+
+func (v *specSchemaSummaryValidator) validateValue(
+	prefix string,
+	schema SchemaSummary,
+	depth int,
+) (int, error) {
+	if depth > maxSpecSchemaSummaryDepth {
+		return 0, fmt.Errorf(
+			"%s exceeds maximum schema summary depth %d",
+			prefix,
+			maxSpecSchemaSummaryDepth,
+		)
+	}
+	v.nodes++
+	if v.nodes > maxSpecSchemaSummaryNodes {
+		return 0, fmt.Errorf(
+			"%s exceeds maximum schema summary nodes %d",
+			prefix,
+			maxSpecSchemaSummaryNodes,
+		)
+	}
 	for _, identity := range []struct {
 		name  string
 		value string
@@ -244,20 +326,128 @@ func validateSchemaSummaryIdentities(prefix string, schema SchemaSummary) error 
 		{name: prefix + " format", value: schema.Format},
 	} {
 		if err := ValidateCanonicalIdentity(identity.name, identity.value, true); err != nil {
-			return err
+			return 0, err
 		}
 	}
+	height := 1
 	for propertyIndex, property := range schema.Properties {
 		propertyPrefix := fmt.Sprintf("%s property %d", prefix, propertyIndex)
 		if err := ValidateCanonicalIdentity(propertyPrefix+" name", property.Name, false); err != nil {
-			return err
+			return 0, err
 		}
-		if err := validateSchemaSummaryIdentities(propertyPrefix+" schema", property.Schema); err != nil {
-			return err
+		propertyHeight, err := v.validateValue(propertyPrefix+" schema", property.Schema, depth+1)
+		if err != nil {
+			return 0, err
+		}
+		if 1+propertyHeight > height {
+			height = 1 + propertyHeight
 		}
 	}
 	if schema.Items != nil {
-		return validateSchemaSummaryIdentities(prefix+" items", *schema.Items)
+		itemsHeight, err := v.validatePointer(prefix+" items", schema.Items, depth+1)
+		if err != nil {
+			return 0, err
+		}
+		if 1+itemsHeight > height {
+			height = 1 + itemsHeight
+		}
+	}
+	return height, nil
+}
+
+func (v *specSchemaSummaryValidator) validatePointer(
+	prefix string,
+	schema *SchemaSummary,
+	depth int,
+) (int, error) {
+	if _, ok := v.active[schema]; ok {
+		return 0, fmt.Errorf("%s contains a schema summary cycle", prefix)
+	}
+	if height, ok := v.memoHeight[schema]; ok {
+		if depth+height-1 > maxSpecSchemaSummaryDepth {
+			return 0, fmt.Errorf(
+				"%s exceeds maximum schema summary depth %d",
+				prefix,
+				maxSpecSchemaSummaryDepth,
+			)
+		}
+		return height, nil
+	}
+	v.active[schema] = struct{}{}
+	height, err := v.validateValue(prefix, *schema, depth)
+	delete(v.active, schema)
+	if err != nil {
+		return 0, err
+	}
+	v.memoHeight[schema] = height
+	return height, nil
+}
+
+func validateSpecIndexSurfaceUniqueness(index SpecIndex) error {
+	type operationKey struct {
+		method string
+		path   string
+	}
+	operations := make(map[operationKey]struct{}, len(index.Operations))
+	for operationIndex, operation := range index.Operations {
+		key := operationKey{
+			method: canonicalUpperSurfaceText(operation.Method),
+			path:   strings.TrimSpace(operation.Path),
+		}
+		if _, ok := operations[key]; ok {
+			return fmt.Errorf(
+				"spec operation %d duplicates canonical operation %s %s",
+				operationIndex,
+				key.method,
+				key.path,
+			)
+		}
+		operations[key] = struct{}{}
+
+		type parameterKey struct {
+			name     string
+			location string
+		}
+		parameters := make(map[parameterKey]struct{}, len(operation.Parameters))
+		for parameterIndex, parameter := range operation.Parameters {
+			key := parameterKey{
+				name:     strings.TrimSpace(parameter.Name),
+				location: canonicalLowerSurfaceText(parameter.In),
+			}
+			if _, ok := parameters[key]; ok {
+				return fmt.Errorf(
+					"spec operation %d parameter %d duplicates canonical parameter %s in %s",
+					operationIndex,
+					parameterIndex,
+					key.name,
+					key.location,
+				)
+			}
+			parameters[key] = struct{}{}
+		}
+
+		statuses := make(map[string]struct{}, len(operation.Responses))
+		for responseIndex, response := range operation.Responses {
+			status := strings.TrimSpace(response.Status)
+			if _, ok := statuses[status]; ok {
+				return fmt.Errorf(
+					"spec operation %d response %d duplicates status %s",
+					operationIndex,
+					responseIndex,
+					status,
+				)
+			}
+			statuses[status] = struct{}{}
+		}
+	}
+
+	schemas := make(map[string]struct{}, len(index.Schemas))
+	for schemaIndex, schema := range index.Schemas {
+		name := strings.TrimSpace(schema.Name)
+		if _, ok := schemas[name]; ok {
+			return fmt.Errorf("spec schema %d duplicates schema %s", schemaIndex, name)
+		}
+		schemas[name] = struct{}{}
 	}
 	return nil
 }

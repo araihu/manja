@@ -152,16 +152,11 @@ func (s *FileStore) Project(ctx context.Context, id string) (domain.Project, err
 }
 
 func validateProjectIdentities(project domain.Project) error {
-	if err := validateID(project.ID); err != nil {
-		return fmt.Errorf("project id: %w", err)
-	}
-	if err := validateCanonicalIdentity("project slug", project.Slug, true); err != nil {
+	if err := domain.ValidateProject(project); err != nil {
 		return err
 	}
-	for index, sourceID := range project.SourceIDs {
-		if err := validateCanonicalIdentity(fmt.Sprintf("project source id %d", index), sourceID, false); err != nil {
-			return err
-		}
+	if err := validateID(project.ID); err != nil {
+		return fmt.Errorf("project id: %w", err)
 	}
 	return nil
 }

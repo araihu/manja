@@ -232,7 +232,9 @@ func (h *demoWorkbenchHandler) publishedIndexLoader(ctx context.Context, spec we
 	if !ok {
 		return core.SpecIndex{}, false, nil
 	}
-	if spec.Publication.RevisionID == spec.Revision.ID {
+	if spec.Publication.RevisionID == spec.Revision.ID &&
+		spec.Publication.ProjectID == cfg.Seed.ProjectID &&
+		spec.Revision.ContractID == cfg.Seed.ProjectID {
 		return spec.Index, true, nil
 	}
 	return h.indexForRevision(ctx, cfg, spec.Publication.RevisionID)
@@ -242,7 +244,7 @@ func (h *demoWorkbenchHandler) indexForRevision(ctx context.Context, cfg demoSpe
 	if strings.TrimSpace(revisionID) == "" {
 		return core.SpecIndex{}, false, nil
 	}
-	rev, err := h.store.Revision(ctx, revisionID)
+	rev, err := h.store.ContractRevision(ctx, cfg.Seed.ProjectID, revisionID)
 	if err != nil {
 		return core.SpecIndex{}, false, err
 	}

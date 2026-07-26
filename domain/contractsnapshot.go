@@ -71,6 +71,9 @@ func validateAndCloneContractSnapshot(snapshot ContractSnapshot) (ContractSnapsh
 	if err := validateContractSurfaceIdentities(snapshot); err != nil {
 		return ContractSnapshot{}, err
 	}
+	if err := validateContractSurfaceUniqueness(snapshot); err != nil {
+		return ContractSnapshot{}, err
+	}
 
 	normalizedOperations := normalizeSnapshotOperations(snapshot.Operations)
 	normalizedSchemas := normalizeSnapshotSchemas(snapshot.Schemas)
@@ -124,6 +127,75 @@ func validateContractSurfaceIdentities(snapshot ContractSnapshot) error {
 		if err := validateCanonicalIdentity(fmt.Sprintf("contract schema %d name", schemaIndex), schema, false); err != nil {
 			return err
 		}
+	}
+	return nil
+}
+
+func validateContractSurfaceUniqueness(snapshot ContractSnapshot) error {
+	type operationKey struct {
+		method string
+		path   string
+	}
+	operations := make(map[operationKey]struct{}, len(snapshot.Operations))
+	for operationIndex, operation := range snapshot.Operations {
+		key := operationKey{
+			method: canonicalUpperSurfaceText(operation.Method),
+			path:   strings.TrimSpace(operation.Path),
+		}
+		if _, ok := operations[key]; ok {
+			return fmt.Errorf(
+				"contract operation %d duplicates canonical operation %s %s",
+				operationIndex,
+				key.method,
+				key.path,
+			)
+		}
+		operations[key] = struct{}{}
+
+		type parameterKey struct {
+			name     string
+			location string
+		}
+		parameters := make(map[parameterKey]struct{}, len(operation.Parameters))
+		for parameterIndex, parameter := range operation.Parameters {
+			key := parameterKey{
+				name:     strings.TrimSpace(parameter.Name),
+				location: canonicalLowerSurfaceText(parameter.In),
+			}
+			if _, ok := parameters[key]; ok {
+				return fmt.Errorf(
+					"contract operation %d parameter %d duplicates canonical parameter %s in %s",
+					operationIndex,
+					parameterIndex,
+					key.name,
+					key.location,
+				)
+			}
+			parameters[key] = struct{}{}
+		}
+
+		statuses := make(map[string]struct{}, len(operation.ResponseStatuses))
+		for statusIndex, status := range operation.ResponseStatuses {
+			status = strings.TrimSpace(status)
+			if _, ok := statuses[status]; ok {
+				return fmt.Errorf(
+					"contract operation %d response status %d duplicates status %s",
+					operationIndex,
+					statusIndex,
+					status,
+				)
+			}
+			statuses[status] = struct{}{}
+		}
+	}
+
+	schemas := make(map[string]struct{}, len(snapshot.Schemas))
+	for schemaIndex, schema := range snapshot.Schemas {
+		schema = strings.TrimSpace(schema)
+		if _, ok := schemas[schema]; ok {
+			return fmt.Errorf("contract schema %d duplicates schema %s", schemaIndex, schema)
+		}
+		schemas[schema] = struct{}{}
 	}
 	return nil
 }

@@ -990,6 +990,115 @@ func TestReleaseServiceRevalidatesAppliedExceptionExpiryAtTrustedReleaseTime(t *
 	})
 }
 
+func TestReleaseServiceExactReplaySurvivesAppliedExceptionExpiry(t *testing.T) {
+	expiresAt := time.Date(2026, 7, 26, 15, 0, 0, 0, time.UTC)
+	store, evidence, command := authorizedReleaseWithAppliedException(t, expiresAt)
+	clock := &testClock{now: expiresAt.Add(-time.Nanosecond)}
+	service, err := NewReleaseService(ReleaseDependencies{
+		Revisions: store, Evidence: &testReleaseEvidenceReader{evidence: evidence},
+		UnitOfWork: &testUnitOfWork{committed: store}, Clock: clock,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	first, err := service.Coordinate(context.Background(), command)
+	if err != nil {
+		t.Fatalf("apply live exception decision: %v", err)
+	}
+	stateAfterFirst := store.clone()
+	clockCallsAfterFirst := len(clock.contexts)
+
+	clock.now = expiresAt
+	replay, err := service.Coordinate(context.Background(), command)
+	if err != nil {
+		t.Fatalf("exact replay after exception expiry: %v", err)
+	}
+	if !reflect.DeepEqual(replay.Track, first.Track) ||
+		!reflect.DeepEqual(store.tracks, stateAfterFirst.tracks) ||
+		!reflect.DeepEqual(store.publications, stateAfterFirst.publications) ||
+		!reflect.DeepEqual(store.auditEvents, stateAfterFirst.auditEvents) ||
+		!reflect.DeepEqual(store.outbox, stateAfterFirst.outbox) {
+		t.Fatal("exact replay after exception expiry changed release state")
+	}
+	if len(clock.contexts) != clockCallsAfterFirst {
+		t.Fatal("exact replay consulted temporal authorization after the transition was already committed")
+	}
+
+	divergent := command
+	divergent.Accepted = false
+	if _, err := service.Coordinate(context.Background(), divergent); err == nil {
+		t.Fatal("divergent decision reused an expired exception")
+	}
+	if !reflect.DeepEqual(store.tracks, stateAfterFirst.tracks) ||
+		!reflect.DeepEqual(store.publications, stateAfterFirst.publications) ||
+		!reflect.DeepEqual(store.auditEvents, stateAfterFirst.auditEvents) ||
+		!reflect.DeepEqual(store.outbox, stateAfterFirst.outbox) {
+		t.Fatal("divergent decision after exception expiry changed last-known-good state")
+	}
+}
+
+func TestReleaseServiceExactReplayAfterUnknownCommitOutcomeAndRestartSurvivesExpiry(t *testing.T) {
+	expiresAt := time.Date(2026, 7, 26, 16, 0, 0, 0, time.UTC)
+	store, evidence, command := authorizedReleaseWithAppliedException(t, expiresAt)
+	clock := &testClock{now: expiresAt.Add(-time.Nanosecond)}
+	unknown := &commitOutcomeUnknownOnceUnitOfWork{committed: store}
+	service, err := NewReleaseService(ReleaseDependencies{
+		Revisions: store, Evidence: &testReleaseEvidenceReader{evidence: evidence},
+		UnitOfWork: unknown, Clock: clock,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.Coordinate(context.Background(), command); !errors.Is(err, port.ErrCommitOutcomeUnknown) {
+		t.Fatalf("first release error = %v, want commit outcome unknown", err)
+	}
+	stateAfterUncertainCommit := store.clone()
+	if got := stateAfterUncertainCommit.tracks["payments/stable"]; got.CurrentRevisionID != "revision-next" {
+		t.Fatalf("uncertain commit did not persist transition: %#v", got)
+	}
+
+	clock.now = expiresAt
+	restarted, err := NewReleaseService(ReleaseDependencies{
+		Revisions: store, Evidence: &testReleaseEvidenceReader{evidence: evidence},
+		UnitOfWork: &testUnitOfWork{committed: store}, Clock: clock,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	replay, err := restarted.Coordinate(context.Background(), command)
+	if err != nil {
+		t.Fatalf("exact replay after uncertain commit and restart: %v", err)
+	}
+	if !reflect.DeepEqual(replay.Track, stateAfterUncertainCommit.tracks["payments/stable"]) ||
+		!reflect.DeepEqual(store.tracks, stateAfterUncertainCommit.tracks) ||
+		!reflect.DeepEqual(store.publications, stateAfterUncertainCommit.publications) ||
+		!reflect.DeepEqual(store.auditEvents, stateAfterUncertainCommit.auditEvents) ||
+		!reflect.DeepEqual(store.outbox, stateAfterUncertainCommit.outbox) {
+		t.Fatal("replay after uncertain commit and restart duplicated release effects")
+	}
+}
+
+type commitOutcomeUnknownOnceUnitOfWork struct {
+	committed *testOperationalStore
+	returned  bool
+}
+
+func (u *commitOutcomeUnknownOnceUnitOfWork) Within(
+	ctx context.Context,
+	callback func(context.Context, port.OperationalStore) error,
+) error {
+	staged := u.committed.clone()
+	if err := callback(ctx, staged); err != nil {
+		return err
+	}
+	*u.committed = *staged
+	if !u.returned {
+		u.returned = true
+		return port.ErrCommitOutcomeUnknown
+	}
+	return nil
+}
+
 func authorizedReleaseWithAppliedException(
 	t *testing.T,
 	expiresAt time.Time,

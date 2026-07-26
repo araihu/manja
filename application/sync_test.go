@@ -616,6 +616,24 @@ func TestSyncRejectsMalformedRawParserIndexBeforePostFetchEffects(t *testing.T) 
 		{name: "parameter name padding", mutate: func(index *domain.SpecIndex) { index.Operations[0].Parameters[0].Name = " limit" }},
 		{name: "response status padding", mutate: func(index *domain.SpecIndex) { index.Operations[0].Responses[0].Status = "200 " }},
 		{name: "schema name padding", mutate: func(index *domain.SpecIndex) { index.Schemas[0].Name = " Payment" }},
+		{name: "canonical operation collision", mutate: func(index *domain.SpecIndex) {
+			index.Operations = append(index.Operations, domain.Operation{Method: "get", Path: "/payments"})
+		}},
+		{name: "canonical parameter collision", mutate: func(index *domain.SpecIndex) {
+			index.Operations[0].Parameters = append(
+				index.Operations[0].Parameters,
+				domain.OperationParameter{Name: "limit", In: "QUERY"},
+			)
+		}},
+		{name: "response collision", mutate: func(index *domain.SpecIndex) {
+			index.Operations[0].Responses = append(
+				index.Operations[0].Responses,
+				domain.OperationResponse{Status: "200"},
+			)
+		}},
+		{name: "schema collision", mutate: func(index *domain.SpecIndex) {
+			index.Schemas = append(index.Schemas, domain.Schema{Name: "Payment"})
+		}},
 		{name: "search id control", mutate: func(index *domain.SpecIndex) { index.Search[0].ID = "search\x00payments" }},
 		{name: "public route padding", mutate: func(index *domain.SpecIndex) { index.PublicRoutes[0].Path = " /payments" }},
 		{name: "deep display invalid UTF-8", mutate: func(index *domain.SpecIndex) {

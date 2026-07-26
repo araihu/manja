@@ -56,6 +56,178 @@ func (r fixedReleaseEvidenceReader) ReleaseEvidence(
 	return r.evidence, nil
 }
 
+func TestFileStoreRejectsInvalidUTF8ProjectDisplayFieldsBeforeWriteAndOnReload(t *testing.T) {
+	valid := core.Project{
+		ID: "payments", Name: "Payments", Slug: "payments",
+		SEO: core.ProjectSEO{
+			TitleTemplate: "Payments %s",
+			Description:   "Payments documentation",
+			CanonicalBase: "https://docs.example.test",
+			SocialImage:   "https://docs.example.test/social.png",
+			Robots:        "index,follow",
+		},
+		Theme:     core.ThemeSettings{Theme: "system", DarkMode: "auto"},
+		SourceIDs: []string{"payments-git"},
+	}
+	tests := []struct {
+		name   string
+		mutate func(*core.Project)
+	}{
+		{name: "name", mutate: func(project *core.Project) { project.Name = "Payments-\xff" }},
+		{name: "SEO title template", mutate: func(project *core.Project) { project.SEO.TitleTemplate = "Payments-\xff" }},
+		{name: "SEO description", mutate: func(project *core.Project) { project.SEO.Description = "Payments-\xff" }},
+		{name: "SEO canonical base", mutate: func(project *core.Project) { project.SEO.CanonicalBase = "Payments-\xff" }},
+		{name: "SEO social image", mutate: func(project *core.Project) { project.SEO.SocialImage = "Payments-\xff" }},
+		{name: "SEO robots", mutate: func(project *core.Project) { project.SEO.Robots = "Payments-\xff" }},
+		{name: "theme", mutate: func(project *core.Project) { project.Theme.Theme = "Payments-\xff" }},
+		{name: "dark mode", mutate: func(project *core.Project) { project.Theme.DarkMode = "Payments-\xff" }},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			root := t.TempDir()
+			store := NewFileStore(root)
+			invalid := valid
+			test.mutate(&invalid)
+			projectPath := filepath.Join(root, "projects", "payments.json")
+			if err := store.SaveProject(context.Background(), invalid); err == nil {
+				t.Fatal("SaveProject accepted invalid UTF-8 display text")
+			}
+			if _, err := os.Stat(projectPath); !errors.Is(err, os.ErrNotExist) {
+				t.Fatalf("invalid first write created project file: %v", err)
+			}
+
+			if err := store.SaveProject(context.Background(), valid); err != nil {
+				t.Fatal(err)
+			}
+			before, err := os.ReadFile(projectPath)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := store.SaveProject(context.Background(), invalid); err == nil {
+				t.Fatal("SaveProject overwrote valid state with invalid UTF-8 display text")
+			}
+			after, err := os.ReadFile(projectPath)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !bytes.Equal(after, before) {
+				t.Fatal("invalid project write changed the last-known-good file")
+			}
+			got, err := NewFileStore(root).Project(context.Background(), "payments")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !reflect.DeepEqual(got, valid) {
+				t.Fatalf("restarted project = %#v, want %#v", got, valid)
+			}
+		})
+	}
+
+	t.Run("valid display Unicode whitespace and newlines round trip", func(t *testing.T) {
+		root := t.TempDir()
+		store := NewFileStore(root)
+		project := valid
+		project.Name = "  Pagamentos 日本語  \n"
+		project.SEO.Description = "linha 1\nlinha 2"
+		project.Theme.Theme = " tema personalizado "
+		if err := store.SaveProject(context.Background(), project); err != nil {
+			t.Fatal(err)
+		}
+		got, err := NewFileStore(root).Project(context.Background(), project.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !reflect.DeepEqual(got, project) {
+			t.Fatalf("display text was normalized: got %#v, want %#v", got, project)
+		}
+	})
+
+	for _, test := range tests {
+		t.Run("forged disk "+test.name, func(t *testing.T) {
+			root := t.TempDir()
+			project := valid
+			test.mutate(&project)
+			raw, err := json.Marshal(project)
+			if err != nil {
+				t.Fatal(err)
+			}
+			raw = bytes.Replace(raw, []byte("\\ufffd"), []byte{0xff}, 1)
+			if bytes.Contains(raw, []byte("\\ufffd")) || !bytes.Contains(raw, []byte{0xff}) {
+				t.Fatal("test fixture did not contain one raw invalid UTF-8 byte")
+			}
+			projectPath := filepath.Join(root, "projects", "payments.json")
+			if err := os.MkdirAll(filepath.Dir(projectPath), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(projectPath, raw, 0o600); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := NewFileStore(root).Project(context.Background(), "payments"); err == nil {
+				t.Fatal("Project accepted forged invalid UTF-8 display text")
+			}
+			after, err := os.ReadFile(projectPath)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !bytes.Equal(after, raw) {
+				t.Fatal("failed project reload rewrote forged data")
+			}
+		})
+	}
+}
+
+func TestFileStoreRejectsDuplicateCanonicalReviewSnapshotSurface(t *testing.T) {
+	ctx := context.Background()
+	raw := []byte("openapi: 3.1.0\n")
+	snapshot := core.NewContractSnapshot("payments", "revision-duplicate", raw, core.SpecIndex{
+		Operations: []core.Operation{
+			{Method: "GET", Path: "/payments"},
+			{Method: "get", Path: "/payments"},
+		},
+	})
+	revision := core.ContractRevision{
+		ID: "revision-duplicate", ContractID: "payments", SourceID: "payments-git",
+		Ref: "refs/heads/main", SpecDigest: snapshot.SpecDigest,
+		ContractDigest: snapshot.ContractDigest, ReviewSnapshot: &snapshot,
+	}
+
+	t.Run("save fails atomically", func(t *testing.T) {
+		root := t.TempDir()
+		store := NewFileStore(root)
+		key, err := store.Put(ctx, raw)
+		if err != nil {
+			t.Fatal(err)
+		}
+		revision.SpecBlobKey = string(key)
+		if err := store.SaveRevision(ctx, revision); err == nil {
+			t.Fatal("SaveRevision accepted duplicate canonical snapshot surface")
+		}
+		if _, err := os.Stat(filepath.Join(root, "operational", "state.json")); !errors.Is(err, os.ErrNotExist) {
+			t.Fatalf("rejected revision created operational state: %v", err)
+		}
+	})
+
+	t.Run("restart rejects forged persisted evidence", func(t *testing.T) {
+		root := t.TempDir()
+		store := NewFileStore(root)
+		key, err := store.Put(ctx, raw)
+		if err != nil {
+			t.Fatal(err)
+		}
+		forged := revision
+		forged.SpecBlobKey = string(key)
+		state := newOperationalState()
+		state.Revisions[revisionKey("payments", forged.ID)] = forged
+		if err := store.publishCurrentOperationalState(ctx, state); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := NewFileStore(root).ContractRevision(ctx, "payments", forged.ID); err == nil {
+			t.Fatal("restart accepted forged duplicate canonical snapshot surface")
+		}
+	})
+}
+
 func (r *observingRevisionReader) ContractRevision(
 	ctx context.Context,
 	contractID, revisionID string,

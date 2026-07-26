@@ -199,10 +199,16 @@ func managementPublishedIndexLoader(options Options, store *storeadapter.FileSto
 		if !spec.Publication.Public || strings.TrimSpace(spec.Publication.RevisionID) == "" {
 			return domain.SpecIndex{}, false, nil
 		}
-		if spec.Publication.RevisionID == spec.Revision.ID {
+		if spec.Publication.RevisionID == spec.Revision.ID &&
+			spec.Publication.ProjectID == spec.Project.ID &&
+			spec.Revision.ContractID == spec.Publication.ProjectID {
 			return spec.Index, true, nil
 		}
-		revision, err := store.Revision(ctx, spec.Publication.RevisionID)
+		revision, err := store.ContractRevision(
+			ctx,
+			spec.Publication.ProjectID,
+			spec.Publication.RevisionID,
+		)
 		if err != nil {
 			return domain.SpecIndex{}, false, err
 		}

@@ -16,6 +16,7 @@ import (
 	"github.com/araihu/manja/application/port"
 	core "github.com/araihu/manja/domain"
 	storeadapter "github.com/araihu/manja/internal/adapters/store"
+	"github.com/araihu/manja/internal/web"
 )
 
 func TestNewWithOptionsSyncsSpecBeforeServingPublicDocs(t *testing.T) {
@@ -359,6 +360,109 @@ func TestCandidateMemoryRetainsLatestSuccessfulDiscovery(t *testing.T) {
 	if len(got) != 2 || got[1].Ref != "release/v2" {
 		t.Fatalf("failure fallback = %#v, want latest successful discovery", got)
 	}
+}
+
+func TestManagementPublishedIndexLoaderScopesSharedRevisionIDsByContract(t *testing.T) {
+	ctx := context.Background()
+	store := storeadapter.NewFileStore(t.TempDir())
+	saveRevision := func(contractID, revisionID, title string) core.ContractRevision {
+		t.Helper()
+		spec := []byte("openapi: 3.1.0\ninfo:\n  title: " + title + "\n  version: v1\npaths: {}\n")
+		key, err := store.Put(ctx, spec)
+		if err != nil {
+			t.Fatal(err)
+		}
+		revision := core.ContractRevision{
+			ID: revisionID, ContractID: contractID, SourceID: contractID + "-git",
+			Ref: "refs/heads/main", SpecBlobKey: string(key),
+		}
+		if err := store.SaveRevision(ctx, revision); err != nil {
+			t.Fatal(err)
+		}
+		return revision
+	}
+	paymentsShared := saveRevision("payments", "shared", "Payments Published")
+	ordersShared := saveRevision("orders", "shared", "Orders Published")
+	paymentsNext := saveRevision("payments", "payments-next", "Payments Current")
+	for _, publication := range []core.Publication{
+		{ProjectID: "payments", RevisionID: "shared", Public: true, Path: "/payments"},
+		{ProjectID: "orders", RevisionID: "shared", Public: true, Path: "/orders"},
+	} {
+		if err := store.SavePublication(ctx, publication); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	paymentsLoader := managementPublishedIndexLoader(Options{
+		ProjectID: "payments",
+		SpecPath:  "openapi.yaml",
+	}, store)
+	t.Run("historical publication loads the owning contract revision", func(t *testing.T) {
+		index, ok, err := paymentsLoader(ctx, web.ManagedSpec{
+			Project:     core.Project{ID: "payments"},
+			Source:      core.Source{ID: "payments-git", ProjectID: "payments", SpecPath: "openapi.yaml"},
+			Revision:    paymentsNext,
+			Index:       core.SpecIndex{Title: "Payments Current"},
+			Publication: core.Publication{ProjectID: "payments", RevisionID: "shared", Public: true, Path: "/payments"},
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !ok || index.Title != "Payments Published" {
+			t.Fatalf("historical published index = (%#v, %v)", index, ok)
+		}
+	})
+
+	t.Run("same revision id from another contract cannot hit current fast path", func(t *testing.T) {
+		index, ok, err := paymentsLoader(ctx, web.ManagedSpec{
+			Project:     core.Project{ID: "payments"},
+			Source:      core.Source{ID: "payments-git", ProjectID: "payments", SpecPath: "openapi.yaml"},
+			Revision:    ordersShared,
+			Index:       core.SpecIndex{Title: "Orders Leaked Current"},
+			Publication: core.Publication{ProjectID: "payments", RevisionID: "shared", Public: true, Path: "/payments"},
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !ok || index.Title != "Payments Published" {
+			t.Fatalf("cross-contract current fast path leaked: (%#v, %v)", index, ok)
+		}
+	})
+
+	t.Run("owning contract current fast path remains available", func(t *testing.T) {
+		current := core.SpecIndex{Title: "Payments Current Fast Path"}
+		index, ok, err := paymentsLoader(ctx, web.ManagedSpec{
+			Project:     core.Project{ID: "payments"},
+			Revision:    paymentsShared,
+			Index:       current,
+			Publication: core.Publication{ProjectID: "payments", RevisionID: "shared", Public: true, Path: "/payments"},
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !ok || index.Title != current.Title {
+			t.Fatalf("owning current fast path = (%#v, %v)", index, ok)
+		}
+	})
+
+	t.Run("other contract remains isolated", func(t *testing.T) {
+		ordersLoader := managementPublishedIndexLoader(Options{
+			ProjectID: "orders",
+			SpecPath:  "openapi.yaml",
+		}, store)
+		index, ok, err := ordersLoader(ctx, web.ManagedSpec{
+			Project:     core.Project{ID: "orders"},
+			Source:      core.Source{ID: "orders-git", ProjectID: "orders", SpecPath: "openapi.yaml"},
+			Revision:    core.ContractRevision{ID: "orders-next", ContractID: "orders"},
+			Publication: core.Publication{ProjectID: "orders", RevisionID: "shared", Public: true, Path: "/orders"},
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !ok || index.Title != "Orders Published" {
+			t.Fatalf("orders published index = (%#v, %v)", index, ok)
+		}
+	})
 }
 
 type persistedOperationalState struct {

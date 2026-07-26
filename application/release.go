@@ -122,31 +122,41 @@ func (s *ReleaseService) Coordinate(ctx context.Context, command ReleaseCommand)
 	); err != nil {
 		return ReleaseResult{}, wrapError(ErrorIntegrity, "coordinate release", fmt.Errorf("validate release review against persisted revisions: %w", err))
 	}
-	now := s.clock.Now(ctx).UTC()
-	if now.IsZero() {
-		return ReleaseResult{}, wrapError(ErrorIntegrity, "coordinate release", fmt.Errorf("trusted release time is required"))
-	}
-	if evidence.Review.Report.EvaluatedAt.After(now.Add(ReleaseReviewMaxFutureSkew)) {
-		return ReleaseResult{}, wrapError(
-			ErrorIntegrity,
-			"coordinate release",
-			fmt.Errorf("release review evaluation time exceeds trusted clock skew"),
-		)
-	}
-	if err := validateAppliedExceptionsAtReleaseTime(evidence.Review.Report, now); err != nil {
-		return ReleaseResult{}, wrapError(ErrorIntegrity, "coordinate release", err)
-	}
 	decision, err := releaseDecision(evidence.Review, command.Accepted)
 	if err != nil {
 		return ReleaseResult{}, wrapError(ErrorIntegrity, "coordinate release", fmt.Errorf("identify release decision: %w", err))
 	}
 	var next domain.ReleaseTrack
+	var temporalIntegrityFailure bool
 	err = s.unitOfWork.Within(ctx, func(transactionContext context.Context, operational port.OperationalStore) error {
 		track, err := operational.ReleaseTrack(transactionContext, command.ContractID, command.TrackID)
 		if err != nil {
 			return fmt.Errorf("load release track: %w", err)
 		}
+		if err := domain.ValidateReleaseTrack(track); err != nil {
+			return fmt.Errorf("validate release track: %w", err)
+		}
 		if err := validateReleaseAuthorizationForTrack(authorization, track); err != nil {
+			return err
+		}
+		// Temporal authorization governs new transitions. Once the exact
+		// authenticated decision is durable, replay must remain a true no-op
+		// even if its applied exception has since expired.
+		if track.LastDecision != nil && *track.LastDecision == decision {
+			next = domain.CloneReleaseTrack(track)
+			return nil
+		}
+		now := s.clock.Now(transactionContext).UTC()
+		if now.IsZero() {
+			temporalIntegrityFailure = true
+			return fmt.Errorf("trusted release time is required")
+		}
+		if evidence.Review.Report.EvaluatedAt.After(now.Add(ReleaseReviewMaxFutureSkew)) {
+			temporalIntegrityFailure = true
+			return fmt.Errorf("release review evaluation time exceeds trusted clock skew")
+		}
+		if err := validateAppliedExceptionsAtReleaseTime(evidence.Review.Report, now); err != nil {
+			temporalIntegrityFailure = true
 			return err
 		}
 		var changed bool
@@ -193,6 +203,9 @@ func (s *ReleaseService) Coordinate(ctx context.Context, command ReleaseCommand)
 		return nil
 	})
 	if err != nil {
+		if temporalIntegrityFailure {
+			return ReleaseResult{}, wrapError(ErrorIntegrity, "coordinate release", err)
+		}
 		return ReleaseResult{}, wrapError(ErrorTransaction, "coordinate release", err)
 	}
 	return ReleaseResult{Track: next}, nil
