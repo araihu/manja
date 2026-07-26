@@ -45,6 +45,15 @@ func TestSyncWritesBlobBeforeAtomicOperationalState(t *testing.T) {
 	if revision.SpecBlobKey == "" || revision.SpecBlobKey != string(result.BlobKey) {
 		t.Fatalf("committed revision blob key = %q, result = %q", revision.SpecBlobKey, result.BlobKey)
 	}
+	if revision.ContractID != "payments" {
+		t.Fatalf("committed revision contract id = %q, want payments", revision.ContractID)
+	}
+	if revision.SpecDigest != "f39db8e8ede3dc2457c613e2a304e6d478f6e5ec660e4746464f41e76ac77006" {
+		t.Fatalf("committed revision spec digest = %q", revision.SpecDigest)
+	}
+	if revision.ContractDigest != "e4400417ff2796c6684383ba52313f2e4f8a0ba0365fa94986bed503138b95e0" {
+		t.Fatalf("committed revision contract digest = %q", revision.ContractDigest)
+	}
 	if result.Record.Result != domain.SyncResultSuccess || len(store.syncRecords) != 1 {
 		t.Fatalf("sync result/records = %#v / %#v", result.Record, store.syncRecords)
 	}

@@ -75,6 +75,17 @@ func (s *testOperationalStore) SaveRevision(ctx context.Context, value domain.Co
 	return nil
 }
 
+func (s *testOperationalStore) ContractRevision(ctx context.Context, contractID, revisionID string) (domain.ContractRevision, error) {
+	if err := s.record(ctx, "revision-read"); err != nil {
+		return domain.ContractRevision{}, err
+	}
+	revision, ok := s.revisions[revisionID]
+	if !ok || revision.ContractID != contractID {
+		return domain.ContractRevision{}, errors.New("revision not found")
+	}
+	return revision, nil
+}
+
 func (s *testOperationalStore) SaveReview(ctx context.Context, value domain.ContractReview) error {
 	if err := s.record(ctx, "review"); err != nil {
 		return err

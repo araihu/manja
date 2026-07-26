@@ -3,6 +3,7 @@ package domain
 import (
 	"encoding/json"
 	"fmt"
+	"reflect"
 	"sort"
 	"strings"
 	"time"
@@ -89,8 +90,21 @@ func ValidateReleaseReviewReport(report ReviewReport, contractID string, baselin
 	if strings.TrimSpace(report.EngineVersion) == "" {
 		return fmt.Errorf("review engine version is required")
 	}
+	if report.EvaluatedAt.IsZero() {
+		return fmt.Errorf("review evaluation time is required")
+	}
+	if report.EvaluatedAt.Location() != time.UTC {
+		return fmt.Errorf("review evaluation time must be UTC")
+	}
 	if !isLowerSHA256(report.PolicyDigest) {
 		return fmt.Errorf("review policy digest must be lowercase SHA-256")
+	}
+	canonicalPolicyDigest, err := validateCanonicalPolicyProjection(report.EffectivePolicy)
+	if err != nil {
+		return fmt.Errorf("review effective policy is invalid: %w", err)
+	}
+	if report.PolicyDigest != canonicalPolicyDigest {
+		return fmt.Errorf("review policy digest %q does not match effective policy digest %q", report.PolicyDigest, canonicalPolicyDigest)
 	}
 	if len(report.Comparisons) != 1 {
 		return fmt.Errorf("release review must contain exactly one comparison")
@@ -112,6 +126,39 @@ func ValidateReleaseReviewReport(report ReviewReport, contractID string, baselin
 		return fmt.Errorf("review verdict %q does not match comparison verdict %q", report.Verdict, comparison.Policy.Verdict)
 	}
 	return nil
+}
+
+func validateCanonicalPolicyProjection(projection EffectivePolicyProjection) (string, error) {
+	policy := EffectivePolicy{RequireReleaseBaseline: projection.RequireReleaseBaseline}
+	for layerIndex, projectedLayer := range projection.Layers {
+		layer := PolicyLayer{
+			Name:                   projectedLayer.Name,
+			Source:                 projectedLayer.Source,
+			RequireReleaseBaseline: projectedLayer.RequireReleaseBaseline,
+			Rules:                  make(map[string]RuleLevel, len(projectedLayer.Rules)),
+			Exceptions:             append([]PolicyException(nil), projectedLayer.Exceptions...),
+		}
+		for _, rule := range projectedLayer.Rules {
+			if _, exists := layer.Rules[rule.RuleID]; exists {
+				return "", fmt.Errorf("policy layer %d contains duplicate rule %q", layerIndex, rule.RuleID)
+			}
+			layer.Rules[rule.RuleID] = rule.Level
+		}
+		policy.Layers = append(policy.Layers, layer)
+	}
+
+	normalized, err := normalizeEffectivePolicy(policy)
+	if err != nil {
+		return "", err
+	}
+	_, canonicalProjection, digest, err := canonicalReviewPolicy(normalized)
+	if err != nil {
+		return "", err
+	}
+	if !reflect.DeepEqual(projection, canonicalProjection) {
+		return "", fmt.Errorf("effective policy projection is not canonical")
+	}
+	return digest, nil
 }
 
 func validateExpectedSnapshotRef(role string, actual, expected SnapshotRef) error {

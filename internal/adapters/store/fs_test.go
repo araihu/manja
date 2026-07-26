@@ -171,6 +171,140 @@ func TestFileStoreContentAddressedBlobSurvivesRestart(t *testing.T) {
 	}
 }
 
+func TestFileStoreRejectsConflictingRevisionEvidence(t *testing.T) {
+	ctx := context.Background()
+	store := NewFileStore(t.TempDir())
+	revision := core.ContractRevision{
+		ID: "revision-1", ContractID: "payments", SourceID: "source-main",
+		SpecDigest:     "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+		ContractDigest: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+	}
+	if err := store.SaveRevision(ctx, revision); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.SaveRevision(ctx, revision); err != nil {
+		t.Fatalf("identical revision replay: %v", err)
+	}
+	conflicting := revision
+	conflicting.SpecDigest = "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+	if err := store.SaveRevision(ctx, conflicting); err == nil {
+		t.Fatal("conflicting immutable revision evidence was accepted")
+	}
+	got, err := store.Revision(ctx, revision.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != revision {
+		t.Fatalf("conflicting replay changed revision: %#v", got)
+	}
+}
+
+func TestFileStoreEnrichesMatchingLegacyRevisionEvidenceOnce(t *testing.T) {
+	ctx := context.Background()
+	store := NewFileStore(t.TempDir())
+	key, err := store.Put(ctx, []byte("openapi: 3.1.0\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	legacy := core.ContractRevision{
+		ID: "revision-1", SourceID: "source-main", Ref: "main", CommitSHA: "abc123",
+		SpecBlobKey: string(key),
+	}
+	if err := store.SaveRevision(ctx, legacy); err != nil {
+		t.Fatal(err)
+	}
+	enriched := legacy
+	enriched.ContractID = "payments"
+	enriched.SpecDigest = "f39db8e8ede3dc2457c613e2a304e6d478f6e5ec660e4746464f41e76ac77006"
+	enriched.ContractDigest = "e4400417ff2796c6684383ba52313f2e4f8a0ba0365fa94986bed503138b95e0"
+	if err := store.SaveRevision(ctx, enriched); err != nil {
+		t.Fatalf("enrich matching legacy revision: %v", err)
+	}
+	got, err := store.Revision(ctx, legacy.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != enriched {
+		t.Fatalf("enriched revision = %#v, want %#v", got, enriched)
+	}
+	changedAgain := enriched
+	changedAgain.ContractDigest = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+	if err := store.SaveRevision(ctx, changedAgain); err == nil {
+		t.Fatal("second revision evidence change was accepted")
+	}
+}
+
+func TestFileStoreRejectsConflictingReviewEvidence(t *testing.T) {
+	ctx := context.Background()
+	store := NewFileStore(t.TempDir())
+	review := core.ContractReview{
+		ID: "review-1", ContractID: "payments",
+		BaselineRevisionID: "revision-good", CandidateRevisionID: "revision-next",
+		Report: core.ReviewReport{SchemaVersion: core.ReviewSchemaVersion, EngineVersion: "engine-v1"},
+	}
+	if err := store.Within(ctx, func(ctx context.Context, operational port.OperationalStore) error {
+		for _, revisionID := range []string{"revision-good", "revision-next"} {
+			if err := operational.SaveRevision(ctx, core.ContractRevision{ID: revisionID, ContractID: "payments"}); err != nil {
+				return err
+			}
+		}
+		return operational.SaveReview(ctx, review)
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Within(ctx, func(ctx context.Context, operational port.OperationalStore) error {
+		return operational.SaveReview(ctx, review)
+	}); err != nil {
+		t.Fatalf("identical review replay: %v", err)
+	}
+	conflicting := review
+	conflicting.Report.EngineVersion = "engine-v2"
+	if err := store.Within(ctx, func(ctx context.Context, operational port.OperationalStore) error {
+		return operational.SaveReview(ctx, conflicting)
+	}); err == nil {
+		t.Fatal("conflicting immutable review evidence was accepted")
+	}
+}
+
+func TestFileStorePersistsReleaseDecisionReplayIdentityAcrossRestart(t *testing.T) {
+	ctx := context.Background()
+	root := t.TempDir()
+	store := NewFileStore(root)
+	decision := core.ReleaseDecision{
+		RevisionID: "revision-next", ReviewID: "review-1",
+		ReviewDigest: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+		Verdict:      core.VerdictPass, Accepted: true,
+	}
+	track := core.ReleaseTrack{
+		ID: "stable", ContractID: "payments", Mode: core.ReleaseModePinned,
+		Generation: 3, CurrentRevisionID: "revision-good",
+		CandidateRevisionID: "revision-next", LastDecision: &decision,
+	}
+	if err := store.Within(ctx, func(ctx context.Context, operational port.OperationalStore) error {
+		for _, revisionID := range []string{"revision-good", "revision-next"} {
+			if err := operational.SaveRevision(ctx, core.ContractRevision{ID: revisionID, ContractID: "payments"}); err != nil {
+				return err
+			}
+		}
+		return operational.SaveReleaseTrack(ctx, 0, track)
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	restarted := NewFileStore(root)
+	got, err := restarted.ReleaseTrack(ctx, "payments", "stable")
+	if err != nil {
+		t.Fatal(err)
+	}
+	next, changed, err := core.ConsiderReleaseDecision(got, decision)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if changed || next.Generation != track.Generation || next.LastDecision == nil || *next.LastDecision != decision {
+		t.Fatalf("restart replay changed track: next=%#v changed=%t", next, changed)
+	}
+}
+
 func TestFileStoreDiscardsIncompleteOperationalStagingOnRestart(t *testing.T) {
 	root := t.TempDir()
 	stagingFiles := []string{

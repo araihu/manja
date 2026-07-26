@@ -421,6 +421,89 @@ func TestEvaluateReviewCanonicalizesEquivalentExceptionExpiryOffsets(t *testing.
 	}
 }
 
+func TestValidateReleaseReviewReportRejectsNonCanonicalEvidence(t *testing.T) {
+	report, baseline, candidate := canonicalReleaseReportForTest(t)
+
+	tests := []struct {
+		name   string
+		mutate func(*ReviewReport)
+		want   string
+	}{
+		{
+			name: "zero evaluation time",
+			mutate: func(report *ReviewReport) {
+				report.EvaluatedAt = time.Time{}
+			},
+			want: "evaluation time",
+		},
+		{
+			name: "absent repository policy",
+			mutate: func(report *ReviewReport) {
+				report.EffectivePolicy = EffectivePolicyProjection{}
+			},
+			want: "repository",
+		},
+		{
+			name: "invalid repository policy",
+			mutate: func(report *ReviewReport) {
+				report.EffectivePolicy.Layers[0].Source = PolicySourceServer
+			},
+			want: "repository",
+		},
+		{
+			name: "policy digest mismatch",
+			mutate: func(report *ReviewReport) {
+				report.PolicyDigest = strings.Repeat("f", 64)
+			},
+			want: "policy digest",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mutated := report
+			mutated.EffectivePolicy.Layers = append([]PolicyLayerProjection(nil), report.EffectivePolicy.Layers...)
+			tt.mutate(&mutated)
+			err := ValidateReleaseReviewReport(mutated, "payments", baseline, candidate)
+			if err == nil || !strings.Contains(err.Error(), tt.want) {
+				t.Fatalf("ValidateReleaseReviewReport error = %v, want containing %q", err, tt.want)
+			}
+		})
+	}
+}
+
+func TestValidateReleaseReviewReportAcceptsCanonicalEvidence(t *testing.T) {
+	report, baseline, candidate := canonicalReleaseReportForTest(t)
+	if err := ValidateReleaseReviewReport(report, "payments", baseline, candidate); err != nil {
+		t.Fatalf("ValidateReleaseReviewReport canonical evidence: %v", err)
+	}
+}
+
+func canonicalReleaseReportForTest(t *testing.T) (ReviewReport, SnapshotRef, SnapshotRef) {
+	t.Helper()
+	at := time.Date(2026, 7, 25, 12, 0, 0, 0, time.UTC)
+	baselineSnapshot := NewContractSnapshot("payments", "revision-good", []byte("baseline"), SpecIndex{
+		Operations: []Operation{{Method: "GET", Path: "/payments"}},
+	})
+	candidateSnapshot := NewContractSnapshot("payments", "revision-next", []byte("candidate"), SpecIndex{
+		Operations: []Operation{{Method: "GET", Path: "/payments"}},
+	})
+	policy, err := MergePolicy(PolicyLayer{Name: "stable", Source: PolicySourceRepository})
+	if err != nil {
+		t.Fatal(err)
+	}
+	report, err := EvaluateReview(ReviewRequest{
+		ContractID: "payments", Target: baselineSnapshot, Candidate: candidateSnapshot,
+		Release: &baselineSnapshot, Policy: policy, EvaluatedAt: at, EngineVersion: "test",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	report.Comparisons = []ComparisonReport{report.Comparisons[1]}
+	report.Verdict = report.Comparisons[0].Policy.Verdict
+	return report, snapshotRef(baselineSnapshot), snapshotRef(candidateSnapshot)
+}
+
 func reviewRequestForTest(policy EffectivePolicy) ReviewRequest {
 	target := NewContractSnapshot("payments", "target", []byte("target"), SpecIndex{
 		Operations: []Operation{{Method: "GET", Path: "/payments"}},

@@ -8,15 +8,18 @@ type SpecFile struct {
 }
 
 type ContractRevision struct {
-	ID          string
-	SourceID    string
-	SpecBlobKey string `json:"specBlobKey,omitempty"`
-	Ref         string
-	CommitSHA   string
-	Version     string
-	AuthorName  string
-	AuthorEmail string
-	Message     string
+	ID             string
+	ContractID     string `json:"contractId,omitempty"`
+	SourceID       string
+	SpecBlobKey    string `json:"specBlobKey,omitempty"`
+	SpecDigest     string `json:"specDigest,omitempty"`
+	ContractDigest string `json:"contractDigest,omitempty"`
+	Ref            string
+	CommitSHA      string
+	Version        string
+	AuthorName     string
+	AuthorEmail    string
+	Message        string
 }
 
 // Revision is retained as a source-compatible name for the immutable contract

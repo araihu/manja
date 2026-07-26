@@ -135,6 +135,13 @@ func (s *testOperationalStore) SaveRevision(_ context.Context, revision domain.C
 	s.revisions[revision.ID] = revision
 	return nil
 }
+func (s *testOperationalStore) ContractRevision(_ context.Context, contractID, revisionID string) (domain.ContractRevision, error) {
+	revision, ok := s.revisions[revisionID]
+	if !ok || revision.ContractID != contractID {
+		return domain.ContractRevision{}, errors.New("revision not found")
+	}
+	return revision, nil
+}
 func (*testOperationalStore) SaveReview(context.Context, domain.ContractReview) error { return nil }
 func (*testOperationalStore) SaveSyncRecord(context.Context, domain.SyncRecord) error { return nil }
 func (s *testOperationalStore) ReleaseTrack(_ context.Context, contractID, trackID string) (domain.ReleaseTrack, error) {

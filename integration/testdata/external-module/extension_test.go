@@ -263,6 +263,14 @@ func (s *memoryOperationalStore) SaveRevision(_ context.Context, revision domain
 	return nil
 }
 
+func (s *memoryOperationalStore) ContractRevision(_ context.Context, contractID, revisionID string) (domain.ContractRevision, error) {
+	revision, ok := s.revisions[revisionID]
+	if !ok || revision.ContractID != contractID {
+		return domain.ContractRevision{}, errors.New("revision not found")
+	}
+	return revision, nil
+}
+
 func (s *memoryOperationalStore) SaveReview(_ context.Context, review domain.ContractReview) error {
 	s.reviews[review.ID] = review
 	return nil

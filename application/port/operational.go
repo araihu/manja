@@ -30,6 +30,7 @@ type UnitOfWork interface {
 // implementation must not make partial commits observable.
 type OperationalStore interface {
 	SaveRevision(context.Context, domain.ContractRevision) error
+	ContractRevision(context.Context, string, string) (domain.ContractRevision, error)
 	SaveReview(context.Context, domain.ContractReview) error
 	SaveSyncRecord(context.Context, domain.SyncRecord) error
 	ReleaseTrack(context.Context, string, string) (domain.ReleaseTrack, error)

@@ -9,6 +9,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"sync"
 
@@ -557,9 +558,55 @@ func (t *operationalTransaction) SaveRevision(ctx context.Context, revision doma
 	if err := validateID(revision.ID); err != nil {
 		return err
 	}
+	if existing, ok := t.state.Revisions[revision.ID]; ok {
+		if !reflect.DeepEqual(existing, revision) {
+			if !canEnrichLegacyRevisionEvidence(existing, revision) {
+				return fmt.Errorf("revision %q conflicts with immutable persisted evidence", revision.ID)
+			}
+			t.state.Revisions[revision.ID] = revision
+			t.mutatedRevisions[revision.ID] = struct{}{}
+		}
+		return nil
+	}
 	t.state.Revisions[revision.ID] = revision
 	t.mutatedRevisions[revision.ID] = struct{}{}
 	return nil
+}
+
+func canEnrichLegacyRevisionEvidence(existing, enriched domain.ContractRevision) bool {
+	if existing.ContractID != "" || existing.SpecDigest != "" || existing.ContractDigest != "" {
+		return false
+	}
+	if strings.TrimSpace(enriched.ContractID) == "" ||
+		!port.BlobKey("sha256:"+enriched.SpecDigest).Valid() ||
+		!port.BlobKey("sha256:"+enriched.ContractDigest).Valid() {
+		return false
+	}
+	withoutEvidence := enriched
+	withoutEvidence.ContractID = ""
+	withoutEvidence.SpecDigest = ""
+	withoutEvidence.ContractDigest = ""
+	return reflect.DeepEqual(existing, withoutEvidence)
+}
+
+func (t *operationalTransaction) ContractRevision(ctx context.Context, contractID, revisionID string) (domain.ContractRevision, error) {
+	if err := ctx.Err(); err != nil {
+		return domain.ContractRevision{}, err
+	}
+	if err := validateID(contractID); err != nil {
+		return domain.ContractRevision{}, err
+	}
+	if err := validateID(revisionID); err != nil {
+		return domain.ContractRevision{}, err
+	}
+	revision, ok := t.state.Revisions[revisionID]
+	if !ok {
+		return domain.ContractRevision{}, fs.ErrNotExist
+	}
+	if revision.ContractID != contractID {
+		return domain.ContractRevision{}, fmt.Errorf("revision %q belongs to contract %q, not %q", revisionID, revision.ContractID, contractID)
+	}
+	return revision, nil
 }
 
 func (t *operationalTransaction) SaveReview(ctx context.Context, review domain.ContractReview) error {
@@ -568,6 +615,12 @@ func (t *operationalTransaction) SaveReview(ctx context.Context, review domain.C
 	}
 	if err := validateID(review.ID); err != nil {
 		return err
+	}
+	if existing, ok := t.state.Reviews[review.ID]; ok {
+		if !reflect.DeepEqual(existing, review) {
+			return fmt.Errorf("review %q conflicts with immutable persisted evidence", review.ID)
+		}
+		return nil
 	}
 	t.state.Reviews[review.ID] = review
 	return nil

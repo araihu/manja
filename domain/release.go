@@ -14,13 +14,22 @@ const (
 )
 
 type ReleaseTrack struct {
-	ID                  string      `json:"id"`
-	ContractID          string      `json:"contractId"`
-	BoundRef            string      `json:"boundRef,omitempty"`
-	Mode                ReleaseMode `json:"mode"`
-	Generation          uint64      `json:"generation"`
-	CurrentRevisionID   string      `json:"currentRevisionId,omitempty"`
-	CandidateRevisionID string      `json:"candidateRevisionId,omitempty"`
+	ID                  string           `json:"id"`
+	ContractID          string           `json:"contractId"`
+	BoundRef            string           `json:"boundRef,omitempty"`
+	Mode                ReleaseMode      `json:"mode"`
+	Generation          uint64           `json:"generation"`
+	CurrentRevisionID   string           `json:"currentRevisionId,omitempty"`
+	CandidateRevisionID string           `json:"candidateRevisionId,omitempty"`
+	LastDecision        *ReleaseDecision `json:"lastDecision,omitempty"`
+}
+
+type ReleaseDecision struct {
+	RevisionID   string `json:"revisionId"`
+	ReviewID     string `json:"reviewId"`
+	ReviewDigest string `json:"reviewDigest"`
+	Verdict      string `json:"verdict"`
+	Accepted     bool   `json:"accepted"`
 }
 
 // ConsiderReleaseRevision applies a completed policy decision to one track.
@@ -42,14 +51,44 @@ func ConsiderReleaseRevision(track ReleaseTrack, revisionID string, accepted boo
 	if track.CandidateRevisionID == revisionID && (!accepted || track.Mode == ReleaseModePinned) {
 		return next, nil
 	}
-	next.Generation++
-	if !accepted || track.Mode == ReleaseModePinned {
-		next.CandidateRevisionID = revisionID
-		return next, nil
+	verdict := VerdictFail
+	if accepted {
+		verdict = VerdictPass
 	}
-	next.CurrentRevisionID = revisionID
+	next, _, err := ConsiderReleaseDecision(track, ReleaseDecision{
+		RevisionID:   revisionID,
+		ReviewID:     "legacy-release-decision",
+		ReviewDigest: sha256Hex([]byte(fmt.Sprintf("%s\x00%t", revisionID, accepted))),
+		Verdict:      verdict,
+		Accepted:     accepted,
+	})
+	return next, err
+}
+
+// ConsiderReleaseDecision applies a reviewed decision to one track. Replay
+// identity includes the review bytes and verdict, so a later decision for the
+// same revision is not confused with an exact replay.
+func ConsiderReleaseDecision(track ReleaseTrack, decision ReleaseDecision) (ReleaseTrack, bool, error) {
+	if err := validateReleaseTrack(track); err != nil {
+		return ReleaseTrack{}, false, err
+	}
+	if err := validateReleaseDecision(decision); err != nil {
+		return ReleaseTrack{}, false, err
+	}
+	if track.LastDecision != nil && *track.LastDecision == decision {
+		return track, false, nil
+	}
+
+	next := track
+	next.Generation++
+	next.LastDecision = &decision
+	if !decision.Accepted || track.Mode == ReleaseModePinned {
+		next.CandidateRevisionID = decision.RevisionID
+		return next, true, nil
+	}
+	next.CurrentRevisionID = decision.RevisionID
 	next.CandidateRevisionID = ""
-	return next, nil
+	return next, true, nil
 }
 
 // PromoteReleaseRevision explicitly advances a pinned track to its recorded
@@ -81,6 +120,30 @@ func validateReleaseTrack(track ReleaseTrack) error {
 	}
 	if track.Mode != ReleaseModePinned && track.Mode != ReleaseModeFollowing {
 		return fmt.Errorf("unsupported release track mode %q", track.Mode)
+	}
+	if track.LastDecision != nil {
+		if err := validateReleaseDecision(*track.LastDecision); err != nil {
+			return fmt.Errorf("invalid last release decision: %w", err)
+		}
+	}
+	return nil
+}
+
+func validateReleaseDecision(decision ReleaseDecision) error {
+	if strings.TrimSpace(decision.RevisionID) == "" {
+		return fmt.Errorf("release decision revision id is required")
+	}
+	if strings.TrimSpace(decision.ReviewID) == "" {
+		return fmt.Errorf("release decision review id is required")
+	}
+	if !isLowerSHA256(decision.ReviewDigest) {
+		return fmt.Errorf("release decision review digest must be lowercase SHA-256")
+	}
+	if decision.Verdict != VerdictPass && decision.Verdict != VerdictFail {
+		return fmt.Errorf("unsupported release decision verdict %q", decision.Verdict)
+	}
+	if decision.Accepted && decision.Verdict != VerdictPass {
+		return fmt.Errorf("accepted release decision requires a passing verdict")
 	}
 	return nil
 }

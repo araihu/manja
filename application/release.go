@@ -57,19 +57,33 @@ func (s *ReleaseService) Coordinate(ctx context.Context, command ReleaseCommand)
 		if err != nil {
 			return fmt.Errorf("load release track: %w", err)
 		}
-		next, err = domain.ConsiderReleaseRevision(track, command.RevisionID, command.Accepted)
+		decision, err := releaseDecision(command.Review, command.Accepted)
+		if err != nil {
+			return fmt.Errorf("identify release decision: %w", err)
+		}
+		var changed bool
+		next, changed, err = domain.ConsiderReleaseDecision(track, decision)
 		if err != nil {
 			return fmt.Errorf("apply release transition: %w", err)
 		}
-		if next == track {
+		if !changed {
 			return nil
 		}
-		if command.Review.BaselineRevisionID != track.CurrentRevisionID {
-			return fmt.Errorf(
-				"validate release review baseline: review baseline %q does not match current revision %q",
-				command.Review.BaselineRevisionID,
-				track.CurrentRevisionID,
-			)
+		baselineRevision, err := operational.ContractRevision(transactionContext, command.ContractID, track.CurrentRevisionID)
+		if err != nil {
+			return fmt.Errorf("load release review baseline: %w", err)
+		}
+		candidateRevision, err := operational.ContractRevision(transactionContext, command.ContractID, command.RevisionID)
+		if err != nil {
+			return fmt.Errorf("load release review candidate: %w", err)
+		}
+		if err := domain.ValidateReleaseReviewReport(
+			command.Review.Report,
+			command.ContractID,
+			revisionSnapshotRef(baselineRevision),
+			revisionSnapshotRef(candidateRevision),
+		); err != nil {
+			return fmt.Errorf("validate release review against persisted revisions: %w", err)
 		}
 		if err := operational.SaveReview(transactionContext, command.Review); err != nil {
 			return fmt.Errorf("save review: %w", err)
@@ -107,6 +121,29 @@ func (s *ReleaseService) Coordinate(ctx context.Context, command ReleaseCommand)
 		return ReleaseResult{}, wrapError(ErrorTransaction, "coordinate release", err)
 	}
 	return ReleaseResult{Track: next}, nil
+}
+
+func releaseDecision(review domain.ContractReview, accepted bool) (domain.ReleaseDecision, error) {
+	canonical, err := domain.CanonicalReviewJSON(review.Report)
+	if err != nil {
+		return domain.ReleaseDecision{}, err
+	}
+	digest := sha256.Sum256(canonical)
+	return domain.ReleaseDecision{
+		RevisionID:   review.CandidateRevisionID,
+		ReviewID:     review.ID,
+		ReviewDigest: hex.EncodeToString(digest[:]),
+		Verdict:      review.Report.Verdict,
+		Accepted:     accepted,
+	}, nil
+}
+
+func revisionSnapshotRef(revision domain.ContractRevision) domain.SnapshotRef {
+	return domain.SnapshotRef{
+		RevisionID:     revision.ID,
+		SpecDigest:     revision.SpecDigest,
+		ContractDigest: revision.ContractDigest,
+	}
 }
 
 func validateReleaseCommand(command ReleaseCommand) error {

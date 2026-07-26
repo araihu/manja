@@ -24,6 +24,10 @@ func TestUnitOfWorkExposesCompleteOperationalInvariant(t *testing.T) {
 			{"revision", func() error {
 				return operational.SaveRevision(callbackContext, domain.ContractRevision{ID: "revision-1"})
 			}},
+			{"revision read", func() error {
+				_, err := operational.ContractRevision(callbackContext, "payments", "revision-1")
+				return err
+			}},
 			{"review", func() error { return operational.SaveReview(callbackContext, domain.ContractReview{ID: "review-1"}) }},
 			{"sync record", func() error { return operational.SaveSyncRecord(callbackContext, domain.SyncRecord{ID: "sync-1"}) }},
 			{"release track read", func() error { _, err := operational.ReleaseTrack(callbackContext, "payments", "v1"); return err }},
@@ -46,8 +50,8 @@ func TestUnitOfWorkExposesCompleteOperationalInvariant(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unit of work: %v", err)
 	}
-	if len(store.calls) != 8 {
-		t.Fatalf("operational calls = %v, want all eight invariant participants", store.calls)
+	if len(store.calls) != 9 {
+		t.Fatalf("operational calls = %v, want all nine invariant participants", store.calls)
 	}
 	for _, got := range store.contexts {
 		if got != ctx {
@@ -103,6 +107,11 @@ func (s *recordingOperationalStore) record(ctx context.Context, name string) {
 func (s *recordingOperationalStore) SaveRevision(ctx context.Context, _ domain.ContractRevision) error {
 	s.record(ctx, "revision")
 	return nil
+}
+
+func (s *recordingOperationalStore) ContractRevision(ctx context.Context, _, _ string) (domain.ContractRevision, error) {
+	s.record(ctx, "revision-read")
+	return domain.ContractRevision{}, nil
 }
 
 func (s *recordingOperationalStore) SaveReview(ctx context.Context, _ domain.ContractReview) error {
