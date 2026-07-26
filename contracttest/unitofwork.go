@@ -64,35 +64,6 @@ func UnitOfWork(t *testing.T, factory UnitOfWorkFactory) {
 		}
 	})
 
-	t.Run("revision evidence is transaction readable", func(t *testing.T) {
-		uow := factory(t)
-		ctx := markedContext(t)
-		revision := domain.ContractRevision{
-			ID: "review-revision", ContractID: "contract", SourceID: "source",
-			SpecDigest:     "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-			ContractDigest: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
-		}
-		if err := uow.Within(ctx, func(callbackContext context.Context, store port.OperationalStore) error {
-			requireSameContext(t, ctx, callbackContext)
-			return store.SaveRevision(callbackContext, revision)
-		}); err != nil {
-			t.Fatalf("save revision evidence: %v", err)
-		}
-		if err := uow.Within(ctx, func(callbackContext context.Context, store port.OperationalStore) error {
-			requireSameContext(t, ctx, callbackContext)
-			got, err := store.ContractRevision(callbackContext, revision.ContractID, revision.ID)
-			if err != nil {
-				return err
-			}
-			if got != revision {
-				t.Fatalf("revision evidence = %#v, want %#v", got, revision)
-			}
-			return nil
-		}); err != nil {
-			t.Fatalf("load revision evidence: %v", err)
-		}
-	})
-
 	t.Run("rejects missing blob reference", func(t *testing.T) {
 		uow := factory(t)
 		ctx := markedContext(t)

@@ -54,6 +54,15 @@ func TestSyncWritesBlobBeforeAtomicOperationalState(t *testing.T) {
 	if revision.ContractDigest != "e4400417ff2796c6684383ba52313f2e4f8a0ba0365fa94986bed503138b95e0" {
 		t.Fatalf("committed revision contract digest = %q", revision.ContractDigest)
 	}
+	if revision.ReviewSnapshot == nil {
+		t.Fatal("committed revision is missing its canonical review snapshot")
+	}
+	if revision.ReviewSnapshot.ContractID != revision.ContractID ||
+		revision.ReviewSnapshot.RevisionID != revision.ID ||
+		revision.ReviewSnapshot.SpecDigest != revision.SpecDigest ||
+		revision.ReviewSnapshot.ContractDigest != revision.ContractDigest {
+		t.Fatalf("committed revision review snapshot = %#v, revision = %#v", revision.ReviewSnapshot, revision)
+	}
 	if result.Record.Result != domain.SyncResultSuccess || len(store.syncRecords) != 1 {
 		t.Fatalf("sync result/records = %#v / %#v", result.Record, store.syncRecords)
 	}

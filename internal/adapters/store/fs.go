@@ -122,6 +122,32 @@ func (s *FileStore) Revision(ctx context.Context, id string) (domain.ContractRev
 	return revision, err
 }
 
+func (s *FileStore) ContractRevision(ctx context.Context, contractID, revisionID string) (domain.ContractRevision, error) {
+	if err := validateID(contractID); err != nil {
+		return domain.ContractRevision{}, err
+	}
+	if err := validateID(revisionID); err != nil {
+		return domain.ContractRevision{}, err
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	state, err := s.loadOperationalState(ctx)
+	if err != nil {
+		return domain.ContractRevision{}, err
+	}
+	revision, ok := state.Revisions[revisionID]
+	if !ok {
+		return domain.ContractRevision{}, fs.ErrNotExist
+	}
+	if revision.ContractID != contractID {
+		return domain.ContractRevision{}, fmt.Errorf("revision %q belongs to contract %q, not %q", revisionID, revision.ContractID, contractID)
+	}
+	if err := s.validateRevisionEvidence(ctx, revision); err != nil {
+		return domain.ContractRevision{}, fmt.Errorf("revision %q has invalid persisted evidence: %w", revisionID, err)
+	}
+	return revision, nil
+}
+
 func (s *FileStore) SavePublication(ctx context.Context, publication domain.Publication) error {
 	return s.Within(ctx, func(ctx context.Context, operational port.OperationalStore) error {
 		return operational.SavePublication(ctx, publication)
@@ -417,26 +443,8 @@ func (s *FileStore) publishOperationalState(ctx context.Context, state operation
 func (s *FileStore) validateOperationalState(ctx context.Context, state operationalState, mutatedRevisions map[string]struct{}) error {
 	for id := range mutatedRevisions {
 		revision := state.Revisions[id]
-		if revision.SpecBlobKey == "" {
-			continue
-		}
-		key := port.BlobKey(revision.SpecBlobKey)
-		if !key.Valid() {
-			return fmt.Errorf("revision %q has invalid blob key %q", id, key)
-		}
-		path, err := s.blobPath(key)
-		if err != nil {
-			return err
-		}
-		data, err := os.ReadFile(path)
-		if err != nil {
-			return fmt.Errorf("revision %q references missing blob %q: %w", id, key, err)
-		}
-		if port.ContentAddressedBlobKey(data) != key {
-			return fmt.Errorf("revision %q references corrupt blob %q", id, key)
-		}
-		if err := ctx.Err(); err != nil {
-			return err
+		if err := s.validateRevisionEvidence(ctx, revision); err != nil {
+			return fmt.Errorf("revision %q has invalid persisted evidence: %w", id, err)
 		}
 	}
 	for key, track := range state.ReleaseTracks {
@@ -465,6 +473,65 @@ func (s *FileStore) validateOperationalState(ctx context.Context, state operatio
 				return fmt.Errorf("sync record %q references uncommitted revision %q", id, record.RevisionID)
 			}
 		}
+	}
+	return nil
+}
+
+func (s *FileStore) validateRevisionEvidence(ctx context.Context, revision domain.ContractRevision) error {
+	hasReviewEvidence := revision.SpecDigest != "" ||
+		revision.ContractDigest != "" ||
+		revision.ReviewSnapshot != nil
+	if revision.SpecBlobKey == "" {
+		if hasReviewEvidence {
+			return fmt.Errorf("review evidence requires a spec blob")
+		}
+		return nil
+	}
+
+	key := port.BlobKey(revision.SpecBlobKey)
+	if !key.Valid() {
+		return fmt.Errorf("invalid blob key %q", key)
+	}
+	blobPath, err := s.blobPath(key)
+	if err != nil {
+		return err
+	}
+	data, err := os.ReadFile(blobPath)
+	if err != nil {
+		return fmt.Errorf("references missing blob %q: %w", key, err)
+	}
+	contentKey := port.ContentAddressedBlobKey(data)
+	if contentKey != key {
+		return fmt.Errorf("references corrupt blob %q", key)
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if !hasReviewEvidence {
+		return nil
+	}
+	if strings.TrimSpace(revision.ContractID) == "" ||
+		revision.SpecDigest == "" ||
+		revision.ContractDigest == "" ||
+		revision.ReviewSnapshot == nil {
+		return fmt.Errorf("review evidence is incomplete")
+	}
+	if err := domain.ValidateContractSnapshot(*revision.ReviewSnapshot); err != nil {
+		return fmt.Errorf("canonical review snapshot: %w", err)
+	}
+	if revision.ReviewSnapshot.ContractID != revision.ContractID ||
+		revision.ReviewSnapshot.RevisionID != revision.ID {
+		return fmt.Errorf("canonical review snapshot identity does not match revision")
+	}
+	if revision.ReviewSnapshot.SpecDigest != revision.SpecDigest {
+		return fmt.Errorf("spec digest does not match canonical review snapshot")
+	}
+	if revision.ReviewSnapshot.ContractDigest != revision.ContractDigest {
+		return fmt.Errorf("contract digest does not match canonical review snapshot")
+	}
+	contentDigest := strings.TrimPrefix(string(contentKey), "sha256:")
+	if revision.SpecDigest != contentDigest {
+		return fmt.Errorf("spec digest does not match stored blob")
 	}
 	return nil
 }
@@ -574,39 +641,22 @@ func (t *operationalTransaction) SaveRevision(ctx context.Context, revision doma
 }
 
 func canEnrichLegacyRevisionEvidence(existing, enriched domain.ContractRevision) bool {
-	if existing.ContractID != "" || existing.SpecDigest != "" || existing.ContractDigest != "" {
+	if existing.ReviewSnapshot != nil || enriched.ReviewSnapshot == nil {
 		return false
 	}
-	if strings.TrimSpace(enriched.ContractID) == "" ||
-		!port.BlobKey("sha256:"+enriched.SpecDigest).Valid() ||
-		!port.BlobKey("sha256:"+enriched.ContractDigest).Valid() {
-		return false
-	}
-	withoutEvidence := enriched
-	withoutEvidence.ContractID = ""
-	withoutEvidence.SpecDigest = ""
-	withoutEvidence.ContractDigest = ""
-	return reflect.DeepEqual(existing, withoutEvidence)
-}
+	existingMetadata := existing
+	existingMetadata.SpecDigest = ""
+	existingMetadata.ContractDigest = ""
+	existingMetadata.ReviewSnapshot = nil
 
-func (t *operationalTransaction) ContractRevision(ctx context.Context, contractID, revisionID string) (domain.ContractRevision, error) {
-	if err := ctx.Err(); err != nil {
-		return domain.ContractRevision{}, err
+	enrichedMetadata := enriched
+	enrichedMetadata.SpecDigest = ""
+	enrichedMetadata.ContractDigest = ""
+	enrichedMetadata.ReviewSnapshot = nil
+	if existing.ContractID == "" {
+		enrichedMetadata.ContractID = ""
 	}
-	if err := validateID(contractID); err != nil {
-		return domain.ContractRevision{}, err
-	}
-	if err := validateID(revisionID); err != nil {
-		return domain.ContractRevision{}, err
-	}
-	revision, ok := t.state.Revisions[revisionID]
-	if !ok {
-		return domain.ContractRevision{}, fs.ErrNotExist
-	}
-	if revision.ContractID != contractID {
-		return domain.ContractRevision{}, fmt.Errorf("revision %q belongs to contract %q, not %q", revisionID, revision.ContractID, contractID)
-	}
-	return revision, nil
+	return reflect.DeepEqual(existingMetadata, enrichedMetadata)
 }
 
 func (t *operationalTransaction) SaveReview(ctx context.Context, review domain.ContractReview) error {
@@ -836,4 +886,5 @@ func validatePublicPath(publicPath string) error {
 
 var _ port.UnitOfWork = (*FileStore)(nil)
 var _ port.BlobStore = (*FileStore)(nil)
+var _ port.RevisionReader = (*FileStore)(nil)
 var _ port.OperationalStore = (*operationalTransaction)(nil)

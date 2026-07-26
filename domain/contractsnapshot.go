@@ -98,6 +98,13 @@ func validateAndCloneContractSnapshot(snapshot ContractSnapshot) (ContractSnapsh
 	return cloned, nil
 }
 
+// ValidateContractSnapshot verifies that snapshot is canonical and that its
+// contract digest was derived from its normalized compatibility surface.
+func ValidateContractSnapshot(snapshot ContractSnapshot) error {
+	_, err := validateAndCloneContractSnapshot(snapshot)
+	return err
+}
+
 func normalizeSnapshotOperations(operations []ContractOperation) []ContractOperation {
 	normalized := make([]ContractOperation, 0, len(operations))
 	for _, operation := range operations {

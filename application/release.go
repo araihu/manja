@@ -12,11 +12,13 @@ import (
 )
 
 type ReleaseDependencies struct {
+	Revisions  port.RevisionReader
 	UnitOfWork port.UnitOfWork
 	Clock      port.Clock
 }
 
 type ReleaseService struct {
+	revisions  port.RevisionReader
 	unitOfWork port.UnitOfWork
 	clock      port.Clock
 }
@@ -37,29 +39,50 @@ type ReleaseResult struct {
 }
 
 func NewReleaseService(dependencies ReleaseDependencies) (*ReleaseService, error) {
+	if dependencies.Revisions == nil {
+		return nil, dependencyError("construct release service", "revision reader is required")
+	}
 	if dependencies.UnitOfWork == nil {
 		return nil, dependencyError("construct release service", "unit of work is required")
 	}
 	if dependencies.Clock == nil {
 		return nil, dependencyError("construct release service", "clock is required")
 	}
-	return &ReleaseService{unitOfWork: dependencies.UnitOfWork, clock: dependencies.Clock}, nil
+	return &ReleaseService{
+		revisions: dependencies.Revisions, unitOfWork: dependencies.UnitOfWork, clock: dependencies.Clock,
+	}, nil
 }
 
 func (s *ReleaseService) Coordinate(ctx context.Context, command ReleaseCommand) (ReleaseResult, error) {
 	if err := validateReleaseCommand(command); err != nil {
 		return ReleaseResult{}, err
 	}
+	decision, err := releaseDecision(command.Review, command.Accepted)
+	if err != nil {
+		return ReleaseResult{}, wrapError(ErrorIntegrity, "coordinate release", fmt.Errorf("identify release decision: %w", err))
+	}
+	baselineRevision, err := s.revisions.ContractRevision(ctx, command.ContractID, command.Review.BaselineRevisionID)
+	if err != nil {
+		return ReleaseResult{}, wrapError(ErrorIntegrity, "coordinate release", fmt.Errorf("load release review baseline: %w", err))
+	}
+	candidateRevision, err := s.revisions.ContractRevision(ctx, command.ContractID, command.RevisionID)
+	if err != nil {
+		return ReleaseResult{}, wrapError(ErrorIntegrity, "coordinate release", fmt.Errorf("load release review candidate: %w", err))
+	}
+	baselineRef, err := revisionSnapshotRef(baselineRevision)
+	if err != nil {
+		return ReleaseResult{}, wrapError(ErrorIntegrity, "coordinate release", fmt.Errorf("validate release review baseline: %w", err))
+	}
+	candidateRef, err := revisionSnapshotRef(candidateRevision)
+	if err != nil {
+		return ReleaseResult{}, wrapError(ErrorIntegrity, "coordinate release", fmt.Errorf("validate release review candidate: %w", err))
+	}
 	now := s.clock.Now(ctx).UTC()
 	var next domain.ReleaseTrack
-	err := s.unitOfWork.Within(ctx, func(transactionContext context.Context, operational port.OperationalStore) error {
+	err = s.unitOfWork.Within(ctx, func(transactionContext context.Context, operational port.OperationalStore) error {
 		track, err := operational.ReleaseTrack(transactionContext, command.ContractID, command.TrackID)
 		if err != nil {
 			return fmt.Errorf("load release track: %w", err)
-		}
-		decision, err := releaseDecision(command.Review, command.Accepted)
-		if err != nil {
-			return fmt.Errorf("identify release decision: %w", err)
 		}
 		var changed bool
 		next, changed, err = domain.ConsiderReleaseDecision(track, decision)
@@ -69,19 +92,18 @@ func (s *ReleaseService) Coordinate(ctx context.Context, command ReleaseCommand)
 		if !changed {
 			return nil
 		}
-		baselineRevision, err := operational.ContractRevision(transactionContext, command.ContractID, track.CurrentRevisionID)
-		if err != nil {
-			return fmt.Errorf("load release review baseline: %w", err)
-		}
-		candidateRevision, err := operational.ContractRevision(transactionContext, command.ContractID, command.RevisionID)
-		if err != nil {
-			return fmt.Errorf("load release review candidate: %w", err)
+		if track.CurrentRevisionID != baselineRevision.ID {
+			return fmt.Errorf(
+				"release track baseline %q does not match persisted review baseline %q",
+				track.CurrentRevisionID,
+				baselineRevision.ID,
+			)
 		}
 		if err := domain.ValidateReleaseReviewReport(
 			command.Review.Report,
 			command.ContractID,
-			revisionSnapshotRef(baselineRevision),
-			revisionSnapshotRef(candidateRevision),
+			baselineRef,
+			candidateRef,
 		); err != nil {
 			return fmt.Errorf("validate release review against persisted revisions: %w", err)
 		}
@@ -138,12 +160,26 @@ func releaseDecision(review domain.ContractReview, accepted bool) (domain.Releas
 	}, nil
 }
 
-func revisionSnapshotRef(revision domain.ContractRevision) domain.SnapshotRef {
-	return domain.SnapshotRef{
-		RevisionID:     revision.ID,
-		SpecDigest:     revision.SpecDigest,
-		ContractDigest: revision.ContractDigest,
+func revisionSnapshotRef(revision domain.ContractRevision) (domain.SnapshotRef, error) {
+	if revision.ReviewSnapshot == nil {
+		return domain.SnapshotRef{}, fmt.Errorf("revision %q has no canonical review snapshot", revision.ID)
 	}
+	if err := domain.ValidateContractSnapshot(*revision.ReviewSnapshot); err != nil {
+		return domain.SnapshotRef{}, fmt.Errorf("revision %q canonical review snapshot: %w", revision.ID, err)
+	}
+	if revision.ReviewSnapshot.ContractID != revision.ContractID ||
+		revision.ReviewSnapshot.RevisionID != revision.ID {
+		return domain.SnapshotRef{}, fmt.Errorf("revision %q canonical review snapshot identity does not match revision", revision.ID)
+	}
+	if revision.ReviewSnapshot.SpecDigest != revision.SpecDigest ||
+		revision.ReviewSnapshot.ContractDigest != revision.ContractDigest {
+		return domain.SnapshotRef{}, fmt.Errorf("revision %q digests do not match its canonical review snapshot", revision.ID)
+	}
+	return domain.SnapshotRef{
+		RevisionID:     revision.ReviewSnapshot.RevisionID,
+		SpecDigest:     revision.ReviewSnapshot.SpecDigest,
+		ContractDigest: revision.ReviewSnapshot.ContractDigest,
+	}, nil
 }
 
 func validateReleaseCommand(command ReleaseCommand) error {

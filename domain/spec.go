@@ -11,9 +11,10 @@ type ContractRevision struct {
 	ID             string
 	ContractID     string `json:"contractId,omitempty"`
 	SourceID       string
-	SpecBlobKey    string `json:"specBlobKey,omitempty"`
-	SpecDigest     string `json:"specDigest,omitempty"`
-	ContractDigest string `json:"contractDigest,omitempty"`
+	SpecBlobKey    string            `json:"specBlobKey,omitempty"`
+	SpecDigest     string            `json:"specDigest,omitempty"`
+	ContractDigest string            `json:"contractDigest,omitempty"`
+	ReviewSnapshot *ContractSnapshot `json:"reviewSnapshot,omitempty"`
 	Ref            string
 	CommitSHA      string
 	Version        string

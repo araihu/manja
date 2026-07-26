@@ -30,7 +30,6 @@ type UnitOfWork interface {
 // implementation must not make partial commits observable.
 type OperationalStore interface {
 	SaveRevision(context.Context, domain.ContractRevision) error
-	ContractRevision(context.Context, string, string) (domain.ContractRevision, error)
 	SaveReview(context.Context, domain.ContractReview) error
 	SaveSyncRecord(context.Context, domain.SyncRecord) error
 	ReleaseTrack(context.Context, string, string) (domain.ReleaseTrack, error)
@@ -38,6 +37,12 @@ type OperationalStore interface {
 	SavePublication(context.Context, domain.Publication) error
 	AppendAuditEvent(context.Context, domain.AuditEvent) error
 	Enqueue(context.Context, domain.OutboxMessage) error
+}
+
+// RevisionReader loads immutable revision evidence by its contract-scoped
+// identity without expanding the transactional operational write boundary.
+type RevisionReader interface {
+	ContractRevision(context.Context, string, string) (domain.ContractRevision, error)
 }
 
 // PublicationReader resolves the self-hosted public route without exposing a

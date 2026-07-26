@@ -18,7 +18,7 @@ func TestReleaseServiceCommitsAcceptedFollowingTrackInvariant(t *testing.T) {
 	persistReleaseReviewRevisions(store, review)
 	uow := &testUnitOfWork{committed: store}
 	clock := &testClock{now: time.Date(2026, 7, 25, 14, 0, 0, 0, time.UTC)}
-	service, err := NewReleaseService(ReleaseDependencies{UnitOfWork: uow, Clock: clock})
+	service, err := NewReleaseService(ReleaseDependencies{Revisions: store, UnitOfWork: uow, Clock: clock})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -39,7 +39,7 @@ func TestReleaseServiceCommitsAcceptedFollowingTrackInvariant(t *testing.T) {
 	if result.Track.CurrentRevisionID != "revision-next" || result.Track.Generation != 4 {
 		t.Fatalf("advanced track = %#v", result.Track)
 	}
-	wantCalls := []string{"track-read", "revision-read", "revision-read", "review", "sync", "track-write", "publication", "audit", "outbox"}
+	wantCalls := []string{"revision-read", "revision-read", "track-read", "review", "sync", "track-write", "publication", "audit", "outbox"}
 	if !reflect.DeepEqual(store.calls, wantCalls) {
 		t.Fatalf("transaction calls = %#v, want %#v", store.calls, wantCalls)
 	}
@@ -67,6 +67,7 @@ func TestReleaseServiceRollsBackEveryWriteStage(t *testing.T) {
 			persistReleaseReviewRevisions(store, review)
 			store.failAt = failAt
 			service, err := NewReleaseService(ReleaseDependencies{
+				Revisions:  store,
 				UnitOfWork: &testUnitOfWork{committed: store},
 				Clock:      &testClock{now: time.Date(2026, 7, 25, 14, 0, 0, 0, time.UTC)},
 			})
@@ -93,8 +94,10 @@ func TestReleaseServiceRollsBackEveryWriteStage(t *testing.T) {
 }
 
 func TestReleaseCommandValidationOrderIsDeterministic(t *testing.T) {
+	store := newTestOperationalStore()
 	service, err := NewReleaseService(ReleaseDependencies{
-		UnitOfWork: &testUnitOfWork{committed: newTestOperationalStore()},
+		Revisions:  store,
+		UnitOfWork: &testUnitOfWork{committed: store},
 		Clock:      &testClock{now: time.Date(2026, 7, 25, 14, 0, 0, 0, time.UTC)},
 	})
 	if err != nil {
@@ -105,6 +108,16 @@ func TestReleaseCommandValidationOrderIsDeterministic(t *testing.T) {
 		if err == nil || err.Error() != "coordinate release: contract id is required" {
 			t.Fatalf("validation attempt %d error = %v", attempt, err)
 		}
+	}
+}
+
+func TestNewReleaseServiceRequiresRevisionReader(t *testing.T) {
+	_, err := NewReleaseService(ReleaseDependencies{
+		UnitOfWork: &testUnitOfWork{committed: newTestOperationalStore()},
+		Clock:      &testClock{now: time.Date(2026, 7, 25, 14, 0, 0, 0, time.UTC)},
+	})
+	if err == nil {
+		t.Fatal("release service accepted missing revision reader")
 	}
 }
 
@@ -173,6 +186,7 @@ func TestReleaseServiceRejectsMismatchedReviewEvidence(t *testing.T) {
 			store := newTestOperationalStore()
 			store.tracks["payments/v1"] = original
 			service, err := NewReleaseService(ReleaseDependencies{
+				Revisions:  store,
 				UnitOfWork: &testUnitOfWork{committed: store},
 				Clock:      &testClock{now: time.Date(2026, 7, 25, 14, 0, 0, 0, time.UTC)},
 			})
@@ -212,6 +226,7 @@ func TestReleaseServiceReplayIsIdempotent(t *testing.T) {
 		Generation: 3, CurrentRevisionID: "revision-good",
 	}
 	service, err := NewReleaseService(ReleaseDependencies{
+		Revisions:  store,
 		UnitOfWork: &testUnitOfWork{committed: store},
 		Clock:      &testClock{now: time.Date(2026, 7, 25, 14, 0, 0, 0, time.UTC)},
 	})
@@ -260,22 +275,28 @@ func TestReleaseServiceReplayIsIdempotent(t *testing.T) {
 func TestReleaseServiceRejectsCallerForgedPersistedEvidence(t *testing.T) {
 	tests := []struct {
 		name   string
-		mutate func(*domain.ContractReview)
+		mutate func(*domain.ContractReview, *testOperationalStore)
 	}{
 		{
 			name: "candidate spec digest",
-			mutate: func(review *domain.ContractReview) {
+			mutate: func(review *domain.ContractReview, store *testOperationalStore) {
 				forged := "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
 				review.CandidateSpecDigest = forged
 				review.Report.Comparisons[0].Candidate.SpecDigest = forged
+				revision := store.revisions[review.CandidateRevisionID]
+				revision.SpecDigest = forged
+				store.revisions[review.CandidateRevisionID] = revision
 			},
 		},
 		{
 			name: "baseline contract digest",
-			mutate: func(review *domain.ContractReview) {
+			mutate: func(review *domain.ContractReview, store *testOperationalStore) {
 				forged := "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
 				review.BaselineContractDigest = forged
 				review.Report.Comparisons[0].Baseline.ContractDigest = forged
+				revision := store.revisions[review.BaselineRevisionID]
+				revision.ContractDigest = forged
+				store.revisions[review.BaselineRevisionID] = revision
 			},
 		},
 	}
@@ -290,8 +311,9 @@ func TestReleaseServiceRejectsCallerForgedPersistedEvidence(t *testing.T) {
 			store.tracks["payments/v1"] = original
 			review := releaseReviewForTest("review-1", "payments", "revision-good", "revision-next")
 			persistReleaseReviewRevisions(store, review)
-			tt.mutate(&review)
+			tt.mutate(&review, store)
 			service, err := NewReleaseService(ReleaseDependencies{
+				Revisions:  store,
 				UnitOfWork: &testUnitOfWork{committed: store},
 				Clock:      &testClock{now: time.Date(2026, 7, 25, 14, 0, 0, 0, time.UTC)},
 			})
@@ -329,6 +351,7 @@ func TestReleaseServiceAppliesPinnedRejectThenAcceptForSameRevision(t *testing.T
 	review := releaseReviewForTest("review-1", "payments", "revision-good", "revision-next")
 	persistReleaseReviewRevisions(store, review)
 	service, err := NewReleaseService(ReleaseDependencies{
+		Revisions:  store,
 		UnitOfWork: &testUnitOfWork{committed: store},
 		Clock:      &testClock{now: time.Date(2026, 7, 25, 14, 0, 0, 0, time.UTC)},
 	})
@@ -373,6 +396,7 @@ func TestReleaseServiceRepeatedPinnedRejectionIsExactReplay(t *testing.T) {
 	review := releaseReviewForTest("review-1", "payments", "revision-good", "revision-next")
 	persistReleaseReviewRevisions(store, review)
 	service, err := NewReleaseService(ReleaseDependencies{
+		Revisions:  store,
 		UnitOfWork: &testUnitOfWork{committed: store},
 		Clock:      &testClock{now: time.Date(2026, 7, 25, 14, 0, 0, 0, time.UTC)},
 	})
@@ -444,12 +468,26 @@ func releaseReviewForTest(id, contractID, baselineRevisionID, candidateRevisionI
 }
 
 func persistReleaseReviewRevisions(store *testOperationalStore, review domain.ContractReview) {
+	baseline := domain.NewContractSnapshot(
+		review.ContractID,
+		review.BaselineRevisionID,
+		[]byte("spec:"+review.BaselineRevisionID),
+		domain.SpecIndex{},
+	)
+	candidate := domain.NewContractSnapshot(
+		review.ContractID,
+		review.CandidateRevisionID,
+		[]byte("spec:"+review.CandidateRevisionID),
+		domain.SpecIndex{},
+	)
 	store.revisions[review.BaselineRevisionID] = domain.ContractRevision{
 		ID: review.BaselineRevisionID, ContractID: review.ContractID,
 		SpecDigest: review.BaselineSpecDigest, ContractDigest: review.BaselineContractDigest,
+		ReviewSnapshot: &baseline,
 	}
 	store.revisions[review.CandidateRevisionID] = domain.ContractRevision{
 		ID: review.CandidateRevisionID, ContractID: review.ContractID,
 		SpecDigest: review.CandidateSpecDigest, ContractDigest: review.CandidateContractDigest,
+		ReviewSnapshot: &candidate,
 	}
 }

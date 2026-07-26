@@ -93,6 +93,7 @@ func (s *SyncService) Sync(ctx context.Context, command SyncCommand) (SyncResult
 	revision.ContractID = command.ContractID
 	revision.SpecDigest = snapshot.SpecDigest
 	revision.ContractDigest = snapshot.ContractDigest
+	revision.ReviewSnapshot = &snapshot
 
 	blobKey, err := s.blobs.Put(ctx, spec.Bytes)
 	if err != nil {

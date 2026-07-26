@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"reflect"
 	"testing"
 	"time"
 
@@ -19,6 +20,18 @@ func TestFileStorePublicContracts(t *testing.T) {
 	})
 	contracttest.BlobStore(t, func(t testing.TB) port.BlobStore {
 		return NewFileStore(t.TempDir())
+	})
+	contracttest.RevisionReader(t, func(t testing.TB) contracttest.RevisionReaderFixture {
+		store := NewFileStore(t.TempDir())
+		revision := core.ContractRevision{
+			ID: "revision-1", ContractID: "payments", SourceID: "source-main", Ref: "main",
+		}
+		if err := store.SaveRevision(context.Background(), revision); err != nil {
+			t.Fatalf("seed revision reader: %v", err)
+		}
+		return contracttest.RevisionReaderFixture{
+			Reader: store, ContractID: revision.ContractID, RevisionID: revision.ID, Want: revision,
+		}
 	})
 }
 
@@ -174,10 +187,18 @@ func TestFileStoreContentAddressedBlobSurvivesRestart(t *testing.T) {
 func TestFileStoreRejectsConflictingRevisionEvidence(t *testing.T) {
 	ctx := context.Background()
 	store := NewFileStore(t.TempDir())
+	raw := []byte("openapi: 3.1.0\n")
+	key, err := store.Put(ctx, raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	snapshot := core.NewContractSnapshot("payments", "revision-1", raw, core.SpecIndex{})
 	revision := core.ContractRevision{
 		ID: "revision-1", ContractID: "payments", SourceID: "source-main",
-		SpecDigest:     "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-		ContractDigest: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+		SpecBlobKey:    string(key),
+		SpecDigest:     snapshot.SpecDigest,
+		ContractDigest: snapshot.ContractDigest,
+		ReviewSnapshot: &snapshot,
 	}
 	if err := store.SaveRevision(ctx, revision); err != nil {
 		t.Fatal(err)
@@ -194,15 +215,17 @@ func TestFileStoreRejectsConflictingRevisionEvidence(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got != revision {
+	if !reflect.DeepEqual(got, revision) {
 		t.Fatalf("conflicting replay changed revision: %#v", got)
 	}
 }
 
 func TestFileStoreEnrichesMatchingLegacyRevisionEvidenceOnce(t *testing.T) {
 	ctx := context.Background()
-	store := NewFileStore(t.TempDir())
-	key, err := store.Put(ctx, []byte("openapi: 3.1.0\n"))
+	root := t.TempDir()
+	store := NewFileStore(root)
+	raw := []byte("openapi: 3.1.0\n")
+	key, err := store.Put(ctx, raw)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -215,22 +238,165 @@ func TestFileStoreEnrichesMatchingLegacyRevisionEvidenceOnce(t *testing.T) {
 	}
 	enriched := legacy
 	enriched.ContractID = "payments"
-	enriched.SpecDigest = "f39db8e8ede3dc2457c613e2a304e6d478f6e5ec660e4746464f41e76ac77006"
-	enriched.ContractDigest = "e4400417ff2796c6684383ba52313f2e4f8a0ba0365fa94986bed503138b95e0"
+	snapshot := core.NewContractSnapshot(enriched.ContractID, enriched.ID, raw, core.SpecIndex{})
+	enriched.SpecDigest = snapshot.SpecDigest
+	enriched.ContractDigest = snapshot.ContractDigest
+	enriched.ReviewSnapshot = &snapshot
 	if err := store.SaveRevision(ctx, enriched); err != nil {
 		t.Fatalf("enrich matching legacy revision: %v", err)
 	}
-	got, err := store.Revision(ctx, legacy.ID)
+	restarted := NewFileStore(root)
+	got, err := restarted.ContractRevision(ctx, enriched.ContractID, legacy.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got != enriched {
+	if !reflect.DeepEqual(got, enriched) {
 		t.Fatalf("enriched revision = %#v, want %#v", got, enriched)
 	}
 	changedAgain := enriched
 	changedAgain.ContractDigest = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
-	if err := store.SaveRevision(ctx, changedAgain); err == nil {
+	if err := restarted.SaveRevision(ctx, changedAgain); err == nil {
 		t.Fatal("second revision evidence change was accepted")
+	}
+}
+
+func TestFileStoreRollsBackForgedLegacyRevisionEvidence(t *testing.T) {
+	for _, test := range []struct {
+		name   string
+		mutate func(*core.ContractRevision)
+	}{
+		{
+			name: "spec digest is not the stored blob",
+			mutate: func(revision *core.ContractRevision) {
+				forged := "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+				revision.SpecDigest = forged
+				revision.ReviewSnapshot.SpecDigest = forged
+			},
+		},
+		{
+			name: "contract digest is not the canonical surface",
+			mutate: func(revision *core.ContractRevision) {
+				forged := "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+				revision.ContractDigest = forged
+				revision.ReviewSnapshot.ContractDigest = forged
+			},
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			ctx := context.Background()
+			root := t.TempDir()
+			store := NewFileStore(root)
+			raw := []byte("openapi: 3.1.0\n")
+			key, err := store.Put(ctx, raw)
+			if err != nil {
+				t.Fatal(err)
+			}
+			legacy := core.ContractRevision{
+				ID: "revision-1", SourceID: "source-main", Ref: "main", CommitSHA: "abc123",
+				SpecBlobKey: string(key),
+			}
+			if err := store.SaveRevision(ctx, legacy); err != nil {
+				t.Fatal(err)
+			}
+			enriched := legacy
+			enriched.ContractID = "payments"
+			snapshot := core.NewContractSnapshot(enriched.ContractID, enriched.ID, raw, core.SpecIndex{})
+			enriched.SpecDigest = snapshot.SpecDigest
+			enriched.ContractDigest = snapshot.ContractDigest
+			enriched.ReviewSnapshot = &snapshot
+			test.mutate(&enriched)
+
+			if err := store.SaveRevision(ctx, enriched); err == nil {
+				t.Fatal("forged legacy evidence was accepted")
+			}
+			got, err := NewFileStore(root).Revision(ctx, legacy.ID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !reflect.DeepEqual(got, legacy) {
+				t.Fatalf("failed enrichment escaped rollback: %#v", got)
+			}
+
+			validSnapshot := core.NewContractSnapshot("payments", legacy.ID, raw, core.SpecIndex{})
+			valid := legacy
+			valid.ContractID = "payments"
+			valid.SpecDigest = validSnapshot.SpecDigest
+			valid.ContractDigest = validSnapshot.ContractDigest
+			valid.ReviewSnapshot = &validSnapshot
+			if err := NewFileStore(root).SaveRevision(ctx, valid); err != nil {
+				t.Fatalf("recover with valid evidence: %v", err)
+			}
+			if _, err := NewFileStore(root).ContractRevision(ctx, "payments", legacy.ID); err != nil {
+				t.Fatalf("read recovered evidence after restart: %v", err)
+			}
+		})
+	}
+}
+
+func TestFileStoreAddsCanonicalSnapshotToPriorFlatEvidence(t *testing.T) {
+	ctx := context.Background()
+	root := t.TempDir()
+	store := NewFileStore(root)
+	raw := []byte("openapi: 3.1.0\n")
+	key, err := store.Put(ctx, raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	snapshot := core.NewContractSnapshot("payments", "revision-1", raw, core.SpecIndex{})
+	prior := core.ContractRevision{
+		ID: "revision-1", ContractID: snapshot.ContractID, SourceID: "source-main",
+		SpecBlobKey: string(key), SpecDigest: snapshot.SpecDigest, ContractDigest: snapshot.ContractDigest,
+	}
+	if err := store.writeJSON(ctx, "revisions", prior.ID+".json", prior); err != nil {
+		t.Fatal(err)
+	}
+	enriched := prior
+	enriched.ReviewSnapshot = &snapshot
+	if err := store.SaveRevision(ctx, enriched); err != nil {
+		t.Fatalf("add canonical snapshot to prior flat evidence: %v", err)
+	}
+	got, err := NewFileStore(root).ContractRevision(ctx, prior.ContractID, prior.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(got, enriched) {
+		t.Fatalf("enriched prior evidence = %#v, want %#v", got, enriched)
+	}
+}
+
+func TestFileStoreReplacesUnboundFlatDigestsDuringOneTimeEnrichment(t *testing.T) {
+	ctx := context.Background()
+	root := t.TempDir()
+	store := NewFileStore(root)
+	raw := []byte("openapi: 3.1.0\n")
+	key, err := store.Put(ctx, raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	prior := core.ContractRevision{
+		ID: "revision-1", ContractID: "payments", SourceID: "source-main",
+		SpecBlobKey:    string(key),
+		SpecDigest:     "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+		ContractDigest: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+	}
+	if err := store.writeJSON(ctx, "revisions", prior.ID+".json", prior); err != nil {
+		t.Fatal(err)
+	}
+
+	snapshot := core.NewContractSnapshot(prior.ContractID, prior.ID, raw, core.SpecIndex{})
+	enriched := prior
+	enriched.SpecDigest = snapshot.SpecDigest
+	enriched.ContractDigest = snapshot.ContractDigest
+	enriched.ReviewSnapshot = &snapshot
+	if err := store.SaveRevision(ctx, enriched); err != nil {
+		t.Fatalf("replace unbound flat evidence: %v", err)
+	}
+	got, err := NewFileStore(root).ContractRevision(ctx, prior.ContractID, prior.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(got, enriched) {
+		t.Fatalf("verified evidence = %#v, want %#v", got, enriched)
 	}
 }
 
@@ -302,6 +468,17 @@ func TestFileStorePersistsReleaseDecisionReplayIdentityAcrossRestart(t *testing.
 	}
 	if changed || next.Generation != track.Generation || next.LastDecision == nil || *next.LastDecision != decision {
 		t.Fatalf("restart replay changed track: next=%#v changed=%t", next, changed)
+	}
+	promoted, err := core.PromoteReleaseRevision(got, decision.RevisionID)
+	if err != nil {
+		t.Fatalf("promote persisted accepted decision: %v", err)
+	}
+	replayed, err := core.PromoteReleaseRevision(promoted, decision.RevisionID)
+	if err != nil {
+		t.Fatalf("replay persisted promotion: %v", err)
+	}
+	if !reflect.DeepEqual(replayed, promoted) || promoted.CurrentRevisionID != decision.RevisionID {
+		t.Fatalf("persisted promotion replay changed track: promoted=%#v replayed=%#v", promoted, replayed)
 	}
 }
 

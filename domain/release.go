@@ -44,13 +44,6 @@ func ConsiderReleaseRevision(track ReleaseTrack, revisionID string, accepted boo
 		return ReleaseTrack{}, fmt.Errorf("revision id is required")
 	}
 
-	next := track
-	if accepted && track.Mode == ReleaseModeFollowing && track.CurrentRevisionID == revisionID && track.CandidateRevisionID == "" {
-		return next, nil
-	}
-	if track.CandidateRevisionID == revisionID && (!accepted || track.Mode == ReleaseModePinned) {
-		return next, nil
-	}
 	verdict := VerdictFail
 	if accepted {
 		verdict = VerdictPass
@@ -92,7 +85,8 @@ func ConsiderReleaseDecision(track ReleaseTrack, decision ReleaseDecision) (Rele
 }
 
 // PromoteReleaseRevision explicitly advances a pinned track to its recorded
-// candidate. It cannot promote a different revision or a following track.
+// candidate only when its latest persisted decision accepted that revision.
+// Replaying an already-applied accepted promotion is a no-op.
 func PromoteReleaseRevision(track ReleaseTrack, revisionID string) (ReleaseTrack, error) {
 	if err := validateReleaseTrack(track); err != nil {
 		return ReleaseTrack{}, err
@@ -101,7 +95,19 @@ func PromoteReleaseRevision(track ReleaseTrack, revisionID string) (ReleaseTrack
 		return ReleaseTrack{}, fmt.Errorf("only pinned tracks require promotion")
 	}
 	revisionID = strings.TrimSpace(revisionID)
-	if revisionID == "" || revisionID != track.CandidateRevisionID {
+	if revisionID == "" {
+		return ReleaseTrack{}, fmt.Errorf("revision id is required")
+	}
+	if track.LastDecision == nil ||
+		!track.LastDecision.Accepted ||
+		track.LastDecision.Verdict != VerdictPass ||
+		track.LastDecision.RevisionID != revisionID {
+		return ReleaseTrack{}, fmt.Errorf("revision %q has no matching accepted decision", revisionID)
+	}
+	if track.CandidateRevisionID == "" && track.CurrentRevisionID == revisionID {
+		return track, nil
+	}
+	if revisionID != track.CandidateRevisionID {
 		return ReleaseTrack{}, fmt.Errorf("revision %q is not the track candidate", revisionID)
 	}
 	next := track

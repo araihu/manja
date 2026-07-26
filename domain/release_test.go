@@ -1,6 +1,9 @@
 package domain
 
-import "testing"
+import (
+	"encoding/json"
+	"testing"
+)
 
 func TestFollowingTrackAdvancesOnlyAcceptedRevision(t *testing.T) {
 	track := ReleaseTrack{
@@ -137,5 +140,102 @@ func TestReleaseDecisionRepeatedRejectionIsNoOp(t *testing.T) {
 	}
 	if changed || next != track {
 		t.Fatalf("repeated rejection changed track: next=%#v changed=%t", next, changed)
+	}
+}
+
+func TestConsiderReleaseRevisionUsesDecisionIdentityForPinnedReplay(t *testing.T) {
+	track := ReleaseTrack{
+		ID: "stable", ContractID: "payments", Mode: ReleaseModePinned,
+		Generation: 2, CurrentRevisionID: "revision-good",
+	}
+
+	rejected, err := ConsiderReleaseRevision(track, "revision-next", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rejectedReplay, err := ConsiderReleaseRevision(rejected, "revision-next", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rejectedReplay != rejected {
+		t.Fatalf("exact rejection replay changed track: %#v", rejectedReplay)
+	}
+
+	accepted, err := ConsiderReleaseRevision(rejected, "revision-next", true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if accepted.Generation != rejected.Generation+1 {
+		t.Fatalf("reject to accept generation = %d, want %d", accepted.Generation, rejected.Generation+1)
+	}
+	if accepted.LastDecision == nil || !accepted.LastDecision.Accepted || accepted.LastDecision.Verdict != VerdictPass {
+		t.Fatalf("reject to accept last decision = %#v, want accepted pass", accepted.LastDecision)
+	}
+
+	acceptedReplay, err := ConsiderReleaseRevision(accepted, "revision-next", true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if acceptedReplay != accepted {
+		t.Fatalf("exact acceptance replay changed track: %#v", acceptedReplay)
+	}
+}
+
+func TestPinnedPromotionRequiresMatchingAcceptedDecisionEvidence(t *testing.T) {
+	track := ReleaseTrack{
+		ID: "stable", ContractID: "payments", Mode: ReleaseModePinned,
+		Generation: 2, CurrentRevisionID: "revision-good",
+	}
+	rejected, err := ConsiderReleaseRevision(track, "revision-next", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := PromoteReleaseRevision(rejected, "revision-next"); err == nil {
+		t.Fatal("rejected decision promoted its candidate")
+	}
+
+	mismatchedDecision := ReleaseDecision{
+		RevisionID: "revision-other", ReviewID: "review-other",
+		ReviewDigest: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+		Verdict:      VerdictPass, Accepted: true,
+	}
+	mismatched := rejected
+	mismatched.LastDecision = &mismatchedDecision
+	if _, err := PromoteReleaseRevision(mismatched, "revision-next"); err == nil {
+		t.Fatal("accepted decision for another revision promoted the candidate")
+	}
+}
+
+func TestPinnedAcceptedPromotionSurvivesRestartAndExactReplay(t *testing.T) {
+	track := ReleaseTrack{
+		ID: "stable", ContractID: "payments", Mode: ReleaseModePinned,
+		Generation: 2, CurrentRevisionID: "revision-good",
+	}
+	accepted, err := ConsiderReleaseRevision(track, "revision-next", true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	persisted, err := json.Marshal(accepted)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var restarted ReleaseTrack
+	if err := json.Unmarshal(persisted, &restarted); err != nil {
+		t.Fatal(err)
+	}
+
+	promoted, err := PromoteReleaseRevision(restarted, "revision-next")
+	if err != nil {
+		t.Fatalf("promote restarted accepted decision: %v", err)
+	}
+	if promoted.CurrentRevisionID != "revision-next" || promoted.CandidateRevisionID != "" {
+		t.Fatalf("promoted track = %#v", promoted)
+	}
+	replayed, err := PromoteReleaseRevision(promoted, "revision-next")
+	if err != nil {
+		t.Fatalf("replay accepted promotion: %v", err)
+	}
+	if replayed != promoted {
+		t.Fatalf("exact promotion replay changed track: %#v", replayed)
 	}
 }
