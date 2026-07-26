@@ -160,7 +160,7 @@ func PublicDocsWithOptions(idx core.SpecIndex, selectedID string, opts PublicDoc
 				}()
 			}
 			ctx = templ.InitializeContext(ctx)
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<div class=\"fixed inset-0 flex flex-col overflow-clip bg-surface text-on-surface dark:bg-surface-dark dark:text-on-surface-dark\"><header data-boot-anim=\"header\" class=\"manja-docs-header relative z-50 shrink-0 border-b border-outline bg-surface dark:border-outline-dark dark:bg-surface-dark\"><div class=\"flex h-16 items-center justify-between gap-3 px-4 lg:px-8\"><div class=\"flex min-w-0 items-center gap-2\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<div hx-history=\"false\" class=\"fixed inset-0 flex flex-col overflow-clip bg-surface text-on-surface dark:bg-surface-dark dark:text-on-surface-dark\"><header data-boot-anim=\"header\" class=\"manja-docs-header relative z-50 shrink-0 border-b border-outline bg-surface dark:border-outline-dark dark:bg-surface-dark\"><div class=\"flex h-16 items-center justify-between gap-3 px-4 lg:px-8\"><div class=\"flex min-w-0 items-center gap-2\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -3269,13 +3269,12 @@ func sidebarSections(idx core.SpecIndex, selectedAnchor string, labelMode Endpoi
 				label := operationSidebarLabel(op, labelMode)
 				href := selectedDocsHref(anchor)
 				tagItems[tag] = append(tagItems[tag], sidebar.Item{
-					ID:         sidebarItemID(idPrefix, anchor),
-					Label:      label,
-					Href:       href,
-					Active:     active,
-					Badge:      op.Method,
-					BadgeClass: methodBadgeClass(op.Method),
-					LinkAttrs:  sidebarNavigationAttrs(label, href),
+					ID:        sidebarItemID(idPrefix, anchor),
+					Label:     label,
+					Href:      href,
+					Active:    active,
+					Badge:     op.Method,
+					LinkAttrs: sidebarNavigationAttrs(label, href),
 				})
 			}
 		}
@@ -3478,21 +3477,6 @@ func methodBadge(method string) templ.Component {
 		}
 		return nil
 	})
-}
-
-func methodBadgeClass(method string) string {
-	switch methodBadgeTone(method) {
-	case badge.TonePrimary:
-		return "border border-primary bg-surface text-primary dark:border-primary-dark dark:bg-surface-dark dark:text-primary-dark"
-	case badge.ToneSuccess:
-		return "border border-success bg-surface text-success dark:border-success dark:bg-surface-dark dark:text-success"
-	case badge.ToneWarning:
-		return "border border-warning bg-surface text-warning dark:border-warning dark:bg-surface-dark dark:text-warning"
-	case badge.ToneDanger:
-		return "border border-danger bg-surface text-danger dark:border-danger dark:bg-surface-dark dark:text-danger"
-	default:
-		return "border border-outline bg-surface text-on-surface dark:border-outline-dark dark:bg-surface-dark dark:text-on-surface-dark"
-	}
 }
 
 func methodBadgeTone(method string) badge.Tone {

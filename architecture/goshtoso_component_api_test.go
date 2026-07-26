@@ -7,7 +7,7 @@ import (
 	"testing"
 )
 
-func TestWebTemplatesUseGoshtosoV0012ComponentAPI(t *testing.T) {
+func TestWebTemplatesUseGoshtosoV0013ComponentAPI(t *testing.T) {
 	root := repositoryRoot(t)
 	templates := []string{
 		"internal/web/templates/management.templ",
@@ -23,6 +23,7 @@ func TestWebTemplatesUseGoshtosoV0012ComponentAPI(t *testing.T) {
 		{"badge.Variant types", regexp.MustCompile(`\bbadge\.Variant\b`)},
 		{"removed SoftVariantClasses", regexp.MustCompile(`\.SoftVariantClasses\s*\(`)},
 		{"removed BadgeCellClasses", regexp.MustCompile(`\btable\.BadgeCellClasses\s*\(`)},
+		{"sidebar BadgeClass escape hatch", regexp.MustCompile(`\bBadgeClass\s*:`)},
 	}
 
 	for _, relative := range templates {

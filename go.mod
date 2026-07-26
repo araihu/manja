@@ -4,7 +4,7 @@ go 1.26.5
 
 require (
 	github.com/a-h/templ v0.3.1020
-	github.com/araihu/goshtoso v0.0.12
+	github.com/araihu/goshtoso v0.0.13
 	github.com/getkin/kin-openapi v0.140.0
 	github.com/oapi-codegen/oapi-codegen/v2 v2.7.1
 	github.com/playwright-community/playwright-go v0.5700.1

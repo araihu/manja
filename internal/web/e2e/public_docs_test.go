@@ -477,16 +477,19 @@ func TestPublicDocsThemeSelectDropdownOverlaysContent(t *testing.T) {
 	if _, err := page.Goto(server); err != nil {
 		t.Fatal(err)
 	}
+	if _, err := page.Evaluate(`async () => await window.goshtosoDependencies.ready`, nil); err != nil {
+		t.Fatalf("await Goshtoso dependency readiness: %v", err)
+	}
 	if err := page.Locator("#manja-theme-trigger").Click(); err != nil {
 		t.Fatal(err)
 	}
-	if err := page.Locator("#manja-theme-trigger ~ div[role='listbox']").WaitFor(); err != nil {
+	if err := page.Locator("#manja-theme-listbox[role='listbox']").WaitFor(); err != nil {
 		t.Fatal(err)
 	}
 
 	result, err := page.Evaluate(`() => {
 		const trigger = document.getElementById('manja-theme-trigger');
-		const menu = trigger.parentElement.querySelector('[role="listbox"]');
+		const menu = document.getElementById('manja-theme-listbox');
 		const header = document.querySelector('.manja-docs-header');
 		const menuRect = menu.getBoundingClientRect();
 		const headerRect = header.getBoundingClientRect();
@@ -511,6 +514,12 @@ func TestPublicDocsThemeSelectDropdownOverlaysContent(t *testing.T) {
 	}
 	if resultMap, ok := result.(map[string]any); !ok || resultMap["menuContainsHit"] != true {
 		t.Fatalf("theme dropdown should overlay content below the header, got %#v", result)
+	}
+	if err := page.Locator(`#manja-theme-listbox [role='option']:has-text("Goshtoso")`).Click(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := page.WaitForFunction(`() => document.documentElement.dataset.theme === 'goshtoso' && localStorage.getItem('theme') === 'goshtoso'`, nil); err != nil {
+		t.Fatalf("theme selection should update the live document and persistence: %v", err)
 	}
 }
 
@@ -571,6 +580,9 @@ func TestPublicDocsSidebarNavigationSwapsMainContent(t *testing.T) {
 	}
 	if _, err := page.Goto(server + "/?selected=operation-filler-0#operation-filler-0"); err != nil {
 		t.Fatal(err)
+	}
+	if _, err := page.Evaluate(`async () => await window.goshtosoDependencies.ready`, nil); err != nil {
+		t.Fatalf("await Goshtoso dependency readiness: %v", err)
 	}
 	if err := page.Locator("#operation-filler-0:visible").WaitFor(); err != nil {
 		t.Fatal(err)
