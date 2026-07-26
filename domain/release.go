@@ -261,6 +261,9 @@ func ValidateReleaseTrack(track ReleaseTrack) error {
 		}
 		return nil
 	}
+	if track.Generation == 0 {
+		return fmt.Errorf("release track decision evidence requires a positive generation")
+	}
 	if err := validateReleaseDecision(*track.LastDecision); err != nil {
 		return fmt.Errorf("invalid last release decision: %w", err)
 	}

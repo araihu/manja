@@ -39,18 +39,35 @@ type SpecChange struct {
 	Description string `json:"description"`
 }
 
-// DiffSpecIndexes preserves the management-facing diff API while delegating
-// comparison to normalized snapshots.
-func DiffSpecIndexes(baseline, candidate SpecIndex) SpecDiff {
-	return DiffContractSnapshots(
-		NewContractSnapshot("", baseline.RevisionID, nil, baseline),
-		NewContractSnapshot("", candidate.RevisionID, nil, candidate),
-	)
+// DiffSpecIndexes validates both raw indexes before comparing their normalized
+// compatibility surfaces. Invalid or ambiguous surfaces fail closed.
+func DiffSpecIndexes(baseline, candidate SpecIndex) (SpecDiff, error) {
+	if err := ValidateSpecIndex(baseline); err != nil {
+		return SpecDiff{}, fmt.Errorf("validate baseline spec index: %w", err)
+	}
+	if err := ValidateSpecIndex(candidate); err != nil {
+		return SpecDiff{}, fmt.Errorf("validate candidate spec index: %w", err)
+	}
+	return diffValidatedContractSnapshots(
+		NewContractSnapshot("diff-contract", baseline.RevisionID, nil, baseline),
+		NewContractSnapshot("diff-contract", candidate.RevisionID, nil, candidate),
+	), nil
 }
 
 // DiffContractSnapshots compares normalized contract surfaces and emits stable
 // findings suitable for storage, automation, and repeatable CLI output.
-func DiffContractSnapshots(baseline, candidate ContractSnapshot) SpecDiff {
+// Invalid or ambiguous snapshots fail closed before any map-based comparison.
+func DiffContractSnapshots(baseline, candidate ContractSnapshot) (SpecDiff, error) {
+	if err := ValidateContractSnapshot(baseline); err != nil {
+		return SpecDiff{}, fmt.Errorf("validate baseline contract snapshot: %w", err)
+	}
+	if err := ValidateContractSnapshot(candidate); err != nil {
+		return SpecDiff{}, fmt.Errorf("validate candidate contract snapshot: %w", err)
+	}
+	return diffValidatedContractSnapshots(baseline, candidate), nil
+}
+
+func diffValidatedContractSnapshots(baseline, candidate ContractSnapshot) SpecDiff {
 	diff := SpecDiff{
 		BaselineRevisionID:  baseline.RevisionID,
 		CandidateRevisionID: candidate.RevisionID,

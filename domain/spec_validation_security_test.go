@@ -186,27 +186,19 @@ func TestValidateSpecIndexBoundsSchemaSummaryDepth(t *testing.T) {
 }
 
 func TestValidateSpecIndexBoundsTotalSchemaSummaryNodes(t *testing.T) {
-	for _, test := range []struct {
-		nodes     int
-		wantError bool
-	}{
-		{nodes: 4095},
-		{nodes: 4096},
-		{nodes: 4097, wantError: true},
-	} {
-		t.Run(fmt.Sprintf("%d_nodes", test.nodes), func(t *testing.T) {
-			schemas := make([]Schema, test.nodes)
-			for index := range schemas {
-				schemas[index].Name = fmt.Sprintf("Schema%d", index)
-			}
-			err := ValidateSpecIndex(SpecIndex{Schemas: schemas})
-			if test.wantError && err == nil {
-				t.Fatal("ValidateSpecIndex accepted too many schema summary nodes")
-			}
-			if !test.wantError && err != nil {
-				t.Fatalf("ValidateSpecIndex rejected the node boundary: %v", err)
-			}
-		})
+	validator := specSchemaSummaryValidator{
+		active:     make(map[*SchemaSummary]struct{}),
+		memoHeight: make(map[*SchemaSummary]int),
+		nodes:      maxSpecSchemaSummaryNodes - 1,
+	}
+	if err := validator.validateRoot("boundary", SchemaSummary{}); err != nil {
+		t.Fatalf("validator rejected aggregate node boundary: %v", err)
+	}
+	if validator.nodes != maxSpecSchemaSummaryNodes {
+		t.Fatalf("aggregate nodes = %d, want %d", validator.nodes, maxSpecSchemaSummaryNodes)
+	}
+	if err := validator.validateRoot("over boundary", SchemaSummary{}); err == nil {
+		t.Fatal("validator accepted an aggregate node beyond the hard budget")
 	}
 }
 

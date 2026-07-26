@@ -54,7 +54,7 @@ Create or change these focused units:
 
 **Interfaces:**
 - Produces: `ContractSnapshot`, `NewContractSnapshot`, `DiffContractSnapshots`, stable `SpecChange.ID`, and stable `SpecChange.RuleID`.
-- Preserves: `DiffSpecIndexes(SpecIndex, SpecIndex) SpecDiff` for existing management callers.
+- Exposes: checked `DiffSpecIndexes(SpecIndex, SpecIndex) (SpecDiff, error)` for management and external callers so ambiguous compatibility surfaces fail closed.
 
 - [ ] **Step 1: Write failing snapshot normalization and digest tests**
 
@@ -161,8 +161,14 @@ func TestDiffContractSnapshotsUsesStableRuleAndFindingIDs(t *testing.T) {
 	})
 	candidate := NewContractSnapshot("payments", "head", []byte("head"), SpecIndex{})
 
-	first := DiffContractSnapshots(baseline, candidate)
-	second := DiffContractSnapshots(baseline, candidate)
+	first, err := DiffContractSnapshots(baseline, candidate)
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := DiffContractSnapshots(baseline, candidate)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	change := first.BreakingChanges[0]
 	if change.RuleID != RuleOperationRemoved {
@@ -219,7 +225,7 @@ type SpecChange struct {
 Implement:
 
 ```go
-func DiffContractSnapshots(baseline, candidate ContractSnapshot) SpecDiff
+func DiffContractSnapshots(baseline, candidate ContractSnapshot) (SpecDiff, error)
 func stableFindingID(ruleID, subject string) string
 ```
 
@@ -229,15 +235,13 @@ and additive results by `RuleID`, then `Subject`, then `ID`.
 Retain:
 
 ```go
-func DiffSpecIndexes(baseline, candidate SpecIndex) SpecDiff {
-	return DiffContractSnapshots(
-		NewContractSnapshot("", baseline.RevisionID, nil, baseline),
-		NewContractSnapshot("", candidate.RevisionID, nil, candidate),
-	)
-}
+func DiffSpecIndexes(baseline, candidate SpecIndex) (SpecDiff, error)
 ```
 
-The compatibility wrapper keeps existing templates and management tests working.
+Both public diff entry points validate their inputs before constructing maps, so
+canonical duplicates produce deterministic errors rather than order-dependent
+findings. Management callers surface that error as unavailable comparison
+evidence.
 
 - [ ] **Step 8: Run all core and management diff tests**
 

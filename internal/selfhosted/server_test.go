@@ -430,7 +430,10 @@ func TestManagementPublishedIndexLoaderScopesSharedRevisionIDsByContract(t *test
 	})
 
 	t.Run("owning contract current fast path remains available", func(t *testing.T) {
-		current := core.SpecIndex{Title: "Payments Current Fast Path"}
+		current := core.SpecIndex{
+			ProjectID: "payments", RevisionID: "shared",
+			Title: "Payments Current Fast Path",
+		}
 		index, ok, err := paymentsLoader(ctx, web.ManagedSpec{
 			Project:     core.Project{ID: "payments"},
 			Revision:    paymentsShared,
@@ -442,6 +445,24 @@ func TestManagementPublishedIndexLoaderScopesSharedRevisionIDsByContract(t *test
 		}
 		if !ok || index.Title != current.Title {
 			t.Fatalf("owning current fast path = (%#v, %v)", index, ok)
+		}
+	})
+
+	t.Run("mismatched current index loads contract-scoped persisted revision", func(t *testing.T) {
+		index, ok, err := paymentsLoader(ctx, web.ManagedSpec{
+			Project:  core.Project{ID: "payments"},
+			Revision: paymentsShared,
+			Index: core.SpecIndex{
+				ProjectID: "orders", RevisionID: "shared",
+				Title: "Orders Leaked Index",
+			},
+			Publication: core.Publication{ProjectID: "payments", RevisionID: "shared", Public: true, Path: "/payments"},
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !ok || index.Title != "Payments Published" {
+			t.Fatalf("mismatched current index bypassed contract-scoped read: (%#v, %v)", index, ok)
 		}
 	})
 

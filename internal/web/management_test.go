@@ -44,11 +44,12 @@ func TestManagementOverviewShowsProjectSyncAndPublicationState(t *testing.T) {
 				SpecPath:  "openapi/payments.yaml",
 			},
 			Revision: core.Revision{
-				ID:        "rev1",
-				SourceID:  "source1",
-				Ref:       "main",
-				CommitSHA: "abc123",
-				Version:   "2026-06-09",
+				ID:         "rev1",
+				ContractID: "payments",
+				SourceID:   "source1",
+				Ref:        "main",
+				CommitSHA:  "abc123",
+				Version:    "2026-06-09",
 			},
 			Publication: core.Publication{
 				ProjectID:  "payments",

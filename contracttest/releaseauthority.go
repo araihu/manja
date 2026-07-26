@@ -47,6 +47,17 @@ func ReleaseAuthorityUnitOfWork(t *testing.T, factory ReleaseAuthorityUnitOfWork
 		assertReleaseAuthorityTrack(t, ctx, fixture.UnitOfWork, evidence.baseline)
 	})
 
+	t.Run("decision authority requires a generation", func(t *testing.T) {
+		fixture := factory(t)
+		requireReleaseAuthorityFixture(t, fixture)
+		evidence := newReleaseAuthorityEvidence(t)
+		zeroGeneration := domain.CloneReleaseTrack(evidence.next)
+		zeroGeneration.Generation = 0
+		if err := domain.ValidateReleaseTrack(zeroGeneration); err == nil {
+			t.Fatal("public release track validation accepted zero-generation decision authority")
+		}
+	})
+
 	t.Run("missing deterministic effects fails atomically", func(t *testing.T) {
 		fixture := factory(t)
 		requireReleaseAuthorityFixture(t, fixture)

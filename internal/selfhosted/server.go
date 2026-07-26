@@ -201,7 +201,9 @@ func managementPublishedIndexLoader(options Options, store *storeadapter.FileSto
 		}
 		if spec.Publication.RevisionID == spec.Revision.ID &&
 			spec.Publication.ProjectID == spec.Project.ID &&
-			spec.Revision.ContractID == spec.Publication.ProjectID {
+			spec.Revision.ContractID == spec.Publication.ProjectID &&
+			spec.Index.ProjectID == spec.Publication.ProjectID &&
+			spec.Index.RevisionID == spec.Publication.RevisionID {
 			return spec.Index, true, nil
 		}
 		revision, err := store.ContractRevision(

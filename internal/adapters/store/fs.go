@@ -524,6 +524,12 @@ func (s *FileStore) loadOperationalStateLocked(ctx context.Context) (operational
 	if err != nil && !errors.Is(err, fs.ErrNotExist) {
 		return state, err
 	}
+	if migrateLegacy && markerPresent {
+		return operationalState{}, fmt.Errorf(
+			"operational state is missing for durable schema marker %d",
+			marker.Version,
+		)
+	}
 	if err == nil {
 		if err := strictJSONUnmarshal(data, &state); err != nil {
 			return operationalState{}, fmt.Errorf("decode operational state: %w", err)
@@ -1784,6 +1790,14 @@ func validateReleaseDecisionBundle(
 	track domain.ReleaseTrack,
 	authorization domain.ReleaseAuthorization,
 ) error {
+	if track.CandidateRevisionID != "" &&
+		track.CurrentRevisionID != authorization.BaselineRevisionID {
+		return fmt.Errorf(
+			"outstanding decision current revision %q does not match authorization baseline %q",
+			track.CurrentRevisionID,
+			authorization.BaselineRevisionID,
+		)
+	}
 	decision := *track.LastDecision
 	review := state.Reviews[authorization.ReviewID]
 	canonical, err := domain.CanonicalReviewJSON(review.Report)

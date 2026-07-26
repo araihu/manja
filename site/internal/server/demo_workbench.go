@@ -234,7 +234,9 @@ func (h *demoWorkbenchHandler) publishedIndexLoader(ctx context.Context, spec we
 	}
 	if spec.Publication.RevisionID == spec.Revision.ID &&
 		spec.Publication.ProjectID == cfg.Seed.ProjectID &&
-		spec.Revision.ContractID == cfg.Seed.ProjectID {
+		spec.Revision.ContractID == cfg.Seed.ProjectID &&
+		spec.Index.ProjectID == spec.Publication.ProjectID &&
+		spec.Index.RevisionID == spec.Publication.RevisionID {
 		return spec.Index, true, nil
 	}
 	return h.indexForRevision(ctx, cfg, spec.Publication.RevisionID)

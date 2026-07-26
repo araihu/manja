@@ -509,7 +509,7 @@ func normalizeEffectivePolicy(policy EffectivePolicy) (EffectivePolicy, error) {
 }
 
 func evaluateComparison(kind string, baseline, candidate ContractSnapshot, policy EffectivePolicy, evaluatedAt time.Time) ComparisonReport {
-	diff := DiffContractSnapshots(baseline, candidate)
+	diff := diffValidatedContractSnapshots(baseline, candidate)
 	findings := append([]SpecChange(nil), diff.BreakingChanges...)
 	findings = append(findings, diff.AdditiveChanges...)
 	sortSpecChanges(findings)

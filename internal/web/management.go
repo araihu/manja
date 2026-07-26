@@ -422,20 +422,35 @@ func (s *managementServer) managementSpecDiff(ctx context.Context, spec ManagedS
 	if !ok {
 		return core.SpecDiff{}, false, "Production baseline is not available for this revision yet."
 	}
-	return core.DiffSpecIndexes(baseline, spec.Index), true, ""
+	diff, err := core.DiffSpecIndexes(baseline, spec.Index)
+	if err != nil {
+		return core.SpecDiff{}, false, "Could not compare the production baseline: " + err.Error()
+	}
+	return diff, true, ""
 }
 
 func (s *managementServer) managementBaselineIndex(ctx context.Context, spec ManagedSpec) (core.SpecIndex, bool, error) {
-	if hasManagementSpecIndex(spec.PublishedIndex) {
+	if hasManagementSpecIndex(spec.PublishedIndex) &&
+		managementIndexMatchesPublication(spec, spec.PublishedIndex) {
 		return spec.PublishedIndex, true, nil
 	}
-	if strings.TrimSpace(spec.Publication.RevisionID) != "" && spec.Publication.RevisionID == spec.Revision.ID {
+	if managementIndexMatchesPublication(spec, spec.Index) &&
+		spec.Revision.ID == spec.Publication.RevisionID &&
+		spec.Revision.ContractID == spec.Publication.ProjectID {
 		return spec.Index, true, nil
 	}
 	if s.publishedIndexLoader == nil {
 		return core.SpecIndex{}, false, nil
 	}
 	return s.publishedIndexLoader(ctx, spec)
+}
+
+func managementIndexMatchesPublication(spec ManagedSpec, index core.SpecIndex) bool {
+	return spec.Project.ID != "" &&
+		spec.Publication.ProjectID == spec.Project.ID &&
+		spec.Publication.RevisionID != "" &&
+		index.ProjectID == spec.Publication.ProjectID &&
+		index.RevisionID == spec.Publication.RevisionID
 }
 
 func hasManagementSpecIndex(idx core.SpecIndex) bool {

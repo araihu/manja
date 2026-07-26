@@ -2,14 +2,73 @@ package domain
 
 import "testing"
 
+func TestPublicDiffAPIsReturnDeterministicValidationErrors(t *testing.T) {
+	baselineIndex := SpecIndex{
+		RevisionID: "baseline",
+		Operations: []Operation{{Method: "GET", Path: "/payments"}},
+	}
+	candidateForward := SpecIndex{
+		RevisionID: "candidate",
+		Operations: []Operation{
+			{Method: "GET", Path: "/payments"},
+			{Method: "get", Path: "/payments", Description: "duplicate"},
+		},
+	}
+	candidateReverse := candidateForward
+	candidateReverse.Operations = append([]Operation(nil), candidateForward.Operations...)
+	candidateReverse.Operations[0], candidateReverse.Operations[1] =
+		candidateReverse.Operations[1], candidateReverse.Operations[0]
+
+	baseline := NewContractSnapshot(
+		"payments",
+		baselineIndex.RevisionID,
+		[]byte("baseline"),
+		baselineIndex,
+	)
+	var firstIndexError, firstSnapshotError string
+	for index, candidateIndex := range []SpecIndex{candidateForward, candidateReverse} {
+		_, indexErr := DiffSpecIndexes(baselineIndex, candidateIndex)
+		if indexErr == nil {
+			t.Fatal("public index diff accepted a canonical duplicate")
+		}
+		candidate := NewContractSnapshot(
+			"payments",
+			candidateIndex.RevisionID,
+			[]byte("candidate"),
+			candidateIndex,
+		)
+		_, snapshotErr := DiffContractSnapshots(baseline, candidate)
+		if snapshotErr == nil {
+			t.Fatal("public snapshot diff accepted a canonical duplicate")
+		}
+		if index == 0 {
+			firstIndexError = indexErr.Error()
+			firstSnapshotError = snapshotErr.Error()
+			continue
+		}
+		if indexErr.Error() != firstIndexError {
+			t.Fatalf("reversed index duplicate error = %q, want %q", indexErr, firstIndexError)
+		}
+		if snapshotErr.Error() != firstSnapshotError {
+			t.Fatalf("reversed snapshot duplicate error = %q, want %q", snapshotErr, firstSnapshotError)
+		}
+	}
+}
+
 func TestDiffContractSnapshotsUsesStableRuleAndFindingIDs(t *testing.T) {
 	baseline := NewContractSnapshot("payments", "base", []byte("base"), SpecIndex{
 		Operations: []Operation{{Method: "GET", Path: "/payments"}},
 	})
 	candidate := NewContractSnapshot("payments", "head", []byte("head"), SpecIndex{})
 
-	first := DiffContractSnapshots(baseline, candidate)
-	second := DiffContractSnapshots(baseline, candidate)
+	first, err := DiffContractSnapshots(baseline, candidate)
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := DiffContractSnapshots(baseline, candidate)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	change := first.BreakingChanges[0]
 	if change.RuleID != RuleOperationRemoved {
@@ -68,7 +127,10 @@ func TestDiffSpecIndexesFlagsBreakingAndAdditiveContractChanges(t *testing.T) {
 		Schemas: []Schema{{Name: "Payment"}, {Name: "Refund"}},
 	}
 
-	diff := DiffSpecIndexes(baseline, candidate)
+	diff, err := DiffSpecIndexes(baseline, candidate)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	if diff.BaselineRevisionID != "rev-live" || diff.CandidateRevisionID != "rev-candidate" {
 		t.Fatalf("revision ids = %#v", diff)
@@ -106,7 +168,10 @@ func TestDiffSpecIndexesTreatsMatchingContractAsSafe(t *testing.T) {
 		Schemas: []Schema{{Name: "Payment"}},
 	}
 
-	diff := DiffSpecIndexes(idx, idx)
+	diff, err := DiffSpecIndexes(idx, idx)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	if len(diff.BreakingChanges) != 0 || len(diff.AdditiveChanges) != 0 {
 		t.Fatalf("diff should be empty: %#v", diff)

@@ -7,10 +7,13 @@ import (
 )
 
 // These bounds keep validation of untrusted parser output deterministic and
-// stack-safe while remaining well above practical OpenAPI schema nesting.
+// stack-safe. The aggregate node budget is calibrated above the supported
+// GitHub REST fixture's 73,034 expanded summary nodes while retaining a hard
+// cap against adversarially wide documents. Pointer-shared DAG subtrees are
+// memoized and charged once; independently expanded value nodes are charged.
 const (
 	maxSpecSchemaSummaryDepth = 64
-	maxSpecSchemaSummaryNodes = 4096
+	maxSpecSchemaSummaryNodes = 100_000
 )
 
 // ValidateContractRevision verifies all provider-neutral immutable revision

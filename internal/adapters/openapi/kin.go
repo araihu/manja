@@ -57,7 +57,15 @@ func (Parser) Parse(ctx context.Context, file core.SpecFile, rev core.Revision) 
 				Deprecated:  op.Deprecated,
 			}
 			operation.Anchor = operationAnchor(operation)
-			operation.Parameters = operationParameters(item.Parameters, op.Parameters)
+			operation.Parameters, err = operationParameters(item.Parameters, op.Parameters)
+			if err != nil {
+				return core.SpecIndex{}, fmt.Errorf(
+					"operation %s %s parameters: %w",
+					operation.Method,
+					operation.Path,
+					err,
+				)
+			}
 			operation.RequestBody = operationRequestBody(op.RequestBody, inferFragments)
 			operation.Responses = operationResponses(op.Responses, inferFragments)
 			operation.Security = operationSecurity(doc.Security, op.Security)
@@ -228,25 +236,75 @@ func overviewServerVariables(variables openapi3.ServerVariables) []core.SpecServ
 	return result
 }
 
-func operationParameters(groups ...openapi3.Parameters) []core.OperationParameter {
-	var parameters []core.OperationParameter
-	for _, group := range groups {
-		for _, ref := range group {
-			if ref == nil || ref.Value == nil {
-				continue
-			}
-			parameter := ref.Value
-			parameters = append(parameters, core.OperationParameter{
-				Name:        parameter.Name,
-				In:          parameter.In,
-				Required:    parameter.Required,
-				Description: parameter.Description,
-				Schema:      schemaSummary(parameter.Schema),
-				Example:     exampleString(parameter.Example),
-			})
+func operationParameters(
+	pathParameters, operationParameters openapi3.Parameters,
+) ([]core.OperationParameter, error) {
+	type parameterKey struct {
+		name string
+		in   string
+	}
+	keyFor := func(kind string, parameter *openapi3.Parameter) (parameterKey, error) {
+		if err := core.ValidateCanonicalIdentity(kind+" parameter name", parameter.Name, false); err != nil {
+			return parameterKey{}, err
+		}
+		if err := core.ValidateCanonicalIdentity(kind+" parameter location", parameter.In, false); err != nil {
+			return parameterKey{}, err
+		}
+		return parameterKey{
+			name: strings.TrimSpace(parameter.Name),
+			in:   strings.ToLower(strings.TrimSpace(parameter.In)),
+		}, nil
+	}
+	convert := func(parameter *openapi3.Parameter) core.OperationParameter {
+		return core.OperationParameter{
+			Name:        parameter.Name,
+			In:          parameter.In,
+			Required:    parameter.Required,
+			Description: parameter.Description,
+			Schema:      schemaSummary(parameter.Schema),
+			Example:     exampleString(parameter.Example),
 		}
 	}
-	return parameters
+
+	parameters := make([]core.OperationParameter, 0, len(pathParameters)+len(operationParameters))
+	positions := make(map[parameterKey]int, len(pathParameters))
+	for _, ref := range pathParameters {
+		if ref == nil || ref.Value == nil {
+			continue
+		}
+		key, err := keyFor("path-item", ref.Value)
+		if err != nil {
+			return nil, err
+		}
+		if _, exists := positions[key]; exists {
+			return nil, fmt.Errorf("duplicate path-item parameter %q in %q", key.name, key.in)
+		}
+		positions[key] = len(parameters)
+		parameters = append(parameters, convert(ref.Value))
+	}
+
+	operationKeys := make(map[parameterKey]struct{}, len(operationParameters))
+	for _, ref := range operationParameters {
+		if ref == nil || ref.Value == nil {
+			continue
+		}
+		key, err := keyFor("operation", ref.Value)
+		if err != nil {
+			return nil, err
+		}
+		if _, exists := operationKeys[key]; exists {
+			return nil, fmt.Errorf("duplicate operation parameter %q in %q", key.name, key.in)
+		}
+		operationKeys[key] = struct{}{}
+		parameter := convert(ref.Value)
+		if position, exists := positions[key]; exists {
+			parameters[position] = parameter
+			continue
+		}
+		positions[key] = len(parameters)
+		parameters = append(parameters, parameter)
+	}
+	return parameters, nil
 }
 
 func operationRequestBody(ref *openapi3.RequestBodyRef, inferExamples bool) *core.OperationRequestBody {

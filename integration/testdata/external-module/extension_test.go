@@ -137,6 +137,60 @@ func TestLegacyReleaseReviewValidatorRemainsUsable(t *testing.T) {
 	}
 }
 
+func TestPublicDiffAPIsFailClosedForUnrelatedCallers(t *testing.T) {
+	baselineIndex := domain.SpecIndex{
+		RevisionID: "revision-good",
+		Operations: []domain.Operation{{Method: "GET", Path: "/payments"}},
+	}
+	candidateIndex := domain.SpecIndex{
+		RevisionID: "revision-next",
+		Operations: []domain.Operation{{Method: "POST", Path: "/payments"}},
+	}
+	indexDiff, err := domain.DiffSpecIndexes(baselineIndex, candidateIndex)
+	if err != nil {
+		t.Fatalf("diff valid public indexes: %v", err)
+	}
+	if len(indexDiff.BreakingChanges) == 0 || len(indexDiff.AdditiveChanges) == 0 {
+		t.Fatalf("public index diff = %#v", indexDiff)
+	}
+
+	baseline := domain.NewContractSnapshot(
+		"payments",
+		baselineIndex.RevisionID,
+		[]byte("baseline"),
+		baselineIndex,
+	)
+	candidate := domain.NewContractSnapshot(
+		"payments",
+		candidateIndex.RevisionID,
+		[]byte("candidate"),
+		candidateIndex,
+	)
+	if _, err := domain.DiffContractSnapshots(baseline, candidate); err != nil {
+		t.Fatalf("diff valid public snapshots: %v", err)
+	}
+
+	duplicate := domain.SpecIndex{
+		RevisionID: "revision-duplicate",
+		Operations: []domain.Operation{
+			{Method: "GET", Path: "/payments"},
+			{Method: "get", Path: "/payments"},
+		},
+	}
+	if _, err := domain.DiffSpecIndexes(baselineIndex, duplicate); err == nil {
+		t.Fatal("public index diff accepted canonical duplicates")
+	}
+	duplicateSnapshot := domain.NewContractSnapshot(
+		"payments",
+		duplicate.RevisionID,
+		[]byte("duplicate"),
+		duplicate,
+	)
+	if _, err := domain.DiffContractSnapshots(baseline, duplicateSnapshot); err == nil {
+		t.Fatal("public snapshot diff accepted canonical duplicates")
+	}
+}
+
 func TestPublicContractSuitesAreUsableByUnrelatedModule(t *testing.T) {
 	contracttest.UnitOfWork(t, func(testing.TB) port.UnitOfWork {
 		return &memoryUnitOfWork{store: newMemoryOperationalStore(), blobs: newMemoryBlobStore()}

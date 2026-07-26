@@ -70,6 +70,11 @@ func TestValidateReleaseTrackRejectsMalformedDecisionEvidence(t *testing.T) {
 			track: ReleaseTrack{ID: "stable", ContractID: "payments", Mode: ReleaseModePinned,
 				CurrentRevisionID: "revision-good", CandidateRevisionID: "revision-next", LastDecision: &zeroTimeDecision},
 		},
+		{
+			name: "decision without generation",
+			track: ReleaseTrack{ID: "stable", ContractID: "payments", Mode: ReleaseModePinned,
+				CurrentRevisionID: "revision-good", CandidateRevisionID: "revision-next", LastDecision: &decision},
+		},
 	}
 
 	for _, test := range tests {
