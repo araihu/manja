@@ -4,8 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"reflect"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/araihu/manja/application/port"
 	"github.com/araihu/manja/domain"
@@ -113,6 +115,118 @@ func UnitOfWork(t *testing.T, factory UnitOfWorkFactory) {
 		if got.Generation != updates {
 			t.Errorf("generation after concurrent updates = %d, want %d; adapter lost an update", got.Generation, updates)
 		}
+	})
+
+	t.Run("release track reads do not alias transactional state", func(t *testing.T) {
+		uow := factory(t)
+		ctx := markedContext(t)
+		track := releaseTrackIsolationFixture()
+		if err := seedReleaseTrackIsolation(ctx, uow, track); err != nil {
+			t.Fatalf("seed release track isolation: %v", err)
+		}
+		if err := uow.Within(ctx, func(ctx context.Context, store port.OperationalStore) error {
+			returned, err := store.ReleaseTrack(ctx, track.ContractID, track.ID)
+			if err != nil {
+				return err
+			}
+			returned.LastDecision.Accepted = true
+			returned.LastDecision.Verdict = domain.VerdictPass
+			return nil
+		}); err != nil {
+			t.Fatalf("mutate returned track without save: %v", err)
+		}
+		got, err := loadTrack(ctx, uow, track.ContractID, track.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !reflect.DeepEqual(got, track) {
+			t.Fatalf("returned release track aliased persisted state: got=%#v want=%#v", got, track)
+		}
+	})
+
+	t.Run("release track saves retain an isolated value", func(t *testing.T) {
+		uow := factory(t)
+		ctx := markedContext(t)
+		track := releaseTrackIsolationFixture()
+		if err := uow.Within(ctx, func(ctx context.Context, store port.OperationalStore) error {
+			if err := store.SaveRevision(ctx, domain.ContractRevision{ID: track.CandidateRevisionID, ContractID: track.ContractID}); err != nil {
+				return err
+			}
+			if err := store.SaveReleaseTrack(ctx, 0, track); err != nil {
+				return err
+			}
+			track.LastDecision.Accepted = true
+			track.LastDecision.Verdict = domain.VerdictPass
+			return nil
+		}); err != nil {
+			t.Fatalf("save isolated release track: %v", err)
+		}
+		got, err := loadTrack(ctx, uow, track.ContractID, track.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		want := releaseTrackIsolationFixture()
+		if !reflect.DeepEqual(got, want) {
+			t.Fatalf("saved release track retained caller alias: got=%#v want=%#v", got, want)
+		}
+	})
+
+	t.Run("release track decision evidence cannot be stripped", func(t *testing.T) {
+		uow := factory(t)
+		ctx := markedContext(t)
+		track := releaseTrackIsolationFixture()
+		track.LastDecision.Accepted = true
+		track.LastDecision.Verdict = domain.VerdictPass
+		track.CurrentRevisionID = track.LastDecision.RevisionID
+		track.CandidateRevisionID = ""
+		if err := seedReleaseTrackIsolation(ctx, uow, track); err != nil {
+			t.Fatalf("seed decision evidence stripping track: %v", err)
+		}
+
+		err := uow.Within(ctx, func(ctx context.Context, store port.OperationalStore) error {
+			stripped, err := store.ReleaseTrack(ctx, track.ContractID, track.ID)
+			if err != nil {
+				return err
+			}
+			stripped.LastDecision = nil
+			return store.SaveReleaseTrack(ctx, track.Generation, stripped)
+		})
+		if err == nil {
+			t.Fatal("stripped release decision evidence was committed as legacy state")
+		}
+		got, err := loadTrack(ctx, uow, track.ContractID, track.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !reflect.DeepEqual(got, track) {
+			t.Fatalf("failed stripping attempt changed persisted track: got=%#v want=%#v", got, track)
+		}
+	})
+}
+
+func releaseTrackIsolationFixture() domain.ReleaseTrack {
+	decision := domain.ReleaseDecision{
+		RevisionID: "isolation-revision", ReviewID: "isolation-review",
+		ReviewDigest: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+		Verdict:      domain.VerdictFail,
+		EvaluatedAt:  time.Date(2026, 7, 25, 12, 0, 0, 0, time.UTC),
+	}
+	return domain.ReleaseTrack{
+		ID: "isolation", ContractID: "contract", Mode: domain.ReleaseModePinned,
+		Generation: 1, CandidateRevisionID: decision.RevisionID, LastDecision: &decision,
+	}
+}
+
+func seedReleaseTrackIsolation(ctx context.Context, uow port.UnitOfWork, track domain.ReleaseTrack) error {
+	return uow.Within(ctx, func(ctx context.Context, store port.OperationalStore) error {
+		revisionID := track.CandidateRevisionID
+		if revisionID == "" && track.LastDecision != nil {
+			revisionID = track.LastDecision.RevisionID
+		}
+		if err := store.SaveRevision(ctx, domain.ContractRevision{ID: revisionID, ContractID: track.ContractID}); err != nil {
+			return err
+		}
+		return store.SaveReleaseTrack(ctx, 0, track)
 	})
 }
 

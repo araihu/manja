@@ -464,7 +464,7 @@ func TestValidateReleaseReviewReportRejectsNonCanonicalEvidence(t *testing.T) {
 			mutated := report
 			mutated.EffectivePolicy.Layers = append([]PolicyLayerProjection(nil), report.EffectivePolicy.Layers...)
 			tt.mutate(&mutated)
-			err := ValidateReleaseReviewReport(mutated, "payments", baseline, candidate)
+			err := ValidateReleaseReviewReport(mutated, "payments", snapshotRef(baseline), snapshotRef(candidate))
 			if err == nil || !strings.Contains(err.Error(), tt.want) {
 				t.Fatalf("ValidateReleaseReviewReport error = %v, want containing %q", err, tt.want)
 			}
@@ -474,7 +474,7 @@ func TestValidateReleaseReviewReportRejectsNonCanonicalEvidence(t *testing.T) {
 
 func TestValidateReleaseReviewReportAcceptsCanonicalEvidence(t *testing.T) {
 	report, baseline, candidate := canonicalReleaseReportForTest(t)
-	if err := ValidateReleaseReviewReport(report, "payments", baseline, candidate); err != nil {
+	if err := ValidateReleaseReviewReport(report, "payments", snapshotRef(baseline), snapshotRef(candidate)); err != nil {
 		t.Fatalf("ValidateReleaseReviewReport canonical evidence: %v", err)
 	}
 }
@@ -527,7 +527,7 @@ func TestValidateReleaseReviewReportRejectsRewrittenCanonicalResult(t *testing.T
 		t.Run(tt.name, func(t *testing.T) {
 			mutated := cloneReviewReportForTest(t, report)
 			tt.mutate(&mutated)
-			if err := ValidateReleaseReviewReport(
+			if err := ValidateReleaseReviewReportAgainstSnapshots(
 				mutated,
 				"payments",
 				baseline,
@@ -548,7 +548,7 @@ func TestValidateReleaseReviewReportRejectsForgedPassWithValidEvidence(t *testin
 	report.Comparisons[0].Policy = PolicyResult{Verdict: VerdictPass}
 	report.Verdict = VerdictPass
 
-	if err := ValidateReleaseReviewReport(
+	if err := ValidateReleaseReviewReportAgainstSnapshots(
 		report,
 		"payments",
 		baseline,

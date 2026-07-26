@@ -77,43 +77,18 @@ type ReviewRequest struct {
 	EngineVersion string
 }
 
-// ValidateReleaseReviewReport reconstructs canonical release evidence from the
-// independently persisted baseline and candidate snapshots. Release
-// advancement accepts exactly one release-impact comparison whose complete
-// result matches the deterministic review core.
-func ValidateReleaseReviewReport(report ReviewReport, contractID string, baseline, candidate ContractSnapshot) error {
-	if report.SchemaVersion != ReviewSchemaVersion {
-		return fmt.Errorf("unsupported review schema version %q", report.SchemaVersion)
-	}
-	if report.ContractID != contractID {
-		return fmt.Errorf("review contract id %q does not match release contract id %q", report.ContractID, contractID)
-	}
-	if strings.TrimSpace(report.EngineVersion) == "" {
-		return fmt.Errorf("review engine version is required")
-	}
-	if report.EvaluatedAt.IsZero() {
-		return fmt.Errorf("review evaluation time is required")
-	}
-	if report.EvaluatedAt.Location() != time.UTC {
-		return fmt.Errorf("review evaluation time must be UTC")
-	}
-	if !isLowerSHA256(report.PolicyDigest) {
-		return fmt.Errorf("review policy digest must be lowercase SHA-256")
-	}
-	canonicalPolicy, canonicalPolicyDigest, err := validateCanonicalPolicyProjection(report.EffectivePolicy)
-	if err != nil {
-		return fmt.Errorf("review effective policy is invalid: %w", err)
-	}
-	if report.PolicyDigest != canonicalPolicyDigest {
-		return fmt.Errorf("review policy digest %q does not match effective policy digest %q", report.PolicyDigest, canonicalPolicyDigest)
-	}
-	if len(report.Comparisons) != 1 {
-		return fmt.Errorf("release review must contain exactly one comparison")
-	}
-	comparison := report.Comparisons[0]
-	if comparison.Kind != ComparisonReleaseImpact {
-		return fmt.Errorf("release review comparison kind %q is not %q", comparison.Kind, ComparisonReleaseImpact)
-	}
+// ValidateReleaseReviewReport preserves the public reference-level validation
+// contract used by offline and external callers. Release authorization must use
+// ValidateReleaseReviewReportAgainstSnapshots with independently persisted
+// snapshots.
+func ValidateReleaseReviewReport(report ReviewReport, contractID string, baseline, candidate SnapshotRef) error {
+	_, _, err := validateReleaseReviewReport(report, contractID, baseline, candidate)
+	return err
+}
+
+// ValidateReleaseReviewReportAgainstSnapshots reconstructs canonical release
+// evidence from independently persisted baseline and candidate snapshots.
+func ValidateReleaseReviewReportAgainstSnapshots(report ReviewReport, contractID string, baseline, candidate ContractSnapshot) error {
 	validatedBaseline, err := validateAndCloneContractSnapshot(baseline)
 	if err != nil {
 		return fmt.Errorf("validate persisted review baseline: %w", err)
@@ -128,10 +103,13 @@ func ValidateReleaseReviewReport(report ReviewReport, contractID string, baselin
 	if validatedCandidate.ContractID != contractID {
 		return fmt.Errorf("persisted review candidate contract id %q does not match release contract id %q", validatedCandidate.ContractID, contractID)
 	}
-	if err := validateExpectedSnapshotRef("baseline", comparison.Baseline, snapshotRef(validatedBaseline)); err != nil {
-		return err
-	}
-	if err := validateExpectedSnapshotRef("candidate", comparison.Candidate, snapshotRef(validatedCandidate)); err != nil {
+	canonicalPolicy, comparison, err := validateReleaseReviewReport(
+		report,
+		contractID,
+		snapshotRef(validatedBaseline),
+		snapshotRef(validatedCandidate),
+	)
+	if err != nil {
 		return err
 	}
 	expectedComparison := evaluateComparison(
@@ -148,6 +126,54 @@ func ValidateReleaseReviewReport(report ReviewReport, contractID string, baselin
 		return fmt.Errorf("review verdict %q does not match canonical comparison verdict %q", report.Verdict, expectedComparison.Policy.Verdict)
 	}
 	return nil
+}
+
+func validateReleaseReviewReport(report ReviewReport, contractID string, baseline, candidate SnapshotRef) (EffectivePolicy, ComparisonReport, error) {
+	if report.SchemaVersion != ReviewSchemaVersion {
+		return EffectivePolicy{}, ComparisonReport{}, fmt.Errorf("unsupported review schema version %q", report.SchemaVersion)
+	}
+	if report.ContractID != contractID {
+		return EffectivePolicy{}, ComparisonReport{}, fmt.Errorf("review contract id %q does not match release contract id %q", report.ContractID, contractID)
+	}
+	if strings.TrimSpace(report.EngineVersion) == "" {
+		return EffectivePolicy{}, ComparisonReport{}, fmt.Errorf("review engine version is required")
+	}
+	if report.EvaluatedAt.IsZero() {
+		return EffectivePolicy{}, ComparisonReport{}, fmt.Errorf("review evaluation time is required")
+	}
+	if report.EvaluatedAt.Location() != time.UTC {
+		return EffectivePolicy{}, ComparisonReport{}, fmt.Errorf("review evaluation time must be UTC")
+	}
+	if !isLowerSHA256(report.PolicyDigest) {
+		return EffectivePolicy{}, ComparisonReport{}, fmt.Errorf("review policy digest must be lowercase SHA-256")
+	}
+	canonicalPolicy, canonicalPolicyDigest, err := validateCanonicalPolicyProjection(report.EffectivePolicy)
+	if err != nil {
+		return EffectivePolicy{}, ComparisonReport{}, fmt.Errorf("review effective policy is invalid: %w", err)
+	}
+	if report.PolicyDigest != canonicalPolicyDigest {
+		return EffectivePolicy{}, ComparisonReport{}, fmt.Errorf("review policy digest %q does not match effective policy digest %q", report.PolicyDigest, canonicalPolicyDigest)
+	}
+	if len(report.Comparisons) != 1 {
+		return EffectivePolicy{}, ComparisonReport{}, fmt.Errorf("release review must contain exactly one comparison")
+	}
+	comparison := report.Comparisons[0]
+	if comparison.Kind != ComparisonReleaseImpact {
+		return EffectivePolicy{}, ComparisonReport{}, fmt.Errorf("release review comparison kind %q is not %q", comparison.Kind, ComparisonReleaseImpact)
+	}
+	if err := validateExpectedSnapshotRef("baseline", comparison.Baseline, baseline); err != nil {
+		return EffectivePolicy{}, ComparisonReport{}, err
+	}
+	if err := validateExpectedSnapshotRef("candidate", comparison.Candidate, candidate); err != nil {
+		return EffectivePolicy{}, ComparisonReport{}, err
+	}
+	if comparison.Policy.Verdict != VerdictPass && comparison.Policy.Verdict != VerdictFail {
+		return EffectivePolicy{}, ComparisonReport{}, fmt.Errorf("unsupported comparison verdict %q", comparison.Policy.Verdict)
+	}
+	if report.Verdict != comparison.Policy.Verdict {
+		return EffectivePolicy{}, ComparisonReport{}, fmt.Errorf("review verdict %q does not match comparison verdict %q", report.Verdict, comparison.Policy.Verdict)
+	}
+	return canonicalPolicy, comparison, nil
 }
 
 func validateCanonicalPolicyProjection(projection EffectivePolicyProjection) (EffectivePolicy, string, error) {

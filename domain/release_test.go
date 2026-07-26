@@ -1,7 +1,9 @@
 package domain
 
 import (
+	"bytes"
 	"encoding/json"
+	"fmt"
 	"reflect"
 	"testing"
 	"time"
@@ -11,6 +13,106 @@ func TestReleaseTrackRemainsComparableForPublicCallers(t *testing.T) {
 	track := ReleaseTrack{}
 	if track != track {
 		t.Fatal("release track did not equal itself")
+	}
+}
+
+func TestCloneReleaseTrackIsolatesDecisionEvidence(t *testing.T) {
+	decision := ReleaseDecision{
+		RevisionID: "revision-next", ReviewID: "review-rejected",
+		ReviewDigest: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+		Verdict:      VerdictFail, EvaluatedAt: time.Date(2026, 7, 25, 12, 0, 0, 0, time.UTC),
+	}
+	track := ReleaseTrack{
+		ID: "stable", ContractID: "payments", Mode: ReleaseModePinned,
+		Generation: 3, CurrentRevisionID: "revision-good",
+		CandidateRevisionID: decision.RevisionID, LastDecision: &decision,
+	}
+
+	cloned := CloneReleaseTrack(track)
+	cloned.LastDecision.Accepted = true
+	cloned.LastDecision.Verdict = VerdictPass
+
+	if track.LastDecision.Accepted || track.LastDecision.Verdict != VerdictFail {
+		t.Fatalf("clone mutated original decision evidence: %#v", track.LastDecision)
+	}
+}
+
+func TestValidateReleaseTrackRejectsMalformedDecisionEvidence(t *testing.T) {
+	evaluatedAt := time.Date(2026, 7, 25, 12, 0, 0, 0, time.UTC)
+	decision := ReleaseDecision{
+		RevisionID: "revision-next", ReviewID: "review-rejected",
+		ReviewDigest: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+		Verdict:      VerdictFail, EvaluatedAt: evaluatedAt,
+	}
+	zeroTimeDecision := decision
+	zeroTimeDecision.EvaluatedAt = time.Time{}
+	tests := []struct {
+		name  string
+		track ReleaseTrack
+	}{
+		{
+			name: "candidate without decision evidence",
+			track: ReleaseTrack{ID: "stable", ContractID: "payments", Mode: ReleaseModePinned,
+				CurrentRevisionID: "revision-good", CandidateRevisionID: "revision-next"},
+		},
+		{
+			name: "decision for a different candidate",
+			track: ReleaseTrack{ID: "stable", ContractID: "payments", Mode: ReleaseModePinned,
+				CurrentRevisionID: "revision-good", CandidateRevisionID: "revision-other", LastDecision: &decision},
+		},
+		{
+			name: "rejected decision stripped of its candidate",
+			track: ReleaseTrack{ID: "stable", ContractID: "payments", Mode: ReleaseModePinned,
+				CurrentRevisionID: "revision-good", LastDecision: &decision},
+		},
+		{
+			name: "decision without chronology",
+			track: ReleaseTrack{ID: "stable", ContractID: "payments", Mode: ReleaseModePinned,
+				CurrentRevisionID: "revision-good", CandidateRevisionID: "revision-next", LastDecision: &zeroTimeDecision},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if err := ValidateReleaseTrack(test.track); err == nil {
+				t.Fatal("malformed release track was accepted")
+			}
+		})
+	}
+}
+
+func TestValidateReleaseTrackTransitionRejectsStrippedOrSupersededEvidence(t *testing.T) {
+	evaluatedAt := time.Date(2026, 7, 25, 12, 0, 0, 0, time.UTC)
+	currentDecision := ReleaseDecision{
+		RevisionID: "revision-current", ReviewID: "review-current",
+		ReviewDigest: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+		Verdict:      VerdictPass, Accepted: true, EvaluatedAt: evaluatedAt,
+	}
+	current := ReleaseTrack{
+		ID: "stable", ContractID: "payments", Mode: ReleaseModePinned,
+		Generation: 4, CurrentRevisionID: currentDecision.RevisionID, LastDecision: &currentDecision,
+	}
+
+	stripped := CloneReleaseTrack(current)
+	stripped.LastDecision = nil
+	if err := ValidateReleaseTrackTransition(current, stripped); err == nil {
+		t.Fatal("stripped decision evidence was accepted as a transition")
+	}
+	for _, timestamp := range []time.Time{evaluatedAt.Add(-time.Minute), evaluatedAt} {
+		supersededDecision := currentDecision
+		supersededDecision.ReviewID = "review-superseded"
+		supersededDecision.ReviewDigest = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+		supersededDecision.EvaluatedAt = timestamp
+		superseded := CloneReleaseTrack(current)
+		superseded.LastDecision = &supersededDecision
+		if err := ValidateReleaseTrackTransition(current, superseded); err == nil {
+			t.Fatalf("superseded decision at %s was accepted", timestamp)
+		}
+	}
+
+	promoted := CloneReleaseTrack(current)
+	if err := ValidateReleaseTrackTransition(current, promoted); err != nil {
+		t.Fatalf("exact decision evidence transition: %v", err)
 	}
 }
 
@@ -116,6 +218,7 @@ func TestReleaseDecisionExactAcceptedReplayIsNoOp(t *testing.T) {
 		RevisionID: "revision-next", ReviewID: "review-accepted",
 		ReviewDigest: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
 		Verdict:      VerdictPass, Accepted: true,
+		EvaluatedAt: time.Date(2026, 7, 25, 12, 0, 0, 0, time.UTC),
 	}
 	track := ReleaseTrack{
 		ID: "stable", ContractID: "payments", Mode: ReleaseModePinned,
@@ -137,6 +240,7 @@ func TestReleaseDecisionRepeatedRejectionIsNoOp(t *testing.T) {
 		RevisionID: "revision-next", ReviewID: "review-rejected",
 		ReviewDigest: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
 		Verdict:      VerdictFail, Accepted: false,
+		EvaluatedAt: time.Date(2026, 7, 25, 12, 0, 0, 0, time.UTC),
 	}
 	track := ReleaseTrack{
 		ID: "stable", ContractID: "payments", Mode: ReleaseModePinned,
@@ -255,8 +359,12 @@ func TestReleaseDecisionRejectsUnseenOlderDecision(t *testing.T) {
 		Verdict:      VerdictPass, Accepted: true, EvaluatedAt: older,
 	}
 
-	if _, _, err := ConsiderReleaseDecision(track, staleUnseen); err == nil {
-		t.Fatal("unseen older decision was accepted")
+	replayed, changed, err := ConsiderReleaseDecision(track, staleUnseen)
+	if err != nil {
+		t.Fatalf("ignore unseen older decision: %v", err)
+	}
+	if changed || !reflect.DeepEqual(replayed, track) {
+		t.Fatalf("unseen older decision changed track: replayed=%#v track=%#v changed=%t", replayed, track, changed)
 	}
 }
 
@@ -311,6 +419,46 @@ func TestReleaseDecisionAllowsNewerAcceptanceAfterRejection(t *testing.T) {
 	}
 	if !changed || accepted.LastDecision == nil || !reflect.DeepEqual(*accepted.LastDecision, acceptedDecision) {
 		t.Fatalf("newer acceptance not applied: accepted=%#v changed=%t", accepted, changed)
+	}
+}
+
+func TestReleaseDecisionStateRemainsConstantAcrossLongSequence(t *testing.T) {
+	track := ReleaseTrack{
+		ID: "stable", ContractID: "payments", Mode: ReleaseModePinned,
+		Generation: 2, CurrentRevisionID: "revision-good",
+	}
+	startedAt := time.Date(2026, 7, 25, 12, 0, 0, 0, time.UTC)
+	firstSize := 0
+	for index := 0; index < 512; index++ {
+		decision := ReleaseDecision{
+			RevisionID:   "revision-next",
+			ReviewID:     fmt.Sprintf("review-%04d", index),
+			ReviewDigest: fmt.Sprintf("%064x", index+1),
+			Verdict:      VerdictFail,
+			Accepted:     false,
+			EvaluatedAt:  startedAt.Add(time.Duration(index) * time.Second),
+		}
+		next, changed, err := ConsiderReleaseDecision(track, decision)
+		if err != nil {
+			t.Fatalf("decision %d: %v", index, err)
+		}
+		if !changed {
+			t.Fatalf("decision %d was a no-op", index)
+		}
+		track = next
+		encoded, err := json.Marshal(track)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if index == 0 {
+			firstSize = len(encoded)
+		}
+		if bytes.Contains(encoded, []byte("decisionHistory")) {
+			t.Fatalf("decision %d retained append-only replay history", index)
+		}
+		if len(encoded) > firstSize+16 {
+			t.Fatalf("decision state grew from %d to %d bytes at decision %d", firstSize, len(encoded), index)
+		}
 	}
 }
 

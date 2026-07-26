@@ -70,7 +70,7 @@ func (s *FileStore) Within(ctx context.Context, callback func(context.Context, p
 		return err
 	}
 	transaction := &operationalTransaction{
-		state:            state,
+		state:            cloneOperationalState(state),
 		mutatedRevisions: cloneIDSet(state.migratedRevisions),
 	}
 	if err := callback(ctx, transaction); err != nil {
@@ -260,7 +260,10 @@ func (s *FileStore) ReleaseTrack(ctx context.Context, contractID, trackID string
 	if !ok {
 		return domain.ReleaseTrack{}, fs.ErrNotExist
 	}
-	return track, nil
+	if err := domain.ValidateReleaseTrack(track); err != nil {
+		return domain.ReleaseTrack{}, fmt.Errorf("invalid persisted release track: %w", err)
+	}
+	return domain.CloneReleaseTrack(track), nil
 }
 
 func (s *FileStore) Put(ctx context.Context, data []byte) (port.BlobKey, error) {
@@ -448,6 +451,9 @@ func (s *FileStore) validateOperationalState(ctx context.Context, state operatio
 		}
 	}
 	for key, track := range state.ReleaseTracks {
+		if err := domain.ValidateReleaseTrack(track); err != nil {
+			return fmt.Errorf("release track %q is invalid: %w", key, err)
+		}
 		for _, revisionID := range []string{track.CurrentRevisionID, track.CandidateRevisionID} {
 			if revisionID == "" {
 				continue
@@ -701,7 +707,10 @@ func (t *operationalTransaction) ReleaseTrack(ctx context.Context, contractID, t
 	if !ok {
 		return domain.ReleaseTrack{}, fs.ErrNotExist
 	}
-	return track, nil
+	if err := domain.ValidateReleaseTrack(track); err != nil {
+		return domain.ReleaseTrack{}, fmt.Errorf("invalid persisted release track: %w", err)
+	}
+	return domain.CloneReleaseTrack(track), nil
 }
 
 func (t *operationalTransaction) SaveReleaseTrack(ctx context.Context, expectedGeneration uint64, track domain.ReleaseTrack) error {
@@ -714,15 +723,28 @@ func (t *operationalTransaction) SaveReleaseTrack(ctx context.Context, expectedG
 	if err := validateID(track.ID); err != nil {
 		return err
 	}
+	if err := domain.ValidateReleaseTrack(track); err != nil {
+		return fmt.Errorf("invalid release track: %w", err)
+	}
 	key := releaseTrackKey(track.ContractID, track.ID)
 	current, exists := t.state.ReleaseTracks[key]
+	if exists {
+		if err := domain.ValidateReleaseTrack(current); err != nil {
+			return fmt.Errorf("invalid persisted release track: %w", err)
+		}
+	}
 	if exists && current.Generation != expectedGeneration {
 		return port.ErrGenerationConflict
 	}
 	if !exists && expectedGeneration != 0 {
 		return port.ErrGenerationConflict
 	}
-	t.state.ReleaseTracks[key] = track
+	if exists {
+		if err := domain.ValidateReleaseTrackTransition(current, track); err != nil {
+			return err
+		}
+	}
+	t.state.ReleaseTracks[key] = domain.CloneReleaseTrack(track)
 	return nil
 }
 
@@ -813,6 +835,16 @@ func cloneIDSet(values map[string]struct{}) map[string]struct{} {
 	for value := range values {
 		cloned[value] = struct{}{}
 	}
+	return cloned
+}
+
+func cloneOperationalState(state operationalState) operationalState {
+	cloned := state
+	cloned.ReleaseTracks = make(map[string]domain.ReleaseTrack, len(state.ReleaseTracks))
+	for key, track := range state.ReleaseTracks {
+		cloned.ReleaseTracks[key] = domain.CloneReleaseTrack(track)
+	}
+	cloned.migratedRevisions = cloneIDSet(state.migratedRevisions)
 	return cloned
 }
 

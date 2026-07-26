@@ -76,7 +76,7 @@ func (s *ReleaseService) Coordinate(ctx context.Context, command ReleaseCommand)
 	if err := validateContractReviewSnapshots(command.Review, baselineSnapshot, candidateSnapshot); err != nil {
 		return ReleaseResult{}, wrapError(ErrorIntegrity, "coordinate release", fmt.Errorf("bind release review to persisted revisions: %w", err))
 	}
-	if err := domain.ValidateReleaseReviewReport(
+	if err := domain.ValidateReleaseReviewReportAgainstSnapshots(
 		command.Review.Report,
 		command.ContractID,
 		baselineSnapshot,

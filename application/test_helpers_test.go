@@ -45,7 +45,7 @@ func (s *testOperationalStore) clone() *testOperationalStore {
 		next.syncRecords[key] = value
 	}
 	for key, value := range s.tracks {
-		next.tracks[key] = value
+		next.tracks[key] = domain.CloneReleaseTrack(value)
 	}
 	for key, value := range s.publications {
 		next.publications[key] = value
@@ -110,11 +110,17 @@ func (s *testOperationalStore) ReleaseTrack(ctx context.Context, contractID, tra
 	if !ok {
 		return domain.ReleaseTrack{}, errors.New("track not found")
 	}
-	return track, nil
+	if err := domain.ValidateReleaseTrack(track); err != nil {
+		return domain.ReleaseTrack{}, err
+	}
+	return domain.CloneReleaseTrack(track), nil
 }
 
 func (s *testOperationalStore) SaveReleaseTrack(ctx context.Context, expected uint64, value domain.ReleaseTrack) error {
 	if err := s.record(ctx, "track-write"); err != nil {
+		return err
+	}
+	if err := domain.ValidateReleaseTrack(value); err != nil {
 		return err
 	}
 	key := value.ContractID + "/" + value.ID
@@ -122,7 +128,12 @@ func (s *testOperationalStore) SaveReleaseTrack(ctx context.Context, expected ui
 	if ok && current.Generation != expected || !ok && expected != 0 {
 		return port.ErrGenerationConflict
 	}
-	s.tracks[key] = value
+	if ok {
+		if err := domain.ValidateReleaseTrackTransition(current, value); err != nil {
+			return err
+		}
+	}
+	s.tracks[key] = domain.CloneReleaseTrack(value)
 	return nil
 }
 

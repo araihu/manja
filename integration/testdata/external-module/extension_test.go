@@ -93,6 +93,36 @@ func TestUnrelatedModuleExecutesReviewAndSync(t *testing.T) {
 	}
 }
 
+func TestLegacyReleaseReviewValidatorRemainsUsable(t *testing.T) {
+	evaluatedAt := time.Date(2026, 7, 25, 12, 0, 0, 0, time.UTC)
+	baseline := domain.NewContractSnapshot("payments", "revision-good", []byte("baseline"), domain.SpecIndex{})
+	candidate := domain.NewContractSnapshot("payments", "revision-next", []byte("candidate"), domain.SpecIndex{})
+	policy, err := domain.MergePolicy(domain.PolicyLayer{
+		Name: "repository-default", Source: domain.PolicySourceRepository,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	report, err := domain.EvaluateReview(domain.ReviewRequest{
+		ContractID: "payments", Target: baseline, Candidate: candidate, Release: &baseline,
+		Policy: policy, EvaluatedAt: evaluatedAt, EngineVersion: "extension-test",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	report.Comparisons = []domain.ComparisonReport{report.Comparisons[1]}
+	report.Verdict = report.Comparisons[0].Policy.Verdict
+
+	if err := domain.ValidateReleaseReviewReport(
+		report,
+		"payments",
+		report.Comparisons[0].Baseline,
+		report.Comparisons[0].Candidate,
+	); err != nil {
+		t.Fatalf("legacy release review validation: %v", err)
+	}
+}
+
 func TestPublicContractSuitesAreUsableByUnrelatedModule(t *testing.T) {
 	contracttest.UnitOfWork(t, func(testing.TB) port.UnitOfWork {
 		return &memoryUnitOfWork{store: newMemoryOperationalStore(), blobs: newMemoryBlobStore()}
@@ -248,7 +278,7 @@ func (s *memoryOperationalStore) clone() *memoryOperationalStore {
 		next.syncRecords[key] = value
 	}
 	for key, value := range s.tracks {
-		next.tracks[key] = value
+		next.tracks[key] = domain.CloneReleaseTrack(value)
 	}
 	for key, value := range s.publications {
 		next.publications[key] = value
@@ -278,10 +308,16 @@ func (s *memoryOperationalStore) ReleaseTrack(_ context.Context, contractID, tra
 	if !ok {
 		return domain.ReleaseTrack{}, errors.New("track not found")
 	}
-	return track, nil
+	if err := domain.ValidateReleaseTrack(track); err != nil {
+		return domain.ReleaseTrack{}, err
+	}
+	return domain.CloneReleaseTrack(track), nil
 }
 
 func (s *memoryOperationalStore) SaveReleaseTrack(_ context.Context, expectedGeneration uint64, track domain.ReleaseTrack) error {
+	if err := domain.ValidateReleaseTrack(track); err != nil {
+		return err
+	}
 	key := track.ContractID + "/" + track.ID
 	current, ok := s.tracks[key]
 	if ok && current.Generation != expectedGeneration {
@@ -290,7 +326,12 @@ func (s *memoryOperationalStore) SaveReleaseTrack(_ context.Context, expectedGen
 	if !ok && expectedGeneration != 0 {
 		return port.ErrGenerationConflict
 	}
-	s.tracks[key] = track
+	if ok {
+		if err := domain.ValidateReleaseTrackTransition(current, track); err != nil {
+			return err
+		}
+	}
+	s.tracks[key] = domain.CloneReleaseTrack(track)
 	return nil
 }
 

@@ -26,6 +26,7 @@ func TestContractSuitesRejectBrokenAdapters(t *testing.T) {
 		{scenario: "lost-update", want: "generation"},
 		{scenario: "non-idempotent-blob", want: "content-addressed"},
 		{scenario: "nondeterministic-discovery", want: "deterministic"},
+		{scenario: "aliased-track-state", want: "alias"},
 	} {
 		t.Run(test.scenario, func(t *testing.T) {
 			command := exec.Command(os.Args[0], "-test.run=^TestBrokenContractAdapter$", "-test.v")
@@ -47,7 +48,7 @@ func TestBrokenContractAdapter(t *testing.T) {
 		t.Skip("subprocess helper")
 	}
 	switch scenario {
-	case "partial-commit", "replaced-context", "missing-blob", "lost-update":
+	case "partial-commit", "replaced-context", "missing-blob", "lost-update", "aliased-track-state":
 		UnitOfWork(t, func(testing.TB) port.UnitOfWork {
 			return newTestUnitOfWork(scenario)
 		})
@@ -87,6 +88,7 @@ func (u *testUnitOfWork) Within(ctx context.Context, callback func(context.Conte
 		defer u.mu.Unlock()
 	}
 	staged := u.state.clone()
+	staged.aliasTracks = u.scenario == "aliased-track-state"
 	callbackContext := ctx
 	if u.scenario == "replaced-context" {
 		callbackContext = context.Background()
@@ -112,8 +114,9 @@ func (u *testUnitOfWork) Within(ctx context.Context, callback func(context.Conte
 }
 
 type testOperationalStore struct {
-	revisions map[string]domain.ContractRevision
-	tracks    map[string]domain.ReleaseTrack
+	revisions   map[string]domain.ContractRevision
+	tracks      map[string]domain.ReleaseTrack
+	aliasTracks bool
 }
 
 func newTestOperationalStore() *testOperationalStore {
@@ -126,7 +129,7 @@ func (s *testOperationalStore) clone() *testOperationalStore {
 		next.revisions[key] = value
 	}
 	for key, value := range s.tracks {
-		next.tracks[key] = value
+		next.tracks[key] = domain.CloneReleaseTrack(value)
 	}
 	return next
 }
@@ -149,15 +152,33 @@ func (s *testOperationalStore) ReleaseTrack(_ context.Context, contractID, track
 	if !ok {
 		return domain.ReleaseTrack{}, errors.New("track not found")
 	}
-	return track, nil
+	if err := domain.ValidateReleaseTrack(track); err != nil {
+		return domain.ReleaseTrack{}, err
+	}
+	if s.aliasTracks {
+		return track, nil
+	}
+	return domain.CloneReleaseTrack(track), nil
 }
 func (s *testOperationalStore) SaveReleaseTrack(_ context.Context, expected uint64, track domain.ReleaseTrack) error {
+	if err := domain.ValidateReleaseTrack(track); err != nil {
+		return err
+	}
 	key := track.ContractID + "/" + track.ID
 	current, exists := s.tracks[key]
 	if (exists && current.Generation != expected) || (!exists && expected != 0) {
 		return port.ErrGenerationConflict
 	}
-	s.tracks[key] = track
+	if exists && !s.aliasTracks {
+		if err := domain.ValidateReleaseTrackTransition(current, track); err != nil {
+			return err
+		}
+	}
+	if s.aliasTracks {
+		s.tracks[key] = track
+	} else {
+		s.tracks[key] = domain.CloneReleaseTrack(track)
+	}
 	return nil
 }
 func (*testOperationalStore) SavePublication(context.Context, domain.Publication) error { return nil }

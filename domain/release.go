@@ -2,7 +2,6 @@ package domain
 
 import (
 	"fmt"
-	"strconv"
 	"strings"
 	"time"
 )
@@ -15,21 +14,14 @@ const (
 )
 
 type ReleaseTrack struct {
-	ID                  string                  `json:"id"`
-	ContractID          string                  `json:"contractId"`
-	BoundRef            string                  `json:"boundRef,omitempty"`
-	Mode                ReleaseMode             `json:"mode"`
-	Generation          uint64                  `json:"generation"`
-	CurrentRevisionID   string                  `json:"currentRevisionId,omitempty"`
-	CandidateRevisionID string                  `json:"candidateRevisionId,omitempty"`
-	LastDecision        *ReleaseDecision        `json:"lastDecision,omitempty"`
-	DecisionHistory     *ReleaseDecisionHistory `json:"decisionHistory,omitempty"`
-}
-
-// ReleaseDecisionHistory records every applied evidence identity so exact
-// historical replays remain no-ops after later decisions and restarts.
-type ReleaseDecisionHistory struct {
-	SeenDecisionIDs []string `json:"seenDecisionIds"`
+	ID                  string           `json:"id"`
+	ContractID          string           `json:"contractId"`
+	BoundRef            string           `json:"boundRef,omitempty"`
+	Mode                ReleaseMode      `json:"mode"`
+	Generation          uint64           `json:"generation"`
+	CurrentRevisionID   string           `json:"currentRevisionId,omitempty"`
+	CandidateRevisionID string           `json:"candidateRevisionId,omitempty"`
+	LastDecision        *ReleaseDecision `json:"lastDecision,omitempty"`
 }
 
 type ReleaseDecision struct {
@@ -45,7 +37,7 @@ type ReleaseDecision struct {
 // Rejected revisions remain visible as candidates but never replace public
 // last-known-good state.
 func ConsiderReleaseRevision(track ReleaseTrack, revisionID string, accepted bool) (ReleaseTrack, error) {
-	if err := validateReleaseTrack(track); err != nil {
+	if err := ValidateReleaseTrack(track); err != nil {
 		return ReleaseTrack{}, err
 	}
 	revisionID = strings.TrimSpace(revisionID)
@@ -57,34 +49,42 @@ func ConsiderReleaseRevision(track ReleaseTrack, revisionID string, accepted boo
 	if accepted {
 		verdict = VerdictPass
 	}
-	evaluatedAt := time.Unix(0, 0).UTC()
-	if track.LastDecision != nil && !track.LastDecision.EvaluatedAt.IsZero() {
-		evaluatedAt = track.LastDecision.EvaluatedAt.Add(time.Nanosecond)
-	}
-	next, _, err := ConsiderReleaseDecision(track, ReleaseDecision{
+	decision := ReleaseDecision{
 		RevisionID:   revisionID,
 		ReviewID:     "legacy-release-decision",
 		ReviewDigest: sha256Hex([]byte(fmt.Sprintf("%s\x00%t", revisionID, accepted))),
 		Verdict:      verdict,
 		Accepted:     accepted,
-		EvaluatedAt:  evaluatedAt,
-	})
+		EvaluatedAt:  time.Unix(0, 0).UTC(),
+	}
+	if track.LastDecision != nil {
+		if sameReleaseDecisionWithoutTime(*track.LastDecision, decision) {
+			decision.EvaluatedAt = track.LastDecision.EvaluatedAt
+		} else if !track.LastDecision.EvaluatedAt.IsZero() {
+			decision.EvaluatedAt = track.LastDecision.EvaluatedAt.Add(time.Nanosecond)
+		}
+	}
+	next, _, err := ConsiderReleaseDecision(track, decision)
 	return next, err
 }
 
+func sameReleaseDecisionWithoutTime(left, right ReleaseDecision) bool {
+	left.EvaluatedAt = time.Time{}
+	right.EvaluatedAt = time.Time{}
+	return left == right
+}
+
 // ConsiderReleaseDecision applies a reviewed decision to one track. Replay
-// identity includes the review bytes, verdict, and acceptance, while evaluation
-// time orders previously unseen decisions for the same track.
+// identity includes the review bytes, verdict, acceptance, and evaluation time.
+// Strictly older decisions are stale no-ops; only newer decisions may apply.
 func ConsiderReleaseDecision(track ReleaseTrack, decision ReleaseDecision) (ReleaseTrack, bool, error) {
-	if err := validateReleaseTrack(track); err != nil {
+	if err := ValidateReleaseTrack(track); err != nil {
 		return ReleaseTrack{}, false, err
 	}
 	if err := validateReleaseDecision(decision); err != nil {
 		return ReleaseTrack{}, false, err
 	}
-	decisionID := releaseDecisionID(decision)
-	if seenReleaseDecision(releaseDecisionHistory(track), decisionID) ||
-		(track.LastDecision != nil && *track.LastDecision == decision) {
+	if track.LastDecision != nil && *track.LastDecision == decision {
 		return track, false, nil
 	}
 	if decision.EvaluatedAt.IsZero() {
@@ -93,23 +93,13 @@ func ConsiderReleaseDecision(track ReleaseTrack, decision ReleaseDecision) (Rele
 	if track.LastDecision != nil && !track.LastDecision.EvaluatedAt.IsZero() {
 		switch {
 		case decision.EvaluatedAt.Before(track.LastDecision.EvaluatedAt):
-			return ReleaseTrack{}, false, fmt.Errorf("release decision predates the latest applied decision")
+			return track, false, nil
 		case decision.EvaluatedAt.Equal(track.LastDecision.EvaluatedAt):
 			return ReleaseTrack{}, false, fmt.Errorf("different release decisions have the same evaluation time")
 		}
 	}
 
 	next := track
-	next.DecisionHistory = &ReleaseDecisionHistory{
-		SeenDecisionIDs: append([]string(nil), releaseDecisionHistory(track)...),
-	}
-	if track.LastDecision != nil {
-		lastDecisionID := releaseDecisionID(*track.LastDecision)
-		if !seenReleaseDecision(next.DecisionHistory.SeenDecisionIDs, lastDecisionID) {
-			next.DecisionHistory.SeenDecisionIDs = append(next.DecisionHistory.SeenDecisionIDs, lastDecisionID)
-		}
-	}
-	next.DecisionHistory.SeenDecisionIDs = append(next.DecisionHistory.SeenDecisionIDs, decisionID)
 	next.Generation++
 	next.LastDecision = &decision
 	if !decision.Accepted || track.Mode == ReleaseModePinned {
@@ -125,7 +115,7 @@ func ConsiderReleaseDecision(track ReleaseTrack, decision ReleaseDecision) (Rele
 // candidate only when its latest persisted decision accepted that revision.
 // Replaying an already-applied accepted promotion is a no-op.
 func PromoteReleaseRevision(track ReleaseTrack, revisionID string) (ReleaseTrack, error) {
-	if err := validateReleaseTrack(track); err != nil {
+	if err := ValidateReleaseTrack(track); err != nil {
 		return ReleaseTrack{}, err
 	}
 	if track.Mode != ReleaseModePinned {
@@ -154,7 +144,22 @@ func PromoteReleaseRevision(track ReleaseTrack, revisionID string) (ReleaseTrack
 	return next, nil
 }
 
-func validateReleaseTrack(track ReleaseTrack) error {
+// CloneReleaseTrack returns an isolated copy of a release track, including its
+// pointer-backed decision evidence. Store adapters must use it at read and
+// write boundaries so callers cannot mutate persisted authorization state.
+func CloneReleaseTrack(track ReleaseTrack) ReleaseTrack {
+	cloned := track
+	if track.LastDecision != nil {
+		decision := *track.LastDecision
+		cloned.LastDecision = &decision
+	}
+	return cloned
+}
+
+// ValidateReleaseTrack verifies the complete persisted release authorization
+// state. Legacy tracks without decision evidence remain valid only when they
+// do not claim a pending candidate.
+func ValidateReleaseTrack(track ReleaseTrack) error {
 	if strings.TrimSpace(track.ID) == "" {
 		return fmt.Errorf("release track id is required")
 	}
@@ -164,32 +169,57 @@ func validateReleaseTrack(track ReleaseTrack) error {
 	if track.Mode != ReleaseModePinned && track.Mode != ReleaseModeFollowing {
 		return fmt.Errorf("unsupported release track mode %q", track.Mode)
 	}
-	if track.LastDecision != nil {
-		if err := validateReleaseDecision(*track.LastDecision); err != nil {
-			return fmt.Errorf("invalid last release decision: %w", err)
+	if track.LastDecision == nil {
+		if track.CandidateRevisionID != "" {
+			return fmt.Errorf("release track candidate requires decision evidence")
 		}
+		return nil
 	}
-	history := releaseDecisionHistory(track)
-	seen := make(map[string]struct{}, len(history))
-	for _, decisionID := range history {
-		if !isLowerSHA256(decisionID) {
-			return fmt.Errorf("seen release decision id must be lowercase SHA-256")
+	if err := validateReleaseDecision(*track.LastDecision); err != nil {
+		return fmt.Errorf("invalid last release decision: %w", err)
+	}
+	if track.LastDecision.EvaluatedAt.IsZero() {
+		return fmt.Errorf("last release decision evaluation time is required")
+	}
+	if track.CandidateRevisionID != "" {
+		if track.CandidateRevisionID != track.LastDecision.RevisionID {
+			return fmt.Errorf("release track candidate does not match last decision")
 		}
-		if _, duplicate := seen[decisionID]; duplicate {
-			return fmt.Errorf("seen release decision id %q is duplicated", decisionID)
-		}
-		seen[decisionID] = struct{}{}
+		return nil
 	}
-	if track.LastDecision == nil && len(history) > 0 {
-		return fmt.Errorf("seen release decisions require a last release decision")
+	if !track.LastDecision.Accepted {
+		return fmt.Errorf("rejected release decision requires its candidate")
 	}
-	if track.LastDecision != nil && len(history) > 0 {
-		if !seenReleaseDecision(history, releaseDecisionID(*track.LastDecision)) {
-			return fmt.Errorf("last release decision is absent from seen decision history")
-		}
+	if track.CurrentRevisionID != track.LastDecision.RevisionID {
+		return fmt.Errorf("release track current revision does not match last accepted decision")
 	}
-	if track.DecisionHistory != nil && len(history) == 0 {
-		return fmt.Errorf("release decision history must not be empty")
+	return nil
+}
+
+// ValidateReleaseTrackTransition prevents persisted replay authority from
+// moving backward or disappearing. Exact evidence may accompany a promotion;
+// a different decision must have a strictly newer evaluation time.
+func ValidateReleaseTrackTransition(current, next ReleaseTrack) error {
+	if err := ValidateReleaseTrack(current); err != nil {
+		return fmt.Errorf("invalid current release track: %w", err)
+	}
+	if err := ValidateReleaseTrack(next); err != nil {
+		return fmt.Errorf("invalid next release track: %w", err)
+	}
+	if current.ID != next.ID || current.ContractID != next.ContractID {
+		return fmt.Errorf("release track identity cannot change")
+	}
+	if current.LastDecision == nil {
+		return nil
+	}
+	if next.LastDecision == nil {
+		return fmt.Errorf("release track decision evidence cannot be removed")
+	}
+	if *current.LastDecision == *next.LastDecision {
+		return nil
+	}
+	if !next.LastDecision.EvaluatedAt.After(current.LastDecision.EvaluatedAt) {
+		return fmt.Errorf("release track decision evidence must be strictly newer")
 	}
 	return nil
 }
@@ -214,42 +244,6 @@ func validateReleaseDecision(decision ReleaseDecision) error {
 		return fmt.Errorf("release decision evaluation time must be UTC")
 	}
 	return nil
-}
-
-func releaseDecisionID(decision ReleaseDecision) string {
-	var identity strings.Builder
-	for _, value := range []string{
-		decision.RevisionID,
-		decision.ReviewID,
-		decision.ReviewDigest,
-		decision.Verdict,
-	} {
-		identity.WriteString(strconv.Itoa(len(value)))
-		identity.WriteByte(':')
-		identity.WriteString(value)
-	}
-	if decision.Accepted {
-		identity.WriteByte('1')
-	} else {
-		identity.WriteByte('0')
-	}
-	return sha256Hex([]byte(identity.String()))
-}
-
-func seenReleaseDecision(seen []string, decisionID string) bool {
-	for _, existing := range seen {
-		if existing == decisionID {
-			return true
-		}
-	}
-	return false
-}
-
-func releaseDecisionHistory(track ReleaseTrack) []string {
-	if track.DecisionHistory == nil {
-		return nil
-	}
-	return track.DecisionHistory.SeenDecisionIDs
 }
 
 type ContractReview struct {
