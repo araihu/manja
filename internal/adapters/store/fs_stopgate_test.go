@@ -90,7 +90,7 @@ func TestFileStoreRejectsAuthenticatedSchemaVersionDowngrade(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := writeFileAtomically(statePath, append(encoded, '\n'), 0o600); err != nil {
+	if err := durableAtomicWrite(statePath, append(encoded, '\n'), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.Remove(filepath.Join(root, "operational", "schema.json")); err != nil {
@@ -162,7 +162,7 @@ func TestFileStoreMigratesAuthenticatedV3WithoutLosingAuthority(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := writeFileAtomically(
+	if err := durableAtomicWrite(
 		filepath.Join(root, "operational", "state.json"),
 		append(encoded, '\n'),
 		0o600,
@@ -202,7 +202,6 @@ func TestFileStoreLegacySchemaValidatesEveryReferencedBlobBeforeUpgrade(t *testi
 	ctx := context.Background()
 	roles := []string{
 		"track current",
-		"track candidate",
 		"publication",
 		"successful sync",
 		"review baseline",
@@ -245,6 +244,275 @@ func TestFileStoreLegacySchemaValidatesEveryReferencedBlobBeforeUpgrade(t *testi
 	}
 }
 
+func TestFileStoreLegacyMigrationDiscardsUnavailableRejectedCandidate(t *testing.T) {
+	ctx := context.Background()
+	for _, version := range []int{legacyOperationalStateVersion, decisionOperationalStateVersion} {
+		t.Run("v"+string(rune('0'+version)), func(t *testing.T) {
+			root := t.TempDir()
+			store := NewFileStore(root)
+			currentKey, err := store.Put(ctx, []byte("healthy current revision"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			missingCandidateKey := port.ContentAddressedBlobKey([]byte("discarded rejected candidate"))
+			state := newOperationalState()
+			state.Version = version
+			state.Revisions["revision-current"] = core.ContractRevision{
+				ID: "revision-current", ContractID: "payments", SpecBlobKey: string(currentKey),
+			}
+			state.Revisions["revision-rejected"] = core.ContractRevision{
+				ID: "revision-rejected", ContractID: "payments", SpecBlobKey: string(missingCandidateKey),
+			}
+			decision := core.ReleaseDecision{
+				RevisionID: "revision-rejected", ReviewID: "review-untrusted",
+				ReviewDigest: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+				Verdict:      core.VerdictFail, Accepted: false,
+				EvaluatedAt: time.Date(2026, 7, 25, 12, 0, 0, 0, time.UTC),
+			}
+			track := core.ReleaseTrack{
+				ID: "stable", ContractID: "payments", Mode: core.ReleaseModePinned,
+				CurrentRevisionID: "revision-current", CandidateRevisionID: "revision-rejected",
+				LastDecision: &decision, Generation: 7,
+			}
+			trackKey := releaseTrackKey(track.ContractID, track.ID)
+			state.ReleaseTracks[trackKey] = track
+			if version == decisionOperationalStateVersion {
+				state.ReleaseTrackAuthorities[trackKey] = newReleaseTrackAuthority(track)
+			}
+			state.Publications[publicationKey("payments", "revision-current")] = core.Publication{
+				ProjectID: "payments", RevisionID: "revision-current", Public: true, Path: "/payments/stable",
+			}
+			if err := store.publishOperationalState(ctx, state); err != nil {
+				t.Fatal(err)
+			}
+
+			restarted := NewFileStore(root)
+			publication, err := restarted.PublicPublicationByPath(ctx, "/payments/stable")
+			if err != nil {
+				t.Fatalf("discarded candidate blocked healthy public route: %v", err)
+			}
+			if publication.RevisionID != "revision-current" {
+				t.Fatalf("public revision = %q, want revision-current", publication.RevisionID)
+			}
+			migrated, err := restarted.ReleaseTrack(ctx, "payments", "stable")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if migrated.CurrentRevisionID != "revision-current" || migrated.CandidateRevisionID != "" || migrated.LastDecision != nil {
+				t.Fatalf("legacy migration retained unauthenticated candidate authority: %#v", migrated)
+			}
+		})
+	}
+}
+
+func TestFileStoreAuthenticatedV3MigrationValidatesEveryRetainedBlobBeforeUpgrade(t *testing.T) {
+	ctx := context.Background()
+	for _, test := range []struct {
+		name   string
+		target func(storedReleaseFixture) string
+		mutate func(string) error
+	}{
+		{
+			name: "track current missing",
+			target: func(fixture storedReleaseFixture) string {
+				return fixture.authorization.BaselineRevisionID
+			},
+			mutate: os.Remove,
+		},
+		{
+			name:   "public revision corrupt",
+			target: func(storedReleaseFixture) string { return "revision-public" },
+			mutate: func(path string) error {
+				return os.WriteFile(path, []byte("corrupt public blob"), 0o600)
+			},
+		},
+		{
+			name: "authority candidate missing",
+			target: func(fixture storedReleaseFixture) string {
+				return fixture.authorization.CandidateRevisionID
+			},
+			mutate: os.Remove,
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			root := t.TempDir()
+			store := NewFileStore(root)
+			fixture := newStoredReleaseFixture(t, store, false)
+			persistStoredReleaseBaseline(t, ctx, store, fixture, true)
+			publicKey, err := store.Put(ctx, []byte("retained public revision"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := store.SaveRevision(ctx, core.ContractRevision{
+				ID: "revision-public", ContractID: "payments", SpecBlobKey: string(publicKey),
+			}); err != nil {
+				t.Fatal(err)
+			}
+			if err := store.SavePublication(ctx, core.Publication{
+				ProjectID: "payments", RevisionID: "revision-public", Public: true, Path: "/payments/public",
+			}); err != nil {
+				t.Fatal(err)
+			}
+
+			state, err := store.loadOperationalState(ctx)
+			if err != nil {
+				t.Fatal(err)
+			}
+			state.Version = authenticatedStateVersion
+			flat := make(map[string]core.ContractRevision, len(state.Revisions))
+			for _, revision := range state.Revisions {
+				flat[revision.ID] = revision
+			}
+			state.Revisions = flat
+			if err := store.publishOperationalState(ctx, state); err != nil {
+				t.Fatal(err)
+			}
+			markerPath := filepath.Join(root, "operational", "schema.json")
+			markerBefore := []byte("{\n  \"version\": 3\n}\n")
+			if err := durableAtomicWrite(markerPath, markerBefore, 0o600); err != nil {
+				t.Fatal(err)
+			}
+			before, err := os.ReadFile(filepath.Join(root, "operational", "state.json"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			revision := state.Revisions[test.target(fixture)]
+			blobPath, err := store.blobPath(port.BlobKey(revision.SpecBlobKey))
+			if err != nil {
+				t.Fatal(err)
+			}
+			originalBlob, err := os.ReadFile(blobPath)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := test.mutate(blobPath); err != nil {
+				t.Fatal(err)
+			}
+
+			if _, err := NewFileStore(root).loadOperationalState(ctx); err == nil {
+				t.Fatal("authenticated v3 migration published state with unavailable retained evidence")
+			}
+			after, err := os.ReadFile(filepath.Join(root, "operational", "state.json"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !bytes.Equal(after, before) {
+				t.Fatal("failed authenticated v3 migration advanced operational state")
+			}
+			markerAfter, err := os.ReadFile(markerPath)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !bytes.Equal(markerAfter, markerBefore) {
+				t.Fatalf("failed authenticated v3 migration advanced marker: got=%q want=%q", markerAfter, markerBefore)
+			}
+
+			if err := durableAtomicWrite(blobPath, originalBlob, 0o600); err != nil {
+				t.Fatal(err)
+			}
+			recovered, err := NewFileStore(root).loadOperationalState(ctx)
+			if err != nil {
+				t.Fatalf("recover authenticated v3 migration after evidence repair: %v", err)
+			}
+			if recovered.Version != operationalStateVersion {
+				t.Fatalf("recovered schema version = %d, want %d", recovered.Version, operationalStateVersion)
+			}
+			marker, present, err := NewFileStore(root).loadOperationalSchemaMarker(ctx)
+			if err != nil || !present || marker.Version != operationalStateVersion {
+				t.Fatalf("recovered marker = %#v present=%t err=%v", marker, present, err)
+			}
+		})
+	}
+}
+
+func TestFileStoreSameHandleAdmissionHonorsContextDeadline(t *testing.T) {
+	store := NewFileStore(t.TempDir())
+	entered := make(chan struct{})
+	release := make(chan struct{})
+	firstResult := make(chan error, 1)
+	go func() {
+		firstResult <- store.Within(context.Background(), func(context.Context, port.OperationalStore) error {
+			close(entered)
+			<-release
+			return nil
+		})
+	}()
+	<-entered
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Millisecond)
+	defer cancel()
+	secondResult := make(chan error, 1)
+	started := time.Now()
+	go func() {
+		secondResult <- store.Within(ctx, func(context.Context, port.OperationalStore) error {
+			return errors.New("callback ran without in-process admission")
+		})
+	}()
+	select {
+	case err := <-secondResult:
+		if !errors.Is(err, context.DeadlineExceeded) {
+			close(release)
+			<-firstResult
+			t.Fatalf("contended same-handle error = %v, want deadline exceeded", err)
+		}
+		if elapsed := time.Since(started); elapsed > 120*time.Millisecond {
+			close(release)
+			<-firstResult
+			t.Fatalf("same-handle deadline returned after %s", elapsed)
+		}
+	case <-time.After(150 * time.Millisecond):
+		close(release)
+		<-firstResult
+		<-secondResult
+		t.Fatal("same-handle admission ignored context deadline")
+	}
+	close(release)
+	if err := <-firstResult; err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestFileStoreSyncLogicalReplayPreservesFirstObservation(t *testing.T) {
+	ctx := context.Background()
+	root := t.TempDir()
+	store := NewFileStore(root)
+	first := core.SyncRecord{
+		ID: "sync-stable", ProjectID: "payments", SourceID: "payments-git",
+		RevisionID: "", Trigger: "webhook", Ref: "refs/heads/main", CommitSHA: "abc123",
+		Result: core.SyncResultFailure, ErrorSummary: "source unavailable",
+		StartedAt:  time.Date(2026, 7, 25, 12, 0, 0, 0, time.UTC),
+		FinishedAt: time.Date(2026, 7, 25, 12, 0, 1, 0, time.UTC),
+	}
+	if err := store.SaveSyncRecord(ctx, first); err != nil {
+		t.Fatal(err)
+	}
+	replay := first
+	replay.StartedAt = replay.StartedAt.Add(time.Hour)
+	replay.FinishedAt = replay.FinishedAt.Add(time.Hour)
+	if err := store.SaveSyncRecord(ctx, replay); err != nil {
+		t.Fatalf("timestamp-only logical replay conflicted: %v", err)
+	}
+	persisted, err := NewFileStore(root).SyncRecord(ctx, first.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(persisted, first) {
+		t.Fatalf("logical replay replaced first observation: got=%#v want=%#v", persisted, first)
+	}
+	conflict := replay
+	conflict.ErrorSummary = "different failure"
+	if err := store.SaveSyncRecord(ctx, conflict); err == nil {
+		t.Fatal("conflicting logical sync evidence was accepted")
+	}
+	persisted, err = NewFileStore(root).SyncRecord(ctx, first.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(persisted, first) {
+		t.Fatal("conflicting logical replay changed durable evidence")
+	}
+}
+
 func addLegacyOperationalReference(t *testing.T, state *operationalState, role string) {
 	t.Helper()
 	switch role {
@@ -252,16 +520,6 @@ func addLegacyOperationalReference(t *testing.T, state *operationalState, role s
 		state.ReleaseTracks[releaseTrackKey("payments", "stable")] = core.ReleaseTrack{
 			ID: "stable", ContractID: "payments", Mode: core.ReleaseModePinned,
 			CurrentRevisionID: "referenced",
-		}
-	case "track candidate":
-		decision := core.ReleaseDecision{
-			RevisionID: "referenced", ReviewID: "legacy-review",
-			ReviewDigest: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-			Verdict:      core.VerdictFail, EvaluatedAt: time.Date(2026, 7, 25, 12, 0, 0, 0, time.UTC),
-		}
-		state.ReleaseTracks[releaseTrackKey("payments", "stable")] = core.ReleaseTrack{
-			ID: "stable", ContractID: "payments", Mode: core.ReleaseModePinned,
-			CandidateRevisionID: "referenced", LastDecision: &decision, Generation: 1,
 		}
 	case "publication":
 		state.Publications[publicationKey("payments", "referenced")] = core.Publication{

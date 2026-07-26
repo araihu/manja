@@ -446,8 +446,25 @@ func (s *memoryOperationalStore) SaveReview(_ context.Context, review domain.Con
 }
 
 func (s *memoryOperationalStore) SaveSyncRecord(_ context.Context, record domain.SyncRecord) error {
+	if existing, ok := s.syncRecords[record.ID]; ok {
+		if !domain.SameSyncEvidence(existing, record) {
+			return errors.New("conflicting sync evidence")
+		}
+		return nil
+	}
 	s.syncRecords[record.ID] = record
 	return nil
+}
+
+func (s *memoryOperationalStore) SyncRecord(ctx context.Context, id string) (domain.SyncRecord, error) {
+	if err := ctx.Err(); err != nil {
+		return domain.SyncRecord{}, err
+	}
+	record, ok := s.syncRecords[id]
+	if !ok {
+		return domain.SyncRecord{}, errors.New("sync record not found")
+	}
+	return record, nil
 }
 
 func (s *memoryOperationalStore) ReleaseTrack(_ context.Context, contractID, trackID string) (domain.ReleaseTrack, error) {

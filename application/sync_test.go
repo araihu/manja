@@ -11,6 +11,7 @@ import (
 
 	"github.com/araihu/manja/application/port"
 	"github.com/araihu/manja/domain"
+	storeadapter "github.com/araihu/manja/internal/adapters/store"
 )
 
 type syncContextKey struct{}
@@ -170,6 +171,83 @@ func TestSyncReplayUsesStableRecordAndBlobIdentity(t *testing.T) {
 	}
 }
 
+func TestSyncReplayWithAdvancingClockReusesDurableLogicalEvidence(t *testing.T) {
+	for _, trigger := range []string{"webhook", "poll", "manual", "ci"} {
+		t.Run(trigger+" success", func(t *testing.T) {
+			ctx := context.Background()
+			store := storeadapter.NewFileStore(t.TempDir())
+			clock := &advancingSyncClock{
+				now:  time.Date(2026, 7, 25, 13, 0, 0, 0, time.UTC),
+				step: time.Minute,
+			}
+			service, err := NewSyncService(SyncDependencies{
+				Source: &syncSourceFake{}, Parser: &syncParserFake{},
+				UnitOfWork: store, Blobs: store, Clock: clock,
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			command := SyncCommand{ContractID: "payments", SourceID: "source-main", Trigger: trigger}
+			first, err := service.Sync(ctx, command)
+			if err != nil {
+				t.Fatalf("first sync: %v", err)
+			}
+			second, err := service.Sync(ctx, command)
+			if err != nil {
+				t.Fatalf("replay sync: %v", err)
+			}
+			if !reflect.DeepEqual(second.Record, first.Record) {
+				t.Fatalf("replay record = %#v, want first durable evidence %#v", second.Record, first.Record)
+			}
+			persisted, err := store.SyncRecord(ctx, first.Record.ID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !reflect.DeepEqual(persisted, first.Record) {
+				t.Fatalf("persisted replay evidence = %#v, want %#v", persisted, first.Record)
+			}
+		})
+
+		t.Run(trigger+" failure", func(t *testing.T) {
+			ctx := context.Background()
+			store := storeadapter.NewFileStore(t.TempDir())
+			cause := errors.New("source temporarily unavailable")
+			service, err := NewSyncService(SyncDependencies{
+				Source: failingSyncSource{err: cause}, Parser: &syncParserFake{},
+				UnitOfWork: store, Blobs: store,
+				Clock: &advancingSyncClock{
+					now:  time.Date(2026, 7, 25, 13, 0, 0, 0, time.UTC),
+					step: time.Minute,
+				},
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			command := SyncCommand{ContractID: "payments", SourceID: "source-main", Trigger: trigger}
+			var firstPersisted domain.SyncRecord
+			for attempt := 0; attempt < 2; attempt++ {
+				_, err := service.Sync(ctx, command)
+				var appErr *Error
+				if !errors.As(err, &appErr) || appErr.Kind != ErrorSource || !errors.Is(err, cause) {
+					t.Fatalf("failure replay %d error = %#v, want original source failure", attempt+1, err)
+				}
+				persisted, err := store.SyncRecord(ctx, syncRecordID(command, domain.ContractRevision{}, domain.SyncResultFailure))
+				if err != nil {
+					t.Fatal(err)
+				}
+				if attempt == 0 {
+					firstPersisted = persisted
+				} else if !reflect.DeepEqual(persisted, firstPersisted) {
+					t.Fatalf("failure replay evidence = %#v, want first durable evidence %#v", persisted, firstPersisted)
+				}
+			}
+			if firstPersisted.StartedAt.IsZero() || firstPersisted.FinishedAt.IsZero() {
+				t.Fatalf("canonical failure evidence lost first observation times: %#v", firstPersisted)
+			}
+		})
+	}
+}
+
 func TestSyncRejectsNonContentAddressedBlobIdentity(t *testing.T) {
 	store := newTestOperationalStore()
 	service, err := NewSyncService(SyncDependencies{
@@ -205,6 +283,23 @@ func (invalidKeyBlobStore) Get(context.Context, port.BlobKey) ([]byte, error) {
 type syncSourceFake struct {
 	ctx    context.Context
 	events *[]string
+}
+
+type failingSyncSource struct{ err error }
+
+func (s failingSyncSource) Fetch(context.Context) (domain.SpecFile, domain.ContractRevision, error) {
+	return domain.SpecFile{}, domain.ContractRevision{}, s.err
+}
+
+type advancingSyncClock struct {
+	now  time.Time
+	step time.Duration
+}
+
+func (c *advancingSyncClock) Now(context.Context) time.Time {
+	current := c.now
+	c.now = c.now.Add(c.step)
+	return current
 }
 
 func (s *syncSourceFake) Fetch(ctx context.Context) (domain.SpecFile, domain.ContractRevision, error) {

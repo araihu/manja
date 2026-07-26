@@ -15,7 +15,6 @@ import (
 	"reflect"
 	"sort"
 	"strings"
-	"sync"
 	"time"
 	"unicode"
 
@@ -46,14 +45,9 @@ type releaseTrackAuthority struct {
 }
 
 type FileStore struct {
-	root          string
-	mu            sync.Mutex
-	openDirectory func(string) (directorySyncer, error)
-}
-
-type directorySyncer interface {
-	Sync() error
-	Close() error
+	root               string
+	admission          chan struct{}
+	confirmReplacement func(string) error
 }
 
 type operationalState struct {
@@ -71,11 +65,25 @@ type operationalState struct {
 }
 
 func NewFileStore(root string) *FileStore {
-	return &FileStore{
-		root: root,
-		openDirectory: func(path string) (directorySyncer, error) {
-			return os.Open(path)
-		},
+	store := &FileStore{
+		root:               root,
+		admission:          make(chan struct{}, 1),
+		confirmReplacement: confirmAtomicReplacement,
+	}
+	store.admission <- struct{}{}
+	return store
+}
+
+// acquireAdmission serializes all operations performed through one FileStore
+// handle without making context cancellation wait behind another callback. The
+// admission is intentionally acquired before the inter-process lock so lock
+// ordering remains stable and callbacks remain non-reentrant.
+func (s *FileStore) acquireAdmission(ctx context.Context) (func(), error) {
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	case <-s.admission:
+		return func() { s.admission <- struct{}{} }, nil
 	}
 }
 
@@ -86,8 +94,11 @@ func (s *FileStore) Within(ctx context.Context, callback func(context.Context, p
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	releaseAdmission, err := s.acquireAdmission(ctx)
+	if err != nil {
+		return err
+	}
+	defer releaseAdmission()
 	releaseLock, err := s.acquireOperationalLock(ctx)
 	if err != nil {
 		return err
@@ -148,8 +159,11 @@ func (s *FileStore) Revision(ctx context.Context, id string) (domain.ContractRev
 	if err := validateID(id); err != nil {
 		return revision, err
 	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	releaseAdmission, err := s.acquireAdmission(ctx)
+	if err != nil {
+		return revision, err
+	}
+	defer releaseAdmission()
 	state, err := s.loadOperationalState(ctx)
 	if err != nil {
 		return revision, err
@@ -177,8 +191,11 @@ func (s *FileStore) ContractRevision(ctx context.Context, contractID, revisionID
 	if err := validateID(revisionID); err != nil {
 		return domain.ContractRevision{}, err
 	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	releaseAdmission, err := s.acquireAdmission(ctx)
+	if err != nil {
+		return domain.ContractRevision{}, err
+	}
+	defer releaseAdmission()
 	state, err := s.loadOperationalState(ctx)
 	if err != nil {
 		return domain.ContractRevision{}, err
@@ -218,8 +235,11 @@ func (s *FileStore) ReleaseEvidence(
 			return domain.ReleaseEvidence{}, err
 		}
 	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	releaseAdmission, err := s.acquireAdmission(ctx)
+	if err != nil {
+		return domain.ReleaseEvidence{}, err
+	}
+	defer releaseAdmission()
 	state, err := s.loadOperationalState(ctx)
 	if err != nil {
 		return domain.ReleaseEvidence{}, err
@@ -263,8 +283,11 @@ func (s *FileStore) Publication(ctx context.Context, projectID, revisionID strin
 	if err := validateID(revisionID); err != nil {
 		return publication, err
 	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	releaseAdmission, err := s.acquireAdmission(ctx)
+	if err != nil {
+		return publication, err
+	}
+	defer releaseAdmission()
 	state, err := s.loadOperationalState(ctx)
 	if err != nil {
 		return publication, err
@@ -292,8 +315,11 @@ func (s *FileStore) PublicPublicationByPath(ctx context.Context, publicPath stri
 	if err := ctx.Err(); err != nil {
 		return publication, err
 	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	releaseAdmission, err := s.acquireAdmission(ctx)
+	if err != nil {
+		return publication, err
+	}
+	defer releaseAdmission()
 	state, err := s.loadOperationalState(ctx)
 	if err != nil {
 		return publication, err
@@ -359,8 +385,11 @@ func (s *FileStore) SyncRecord(ctx context.Context, id string) (domain.SyncRecor
 	if err := validateID(id); err != nil {
 		return record, err
 	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	releaseAdmission, err := s.acquireAdmission(ctx)
+	if err != nil {
+		return record, err
+	}
+	defer releaseAdmission()
 	state, err := s.loadOperationalState(ctx)
 	if err != nil {
 		return record, err
@@ -388,8 +417,11 @@ func (s *FileStore) ReleaseTrack(ctx context.Context, contractID, trackID string
 	if err := validateID(trackID); err != nil {
 		return track, err
 	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	releaseAdmission, err := s.acquireAdmission(ctx)
+	if err != nil {
+		return track, err
+	}
+	defer releaseAdmission()
 	state, err := s.loadOperationalState(ctx)
 	if err != nil {
 		return track, err
@@ -424,7 +456,7 @@ func (s *FileStore) Put(ctx context.Context, data []byte) (port.BlobKey, error) 
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return "", err
 	}
-	if err := writeFileAtomically(path, data, 0o600); err != nil {
+	if err := durableAtomicWrite(path, data, 0o600); err != nil {
 		return "", err
 	}
 	return key, nil
@@ -500,7 +532,6 @@ func (s *FileStore) loadOperationalStateLocked(ctx context.Context) (operational
 					marker.Version,
 				)
 			}
-			legacyReferences := collectLegacyRevisionReferences(state)
 			if err := migrateOperationalStateToCurrent(&state); err != nil {
 				return operationalState{}, err
 			}
@@ -510,7 +541,7 @@ func (s *FileStore) loadOperationalStateLocked(ctx context.Context) (operational
 			if err := validateOperationalReferences(state); err != nil {
 				return operationalState{}, err
 			}
-			if err := s.validateReferencedRevisionEvidence(ctx, state, legacyReferences); err != nil {
+			if err := s.validateReferencedRevisionEvidence(ctx, state, collectLegacyRevisionReferences(state)); err != nil {
 				return operationalState{}, err
 			}
 			if err := s.publishCurrentOperationalState(ctx, state); err != nil {
@@ -536,6 +567,9 @@ func (s *FileStore) loadOperationalStateLocked(ctx context.Context) (operational
 				return operationalState{}, err
 			}
 			if err := validateOperationalReferences(state); err != nil {
+				return operationalState{}, err
+			}
+			if err := s.validateReferencedRevisionEvidence(ctx, state, collectLegacyRevisionReferences(state)); err != nil {
 				return operationalState{}, err
 			}
 			if err := s.publishCurrentOperationalState(ctx, state); err != nil {
@@ -682,7 +716,7 @@ func (s *FileStore) persistOperationalSchemaMarker(ctx context.Context, version 
 		return err
 	}
 	data = append(data, '\n')
-	return writeFileAtomically(filepath.Join(s.root, "operational", "schema.json"), data, 0o600)
+	return durableAtomicWrite(filepath.Join(s.root, "operational", "schema.json"), data, 0o600)
 }
 
 func legacyRevisionAwaitsEvidenceEnrichment(revision domain.ContractRevision) bool {
@@ -735,43 +769,12 @@ func (s *FileStore) publishOperationalState(ctx context.Context, state operation
 		return err
 	}
 	data = append(data, '\n')
-	temporary, err := os.CreateTemp(dir, atomicWriteStagingPattern)
-	if err != nil {
-		return err
-	}
-	temporaryPath := temporary.Name()
-	removeTemporary := true
-	defer func() {
-		_ = temporary.Close()
-		if removeTemporary {
-			_ = os.Remove(temporaryPath)
-		}
-	}()
-	if err := temporary.Chmod(0o600); err != nil {
-		return err
-	}
-	if _, err := temporary.Write(data); err != nil {
-		return err
-	}
-	if err := temporary.Sync(); err != nil {
-		return err
-	}
-	if err := temporary.Close(); err != nil {
-		return err
-	}
-	if err := os.Rename(temporaryPath, filepath.Join(dir, "state.json")); err != nil {
-		return err
-	}
-	removeTemporary = false
-	directory, err := s.openDirectory(dir)
-	if err != nil {
-		return fmt.Errorf("%w: open operational state directory: %w", port.ErrCommitOutcomeUnknown, err)
-	}
-	defer directory.Close()
-	if err := directory.Sync(); err != nil {
-		return fmt.Errorf("%w: sync operational state directory: %w", port.ErrCommitOutcomeUnknown, err)
-	}
-	return nil
+	return durableAtomicWriteWithConfirmation(
+		filepath.Join(dir, "state.json"),
+		data,
+		0o600,
+		s.confirmReplacement,
+	)
 }
 
 func (s *FileStore) validateOperationalState(
@@ -1070,7 +1073,7 @@ func (s *FileStore) writeJSON(ctx context.Context, namespace, name string, value
 		return err
 	}
 	data = append(data, '\n')
-	return writeFileAtomically(path, data, 0o600)
+	return durableAtomicWrite(path, data, 0o600)
 }
 
 func (s *FileStore) readJSON(ctx context.Context, namespace, name string, value any) error {
@@ -1260,17 +1263,30 @@ func (t *operationalTransaction) SaveSyncRecord(ctx context.Context, record doma
 		}
 	}
 	if existing, ok := t.state.SyncRecords[record.ID]; ok {
-		equal, err := immutableRecordsEqual(existing, record)
-		if err != nil {
-			return err
-		}
-		if !equal {
+		if !domain.SameSyncEvidence(existing, record) {
 			return fmt.Errorf("sync record %q conflicts with immutable persisted evidence", record.ID)
 		}
 		return nil
 	}
 	t.state.SyncRecords[record.ID] = record
 	return nil
+}
+
+func (t *operationalTransaction) SyncRecord(ctx context.Context, id string) (domain.SyncRecord, error) {
+	if err := ctx.Err(); err != nil {
+		return domain.SyncRecord{}, err
+	}
+	if err := validateID(id); err != nil {
+		return domain.SyncRecord{}, err
+	}
+	record, ok := t.state.SyncRecords[id]
+	if !ok {
+		return domain.SyncRecord{}, fs.ErrNotExist
+	}
+	if record.ID != id {
+		return domain.SyncRecord{}, fmt.Errorf("sync lookup %q returned transactional id %q", id, record.ID)
+	}
+	return record, nil
 }
 
 func (t *operationalTransaction) saveReleaseAuthorization(
@@ -2282,7 +2298,16 @@ func publicationKey(projectID, revisionID string) string {
 	return projectID + "\x00" + revisionID
 }
 
-func writeFileAtomically(filePath string, data []byte, mode fs.FileMode) error {
+func durableAtomicWrite(filePath string, data []byte, mode fs.FileMode) error {
+	return durableAtomicWriteWithConfirmation(filePath, data, mode, confirmAtomicReplacement)
+}
+
+func durableAtomicWriteWithConfirmation(
+	filePath string,
+	data []byte,
+	mode fs.FileMode,
+	confirmReplacement func(string) error,
+) error {
 	if err := os.MkdirAll(filepath.Dir(filePath), 0o755); err != nil {
 		return err
 	}
@@ -2310,16 +2335,22 @@ func writeFileAtomically(filePath string, data []byte, mode fs.FileMode) error {
 	if err := temporary.Close(); err != nil {
 		return err
 	}
-	if err := os.Rename(temporaryPath, filePath); err != nil {
+	if err := atomicReplaceFile(temporaryPath, filePath); err != nil {
 		return err
 	}
 	removeTemporary = false
-	directory, err := os.Open(filepath.Dir(filePath))
-	if err != nil {
-		return err
+	if confirmReplacement == nil {
+		confirmReplacement = confirmAtomicReplacement
 	}
-	defer directory.Close()
-	return directory.Sync()
+	if err := confirmReplacement(filepath.Dir(filePath)); err != nil {
+		return fmt.Errorf(
+			"%w: confirm atomic replacement of %q: %v",
+			port.ErrCommitOutcomeUnknown,
+			filePath,
+			err,
+		)
+	}
+	return nil
 }
 
 func validateID(id string) error {

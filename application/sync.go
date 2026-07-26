@@ -113,6 +113,16 @@ func (s *SyncService) Sync(ctx context.Context, command SyncCommand) (SyncResult
 		if err := operational.SaveSyncRecord(transactionContext, record); err != nil {
 			return fmt.Errorf("save sync record: %w", err)
 		}
+		if reader, ok := operational.(port.SyncRecordReader); ok {
+			persisted, err := reader.SyncRecord(transactionContext, record.ID)
+			if err != nil {
+				return fmt.Errorf("load canonical sync evidence: %w", err)
+			}
+			if !domain.SameSyncEvidence(persisted, record) {
+				return errors.New("canonical sync evidence does not match logical replay identity")
+			}
+			record = persisted
+		}
 		return nil
 	})
 	if err != nil {

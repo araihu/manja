@@ -129,6 +129,12 @@ func (s *testOperationalStore) SaveSyncRecord(ctx context.Context, value domain.
 	if err := s.record(ctx, "sync"); err != nil {
 		return err
 	}
+	if existing, ok := s.syncRecords[value.ID]; ok {
+		if !domain.SameSyncEvidence(existing, value) {
+			return errors.New("conflicting sync evidence")
+		}
+		return nil
+	}
 	s.syncRecords[value.ID] = value
 	return nil
 }

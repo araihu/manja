@@ -723,13 +723,13 @@ func TestFileStoreV3DetectsStrippedReleaseAuthority(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if err := writeFileAtomically(statePath, append(encoded, '\n'), 0o600); err != nil {
+			if err := durableAtomicWrite(statePath, append(encoded, '\n'), 0o600); err != nil {
 				t.Fatal(err)
 			}
 			if _, err := NewFileStore(root).ReleaseTrack(ctx, "payments", "stable"); err == nil {
 				t.Fatal("stripped v3 release authority was accepted as legacy")
 			}
-			if err := writeFileAtomically(statePath, original, 0o600); err != nil {
+			if err := durableAtomicWrite(statePath, original, 0o600); err != nil {
 				t.Fatal(err)
 			}
 			got, err := NewFileStore(root).ReleaseTrack(ctx, "payments", "stable")
@@ -1381,7 +1381,7 @@ func TestFileStoreRejectsInventedReleaseAuthorityAndMissingTransitionEffects(t *
 				if err != nil {
 					t.Fatal(err)
 				}
-				if err := writeFileAtomically(statePath, append(encoded, '\n'), 0o600); err != nil {
+				if err := durableAtomicWrite(statePath, append(encoded, '\n'), 0o600); err != nil {
 					t.Fatal(err)
 				}
 				probe := test.probe
@@ -1394,7 +1394,7 @@ func TestFileStoreRejectsInventedReleaseAuthorityAndMissingTransitionEffects(t *
 				if err := probe(NewFileStore(root)); err == nil {
 					t.Fatalf("stripped %s was accepted after restart", test.name)
 				}
-				if err := writeFileAtomically(statePath, original, 0o600); err != nil {
+				if err := durableAtomicWrite(statePath, original, 0o600); err != nil {
 					t.Fatal(err)
 				}
 				if _, err := NewFileStore(root).ReleaseTrack(ctx, fixture.next.ContractID, fixture.next.ID); err != nil {
@@ -1805,70 +1805,41 @@ func TestFileStoreRejectsReleaseGenerationOverflowAcrossRestart(t *testing.T) {
 }
 
 func TestFileStoreReportsIndeterminateCommitAfterManifestRename(t *testing.T) {
-	for _, tt := range []struct {
-		name      string
-		configure func(*FileStore)
-	}{
-		{
-			name: "open parent directory",
-			configure: func(store *FileStore) {
-				store.openDirectory = func(string) (directorySyncer, error) {
-					return nil, errors.New("forced directory open failure")
-				}
-			},
-		},
-		{
-			name: "sync parent directory",
-			configure: func(store *FileStore) {
-				store.openDirectory = func(string) (directorySyncer, error) {
-					return failingDirectorySyncer{err: errors.New("forced directory sync failure")}, nil
-				}
-			},
-		},
-	} {
-		t.Run(tt.name, func(t *testing.T) {
-			ctx := context.Background()
-			root := t.TempDir()
-			store := NewFileStore(root)
-			fixture := newStoredReleaseFixture(t, store, false)
-			persistStoredReleaseBaseline(t, ctx, store, fixture, true)
-			tt.configure(store)
+	ctx := context.Background()
+	root := t.TempDir()
+	store := NewFileStore(root)
+	fixture := newStoredReleaseFixture(t, store, false)
+	persistStoredReleaseBaseline(t, ctx, store, fixture, true)
+	store.confirmReplacement = func(string) error {
+		return errors.New("forced replacement confirmation failure")
+	}
 
-			err := store.Within(ctx, func(ctx context.Context, operational port.OperationalStore) error {
-				current, err := operational.ReleaseTrack(ctx, "payments", "stable")
-				if err != nil {
-					return err
-				}
-				if !reflect.DeepEqual(current, fixture.baseline) {
-					return fmt.Errorf("loaded release baseline = %#v, want %#v", current, fixture.baseline)
-				}
-				if err := operational.SaveReleaseTrack(ctx, current.Generation, fixture.next); err != nil {
-					return err
-				}
-				return appendStoredReleaseEffects(ctx, operational, fixture)
-			})
-			if !errors.Is(err, port.ErrCommitOutcomeUnknown) {
-				t.Fatalf("post-rename error = %v, want %v", err, port.ErrCommitOutcomeUnknown)
-			}
+	err := store.Within(ctx, func(ctx context.Context, operational port.OperationalStore) error {
+		current, err := operational.ReleaseTrack(ctx, "payments", "stable")
+		if err != nil {
+			return err
+		}
+		if !reflect.DeepEqual(current, fixture.baseline) {
+			return fmt.Errorf("loaded release baseline = %#v, want %#v", current, fixture.baseline)
+		}
+		if err := operational.SaveReleaseTrack(ctx, current.Generation, fixture.next); err != nil {
+			return err
+		}
+		return appendStoredReleaseEffects(ctx, operational, fixture)
+	})
+	if !errors.Is(err, port.ErrCommitOutcomeUnknown) {
+		t.Fatalf("post-rename error = %v, want %v", err, port.ErrCommitOutcomeUnknown)
+	}
 
-			restarted := NewFileStore(root)
-			got, err := restarted.ReleaseTrack(ctx, "payments", "stable")
-			if err != nil {
-				t.Fatal(err)
-			}
-			if got.Generation != 1 {
-				t.Fatalf("recovered generation = %d, want atomically published generation 1", got.Generation)
-			}
-		})
+	restarted := NewFileStore(root)
+	got, err := restarted.ReleaseTrack(ctx, "payments", "stable")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Generation != 1 {
+		t.Fatalf("recovered generation = %d, want atomically published generation 1", got.Generation)
 	}
 }
-
-type failingDirectorySyncer struct {
-	err error
-}
-
-func (f failingDirectorySyncer) Sync() error  { return f.err }
-func (f failingDirectorySyncer) Close() error { return nil }
 
 func TestFileStoreContentAddressedBlobSurvivesRestart(t *testing.T) {
 	ctx := context.Background()

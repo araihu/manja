@@ -27,7 +27,10 @@ type UnitOfWork interface {
 
 // OperationalStore exposes every record that may participate in revision,
 // review, sync, release, publication, audit, and outbox invariants. A production
-// implementation must not make partial commits observable.
+// implementation must not make partial commits observable. SaveSyncRecord
+// preserves the first observation timestamps when domain.SameSyncEvidence
+// identifies a replay, while conflicting logical evidence under the same ID
+// fails closed.
 type OperationalStore interface {
 	SaveRevision(context.Context, domain.ContractRevision) error
 	SaveReview(context.Context, domain.ContractReview) error
@@ -43,6 +46,12 @@ type OperationalStore interface {
 // identity without expanding the transactional operational write boundary.
 type RevisionReader interface {
 	ContractRevision(context.Context, string, string) (domain.ContractRevision, error)
+}
+
+// SyncRecordReader loads the canonical first persisted observation for a
+// stable logical sync identity without expanding OperationalStore.
+type SyncRecordReader interface {
+	SyncRecord(context.Context, string) (domain.SyncRecord, error)
 }
 
 // ReleaseEvidenceReader resolves the immutable, track-scoped authorization,
