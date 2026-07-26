@@ -2,6 +2,7 @@ package domain
 
 import (
 	"fmt"
+	"path"
 	"reflect"
 	"strings"
 	"time"
@@ -34,6 +35,64 @@ type ReleaseDecision struct {
 	EvaluatedAt  time.Time `json:"evaluatedAt,omitempty"`
 }
 
+// ReleaseAuthorization is the deployment-owned, immutable binding between one
+// canonical review and exactly one release track, sync result, ref, route, and
+// effective policy identity.
+type ReleaseAuthorization struct {
+	ContractID          string `json:"contractId"`
+	TrackID             string `json:"trackId"`
+	ReviewID            string `json:"reviewId"`
+	SyncRecordID        string `json:"syncRecordId"`
+	BaselineRevisionID  string `json:"baselineRevisionId"`
+	CandidateRevisionID string `json:"candidateRevisionId"`
+	SourceID            string `json:"sourceId"`
+	BoundRef            string `json:"boundRef"`
+	PublicPath          string `json:"publicPath"`
+	PolicyDigest        string `json:"policyDigest"`
+}
+
+// ReleaseEvidence is the immutable review and sync bundle selected by a
+// deployment-owned authorization. Release orchestration loads this bundle from
+// persistence instead of trusting caller-supplied report or sync fields.
+type ReleaseEvidence struct {
+	Authorization ReleaseAuthorization `json:"authorization"`
+	Review        ContractReview       `json:"review"`
+	SyncRecord    SyncRecord           `json:"syncRecord"`
+}
+
+// ValidateReleaseAuthorization rejects ambiguous or caller-normalized
+// identities before the authorization becomes durable release evidence.
+func ValidateReleaseAuthorization(authorization ReleaseAuthorization) error {
+	for _, identity := range []struct {
+		name  string
+		value string
+	}{
+		{"release authorization contract id", authorization.ContractID},
+		{"release authorization track id", authorization.TrackID},
+		{"release authorization review id", authorization.ReviewID},
+		{"release authorization sync record id", authorization.SyncRecordID},
+		{"release authorization baseline revision id", authorization.BaselineRevisionID},
+		{"release authorization candidate revision id", authorization.CandidateRevisionID},
+		{"release authorization source id", authorization.SourceID},
+		{"release authorization bound ref", authorization.BoundRef},
+	} {
+		if err := validateCanonicalReleaseIdentity(identity.name, identity.value, false); err != nil {
+			return err
+		}
+	}
+	if authorization.PublicPath == "" ||
+		authorization.PublicPath != strings.TrimSpace(authorization.PublicPath) ||
+		!strings.HasPrefix(authorization.PublicPath, "/") ||
+		strings.Contains(authorization.PublicPath, `\`) ||
+		path.Clean(authorization.PublicPath) != authorization.PublicPath {
+		return fmt.Errorf("release authorization public path is invalid")
+	}
+	if !isLowerSHA256(authorization.PolicyDigest) {
+		return fmt.Errorf("release authorization policy digest must be lowercase SHA-256")
+	}
+	return nil
+}
+
 // ConsiderReleaseRevision is the source-compatible boolean decision helper.
 // It allows rejection followed by acceptance, but once its synthetic evidence
 // accepts a candidate it cannot revoke or supersede that acceptance because
@@ -43,9 +102,8 @@ func ConsiderReleaseRevision(track ReleaseTrack, revisionID string, accepted boo
 	if err := ValidateReleaseTrack(track); err != nil {
 		return ReleaseTrack{}, err
 	}
-	revisionID = strings.TrimSpace(revisionID)
-	if revisionID == "" {
-		return ReleaseTrack{}, fmt.Errorf("revision id is required")
+	if err := validateCanonicalReleaseIdentity("revision id", revisionID, false); err != nil {
+		return ReleaseTrack{}, err
 	}
 	if track.LastDecision != nil {
 		if track.LastDecision.ReviewID != "legacy-release-decision" {
@@ -101,6 +159,9 @@ func ConsiderReleaseDecision(track ReleaseTrack, decision ReleaseDecision) (Rele
 	if track.LastDecision != nil && *track.LastDecision == decision {
 		return track, false, nil
 	}
+	if track.Generation == ^uint64(0) {
+		return ReleaseTrack{}, false, fmt.Errorf("release track generation is exhausted")
+	}
 	if decision.EvaluatedAt.IsZero() {
 		return ReleaseTrack{}, false, fmt.Errorf("release decision evaluation time is required")
 	}
@@ -135,9 +196,8 @@ func PromoteReleaseRevision(track ReleaseTrack, revisionID string) (ReleaseTrack
 	if track.Mode != ReleaseModePinned {
 		return ReleaseTrack{}, fmt.Errorf("only pinned tracks require promotion")
 	}
-	revisionID = strings.TrimSpace(revisionID)
-	if revisionID == "" {
-		return ReleaseTrack{}, fmt.Errorf("revision id is required")
+	if err := validateCanonicalReleaseIdentity("revision id", revisionID, false); err != nil {
+		return ReleaseTrack{}, err
 	}
 	if track.LastDecision == nil ||
 		!track.LastDecision.Accepted ||
@@ -150,6 +210,9 @@ func PromoteReleaseRevision(track ReleaseTrack, revisionID string) (ReleaseTrack
 	}
 	if revisionID != track.CandidateRevisionID {
 		return ReleaseTrack{}, fmt.Errorf("revision %q is not the track candidate", revisionID)
+	}
+	if track.Generation == ^uint64(0) {
+		return ReleaseTrack{}, fmt.Errorf("release track generation is exhausted")
 	}
 	next := track
 	next.Generation++
@@ -174,11 +237,20 @@ func CloneReleaseTrack(track ReleaseTrack) ReleaseTrack {
 // state. Legacy tracks without decision evidence remain valid only when they
 // do not claim a pending candidate.
 func ValidateReleaseTrack(track ReleaseTrack) error {
-	if strings.TrimSpace(track.ID) == "" {
-		return fmt.Errorf("release track id is required")
+	if err := validateCanonicalReleaseIdentity("release track id", track.ID, false); err != nil {
+		return err
 	}
-	if strings.TrimSpace(track.ContractID) == "" {
-		return fmt.Errorf("release track contract id is required")
+	if err := validateCanonicalReleaseIdentity("release track contract id", track.ContractID, false); err != nil {
+		return err
+	}
+	if err := validateCanonicalReleaseIdentity("release track bound ref", track.BoundRef, true); err != nil {
+		return err
+	}
+	if err := validateCanonicalReleaseIdentity("release track current revision id", track.CurrentRevisionID, true); err != nil {
+		return err
+	}
+	if err := validateCanonicalReleaseIdentity("release track candidate revision id", track.CandidateRevisionID, true); err != nil {
+		return err
 	}
 	if track.Mode != ReleaseModePinned && track.Mode != ReleaseModeFollowing {
 		return fmt.Errorf("unsupported release track mode %q", track.Mode)
@@ -249,11 +321,11 @@ func ValidateReleaseTrackTransition(current, next ReleaseTrack) error {
 }
 
 func validateReleaseDecision(decision ReleaseDecision) error {
-	if strings.TrimSpace(decision.RevisionID) == "" {
-		return fmt.Errorf("release decision revision id is required")
+	if err := validateCanonicalReleaseIdentity("release decision revision id", decision.RevisionID, false); err != nil {
+		return err
 	}
-	if strings.TrimSpace(decision.ReviewID) == "" {
-		return fmt.Errorf("release decision review id is required")
+	if err := validateCanonicalReleaseIdentity("release decision review id", decision.ReviewID, false); err != nil {
+		return err
 	}
 	if !isLowerSHA256(decision.ReviewDigest) {
 		return fmt.Errorf("release decision review digest must be lowercase SHA-256")
@@ -266,6 +338,19 @@ func validateReleaseDecision(decision ReleaseDecision) error {
 	}
 	if !decision.EvaluatedAt.IsZero() && decision.EvaluatedAt.Location() != time.UTC {
 		return fmt.Errorf("release decision evaluation time must be UTC")
+	}
+	return nil
+}
+
+func validateCanonicalReleaseIdentity(name, value string, allowEmpty bool) error {
+	if value == "" {
+		if allowEmpty {
+			return nil
+		}
+		return fmt.Errorf("%s is required", name)
+	}
+	if value != strings.TrimSpace(value) {
+		return fmt.Errorf("%s must not contain leading or trailing whitespace", name)
 	}
 	return nil
 }

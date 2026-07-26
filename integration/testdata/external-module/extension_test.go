@@ -130,6 +130,35 @@ func TestPublicContractSuitesAreUsableByUnrelatedModule(t *testing.T) {
 	contracttest.BlobStore(t, func(testing.TB) port.BlobStore {
 		return newMemoryBlobStore()
 	})
+	contracttest.RevisionReader(t, func(testing.TB) contracttest.RevisionReaderFixture {
+		reader := &memoryRevisionReader{revision: domain.ContractRevision{
+			ID: "revision-1", ContractID: "payments", SourceID: "source-main", Ref: "refs/heads/main",
+		}}
+		return contracttest.RevisionReaderFixture{
+			Reader: reader, ContractID: "payments", RevisionID: "revision-1", Want: reader.revision,
+			Observed: func() context.Context { return reader.ctx },
+		}
+	})
+}
+
+func TestSeparateRevisionReaderConstructsReleaseService(t *testing.T) {
+	reader := &memoryRevisionReader{revision: domain.ContractRevision{
+		ID: "revision-1", ContractID: "payments", SourceID: "source-main", Ref: "refs/heads/main",
+	}}
+	operational := newMemoryOperationalStore()
+	uow := &memoryUnitOfWork{store: operational, blobs: newMemoryBlobStore()}
+	service, err := application.NewReleaseService(application.ReleaseDependencies{
+		Revisions:  reader,
+		Evidence:   memoryReleaseEvidenceReader{},
+		UnitOfWork: uow,
+		Clock:      &fixedClock{now: time.Date(2026, 7, 25, 13, 0, 0, 0, time.UTC)},
+	})
+	if err != nil {
+		t.Fatalf("construct release service with separate revision reader: %v", err)
+	}
+	if service == nil {
+		t.Fatal("release service construction returned nil")
+	}
 }
 
 type memoryInputLoader struct {
@@ -143,6 +172,36 @@ func (l *memoryInputLoader) Load(ctx context.Context, _ string, locator domain.R
 
 type memorySnapshotBuilder struct {
 	contexts []context.Context
+}
+
+type memoryRevisionReader struct {
+	revision domain.ContractRevision
+	ctx      context.Context
+}
+
+func (r *memoryRevisionReader) ContractRevision(
+	ctx context.Context,
+	contractID, revisionID string,
+) (domain.ContractRevision, error) {
+	r.ctx = ctx
+	if err := ctx.Err(); err != nil {
+		return domain.ContractRevision{}, err
+	}
+	if r.revision.ContractID != contractID || r.revision.ID != revisionID {
+		return domain.ContractRevision{}, errors.New("revision not found")
+	}
+	return r.revision, nil
+}
+
+type memoryReleaseEvidenceReader struct{}
+
+func (memoryReleaseEvidenceReader) ReleaseEvidence(
+	context.Context,
+	string,
+	string,
+	string,
+) (domain.ReleaseEvidence, error) {
+	return domain.ReleaseEvidence{}, errors.New("release evidence not configured")
 }
 
 func (b *memorySnapshotBuilder) Build(ctx context.Context, contractID string, file domain.SpecFile, revision domain.ContractRevision) (domain.ContractSnapshot, error) {

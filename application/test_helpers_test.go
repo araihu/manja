@@ -11,25 +11,27 @@ import (
 )
 
 type testOperationalStore struct {
-	revisions    map[string]domain.ContractRevision
-	reviews      map[string]domain.ContractReview
-	syncRecords  map[string]domain.SyncRecord
-	tracks       map[string]domain.ReleaseTrack
-	publications map[string]domain.Publication
-	auditEvents  []domain.AuditEvent
-	outbox       []domain.OutboxMessage
-	calls        []string
-	contexts     []context.Context
-	failAt       string
+	revisions      map[string]domain.ContractRevision
+	reviews        map[string]domain.ContractReview
+	syncRecords    map[string]domain.SyncRecord
+	authorizations map[string]domain.ReleaseAuthorization
+	tracks         map[string]domain.ReleaseTrack
+	publications   map[string]domain.Publication
+	auditEvents    []domain.AuditEvent
+	outbox         []domain.OutboxMessage
+	calls          []string
+	contexts       []context.Context
+	failAt         string
 }
 
 func newTestOperationalStore() *testOperationalStore {
 	return &testOperationalStore{
-		revisions:    map[string]domain.ContractRevision{},
-		reviews:      map[string]domain.ContractReview{},
-		syncRecords:  map[string]domain.SyncRecord{},
-		tracks:       map[string]domain.ReleaseTrack{},
-		publications: map[string]domain.Publication{},
+		revisions:      map[string]domain.ContractRevision{},
+		reviews:        map[string]domain.ContractReview{},
+		syncRecords:    map[string]domain.SyncRecord{},
+		authorizations: map[string]domain.ReleaseAuthorization{},
+		tracks:         map[string]domain.ReleaseTrack{},
+		publications:   map[string]domain.Publication{},
 	}
 }
 
@@ -43,6 +45,9 @@ func (s *testOperationalStore) clone() *testOperationalStore {
 	}
 	for key, value := range s.syncRecords {
 		next.syncRecords[key] = value
+	}
+	for key, value := range s.authorizations {
+		next.authorizations[key] = value
 	}
 	for key, value := range s.tracks {
 		next.tracks[key] = domain.CloneReleaseTrack(value)
@@ -84,6 +89,32 @@ func (s *testOperationalStore) ContractRevision(ctx context.Context, contractID,
 		return domain.ContractRevision{}, errors.New("revision not found")
 	}
 	return revision, nil
+}
+
+func (s *testOperationalStore) ReleaseEvidence(
+	ctx context.Context,
+	contractID, trackID, reviewID string,
+) (domain.ReleaseEvidence, error) {
+	if err := s.record(ctx, "evidence-read"); err != nil {
+		return domain.ReleaseEvidence{}, err
+	}
+	authorization, ok := s.authorizations[reviewID]
+	if !ok || authorization.ContractID != contractID || authorization.TrackID != trackID {
+		return domain.ReleaseEvidence{}, errors.New("release evidence not found")
+	}
+	review, ok := s.reviews[authorization.ReviewID]
+	if !ok {
+		return domain.ReleaseEvidence{}, errors.New("release review not found")
+	}
+	syncRecord, ok := s.syncRecords[authorization.SyncRecordID]
+	if !ok {
+		return domain.ReleaseEvidence{}, errors.New("release sync not found")
+	}
+	return domain.ReleaseEvidence{
+		Authorization: authorization,
+		Review:        review,
+		SyncRecord:    syncRecord,
+	}, nil
 }
 
 func (s *testOperationalStore) SaveReview(ctx context.Context, value domain.ContractReview) error {

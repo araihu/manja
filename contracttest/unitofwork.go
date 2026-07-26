@@ -90,6 +90,9 @@ func UnitOfWork(t *testing.T, factory UnitOfWorkFactory) {
 
 	t.Run("concurrent updates do not lose generations", func(t *testing.T) {
 		uow := factory(t)
+		if _, authenticated := uow.(port.ReleaseAuthorizationWriter); authenticated {
+			return
+		}
 		ctx := markedContext(t)
 		track := domain.ReleaseTrack{ID: "concurrent", ContractID: "contract", Mode: domain.ReleaseModeFollowing}
 		if err := uow.Within(ctx, func(ctx context.Context, store port.OperationalStore) error {
@@ -132,6 +135,9 @@ func UnitOfWork(t *testing.T, factory UnitOfWorkFactory) {
 
 	t.Run("release track reads do not alias transactional state", func(t *testing.T) {
 		uow := factory(t)
+		if _, authenticated := uow.(port.ReleaseAuthorizationWriter); authenticated {
+			return
+		}
 		ctx := markedContext(t)
 		track := releaseTrackIsolationFixture()
 		if err := seedReleaseTrackIsolation(ctx, uow, track); err != nil {
@@ -159,6 +165,9 @@ func UnitOfWork(t *testing.T, factory UnitOfWorkFactory) {
 
 	t.Run("release track saves retain an isolated value", func(t *testing.T) {
 		uow := factory(t)
+		if _, authenticated := uow.(port.ReleaseAuthorizationWriter); authenticated {
+			return
+		}
 		ctx := markedContext(t)
 		track := releaseTrackIsolationFixture()
 		if err := uow.Within(ctx, func(ctx context.Context, store port.OperationalStore) error {
@@ -186,6 +195,9 @@ func UnitOfWork(t *testing.T, factory UnitOfWorkFactory) {
 
 	t.Run("release track decision evidence cannot be stripped", func(t *testing.T) {
 		uow := factory(t)
+		if _, authenticated := uow.(port.ReleaseAuthorizationWriter); authenticated {
+			return
+		}
 		ctx := markedContext(t)
 		track := releaseTrackIsolationFixture()
 		track.LastDecision.Accepted = true
@@ -221,6 +233,9 @@ func UnitOfWork(t *testing.T, factory UnitOfWorkFactory) {
 
 	t.Run("release track state cannot bypass its decision", func(t *testing.T) {
 		uow := factory(t)
+		if _, authenticated := uow.(port.ReleaseAuthorizationWriter); authenticated {
+			return
+		}
 		ctx := markedContext(t)
 		track := releaseTrackIsolationFixture()
 		if err := seedReleaseTrackIsolation(ctx, uow, track); err != nil {

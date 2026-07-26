@@ -45,6 +45,18 @@ type RevisionReader interface {
 	ContractRevision(context.Context, string, string) (domain.ContractRevision, error)
 }
 
+// ReleaseEvidenceReader resolves the immutable, track-scoped authorization,
+// review, and sync bundle used at the release trust boundary.
+type ReleaseEvidenceReader interface {
+	ReleaseEvidence(context.Context, string, string, string) (domain.ReleaseEvidence, error)
+}
+
+// ReleaseAuthorizationWriter persists a deployment-owned review authorization
+// without expanding the eight-method transactional OperationalStore contract.
+type ReleaseAuthorizationWriter interface {
+	SaveReleaseAuthorization(context.Context, domain.ReleaseAuthorization) error
+}
+
 // PublicationReader resolves the self-hosted public route without exposing a
 // concrete persistence adapter to the application layer.
 type PublicationReader interface {

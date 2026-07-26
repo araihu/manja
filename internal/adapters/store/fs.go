@@ -1,7 +1,10 @@
 package store
 
 import (
+	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -13,6 +16,8 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"syscall"
+	"time"
 
 	"github.com/araihu/manja/application/port"
 	"github.com/araihu/manja/domain"
@@ -21,9 +26,10 @@ import (
 var errUnsafeStorePath = errors.New("unsafe store path")
 
 const (
-	legacyOperationalStateVersion = 1
-	operationalStateVersion       = 2
-	releaseTrackAuthorityVersion  = 1
+	legacyOperationalStateVersion   = 1
+	decisionOperationalStateVersion = 2
+	operationalStateVersion         = 3
+	releaseTrackAuthorityVersion    = 1
 )
 
 type releaseTrackAuthority struct {
@@ -45,27 +51,26 @@ type directorySyncer interface {
 }
 
 type operationalState struct {
-	Version                 int                                `json:"version"`
-	Revisions               map[string]domain.ContractRevision `json:"revisions"`
-	Reviews                 map[string]domain.ContractReview   `json:"reviews"`
-	SyncRecords             map[string]domain.SyncRecord       `json:"syncRecords"`
-	ReleaseTracks           map[string]domain.ReleaseTrack     `json:"releaseTracks"`
-	ReleaseTrackAuthorities map[string]releaseTrackAuthority   `json:"releaseTrackAuthorities"`
-	Publications            map[string]domain.Publication      `json:"publications"`
-	AuditEvents             map[string]domain.AuditEvent       `json:"auditEvents"`
-	Outbox                  map[string]domain.OutboxMessage    `json:"outbox"`
+	Version                 int                                    `json:"version"`
+	Revisions               map[string]domain.ContractRevision     `json:"revisions"`
+	Reviews                 map[string]domain.ContractReview       `json:"reviews"`
+	SyncRecords             map[string]domain.SyncRecord           `json:"syncRecords"`
+	ReleaseTracks           map[string]domain.ReleaseTrack         `json:"releaseTracks"`
+	ReleaseTrackAuthorities map[string]releaseTrackAuthority       `json:"releaseTrackAuthorities"`
+	ReleaseAuthorizations   map[string]domain.ReleaseAuthorization `json:"releaseAuthorizations"`
+	Publications            map[string]domain.Publication          `json:"publications"`
+	AuditEvents             map[string]domain.AuditEvent           `json:"auditEvents"`
+	Outbox                  map[string]domain.OutboxMessage        `json:"outbox"`
 	migratedRevisions       map[string]struct{}
 }
 
 func NewFileStore(root string) *FileStore {
-	store := &FileStore{
+	return &FileStore{
 		root: root,
 		openDirectory: func(path string) (directorySyncer, error) {
 			return os.Open(path)
 		},
 	}
-	store.discardIncompleteStaging()
-	return store
 }
 
 func (s *FileStore) Within(ctx context.Context, callback func(context.Context, port.OperationalStore) error) error {
@@ -77,8 +82,14 @@ func (s *FileStore) Within(ctx context.Context, callback func(context.Context, p
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	releaseLock, err := s.acquireOperationalLock(ctx)
+	if err != nil {
+		return err
+	}
+	defer releaseLock()
+	s.discardIncompleteOperationalStaging()
 
-	state, err := s.loadOperationalState(ctx)
+	state, err := s.loadOperationalStateLocked(ctx)
 	if err != nil {
 		return err
 	}
@@ -163,6 +174,53 @@ func (s *FileStore) ContractRevision(ctx context.Context, contractID, revisionID
 		return domain.ContractRevision{}, fmt.Errorf("revision %q has invalid persisted evidence: %w", revisionID, err)
 	}
 	return revision, nil
+}
+
+func (s *FileStore) SaveReleaseAuthorization(ctx context.Context, authorization domain.ReleaseAuthorization) error {
+	return s.Within(ctx, func(ctx context.Context, operational port.OperationalStore) error {
+		transaction, ok := operational.(*operationalTransaction)
+		if !ok {
+			return fmt.Errorf("file store release authorization transaction is unavailable")
+		}
+		return transaction.saveReleaseAuthorization(ctx, authorization)
+	})
+}
+
+func (s *FileStore) ReleaseEvidence(
+	ctx context.Context,
+	contractID, trackID, reviewID string,
+) (domain.ReleaseEvidence, error) {
+	for _, identity := range []string{contractID, trackID, reviewID} {
+		if err := validateID(identity); err != nil {
+			return domain.ReleaseEvidence{}, err
+		}
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	state, err := s.loadOperationalState(ctx)
+	if err != nil {
+		return domain.ReleaseEvidence{}, err
+	}
+	authorization, ok := state.ReleaseAuthorizations[reviewID]
+	if !ok {
+		return domain.ReleaseEvidence{}, fs.ErrNotExist
+	}
+	if authorization.ContractID != contractID || authorization.TrackID != trackID {
+		return domain.ReleaseEvidence{}, fmt.Errorf("release authorization %q belongs to another track", reviewID)
+	}
+	review, ok := state.Reviews[authorization.ReviewID]
+	if !ok {
+		return domain.ReleaseEvidence{}, fmt.Errorf("release authorization %q has no persisted review", reviewID)
+	}
+	syncRecord, ok := state.SyncRecords[authorization.SyncRecordID]
+	if !ok {
+		return domain.ReleaseEvidence{}, fmt.Errorf("release authorization %q has no persisted sync", reviewID)
+	}
+	return domain.ReleaseEvidence{
+		Authorization: authorization,
+		Review:        review,
+		SyncRecord:    syncRecord,
+	}, nil
 }
 
 func (s *FileStore) SavePublication(ctx context.Context, publication domain.Publication) error {
@@ -334,6 +392,16 @@ func (s *FileStore) GetLegacy(ctx context.Context, key string) ([]byte, error) {
 }
 
 func (s *FileStore) loadOperationalState(ctx context.Context) (operationalState, error) {
+	releaseLock, err := s.acquireOperationalLock(ctx)
+	if err != nil {
+		return operationalState{}, err
+	}
+	defer releaseLock()
+	s.discardIncompleteOperationalStaging()
+	return s.loadOperationalStateLocked(ctx)
+}
+
+func (s *FileStore) loadOperationalStateLocked(ctx context.Context) (operationalState, error) {
 	state := newOperationalState()
 	if err := ctx.Err(); err != nil {
 		return state, err
@@ -350,8 +418,9 @@ func (s *FileStore) loadOperationalState(ctx context.Context) (operationalState,
 		}
 		state.initializeMaps()
 		switch state.Version {
-		case legacyOperationalStateVersion:
-			if err := migrateOperationalStateV1(&state); err != nil {
+		case legacyOperationalStateVersion, decisionOperationalStateVersion:
+			previousVersion := state.Version
+			if err := migrateOperationalStateToV3(&state); err != nil {
 				return operationalState{}, err
 			}
 			if err := validateReleaseTrackAuthorities(state); err != nil {
@@ -360,14 +429,25 @@ func (s *FileStore) loadOperationalState(ctx context.Context) (operationalState,
 			if err := validateOperationalReferences(state); err != nil {
 				return operationalState{}, err
 			}
+			if err := s.validateAuthorizedRevisionEvidence(ctx, state); err != nil {
+				return operationalState{}, err
+			}
 			if err := s.publishOperationalState(ctx, state); err != nil {
-				return operationalState{}, fmt.Errorf("persist operational state v2 migration: %w", err)
+				return operationalState{}, fmt.Errorf(
+					"persist operational state v%d to v%d migration: %w",
+					previousVersion,
+					operationalStateVersion,
+					err,
+				)
 			}
 		case operationalStateVersion:
 			if err := validateReleaseTrackAuthorities(state); err != nil {
 				return operationalState{}, err
 			}
 			if err := validateOperationalReferences(state); err != nil {
+				return operationalState{}, err
+			}
+			if err := s.validateAuthorizedRevisionEvidence(ctx, state); err != nil {
 				return operationalState{}, err
 			}
 		default:
@@ -426,12 +506,12 @@ func (s *FileStore) loadOperationalState(ctx context.Context) (operationalState,
 	}
 	if awaitingEvidenceEnrichment {
 		// A flat pre-snapshot record may be completed by SaveRevision in this
-		// transaction. It cannot be published as v2 until that enrichment has
+		// transaction. It cannot be published as the current schema until that enrichment has
 		// passed the normal final commit validation.
 		return state, nil
 	}
 	if err := s.publishOperationalState(ctx, state); err != nil {
-		return operationalState{}, fmt.Errorf("persist legacy operational state v2 migration: %w", err)
+		return operationalState{}, fmt.Errorf("persist legacy operational state migration: %w", err)
 	}
 	return state, nil
 }
@@ -535,6 +615,9 @@ func (s *FileStore) validateOperationalState(ctx context.Context, state operatio
 	if err := validateOperationalReferences(state); err != nil {
 		return err
 	}
+	if err := s.validateAuthorizedRevisionEvidence(ctx, state); err != nil {
+		return err
+	}
 	for id := range mutatedRevisions {
 		revision := state.Revisions[id]
 		if err := s.validateRevisionEvidence(ctx, revision); err != nil {
@@ -603,24 +686,78 @@ func (s *FileStore) validateRevisionEvidence(ctx context.Context, revision domai
 	return nil
 }
 
-func (s *FileStore) discardIncompleteStaging() {
+func (s *FileStore) validateAuthorizedRevisionEvidence(
+	ctx context.Context,
+	state operationalState,
+) error {
+	revisionIDs := make(map[string]struct{}, len(state.ReleaseAuthorizations)*2)
+	for _, authorization := range state.ReleaseAuthorizations {
+		revisionIDs[authorization.BaselineRevisionID] = struct{}{}
+		revisionIDs[authorization.CandidateRevisionID] = struct{}{}
+	}
+	ordered := make([]string, 0, len(revisionIDs))
+	for revisionID := range revisionIDs {
+		ordered = append(ordered, revisionID)
+	}
+	sort.Strings(ordered)
+	for _, revisionID := range ordered {
+		revision, ok := state.Revisions[revisionID]
+		if !ok {
+			return fmt.Errorf("authorized revision %q is missing", revisionID)
+		}
+		if err := s.validateRevisionEvidence(ctx, revision); err != nil {
+			return fmt.Errorf("authorized revision %q has invalid persisted evidence: %w", revisionID, err)
+		}
+	}
+	return nil
+}
+
+func (s *FileStore) discardIncompleteOperationalStaging() {
 	matches, err := filepath.Glob(filepath.Join(s.root, "operational", ".state-*.tmp"))
 	if err == nil {
 		for _, match := range matches {
 			_ = os.Remove(match)
 		}
 	}
-	for _, namespace := range []string{"blobs", "operational", "projects", "publications", "revisions", "sync-history"} {
-		_ = filepath.WalkDir(filepath.Join(s.root, namespace), func(path string, entry fs.DirEntry, err error) error {
-			if err != nil || entry.IsDir() {
-				return nil
+}
+
+func (s *FileStore) acquireOperationalLock(ctx context.Context) (func(), error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	directory := filepath.Join(s.root, "operational")
+	if err := os.MkdirAll(directory, 0o755); err != nil {
+		return nil, err
+	}
+	lockFile, err := os.OpenFile(filepath.Join(directory, ".lock"), os.O_CREATE|os.O_RDWR, 0o600)
+	if err != nil {
+		return nil, err
+	}
+	for {
+		err = syscall.Flock(int(lockFile.Fd()), syscall.LOCK_EX|syscall.LOCK_NB)
+		if err == nil {
+			return func() {
+				_ = syscall.Flock(int(lockFile.Fd()), syscall.LOCK_UN)
+				_ = lockFile.Close()
+			}, nil
+		}
+		if !errors.Is(err, syscall.EWOULDBLOCK) && !errors.Is(err, syscall.EAGAIN) {
+			_ = lockFile.Close()
+			return nil, err
+		}
+		timer := time.NewTimer(10 * time.Millisecond)
+		select {
+		case <-ctx.Done():
+			if !timer.Stop() {
+				select {
+				case <-timer.C:
+				default:
+				}
 			}
-			name := entry.Name()
-			if strings.HasPrefix(name, ".write-") && strings.HasSuffix(name, ".tmp") {
-				_ = os.Remove(path)
-			}
-			return nil
-		})
+			_ = lockFile.Close()
+			return nil, ctx.Err()
+		case <-timer.C:
+		}
 	}
 }
 
@@ -693,17 +830,41 @@ func (t *operationalTransaction) SaveRevision(ctx context.Context, revision doma
 	if err := validateID(revision.ID); err != nil {
 		return err
 	}
+	for _, identity := range []struct {
+		name  string
+		value string
+	}{
+		{"revision contract id", revision.ContractID},
+		{"revision source id", revision.SourceID},
+		{"revision ref", revision.Ref},
+	} {
+		if err := validateCanonicalIdentity(identity.name, identity.value, true); err != nil {
+			return err
+		}
+	}
 	if existing, ok := t.state.Revisions[revision.ID]; ok {
-		if !reflect.DeepEqual(existing, revision) {
+		equal, err := immutableRecordsEqual(existing, revision)
+		if err != nil {
+			return err
+		}
+		if !equal {
 			if !canEnrichLegacyRevisionEvidence(existing, revision) {
 				return fmt.Errorf("revision %q conflicts with immutable persisted evidence", revision.ID)
 			}
-			t.state.Revisions[revision.ID] = revision
+			cloned, err := cloneImmutableRecord(revision)
+			if err != nil {
+				return err
+			}
+			t.state.Revisions[revision.ID] = cloned
 			t.mutatedRevisions[revision.ID] = struct{}{}
 		}
 		return nil
 	}
-	t.state.Revisions[revision.ID] = revision
+	cloned, err := cloneImmutableRecord(revision)
+	if err != nil {
+		return err
+	}
+	t.state.Revisions[revision.ID] = cloned
 	t.mutatedRevisions[revision.ID] = struct{}{}
 	return nil
 }
@@ -734,8 +895,24 @@ func (t *operationalTransaction) SaveReview(ctx context.Context, review domain.C
 	if err := validateID(review.ID); err != nil {
 		return err
 	}
+	for _, identity := range []struct {
+		name  string
+		value string
+	}{
+		{"review contract id", review.ContractID},
+		{"review baseline revision id", review.BaselineRevisionID},
+		{"review candidate revision id", review.CandidateRevisionID},
+	} {
+		if err := validateCanonicalIdentity(identity.name, identity.value, false); err != nil {
+			return err
+		}
+	}
 	if existing, ok := t.state.Reviews[review.ID]; ok {
-		if !reflect.DeepEqual(existing, review) {
+		equal, err := immutableRecordsEqual(existing, review)
+		if err != nil {
+			return err
+		}
+		if !equal {
 			return fmt.Errorf("review %q conflicts with immutable persisted evidence", review.ID)
 		}
 		return nil
@@ -746,7 +923,11 @@ func (t *operationalTransaction) SaveReview(ctx context.Context, review domain.C
 	if err := t.bindRevisionOwner(review.ContractID, review.CandidateRevisionID, "review "+review.ID+" candidate"); err != nil {
 		return err
 	}
-	t.state.Reviews[review.ID] = review
+	cloned, err := cloneImmutableRecord(review)
+	if err != nil {
+		return err
+	}
+	t.state.Reviews[review.ID] = cloned
 	return nil
 }
 
@@ -757,12 +938,62 @@ func (t *operationalTransaction) SaveSyncRecord(ctx context.Context, record doma
 	if err := validateID(record.ID); err != nil {
 		return err
 	}
+	for _, identity := range []struct {
+		name  string
+		value string
+	}{
+		{"sync project id", record.ProjectID},
+		{"sync source id", record.SourceID},
+		{"sync revision id", record.RevisionID},
+		{"sync ref", record.Ref},
+	} {
+		if err := validateCanonicalIdentity(identity.name, identity.value, true); err != nil {
+			return err
+		}
+	}
 	if record.Result == domain.SyncResultSuccess && record.RevisionID != "" {
 		if err := t.bindRevisionOwner(record.ProjectID, record.RevisionID, "sync record "+record.ID); err != nil {
 			return err
 		}
 	}
+	if existing, ok := t.state.SyncRecords[record.ID]; ok {
+		equal, err := immutableRecordsEqual(existing, record)
+		if err != nil {
+			return err
+		}
+		if !equal {
+			return fmt.Errorf("sync record %q conflicts with immutable persisted evidence", record.ID)
+		}
+		return nil
+	}
 	t.state.SyncRecords[record.ID] = record
+	return nil
+}
+
+func (t *operationalTransaction) saveReleaseAuthorization(
+	ctx context.Context,
+	authorization domain.ReleaseAuthorization,
+) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if err := domain.ValidateReleaseAuthorization(authorization); err != nil {
+		return err
+	}
+	if existing, ok := t.state.ReleaseAuthorizations[authorization.ReviewID]; ok {
+		equal, err := immutableRecordsEqual(existing, authorization)
+		if err != nil {
+			return err
+		}
+		if !equal {
+			return fmt.Errorf(
+				"release authorization %q conflicts with immutable persisted evidence",
+				authorization.ReviewID,
+			)
+		}
+		return nil
+	}
+	t.state.ReleaseAuthorizations[authorization.ReviewID] = authorization
 	return nil
 }
 
@@ -805,6 +1036,9 @@ func (t *operationalTransaction) SaveReleaseTrack(ctx context.Context, expectedG
 		if err := domain.ValidateReleaseTrack(current); err != nil {
 			return fmt.Errorf("invalid persisted release track: %w", err)
 		}
+	}
+	if exists && reflect.DeepEqual(current, track) {
+		return nil
 	}
 	if exists && current.Generation != expectedGeneration {
 		return port.ErrGenerationConflict
@@ -872,10 +1106,33 @@ func (t *operationalTransaction) AppendAuditEvent(ctx context.Context, event dom
 	if err := validateID(event.ID); err != nil {
 		return err
 	}
+	for _, identity := range []struct {
+		name  string
+		value string
+	}{
+		{"audit contract id", event.ContractID},
+		{"audit track id", event.TrackID},
+		{"audit revision id", event.RevisionID},
+		{"audit actor id", event.ActorID},
+	} {
+		if err := validateCanonicalIdentity(identity.name, identity.value, true); err != nil {
+			return err
+		}
+	}
 	if event.RevisionID != "" {
 		if err := t.bindRevisionOwner(event.ContractID, event.RevisionID, "audit event "+event.ID); err != nil {
 			return err
 		}
+	}
+	if existing, ok := t.state.AuditEvents[event.ID]; ok {
+		equal, err := immutableRecordsEqual(existing, event)
+		if err != nil {
+			return err
+		}
+		if !equal {
+			return fmt.Errorf("audit event %q conflicts with immutable persisted evidence", event.ID)
+		}
+		return nil
 	}
 	t.state.AuditEvents[event.ID] = event
 	return nil
@@ -888,12 +1145,36 @@ func (t *operationalTransaction) Enqueue(ctx context.Context, message domain.Out
 	if err := validateID(message.ID); err != nil {
 		return err
 	}
+	for _, identity := range []struct {
+		name  string
+		value string
+	}{
+		{"outbox contract id", message.ContractID},
+		{"outbox track id", message.TrackID},
+		{"outbox revision id", message.RevisionID},
+	} {
+		if err := validateCanonicalIdentity(identity.name, identity.value, true); err != nil {
+			return err
+		}
+	}
 	if message.RevisionID != "" {
 		if err := t.bindRevisionOwner(message.ContractID, message.RevisionID, "outbox message "+message.ID); err != nil {
 			return err
 		}
 	}
-	t.state.Outbox[message.ID] = message
+	if existing, ok := t.state.Outbox[message.ID]; ok {
+		equal, err := immutableRecordsEqual(existing, message)
+		if err != nil {
+			return err
+		}
+		if !equal {
+			return fmt.Errorf("outbox message %q conflicts with immutable persisted evidence", message.ID)
+		}
+		return nil
+	}
+	cloned := message
+	cloned.Payload = append([]byte(nil), message.Payload...)
+	t.state.Outbox[message.ID] = cloned
 	return nil
 }
 
@@ -930,6 +1211,9 @@ func (s *operationalState) initializeMaps() {
 	if s.ReleaseTrackAuthorities == nil {
 		s.ReleaseTrackAuthorities = make(map[string]releaseTrackAuthority)
 	}
+	if s.ReleaseAuthorizations == nil {
+		s.ReleaseAuthorizations = make(map[string]domain.ReleaseAuthorization)
+	}
 	if s.Publications == nil {
 		s.Publications = make(map[string]domain.Publication)
 	}
@@ -961,6 +1245,10 @@ func cloneOperationalState(state operationalState) operationalState {
 	cloned.ReleaseTrackAuthorities = make(map[string]releaseTrackAuthority, len(state.ReleaseTrackAuthorities))
 	for key, authority := range state.ReleaseTrackAuthorities {
 		cloned.ReleaseTrackAuthorities[key] = authority
+	}
+	cloned.ReleaseAuthorizations = make(map[string]domain.ReleaseAuthorization, len(state.ReleaseAuthorizations))
+	for key, authorization := range state.ReleaseAuthorizations {
+		cloned.ReleaseAuthorizations[key] = authorization
 	}
 	cloned.migratedRevisions = cloneIDSet(state.migratedRevisions)
 	return cloned
@@ -1021,23 +1309,251 @@ func validateReleaseTrackAuthorities(state operationalState) error {
 	return nil
 }
 
-func migrateOperationalStateV1(state *operationalState) error {
-	if state.Version != legacyOperationalStateVersion {
+func validateReleaseEvidenceAuthorities(state operationalState) error {
+	for reviewID, authorization := range state.ReleaseAuthorizations {
+		if reviewID != authorization.ReviewID {
+			return fmt.Errorf(
+				"release authorization key %q does not match review id %q",
+				reviewID,
+				authorization.ReviewID,
+			)
+		}
+		if err := validateReleaseAuthorizationBundle(state, authorization); err != nil {
+			return fmt.Errorf("release authorization %q is invalid: %w", reviewID, err)
+		}
+	}
+	for key, track := range state.ReleaseTracks {
+		if track.LastDecision == nil {
+			continue
+		}
+		authorization, ok := state.ReleaseAuthorizations[track.LastDecision.ReviewID]
+		if !ok {
+			return fmt.Errorf(
+				"release track %q decision references missing authorization %q",
+				key,
+				track.LastDecision.ReviewID,
+			)
+		}
+		if authorization.ContractID != track.ContractID || authorization.TrackID != track.ID {
+			return fmt.Errorf("release track %q decision authorization belongs to another track", key)
+		}
+		if authorization.BoundRef != track.BoundRef {
+			return fmt.Errorf("release track %q decision authorization ref does not match bound ref", key)
+		}
+		if err := validateReleaseDecisionBundle(state, track, authorization); err != nil {
+			return fmt.Errorf("release track %q has invalid decision authority: %w", key, err)
+		}
+	}
+	return nil
+}
+
+func validateReleaseAuthorizationBundle(
+	state operationalState,
+	authorization domain.ReleaseAuthorization,
+) error {
+	if err := domain.ValidateReleaseAuthorization(authorization); err != nil {
+		return err
+	}
+	track, ok := state.ReleaseTracks[releaseTrackKey(authorization.ContractID, authorization.TrackID)]
+	if !ok {
+		return fmt.Errorf("references uncommitted release track")
+	}
+	if track.BoundRef != authorization.BoundRef {
+		return fmt.Errorf("bound ref does not match release track")
+	}
+	baseline, ok := state.Revisions[authorization.BaselineRevisionID]
+	if !ok || baseline.ContractID != authorization.ContractID {
+		return fmt.Errorf("baseline revision is missing or belongs to another contract")
+	}
+	candidate, ok := state.Revisions[authorization.CandidateRevisionID]
+	if !ok || candidate.ContractID != authorization.ContractID {
+		return fmt.Errorf("candidate revision is missing or belongs to another contract")
+	}
+	if candidate.SourceID != authorization.SourceID || candidate.Ref != authorization.BoundRef {
+		return fmt.Errorf("candidate revision source/ref does not match authorization")
+	}
+	if baseline.ReviewSnapshot == nil || candidate.ReviewSnapshot == nil {
+		return fmt.Errorf("authorized revisions require canonical review snapshots")
+	}
+	review, ok := state.Reviews[authorization.ReviewID]
+	if !ok {
+		return fmt.Errorf("references uncommitted review")
+	}
+	if review.ID != authorization.ReviewID ||
+		review.ContractID != authorization.ContractID ||
+		review.BaselineRevisionID != authorization.BaselineRevisionID ||
+		review.CandidateRevisionID != authorization.CandidateRevisionID ||
+		review.BaselineSpecDigest != baseline.SpecDigest ||
+		review.BaselineContractDigest != baseline.ContractDigest ||
+		review.CandidateSpecDigest != candidate.SpecDigest ||
+		review.CandidateContractDigest != candidate.ContractDigest ||
+		review.Report.PolicyDigest != authorization.PolicyDigest {
+		return fmt.Errorf("persisted review does not match authorization and revisions")
+	}
+	if err := domain.ValidateReleaseReviewReportAgainstSnapshots(
+		review.Report,
+		authorization.ContractID,
+		*baseline.ReviewSnapshot,
+		*candidate.ReviewSnapshot,
+	); err != nil {
+		return fmt.Errorf("canonical review validation: %w", err)
+	}
+	syncRecord, ok := state.SyncRecords[authorization.SyncRecordID]
+	if !ok {
+		return fmt.Errorf("references uncommitted sync")
+	}
+	if syncRecord.ID != authorization.SyncRecordID ||
+		syncRecord.ProjectID != authorization.ContractID ||
+		syncRecord.SourceID != authorization.SourceID ||
+		syncRecord.RevisionID != authorization.CandidateRevisionID ||
+		syncRecord.Ref != authorization.BoundRef {
+		return fmt.Errorf("persisted sync does not match authorization")
+	}
+	return nil
+}
+
+func validateReleaseDecisionBundle(
+	state operationalState,
+	track domain.ReleaseTrack,
+	authorization domain.ReleaseAuthorization,
+) error {
+	decision := *track.LastDecision
+	review := state.Reviews[authorization.ReviewID]
+	canonical, err := domain.CanonicalReviewJSON(review.Report)
+	if err != nil {
+		return fmt.Errorf("canonical review digest: %w", err)
+	}
+	sum := sha256.Sum256(canonical)
+	if decision.RevisionID != authorization.CandidateRevisionID ||
+		decision.ReviewID != authorization.ReviewID ||
+		decision.ReviewDigest != hex.EncodeToString(sum[:]) ||
+		decision.Verdict != review.Report.Verdict ||
+		!decision.EvaluatedAt.Equal(review.Report.EvaluatedAt) {
+		return fmt.Errorf("decision identity does not match immutable review")
+	}
+	if decision.Accepted && state.SyncRecords[authorization.SyncRecordID].Result != domain.SyncResultSuccess {
+		return fmt.Errorf("accepted decision requires successful authorized sync")
+	}
+	promoted := track.Mode == domain.ReleaseModePinned &&
+		track.CandidateRevisionID == "" &&
+		track.CurrentRevisionID == decision.RevisionID
+	decisionGeneration := track.Generation
+	if promoted {
+		if decisionGeneration == 0 {
+			return fmt.Errorf("promoted decision has no consideration generation")
+		}
+		decisionGeneration--
+	}
+	if err := requireReleaseTransitionEffects(
+		state,
+		authorization,
+		decision.Accepted,
+		decisionGeneration,
+		"release.track.considered",
+		"release.track.updated",
+	); err != nil {
+		return err
+	}
+	if decision.Accepted && (track.Mode == domain.ReleaseModeFollowing || promoted) {
+		publication, ok := state.Publications[publicationKey(authorization.ContractID, authorization.CandidateRevisionID)]
+		if !ok ||
+			!publication.Public ||
+			publication.Path != authorization.PublicPath ||
+			publication.ProjectID != authorization.ContractID ||
+			publication.RevisionID != authorization.CandidateRevisionID {
+			return fmt.Errorf("accepted published decision is missing its authorized publication")
+		}
+	}
+	if promoted {
+		if err := requireReleaseTransitionEffects(
+			state,
+			authorization,
+			decision.Accepted,
+			track.Generation,
+			"release.track.promoted",
+			"release.track.promoted",
+		); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func requireReleaseTransitionEffects(
+	state operationalState,
+	authorization domain.ReleaseAuthorization,
+	accepted bool,
+	generation uint64,
+	auditKind, outboxTopic string,
+) error {
+	eventID := releaseTransitionEvidenceID(authorization, accepted, generation, auditKind)
+	event, ok := state.AuditEvents[eventID]
+	if !ok ||
+		event.ContractID != authorization.ContractID ||
+		event.TrackID != authorization.TrackID ||
+		event.RevisionID != authorization.CandidateRevisionID ||
+		event.Kind != auditKind ||
+		event.OccurredAt.IsZero() ||
+		event.OccurredAt.Location() != time.UTC {
+		return fmt.Errorf("release transition is missing deterministic audit event %q", eventID)
+	}
+	messageID := "outbox-" + strings.TrimPrefix(eventID, "audit-")
+	message, ok := state.Outbox[messageID]
+	if !ok ||
+		message.ContractID != authorization.ContractID ||
+		message.TrackID != authorization.TrackID ||
+		message.RevisionID != authorization.CandidateRevisionID ||
+		message.Topic != outboxTopic ||
+		message.CreatedAt.IsZero() ||
+		message.CreatedAt.Location() != time.UTC ||
+		!message.CreatedAt.Equal(event.OccurredAt) {
+		return fmt.Errorf("release transition is missing deterministic outbox message %q", messageID)
+	}
+	return nil
+}
+
+func releaseTransitionEvidenceID(
+	authorization domain.ReleaseAuthorization,
+	accepted bool,
+	generation uint64,
+	kind string,
+) string {
+	value := fmt.Sprintf(
+		"%s\x00%s\x00%s\x00%s\x00%d\x00%t",
+		authorization.ContractID,
+		authorization.TrackID,
+		authorization.CandidateRevisionID,
+		authorization.ReviewID,
+		generation,
+		accepted,
+	)
+	if kind != "release.track.considered" {
+		value += "\x00" + kind
+	}
+	sum := sha256.Sum256([]byte(value))
+	return "audit-" + hex.EncodeToString(sum[:])[:24]
+}
+
+func migrateOperationalStateToV3(state *operationalState) error {
+	if state.Version != legacyOperationalStateVersion && state.Version != decisionOperationalStateVersion {
 		return fmt.Errorf("cannot migrate operational state version %d", state.Version)
 	}
 	state.ReleaseTrackAuthorities = make(map[string]releaseTrackAuthority, len(state.ReleaseTracks))
 	for key, track := range state.ReleaseTracks {
-		if track.LastDecision == nil {
-			track.CandidateRevisionID = ""
-			state.ReleaseTracks[key] = track
-		}
+		// Pre-v3 decision metadata was not cryptographically bound to a
+		// persisted review/sync/track authorization. Preserve only the
+		// provable last-known-good current revision and generation.
+		track.CandidateRevisionID = ""
+		track.LastDecision = nil
+		state.ReleaseTracks[key] = track
 		if err := domain.ValidateReleaseTrack(track); err != nil {
-			return fmt.Errorf("migrate v1 release track %q: %w", key, err)
+			return fmt.Errorf("migrate legacy release track %q: %w", key, err)
 		}
 		state.ReleaseTrackAuthorities[key] = newReleaseTrackAuthority(track)
 	}
+	state.ReleaseAuthorizations = make(map[string]domain.ReleaseAuthorization)
 	if err := bindLegacyOperationalRevisionOwners(state); err != nil {
-		return fmt.Errorf("migrate v1 revision ownership: %w", err)
+		return fmt.Errorf("migrate legacy revision ownership: %w", err)
 	}
 	state.Version = operationalStateVersion
 	return nil
@@ -1045,13 +1561,22 @@ func migrateOperationalStateV1(state *operationalState) error {
 
 func bindLegacyOperationalRevisionOwners(state *operationalState) error {
 	for key, track := range state.ReleaseTracks {
-		for role, revisionID := range map[string]string{
-			"current": track.CurrentRevisionID, "candidate": track.CandidateRevisionID,
+		for _, reference := range []struct {
+			role       string
+			revisionID string
+		}{
+			{"current", track.CurrentRevisionID},
+			{"candidate", track.CandidateRevisionID},
 		} {
-			if revisionID == "" {
+			if reference.revisionID == "" {
 				continue
 			}
-			if _, err := bindRevisionOwner(state, track.ContractID, revisionID, "release track "+key+" "+role); err != nil {
+			if _, err := bindRevisionOwner(
+				state,
+				track.ContractID,
+				reference.revisionID,
+				"release track "+key+" "+reference.role,
+			); err != nil {
 				return err
 			}
 		}
@@ -1122,13 +1647,22 @@ func validateOperationalReferences(state operationalState) error {
 		if key != releaseTrackKey(track.ContractID, track.ID) {
 			return fmt.Errorf("release track key %q does not match its identity", key)
 		}
-		for role, revisionID := range map[string]string{
-			"current": track.CurrentRevisionID, "candidate": track.CandidateRevisionID,
+		for _, reference := range []struct {
+			role       string
+			revisionID string
+		}{
+			{"current", track.CurrentRevisionID},
+			{"candidate", track.CandidateRevisionID},
 		} {
-			if revisionID == "" {
+			if reference.revisionID == "" {
 				continue
 			}
-			if err := requireOwnedRevision(state, track.ContractID, revisionID, "release track "+key+" "+role); err != nil {
+			if err := requireOwnedRevision(
+				state,
+				track.ContractID,
+				reference.revisionID,
+				"release track "+key+" "+reference.role,
+			); err != nil {
 				return err
 			}
 		}
@@ -1192,7 +1726,7 @@ func validateOperationalReferences(state operationalState) error {
 			}
 		}
 	}
-	return nil
+	return validateReleaseEvidenceAuthorities(state)
 }
 
 func requireOwnedRevision(state operationalState, contractID, revisionID, owner string) error {
@@ -1303,6 +1837,9 @@ func writeFileAtomically(filePath string, data []byte, mode fs.FileMode) error {
 }
 
 func validateID(id string) error {
+	if id != strings.TrimSpace(id) {
+		return fmt.Errorf("identity must not contain leading or trailing whitespace")
+	}
 	if id == "" || id == "." || id == ".." || filepath.IsAbs(id) {
 		return errUnsafeStorePath
 	}
@@ -1312,8 +1849,48 @@ func validateID(id string) error {
 	return nil
 }
 
+func validateCanonicalIdentity(name, value string, allowEmpty bool) error {
+	if value == "" {
+		if allowEmpty {
+			return nil
+		}
+		return fmt.Errorf("%s is required", name)
+	}
+	if value != strings.TrimSpace(value) {
+		return fmt.Errorf("%s must not contain leading or trailing whitespace", name)
+	}
+	return nil
+}
+
+func immutableRecordsEqual(left, right any) (bool, error) {
+	leftJSON, err := json.Marshal(left)
+	if err != nil {
+		return false, fmt.Errorf("encode persisted immutable record: %w", err)
+	}
+	rightJSON, err := json.Marshal(right)
+	if err != nil {
+		return false, fmt.Errorf("encode replayed immutable record: %w", err)
+	}
+	return bytes.Equal(leftJSON, rightJSON), nil
+}
+
+func cloneImmutableRecord[T any](value T) (T, error) {
+	var cloned T
+	encoded, err := json.Marshal(value)
+	if err != nil {
+		return cloned, fmt.Errorf("encode immutable record clone: %w", err)
+	}
+	if err := json.Unmarshal(encoded, &cloned); err != nil {
+		return cloned, fmt.Errorf("decode immutable record clone: %w", err)
+	}
+	return cloned, nil
+}
+
 func validatePublicPath(publicPath string) error {
-	if publicPath == "" || !strings.HasPrefix(publicPath, "/") || strings.Contains(publicPath, `\`) {
+	if publicPath == "" ||
+		publicPath != strings.TrimSpace(publicPath) ||
+		!strings.HasPrefix(publicPath, "/") ||
+		strings.Contains(publicPath, `\`) {
 		return errUnsafeStorePath
 	}
 	if path.Clean(publicPath) != publicPath {

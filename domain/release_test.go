@@ -425,6 +425,132 @@ func TestConsiderReleaseRevisionCannotReacceptAfterDeniedLegacyRevocation(t *tes
 	}
 }
 
+func TestReleaseTransitionsRejectGenerationOverflow(t *testing.T) {
+	evaluatedAt := time.Date(2026, 7, 26, 12, 0, 0, 0, time.UTC)
+	decision := ReleaseDecision{
+		RevisionID: "revision-next", ReviewID: "review-next",
+		ReviewDigest: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+		Verdict:      VerdictPass, Accepted: true, EvaluatedAt: evaluatedAt,
+	}
+	maxGeneration := ^uint64(0)
+
+	t.Run("decision", func(t *testing.T) {
+		track := ReleaseTrack{
+			ID: "stable", ContractID: "payments", Mode: ReleaseModeFollowing,
+			Generation: maxGeneration, CurrentRevisionID: "revision-good",
+		}
+		if _, changed, err := ConsiderReleaseDecision(track, decision); err == nil || changed {
+			t.Fatalf("overflowing decision changed=%t err=%v", changed, err)
+		}
+	})
+
+	t.Run("promotion", func(t *testing.T) {
+		track := ReleaseTrack{
+			ID: "stable", ContractID: "payments", Mode: ReleaseModePinned,
+			Generation: maxGeneration, CurrentRevisionID: "revision-good",
+			CandidateRevisionID: decision.RevisionID, LastDecision: &decision,
+		}
+		if _, err := PromoteReleaseRevision(track, decision.RevisionID); err == nil {
+			t.Fatal("overflowing promotion succeeded")
+		}
+	})
+}
+
+func TestReleaseSecurityIdentitiesRejectPadding(t *testing.T) {
+	evaluatedAt := time.Date(2026, 7, 26, 12, 0, 0, 0, time.UTC)
+	validDecision := ReleaseDecision{
+		RevisionID: "revision-next", ReviewID: "review-next",
+		ReviewDigest: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+		Verdict:      VerdictFail, EvaluatedAt: evaluatedAt,
+	}
+	validTrack := ReleaseTrack{
+		ID: "stable", ContractID: "payments", BoundRef: "refs/heads/main",
+		Mode: ReleaseModePinned, Generation: 1,
+		CandidateRevisionID: validDecision.RevisionID, LastDecision: &validDecision,
+	}
+
+	for name, mutate := range map[string]func(*ReleaseTrack){
+		"track id": func(track *ReleaseTrack) { track.ID = " stable" },
+		"contract id": func(track *ReleaseTrack) {
+			track.ContractID = "payments "
+		},
+		"bound ref": func(track *ReleaseTrack) {
+			track.BoundRef = " refs/heads/main"
+		},
+		"candidate revision": func(track *ReleaseTrack) {
+			track.CandidateRevisionID = "revision-next "
+			track.LastDecision.RevisionID = track.CandidateRevisionID
+		},
+		"decision revision": func(track *ReleaseTrack) {
+			track.CandidateRevisionID = " revision-next"
+			track.LastDecision.RevisionID = track.CandidateRevisionID
+		},
+		"decision review": func(track *ReleaseTrack) {
+			track.LastDecision.ReviewID = "review-next "
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			track := CloneReleaseTrack(validTrack)
+			mutate(&track)
+			if err := ValidateReleaseTrack(track); err == nil {
+				t.Fatalf("padded release identity was accepted: %#v", track)
+			}
+		})
+	}
+
+	baseline := ReleaseTrack{ID: "stable", ContractID: "payments", Mode: ReleaseModePinned}
+	if _, err := ConsiderReleaseRevision(baseline, " revision-next", false); err == nil {
+		t.Fatal("legacy helper normalized a padded revision id")
+	}
+
+	accepted := validDecision
+	accepted.Accepted = true
+	accepted.Verdict = VerdictPass
+	pinned := ReleaseTrack{
+		ID: "stable", ContractID: "payments", Mode: ReleaseModePinned,
+		Generation: 1, CandidateRevisionID: accepted.RevisionID, LastDecision: &accepted,
+	}
+	if _, err := PromoteReleaseRevision(pinned, "revision-next "); err == nil {
+		t.Fatal("promotion normalized a padded revision id")
+	}
+}
+
+func TestValidateReleaseAuthorizationBindsOneReviewToOneTrack(t *testing.T) {
+	valid := ReleaseAuthorization{
+		ContractID: "payments", TrackID: "stable",
+		ReviewID: "review-next", SyncRecordID: "sync-next",
+		BaselineRevisionID: "revision-good", CandidateRevisionID: "revision-next",
+		SourceID: "payments-git", BoundRef: "refs/heads/main",
+		PublicPath:   "/payments/stable",
+		PolicyDigest: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+	}
+	if err := ValidateReleaseAuthorization(valid); err != nil {
+		t.Fatalf("valid release authorization: %v", err)
+	}
+
+	for name, mutate := range map[string]func(*ReleaseAuthorization){
+		"contract":     func(value *ReleaseAuthorization) { value.ContractID = "payments " },
+		"track":        func(value *ReleaseAuthorization) { value.TrackID = " stable" },
+		"review":       func(value *ReleaseAuthorization) { value.ReviewID = "review-next " },
+		"sync":         func(value *ReleaseAuthorization) { value.SyncRecordID = " sync-next" },
+		"baseline":     func(value *ReleaseAuthorization) { value.BaselineRevisionID = "revision-good " },
+		"candidate":    func(value *ReleaseAuthorization) { value.CandidateRevisionID = " revision-next" },
+		"source":       func(value *ReleaseAuthorization) { value.SourceID = "payments-git " },
+		"ref":          func(value *ReleaseAuthorization) { value.BoundRef = " refs/heads/main" },
+		"path":         func(value *ReleaseAuthorization) { value.PublicPath = "payments/stable" },
+		"path padding": func(value *ReleaseAuthorization) { value.PublicPath = "/payments/stable " },
+		"policy":       func(value *ReleaseAuthorization) { value.PolicyDigest = "not-a-digest" },
+	} {
+		t.Run(name, func(t *testing.T) {
+			value := valid
+			mutate(&value)
+			if err := ValidateReleaseAuthorization(value); err == nil {
+				t.Fatalf("invalid authorization was accepted: %#v", value)
+			}
+		})
+	}
+}
+
 func TestStaleAcceptedDecisionReplayCannotOverrideNewerRejection(t *testing.T) {
 	track := ReleaseTrack{
 		ID: "stable", ContractID: "payments", Mode: ReleaseModePinned,
