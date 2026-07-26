@@ -139,6 +139,13 @@ func (s *ReleaseService) Coordinate(ctx context.Context, command ReleaseCommand)
 		if err := validateReleaseAuthorizationForTrack(authorization, track); err != nil {
 			return err
 		}
+		if track.CandidateRevisionID != "" && track.CurrentRevisionID != authorization.BaselineRevisionID {
+			return fmt.Errorf(
+				"release track baseline %q does not match authorized review baseline %q",
+				track.CurrentRevisionID,
+				authorization.BaselineRevisionID,
+			)
+		}
 		// Temporal authorization governs new transitions. Once the exact
 		// authenticated decision is durable, replay must remain a true no-op
 		// even if its applied exception has since expired.
