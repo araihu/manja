@@ -209,6 +209,45 @@ func persistStoredReleaseBaseline(
 	}
 }
 
+func seedStoredReleaseRevisions(
+	t *testing.T,
+	ctx context.Context,
+	store *FileStore,
+	fixture storedReleaseFixture,
+) {
+	t.Helper()
+	baselineKey, err := store.Put(ctx, fixture.baselineSpec)
+	if err != nil {
+		t.Fatal(err)
+	}
+	candidateKey, err := store.Put(ctx, fixture.candidateSpec)
+	if err != nil {
+		t.Fatal(err)
+	}
+	baselineSnapshot := core.NewContractSnapshot(
+		fixture.review.ContractID, fixture.review.BaselineRevisionID, fixture.baselineSpec, core.SpecIndex{},
+	)
+	candidateSnapshot := core.NewContractSnapshot(
+		fixture.review.ContractID, fixture.review.CandidateRevisionID, fixture.candidateSpec, core.SpecIndex{},
+	)
+	if err := store.Within(ctx, func(ctx context.Context, operational port.OperationalStore) error {
+		if err := operational.SaveRevision(ctx, core.ContractRevision{
+			ID: baselineSnapshot.RevisionID, ContractID: baselineSnapshot.ContractID,
+			SpecBlobKey: string(baselineKey), SpecDigest: baselineSnapshot.SpecDigest,
+			ContractDigest: baselineSnapshot.ContractDigest, ReviewSnapshot: &baselineSnapshot,
+		}); err != nil {
+			return err
+		}
+		return operational.SaveRevision(ctx, core.ContractRevision{
+			ID: candidateSnapshot.RevisionID, ContractID: candidateSnapshot.ContractID,
+			SpecBlobKey: string(candidateKey), SpecDigest: candidateSnapshot.SpecDigest,
+			ContractDigest: candidateSnapshot.ContractDigest, ReviewSnapshot: &candidateSnapshot,
+		})
+	}); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func appendStoredReleaseEffects(
 	ctx context.Context,
 	operational port.OperationalStore,
@@ -2113,17 +2152,12 @@ func TestFileStoreReplacesUnboundFlatDigestsDuringOneTimeEnrichment(t *testing.T
 func TestFileStoreRejectsConflictingReviewEvidence(t *testing.T) {
 	ctx := context.Background()
 	store := NewFileStore(t.TempDir())
-	review := core.ContractReview{
-		ID: "review-1", ContractID: "payments",
-		BaselineRevisionID: "revision-good", CandidateRevisionID: "revision-next",
-		Report: core.ReviewReport{SchemaVersion: core.ReviewSchemaVersion, EngineVersion: "engine-v1"},
-	}
+	fixture := newStoredReleaseFixtureNamed(
+		t, true, "review-1", "sync-1", time.Date(2026, 7, 25, 12, 0, 0, 0, time.UTC),
+	)
+	seedStoredReleaseRevisions(t, ctx, store, fixture)
+	review := fixture.review
 	if err := store.Within(ctx, func(ctx context.Context, operational port.OperationalStore) error {
-		for _, revisionID := range []string{"revision-good", "revision-next"} {
-			if err := operational.SaveRevision(ctx, core.ContractRevision{ID: revisionID, ContractID: "payments"}); err != nil {
-				return err
-			}
-		}
 		return operational.SaveReview(ctx, review)
 	}); err != nil {
 		t.Fatal(err)
@@ -2139,6 +2173,201 @@ func TestFileStoreRejectsConflictingReviewEvidence(t *testing.T) {
 		return operational.SaveReview(ctx, conflicting)
 	}); err == nil {
 		t.Fatal("conflicting immutable review evidence was accepted")
+	}
+}
+
+func TestFileStoreRejectsNonCanonicalNestedReviewIdentityBeforeClone(t *testing.T) {
+	for _, test := range []struct {
+		name   string
+		mutate func(*core.ContractReview)
+	}{
+		{name: "engine version", mutate: func(review *core.ContractReview) { review.Report.EngineVersion = "engine-\xff" }},
+		{name: "policy layer", mutate: func(review *core.ContractReview) { review.Report.EffectivePolicy.Layers[0].Name = "repository-\xff" }},
+		{name: "snapshot revision", mutate: func(review *core.ContractReview) { review.Report.Comparisons[0].Candidate.RevisionID = "revision-\xff" }},
+		{name: "finding id", mutate: func(review *core.ContractReview) {
+			review.Report.Comparisons[0].Findings = []core.SpecChange{{
+				ID: "finding-\xff", RuleID: core.RuleOperationRemoved, Severity: core.SpecChangeBreaking,
+				Kind: "Removed endpoint", Subject: "GET /payments", Description: "removed",
+			}}
+		}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			ctx := context.Background()
+			root := t.TempDir()
+			store := NewFileStore(root)
+			fixture := newStoredReleaseFixture(t, store, true)
+			seedStoredReleaseRevisions(t, ctx, store, fixture)
+			review := fixture.review
+			test.mutate(&review)
+
+			if err := store.Within(ctx, func(ctx context.Context, operational port.OperationalStore) error {
+				return operational.SaveReview(ctx, review)
+			}); err == nil {
+				t.Fatal("SaveReview accepted a non-canonical nested identity")
+			}
+			state, err := NewFileStore(root).loadOperationalState(ctx)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(state.Reviews) != 0 {
+				t.Fatalf("invalid nested review survived restart: %#v", state.Reviews)
+			}
+		})
+	}
+}
+
+func TestFileStoreRejectsInvalidUTF8ReviewCollisionAcrossRestart(t *testing.T) {
+	ctx := context.Background()
+	root := t.TempDir()
+	store := NewFileStore(root)
+	fixture := newStoredReleaseFixture(t, store, true)
+	seedStoredReleaseRevisions(t, ctx, store, fixture)
+	for _, invalid := range []string{"engine-\xff", "engine-\xfe"} {
+		review := fixture.review
+		review.Report.EngineVersion = invalid
+		if err := NewFileStore(root).Within(ctx, func(ctx context.Context, operational port.OperationalStore) error {
+			return operational.SaveReview(ctx, review)
+		}); err == nil {
+			t.Fatalf("SaveReview accepted invalid UTF-8 identity %q", invalid)
+		}
+	}
+	state, err := NewFileStore(root).loadOperationalState(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(state.Reviews) != 0 {
+		t.Fatalf("invalid UTF-8 reviews collided into persisted evidence: %#v", state.Reviews)
+	}
+}
+
+func TestFileStoreRejectsInvalidEscapedSurrogatesBeforeJSONDecode(t *testing.T) {
+	for _, version := range []int{
+		legacyOperationalStateVersion,
+		decisionOperationalStateVersion,
+		authenticatedStateVersion,
+		operationalStateVersion,
+	} {
+		for _, escaped := range []string{`\ud800`, `\ud801`, `\udc00`, `\ud800x`, `\ud800\ud801`, `\udc00\ud800`} {
+			t.Run(fmt.Sprintf("v%d/%s", version, escaped), func(t *testing.T) {
+				ctx := context.Background()
+				root := t.TempDir()
+				operationalDir := filepath.Join(root, "operational")
+				if err := os.MkdirAll(operationalDir, 0o755); err != nil {
+					t.Fatal(err)
+				}
+				statePath := filepath.Join(operationalDir, "state.json")
+				raw := []byte(fmt.Sprintf(
+					`{"version":%d,"revisions":{"payments\u0000revision-%s":{"ID":"revision-%s","contractId":"payments"}}}`,
+					version,
+					escaped,
+					escaped,
+				))
+				if err := os.WriteFile(statePath, raw, 0o600); err != nil {
+					t.Fatal(err)
+				}
+
+				if _, err := NewFileStore(root).loadOperationalState(ctx); err == nil {
+					t.Fatal("loadOperationalState accepted invalid escaped surrogate")
+				}
+				after, err := os.ReadFile(statePath)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if !bytes.Equal(after, raw) {
+					t.Fatal("rejected state was rewritten")
+				}
+				if _, err := os.Stat(filepath.Join(operationalDir, "schema.json")); !errors.Is(err, os.ErrNotExist) {
+					t.Fatalf("schema marker advanced for rejected state: %v", err)
+				}
+			})
+		}
+	}
+}
+
+func TestFileStoreRejectsInvalidEscapedSurrogateInSchemaMarker(t *testing.T) {
+	ctx := context.Background()
+	root := t.TempDir()
+	operationalDir := filepath.Join(root, "operational")
+	if err := os.MkdirAll(operationalDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	statePath := filepath.Join(operationalDir, "state.json")
+	markerPath := filepath.Join(operationalDir, "schema.json")
+	state := []byte(`{"version":4}`)
+	marker := []byte(`{"version":4,"identity":"\ud800"}`)
+	if err := os.WriteFile(statePath, state, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(markerPath, marker, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := NewFileStore(root).loadOperationalState(ctx); err == nil {
+		t.Fatal("loadOperationalState accepted invalid escaped surrogate in schema marker")
+	}
+	for path, want := range map[string][]byte{statePath: state, markerPath: marker} {
+		got, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !bytes.Equal(got, want) {
+			t.Fatalf("rejected persisted JSON %q was rewritten", path)
+		}
+	}
+}
+
+func TestFileStoreStrictJSONAllowsValidSurrogatePairsAndReplacementRune(t *testing.T) {
+	for _, test := range []struct {
+		name string
+		raw  []byte
+		want string
+	}{
+		{name: "surrogate pair", raw: []byte(`{"ID":"payments-\ud83d\ude00"}`), want: "payments-😀"},
+		{name: "escaped replacement", raw: []byte(`{"ID":"payments-\ufffd"}`), want: "payments-�"},
+		{name: "literal replacement", raw: []byte(`{"ID":"payments-�"}`), want: "payments-�"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			ctx := context.Background()
+			root := t.TempDir()
+			path := filepath.Join(root, "projects", "record.json")
+			if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(path, test.raw, 0o600); err != nil {
+				t.Fatal(err)
+			}
+			var project core.Project
+			if err := NewFileStore(root).readJSON(ctx, "projects", "record.json", &project); err != nil {
+				t.Fatal(err)
+			}
+			if project.ID != test.want {
+				t.Fatalf("decoded id = %q, want %q", project.ID, test.want)
+			}
+		})
+	}
+}
+
+func TestFileStoreReadJSONRejectsInvalidEscapedSurrogate(t *testing.T) {
+	ctx := context.Background()
+	root := t.TempDir()
+	path := filepath.Join(root, "projects", "record.json")
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	raw := []byte(`{"ID":"payments-\ud800"}`)
+	if err := os.WriteFile(path, raw, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var project core.Project
+	if err := NewFileStore(root).readJSON(ctx, "projects", "record.json", &project); err == nil {
+		t.Fatal("readJSON accepted invalid escaped surrogate")
+	}
+	after, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(after, raw) {
+		t.Fatal("readJSON rewrote rejected legacy JSON")
 	}
 }
 

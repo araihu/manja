@@ -3,7 +3,6 @@ package application
 import (
 	"context"
 	"fmt"
-	"strings"
 
 	"github.com/araihu/manja/application/port"
 	"github.com/araihu/manja/domain"
@@ -21,8 +20,8 @@ func NewRevisionService(blobs port.BlobStore) (*RevisionService, error) {
 }
 
 func (s *RevisionService) LoadSpec(ctx context.Context, revision domain.ContractRevision) ([]byte, error) {
-	if strings.TrimSpace(revision.ID) == "" {
-		return nil, validationError("load revision", "revision id is required")
+	if err := domain.ValidateCanonicalIdentity("revision id", revision.ID, false); err != nil {
+		return nil, validationError("load revision", err.Error())
 	}
 	key := port.BlobKey(revision.SpecBlobKey)
 	if !key.Valid() {

@@ -1,6 +1,7 @@
 package domain
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -111,6 +112,44 @@ func TestMergePolicyRejectsMalformedException(t *testing.T) {
 	})
 	if err == nil || !strings.Contains(err.Error(), "exactly one") {
 		t.Fatalf("error = %v", err)
+	}
+}
+
+func TestMergePolicyRejectsNonCanonicalExceptionAuthor(t *testing.T) {
+	for _, author := range []string{" operator ", "operator\x00shadow", "operator-\xff"} {
+		t.Run(fmt.Sprintf("%q", author), func(t *testing.T) {
+			_, err := MergePolicy(PolicyLayer{
+				Name:   "repository",
+				Source: PolicySourceRepository,
+				Exceptions: []PolicyException{{
+					RuleID:    RuleOperationRemoved,
+					Reason:    "approved migration",
+					Author:    author,
+					ExpiresAt: time.Date(2026, 7, 27, 0, 0, 0, 0, time.UTC),
+					Source:    PolicySourceRepository,
+				}},
+			})
+			if err == nil {
+				t.Fatal("MergePolicy accepted non-canonical exception author")
+			}
+		})
+	}
+}
+
+func TestMergePolicyPreservesDisplayReasonWithoutIdentityNormalization(t *testing.T) {
+	reason := "  approved migration\nwith operator context  "
+	policy, err := MergePolicy(PolicyLayer{
+		Name: "repository", Source: PolicySourceRepository,
+		Exceptions: []PolicyException{{
+			RuleID: RuleOperationRemoved, Reason: reason, Author: "operator",
+			ExpiresAt: time.Date(2026, 7, 27, 0, 0, 0, 0, time.UTC), Source: PolicySourceRepository,
+		}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := policy.Layers[0].Exceptions[0].Reason; got != reason {
+		t.Fatalf("display reason = %q, want preserved %q", got, reason)
 	}
 }
 

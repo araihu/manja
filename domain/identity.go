@@ -2,6 +2,7 @@ package domain
 
 import (
 	"fmt"
+	"path"
 	"strings"
 	"unicode"
 	"unicode/utf8"
@@ -28,6 +29,22 @@ func ValidateCanonicalIdentity(name, value string, allowEmpty bool) error {
 		if unicode.IsControl(character) {
 			return fmt.Errorf("%s must not contain control characters", name)
 		}
+	}
+	return nil
+}
+
+// ValidateCanonicalPublicPath applies the canonical identity rule and the
+// provider-neutral absolute, clean path contract used by release/publication
+// boundaries.
+func ValidateCanonicalPublicPath(name, value string, allowEmpty bool) error {
+	if err := ValidateCanonicalIdentity(name, value, allowEmpty); err != nil {
+		return err
+	}
+	if value == "" {
+		return nil
+	}
+	if !strings.HasPrefix(value, "/") || strings.Contains(value, `\`) || path.Clean(value) != value {
+		return fmt.Errorf("%s is invalid", name)
 	}
 	return nil
 }

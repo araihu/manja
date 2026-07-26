@@ -128,6 +128,42 @@ func TestReleaseCommandValidationOrderIsDeterministic(t *testing.T) {
 	}
 }
 
+func TestReleaseServiceRejectsNonCanonicalCommandIdentityBeforePorts(t *testing.T) {
+	now := time.Date(2026, 7, 25, 14, 0, 0, 0, time.UTC)
+	for _, test := range []struct {
+		name   string
+		mutate func(*ReleaseCommand)
+	}{
+		{name: "contract padding", mutate: func(command *ReleaseCommand) { command.ContractID = " payments " }},
+		{name: "track control", mutate: func(command *ReleaseCommand) { command.TrackID = "stable\x00shadow" }},
+		{name: "revision invalid utf8", mutate: func(command *ReleaseCommand) { command.RevisionID = "revision-\xff" }},
+		{name: "review control", mutate: func(command *ReleaseCommand) { command.Review.ID = "review\x00shadow" }},
+		{name: "sync invalid utf8", mutate: func(command *ReleaseCommand) { command.SyncRecord.ID = "sync-\xff" }},
+		{name: "actor padding", mutate: func(command *ReleaseCommand) { command.ActorID = " manager " }},
+		{name: "public path control", mutate: func(command *ReleaseCommand) { command.PublicPath = "/payments\x00shadow" }},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			store, _, command := authorizedReleaseFixture(t, now)
+			clock := &testClock{now: now}
+			uow := &testUnitOfWork{committed: store}
+			service, err := NewReleaseService(ReleaseDependencies{
+				Revisions: store, Evidence: store, UnitOfWork: uow, Clock: clock,
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			test.mutate(&command)
+
+			if _, err := service.Coordinate(context.Background(), command); err == nil {
+				t.Fatal("Coordinate accepted a non-canonical command identity")
+			}
+			if len(store.calls) != 0 || len(clock.contexts) != 0 || uow.ctx != nil {
+				t.Fatalf("non-canonical command reached ports: calls=%v clock=%d transaction=%v", store.calls, len(clock.contexts), uow.ctx != nil)
+			}
+		})
+	}
+}
+
 func TestNewReleaseServiceRequiresRevisionReader(t *testing.T) {
 	_, err := NewReleaseService(ReleaseDependencies{
 		Evidence:   newTestOperationalStore(),

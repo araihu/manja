@@ -2,11 +2,8 @@ package domain
 
 import (
 	"fmt"
-	"path"
 	"reflect"
-	"strings"
 	"time"
-	"unicode/utf8"
 )
 
 type ReleaseMode string
@@ -81,14 +78,8 @@ func ValidateReleaseAuthorization(authorization ReleaseAuthorization) error {
 			return err
 		}
 	}
-	if authorization.PublicPath == "" ||
-		!utf8.ValidString(authorization.PublicPath) ||
-		authorization.PublicPath != strings.TrimSpace(authorization.PublicPath) ||
-		!strings.HasPrefix(authorization.PublicPath, "/") ||
-		strings.Contains(authorization.PublicPath, `\`) ||
-		containsControlCharacter(authorization.PublicPath) ||
-		path.Clean(authorization.PublicPath) != authorization.PublicPath {
-		return fmt.Errorf("release authorization public path is invalid")
+	if err := ValidateCanonicalPublicPath("release authorization public path", authorization.PublicPath, false); err != nil {
+		return err
 	}
 	if !isLowerSHA256(authorization.PolicyDigest) {
 		return fmt.Errorf("release authorization policy digest must be lowercase SHA-256")

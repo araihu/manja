@@ -76,6 +76,167 @@ type ReviewRequest struct {
 	EngineVersion string
 }
 
+// ValidateContractReviewIdentities validates every security-relevant identity
+// carried by a review aggregate without requiring historical records to carry
+// a complete release report. New release evidence should use
+// ValidateContractReviewAgainstSnapshots.
+func ValidateContractReviewIdentities(review ContractReview) error {
+	for _, identity := range []struct {
+		name  string
+		value string
+	}{
+		{name: "review id", value: review.ID},
+		{name: "review contract id", value: review.ContractID},
+		{name: "review baseline revision id", value: review.BaselineRevisionID},
+		{name: "review candidate revision id", value: review.CandidateRevisionID},
+	} {
+		if err := validateCanonicalIdentity(identity.name, identity.value, false); err != nil {
+			return err
+		}
+	}
+	report := review.Report
+	if reflect.DeepEqual(report, ReviewReport{}) {
+		return nil
+	}
+	for _, identity := range []struct {
+		name       string
+		value      string
+		allowEmpty bool
+	}{
+		{name: "review schema version", value: report.SchemaVersion, allowEmpty: true},
+		{name: "review engine version", value: report.EngineVersion, allowEmpty: true},
+		{name: "review report contract id", value: report.ContractID, allowEmpty: true},
+	} {
+		if err := validateCanonicalIdentity(identity.name, identity.value, identity.allowEmpty); err != nil {
+			return err
+		}
+	}
+	for layerIndex, layer := range report.EffectivePolicy.Layers {
+		if err := validateCanonicalIdentity(fmt.Sprintf("review policy layer %d name", layerIndex), layer.Name, false); err != nil {
+			return err
+		}
+		if err := validateCanonicalIdentity(fmt.Sprintf("review policy layer %d source", layerIndex), layer.Source, false); err != nil {
+			return err
+		}
+		for ruleIndex, rule := range layer.Rules {
+			if err := validateCanonicalIdentity(fmt.Sprintf("review policy layer %d rule %d id", layerIndex, ruleIndex), rule.RuleID, false); err != nil {
+				return err
+			}
+		}
+		for exceptionIndex, exception := range layer.Exceptions {
+			if err := validateReviewExceptionIdentities(
+				fmt.Sprintf("review policy layer %d exception %d", layerIndex, exceptionIndex), exception,
+			); err != nil {
+				return err
+			}
+		}
+	}
+	for comparisonIndex, comparison := range report.Comparisons {
+		prefix := fmt.Sprintf("review comparison %d", comparisonIndex)
+		if err := validateCanonicalIdentity(prefix+" kind", comparison.Kind, false); err != nil {
+			return err
+		}
+		if err := validateSnapshotRef(prefix+" baseline", comparison.Baseline); err != nil {
+			return err
+		}
+		if err := validateSnapshotRef(prefix+" candidate", comparison.Candidate); err != nil {
+			return err
+		}
+		for findingIndex, finding := range comparison.Findings {
+			if err := validateReviewFindingIdentities(fmt.Sprintf("%s finding %d", prefix, findingIndex), finding); err != nil {
+				return err
+			}
+		}
+		for decisionIndex, decision := range comparison.Policy.Decisions {
+			decisionPrefix := fmt.Sprintf("%s policy decision %d", prefix, decisionIndex)
+			if err := validateReviewFindingIdentities(decisionPrefix+" finding", decision.Finding); err != nil {
+				return err
+			}
+			if err := validateCanonicalIdentity(decisionPrefix+" source", decision.Source, false); err != nil {
+				return err
+			}
+			if err := validateCanonicalIdentity(decisionPrefix+" layer name", decision.LayerName, false); err != nil {
+				return err
+			}
+		}
+		for exceptionIndex, exception := range comparison.Policy.AppliedExceptions {
+			if err := validateReviewExceptionIdentities(
+				fmt.Sprintf("%s applied exception %d", prefix, exceptionIndex), exception,
+			); err != nil {
+				return err
+			}
+		}
+		for dispositionIndex, disposition := range comparison.Policy.ExceptionDispositions {
+			dispositionPrefix := fmt.Sprintf("%s exception disposition %d", prefix, dispositionIndex)
+			if err := validateCanonicalIdentity(dispositionPrefix+" layer name", disposition.LayerName, false); err != nil {
+				return err
+			}
+			if err := validateReviewExceptionIdentities(dispositionPrefix, disposition.Exception); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func validateReviewFindingIdentities(prefix string, finding SpecChange) error {
+	if err := validateCanonicalIdentity(prefix+" id", finding.ID, false); err != nil {
+		return err
+	}
+	return validateCanonicalIdentity(prefix+" rule id", finding.RuleID, false)
+}
+
+func validateReviewExceptionIdentities(prefix string, exception PolicyException) error {
+	for _, identity := range []struct {
+		name       string
+		value      string
+		allowEmpty bool
+	}{
+		{name: prefix + " finding id", value: exception.FindingID, allowEmpty: true},
+		{name: prefix + " rule id", value: exception.RuleID, allowEmpty: true},
+		{name: prefix + " author", value: exception.Author},
+		{name: prefix + " source", value: exception.Source},
+	} {
+		if err := validateCanonicalIdentity(identity.name, identity.value, identity.allowEmpty); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// ValidateContractReviewAgainstSnapshots validates a complete immutable
+// release review against independently loaded canonical snapshots.
+func ValidateContractReviewAgainstSnapshots(
+	review ContractReview,
+	baseline, candidate ContractSnapshot,
+) error {
+	if err := ValidateContractReviewIdentities(review); err != nil {
+		return err
+	}
+	for _, digest := range []struct {
+		name  string
+		value string
+	}{
+		{name: "review baseline spec digest", value: review.BaselineSpecDigest},
+		{name: "review baseline contract digest", value: review.BaselineContractDigest},
+		{name: "review candidate spec digest", value: review.CandidateSpecDigest},
+		{name: "review candidate contract digest", value: review.CandidateContractDigest},
+	} {
+		if !isLowerSHA256(digest.value) {
+			return fmt.Errorf("%s must be lowercase SHA-256", digest.name)
+		}
+	}
+	if baseline.ContractID != review.ContractID || baseline.RevisionID != review.BaselineRevisionID ||
+		baseline.SpecDigest != review.BaselineSpecDigest || baseline.ContractDigest != review.BaselineContractDigest {
+		return fmt.Errorf("review baseline evidence does not match canonical snapshot")
+	}
+	if candidate.ContractID != review.ContractID || candidate.RevisionID != review.CandidateRevisionID ||
+		candidate.SpecDigest != review.CandidateSpecDigest || candidate.ContractDigest != review.CandidateContractDigest {
+		return fmt.Errorf("review candidate evidence does not match canonical snapshot")
+	}
+	return ValidateReleaseReviewReportAgainstSnapshots(review.Report, review.ContractID, baseline, candidate)
+}
+
 // ValidateReleaseReviewReport preserves the public reference-level validation
 // contract used by offline and external callers. Release authorization must use
 // ValidateReleaseReviewReportAgainstSnapshots with independently persisted

@@ -255,22 +255,24 @@ func validateContractReviewSnapshots(review domain.ContractReview, baseline, can
 }
 
 func validateReleaseCommand(command ReleaseCommand) error {
-	for _, required := range []struct {
-		name  string
-		value string
+	for _, identity := range []struct {
+		name       string
+		value      string
+		allowEmpty bool
 	}{
-		{"contract id", command.ContractID},
-		{"track id", command.TrackID},
-		{"revision id", command.RevisionID},
-		{"review id", command.Review.ID},
-		{"sync record id", command.SyncRecord.ID},
+		{name: "contract id", value: command.ContractID},
+		{name: "track id", value: command.TrackID},
+		{name: "revision id", value: command.RevisionID},
+		{name: "review id", value: command.Review.ID},
+		{name: "sync record id", value: command.SyncRecord.ID},
+		{name: "actor id", value: command.ActorID, allowEmpty: true},
 	} {
-		if strings.TrimSpace(required.value) == "" {
-			return validationError("coordinate release", required.name+" is required")
+		if err := domain.ValidateCanonicalIdentity(identity.name, identity.value, identity.allowEmpty); err != nil {
+			return validationError("coordinate release", err.Error())
 		}
-		if required.value != strings.TrimSpace(required.value) {
-			return validationError("coordinate release", required.name+" must not contain leading or trailing whitespace")
-		}
+	}
+	if err := domain.ValidateCanonicalPublicPath("public path", command.PublicPath, true); err != nil {
+		return validationError("coordinate release", err.Error())
 	}
 	return nil
 }

@@ -75,17 +75,18 @@ func (s *SyncService) Sync(ctx context.Context, command SyncCommand) (SyncResult
 	if err := validateSyncCommand(command); err != nil {
 		return SyncResult{}, err
 	}
-	startedAt := s.clock.Now(ctx).UTC()
 	spec, revision, err := s.source.Fetch(ctx)
+	if outputErr := validateSyncSourceOutput(spec, revision, err == nil); outputErr != nil {
+		return SyncResult{}, validationError("sync", "source output: "+outputErr.Error())
+	}
 	if err != nil {
+		startedAt := s.clock.Now(ctx).UTC()
 		return SyncResult{}, s.recordFailure(ctx, command, spec, revision, startedAt, ErrorSource, "fetch source", err)
 	}
-	if revision.SourceID == "" {
-		revision.SourceID = firstNonBlank(spec.SourceID, command.SourceID)
-	}
-	if spec.SourceID == "" {
-		spec.SourceID = firstNonBlank(revision.SourceID, command.SourceID)
-	}
+	startedAt := s.clock.Now(ctx).UTC()
+	revision.ContractID = command.ContractID
+	revision.SourceID = command.SourceID
+	spec.SourceID = command.SourceID
 
 	index, err := s.parser.Parse(ctx, spec, revision)
 	if err != nil {
@@ -154,9 +155,9 @@ func (s *SyncService) recordFailure(
 	record := domain.SyncRecord{
 		ID:           syncRecordID(command, revision, domain.SyncResultFailure),
 		ProjectID:    command.ContractID,
-		SourceID:     firstNonBlank(command.SourceID, revision.SourceID, spec.SourceID),
+		SourceID:     firstNonEmpty(command.SourceID, revision.SourceID, spec.SourceID),
 		RevisionID:   revision.ID,
-		Trigger:      firstNonBlank(command.Trigger, "manual"),
+		Trigger:      firstNonEmpty(command.Trigger, "manual"),
 		Ref:          revision.Ref,
 		CommitSHA:    revision.CommitSHA,
 		SpecPath:     spec.Path,
@@ -174,6 +175,20 @@ func (s *SyncService) recordFailure(
 		return wrapError(ErrorIntegrity, "load canonical failed sync evidence", errors.Join(cause, err))
 	}
 	return wrapError(kind, operation, cause)
+}
+
+func validateSyncSourceOutput(
+	spec domain.SpecFile,
+	revision domain.ContractRevision,
+	requireComplete bool,
+) error {
+	if err := validatePortSpecFile(spec, requireComplete); err != nil {
+		return err
+	}
+	if err := validatePortRevision(revision, requireComplete); err != nil {
+		return err
+	}
+	return nil
 }
 
 func (s *SyncService) canonicalSyncRecord(ctx context.Context, attempted domain.SyncRecord) (domain.SyncRecord, error) {
@@ -208,9 +223,9 @@ func successfulSyncRecord(command SyncCommand, spec domain.SpecFile, revision do
 	return domain.SyncRecord{
 		ID:         syncRecordID(command, revision, domain.SyncResultSuccess),
 		ProjectID:  command.ContractID,
-		SourceID:   firstNonBlank(command.SourceID, revision.SourceID, spec.SourceID),
+		SourceID:   firstNonEmpty(command.SourceID, revision.SourceID, spec.SourceID),
 		RevisionID: revision.ID,
-		Trigger:    firstNonBlank(command.Trigger, "manual"),
+		Trigger:    firstNonEmpty(command.Trigger, "manual"),
 		Ref:        revision.Ref,
 		CommitSHA:  revision.CommitSHA,
 		SpecPath:   spec.Path,
@@ -221,7 +236,7 @@ func successfulSyncRecord(command SyncCommand, spec domain.SpecFile, revision do
 }
 
 func syncRecordID(command SyncCommand, revision domain.ContractRevision, result string) string {
-	value := strings.Join([]string{command.ContractID, command.SourceID, firstNonBlank(command.Trigger, "manual"), revision.ID, revision.CommitSHA, result}, "\x00")
+	value := strings.Join([]string{command.ContractID, command.SourceID, firstNonEmpty(command.Trigger, "manual"), revision.ID, revision.CommitSHA, result}, "\x00")
 	sum := sha256.Sum256([]byte(value))
 	return "sync-" + hex.EncodeToString(sum[:])[:24]
 }
@@ -241,9 +256,9 @@ func errorSummary(err error) string {
 	return summary
 }
 
-func firstNonBlank(values ...string) string {
+func firstNonEmpty(values ...string) string {
 	for _, value := range values {
-		if strings.TrimSpace(value) != "" {
+		if value != "" {
 			return value
 		}
 	}

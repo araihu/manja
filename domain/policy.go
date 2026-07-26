@@ -5,6 +5,7 @@ import (
 	"sort"
 	"strings"
 	"time"
+	"unicode/utf8"
 )
 
 type RuleLevel string
@@ -205,8 +206,8 @@ func validateLayer(layer PolicyLayer) error {
 		return fmt.Errorf("source %q is invalid", layer.Source)
 	}
 	for _, ruleID := range sortedRuleIDs(layer.Rules) {
-		if strings.TrimSpace(ruleID) == "" {
-			return fmt.Errorf("rule id is required")
+		if err := validateCanonicalIdentity("rule id", ruleID, false); err != nil {
+			return err
 		}
 		if !isSupportedRuleID(ruleID) {
 			return fmt.Errorf("unknown rule %q", ruleID)
@@ -224,8 +225,14 @@ func validateLayer(layer PolicyLayer) error {
 }
 
 func validatePolicyException(exception PolicyException, layerSource string) error {
-	hasFindingID := strings.TrimSpace(exception.FindingID) != ""
-	hasRuleID := strings.TrimSpace(exception.RuleID) != ""
+	if err := validateCanonicalIdentity("finding id", exception.FindingID, true); err != nil {
+		return err
+	}
+	if err := validateCanonicalIdentity("rule id", exception.RuleID, true); err != nil {
+		return err
+	}
+	hasFindingID := exception.FindingID != ""
+	hasRuleID := exception.RuleID != ""
 	if hasFindingID == hasRuleID {
 		return fmt.Errorf("exactly one finding id or rule id is required")
 	}
@@ -238,8 +245,11 @@ func validatePolicyException(exception PolicyException, layerSource string) erro
 	if strings.TrimSpace(exception.Reason) == "" {
 		return fmt.Errorf("reason is required")
 	}
-	if strings.TrimSpace(exception.Author) == "" {
-		return fmt.Errorf("author is required")
+	if !utf8.ValidString(exception.Reason) {
+		return fmt.Errorf("reason must contain valid UTF-8")
+	}
+	if err := validateCanonicalIdentity("author", exception.Author, false); err != nil {
+		return err
 	}
 	if exception.ExpiresAt.IsZero() {
 		return fmt.Errorf("expiry is required")

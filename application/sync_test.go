@@ -433,6 +433,82 @@ func TestSyncRejectsNonContentAddressedBlobIdentity(t *testing.T) {
 	}
 }
 
+func TestSyncRejectsNonCanonicalSourceOutputBeforeDownstreamEffects(t *testing.T) {
+	validSpec := domain.SpecFile{SourceID: "source-main", Path: "openapi.yaml", Format: "yaml", Bytes: []byte("openapi: 3.1.0\n")}
+	validRevision := domain.ContractRevision{ID: "revision-1", SourceID: "source-main", Ref: "main", CommitSHA: "abc123"}
+	for _, test := range []struct {
+		name   string
+		mutate func(*domain.SpecFile, *domain.ContractRevision)
+	}{
+		{name: "revision id padding", mutate: func(_ *domain.SpecFile, revision *domain.ContractRevision) { revision.ID = "revision-1 " }},
+		{name: "revision id control", mutate: func(_ *domain.SpecFile, revision *domain.ContractRevision) { revision.ID = "revision\x00shadow" }},
+		{name: "revision id invalid utf8", mutate: func(_ *domain.SpecFile, revision *domain.ContractRevision) { revision.ID = "revision-\xff" }},
+		{name: "revision source padding", mutate: func(_ *domain.SpecFile, revision *domain.ContractRevision) { revision.SourceID = " source-main " }},
+		{name: "revision ref control", mutate: func(_ *domain.SpecFile, revision *domain.ContractRevision) { revision.Ref = "main\x00shadow" }},
+		{name: "revision commit invalid utf8", mutate: func(_ *domain.SpecFile, revision *domain.ContractRevision) { revision.CommitSHA = "commit-\xff" }},
+		{name: "spec source padding", mutate: func(spec *domain.SpecFile, _ *domain.ContractRevision) { spec.SourceID = " source-main " }},
+		{name: "spec path control", mutate: func(spec *domain.SpecFile, _ *domain.ContractRevision) { spec.Path = "openapi\x00.yaml" }},
+		{name: "spec path invalid utf8", mutate: func(spec *domain.SpecFile, _ *domain.ContractRevision) { spec.Path = "openapi-\xff.yaml" }},
+		{name: "spec format control", mutate: func(spec *domain.SpecFile, _ *domain.ContractRevision) { spec.Format = "yaml\x00shadow" }},
+		{name: "revision version invalid utf8", mutate: func(_ *domain.SpecFile, revision *domain.ContractRevision) { revision.Version = "version-\xff" }},
+		{name: "revision author invalid utf8", mutate: func(_ *domain.SpecFile, revision *domain.ContractRevision) { revision.AuthorName = "author-\xff" }},
+		{name: "revision email invalid utf8", mutate: func(_ *domain.SpecFile, revision *domain.ContractRevision) {
+			revision.AuthorEmail = "author-\xff@example.com"
+		}},
+		{name: "revision message invalid utf8", mutate: func(_ *domain.SpecFile, revision *domain.ContractRevision) { revision.Message = "message-\xff" }},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			spec, revision := validSpec, validRevision
+			test.mutate(&spec, &revision)
+			var events []string
+			store := newTestOperationalStore()
+			clock := &testClock{now: time.Date(2026, 7, 25, 13, 0, 0, 0, time.UTC)}
+			uow := &testUnitOfWork{committed: store}
+			service, err := NewSyncService(SyncDependencies{
+				Source: &syncSourceResultFake{spec: spec, revision: revision, events: &events},
+				Parser: &syncParserFake{events: &events}, UnitOfWork: uow, SyncRecords: &separateSyncRecordReader{store: store},
+				Blobs: newSyncBlobFake(&events), Clock: clock,
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			if _, err := service.Sync(context.Background(), SyncCommand{ContractID: "payments", SourceID: "source-main"}); err == nil {
+				t.Fatal("Sync accepted non-canonical source output")
+			}
+			if !reflect.DeepEqual(events, []string{"source"}) || len(clock.contexts) != 0 || uow.ctx != nil {
+				t.Fatalf("malformed source output reached downstream effects: events=%v clock=%d transaction=%v", events, len(clock.contexts), uow.ctx != nil)
+			}
+		})
+	}
+}
+
+func TestSyncUsesCommandAuthorityOverCanonicalSourceMetadata(t *testing.T) {
+	store := newTestOperationalStore()
+	source := &syncSourceResultFake{
+		spec: domain.SpecFile{SourceID: "provider-repository", Path: "openapi.yaml", Format: "yaml", Bytes: []byte("openapi: 3.1.0\n")},
+		revision: domain.ContractRevision{
+			ID: "revision-1", ContractID: "provider-contract", SourceID: "provider-repository", Ref: "main", CommitSHA: "abc123",
+		},
+	}
+	service, err := NewSyncService(SyncDependencies{
+		Source: source, Parser: &syncParserFake{}, UnitOfWork: &testUnitOfWork{committed: store},
+		SyncRecords: &separateSyncRecordReader{store: store}, Blobs: newSyncBlobFake(nil),
+		Clock: &testClock{now: time.Date(2026, 7, 25, 13, 0, 0, 0, time.UTC)},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := service.Sync(context.Background(), SyncCommand{ContractID: "payments", SourceID: "source-main"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Spec.SourceID != "source-main" || result.Revision.SourceID != "source-main" ||
+		result.Revision.ContractID != "payments" || result.Record.SourceID != "source-main" {
+		t.Fatalf("sync result retained caller-independent source authority: %#v", result)
+	}
+}
+
 type invalidKeyBlobStore struct{}
 
 func (invalidKeyBlobStore) Put(context.Context, []byte) (port.BlobKey, error) {
@@ -446,6 +522,19 @@ func (invalidKeyBlobStore) Get(context.Context, port.BlobKey) ([]byte, error) {
 type syncSourceFake struct {
 	ctx    context.Context
 	events *[]string
+}
+
+type syncSourceResultFake struct {
+	spec     domain.SpecFile
+	revision domain.ContractRevision
+	events   *[]string
+}
+
+func (s *syncSourceResultFake) Fetch(context.Context) (domain.SpecFile, domain.ContractRevision, error) {
+	if s.events != nil {
+		*s.events = append(*s.events, "source")
+	}
+	return s.spec, s.revision, nil
 }
 
 type failingSyncSource struct{ err error }

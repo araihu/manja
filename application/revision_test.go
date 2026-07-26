@@ -51,3 +51,24 @@ func TestRevisionServiceLoadsContentAddressedBlob(t *testing.T) {
 		t.Fatal("revision load did not preserve context/content identity")
 	}
 }
+
+func TestRevisionServiceRejectsNonCanonicalRevisionIdentityBeforeBlobRead(t *testing.T) {
+	for _, revisionID := range []string{" revision-1 ", "revision\x00shadow", "revision-\xff"} {
+		t.Run(revisionID, func(t *testing.T) {
+			blobs := newSyncBlobFake(nil)
+			service, err := NewRevisionService(blobs)
+			if err != nil {
+				t.Fatal(err)
+			}
+			_, err = service.LoadSpec(context.Background(), domain.ContractRevision{
+				ID: revisionID, SpecBlobKey: string(port.ContentAddressedBlobKey([]byte("spec"))),
+			})
+			if err == nil {
+				t.Fatal("LoadSpec accepted non-canonical revision identity")
+			}
+			if blobs.ctx != nil {
+				t.Fatal("non-canonical revision identity reached blob store")
+			}
+		})
+	}
+}

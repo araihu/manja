@@ -8,6 +8,7 @@ import (
 	"reflect"
 	"sort"
 	"strings"
+	"unicode/utf8"
 )
 
 // ContractSnapshot is the normalized contract surface used for deterministic
@@ -39,8 +40,8 @@ type ContractParameter struct {
 // normalizes them before calculating content digests.
 func NewContractSnapshot(contractID, revisionID string, raw []byte, idx SpecIndex) ContractSnapshot {
 	snapshot := ContractSnapshot{
-		ContractID: strings.TrimSpace(contractID),
-		RevisionID: strings.TrimSpace(revisionID),
+		ContractID: contractID,
+		RevisionID: revisionID,
 		SpecDigest: sha256Hex(raw),
 		Operations: normalizeContractOperations(idx.Operations),
 		Schemas:    normalizeContractSchemas(idx.Schemas),
@@ -67,6 +68,9 @@ func validateAndCloneContractSnapshot(snapshot ContractSnapshot) (ContractSnapsh
 	if !isLowerSHA256(snapshot.ContractDigest) {
 		return ContractSnapshot{}, fmt.Errorf("contract digest must be lowercase SHA-256")
 	}
+	if err := validateContractSurfaceIdentities(snapshot); err != nil {
+		return ContractSnapshot{}, err
+	}
 
 	normalizedOperations := normalizeSnapshotOperations(snapshot.Operations)
 	normalizedSchemas := normalizeSnapshotSchemas(snapshot.Schemas)
@@ -92,6 +96,38 @@ func validateAndCloneContractSnapshot(snapshot ContractSnapshot) (ContractSnapsh
 	return cloned, nil
 }
 
+func validateContractSurfaceIdentities(snapshot ContractSnapshot) error {
+	for operationIndex, operation := range snapshot.Operations {
+		prefix := fmt.Sprintf("contract operation %d", operationIndex)
+		if err := validateCanonicalIdentity(prefix+" method", operation.Method, false); err != nil {
+			return err
+		}
+		if err := validateCanonicalIdentity(prefix+" path", operation.Path, false); err != nil {
+			return err
+		}
+		for parameterIndex, parameter := range operation.Parameters {
+			parameterPrefix := fmt.Sprintf("%s parameter %d", prefix, parameterIndex)
+			if err := validateCanonicalIdentity(parameterPrefix+" name", parameter.Name, false); err != nil {
+				return err
+			}
+			if err := validateCanonicalIdentity(parameterPrefix+" location", parameter.In, false); err != nil {
+				return err
+			}
+		}
+		for statusIndex, status := range operation.ResponseStatuses {
+			if err := validateCanonicalIdentity(fmt.Sprintf("%s response status %d", prefix, statusIndex), status, false); err != nil {
+				return err
+			}
+		}
+	}
+	for schemaIndex, schema := range snapshot.Schemas {
+		if err := validateCanonicalIdentity(fmt.Sprintf("contract schema %d name", schemaIndex), schema, false); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // ValidateContractSnapshot verifies that snapshot is canonical and that its
 // contract digest was derived from its normalized compatibility surface.
 func ValidateContractSnapshot(snapshot ContractSnapshot) error {
@@ -103,14 +139,14 @@ func normalizeSnapshotOperations(operations []ContractOperation) []ContractOpera
 	normalized := make([]ContractOperation, 0, len(operations))
 	for _, operation := range operations {
 		cloned := ContractOperation{
-			Method:              strings.ToUpper(strings.TrimSpace(operation.Method)),
+			Method:              canonicalUpperSurfaceText(operation.Method),
 			Path:                strings.TrimSpace(operation.Path),
 			RequestBodyRequired: operation.RequestBodyRequired,
 		}
 		for _, parameter := range operation.Parameters {
 			cloned.Parameters = append(cloned.Parameters, ContractParameter{
 				Name:     strings.TrimSpace(parameter.Name),
-				In:       strings.ToLower(strings.TrimSpace(parameter.In)),
+				In:       canonicalLowerSurfaceText(parameter.In),
 				Required: parameter.Required,
 			})
 		}
@@ -168,7 +204,7 @@ func normalizeContractOperations(operations []Operation) []ContractOperation {
 	normalized := make([]ContractOperation, 0, len(operations))
 	for _, operation := range operations {
 		normalizedOperation := ContractOperation{
-			Method: strings.ToUpper(strings.TrimSpace(operation.Method)),
+			Method: canonicalUpperSurfaceText(operation.Method),
 			Path:   strings.TrimSpace(operation.Path),
 		}
 		if operation.RequestBody != nil {
@@ -177,7 +213,7 @@ func normalizeContractOperations(operations []Operation) []ContractOperation {
 		for _, parameter := range operation.Parameters {
 			normalizedOperation.Parameters = append(normalizedOperation.Parameters, ContractParameter{
 				Name:     strings.TrimSpace(parameter.Name),
-				In:       strings.ToLower(strings.TrimSpace(parameter.In)),
+				In:       canonicalLowerSurfaceText(parameter.In),
 				Required: parameter.Required,
 			})
 		}
@@ -204,6 +240,22 @@ func normalizeContractOperations(operations []Operation) []ContractOperation {
 		return normalized[i].Path < normalized[j].Path
 	})
 	return normalized
+}
+
+func canonicalUpperSurfaceText(value string) string {
+	value = strings.TrimSpace(value)
+	if !utf8.ValidString(value) {
+		return value
+	}
+	return strings.ToUpper(value)
+}
+
+func canonicalLowerSurfaceText(value string) string {
+	value = strings.TrimSpace(value)
+	if !utf8.ValidString(value) {
+		return value
+	}
+	return strings.ToLower(value)
 }
 
 func normalizeContractSchemas(schemas []Schema) []string {

@@ -122,6 +122,19 @@ func TestLegacyReleaseReviewValidatorRemainsUsable(t *testing.T) {
 	); err != nil {
 		t.Fatalf("legacy release review validation: %v", err)
 	}
+	review := domain.ContractReview{
+		ID: "review-next", ContractID: "payments",
+		BaselineRevisionID: baseline.RevisionID, BaselineSpecDigest: baseline.SpecDigest,
+		BaselineContractDigest: baseline.ContractDigest,
+		CandidateRevisionID:    candidate.RevisionID, CandidateSpecDigest: candidate.SpecDigest,
+		CandidateContractDigest: candidate.ContractDigest, Report: report,
+	}
+	if err := domain.ValidateContractReviewAgainstSnapshots(review, baseline, candidate); err != nil {
+		t.Fatalf("strict contract review validation: %v", err)
+	}
+	if err := domain.ValidateCanonicalIdentity("extension id", "extension\x00shadow", false); err == nil {
+		t.Fatal("public canonical identity validator accepted control character")
+	}
 }
 
 func TestPublicContractSuitesAreUsableByUnrelatedModule(t *testing.T) {

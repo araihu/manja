@@ -558,6 +558,83 @@ func TestValidateReleaseReviewReportRejectsForgedPassWithValidEvidence(t *testin
 	}
 }
 
+func TestValidateReleaseReviewReportAcceptsCanonicalExceptionAuthorReplay(t *testing.T) {
+	report, baseline, candidate := canonicalReleaseReportWithFindingForTest(t, true)
+	if report.Verdict != VerdictPass || len(report.Comparisons[0].Policy.AppliedExceptions) != 1 {
+		t.Fatalf("canonical exception fixture = %#v", report.Comparisons[0].Policy)
+	}
+	wantJSON, err := CanonicalReviewJSON(report)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for attempt := 0; attempt < 2; attempt++ {
+		if err := ValidateReleaseReviewReportAgainstSnapshots(report, "payments", baseline, candidate); err != nil {
+			t.Fatalf("canonical exception replay %d: %v", attempt, err)
+		}
+		gotJSON, err := CanonicalReviewJSON(report)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !bytes.Equal(gotJSON, wantJSON) {
+			t.Fatal("canonical exception replay changed serialized evidence")
+		}
+	}
+}
+
+func TestValidateReleaseReviewReportRejectsControlBearingExceptionAuthorWithRecomputedDigest(t *testing.T) {
+	report, baseline, candidate := canonicalReleaseReportWithFindingForTest(t, true)
+	report.EffectivePolicy.Layers[0].Exceptions[0].Author = "operator\x00shadow"
+	report.Comparisons[0].Policy.AppliedExceptions[0].Author = "operator\x00shadow"
+	report.Comparisons[0].Policy.ExceptionDispositions[0].Exception.Author = "operator\x00shadow"
+	encodedPolicy, err := json.Marshal(report.EffectivePolicy)
+	if err != nil {
+		t.Fatal(err)
+	}
+	report.PolicyDigest = sha256Hex(encodedPolicy)
+	if report.Verdict != VerdictPass {
+		t.Fatalf("forged exception fixture verdict = %q", report.Verdict)
+	}
+	if err := ValidateReleaseReviewReportAgainstSnapshots(report, "payments", baseline, candidate); err == nil {
+		t.Fatal("control-bearing exception author authenticated a forged pass")
+	}
+}
+
+func TestValidateContractReviewRejectsNonCanonicalNestedIdentities(t *testing.T) {
+	report, baseline, candidate := canonicalReleaseReportWithFindingForTest(t, true)
+	review := ContractReview{
+		ID: "review-next", ContractID: "payments",
+		BaselineRevisionID: baseline.RevisionID, BaselineSpecDigest: baseline.SpecDigest,
+		BaselineContractDigest: baseline.ContractDigest,
+		CandidateRevisionID:    candidate.RevisionID, CandidateSpecDigest: candidate.SpecDigest,
+		CandidateContractDigest: candidate.ContractDigest, Report: report,
+	}
+	if err := ValidateContractReviewAgainstSnapshots(review, baseline, candidate); err != nil {
+		t.Fatalf("canonical contract review: %v", err)
+	}
+	for _, test := range []struct {
+		name   string
+		mutate func(*ContractReview)
+	}{
+		{name: "engine", mutate: func(value *ContractReview) { value.Report.EngineVersion = "engine-\xff" }},
+		{name: "policy author", mutate: func(value *ContractReview) {
+			value.Report.EffectivePolicy.Layers[0].Exceptions[0].Author = "operator\x00shadow"
+		}},
+		{name: "finding", mutate: func(value *ContractReview) { value.Report.Comparisons[0].Findings[0].ID = "finding-\xff" }},
+		{name: "decision layer", mutate: func(value *ContractReview) {
+			value.Report.Comparisons[0].Policy.Decisions[0].LayerName = "stable\x00shadow"
+		}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			mutated := review
+			mutated.Report = cloneReviewReportForTest(t, report)
+			test.mutate(&mutated)
+			if err := ValidateContractReviewAgainstSnapshots(mutated, baseline, candidate); err == nil {
+				t.Fatal("ValidateContractReviewAgainstSnapshots accepted a non-canonical nested identity")
+			}
+		})
+	}
+}
+
 func canonicalReleaseReportWithFindingForTest(t *testing.T, exceptFinding bool) (ReviewReport, ContractSnapshot, ContractSnapshot) {
 	t.Helper()
 	at := time.Date(2026, 7, 25, 12, 0, 0, 0, time.UTC)

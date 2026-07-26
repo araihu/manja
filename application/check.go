@@ -3,7 +3,6 @@ package application
 import (
 	"context"
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/araihu/manja/application/port"
@@ -88,11 +87,11 @@ func (s CheckService) validate(request CheckRequest) error {
 	if s.Snapshots == nil {
 		return fmt.Errorf("snapshot builder is required")
 	}
-	if strings.TrimSpace(request.ContractID) == "" {
-		return fmt.Errorf("contract id is required")
+	if err := domain.ValidateCanonicalIdentity("contract id", request.ContractID, false); err != nil {
+		return err
 	}
-	if strings.TrimSpace(request.SpecPath) == "" {
-		return fmt.Errorf("spec path is required")
+	if err := domain.ValidateCanonicalIdentity("spec path", request.SpecPath, false); err != nil {
+		return err
 	}
 	if err := validateCheckLocator("target", request.Target); err != nil {
 		return err
@@ -111,20 +110,26 @@ func (s CheckService) validate(request CheckRequest) error {
 	if request.EvaluatedAt.IsZero() {
 		return fmt.Errorf("evaluation time is required")
 	}
-	if strings.TrimSpace(request.EngineVersion) == "" {
-		return fmt.Errorf("engine version is required")
+	if err := domain.ValidateCanonicalIdentity("engine version", request.EngineVersion, false); err != nil {
+		return err
 	}
 	return nil
 }
 
 func validateCheckLocator(role string, locator domain.ReviewInputLocator) error {
-	hasFile := strings.TrimSpace(locator.File) != ""
-	hasRef := strings.TrimSpace(locator.GitRef) != ""
+	hasFile := locator.File != ""
+	hasRef := locator.GitRef != ""
 	if !hasFile && !hasRef {
 		return fmt.Errorf("%s locator is required", role)
 	}
 	if hasFile && hasRef {
 		return fmt.Errorf("%s locator must set exactly one of file or git ref", role)
+	}
+	if hasFile {
+		return domain.ValidateCanonicalIdentity(role+" file", locator.File, false)
+	}
+	if hasRef {
+		return domain.ValidateCanonicalIdentity(role+" git ref", locator.GitRef, false)
 	}
 	return nil
 }
@@ -139,9 +144,24 @@ func (s CheckService) loadSnapshot(
 	if err != nil {
 		return domain.ContractSnapshot{}, wrapError(ErrorInput, "load "+role, err)
 	}
+	if err := validatePortSpecFile(file, false); err != nil {
+		return domain.ContractSnapshot{}, wrapError(ErrorInput, "validate "+role+" input", err)
+	}
+	if err := validatePortRevision(revision, true); err != nil {
+		return domain.ContractSnapshot{}, wrapError(ErrorInput, "validate "+role+" revision", err)
+	}
+	if revision.ContractID != "" && revision.ContractID != request.ContractID {
+		return domain.ContractSnapshot{}, wrapError(ErrorInput, "validate "+role+" revision", fmt.Errorf("revision contract id does not match review contract id"))
+	}
 	snapshot, err := s.Snapshots.Build(ctx, request.ContractID, file, revision)
 	if err != nil {
 		return domain.ContractSnapshot{}, wrapError(ErrorEvaluation, "build "+role, err)
+	}
+	if err := domain.ValidateContractSnapshot(snapshot); err != nil {
+		return domain.ContractSnapshot{}, wrapError(ErrorEvaluation, "validate "+role+" snapshot", err)
+	}
+	if snapshot.ContractID != request.ContractID || snapshot.RevisionID != revision.ID {
+		return domain.ContractSnapshot{}, wrapError(ErrorEvaluation, "validate "+role+" snapshot", fmt.Errorf("snapshot identity does not match its review input"))
 	}
 	return snapshot, nil
 }

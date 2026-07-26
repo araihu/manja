@@ -10,7 +10,6 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
-	"path"
 	"path/filepath"
 	"reflect"
 	"sort"
@@ -531,10 +530,7 @@ func (s *FileStore) loadOperationalStateLocked(ctx context.Context) (operational
 		return state, err
 	}
 	if err == nil {
-		if !utf8.Valid(data) {
-			return operationalState{}, fmt.Errorf("decode operational state: persisted JSON must contain valid UTF-8")
-		}
-		if err := json.Unmarshal(data, &state); err != nil {
+		if err := strictJSONUnmarshal(data, &state); err != nil {
 			return operationalState{}, fmt.Errorf("decode operational state: %w", err)
 		}
 		state.initializeMaps()
@@ -710,11 +706,8 @@ func (s *FileStore) loadOperationalSchemaMarker(ctx context.Context) (operationa
 	if err != nil {
 		return operationalSchemaMarker{}, false, err
 	}
-	if !utf8.Valid(data) {
-		return operationalSchemaMarker{}, false, fmt.Errorf("decode operational schema marker: persisted JSON must contain valid UTF-8")
-	}
 	var marker operationalSchemaMarker
-	if err := json.Unmarshal(data, &marker); err != nil {
+	if err := strictJSONUnmarshal(data, &marker); err != nil {
 		return operationalSchemaMarker{}, false, fmt.Errorf("decode operational schema marker: %w", err)
 	}
 	if marker.Version < authenticatedStateVersion {
@@ -1110,10 +1103,10 @@ func (s *FileStore) readJSON(ctx context.Context, namespace, name string, value 
 	if err != nil {
 		return err
 	}
-	if !utf8.Valid(data) {
-		return fmt.Errorf("decode persisted %s record: JSON must contain valid UTF-8", namespace)
+	if err := strictJSONUnmarshal(data, value); err != nil {
+		return fmt.Errorf("decode persisted %s record: %w", namespace, err)
 	}
-	return json.Unmarshal(data, value)
+	return nil
 }
 
 func (s *FileStore) safeNamespacePath(namespace, name string) (string, error) {
@@ -1157,6 +1150,11 @@ func (t *operationalTransaction) SaveRevision(ctx context.Context, revision doma
 	} {
 		if err := validateCanonicalIdentity(identity.name, identity.value, true); err != nil {
 			return err
+		}
+	}
+	if revision.ReviewSnapshot != nil {
+		if err := domain.ValidateContractSnapshot(*revision.ReviewSnapshot); err != nil {
+			return fmt.Errorf("revision canonical review snapshot: %w", err)
 		}
 	}
 	key := revisionStorageKey(revision)
@@ -1224,20 +1222,25 @@ func (t *operationalTransaction) SaveReview(ctx context.Context, review domain.C
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	if err := validateID(review.ID); err != nil {
+	if err := domain.ValidateContractReviewIdentities(review); err != nil {
 		return err
 	}
-	for _, identity := range []struct {
-		name  string
-		value string
-	}{
-		{"review contract id", review.ContractID},
-		{"review baseline revision id", review.BaselineRevisionID},
-		{"review candidate revision id", review.CandidateRevisionID},
-	} {
-		if err := validateCanonicalIdentity(identity.name, identity.value, false); err != nil {
-			return err
-		}
+	if err := t.bindRevisionOwner(review.ContractID, review.BaselineRevisionID, "review "+review.ID+" baseline"); err != nil {
+		return err
+	}
+	if err := t.bindRevisionOwner(review.ContractID, review.CandidateRevisionID, "review "+review.ID+" candidate"); err != nil {
+		return err
+	}
+	baseline, baselineOK := revisionForContract(t.state, review.ContractID, review.BaselineRevisionID)
+	candidate, candidateOK := revisionForContract(t.state, review.ContractID, review.CandidateRevisionID)
+	if !baselineOK || baseline.ReviewSnapshot == nil {
+		return fmt.Errorf("review %q baseline has no canonical snapshot", review.ID)
+	}
+	if !candidateOK || candidate.ReviewSnapshot == nil {
+		return fmt.Errorf("review %q candidate has no canonical snapshot", review.ID)
+	}
+	if err := domain.ValidateContractReviewAgainstSnapshots(review, *baseline.ReviewSnapshot, *candidate.ReviewSnapshot); err != nil {
+		return fmt.Errorf("review %q is not canonical: %w", review.ID, err)
 	}
 	if existing, ok := t.state.Reviews[review.ID]; ok {
 		equal, err := immutableRecordsEqual(existing, review)
@@ -1248,12 +1251,6 @@ func (t *operationalTransaction) SaveReview(ctx context.Context, review domain.C
 			return fmt.Errorf("review %q conflicts with immutable persisted evidence", review.ID)
 		}
 		return nil
-	}
-	if err := t.bindRevisionOwner(review.ContractID, review.BaselineRevisionID, "review "+review.ID+" baseline"); err != nil {
-		return err
-	}
-	if err := t.bindRevisionOwner(review.ContractID, review.CandidateRevisionID, "review "+review.ID+" candidate"); err != nil {
-		return err
 	}
 	cloned, err := cloneImmutableRecord(review)
 	if err != nil {
@@ -2215,33 +2212,15 @@ func validatePersistedOperationalIdentities(state operationalState) error {
 				return err
 			}
 		}
+		if revision.ReviewSnapshot != nil {
+			if err := domain.ValidateContractSnapshot(*revision.ReviewSnapshot); err != nil {
+				return fmt.Errorf("persisted revision canonical review snapshot: %w", err)
+			}
+		}
 	}
 	for _, review := range state.Reviews {
-		if err := validateID(review.ID); err != nil {
-			return fmt.Errorf("persisted review id: %w", err)
-		}
-		for _, identity := range []struct {
-			name  string
-			value string
-		}{
-			{"persisted review contract id", review.ContractID},
-			{"persisted review baseline revision id", review.BaselineRevisionID},
-			{"persisted review candidate revision id", review.CandidateRevisionID},
-		} {
-			if err := validateCanonicalIdentity(identity.name, identity.value, false); err != nil {
-				return err
-			}
-		}
-		for _, identity := range []struct {
-			name  string
-			value string
-		}{
-			{"persisted review report contract id", review.Report.ContractID},
-			{"persisted review report engine version", review.Report.EngineVersion},
-		} {
-			if err := validateCanonicalIdentity(identity.name, identity.value, true); err != nil {
-				return err
-			}
+		if err := domain.ValidateContractReviewIdentities(review); err != nil {
+			return fmt.Errorf("persisted review identities: %w", err)
 		}
 	}
 	for _, record := range state.SyncRecords {
@@ -2520,22 +2499,14 @@ func cloneImmutableRecord[T any](value T) (T, error) {
 	if err != nil {
 		return cloned, fmt.Errorf("encode immutable record clone: %w", err)
 	}
-	if err := json.Unmarshal(encoded, &cloned); err != nil {
+	if err := strictJSONUnmarshal(encoded, &cloned); err != nil {
 		return cloned, fmt.Errorf("decode immutable record clone: %w", err)
 	}
 	return cloned, nil
 }
 
 func validatePublicPath(publicPath string) error {
-	if publicPath == "" ||
-		!utf8.ValidString(publicPath) ||
-		publicPath != strings.TrimSpace(publicPath) ||
-		!strings.HasPrefix(publicPath, "/") ||
-		strings.Contains(publicPath, `\`) ||
-		containsControlCharacter(publicPath) {
-		return errUnsafeStorePath
-	}
-	if path.Clean(publicPath) != publicPath {
+	if err := domain.ValidateCanonicalPublicPath("public path", publicPath, false); err != nil {
 		return errUnsafeStorePath
 	}
 	return nil
