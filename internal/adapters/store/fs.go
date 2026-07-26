@@ -10,6 +10,7 @@ import (
 	"path"
 	"path/filepath"
 	"reflect"
+	"sort"
 	"strings"
 	"sync"
 
@@ -19,7 +20,18 @@ import (
 
 var errUnsafeStorePath = errors.New("unsafe store path")
 
-const operationalStateVersion = 1
+const (
+	legacyOperationalStateVersion = 1
+	operationalStateVersion       = 2
+	releaseTrackAuthorityVersion  = 1
+)
+
+type releaseTrackAuthority struct {
+	Version         int                    `json:"version"`
+	Generation      uint64                 `json:"generation"`
+	DecisionPresent bool                   `json:"decisionPresent"`
+	Decision        domain.ReleaseDecision `json:"decision"`
+}
 
 type FileStore struct {
 	root          string
@@ -33,15 +45,16 @@ type directorySyncer interface {
 }
 
 type operationalState struct {
-	Version           int                                `json:"version"`
-	Revisions         map[string]domain.ContractRevision `json:"revisions"`
-	Reviews           map[string]domain.ContractReview   `json:"reviews"`
-	SyncRecords       map[string]domain.SyncRecord       `json:"syncRecords"`
-	ReleaseTracks     map[string]domain.ReleaseTrack     `json:"releaseTracks"`
-	Publications      map[string]domain.Publication      `json:"publications"`
-	AuditEvents       map[string]domain.AuditEvent       `json:"auditEvents"`
-	Outbox            map[string]domain.OutboxMessage    `json:"outbox"`
-	migratedRevisions map[string]struct{}
+	Version                 int                                `json:"version"`
+	Revisions               map[string]domain.ContractRevision `json:"revisions"`
+	Reviews                 map[string]domain.ContractReview   `json:"reviews"`
+	SyncRecords             map[string]domain.SyncRecord       `json:"syncRecords"`
+	ReleaseTracks           map[string]domain.ReleaseTrack     `json:"releaseTracks"`
+	ReleaseTrackAuthorities map[string]releaseTrackAuthority   `json:"releaseTrackAuthorities"`
+	Publications            map[string]domain.Publication      `json:"publications"`
+	AuditEvents             map[string]domain.AuditEvent       `json:"auditEvents"`
+	Outbox                  map[string]domain.OutboxMessage    `json:"outbox"`
+	migratedRevisions       map[string]struct{}
 }
 
 func NewFileStore(root string) *FileStore {
@@ -70,13 +83,17 @@ func (s *FileStore) Within(ctx context.Context, callback func(context.Context, p
 		return err
 	}
 	transaction := &operationalTransaction{
-		state:            cloneOperationalState(state),
-		mutatedRevisions: cloneIDSet(state.migratedRevisions),
+		state:                  cloneOperationalState(state),
+		validatedReleaseTracks: cloneReleaseTracks(state.ReleaseTracks),
+		mutatedRevisions:       cloneIDSet(state.migratedRevisions),
 	}
 	if err := callback(ctx, transaction); err != nil {
 		return err
 	}
 	if err := s.validateOperationalState(ctx, transaction.state, transaction.mutatedRevisions); err != nil {
+		return err
+	}
+	if err := validateCommittedReleaseTracks(transaction.validatedReleaseTracks, transaction.state.ReleaseTracks); err != nil {
 		return err
 	}
 	return s.publishOperationalState(ctx, transaction.state)
@@ -331,7 +348,29 @@ func (s *FileStore) loadOperationalState(ctx context.Context) (operationalState,
 		if err := json.Unmarshal(data, &state); err != nil {
 			return operationalState{}, fmt.Errorf("decode operational state: %w", err)
 		}
-		if state.Version != operationalStateVersion {
+		state.initializeMaps()
+		switch state.Version {
+		case legacyOperationalStateVersion:
+			if err := migrateOperationalStateV1(&state); err != nil {
+				return operationalState{}, err
+			}
+			if err := validateReleaseTrackAuthorities(state); err != nil {
+				return operationalState{}, err
+			}
+			if err := validateOperationalReferences(state); err != nil {
+				return operationalState{}, err
+			}
+			if err := s.publishOperationalState(ctx, state); err != nil {
+				return operationalState{}, fmt.Errorf("persist operational state v2 migration: %w", err)
+			}
+		case operationalStateVersion:
+			if err := validateReleaseTrackAuthorities(state); err != nil {
+				return operationalState{}, err
+			}
+			if err := validateOperationalReferences(state); err != nil {
+				return operationalState{}, err
+			}
+		default:
 			return operationalState{}, fmt.Errorf("unsupported operational state version %d", state.Version)
 		}
 	}
@@ -357,7 +396,50 @@ func (s *FileStore) loadOperationalState(ctx context.Context) (operationalState,
 	}); err != nil {
 		return operationalState{}, err
 	}
+	if len(state.Revisions) == 0 && len(state.Publications) == 0 && len(state.SyncRecords) == 0 {
+		return state, nil
+	}
+	if err := bindLegacyOperationalRevisionOwners(&state); err != nil {
+		return operationalState{}, fmt.Errorf("migrate legacy revision ownership: %w", err)
+	}
+	if err := validateReleaseTrackAuthorities(state); err != nil {
+		return operationalState{}, fmt.Errorf("validate legacy release authority migration: %w", err)
+	}
+	if err := validateOperationalReferences(state); err != nil {
+		return operationalState{}, fmt.Errorf("validate legacy operational references: %w", err)
+	}
+	revisionIDs := make([]string, 0, len(state.Revisions))
+	for revisionID := range state.Revisions {
+		revisionIDs = append(revisionIDs, revisionID)
+	}
+	sort.Strings(revisionIDs)
+	awaitingEvidenceEnrichment := false
+	for _, revisionID := range revisionIDs {
+		revision := state.Revisions[revisionID]
+		if err := s.validateRevisionEvidence(ctx, revision); err != nil {
+			if legacyRevisionAwaitsEvidenceEnrichment(revision) {
+				awaitingEvidenceEnrichment = true
+				continue
+			}
+			return operationalState{}, fmt.Errorf("validate legacy revision %q migration: %w", revisionID, err)
+		}
+	}
+	if awaitingEvidenceEnrichment {
+		// A flat pre-snapshot record may be completed by SaveRevision in this
+		// transaction. It cannot be published as v2 until that enrichment has
+		// passed the normal final commit validation.
+		return state, nil
+	}
+	if err := s.publishOperationalState(ctx, state); err != nil {
+		return operationalState{}, fmt.Errorf("persist legacy operational state v2 migration: %w", err)
+	}
 	return state, nil
+}
+
+func legacyRevisionAwaitsEvidenceEnrichment(revision domain.ContractRevision) bool {
+	return revision.ReviewSnapshot == nil &&
+		revision.SpecBlobKey != "" &&
+		(revision.SpecDigest != "" || revision.ContractDigest != "")
 }
 
 func mergeLegacyJSON[T any](
@@ -444,40 +526,19 @@ func (s *FileStore) publishOperationalState(ctx context.Context, state operation
 }
 
 func (s *FileStore) validateOperationalState(ctx context.Context, state operationalState, mutatedRevisions map[string]struct{}) error {
+	if state.Version != operationalStateVersion {
+		return fmt.Errorf("operational state version %d is not current", state.Version)
+	}
+	if err := validateReleaseTrackAuthorities(state); err != nil {
+		return err
+	}
+	if err := validateOperationalReferences(state); err != nil {
+		return err
+	}
 	for id := range mutatedRevisions {
 		revision := state.Revisions[id]
 		if err := s.validateRevisionEvidence(ctx, revision); err != nil {
 			return fmt.Errorf("revision %q has invalid persisted evidence: %w", id, err)
-		}
-	}
-	for key, track := range state.ReleaseTracks {
-		if err := domain.ValidateReleaseTrack(track); err != nil {
-			return fmt.Errorf("release track %q is invalid: %w", key, err)
-		}
-		for _, revisionID := range []string{track.CurrentRevisionID, track.CandidateRevisionID} {
-			if revisionID == "" {
-				continue
-			}
-			if _, ok := state.Revisions[revisionID]; !ok {
-				return fmt.Errorf("release track %q references uncommitted revision %q", key, revisionID)
-			}
-		}
-	}
-	for key, publication := range state.Publications {
-		if _, ok := state.Revisions[publication.RevisionID]; !ok {
-			return fmt.Errorf("publication %q references uncommitted revision %q", key, publication.RevisionID)
-		}
-	}
-	for id, review := range state.Reviews {
-		if _, ok := state.Revisions[review.CandidateRevisionID]; !ok {
-			return fmt.Errorf("review %q references uncommitted revision %q", id, review.CandidateRevisionID)
-		}
-	}
-	for id, record := range state.SyncRecords {
-		if record.Result == domain.SyncResultSuccess && record.RevisionID != "" {
-			if _, ok := state.Revisions[record.RevisionID]; !ok {
-				return fmt.Errorf("sync record %q references uncommitted revision %q", id, record.RevisionID)
-			}
 		}
 	}
 	return nil
@@ -620,8 +681,9 @@ func (s *FileStore) safeNamespacePath(namespace, name string) (string, error) {
 }
 
 type operationalTransaction struct {
-	state            operationalState
-	mutatedRevisions map[string]struct{}
+	state                  operationalState
+	validatedReleaseTracks map[string]domain.ReleaseTrack
+	mutatedRevisions       map[string]struct{}
 }
 
 func (t *operationalTransaction) SaveRevision(ctx context.Context, revision domain.ContractRevision) error {
@@ -678,6 +740,12 @@ func (t *operationalTransaction) SaveReview(ctx context.Context, review domain.C
 		}
 		return nil
 	}
+	if err := t.bindRevisionOwner(review.ContractID, review.BaselineRevisionID, "review "+review.ID+" baseline"); err != nil {
+		return err
+	}
+	if err := t.bindRevisionOwner(review.ContractID, review.CandidateRevisionID, "review "+review.ID+" candidate"); err != nil {
+		return err
+	}
 	t.state.Reviews[review.ID] = review
 	return nil
 }
@@ -688,6 +756,11 @@ func (t *operationalTransaction) SaveSyncRecord(ctx context.Context, record doma
 	}
 	if err := validateID(record.ID); err != nil {
 		return err
+	}
+	if record.Result == domain.SyncResultSuccess && record.RevisionID != "" {
+		if err := t.bindRevisionOwner(record.ProjectID, record.RevisionID, "sync record "+record.ID); err != nil {
+			return err
+		}
 	}
 	t.state.SyncRecords[record.ID] = record
 	return nil
@@ -743,8 +816,22 @@ func (t *operationalTransaction) SaveReleaseTrack(ctx context.Context, expectedG
 		if err := domain.ValidateReleaseTrackTransition(current, track); err != nil {
 			return err
 		}
+	} else if err := validateReleaseTrackInitialization(track); err != nil {
+		return err
+	}
+	if track.CurrentRevisionID != "" {
+		if err := t.bindRevisionOwner(track.ContractID, track.CurrentRevisionID, "release track "+key+" current"); err != nil {
+			return err
+		}
+	}
+	if track.CandidateRevisionID != "" {
+		if err := t.bindRevisionOwner(track.ContractID, track.CandidateRevisionID, "release track "+key+" candidate"); err != nil {
+			return err
+		}
 	}
 	t.state.ReleaseTracks[key] = domain.CloneReleaseTrack(track)
+	t.state.ReleaseTrackAuthorities[key] = newReleaseTrackAuthority(track)
+	t.validatedReleaseTracks[key] = domain.CloneReleaseTrack(track)
 	return nil
 }
 
@@ -762,6 +849,9 @@ func (t *operationalTransaction) SavePublication(ctx context.Context, publicatio
 		return err
 	}
 	key := publicationKey(publication.ProjectID, publication.RevisionID)
+	if err := t.bindRevisionOwner(publication.ProjectID, publication.RevisionID, "publication "+key); err != nil {
+		return err
+	}
 	if publication.Public {
 		for existingKey, existing := range t.state.Publications {
 			if existingKey == key || !existing.Public || existing.Path != publication.Path {
@@ -782,6 +872,11 @@ func (t *operationalTransaction) AppendAuditEvent(ctx context.Context, event dom
 	if err := validateID(event.ID); err != nil {
 		return err
 	}
+	if event.RevisionID != "" {
+		if err := t.bindRevisionOwner(event.ContractID, event.RevisionID, "audit event "+event.ID); err != nil {
+			return err
+		}
+	}
 	t.state.AuditEvents[event.ID] = event
 	return nil
 }
@@ -793,7 +888,23 @@ func (t *operationalTransaction) Enqueue(ctx context.Context, message domain.Out
 	if err := validateID(message.ID); err != nil {
 		return err
 	}
+	if message.RevisionID != "" {
+		if err := t.bindRevisionOwner(message.ContractID, message.RevisionID, "outbox message "+message.ID); err != nil {
+			return err
+		}
+	}
 	t.state.Outbox[message.ID] = message
+	return nil
+}
+
+func (t *operationalTransaction) bindRevisionOwner(contractID, revisionID, owner string) error {
+	changed, err := bindRevisionOwner(&t.state, contractID, revisionID, owner)
+	if err != nil {
+		return err
+	}
+	if changed {
+		t.mutatedRevisions[revisionID] = struct{}{}
+	}
 	return nil
 }
 
@@ -815,6 +926,9 @@ func (s *operationalState) initializeMaps() {
 	}
 	if s.ReleaseTracks == nil {
 		s.ReleaseTracks = make(map[string]domain.ReleaseTrack)
+	}
+	if s.ReleaseTrackAuthorities == nil {
+		s.ReleaseTrackAuthorities = make(map[string]releaseTrackAuthority)
 	}
 	if s.Publications == nil {
 		s.Publications = make(map[string]domain.Publication)
@@ -844,8 +958,300 @@ func cloneOperationalState(state operationalState) operationalState {
 	for key, track := range state.ReleaseTracks {
 		cloned.ReleaseTracks[key] = domain.CloneReleaseTrack(track)
 	}
+	cloned.ReleaseTrackAuthorities = make(map[string]releaseTrackAuthority, len(state.ReleaseTrackAuthorities))
+	for key, authority := range state.ReleaseTrackAuthorities {
+		cloned.ReleaseTrackAuthorities[key] = authority
+	}
 	cloned.migratedRevisions = cloneIDSet(state.migratedRevisions)
 	return cloned
+}
+
+func newReleaseTrackAuthority(track domain.ReleaseTrack) releaseTrackAuthority {
+	authority := releaseTrackAuthority{
+		Version:         releaseTrackAuthorityVersion,
+		Generation:      track.Generation,
+		DecisionPresent: track.LastDecision != nil,
+	}
+	if track.LastDecision != nil {
+		authority.Decision = *track.LastDecision
+	}
+	return authority
+}
+
+func validateReleaseTrackAuthority(key string, track domain.ReleaseTrack, authority releaseTrackAuthority) error {
+	if authority.Version != releaseTrackAuthorityVersion {
+		return fmt.Errorf("release track %q authority version %d is unsupported", key, authority.Version)
+	}
+	if authority.Generation != track.Generation {
+		return fmt.Errorf("release track %q authority generation %d does not match track generation %d", key, authority.Generation, track.Generation)
+	}
+	if track.LastDecision == nil {
+		if authority.DecisionPresent || authority.Decision != (domain.ReleaseDecision{}) {
+			return fmt.Errorf("release track %q baseline authority contains decision evidence", key)
+		}
+		return nil
+	}
+	if !authority.DecisionPresent || authority.Decision != *track.LastDecision {
+		return fmt.Errorf("release track %q decision authority does not match its latest decision", key)
+	}
+	return nil
+}
+
+func validateReleaseTrackAuthorities(state operationalState) error {
+	if len(state.ReleaseTrackAuthorities) != len(state.ReleaseTracks) {
+		return fmt.Errorf("release track authority count does not match release track count")
+	}
+	for key, track := range state.ReleaseTracks {
+		if err := domain.ValidateReleaseTrack(track); err != nil {
+			return fmt.Errorf("release track %q is invalid: %w", key, err)
+		}
+		authority, ok := state.ReleaseTrackAuthorities[key]
+		if !ok {
+			return fmt.Errorf("release track %q has no decision authority marker", key)
+		}
+		if err := validateReleaseTrackAuthority(key, track, authority); err != nil {
+			return err
+		}
+	}
+	for key := range state.ReleaseTrackAuthorities {
+		if _, ok := state.ReleaseTracks[key]; !ok {
+			return fmt.Errorf("release track authority %q has no track", key)
+		}
+	}
+	return nil
+}
+
+func migrateOperationalStateV1(state *operationalState) error {
+	if state.Version != legacyOperationalStateVersion {
+		return fmt.Errorf("cannot migrate operational state version %d", state.Version)
+	}
+	state.ReleaseTrackAuthorities = make(map[string]releaseTrackAuthority, len(state.ReleaseTracks))
+	for key, track := range state.ReleaseTracks {
+		if track.LastDecision == nil {
+			track.CandidateRevisionID = ""
+			state.ReleaseTracks[key] = track
+		}
+		if err := domain.ValidateReleaseTrack(track); err != nil {
+			return fmt.Errorf("migrate v1 release track %q: %w", key, err)
+		}
+		state.ReleaseTrackAuthorities[key] = newReleaseTrackAuthority(track)
+	}
+	if err := bindLegacyOperationalRevisionOwners(state); err != nil {
+		return fmt.Errorf("migrate v1 revision ownership: %w", err)
+	}
+	state.Version = operationalStateVersion
+	return nil
+}
+
+func bindLegacyOperationalRevisionOwners(state *operationalState) error {
+	for key, track := range state.ReleaseTracks {
+		for role, revisionID := range map[string]string{
+			"current": track.CurrentRevisionID, "candidate": track.CandidateRevisionID,
+		} {
+			if revisionID == "" {
+				continue
+			}
+			if _, err := bindRevisionOwner(state, track.ContractID, revisionID, "release track "+key+" "+role); err != nil {
+				return err
+			}
+		}
+	}
+	for key, publication := range state.Publications {
+		if _, err := bindRevisionOwner(state, publication.ProjectID, publication.RevisionID, "publication "+key); err != nil {
+			return err
+		}
+	}
+	for key, review := range state.Reviews {
+		if _, err := bindRevisionOwner(state, review.ContractID, review.BaselineRevisionID, "review "+key+" baseline"); err != nil {
+			return err
+		}
+		if _, err := bindRevisionOwner(state, review.ContractID, review.CandidateRevisionID, "review "+key+" candidate"); err != nil {
+			return err
+		}
+	}
+	for key, record := range state.SyncRecords {
+		if record.Result == domain.SyncResultSuccess && record.RevisionID != "" {
+			if _, err := bindRevisionOwner(state, record.ProjectID, record.RevisionID, "sync record "+key); err != nil {
+				return err
+			}
+		}
+	}
+	for key, event := range state.AuditEvents {
+		if event.RevisionID != "" {
+			if _, err := bindRevisionOwner(state, event.ContractID, event.RevisionID, "audit event "+key); err != nil {
+				return err
+			}
+		}
+	}
+	for key, message := range state.Outbox {
+		if message.RevisionID != "" {
+			if _, err := bindRevisionOwner(state, message.ContractID, message.RevisionID, "outbox message "+key); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func bindRevisionOwner(state *operationalState, contractID, revisionID, owner string) (bool, error) {
+	if strings.TrimSpace(contractID) == "" {
+		return false, fmt.Errorf("%s has no owning contract", owner)
+	}
+	revision, ok := state.Revisions[revisionID]
+	if !ok {
+		return false, fmt.Errorf("%s references uncommitted revision %q", owner, revisionID)
+	}
+	if revision.ContractID == contractID {
+		return false, nil
+	}
+	if revision.ContractID != "" {
+		return false, fmt.Errorf("%s references revision %q owned by contract %q, not %q", owner, revisionID, revision.ContractID, contractID)
+	}
+	revision.ContractID = contractID
+	state.Revisions[revisionID] = revision
+	return true, nil
+}
+
+func validateOperationalReferences(state operationalState) error {
+	for key, revision := range state.Revisions {
+		if key != revision.ID {
+			return fmt.Errorf("revision key %q does not match revision id %q", key, revision.ID)
+		}
+	}
+	for key, track := range state.ReleaseTracks {
+		if key != releaseTrackKey(track.ContractID, track.ID) {
+			return fmt.Errorf("release track key %q does not match its identity", key)
+		}
+		for role, revisionID := range map[string]string{
+			"current": track.CurrentRevisionID, "candidate": track.CandidateRevisionID,
+		} {
+			if revisionID == "" {
+				continue
+			}
+			if err := requireOwnedRevision(state, track.ContractID, revisionID, "release track "+key+" "+role); err != nil {
+				return err
+			}
+		}
+	}
+	for key, publication := range state.Publications {
+		if key != publicationKey(publication.ProjectID, publication.RevisionID) {
+			return fmt.Errorf("publication key %q does not match its identity", key)
+		}
+		if err := requireOwnedRevision(state, publication.ProjectID, publication.RevisionID, "publication "+key); err != nil {
+			return err
+		}
+	}
+	for key, review := range state.Reviews {
+		if key != review.ID {
+			return fmt.Errorf("review key %q does not match review id %q", key, review.ID)
+		}
+		if err := requireOwnedRevision(state, review.ContractID, review.BaselineRevisionID, "review "+key+" baseline"); err != nil {
+			return err
+		}
+		if err := requireOwnedRevision(state, review.ContractID, review.CandidateRevisionID, "review "+key+" candidate"); err != nil {
+			return err
+		}
+	}
+	for key, record := range state.SyncRecords {
+		if key != record.ID {
+			return fmt.Errorf("sync record key %q does not match record id %q", key, record.ID)
+		}
+		if record.Result == domain.SyncResultSuccess && record.RevisionID != "" {
+			if err := requireOwnedRevision(state, record.ProjectID, record.RevisionID, "sync record "+key); err != nil {
+				return err
+			}
+		}
+	}
+	for key, event := range state.AuditEvents {
+		if key != event.ID {
+			return fmt.Errorf("audit event key %q does not match event id %q", key, event.ID)
+		}
+		if event.RevisionID != "" {
+			if err := requireOwnedRevision(state, event.ContractID, event.RevisionID, "audit event "+key); err != nil {
+				return err
+			}
+		}
+		if event.TrackID != "" {
+			if _, ok := state.ReleaseTracks[releaseTrackKey(event.ContractID, event.TrackID)]; !ok {
+				return fmt.Errorf("audit event %q references an uncommitted release track", key)
+			}
+		}
+	}
+	for key, message := range state.Outbox {
+		if key != message.ID {
+			return fmt.Errorf("outbox message key %q does not match message id %q", key, message.ID)
+		}
+		if message.RevisionID != "" {
+			if err := requireOwnedRevision(state, message.ContractID, message.RevisionID, "outbox message "+key); err != nil {
+				return err
+			}
+		}
+		if message.TrackID != "" {
+			if _, ok := state.ReleaseTracks[releaseTrackKey(message.ContractID, message.TrackID)]; !ok {
+				return fmt.Errorf("outbox message %q references an uncommitted release track", key)
+			}
+		}
+	}
+	return nil
+}
+
+func requireOwnedRevision(state operationalState, contractID, revisionID, owner string) error {
+	if strings.TrimSpace(contractID) == "" {
+		return fmt.Errorf("%s has no owning contract", owner)
+	}
+	revision, ok := state.Revisions[revisionID]
+	if !ok {
+		return fmt.Errorf("%s references uncommitted revision %q", owner, revisionID)
+	}
+	if revision.ContractID != contractID {
+		return fmt.Errorf("%s references revision %q owned by contract %q, not %q", owner, revisionID, revision.ContractID, contractID)
+	}
+	return nil
+}
+
+func cloneReleaseTracks(tracks map[string]domain.ReleaseTrack) map[string]domain.ReleaseTrack {
+	cloned := make(map[string]domain.ReleaseTrack, len(tracks))
+	for key, track := range tracks {
+		cloned[key] = domain.CloneReleaseTrack(track)
+	}
+	return cloned
+}
+
+func validateCommittedReleaseTracks(validated, committed map[string]domain.ReleaseTrack) error {
+	if !reflect.DeepEqual(validated, committed) {
+		return fmt.Errorf("committed release tracks differ from validated transitions")
+	}
+	return nil
+}
+
+func validateReleaseTrackInitialization(track domain.ReleaseTrack) error {
+	if err := domain.ValidateReleaseTrack(track); err != nil {
+		return err
+	}
+	if track.LastDecision == nil {
+		if track.Generation != 0 {
+			return fmt.Errorf("release track baseline initialization requires generation zero")
+		}
+		return nil
+	}
+	if track.Generation != 1 {
+		return fmt.Errorf("first release decision requires generation one")
+	}
+	baseline := domain.CloneReleaseTrack(track)
+	baseline.Generation = 0
+	baseline.CandidateRevisionID = ""
+	baseline.LastDecision = nil
+	if track.Mode == domain.ReleaseModeFollowing && track.LastDecision.Accepted {
+		baseline.CurrentRevisionID = ""
+	}
+	expected, changed, err := domain.ConsiderReleaseDecision(baseline, *track.LastDecision)
+	if err != nil {
+		return fmt.Errorf("derive first release decision: %w", err)
+	}
+	if !changed || !reflect.DeepEqual(expected, track) {
+		return fmt.Errorf("release track does not match a first authoritative decision")
+	}
+	return nil
 }
 
 func releaseTrackKey(contractID, trackID string) string {

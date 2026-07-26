@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -48,7 +49,7 @@ func TestFileStoreReleaseTrackAliasesCannotMutatePersistedStateAcrossRestart(t *
 	}
 	want := core.ReleaseTrack{
 		ID: "stable", ContractID: "payments", Mode: core.ReleaseModePinned,
-		Generation: 3, CurrentRevisionID: "revision-good",
+		Generation: 1, CurrentRevisionID: "revision-good",
 		CandidateRevisionID: decision.RevisionID, LastDecision: &decision,
 	}
 	if err := store.Within(ctx, func(ctx context.Context, operational port.OperationalStore) error {
@@ -117,20 +118,31 @@ func TestFileStoreRejectsStrippedReleaseDecisionEvidence(t *testing.T) {
 		Verdict:      core.VerdictPass, Accepted: true,
 		EvaluatedAt: time.Date(2026, 7, 25, 12, 0, 0, 0, time.UTC),
 	}
-	track := core.ReleaseTrack{
-		ID: "stable", ContractID: "payments", Mode: core.ReleaseModePinned,
-		Generation: 4, CurrentRevisionID: decision.RevisionID, LastDecision: &decision,
+	baseline := core.ReleaseTrack{ID: "stable", ContractID: "payments", Mode: core.ReleaseModePinned}
+	accepted, changed, err := core.ConsiderReleaseDecision(baseline, decision)
+	if err != nil || !changed {
+		t.Fatalf("derive accepted candidate: changed=%t err=%v", changed, err)
+	}
+	track, err := core.PromoteReleaseRevision(accepted, decision.RevisionID)
+	if err != nil {
+		t.Fatal(err)
 	}
 	if err := store.Within(ctx, func(ctx context.Context, operational port.OperationalStore) error {
 		if err := operational.SaveRevision(ctx, core.ContractRevision{ID: decision.RevisionID, ContractID: track.ContractID}); err != nil {
 			return err
 		}
-		return operational.SaveReleaseTrack(ctx, 0, track)
+		if err := operational.SaveReleaseTrack(ctx, 0, baseline); err != nil {
+			return err
+		}
+		if err := operational.SaveReleaseTrack(ctx, baseline.Generation, accepted); err != nil {
+			return err
+		}
+		return operational.SaveReleaseTrack(ctx, accepted.Generation, track)
 	}); err != nil {
 		t.Fatal(err)
 	}
 
-	err := store.Within(ctx, func(ctx context.Context, operational port.OperationalStore) error {
+	err = store.Within(ctx, func(ctx context.Context, operational port.OperationalStore) error {
 		stripped, err := operational.ReleaseTrack(ctx, track.ContractID, track.ID)
 		if err != nil {
 			return err
@@ -163,7 +175,7 @@ func TestFileStoreRejectsSupersededReleaseDecisionEvidence(t *testing.T) {
 	}
 	track := core.ReleaseTrack{
 		ID: "stable", ContractID: "payments", Mode: core.ReleaseModePinned,
-		Generation: 3, CurrentRevisionID: "revision-good",
+		Generation: 1, CurrentRevisionID: "revision-good",
 		CandidateRevisionID: newerDecision.RevisionID, LastDecision: &newerDecision,
 	}
 	if err := store.Within(ctx, func(ctx context.Context, operational port.OperationalStore) error {
@@ -225,6 +237,595 @@ func TestFileStoreFailsClosedOnMalformedLoadedReleaseTrack(t *testing.T) {
 	}
 }
 
+func TestFileStoreFinalCommitRejectsBypassedReleaseTransition(t *testing.T) {
+	ctx := context.Background()
+	root := t.TempDir()
+	store := NewFileStore(root)
+	decision := core.ReleaseDecision{
+		RevisionID: "revision-next", ReviewID: "review-rejected",
+		ReviewDigest: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+		Verdict:      core.VerdictFail, EvaluatedAt: time.Date(2026, 7, 25, 12, 0, 0, 0, time.UTC),
+	}
+	want := core.ReleaseTrack{
+		ID: "stable", ContractID: "payments", Mode: core.ReleaseModePinned,
+		Generation: 1, CurrentRevisionID: "revision-good",
+		CandidateRevisionID: decision.RevisionID, LastDecision: &decision,
+	}
+	if err := store.Within(ctx, func(ctx context.Context, operational port.OperationalStore) error {
+		for _, revisionID := range []string{"revision-good", "revision-next"} {
+			if err := operational.SaveRevision(ctx, core.ContractRevision{ID: revisionID, ContractID: want.ContractID}); err != nil {
+				return err
+			}
+		}
+		return operational.SaveReleaseTrack(ctx, 0, want)
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	err := store.Within(ctx, func(ctx context.Context, operational port.OperationalStore) error {
+		if err := operational.SaveReview(ctx, core.ContractReview{
+			ID: "review-side-effect", ContractID: want.ContractID,
+			BaselineRevisionID: "revision-good", CandidateRevisionID: "revision-next",
+		}); err != nil {
+			return err
+		}
+		if err := operational.SaveSyncRecord(ctx, core.SyncRecord{
+			ID: "sync-side-effect", ProjectID: want.ContractID, RevisionID: "revision-next", Result: core.SyncResultSuccess,
+		}); err != nil {
+			return err
+		}
+		if err := operational.SavePublication(ctx, core.Publication{
+			ProjectID: want.ContractID, RevisionID: "revision-good", Public: true, Path: "/payments/stable",
+		}); err != nil {
+			return err
+		}
+		if err := operational.AppendAuditEvent(ctx, core.AuditEvent{
+			ID: "audit-side-effect", ContractID: want.ContractID, TrackID: want.ID, RevisionID: "revision-next",
+		}); err != nil {
+			return err
+		}
+		if err := operational.Enqueue(ctx, core.OutboxMessage{
+			ID: "outbox-side-effect", ContractID: want.ContractID, TrackID: want.ID, RevisionID: "revision-next",
+		}); err != nil {
+			return err
+		}
+		transaction := operational.(*operationalTransaction)
+		forged := core.CloneReleaseTrack(want)
+		forged.CurrentRevisionID = forged.CandidateRevisionID
+		forged.Generation = 0
+		transaction.state.ReleaseTracks[releaseTrackKey(want.ContractID, want.ID)] = forged
+		return nil
+	})
+	if err == nil {
+		t.Fatal("final commit accepted a bypassed rejected transition")
+	}
+
+	restarted := NewFileStore(root)
+	got, err := restarted.ReleaseTrack(ctx, want.ContractID, want.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("bypassed transition changed last known good track: got=%#v want=%#v", got, want)
+	}
+	state, err := restarted.loadOperationalState(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(state.Reviews) != 0 || len(state.SyncRecords) != 0 || len(state.Publications) != 0 ||
+		len(state.AuditEvents) != 0 || len(state.Outbox) != 0 {
+		t.Fatalf("failed transition leaked side effects: %#v", state)
+	}
+}
+
+func TestFileStoreMigratesV1ReleaseAuthorityOnce(t *testing.T) {
+	ctx := context.Background()
+	root := t.TempDir()
+	store := NewFileStore(root)
+	legacy := newOperationalState()
+	legacy.Version = 1
+	legacy.Revisions["revision-good"] = core.ContractRevision{ID: "revision-good", ContractID: "payments"}
+	legacy.Revisions["revision-unauthenticated"] = core.ContractRevision{ID: "revision-unauthenticated", ContractID: "payments"}
+	legacy.ReleaseTracks[releaseTrackKey("payments", "stable")] = core.ReleaseTrack{
+		ID: "stable", ContractID: "payments", Mode: core.ReleaseModePinned,
+		Generation: 5, CurrentRevisionID: "revision-good", CandidateRevisionID: "revision-unauthenticated",
+	}
+	if err := store.publishOperationalState(ctx, legacy); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := store.ReleaseTrack(ctx, "payments", "stable")
+	if err != nil {
+		t.Fatalf("migrate v1 release track: %v", err)
+	}
+	if got.Generation != 5 || got.CurrentRevisionID != "revision-good" || got.CandidateRevisionID != "" || got.LastDecision != nil {
+		t.Fatalf("migrated v1 track = %#v", got)
+	}
+	first := readOperationalStateJSON(t, root)
+	if first["version"] != float64(2) {
+		t.Fatalf("migrated state version = %#v, want 2", first["version"])
+	}
+	authorities, ok := first["releaseTrackAuthorities"].(map[string]any)
+	if !ok {
+		t.Fatalf("migrated state lacks release authority map: %#v", first)
+	}
+	authority, ok := authorities[releaseTrackKey("payments", "stable")].(map[string]any)
+	if !ok || authority["version"] != float64(1) || authority["generation"] != float64(5) || authority["decisionPresent"] != false {
+		t.Fatalf("migrated release authority = %#v", authority)
+	}
+
+	firstBytes, err := os.ReadFile(filepath.Join(root, "operational", "state.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := NewFileStore(root).ReleaseTrack(ctx, "payments", "stable"); err != nil {
+		t.Fatal(err)
+	}
+	secondBytes, err := os.ReadFile(filepath.Join(root, "operational", "state.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(firstBytes, secondBytes) {
+		t.Fatal("v1 migration was not idempotent across restart")
+	}
+}
+
+func TestFileStoreV1MigrationSurvivesBusinessRollback(t *testing.T) {
+	ctx := context.Background()
+	root := t.TempDir()
+	store := NewFileStore(root)
+	legacy := newOperationalState()
+	legacy.Version = 1
+	legacy.Revisions["revision-good"] = core.ContractRevision{ID: "revision-good", ContractID: "payments"}
+	legacy.ReleaseTracks[releaseTrackKey("payments", "stable")] = core.ReleaseTrack{
+		ID: "stable", ContractID: "payments", Mode: core.ReleaseModePinned,
+		Generation: 4, CurrentRevisionID: "revision-good",
+	}
+	if err := store.publishOperationalState(ctx, legacy); err != nil {
+		t.Fatal(err)
+	}
+
+	rollback := errors.New("rollback after migration")
+	err := store.Within(ctx, func(ctx context.Context, operational port.OperationalStore) error {
+		if err := operational.SavePublication(ctx, core.Publication{
+			ProjectID: "payments", RevisionID: "revision-good", Public: true, Path: "/payments/stable",
+		}); err != nil {
+			return err
+		}
+		return rollback
+	})
+	if !errors.Is(err, rollback) {
+		t.Fatalf("rollback error = %v, want sentinel", err)
+	}
+
+	restarted := NewFileStore(root)
+	state, err := restarted.loadOperationalState(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if state.Version != 2 {
+		t.Fatalf("migration rolled back to state version %d", state.Version)
+	}
+	if len(state.Publications) != 0 {
+		t.Fatalf("business mutation escaped rollback: %#v", state.Publications)
+	}
+}
+
+func TestFileStoreV2DetectsStrippedReleaseAuthority(t *testing.T) {
+	ctx := context.Background()
+	root := t.TempDir()
+	store := NewFileStore(root)
+	baseline := core.ReleaseTrack{
+		ID: "stable", ContractID: "payments", Mode: core.ReleaseModePinned,
+		CurrentRevisionID: "revision-good",
+	}
+	if err := store.Within(ctx, func(ctx context.Context, operational port.OperationalStore) error {
+		for _, revisionID := range []string{"revision-good", "revision-next"} {
+			if err := operational.SaveRevision(ctx, core.ContractRevision{ID: revisionID, ContractID: baseline.ContractID}); err != nil {
+				return err
+			}
+		}
+		return operational.SaveReleaseTrack(ctx, 0, baseline)
+	}); err != nil {
+		t.Fatal(err)
+	}
+	accepted, changed, err := core.ConsiderReleaseDecision(baseline, core.ReleaseDecision{
+		RevisionID: "revision-next", ReviewID: "review-accepted",
+		ReviewDigest: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+		Verdict:      core.VerdictPass, Accepted: true,
+		EvaluatedAt: time.Date(2026, 7, 25, 12, 0, 0, 0, time.UTC),
+	})
+	if err != nil || !changed {
+		t.Fatalf("derive acceptance: changed=%t err=%v", changed, err)
+	}
+	if err := store.Within(ctx, func(ctx context.Context, operational port.OperationalStore) error {
+		return operational.SaveReleaseTrack(ctx, baseline.Generation, accepted)
+	}); err != nil {
+		t.Fatal(err)
+	}
+	promoted, err := core.PromoteReleaseRevision(accepted, "revision-next")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Within(ctx, func(ctx context.Context, operational port.OperationalStore) error {
+		return operational.SaveReleaseTrack(ctx, accepted.Generation, promoted)
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	statePath := filepath.Join(root, "operational", "state.json")
+	original, err := os.ReadFile(statePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, test := range []struct {
+		name   string
+		mutate func(map[string]any)
+	}{
+		{
+			name: "last decision",
+			mutate: func(state map[string]any) {
+				track := state["releaseTracks"].(map[string]any)[releaseTrackKey("payments", "stable")].(map[string]any)
+				delete(track, "lastDecision")
+			},
+		},
+		{
+			name: "authority marker",
+			mutate: func(state map[string]any) {
+				delete(state["releaseTrackAuthorities"].(map[string]any), releaseTrackKey("payments", "stable"))
+			},
+		},
+		{
+			name: "generation chronology",
+			mutate: func(state map[string]any) {
+				track := state["releaseTracks"].(map[string]any)[releaseTrackKey("payments", "stable")].(map[string]any)
+				track["generation"] = float64(0)
+			},
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			state := readOperationalStateJSON(t, root)
+			if _, ok := state["releaseTrackAuthorities"].(map[string]any); !ok {
+				t.Fatalf("v2 state lacks release authority marker: %#v", state)
+			}
+			test.mutate(state)
+			encoded, err := json.MarshalIndent(state, "", "  ")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := writeFileAtomically(statePath, append(encoded, '\n'), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := NewFileStore(root).ReleaseTrack(ctx, "payments", "stable"); err == nil {
+				t.Fatal("stripped v2 release authority was accepted as legacy")
+			}
+			if err := writeFileAtomically(statePath, original, 0o600); err != nil {
+				t.Fatal(err)
+			}
+			got, err := NewFileStore(root).ReleaseTrack(ctx, "payments", "stable")
+			if err != nil {
+				t.Fatalf("recover original v2 authority: %v", err)
+			}
+			if !reflect.DeepEqual(got, promoted) {
+				t.Fatalf("recovered track = %#v, want %#v", got, promoted)
+			}
+		})
+	}
+}
+
+func TestFileStoreLegacyReleaseHelperCannotRevokePersistedAcceptance(t *testing.T) {
+	ctx := context.Background()
+	root := t.TempDir()
+	store := NewFileStore(root)
+	baseline := core.ReleaseTrack{
+		ID: "stable", ContractID: "payments", Mode: core.ReleaseModePinned,
+		CurrentRevisionID: "revision-good",
+	}
+	if err := store.Within(ctx, func(ctx context.Context, operational port.OperationalStore) error {
+		for _, revisionID := range []string{"revision-good", "revision-next"} {
+			if err := operational.SaveRevision(ctx, core.ContractRevision{ID: revisionID, ContractID: baseline.ContractID}); err != nil {
+				return err
+			}
+		}
+		return operational.SaveReleaseTrack(ctx, 0, baseline)
+	}); err != nil {
+		t.Fatal(err)
+	}
+	accepted, err := core.ConsiderReleaseRevision(baseline, "revision-next", true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Within(ctx, func(ctx context.Context, operational port.OperationalStore) error {
+		return operational.SaveReleaseTrack(ctx, baseline.Generation, accepted)
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	restarted := NewFileStore(root)
+	got, err := restarted.ReleaseTrack(ctx, baseline.ContractID, baseline.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(got, accepted) {
+		t.Fatalf("restarted legacy acceptance = %#v, want %#v", got, accepted)
+	}
+
+	err = restarted.Within(ctx, func(ctx context.Context, operational port.OperationalStore) error {
+		current, err := operational.ReleaseTrack(ctx, baseline.ContractID, baseline.ID)
+		if err != nil {
+			return err
+		}
+		if err := operational.SaveReview(ctx, core.ContractReview{
+			ID: "denied-review", ContractID: baseline.ContractID,
+			BaselineRevisionID: "revision-good", CandidateRevisionID: "revision-next",
+		}); err != nil {
+			return err
+		}
+		if err := operational.SaveSyncRecord(ctx, core.SyncRecord{
+			ID: "denied-sync", ProjectID: baseline.ContractID, RevisionID: "revision-next", Result: core.SyncResultSuccess,
+		}); err != nil {
+			return err
+		}
+		if err := operational.SavePublication(ctx, core.Publication{
+			ProjectID: baseline.ContractID, RevisionID: "revision-next", Path: "/payments/denied",
+		}); err != nil {
+			return err
+		}
+		if err := operational.AppendAuditEvent(ctx, core.AuditEvent{
+			ID: "denied-audit", ContractID: baseline.ContractID, TrackID: baseline.ID, RevisionID: "revision-next",
+		}); err != nil {
+			return err
+		}
+		if err := operational.Enqueue(ctx, core.OutboxMessage{
+			ID: "denied-outbox", ContractID: baseline.ContractID, TrackID: baseline.ID, RevisionID: "revision-next",
+		}); err != nil {
+			return err
+		}
+		_, err = core.ConsiderReleaseRevision(current, "revision-next", false)
+		return err
+	})
+	if err == nil {
+		t.Fatal("persisted legacy acceptance was revoked")
+	}
+
+	state, err := NewFileStore(root).loadOperationalState(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(state.ReleaseTracks[releaseTrackKey(baseline.ContractID, baseline.ID)], accepted) {
+		t.Fatalf("denied revocation changed accepted track: %#v", state.ReleaseTracks)
+	}
+	if len(state.Reviews) != 0 || len(state.SyncRecords) != 0 || len(state.Publications) != 0 || len(state.AuditEvents) != 0 || len(state.Outbox) != 0 {
+		t.Fatalf("denied revocation leaked side effects: reviews=%d sync=%d publications=%d audit=%d outbox=%d",
+			len(state.Reviews), len(state.SyncRecords), len(state.Publications), len(state.AuditEvents), len(state.Outbox))
+	}
+
+	replay, err := core.ConsiderReleaseRevision(accepted, "revision-next", true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(replay, accepted) {
+		t.Fatalf("exact accepted replay changed track: got=%#v want=%#v", replay, accepted)
+	}
+	promoted, err := core.PromoteReleaseRevision(replay, "revision-next")
+	if err != nil {
+		t.Fatalf("promote persisted legacy acceptance: %v", err)
+	}
+	if err := NewFileStore(root).Within(ctx, func(ctx context.Context, operational port.OperationalStore) error {
+		return operational.SaveReleaseTrack(ctx, accepted.Generation, promoted)
+	}); err != nil {
+		t.Fatal(err)
+	}
+	final, err := NewFileStore(root).ReleaseTrack(ctx, baseline.ContractID, baseline.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(final, promoted) {
+		t.Fatalf("persisted promotion = %#v, want %#v", final, promoted)
+	}
+}
+
+func TestFileStoreRequiresExplicitReleaseTrackInitialization(t *testing.T) {
+	ctx := context.Background()
+	store := NewFileStore(t.TempDir())
+	if err := store.Within(ctx, func(ctx context.Context, operational port.OperationalStore) error {
+		for _, revisionID := range []string{"revision-good", "revision-next"} {
+			if err := operational.SaveRevision(ctx, core.ContractRevision{ID: revisionID, ContractID: "payments"}); err != nil {
+				return err
+			}
+		}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	decision := core.ReleaseDecision{
+		RevisionID: "revision-next", ReviewID: "review-accepted",
+		ReviewDigest: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+		Verdict:      core.VerdictPass, Accepted: true,
+		EvaluatedAt: time.Date(2026, 7, 25, 12, 0, 0, 0, time.UTC),
+	}
+	for _, track := range []core.ReleaseTrack{
+		{
+			ID: "implicit-history", ContractID: "payments", Mode: core.ReleaseModePinned,
+			Generation: 5, CurrentRevisionID: "revision-good",
+		},
+		{
+			ID: "implicit-decision-history", ContractID: "payments", Mode: core.ReleaseModePinned,
+			Generation: 3, CurrentRevisionID: "revision-good",
+			CandidateRevisionID: "revision-next", LastDecision: &decision,
+		},
+	} {
+		if err := store.Within(ctx, func(ctx context.Context, operational port.OperationalStore) error {
+			return operational.SaveReleaseTrack(ctx, 0, track)
+		}); err == nil {
+			t.Fatalf("implicit release history was initialized: %#v", track)
+		}
+	}
+
+	baseline := core.ReleaseTrack{
+		ID: "stable", ContractID: "payments", Mode: core.ReleaseModePinned,
+		CurrentRevisionID: "revision-good",
+	}
+	if err := store.Within(ctx, func(ctx context.Context, operational port.OperationalStore) error {
+		return operational.SaveReleaseTrack(ctx, 0, baseline)
+	}); err != nil {
+		t.Fatalf("explicit generation-zero baseline: %v", err)
+	}
+	accepted, changed, err := core.ConsiderReleaseDecision(baseline, decision)
+	if err != nil || !changed {
+		t.Fatalf("derive first decision: changed=%t err=%v", changed, err)
+	}
+	if err := store.Within(ctx, func(ctx context.Context, operational port.OperationalStore) error {
+		return operational.SaveReleaseTrack(ctx, baseline.Generation, accepted)
+	}); err != nil {
+		t.Fatalf("first authoritative decision: %v", err)
+	}
+}
+
+func TestFileStoreRejectsCrossContractOperationalReferencesAtomically(t *testing.T) {
+	for _, test := range []struct {
+		name string
+		save func(context.Context, port.OperationalStore) error
+	}{
+		{
+			name: "track current",
+			save: func(ctx context.Context, operational port.OperationalStore) error {
+				return operational.SaveReleaseTrack(ctx, 0, core.ReleaseTrack{
+					ID: "forged-current", ContractID: "payments", Mode: core.ReleaseModePinned,
+					CurrentRevisionID: "orders-revision",
+				})
+			},
+		},
+		{
+			name: "track candidate",
+			save: func(ctx context.Context, operational port.OperationalStore) error {
+				decision := core.ReleaseDecision{
+					RevisionID: "orders-revision", ReviewID: "forged-review",
+					ReviewDigest: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+					Verdict:      core.VerdictFail,
+					EvaluatedAt:  time.Date(2026, 7, 25, 12, 0, 0, 0, time.UTC),
+				}
+				return operational.SaveReleaseTrack(ctx, 0, core.ReleaseTrack{
+					ID: "forged-candidate", ContractID: "payments", Mode: core.ReleaseModePinned,
+					Generation: 1, CurrentRevisionID: "payments-good",
+					CandidateRevisionID: decision.RevisionID, LastDecision: &decision,
+				})
+			},
+		},
+		{
+			name: "publication",
+			save: func(ctx context.Context, operational port.OperationalStore) error {
+				return operational.SavePublication(ctx, core.Publication{
+					ProjectID: "payments", RevisionID: "orders-revision", Public: true, Path: "/payments/forged",
+				})
+			},
+		},
+		{
+			name: "review baseline",
+			save: func(ctx context.Context, operational port.OperationalStore) error {
+				return operational.SaveReview(ctx, core.ContractReview{
+					ID: "forged-baseline", ContractID: "payments",
+					BaselineRevisionID: "orders-revision", CandidateRevisionID: "payments-next",
+				})
+			},
+		},
+		{
+			name: "review candidate",
+			save: func(ctx context.Context, operational port.OperationalStore) error {
+				return operational.SaveReview(ctx, core.ContractReview{
+					ID: "forged-candidate", ContractID: "payments",
+					BaselineRevisionID: "payments-good", CandidateRevisionID: "orders-revision",
+				})
+			},
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			ctx := context.Background()
+			root := t.TempDir()
+			store := NewFileStore(root)
+			baseline := core.ReleaseTrack{
+				ID: "stable", ContractID: "payments", Mode: core.ReleaseModePinned,
+				CurrentRevisionID: "payments-good",
+			}
+			if err := store.Within(ctx, func(ctx context.Context, operational port.OperationalStore) error {
+				for revisionID, contractID := range map[string]string{
+					"payments-good": "payments", "payments-next": "payments", "orders-revision": "orders",
+				} {
+					if err := operational.SaveRevision(ctx, core.ContractRevision{ID: revisionID, ContractID: contractID}); err != nil {
+						return err
+					}
+				}
+				return operational.SaveReleaseTrack(ctx, 0, baseline)
+			}); err != nil {
+				t.Fatal(err)
+			}
+
+			err := store.Within(ctx, func(ctx context.Context, operational port.OperationalStore) error {
+				if err := operational.SaveReview(ctx, core.ContractReview{
+					ID: "side-review", ContractID: "payments",
+					BaselineRevisionID: "payments-good", CandidateRevisionID: "payments-next",
+				}); err != nil {
+					return err
+				}
+				if err := operational.SaveSyncRecord(ctx, core.SyncRecord{
+					ID: "side-sync", ProjectID: "payments", RevisionID: "payments-next", Result: core.SyncResultSuccess,
+				}); err != nil {
+					return err
+				}
+				if err := operational.SavePublication(ctx, core.Publication{
+					ProjectID: "payments", RevisionID: "payments-good", Public: true, Path: "/payments/stable",
+				}); err != nil {
+					return err
+				}
+				if err := operational.AppendAuditEvent(ctx, core.AuditEvent{
+					ID: "side-audit", ContractID: "payments", TrackID: "stable", RevisionID: "payments-next",
+				}); err != nil {
+					return err
+				}
+				if err := operational.Enqueue(ctx, core.OutboxMessage{
+					ID: "side-outbox", ContractID: "payments", TrackID: "stable", RevisionID: "payments-next",
+				}); err != nil {
+					return err
+				}
+				return test.save(ctx, operational)
+			})
+			if err == nil {
+				t.Fatal("cross-contract operational reference committed")
+			}
+
+			restarted := NewFileStore(root)
+			got, err := restarted.ReleaseTrack(ctx, baseline.ContractID, baseline.ID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !reflect.DeepEqual(got, baseline) {
+				t.Fatalf("cross-contract attempt changed last known good: got=%#v want=%#v", got, baseline)
+			}
+			state, err := restarted.loadOperationalState(ctx)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(state.ReleaseTracks) != 1 || len(state.Reviews) != 0 || len(state.SyncRecords) != 0 ||
+				len(state.Publications) != 0 || len(state.AuditEvents) != 0 || len(state.Outbox) != 0 {
+				t.Fatalf("cross-contract rollback leaked side effects: %#v", state)
+			}
+		})
+	}
+}
+
+func readOperationalStateJSON(t *testing.T, root string) map[string]any {
+	t.Helper()
+	data, err := os.ReadFile(filepath.Join(root, "operational", "state.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var state map[string]any
+	if err := json.Unmarshal(data, &state); err != nil {
+		t.Fatal(err)
+	}
+	return state
+}
+
 func TestFileStoreUnitOfWorkRollsBackEveryOperationalMutation(t *testing.T) {
 	ctx := context.Background()
 	store := NewFileStore(t.TempDir())
@@ -259,15 +860,15 @@ func TestFileStoreUnitOfWorkRollsBackEveryOperationalMutation(t *testing.T) {
 func TestFileStoreUnitOfWorkRejectsStaleReleaseTrackGeneration(t *testing.T) {
 	ctx := context.Background()
 	store := NewFileStore(t.TempDir())
-	track := core.ReleaseTrack{ID: "stable", ContractID: "payments", Mode: core.ReleaseModeFollowing, Generation: 1}
+	track := core.ReleaseTrack{ID: "stable", ContractID: "payments", Mode: core.ReleaseModeFollowing}
 	if err := store.Within(ctx, func(ctx context.Context, operational port.OperationalStore) error {
 		return operational.SaveReleaseTrack(ctx, 0, track)
 	}); err != nil {
 		t.Fatal(err)
 	}
 	err := store.Within(ctx, func(ctx context.Context, operational port.OperationalStore) error {
-		track.Generation = 2
-		return operational.SaveReleaseTrack(ctx, 0, track)
+		track.Generation = 1
+		return operational.SaveReleaseTrack(ctx, 1, track)
 	})
 	if !errors.Is(err, port.ErrGenerationConflict) {
 		t.Fatalf("stale generation error = %v, want %v", err, port.ErrGenerationConflict)
@@ -276,8 +877,8 @@ func TestFileStoreUnitOfWorkRejectsStaleReleaseTrackGeneration(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.Generation != 1 {
-		t.Fatalf("generation after rejected transaction = %d, want 1", got.Generation)
+	if got.Generation != 0 {
+		t.Fatalf("generation after rejected transaction = %d, want 0", got.Generation)
 	}
 }
 
@@ -307,9 +908,7 @@ func TestFileStoreReportsIndeterminateCommitAfterManifestRename(t *testing.T) {
 			ctx := context.Background()
 			root := t.TempDir()
 			store := NewFileStore(root)
-			track := core.ReleaseTrack{
-				ID: "stable", ContractID: "payments", Mode: core.ReleaseModeFollowing, Generation: 1,
-			}
+			track := core.ReleaseTrack{ID: "stable", ContractID: "payments", Mode: core.ReleaseModeFollowing}
 			if err := store.Within(ctx, func(ctx context.Context, operational port.OperationalStore) error {
 				return operational.SaveReleaseTrack(ctx, 0, track)
 			}); err != nil {
@@ -322,8 +921,19 @@ func TestFileStoreReportsIndeterminateCommitAfterManifestRename(t *testing.T) {
 				if err != nil {
 					return err
 				}
-				current.Generation = 2
-				return operational.SaveReleaseTrack(ctx, 1, current)
+				next, changed, err := core.ConsiderReleaseDecision(current, core.ReleaseDecision{
+					RevisionID: "revision-next", ReviewID: "review-next",
+					ReviewDigest: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+					Verdict:      core.VerdictFail,
+					EvaluatedAt:  time.Date(2026, 7, 25, 12, 0, 0, 0, time.UTC),
+				})
+				if err != nil || !changed {
+					return fmt.Errorf("derive indeterminate decision: changed=%t err=%w", changed, err)
+				}
+				if err := operational.SaveRevision(ctx, core.ContractRevision{ID: "revision-next", ContractID: "payments"}); err != nil {
+					return err
+				}
+				return operational.SaveReleaseTrack(ctx, current.Generation, next)
 			})
 			if !errors.Is(err, port.ErrCommitOutcomeUnknown) {
 				t.Fatalf("post-rename error = %v, want %v", err, port.ErrCommitOutcomeUnknown)
@@ -334,8 +944,8 @@ func TestFileStoreReportsIndeterminateCommitAfterManifestRename(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if got.Generation != 2 {
-				t.Fatalf("recovered generation = %d, want atomically published generation 2", got.Generation)
+			if got.Generation != 1 {
+				t.Fatalf("recovered generation = %d, want atomically published generation 1", got.Generation)
 			}
 		})
 	}
@@ -634,7 +1244,7 @@ func TestFileStorePersistsReleaseDecisionReplayIdentityAcrossRestart(t *testing.
 	}
 	track := core.ReleaseTrack{
 		ID: "stable", ContractID: "payments", Mode: core.ReleaseModePinned,
-		Generation: 3, CurrentRevisionID: "revision-good",
+		Generation: 1, CurrentRevisionID: "revision-good",
 		CandidateRevisionID: "revision-next", LastDecision: &decision,
 	}
 	if err := store.Within(ctx, func(ctx context.Context, operational port.OperationalStore) error {
@@ -682,10 +1292,11 @@ func TestFileStorePersistsHistoricalDecisionReplayProtectionAcrossRestart(t *tes
 		ReviewDigest: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
 		Verdict:      core.VerdictPass, Accepted: true, EvaluatedAt: acceptedAt,
 	}
-	track, changed, err := core.ConsiderReleaseDecision(core.ReleaseTrack{
+	baseline := core.ReleaseTrack{
 		ID: "stable", ContractID: "payments", Mode: core.ReleaseModePinned,
-		Generation: 2, CurrentRevisionID: "revision-good",
-	}, acceptedDecision)
+		CurrentRevisionID: "revision-good",
+	}
+	track, changed, err := core.ConsiderReleaseDecision(baseline, acceptedDecision)
 	if err != nil || !changed {
 		t.Fatalf("apply acceptance: changed=%t err=%v", changed, err)
 	}
@@ -706,7 +1317,21 @@ func TestFileStorePersistsHistoricalDecisionReplayProtectionAcrossRestart(t *tes
 				return err
 			}
 		}
-		return operational.SaveReleaseTrack(ctx, 0, track)
+		return operational.SaveReleaseTrack(ctx, 0, baseline)
+	}); err != nil {
+		t.Fatal(err)
+	}
+	acceptedTrack, changed, err := core.ConsiderReleaseDecision(baseline, acceptedDecision)
+	if err != nil || !changed {
+		t.Fatalf("rederive acceptance: changed=%t err=%v", changed, err)
+	}
+	if err := store.Within(ctx, func(ctx context.Context, operational port.OperationalStore) error {
+		return operational.SaveReleaseTrack(ctx, baseline.Generation, acceptedTrack)
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Within(ctx, func(ctx context.Context, operational port.OperationalStore) error {
+		return operational.SaveReleaseTrack(ctx, acceptedTrack.Generation, track)
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -857,6 +1482,15 @@ func TestFileStoreMigratesCommittedLegacyOperationalState(t *testing.T) {
 	}
 	if err := store.writeJSON(ctx, "sync-history", record.ID+".json", record); err != nil {
 		t.Fatal(err)
+	}
+	if _, err := store.Publication(ctx, publication.ProjectID, publication.RevisionID); err != nil {
+		t.Fatalf("load legacy publication through authenticated migration: %v", err)
+	}
+	if _, err := store.ContractRevision(ctx, publication.ProjectID, revision.ID); err != nil {
+		t.Fatalf("legacy migration did not bind revision ownership: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(root, "operational", "state.json")); err != nil {
+		t.Fatalf("legacy read did not persist authenticated v2 state: %v", err)
 	}
 
 	publication.Path = "/payments/stable"

@@ -242,7 +242,70 @@ func (u *memoryUnitOfWork) Within(ctx context.Context, fn func(context.Context, 
 			return errors.New("revision references missing blob")
 		}
 	}
+	if err := validateMemoryOperationalReferences(staged); err != nil {
+		return err
+	}
 	*u.store = *staged
+	return nil
+}
+
+func validateMemoryOperationalReferences(store *memoryOperationalStore) error {
+	requireOwner := func(contractID, revisionID, owner string) error {
+		revision, ok := store.revisions[revisionID]
+		if !ok {
+			return errors.New(owner + " references missing revision")
+		}
+		if revision.ContractID != contractID {
+			return errors.New(owner + " references a revision owned by another contract")
+		}
+		return nil
+	}
+	for _, track := range store.tracks {
+		if track.CurrentRevisionID != "" {
+			if err := requireOwner(track.ContractID, track.CurrentRevisionID, "release track current"); err != nil {
+				return err
+			}
+		}
+		if track.CandidateRevisionID != "" {
+			if err := requireOwner(track.ContractID, track.CandidateRevisionID, "release track candidate"); err != nil {
+				return err
+			}
+		}
+	}
+	for _, publication := range store.publications {
+		if err := requireOwner(publication.ProjectID, publication.RevisionID, "publication"); err != nil {
+			return err
+		}
+	}
+	for _, review := range store.reviews {
+		if err := requireOwner(review.ContractID, review.BaselineRevisionID, "review baseline"); err != nil {
+			return err
+		}
+		if err := requireOwner(review.ContractID, review.CandidateRevisionID, "review candidate"); err != nil {
+			return err
+		}
+	}
+	for _, record := range store.syncRecords {
+		if record.Result == domain.SyncResultSuccess && record.RevisionID != "" {
+			if err := requireOwner(record.ProjectID, record.RevisionID, "sync record"); err != nil {
+				return err
+			}
+		}
+	}
+	for _, event := range store.auditEvents {
+		if event.RevisionID != "" {
+			if err := requireOwner(event.ContractID, event.RevisionID, "audit event"); err != nil {
+				return err
+			}
+		}
+	}
+	for _, message := range store.outbox {
+		if message.RevisionID != "" {
+			if err := requireOwner(message.ContractID, message.RevisionID, "outbox message"); err != nil {
+				return err
+			}
+		}
+	}
 	return nil
 }
 

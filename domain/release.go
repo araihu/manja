@@ -2,6 +2,7 @@ package domain
 
 import (
 	"fmt"
+	"reflect"
 	"strings"
 	"time"
 )
@@ -33,9 +34,11 @@ type ReleaseDecision struct {
 	EvaluatedAt  time.Time `json:"evaluatedAt,omitempty"`
 }
 
-// ConsiderReleaseRevision applies a completed policy decision to one track.
-// Rejected revisions remain visible as candidates but never replace public
-// last-known-good state.
+// ConsiderReleaseRevision is the source-compatible boolean decision helper.
+// It allows rejection followed by acceptance, but once its synthetic evidence
+// accepts a candidate it cannot revoke or supersede that acceptance because
+// the legacy signature carries no authoritative identity or evaluation time.
+// Reversible ordered decisions must use ConsiderReleaseDecision.
 func ConsiderReleaseRevision(track ReleaseTrack, revisionID string, accepted bool) (ReleaseTrack, error) {
 	if err := ValidateReleaseTrack(track); err != nil {
 		return ReleaseTrack{}, err
@@ -43,6 +46,17 @@ func ConsiderReleaseRevision(track ReleaseTrack, revisionID string, accepted boo
 	revisionID = strings.TrimSpace(revisionID)
 	if revisionID == "" {
 		return ReleaseTrack{}, fmt.Errorf("revision id is required")
+	}
+	if track.LastDecision != nil {
+		if track.LastDecision.ReviewID != "legacy-release-decision" {
+			return ReleaseTrack{}, fmt.Errorf("legacy release helper cannot supersede an authoritative decision")
+		}
+		if track.LastDecision.Accepted {
+			if accepted && track.LastDecision.RevisionID == revisionID {
+				return track, nil
+			}
+			return ReleaseTrack{}, fmt.Errorf("legacy accepted decision cannot be revoked or superseded")
+		}
 	}
 
 	verdict := VerdictFail
@@ -196,9 +210,9 @@ func ValidateReleaseTrack(track ReleaseTrack) error {
 	return nil
 }
 
-// ValidateReleaseTrackTransition prevents persisted replay authority from
-// moving backward or disappearing. Exact evidence may accompany a promotion;
-// a different decision must have a strictly newer evaluation time.
+// ValidateReleaseTrackTransition accepts only a complete domain transition:
+// an exact no-op, a newly considered authoritative decision, or a pinned
+// promotion derived from the current accepted candidate.
 func ValidateReleaseTrackTransition(current, next ReleaseTrack) error {
 	if err := ValidateReleaseTrack(current); err != nil {
 		return fmt.Errorf("invalid current release track: %w", err)
@@ -209,17 +223,27 @@ func ValidateReleaseTrackTransition(current, next ReleaseTrack) error {
 	if current.ID != next.ID || current.ContractID != next.ContractID {
 		return fmt.Errorf("release track identity cannot change")
 	}
-	if current.LastDecision == nil {
+	if reflect.DeepEqual(current, next) {
 		return nil
+	}
+	if current.LastDecision != nil && next.LastDecision != nil && *current.LastDecision == *next.LastDecision {
+		if current.Mode == ReleaseModePinned && current.CandidateRevisionID != "" {
+			promoted, err := PromoteReleaseRevision(current, current.CandidateRevisionID)
+			if err == nil && reflect.DeepEqual(promoted, next) {
+				return nil
+			}
+		}
+		return fmt.Errorf("persisted release track mutation is not an exact no-op or pinned promotion")
 	}
 	if next.LastDecision == nil {
 		return fmt.Errorf("release track decision evidence cannot be removed")
 	}
-	if *current.LastDecision == *next.LastDecision {
-		return nil
+	expected, changed, err := ConsiderReleaseDecision(current, *next.LastDecision)
+	if err != nil {
+		return fmt.Errorf("validate persisted release decision: %w", err)
 	}
-	if !next.LastDecision.EvaluatedAt.After(current.LastDecision.EvaluatedAt) {
-		return fmt.Errorf("release track decision evidence must be strictly newer")
+	if !changed || !reflect.DeepEqual(expected, next) {
+		return fmt.Errorf("persisted release track mutation does not match the authoritative decision")
 	}
 	return nil
 }

@@ -27,6 +27,7 @@ func TestContractSuitesRejectBrokenAdapters(t *testing.T) {
 		{scenario: "non-idempotent-blob", want: "content-addressed"},
 		{scenario: "nondeterministic-discovery", want: "deterministic"},
 		{scenario: "aliased-track-state", want: "alias"},
+		{scenario: "illegal-track-transition", want: "decision"},
 	} {
 		t.Run(test.scenario, func(t *testing.T) {
 			command := exec.Command(os.Args[0], "-test.run=^TestBrokenContractAdapter$", "-test.v")
@@ -48,7 +49,7 @@ func TestBrokenContractAdapter(t *testing.T) {
 		t.Skip("subprocess helper")
 	}
 	switch scenario {
-	case "partial-commit", "replaced-context", "missing-blob", "lost-update", "aliased-track-state":
+	case "partial-commit", "replaced-context", "missing-blob", "lost-update", "aliased-track-state", "illegal-track-transition":
 		UnitOfWork(t, func(testing.TB) port.UnitOfWork {
 			return newTestUnitOfWork(scenario)
 		})
@@ -89,6 +90,7 @@ func (u *testUnitOfWork) Within(ctx context.Context, callback func(context.Conte
 	}
 	staged := u.state.clone()
 	staged.aliasTracks = u.scenario == "aliased-track-state"
+	staged.skipTrackTransitions = u.scenario == "illegal-track-transition"
 	callbackContext := ctx
 	if u.scenario == "replaced-context" {
 		callbackContext = context.Background()
@@ -114,9 +116,10 @@ func (u *testUnitOfWork) Within(ctx context.Context, callback func(context.Conte
 }
 
 type testOperationalStore struct {
-	revisions   map[string]domain.ContractRevision
-	tracks      map[string]domain.ReleaseTrack
-	aliasTracks bool
+	revisions            map[string]domain.ContractRevision
+	tracks               map[string]domain.ReleaseTrack
+	aliasTracks          bool
+	skipTrackTransitions bool
 }
 
 func newTestOperationalStore() *testOperationalStore {
@@ -169,7 +172,7 @@ func (s *testOperationalStore) SaveReleaseTrack(_ context.Context, expected uint
 	if (exists && current.Generation != expected) || (!exists && expected != 0) {
 		return port.ErrGenerationConflict
 	}
-	if exists && !s.aliasTracks {
+	if exists && !s.aliasTracks && !s.skipTrackTransitions {
 		if err := domain.ValidateReleaseTrackTransition(current, track); err != nil {
 			return err
 		}

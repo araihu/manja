@@ -116,6 +116,74 @@ func TestValidateReleaseTrackTransitionRejectsStrippedOrSupersededEvidence(t *te
 	}
 }
 
+func TestValidateReleaseTrackTransitionAllowsOnlyExactDecisionOrPromotionState(t *testing.T) {
+	evaluatedAt := time.Date(2026, 7, 25, 12, 0, 0, 0, time.UTC)
+	rejectedDecision := ReleaseDecision{
+		RevisionID: "revision-next", ReviewID: "review-rejected",
+		ReviewDigest: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+		Verdict:      VerdictFail, EvaluatedAt: evaluatedAt,
+	}
+	rejected := ReleaseTrack{
+		ID: "stable", ContractID: "payments", BoundRef: "main", Mode: ReleaseModePinned,
+		Generation: 5, CurrentRevisionID: "revision-good",
+		CandidateRevisionID: rejectedDecision.RevisionID, LastDecision: &rejectedDecision,
+	}
+
+	if err := ValidateReleaseTrackTransition(rejected, CloneReleaseTrack(rejected)); err != nil {
+		t.Fatalf("exact persisted no-op: %v", err)
+	}
+
+	for _, test := range []struct {
+		name   string
+		mutate func(*ReleaseTrack)
+	}{
+		{name: "generation regression", mutate: func(next *ReleaseTrack) { next.Generation = 0 }},
+		{name: "generation-only change", mutate: func(next *ReleaseTrack) { next.Generation++ }},
+		{name: "rejected candidate copied to current", mutate: func(next *ReleaseTrack) { next.CurrentRevisionID = next.CandidateRevisionID }},
+		{name: "bound ref rewrite", mutate: func(next *ReleaseTrack) { next.BoundRef = "release" }},
+		{name: "mode rewrite", mutate: func(next *ReleaseTrack) { next.Mode = ReleaseModeFollowing }},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			next := CloneReleaseTrack(rejected)
+			test.mutate(&next)
+			if err := ValidateReleaseTrackTransition(rejected, next); err == nil {
+				t.Fatal("illegal persisted mutation was accepted")
+			}
+		})
+	}
+
+	acceptedDecision := ReleaseDecision{
+		RevisionID: "revision-next", ReviewID: "review-accepted",
+		ReviewDigest: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+		Verdict:      VerdictPass, Accepted: true, EvaluatedAt: evaluatedAt.Add(time.Minute),
+	}
+	accepted, changed, err := ConsiderReleaseDecision(rejected, acceptedDecision)
+	if err != nil || !changed {
+		t.Fatalf("derive newer accepted decision: changed=%t err=%v", changed, err)
+	}
+	if err := ValidateReleaseTrackTransition(rejected, accepted); err != nil {
+		t.Fatalf("newer authoritative decision: %v", err)
+	}
+	wrongGeneration := CloneReleaseTrack(accepted)
+	wrongGeneration.Generation++
+	if err := ValidateReleaseTrackTransition(rejected, wrongGeneration); err == nil {
+		t.Fatal("new decision with non-unit generation change was accepted")
+	}
+
+	promoted, err := PromoteReleaseRevision(accepted, acceptedDecision.RevisionID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := ValidateReleaseTrackTransition(accepted, promoted); err != nil {
+		t.Fatalf("pinned promotion: %v", err)
+	}
+	wrongPromotion := CloneReleaseTrack(promoted)
+	wrongPromotion.Generation++
+	if err := ValidateReleaseTrackTransition(accepted, wrongPromotion); err == nil {
+		t.Fatal("promotion with non-unit generation change was accepted")
+	}
+}
+
 func TestFollowingTrackAdvancesOnlyAcceptedRevision(t *testing.T) {
 	track := ReleaseTrack{
 		ID:                "v1",
@@ -292,6 +360,68 @@ func TestConsiderReleaseRevisionUsesDecisionIdentityForPinnedReplay(t *testing.T
 	}
 	if !reflect.DeepEqual(acceptedReplay, accepted) {
 		t.Fatalf("exact acceptance replay changed track: %#v", acceptedReplay)
+	}
+}
+
+func TestConsiderReleaseRevisionFailsClosedAfterLegacyAcceptance(t *testing.T) {
+	track := ReleaseTrack{
+		ID: "stable", ContractID: "payments", Mode: ReleaseModePinned,
+		Generation: 2, CurrentRevisionID: "revision-good",
+	}
+	accepted, err := ConsiderReleaseRevision(track, "revision-next", true)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := ConsiderReleaseRevision(accepted, "revision-next", false); err == nil {
+		t.Fatal("legacy acceptance was revoked without authoritative identity or time")
+	}
+	exactReplay, err := ConsiderReleaseRevision(accepted, "revision-next", true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(exactReplay, accepted) {
+		t.Fatalf("exact accepted replay changed track: got=%#v want=%#v", exactReplay, accepted)
+	}
+	if _, err := ConsiderReleaseRevision(accepted, "revision-other", false); err == nil {
+		t.Fatal("legacy acceptance was superseded by another unauthenticated candidate")
+	}
+
+	persisted, err := json.Marshal(accepted)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var restarted ReleaseTrack
+	if err := json.Unmarshal(persisted, &restarted); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ConsiderReleaseRevision(restarted, "revision-next", false); err == nil {
+		t.Fatal("restarted legacy acceptance was revoked")
+	}
+	promoted, err := PromoteReleaseRevision(restarted, "revision-next")
+	if err != nil {
+		t.Fatalf("promote retained legacy acceptance: %v", err)
+	}
+	if _, err := ConsiderReleaseRevision(promoted, "revision-next", false); err == nil {
+		t.Fatal("promoted legacy acceptance was revoked")
+	}
+}
+
+func TestConsiderReleaseRevisionCannotReacceptAfterDeniedLegacyRevocation(t *testing.T) {
+	track := ReleaseTrack{ID: "stable", ContractID: "payments", Mode: ReleaseModePinned}
+	accepted, err := ConsiderReleaseRevision(track, "revision-next", true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ConsiderReleaseRevision(accepted, "revision-next", false); err == nil {
+		t.Fatal("legacy revocation unexpectedly succeeded")
+	}
+	replayed, err := ConsiderReleaseRevision(accepted, "revision-next", true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(replayed, accepted) {
+		t.Fatalf("denied revoke then accept changed track: got=%#v want=%#v", replayed, accepted)
 	}
 }
 

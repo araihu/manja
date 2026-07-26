@@ -43,12 +43,22 @@ func UnitOfWork(t *testing.T, factory UnitOfWorkFactory) {
 		}
 		rollback := errors.New("rollback sentinel")
 		err := uow.Within(ctx, func(ctx context.Context, store port.OperationalStore) error {
+			if err := store.SaveRevision(ctx, domain.ContractRevision{ID: "rollback-revision", ContractID: track.ContractID}); err != nil {
+				return err
+			}
 			current, err := store.ReleaseTrack(ctx, track.ContractID, track.ID)
 			if err != nil {
 				return err
 			}
-			next := current
-			next.Generation++
+			next, changed, err := domain.ConsiderReleaseDecision(current, domain.ReleaseDecision{
+				RevisionID: "rollback-revision", ReviewID: "rollback-review",
+				ReviewDigest: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+				Verdict:      domain.VerdictFail,
+				EvaluatedAt:  time.Date(2026, 7, 25, 12, 0, 0, 0, time.UTC),
+			})
+			if err != nil || !changed {
+				return fmt.Errorf("derive rollback decision: changed=%t err=%w", changed, err)
+			}
 			if err := store.SaveReleaseTrack(ctx, current.Generation, next); err != nil {
 				return err
 			}
@@ -83,6 +93,9 @@ func UnitOfWork(t *testing.T, factory UnitOfWorkFactory) {
 		ctx := markedContext(t)
 		track := domain.ReleaseTrack{ID: "concurrent", ContractID: "contract", Mode: domain.ReleaseModeFollowing}
 		if err := uow.Within(ctx, func(ctx context.Context, store port.OperationalStore) error {
+			if err := store.SaveRevision(ctx, domain.ContractRevision{ID: "concurrent-revision", ContractID: track.ContractID}); err != nil {
+				return err
+			}
 			return store.SaveReleaseTrack(ctx, 0, track)
 		}); err != nil {
 			t.Fatalf("seed concurrent track: %v", err)
@@ -177,13 +190,16 @@ func UnitOfWork(t *testing.T, factory UnitOfWorkFactory) {
 		track := releaseTrackIsolationFixture()
 		track.LastDecision.Accepted = true
 		track.LastDecision.Verdict = domain.VerdictPass
-		track.CurrentRevisionID = track.LastDecision.RevisionID
-		track.CandidateRevisionID = ""
+		var err error
+		track, err = domain.PromoteReleaseRevision(track, track.LastDecision.RevisionID)
+		if err != nil {
+			t.Fatal(err)
+		}
 		if err := seedReleaseTrackIsolation(ctx, uow, track); err != nil {
 			t.Fatalf("seed decision evidence stripping track: %v", err)
 		}
 
-		err := uow.Within(ctx, func(ctx context.Context, store port.OperationalStore) error {
+		err = uow.Within(ctx, func(ctx context.Context, store port.OperationalStore) error {
 			stripped, err := store.ReleaseTrack(ctx, track.ContractID, track.ID)
 			if err != nil {
 				return err
@@ -200,6 +216,112 @@ func UnitOfWork(t *testing.T, factory UnitOfWorkFactory) {
 		}
 		if !reflect.DeepEqual(got, track) {
 			t.Fatalf("failed stripping attempt changed persisted track: got=%#v want=%#v", got, track)
+		}
+	})
+
+	t.Run("release track state cannot bypass its decision", func(t *testing.T) {
+		uow := factory(t)
+		ctx := markedContext(t)
+		track := releaseTrackIsolationFixture()
+		if err := seedReleaseTrackIsolation(ctx, uow, track); err != nil {
+			t.Fatalf("seed release transition: %v", err)
+		}
+
+		err := uow.Within(ctx, func(ctx context.Context, store port.OperationalStore) error {
+			forged, err := store.ReleaseTrack(ctx, track.ContractID, track.ID)
+			if err != nil {
+				return err
+			}
+			forged.CurrentRevisionID = forged.CandidateRevisionID
+			forged.Generation = 0
+			return store.SaveReleaseTrack(ctx, track.Generation, forged)
+		})
+		if err == nil {
+			t.Fatal("rejected candidate bypassed its decision and generation")
+		}
+		got, err := loadTrack(ctx, uow, track.ContractID, track.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !reflect.DeepEqual(got, track) {
+			t.Fatalf("failed transition changed persisted track: got=%#v want=%#v", got, track)
+		}
+	})
+
+	t.Run("cross-contract operational references fail atomically", func(t *testing.T) {
+		cases := map[string]func(context.Context, port.OperationalStore, domain.ReleaseTrack) error{
+			"track current": func(ctx context.Context, store port.OperationalStore, _ domain.ReleaseTrack) error {
+				return store.SaveReleaseTrack(ctx, 0, domain.ReleaseTrack{
+					ID: "substituted-current", ContractID: "payments", Mode: domain.ReleaseModeFollowing,
+					CurrentRevisionID: "orders-revision",
+				})
+			},
+			"track candidate": func(ctx context.Context, store port.OperationalStore, track domain.ReleaseTrack) error {
+				next, changed, err := domain.ConsiderReleaseDecision(track, domain.ReleaseDecision{
+					RevisionID: "orders-revision", ReviewID: "cross-contract-review",
+					ReviewDigest: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+					Verdict:      domain.VerdictFail, EvaluatedAt: time.Date(2026, 7, 25, 14, 0, 0, 0, time.UTC),
+				})
+				if err != nil || !changed {
+					return fmt.Errorf("derive cross-contract candidate: changed=%t err=%w", changed, err)
+				}
+				return store.SaveReleaseTrack(ctx, track.Generation, next)
+			},
+			"publication": func(ctx context.Context, store port.OperationalStore, _ domain.ReleaseTrack) error {
+				return store.SavePublication(ctx, domain.Publication{
+					ProjectID: "payments", RevisionID: "orders-revision", Path: "/payments",
+				})
+			},
+			"review baseline": func(ctx context.Context, store port.OperationalStore, _ domain.ReleaseTrack) error {
+				return store.SaveReview(ctx, domain.ContractReview{
+					ID: "cross-baseline", ContractID: "payments",
+					BaselineRevisionID: "orders-revision", CandidateRevisionID: "payments-next",
+				})
+			},
+			"review candidate": func(ctx context.Context, store port.OperationalStore, _ domain.ReleaseTrack) error {
+				return store.SaveReview(ctx, domain.ContractReview{
+					ID: "cross-candidate", ContractID: "payments",
+					BaselineRevisionID: "payments-good", CandidateRevisionID: "orders-revision",
+				})
+			},
+		}
+		for name, attempt := range cases {
+			t.Run(name, func(t *testing.T) {
+				uow := factory(t)
+				ctx := markedContext(t)
+				track := domain.ReleaseTrack{
+					ID: "stable-owner", ContractID: "payments", Mode: domain.ReleaseModeFollowing,
+					CurrentRevisionID: "payments-good",
+				}
+				if err := uow.Within(ctx, func(ctx context.Context, store port.OperationalStore) error {
+					for _, revision := range []domain.ContractRevision{
+						{ID: "payments-good", ContractID: "payments"},
+						{ID: "payments-next", ContractID: "payments"},
+						{ID: "orders-revision", ContractID: "orders"},
+					} {
+						if err := store.SaveRevision(ctx, revision); err != nil {
+							return err
+						}
+					}
+					return store.SaveReleaseTrack(ctx, 0, track)
+				}); err != nil {
+					t.Fatalf("seed ownership fixture: %v", err)
+				}
+
+				err := uow.Within(ctx, func(ctx context.Context, store port.OperationalStore) error {
+					return attempt(ctx, store, track)
+				})
+				if err == nil {
+					t.Fatal("cross-contract reference committed")
+				}
+				got, err := loadTrack(ctx, uow, track.ContractID, track.ID)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if !reflect.DeepEqual(got, track) {
+					t.Fatalf("cross-contract rollback changed last-known-good track: got=%#v want=%#v", got, track)
+				}
+			})
 		}
 	})
 }
@@ -226,7 +348,27 @@ func seedReleaseTrackIsolation(ctx context.Context, uow port.UnitOfWork, track d
 		if err := store.SaveRevision(ctx, domain.ContractRevision{ID: revisionID, ContractID: track.ContractID}); err != nil {
 			return err
 		}
-		return store.SaveReleaseTrack(ctx, 0, track)
+		if track.Generation <= 1 {
+			return store.SaveReleaseTrack(ctx, 0, track)
+		}
+		if track.Generation != 2 || track.LastDecision == nil || !track.LastDecision.Accepted || track.CandidateRevisionID != "" {
+			return fmt.Errorf("unsupported release isolation seed: %#v", track)
+		}
+		baseline := domain.CloneReleaseTrack(track)
+		baseline.Generation = 0
+		baseline.CurrentRevisionID = ""
+		baseline.LastDecision = nil
+		if err := store.SaveReleaseTrack(ctx, 0, baseline); err != nil {
+			return err
+		}
+		candidate, changed, err := domain.ConsiderReleaseDecision(baseline, *track.LastDecision)
+		if err != nil || !changed {
+			return fmt.Errorf("derive isolation candidate: changed=%t err=%w", changed, err)
+		}
+		if err := store.SaveReleaseTrack(ctx, baseline.Generation, candidate); err != nil {
+			return err
+		}
+		return store.SaveReleaseTrack(ctx, candidate.Generation, track)
 	})
 }
 
@@ -237,8 +379,15 @@ func incrementTrackWithRetry(ctx context.Context, uow port.UnitOfWork, contractI
 			if err != nil {
 				return err
 			}
-			next := current
-			next.Generation++
+			sequence := current.Generation + 1
+			next, changed, err := domain.ConsiderReleaseDecision(current, domain.ReleaseDecision{
+				RevisionID: "concurrent-revision", ReviewID: fmt.Sprintf("concurrent-review-%04d", sequence),
+				ReviewDigest: fmt.Sprintf("%064x", sequence), Verdict: domain.VerdictFail,
+				EvaluatedAt: time.Date(2026, 7, 25, 12, 0, 0, 0, time.UTC).Add(time.Duration(sequence) * time.Second),
+			})
+			if err != nil || !changed {
+				return fmt.Errorf("derive concurrent decision: changed=%t err=%w", changed, err)
+			}
 			return store.SaveReleaseTrack(ctx, current.Generation, next)
 		})
 		if errors.Is(err, port.ErrGenerationConflict) {
