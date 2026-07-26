@@ -121,7 +121,7 @@ func syncSource(
 	trigger string,
 ) (application.SyncResult, error) {
 	service, err := application.NewSyncService(application.SyncDependencies{
-		Source: source, Parser: openapiadapter.Parser{}, UnitOfWork: store,
+		Source: source, Parser: openapiadapter.Parser{}, UnitOfWork: store, SyncRecords: store,
 		Blobs: store, Clock: wallClock{}, Cache: cacheadapter.NewMemory(),
 	})
 	if err != nil {

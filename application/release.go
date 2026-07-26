@@ -126,6 +126,9 @@ func (s *ReleaseService) Coordinate(ctx context.Context, command ReleaseCommand)
 			fmt.Errorf("release review evaluation time exceeds trusted clock skew"),
 		)
 	}
+	if err := validateAppliedExceptionsAtReleaseTime(evidence.Review.Report, now); err != nil {
+		return ReleaseResult{}, wrapError(ErrorIntegrity, "coordinate release", err)
+	}
 	decision, err := releaseDecision(evidence.Review, command.Accepted)
 	if err != nil {
 		return ReleaseResult{}, wrapError(ErrorIntegrity, "coordinate release", fmt.Errorf("identify release decision: %w", err))
@@ -186,6 +189,21 @@ func (s *ReleaseService) Coordinate(ctx context.Context, command ReleaseCommand)
 		return ReleaseResult{}, wrapError(ErrorTransaction, "coordinate release", err)
 	}
 	return ReleaseResult{Track: next}, nil
+}
+
+func validateAppliedExceptionsAtReleaseTime(report domain.ReviewReport, now time.Time) error {
+	for comparisonIndex, comparison := range report.Comparisons {
+		for exceptionIndex, exception := range comparison.Policy.AppliedExceptions {
+			if !now.Before(exception.ExpiresAt) {
+				return fmt.Errorf(
+					"applied policy exception %d in comparison %d is expired at trusted release time",
+					exceptionIndex,
+					comparisonIndex,
+				)
+			}
+		}
+	}
+	return nil
 }
 
 func releaseDecision(review domain.ContractReview, accepted bool) (domain.ReleaseDecision, error) {

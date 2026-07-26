@@ -6,8 +6,10 @@ import (
 	"encoding/hex"
 	"errors"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	"github.com/araihu/manja/application/port"
 	"github.com/araihu/manja/domain"
@@ -15,6 +17,49 @@ import (
 )
 
 type syncContextKey struct{}
+
+func TestNewSyncServiceRequiresCanonicalSyncRecordReader(t *testing.T) {
+	_, err := NewSyncService(SyncDependencies{
+		Source: &syncSourceFake{}, Parser: &syncParserFake{},
+		UnitOfWork: &testUnitOfWork{committed: newTestOperationalStore()},
+		Blobs:      newSyncBlobFake(nil), Clock: &testClock{now: time.Now()},
+	})
+	if err == nil {
+		t.Fatal("sync service accepted a missing canonical sync record reader")
+	}
+}
+
+func TestSyncUsesExplicitCanonicalReaderAfterCommit(t *testing.T) {
+	ctx := context.WithValue(context.Background(), syncContextKey{}, "canonical")
+	store := newTestOperationalStore()
+	uow := &testUnitOfWork{committed: store}
+	reader := &separateSyncRecordReader{store: store}
+	dependencies := SyncDependencies{
+		Source: &syncSourceFake{}, Parser: &syncParserFake{},
+		UnitOfWork: uow, SyncRecords: reader, Blobs: newSyncBlobFake(nil),
+		Clock: &advancingSyncClock{now: time.Date(2026, 7, 25, 13, 0, 0, 0, time.UTC), step: time.Minute},
+	}
+	service, err := NewSyncService(dependencies)
+	if err != nil {
+		t.Fatal(err)
+	}
+	command := SyncCommand{ContractID: "payments", SourceID: "source-main", Trigger: "webhook"}
+	first, err := service.Sync(ctx, command)
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := service.Sync(ctx, command)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(second.Record, first.Record) {
+		t.Fatalf("explicit reader replay = %#v, want first observation %#v", second.Record, first.Record)
+	}
+	if reader.calls != 2 {
+		t.Fatalf("canonical reader calls = %d, want 2", reader.calls)
+	}
+	assertSameContexts(t, ctx, reader.ctx)
+}
 
 func TestSyncWritesBlobBeforeAtomicOperationalState(t *testing.T) {
 	ctx := context.WithValue(context.Background(), syncContextKey{}, "sync")
@@ -27,7 +72,8 @@ func TestSyncWritesBlobBeforeAtomicOperationalState(t *testing.T) {
 	clock := &testClock{now: time.Date(2026, 7, 25, 13, 0, 0, 0, time.UTC)}
 	cache := &syncCacheFake{}
 	service, err := NewSyncService(SyncDependencies{
-		Source: source, Parser: parser, UnitOfWork: uow, Blobs: blobs, Clock: clock, Cache: cache,
+		Source: source, Parser: parser, UnitOfWork: uow, SyncRecords: uow,
+		Blobs: blobs, Clock: clock, Cache: cache,
 	})
 	if err != nil {
 		t.Fatalf("construct sync service: %v", err)
@@ -83,12 +129,14 @@ func TestSyncCommitFailureLeavesOnlyReplaySafeBlob(t *testing.T) {
 	events := []string{}
 	blobs := newSyncBlobFake(&events)
 	store := newTestOperationalStore()
+	uow := &testUnitOfWork{committed: store, failCommit: true}
 	service, err := NewSyncService(SyncDependencies{
-		Source:     &syncSourceFake{events: &events},
-		Parser:     &syncParserFake{events: &events},
-		UnitOfWork: &testUnitOfWork{committed: store, failCommit: true},
-		Blobs:      blobs,
-		Clock:      &testClock{now: time.Date(2026, 7, 25, 13, 0, 0, 0, time.UTC)},
+		Source:      &syncSourceFake{events: &events},
+		Parser:      &syncParserFake{events: &events},
+		UnitOfWork:  uow,
+		SyncRecords: uow,
+		Blobs:       blobs,
+		Clock:       &testClock{now: time.Date(2026, 7, 25, 13, 0, 0, 0, time.UTC)},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -116,9 +164,10 @@ func TestSyncPreservesCommittedResultAndAttemptsEveryCacheInvalidation(t *testin
 		"public:payments":            errors.New("public cache unavailable"),
 		"search:payments:revision-1": errors.New("search cache unavailable"),
 	}}
+	uow := &testUnitOfWork{committed: store}
 	service, err := NewSyncService(SyncDependencies{
 		Source: &syncSourceFake{}, Parser: &syncParserFake{},
-		UnitOfWork: &testUnitOfWork{committed: store}, Blobs: newSyncBlobFake(nil),
+		UnitOfWork: uow, SyncRecords: uow, Blobs: newSyncBlobFake(nil),
 		Clock: &testClock{now: time.Date(2026, 7, 25, 13, 0, 0, 0, time.UTC)}, Cache: cache,
 	})
 	if err != nil {
@@ -144,12 +193,14 @@ func TestSyncPreservesCommittedResultAndAttemptsEveryCacheInvalidation(t *testin
 func TestSyncReplayUsesStableRecordAndBlobIdentity(t *testing.T) {
 	store := newTestOperationalStore()
 	blobs := newSyncBlobFake(nil)
+	uow := &testUnitOfWork{committed: store}
 	service, err := NewSyncService(SyncDependencies{
-		Source:     &syncSourceFake{},
-		Parser:     &syncParserFake{},
-		UnitOfWork: &testUnitOfWork{committed: store},
-		Blobs:      blobs,
-		Clock:      &testClock{now: time.Date(2026, 7, 25, 13, 0, 0, 0, time.UTC)},
+		Source:      &syncSourceFake{},
+		Parser:      &syncParserFake{},
+		UnitOfWork:  uow,
+		SyncRecords: uow,
+		Blobs:       blobs,
+		Clock:       &testClock{now: time.Date(2026, 7, 25, 13, 0, 0, 0, time.UTC)},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -182,7 +233,7 @@ func TestSyncReplayWithAdvancingClockReusesDurableLogicalEvidence(t *testing.T) 
 			}
 			service, err := NewSyncService(SyncDependencies{
 				Source: &syncSourceFake{}, Parser: &syncParserFake{},
-				UnitOfWork: store, Blobs: store, Clock: clock,
+				UnitOfWork: store, SyncRecords: store, Blobs: store, Clock: clock,
 			})
 			if err != nil {
 				t.Fatal(err)
@@ -214,7 +265,7 @@ func TestSyncReplayWithAdvancingClockReusesDurableLogicalEvidence(t *testing.T) 
 			cause := errors.New("source temporarily unavailable")
 			service, err := NewSyncService(SyncDependencies{
 				Source: failingSyncSource{err: cause}, Parser: &syncParserFake{},
-				UnitOfWork: store, Blobs: store,
+				UnitOfWork: store, SyncRecords: store, Blobs: store,
 				Clock: &advancingSyncClock{
 					now:  time.Date(2026, 7, 25, 13, 0, 0, 0, time.UTC),
 					step: time.Minute,
@@ -248,14 +299,80 @@ func TestSyncReplayWithAdvancingClockReusesDurableLogicalEvidence(t *testing.T) 
 	}
 }
 
+func TestFailureReplayNormalizesUTF8AtSummaryBoundaryAcrossRestart(t *testing.T) {
+	ctx := context.Background()
+	root := t.TempDir()
+	cause := errors.New(strings.Repeat("a", 511) + "é")
+	command := SyncCommand{ContractID: "payments", SourceID: "source-main", Trigger: "webhook"}
+
+	for attempt := 0; attempt < 2; attempt++ {
+		store := storeadapter.NewFileStore(root)
+		service, err := NewSyncService(SyncDependencies{
+			Source: failingSyncSource{err: cause}, Parser: &syncParserFake{},
+			UnitOfWork: store, SyncRecords: store, Blobs: store,
+			Clock: &advancingSyncClock{
+				now:  time.Date(2026, 7, 25, 13, 0, 0, 0, time.UTC).Add(time.Duration(attempt) * time.Hour),
+				step: time.Minute,
+			},
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, err = service.Sync(ctx, command)
+		var appErr *Error
+		if !errors.As(err, &appErr) || appErr.Kind != ErrorSource || !errors.Is(err, cause) {
+			t.Fatalf("failure replay %d error = %#v, want original source error", attempt+1, err)
+		}
+	}
+
+	store := storeadapter.NewFileStore(root)
+	persisted, err := store.SyncRecord(ctx, syncRecordID(command, domain.ContractRevision{}, domain.SyncResultFailure))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !utf8.ValidString(persisted.ErrorSummary) || len(persisted.ErrorSummary) > 512 {
+		t.Fatalf("persisted error summary is not valid bounded UTF-8: %q (%d bytes)", persisted.ErrorSummary, len(persisted.ErrorSummary))
+	}
+	if persisted.ErrorSummary != strings.Repeat("a", 511) {
+		t.Fatalf("persisted boundary summary = %q, want complete-rune prefix", persisted.ErrorSummary)
+	}
+
+	changed := errors.New(strings.Repeat("a", 510) + "different")
+	service, err := NewSyncService(SyncDependencies{
+		Source: failingSyncSource{err: changed}, Parser: &syncParserFake{},
+		UnitOfWork: store, SyncRecords: store, Blobs: store,
+		Clock: &testClock{now: time.Date(2026, 7, 26, 13, 0, 0, 0, time.UTC)},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.Sync(ctx, command); err == nil {
+		t.Fatal("semantically different failure reused immutable sync identity")
+	} else {
+		var appErr *Error
+		if !errors.As(err, &appErr) || appErr.Kind != ErrorTransaction {
+			t.Fatalf("changed failure error = %#v, want transaction conflict", err)
+		}
+	}
+}
+
+func TestErrorSummaryNormalizesInvalidUTF8(t *testing.T) {
+	got := errorSummary(errors.New(string([]byte{'x', 0xff, 'y'})))
+	if got != "x\uFFFDy" || !utf8.ValidString(got) {
+		t.Fatalf("normalized summary = %q, want valid replacement form", got)
+	}
+}
+
 func TestSyncRejectsNonContentAddressedBlobIdentity(t *testing.T) {
 	store := newTestOperationalStore()
+	uow := &testUnitOfWork{committed: store}
 	service, err := NewSyncService(SyncDependencies{
-		Source:     &syncSourceFake{},
-		Parser:     &syncParserFake{},
-		UnitOfWork: &testUnitOfWork{committed: store},
-		Blobs:      invalidKeyBlobStore{},
-		Clock:      &testClock{now: time.Date(2026, 7, 25, 13, 0, 0, 0, time.UTC)},
+		Source:      &syncSourceFake{},
+		Parser:      &syncParserFake{},
+		UnitOfWork:  uow,
+		SyncRecords: uow,
+		Blobs:       invalidKeyBlobStore{},
+		Clock:       &testClock{now: time.Date(2026, 7, 25, 13, 0, 0, 0, time.UTC)},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -294,6 +411,22 @@ func (s failingSyncSource) Fetch(context.Context) (domain.SpecFile, domain.Contr
 type advancingSyncClock struct {
 	now  time.Time
 	step time.Duration
+}
+
+type separateSyncRecordReader struct {
+	store *testOperationalStore
+	ctx   context.Context
+	calls int
+}
+
+func (r *separateSyncRecordReader) SyncRecord(ctx context.Context, id string) (domain.SyncRecord, error) {
+	r.ctx = ctx
+	r.calls++
+	record, ok := r.store.syncRecords[id]
+	if !ok {
+		return domain.SyncRecord{}, errors.New("sync record not found")
+	}
+	return record, nil
 }
 
 func (c *advancingSyncClock) Now(context.Context) time.Time {

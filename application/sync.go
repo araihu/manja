@@ -8,27 +8,30 @@ import (
 	"fmt"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/araihu/manja/application/port"
 	"github.com/araihu/manja/domain"
 )
 
 type SyncDependencies struct {
-	Source     port.SourceFetcher
-	Parser     port.Parser
-	UnitOfWork port.UnitOfWork
-	Blobs      port.BlobStore
-	Clock      port.Clock
-	Cache      port.Cache
+	Source      port.SourceFetcher
+	Parser      port.Parser
+	UnitOfWork  port.UnitOfWork
+	SyncRecords port.SyncRecordReader
+	Blobs       port.BlobStore
+	Clock       port.Clock
+	Cache       port.Cache
 }
 
 type SyncService struct {
-	source     port.SourceFetcher
-	parser     port.Parser
-	unitOfWork port.UnitOfWork
-	blobs      port.BlobStore
-	clock      port.Clock
-	cache      port.Cache
+	source      port.SourceFetcher
+	parser      port.Parser
+	unitOfWork  port.UnitOfWork
+	syncRecords port.SyncRecordReader
+	blobs       port.BlobStore
+	clock       port.Clock
+	cache       port.Cache
 }
 
 type SyncCommand struct {
@@ -53,6 +56,7 @@ func NewSyncService(dependencies SyncDependencies) (*SyncService, error) {
 		{"source", dependencies.Source},
 		{"parser", dependencies.Parser},
 		{"unit of work", dependencies.UnitOfWork},
+		{"sync record reader", dependencies.SyncRecords},
 		{"blob store", dependencies.Blobs},
 		{"clock", dependencies.Clock},
 	} {
@@ -62,7 +66,7 @@ func NewSyncService(dependencies SyncDependencies) (*SyncService, error) {
 	}
 	return &SyncService{
 		source: dependencies.Source, parser: dependencies.Parser,
-		unitOfWork: dependencies.UnitOfWork, blobs: dependencies.Blobs,
+		unitOfWork: dependencies.UnitOfWork, syncRecords: dependencies.SyncRecords, blobs: dependencies.Blobs,
 		clock: dependencies.Clock, cache: dependencies.Cache,
 	}, nil
 }
@@ -113,20 +117,14 @@ func (s *SyncService) Sync(ctx context.Context, command SyncCommand) (SyncResult
 		if err := operational.SaveSyncRecord(transactionContext, record); err != nil {
 			return fmt.Errorf("save sync record: %w", err)
 		}
-		if reader, ok := operational.(port.SyncRecordReader); ok {
-			persisted, err := reader.SyncRecord(transactionContext, record.ID)
-			if err != nil {
-				return fmt.Errorf("load canonical sync evidence: %w", err)
-			}
-			if !domain.SameSyncEvidence(persisted, record) {
-				return errors.New("canonical sync evidence does not match logical replay identity")
-			}
-			record = persisted
-		}
 		return nil
 	})
 	if err != nil {
 		return SyncResult{}, wrapError(ErrorTransaction, "commit sync", err)
+	}
+	record, err = s.canonicalSyncRecord(ctx, record)
+	if err != nil {
+		return SyncResult{}, wrapError(ErrorIntegrity, "load canonical sync evidence", err)
 	}
 	result := SyncResult{Spec: spec, Revision: revision, Index: index, Record: record, BlobKey: blobKey}
 	if s.cache != nil {
@@ -172,7 +170,21 @@ func (s *SyncService) recordFailure(
 	}); err != nil {
 		return wrapError(ErrorTransaction, "record failed sync", errors.Join(cause, err))
 	}
+	if _, err := s.canonicalSyncRecord(ctx, record); err != nil {
+		return wrapError(ErrorIntegrity, "load canonical failed sync evidence", errors.Join(cause, err))
+	}
 	return wrapError(kind, operation, cause)
+}
+
+func (s *SyncService) canonicalSyncRecord(ctx context.Context, attempted domain.SyncRecord) (domain.SyncRecord, error) {
+	persisted, err := s.syncRecords.SyncRecord(ctx, attempted.ID)
+	if err != nil {
+		return domain.SyncRecord{}, err
+	}
+	if !domain.SameSyncEvidence(persisted, attempted) {
+		return domain.SyncRecord{}, errors.New("canonical sync evidence does not match logical replay identity")
+	}
+	return persisted, nil
 }
 
 func validateSyncCommand(command SyncCommand) error {
@@ -211,9 +223,13 @@ func errorSummary(err error) string {
 	if err == nil {
 		return ""
 	}
-	summary := strings.TrimSpace(err.Error())
+	summary := strings.TrimSpace(strings.ToValidUTF8(err.Error(), "\uFFFD"))
 	if len(summary) > 512 {
-		return summary[:512]
+		boundary := 512
+		for boundary > 0 && !utf8.ValidString(summary[:boundary]) {
+			boundary--
+		}
+		return summary[:boundary]
 	}
 	return summary
 }

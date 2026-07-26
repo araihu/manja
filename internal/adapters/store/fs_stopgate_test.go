@@ -198,17 +198,9 @@ func TestFileStoreMigratesAuthenticatedV3WithoutLosingAuthority(t *testing.T) {
 	}
 }
 
-func TestFileStoreLegacySchemaValidatesEveryReferencedBlobBeforeUpgrade(t *testing.T) {
+func TestFileStoreLegacySchemaValidatesAuthoritativeBlobReferencesBeforeUpgrade(t *testing.T) {
 	ctx := context.Background()
-	roles := []string{
-		"track current",
-		"publication",
-		"successful sync",
-		"review baseline",
-		"review candidate",
-		"audit",
-		"outbox",
-	}
+	roles := []string{"track current", "publication"}
 	for _, version := range []int{legacyOperationalStateVersion, decisionOperationalStateVersion} {
 		for _, role := range roles {
 			t.Run(role+"/v"+string(rune('0'+version)), func(t *testing.T) {
@@ -282,6 +274,22 @@ func TestFileStoreLegacyMigrationDiscardsUnavailableRejectedCandidate(t *testing
 			state.Publications[publicationKey("payments", "revision-current")] = core.Publication{
 				ProjectID: "payments", RevisionID: "revision-current", Public: true, Path: "/payments/stable",
 			}
+			state.SyncRecords["sync-rejected"] = core.SyncRecord{
+				ID: "sync-rejected", ProjectID: "payments", SourceID: "payments-git",
+				RevisionID: "revision-rejected", Result: core.SyncResultSuccess,
+			}
+			state.Reviews["review-untrusted"] = core.ContractReview{
+				ID: "review-untrusted", ContractID: "payments",
+				BaselineRevisionID: "revision-current", CandidateRevisionID: "revision-rejected",
+			}
+			state.AuditEvents["audit-rejected"] = core.AuditEvent{
+				ID: "audit-rejected", ContractID: "payments", TrackID: "stable",
+				RevisionID: "revision-rejected", Kind: "legacy.rejected",
+			}
+			state.Outbox["outbox-rejected"] = core.OutboxMessage{
+				ID: "outbox-rejected", ContractID: "payments", TrackID: "stable",
+				RevisionID: "revision-rejected", Topic: "legacy.rejected",
+			}
 			if err := store.publishOperationalState(ctx, state); err != nil {
 				t.Fatal(err)
 			}
@@ -300,6 +308,12 @@ func TestFileStoreLegacyMigrationDiscardsUnavailableRejectedCandidate(t *testing
 			}
 			if migrated.CurrentRevisionID != "revision-current" || migrated.CandidateRevisionID != "" || migrated.LastDecision != nil {
 				t.Fatalf("legacy migration retained unauthenticated candidate authority: %#v", migrated)
+			}
+			if _, err := restarted.ContractRevision(ctx, "payments", "revision-rejected"); err == nil {
+				t.Fatal("historical rejected candidate point read ignored missing immutable blob")
+			}
+			if _, err := restarted.ReleaseEvidence(ctx, "payments", "stable", "review-untrusted"); err == nil {
+				t.Fatal("discarded legacy review became future release authority")
 			}
 		})
 	}

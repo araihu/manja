@@ -58,11 +58,12 @@ func TestUnrelatedModuleExecutesReviewAndSync(t *testing.T) {
 	parser := &memoryParser{}
 	clock := &fixedClock{now: time.Date(2026, 7, 25, 13, 0, 0, 0, time.UTC)}
 	syncer, err := application.NewSyncService(application.SyncDependencies{
-		Source:     source,
-		Parser:     parser,
-		UnitOfWork: uow,
-		Blobs:      blobs,
-		Clock:      clock,
+		Source:      source,
+		Parser:      parser,
+		UnitOfWork:  uow,
+		SyncRecords: uow,
+		Blobs:       blobs,
+		Clock:       clock,
 	})
 	if err != nil {
 		t.Fatalf("construct sync service: %v", err)
@@ -137,6 +138,23 @@ func TestPublicContractSuitesAreUsableByUnrelatedModule(t *testing.T) {
 		return contracttest.RevisionReaderFixture{
 			Reader: reader, ContractID: "payments", RevisionID: "revision-1", Want: reader.revision,
 			Observed: func() context.Context { return reader.ctx },
+		}
+	})
+	contracttest.SyncRecordReader(t, func(testing.TB) contracttest.SyncRecordReaderFixture {
+		operational := newMemoryOperationalStore()
+		record := domain.SyncRecord{
+			ID: "sync-1", ProjectID: "payments", SourceID: "source-main",
+			Trigger: "manual", Result: domain.SyncResultFailure, ErrorSummary: "source unavailable",
+			StartedAt:  time.Date(2026, 7, 25, 12, 0, 0, 0, time.UTC),
+			FinishedAt: time.Date(2026, 7, 25, 12, 0, 1, 0, time.UTC),
+		}
+		if err := operational.SaveSyncRecord(context.Background(), record); err != nil {
+			t.Fatal(err)
+		}
+		reader := &observingMemorySyncRecordReader{delegate: &memoryUnitOfWork{store: operational}}
+		return contracttest.SyncRecordReaderFixture{
+			Reader: reader, RecordID: record.ID, Want: record,
+			Observed: func() context.Context { return reader.observed },
 		}
 	})
 
@@ -215,6 +233,16 @@ func (r *memoryRevisionReader) ContractRevision(
 }
 
 type memoryReleaseEvidenceReader struct{}
+
+type observingMemorySyncRecordReader struct {
+	delegate port.SyncRecordReader
+	observed context.Context
+}
+
+func (r *observingMemorySyncRecordReader) SyncRecord(ctx context.Context, id string) (domain.SyncRecord, error) {
+	r.observed = ctx
+	return r.delegate.SyncRecord(ctx, id)
+}
 
 func (memoryReleaseEvidenceReader) ReleaseEvidence(
 	context.Context,
@@ -304,6 +332,10 @@ type memoryUnitOfWork struct {
 	mu    sync.Mutex
 	store *memoryOperationalStore
 	blobs *memoryBlobStore
+}
+
+func (u *memoryUnitOfWork) SyncRecord(ctx context.Context, id string) (domain.SyncRecord, error) {
+	return u.store.syncRecord(ctx, id)
 }
 
 func (u *memoryUnitOfWork) Within(ctx context.Context, fn func(context.Context, port.OperationalStore) error) error {
@@ -456,7 +488,7 @@ func (s *memoryOperationalStore) SaveSyncRecord(_ context.Context, record domain
 	return nil
 }
 
-func (s *memoryOperationalStore) SyncRecord(ctx context.Context, id string) (domain.SyncRecord, error) {
+func (s *memoryOperationalStore) syncRecord(ctx context.Context, id string) (domain.SyncRecord, error) {
 	if err := ctx.Err(); err != nil {
 		return domain.SyncRecord{}, err
 	}

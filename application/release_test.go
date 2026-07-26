@@ -864,6 +864,107 @@ func TestReleaseServiceBoundsReviewTimeWithTrustedClock(t *testing.T) {
 	})
 }
 
+func TestReleaseServiceRevalidatesAppliedExceptionExpiryAtTrustedReleaseTime(t *testing.T) {
+	now := time.Date(2026, 7, 26, 14, 0, 0, 0, time.UTC)
+	for _, test := range []struct {
+		name      string
+		expiresAt time.Time
+		wantError bool
+	}{
+		{name: "expires before trusted now", expiresAt: now.Add(-time.Nanosecond), wantError: true},
+		{name: "expires at trusted now", expiresAt: now, wantError: true},
+		{name: "expires after trusted now", expiresAt: now.Add(time.Nanosecond)},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			store, evidence, command := authorizedReleaseWithAppliedException(t, test.expiresAt)
+			original := domain.CloneReleaseTrack(store.tracks["payments/stable"])
+			service, err := NewReleaseService(ReleaseDependencies{
+				Revisions: store, Evidence: &testReleaseEvidenceReader{evidence: evidence},
+				UnitOfWork: &testUnitOfWork{committed: store}, Clock: &testClock{now: now},
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			result, err := service.Coordinate(context.Background(), command)
+			if test.wantError {
+				if err == nil {
+					t.Fatal("release advanced with an exception that was not live at trusted release time")
+				}
+				if got := store.tracks["payments/stable"]; !reflect.DeepEqual(got, original) {
+					t.Fatalf("expired exception changed last-known-good track: %#v", got)
+				}
+				if len(store.publications) != 0 || len(store.auditEvents) != 0 || len(store.outbox) != 0 {
+					t.Fatal("expired exception produced release side effects")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("release with live exception: %v", err)
+			}
+			if result.Track.CurrentRevisionID != "revision-next" {
+				t.Fatalf("live exception did not advance release: %#v", result.Track)
+			}
+		})
+	}
+
+	t.Run("old review without applied exception remains valid", func(t *testing.T) {
+		store, evidence, command := authorizedReleaseFixture(t, now.Add(-365*24*time.Hour))
+		service, err := NewReleaseService(ReleaseDependencies{
+			Revisions: store, Evidence: &testReleaseEvidenceReader{evidence: evidence},
+			UnitOfWork: &testUnitOfWork{committed: store}, Clock: &testClock{now: now},
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		result, err := service.Coordinate(context.Background(), command)
+		if err != nil {
+			t.Fatalf("old review with no applied exception: %v", err)
+		}
+		if result.Track.CurrentRevisionID != "revision-next" {
+			t.Fatalf("old review did not advance: %#v", result.Track)
+		}
+	})
+}
+
+func authorizedReleaseWithAppliedException(
+	t *testing.T,
+	expiresAt time.Time,
+) (*testOperationalStore, domain.ReleaseEvidence, ReleaseCommand) {
+	t.Helper()
+	store := newTestOperationalStore()
+	store.tracks["payments/stable"] = domain.ReleaseTrack{
+		ID: "stable", ContractID: "payments", BoundRef: "refs/heads/main",
+		Mode: domain.ReleaseModeFollowing, Generation: 3, CurrentRevisionID: "revision-good",
+	}
+	review, baseline, candidate := releaseReviewWithFindingAtForTest(
+		"review-next", "payments", "revision-good", "revision-next", expiresAt.Add(-time.Hour), true,
+	)
+	persistReleaseReviewSnapshots(store, review, baseline, candidate)
+	for revisionID, revision := range store.revisions {
+		revision.SourceID = "payments-git"
+		revision.Ref = "refs/heads/main"
+		store.revisions[revisionID] = revision
+	}
+	syncRecord := domain.SyncRecord{
+		ID: "sync-next", ProjectID: "payments", SourceID: "payments-git",
+		RevisionID: "revision-next", Ref: "refs/heads/main", Result: domain.SyncResultSuccess,
+	}
+	evidence := domain.ReleaseEvidence{
+		Authorization: domain.ReleaseAuthorization{
+			ContractID: "payments", TrackID: "stable", ReviewID: review.ID, SyncRecordID: syncRecord.ID,
+			BaselineRevisionID: "revision-good", CandidateRevisionID: "revision-next",
+			SourceID: "payments-git", BoundRef: "refs/heads/main", PublicPath: "/payments/stable",
+			PolicyDigest: review.Report.PolicyDigest,
+		},
+		Review: review, SyncRecord: syncRecord,
+	}
+	command := ReleaseCommand{
+		ContractID: "payments", TrackID: "stable", RevisionID: "revision-next", Accepted: true,
+		Review: review, SyncRecord: syncRecord, PublicPath: "/caller-selected",
+	}
+	return store, evidence, command
+}
+
 func authorizedReleaseFixture(
 	t *testing.T,
 	evaluatedAt time.Time,

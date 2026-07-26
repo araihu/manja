@@ -32,6 +32,34 @@ func UnitOfWork(t *testing.T, factory UnitOfWorkFactory) {
 		}
 	})
 
+	t.Run("rejects stranded accepted following decision", func(t *testing.T) {
+		uow := factory(t)
+		ctx := markedContext(t)
+		decision := domain.ReleaseDecision{
+			RevisionID: "following-next", ReviewID: "following-review",
+			ReviewDigest: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+			Verdict:      domain.VerdictPass, Accepted: true,
+			EvaluatedAt: time.Date(2026, 7, 25, 12, 0, 0, 0, time.UTC),
+		}
+		err := uow.Within(ctx, func(ctx context.Context, store port.OperationalStore) error {
+			for _, revisionID := range []string{"following-current", "following-next"} {
+				if err := store.SaveRevision(ctx, domain.ContractRevision{
+					ID: revisionID, ContractID: "contract",
+				}); err != nil {
+					return err
+				}
+			}
+			return store.SaveReleaseTrack(ctx, 0, domain.ReleaseTrack{
+				ID: "following-stranded", ContractID: "contract", Mode: domain.ReleaseModeFollowing,
+				Generation: 1, CurrentRevisionID: "following-current",
+				CandidateRevisionID: "following-next", LastDecision: &decision,
+			})
+		})
+		if err == nil {
+			t.Fatal("accepted following decision remained stranded as a candidate")
+		}
+	})
+
 	t.Run("rollback is atomic", func(t *testing.T) {
 		uow := factory(t)
 		ctx := markedContext(t)

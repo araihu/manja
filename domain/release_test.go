@@ -81,6 +81,23 @@ func TestValidateReleaseTrackRejectsMalformedDecisionEvidence(t *testing.T) {
 	}
 }
 
+func TestValidateReleaseTrackRejectsStrandedAcceptedFollowingDecision(t *testing.T) {
+	evaluatedAt := time.Date(2026, 7, 26, 12, 0, 0, 0, time.UTC)
+	decision := ReleaseDecision{
+		RevisionID: "revision-next", ReviewID: "review-next",
+		ReviewDigest: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+		Verdict:      VerdictPass, Accepted: true, EvaluatedAt: evaluatedAt,
+	}
+	track := ReleaseTrack{
+		ID: "stable", ContractID: "payments", Mode: ReleaseModeFollowing,
+		Generation: 4, CurrentRevisionID: "revision-good",
+		CandidateRevisionID: "revision-next", LastDecision: &decision,
+	}
+	if err := ValidateReleaseTrack(track); err == nil {
+		t.Fatal("following track retained an accepted candidate without advancing current")
+	}
+}
+
 func TestValidateReleaseTrackTransitionRejectsStrippedOrSupersededEvidence(t *testing.T) {
 	evaluatedAt := time.Date(2026, 7, 25, 12, 0, 0, 0, time.UTC)
 	currentDecision := ReleaseDecision{

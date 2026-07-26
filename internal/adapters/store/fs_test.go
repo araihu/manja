@@ -36,6 +36,11 @@ type observingRevisionReader struct {
 	observed context.Context
 }
 
+type observingSyncRecordReader struct {
+	delegate port.SyncRecordReader
+	observed context.Context
+}
+
 type fixedReleaseClock struct{ now time.Time }
 
 func (c fixedReleaseClock) Now(context.Context) time.Time { return c.now }
@@ -57,6 +62,11 @@ func (r *observingRevisionReader) ContractRevision(
 ) (core.ContractRevision, error) {
 	r.observed = ctx
 	return r.delegate.ContractRevision(ctx, contractID, revisionID)
+}
+
+func (r *observingSyncRecordReader) SyncRecord(ctx context.Context, id string) (core.SyncRecord, error) {
+	r.observed = ctx
+	return r.delegate.SyncRecord(ctx, id)
 }
 
 func newStoredReleaseFixture(t *testing.T, _ *FileStore, accepted bool) storedReleaseFixture {
@@ -280,6 +290,23 @@ func TestFileStorePublicContracts(t *testing.T) {
 		reader := &observingRevisionReader{delegate: store}
 		return contracttest.RevisionReaderFixture{
 			Reader: reader, ContractID: revision.ContractID, RevisionID: revision.ID, Want: revision,
+			Observed: func() context.Context { return reader.observed },
+		}
+	})
+	contracttest.SyncRecordReader(t, func(t testing.TB) contracttest.SyncRecordReaderFixture {
+		store := NewFileStore(t.TempDir())
+		record := core.SyncRecord{
+			ID: "sync-1", ProjectID: "payments", SourceID: "source-main",
+			Trigger: "manual", Result: core.SyncResultFailure, ErrorSummary: "source unavailable",
+			StartedAt:  time.Date(2026, 7, 25, 12, 0, 0, 0, time.UTC),
+			FinishedAt: time.Date(2026, 7, 25, 12, 0, 1, 0, time.UTC),
+		}
+		if err := store.SaveSyncRecord(context.Background(), record); err != nil {
+			t.Fatalf("seed sync record reader: %v", err)
+		}
+		reader := &observingSyncRecordReader{delegate: store}
+		return contracttest.SyncRecordReaderFixture{
+			Reader: reader, RecordID: record.ID, Want: record,
 			Observed: func() context.Context { return reader.observed },
 		}
 	})

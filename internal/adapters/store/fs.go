@@ -541,7 +541,7 @@ func (s *FileStore) loadOperationalStateLocked(ctx context.Context) (operational
 			if err := validateOperationalReferences(state); err != nil {
 				return operationalState{}, err
 			}
-			if err := s.validateReferencedRevisionEvidence(ctx, state, collectLegacyRevisionReferences(state)); err != nil {
+			if err := s.validateReferencedRevisionEvidence(ctx, state, collectAuthoritativeLegacyRevisionReferences(state)); err != nil {
 				return operationalState{}, err
 			}
 			if err := s.publishCurrentOperationalState(ctx, state); err != nil {
@@ -944,6 +944,34 @@ type legacyRevisionReference struct {
 	owner      string
 }
 
+func collectAuthoritativeLegacyRevisionReferences(state operationalState) []legacyRevisionReference {
+	var references []legacyRevisionReference
+	appendReference := func(contractID, revisionID, owner string) {
+		if revisionID == "" {
+			return
+		}
+		references = append(references, legacyRevisionReference{
+			contractID: contractID,
+			revisionID: revisionID,
+			owner:      owner,
+		})
+	}
+	for key, track := range state.ReleaseTracks {
+		appendReference(track.ContractID, track.CurrentRevisionID, "release track "+key+" current")
+	}
+	for key, publication := range state.Publications {
+		if publication.Public {
+			appendReference(publication.ProjectID, publication.RevisionID, "public publication "+key)
+		}
+	}
+	for reviewID, authorization := range state.ReleaseAuthorizations {
+		appendReference(authorization.ContractID, authorization.BaselineRevisionID, "release authorization "+reviewID+" baseline")
+		appendReference(authorization.ContractID, authorization.CandidateRevisionID, "release authorization "+reviewID+" candidate")
+	}
+	sortLegacyRevisionReferences(references)
+	return references
+}
+
 func collectLegacyRevisionReferences(state operationalState) []legacyRevisionReference {
 	var references []legacyRevisionReference
 	appendReference := func(contractID, revisionID, owner string) {
@@ -978,12 +1006,16 @@ func collectLegacyRevisionReferences(state operationalState) []legacyRevisionRef
 	for key, message := range state.Outbox {
 		appendReference(message.ContractID, message.RevisionID, "outbox message "+key)
 	}
+	sortLegacyRevisionReferences(references)
+	return references
+}
+
+func sortLegacyRevisionReferences(references []legacyRevisionReference) {
 	sort.Slice(references, func(i, j int) bool {
 		left := references[i].contractID + "\x00" + references[i].revisionID + "\x00" + references[i].owner
 		right := references[j].contractID + "\x00" + references[j].revisionID + "\x00" + references[j].owner
 		return left < right
 	})
-	return references
 }
 
 func (s *FileStore) validateReferencedRevisionEvidence(

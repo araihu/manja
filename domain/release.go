@@ -268,6 +268,15 @@ func ValidateReleaseTrack(track ReleaseTrack) error {
 	if track.LastDecision.EvaluatedAt.IsZero() {
 		return fmt.Errorf("last release decision evaluation time is required")
 	}
+	if track.Mode == ReleaseModeFollowing && track.LastDecision.Accepted {
+		if track.CandidateRevisionID != "" {
+			return fmt.Errorf("accepted following release decision cannot retain a candidate")
+		}
+		if track.CurrentRevisionID != track.LastDecision.RevisionID {
+			return fmt.Errorf("release track current revision does not match last accepted decision")
+		}
+		return nil
+	}
 	if track.CandidateRevisionID != "" {
 		if track.CandidateRevisionID != track.LastDecision.RevisionID {
 			return fmt.Errorf("release track candidate does not match last decision")

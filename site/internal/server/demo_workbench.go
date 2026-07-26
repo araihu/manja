@@ -300,11 +300,12 @@ func syncDemoSpec(ctx context.Context, store *storeadapter.FileStore, cfg demoSp
 			Ref:  ref,
 			Path: demoSpecPath,
 		},
-		Parser:     openapiadapter.Parser{},
-		UnitOfWork: store,
-		Blobs:      store,
-		Cache:      cacheadapter.NewMemory(),
-		Clock:      demoClock{},
+		Parser:      openapiadapter.Parser{},
+		UnitOfWork:  store,
+		SyncRecords: store,
+		Blobs:       store,
+		Cache:       cacheadapter.NewMemory(),
+		Clock:       demoClock{},
 	})
 	if err != nil {
 		return application.SyncResult{}, err

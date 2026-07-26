@@ -204,6 +204,17 @@ type testUnitOfWork struct {
 	failCommit bool
 }
 
+func (u *testUnitOfWork) SyncRecord(ctx context.Context, id string) (domain.SyncRecord, error) {
+	if err := ctx.Err(); err != nil {
+		return domain.SyncRecord{}, err
+	}
+	record, ok := u.committed.syncRecords[id]
+	if !ok {
+		return domain.SyncRecord{}, errors.New("sync record not found")
+	}
+	return record, nil
+}
+
 func (u *testUnitOfWork) Within(ctx context.Context, callback func(context.Context, port.OperationalStore) error) error {
 	u.ctx = ctx
 	staged := u.committed.clone()
