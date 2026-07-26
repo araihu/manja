@@ -188,11 +188,18 @@ func (s *SyncService) canonicalSyncRecord(ctx context.Context, attempted domain.
 }
 
 func validateSyncCommand(command SyncCommand) error {
-	if strings.TrimSpace(command.ContractID) == "" {
-		return validationError("sync", "contract id is required")
-	}
-	if strings.TrimSpace(command.SourceID) == "" {
-		return validationError("sync", "source id is required")
+	for _, identity := range []struct {
+		name       string
+		value      string
+		allowEmpty bool
+	}{
+		{name: "contract id", value: command.ContractID},
+		{name: "source id", value: command.SourceID},
+		{name: "trigger", value: command.Trigger, allowEmpty: true},
+	} {
+		if err := domain.ValidateCanonicalIdentity(identity.name, identity.value, identity.allowEmpty); err != nil {
+			return validationError("sync", err.Error())
+		}
 	}
 	return nil
 }

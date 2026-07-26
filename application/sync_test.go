@@ -29,6 +29,52 @@ func TestNewSyncServiceRequiresCanonicalSyncRecordReader(t *testing.T) {
 	}
 }
 
+func TestSyncRejectsMalformedCommandBeforeAnyEffect(t *testing.T) {
+	invalidUTF8 := string([]byte("payments-\xff"))
+	tests := []struct {
+		name    string
+		command SyncCommand
+	}{
+		{name: "contract padding", command: SyncCommand{ContractID: " payments", SourceID: "source-main"}},
+		{name: "contract control", command: SyncCommand{ContractID: "payments\x00shadow", SourceID: "source-main"}},
+		{name: "contract invalid UTF-8", command: SyncCommand{ContractID: invalidUTF8, SourceID: "source-main"}},
+		{name: "source padding", command: SyncCommand{ContractID: "payments", SourceID: "source-main "}},
+		{name: "source control", command: SyncCommand{ContractID: "payments", SourceID: "source\nmain"}},
+		{name: "source invalid UTF-8", command: SyncCommand{ContractID: "payments", SourceID: invalidUTF8}},
+		{name: "trigger padding", command: SyncCommand{ContractID: "payments", SourceID: "source-main", Trigger: " webhook"}},
+		{name: "trigger control", command: SyncCommand{ContractID: "payments", SourceID: "source-main", Trigger: "web\thook"}},
+		{name: "trigger invalid UTF-8", command: SyncCommand{ContractID: "payments", SourceID: "source-main", Trigger: invalidUTF8}},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			events := []string{}
+			source := &syncSourceFake{events: &events}
+			parser := &syncParserFake{events: &events}
+			blobs := newSyncBlobFake(&events)
+			store := newTestOperationalStore()
+			uow := &testUnitOfWork{committed: store}
+			clock := &testClock{now: time.Date(2026, 7, 25, 13, 0, 0, 0, time.UTC)}
+			service, err := NewSyncService(SyncDependencies{
+				Source: source, Parser: parser, UnitOfWork: uow, SyncRecords: uow,
+				Blobs: blobs, Clock: clock,
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			if _, err := service.Sync(context.Background(), test.command); err == nil {
+				t.Fatal("malformed sync command was accepted")
+			}
+			if len(events) != 0 || source.ctx != nil || parser.ctx != nil || blobs.ctx != nil || uow.ctx != nil {
+				t.Fatalf("malformed command caused effects: events=%v source=%v parser=%v blob=%v uow=%v", events, source.ctx, parser.ctx, blobs.ctx, uow.ctx)
+			}
+			if len(clock.contexts) != 0 || len(store.calls) != 0 || len(blobs.data) != 0 {
+				t.Fatalf("malformed command changed dependencies: clock=%d store=%v blobs=%d", len(clock.contexts), store.calls, len(blobs.data))
+			}
+		})
+	}
+}
+
 func TestSyncUsesExplicitCanonicalReaderAfterCommit(t *testing.T) {
 	ctx := context.WithValue(context.Background(), syncContextKey{}, "canonical")
 	store := newTestOperationalStore()

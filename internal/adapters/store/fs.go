@@ -17,6 +17,7 @@ import (
 	"strings"
 	"time"
 	"unicode"
+	"unicode/utf8"
 
 	"github.com/araihu/manja/application/port"
 	"github.com/araihu/manja/domain"
@@ -128,7 +129,7 @@ func (s *FileStore) Within(ctx context.Context, callback func(context.Context, p
 }
 
 func (s *FileStore) SaveProject(ctx context.Context, project domain.Project) error {
-	if err := validateID(project.ID); err != nil {
+	if err := validateProjectIdentities(project); err != nil {
 		return err
 	}
 	return s.writeJSON(ctx, "projects", project.ID+".json", project)
@@ -145,7 +146,25 @@ func (s *FileStore) Project(ctx context.Context, id string) (domain.Project, err
 	if project.ID != id {
 		return domain.Project{}, fmt.Errorf("project lookup %q returned persisted id %q", id, project.ID)
 	}
+	if err := validateProjectIdentities(project); err != nil {
+		return domain.Project{}, fmt.Errorf("invalid persisted project: %w", err)
+	}
 	return project, nil
+}
+
+func validateProjectIdentities(project domain.Project) error {
+	if err := validateID(project.ID); err != nil {
+		return fmt.Errorf("project id: %w", err)
+	}
+	if err := validateCanonicalIdentity("project slug", project.Slug, true); err != nil {
+		return err
+	}
+	for index, sourceID := range project.SourceIDs {
+		if err := validateCanonicalIdentity(fmt.Sprintf("project source id %d", index), sourceID, false); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (s *FileStore) SaveRevision(ctx context.Context, revision domain.ContractRevision) error {
@@ -512,6 +531,9 @@ func (s *FileStore) loadOperationalStateLocked(ctx context.Context) (operational
 		return state, err
 	}
 	if err == nil {
+		if !utf8.Valid(data) {
+			return operationalState{}, fmt.Errorf("decode operational state: persisted JSON must contain valid UTF-8")
+		}
 		if err := json.Unmarshal(data, &state); err != nil {
 			return operationalState{}, fmt.Errorf("decode operational state: %w", err)
 		}
@@ -541,7 +563,7 @@ func (s *FileStore) loadOperationalStateLocked(ctx context.Context) (operational
 			if err := validateOperationalReferences(state); err != nil {
 				return operationalState{}, err
 			}
-			if err := s.validateReferencedRevisionEvidence(ctx, state, collectAuthoritativeLegacyRevisionReferences(state)); err != nil {
+			if err := s.validateReferencedRevisionEvidence(ctx, state, collectAuthoritativeRevisionReferences(state)); err != nil {
 				return operationalState{}, err
 			}
 			if err := s.publishCurrentOperationalState(ctx, state); err != nil {
@@ -569,7 +591,7 @@ func (s *FileStore) loadOperationalStateLocked(ctx context.Context) (operational
 			if err := validateOperationalReferences(state); err != nil {
 				return operationalState{}, err
 			}
-			if err := s.validateReferencedRevisionEvidence(ctx, state, collectLegacyRevisionReferences(state)); err != nil {
+			if err := s.validateReferencedRevisionEvidence(ctx, state, collectAuthoritativeRevisionReferences(state)); err != nil {
 				return operationalState{}, err
 			}
 			if err := s.publishCurrentOperationalState(ctx, state); err != nil {
@@ -623,6 +645,9 @@ func (s *FileStore) loadOperationalStateLocked(ctx context.Context) (operational
 	}
 	if len(state.Revisions) == 0 && len(state.Publications) == 0 && len(state.SyncRecords) == 0 {
 		return state, nil
+	}
+	if err := reconcileLegacyPublications(&state); err != nil {
+		return operationalState{}, fmt.Errorf("reconcile legacy public paths: %w", err)
 	}
 	if err := bindLegacyOperationalRevisionOwners(&state); err != nil {
 		return operationalState{}, fmt.Errorf("migrate legacy revision ownership: %w", err)
@@ -684,6 +709,9 @@ func (s *FileStore) loadOperationalSchemaMarker(ctx context.Context) (operationa
 	}
 	if err != nil {
 		return operationalSchemaMarker{}, false, err
+	}
+	if !utf8.Valid(data) {
+		return operationalSchemaMarker{}, false, fmt.Errorf("decode operational schema marker: persisted JSON must contain valid UTF-8")
 	}
 	var marker operationalSchemaMarker
 	if err := json.Unmarshal(data, &marker); err != nil {
@@ -944,7 +972,7 @@ type legacyRevisionReference struct {
 	owner      string
 }
 
-func collectAuthoritativeLegacyRevisionReferences(state operationalState) []legacyRevisionReference {
+func collectAuthoritativeRevisionReferences(state operationalState) []legacyRevisionReference {
 	var references []legacyRevisionReference
 	appendReference := func(contractID, revisionID, owner string) {
 		if revisionID == "" {
@@ -967,44 +995,6 @@ func collectAuthoritativeLegacyRevisionReferences(state operationalState) []lega
 	for reviewID, authorization := range state.ReleaseAuthorizations {
 		appendReference(authorization.ContractID, authorization.BaselineRevisionID, "release authorization "+reviewID+" baseline")
 		appendReference(authorization.ContractID, authorization.CandidateRevisionID, "release authorization "+reviewID+" candidate")
-	}
-	sortLegacyRevisionReferences(references)
-	return references
-}
-
-func collectLegacyRevisionReferences(state operationalState) []legacyRevisionReference {
-	var references []legacyRevisionReference
-	appendReference := func(contractID, revisionID, owner string) {
-		if revisionID == "" {
-			return
-		}
-		references = append(references, legacyRevisionReference{
-			contractID: contractID,
-			revisionID: revisionID,
-			owner:      owner,
-		})
-	}
-	for key, track := range state.ReleaseTracks {
-		appendReference(track.ContractID, track.CurrentRevisionID, "release track "+key+" current")
-		appendReference(track.ContractID, track.CandidateRevisionID, "release track "+key+" candidate")
-	}
-	for key, publication := range state.Publications {
-		appendReference(publication.ProjectID, publication.RevisionID, "publication "+key)
-	}
-	for key, record := range state.SyncRecords {
-		if record.Result == domain.SyncResultSuccess {
-			appendReference(record.ProjectID, record.RevisionID, "sync record "+key)
-		}
-	}
-	for key, review := range state.Reviews {
-		appendReference(review.ContractID, review.BaselineRevisionID, "review "+key+" baseline")
-		appendReference(review.ContractID, review.CandidateRevisionID, "review "+key+" candidate")
-	}
-	for key, event := range state.AuditEvents {
-		appendReference(event.ContractID, event.RevisionID, "audit event "+key)
-	}
-	for key, message := range state.Outbox {
-		appendReference(message.ContractID, message.RevisionID, "outbox message "+key)
 	}
 	sortLegacyRevisionReferences(references)
 	return references
@@ -1120,6 +1110,9 @@ func (s *FileStore) readJSON(ctx context.Context, namespace, name string, value 
 	if err != nil {
 		return err
 	}
+	if !utf8.Valid(data) {
+		return fmt.Errorf("decode persisted %s record: JSON must contain valid UTF-8", namespace)
+	}
 	return json.Unmarshal(data, value)
 }
 
@@ -1160,6 +1153,7 @@ func (t *operationalTransaction) SaveRevision(ctx context.Context, revision doma
 		{"revision contract id", revision.ContractID},
 		{"revision source id", revision.SourceID},
 		{"revision ref", revision.Ref},
+		{"revision commit sha", revision.CommitSHA},
 	} {
 		if err := validateCanonicalIdentity(identity.name, identity.value, true); err != nil {
 			return err
@@ -1283,7 +1277,10 @@ func (t *operationalTransaction) SaveSyncRecord(ctx context.Context, record doma
 		{"sync project id", record.ProjectID},
 		{"sync source id", record.SourceID},
 		{"sync revision id", record.RevisionID},
+		{"sync trigger", record.Trigger},
 		{"sync ref", record.Ref},
+		{"sync commit sha", record.CommitSHA},
+		{"sync spec path", record.SpecPath},
 	} {
 		if err := validateCanonicalIdentity(identity.name, identity.value, true); err != nil {
 			return err
@@ -1433,6 +1430,9 @@ func (t *operationalTransaction) SavePublication(ctx context.Context, publicatio
 	if err := validatePublicPath(publication.Path); err != nil {
 		return err
 	}
+	if err := validateCanonicalIdentity("publication hostname", publication.Hostname, true); err != nil {
+		return err
+	}
 	key := publicationKey(publication.ProjectID, publication.RevisionID)
 	if err := t.bindRevisionOwner(publication.ProjectID, publication.RevisionID, "publication "+key); err != nil {
 		return err
@@ -1465,6 +1465,7 @@ func (t *operationalTransaction) AppendAuditEvent(ctx context.Context, event dom
 		{"audit track id", event.TrackID},
 		{"audit revision id", event.RevisionID},
 		{"audit actor id", event.ActorID},
+		{"audit kind", event.Kind},
 	} {
 		if err := validateCanonicalIdentity(identity.name, identity.value, true); err != nil {
 			return err
@@ -1503,6 +1504,7 @@ func (t *operationalTransaction) Enqueue(ctx context.Context, message domain.Out
 		{"outbox contract id", message.ContractID},
 		{"outbox track id", message.TrackID},
 		{"outbox revision id", message.RevisionID},
+		{"outbox topic", message.Topic},
 	} {
 		if err := validateCanonicalIdentity(identity.name, identity.value, true); err != nil {
 			return err
@@ -1909,6 +1911,9 @@ func migrateOperationalStateToCurrent(state *operationalState) error {
 	default:
 		return fmt.Errorf("cannot migrate operational state version %d", state.Version)
 	}
+	if err := reconcileLegacyPublications(state); err != nil {
+		return err
+	}
 	if err := bindLegacyOperationalRevisionOwners(state); err != nil {
 		return fmt.Errorf("migrate legacy revision ownership: %w", err)
 	}
@@ -1916,6 +1921,55 @@ func migrateOperationalStateToCurrent(state *operationalState) error {
 		return fmt.Errorf("migrate contract-scoped revisions: %w", err)
 	}
 	state.Version = operationalStateVersion
+	return nil
+}
+
+// reconcileLegacyPublications resolves a legacy duplicate public path only
+// when the persisted release-track current revision proves one unique
+// last-known-good winner. Publication records have no chronology of their own,
+// so absence of a unique current winner is an ambiguous, recoverable error.
+func reconcileLegacyPublications(state *operationalState) error {
+	currentPublications := make(map[string]struct{}, len(state.ReleaseTracks))
+	for _, track := range state.ReleaseTracks {
+		if track.CurrentRevisionID != "" {
+			currentPublications[publicationKey(track.ContractID, track.CurrentRevisionID)] = struct{}{}
+		}
+	}
+	paths := make(map[string][]string)
+	for key, publication := range state.Publications {
+		if publication.Public {
+			paths[publication.Path] = append(paths[publication.Path], key)
+		}
+	}
+	pathNames := make([]string, 0, len(paths))
+	for publicPath := range paths {
+		pathNames = append(pathNames, publicPath)
+	}
+	sort.Strings(pathNames)
+	for _, publicPath := range pathNames {
+		keys := paths[publicPath]
+		if len(keys) < 2 {
+			continue
+		}
+		sort.Strings(keys)
+		winners := make([]string, 0, 1)
+		for _, key := range keys {
+			if _, ok := currentPublications[key]; ok {
+				winners = append(winners, key)
+			}
+		}
+		if len(winners) != 1 {
+			return fmt.Errorf("legacy public path %q has no unique last-known-good publication", publicPath)
+		}
+		for _, key := range keys {
+			if key == winners[0] {
+				continue
+			}
+			publication := state.Publications[key]
+			publication.Public = false
+			state.Publications[key] = publication
+		}
+	}
 	return nil
 }
 
@@ -2029,6 +2083,9 @@ func validateOperationalReferences(state operationalState) error {
 	if err := validatePersistedOperationalIdentities(state); err != nil {
 		return err
 	}
+	if err := validateUniquePublicPaths(state.Publications); err != nil {
+		return err
+	}
 	for key, revision := range state.Revisions {
 		if key != revisionStorageKey(revision) {
 			return fmt.Errorf("revision key %q does not match revision identity", key)
@@ -2120,6 +2177,26 @@ func validateOperationalReferences(state operationalState) error {
 	return validateReleaseEvidenceAuthorities(state)
 }
 
+func validateUniquePublicPaths(publications map[string]domain.Publication) error {
+	keys := make([]string, 0, len(publications))
+	for key := range publications {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	owners := make(map[string]string)
+	for _, key := range keys {
+		publication := publications[key]
+		if !publication.Public {
+			continue
+		}
+		if owner, exists := owners[publication.Path]; exists {
+			return fmt.Errorf("public path %q is claimed by both %q and %q", publication.Path, owner, key)
+		}
+		owners[publication.Path] = key
+	}
+	return nil
+}
+
 func validatePersistedOperationalIdentities(state operationalState) error {
 	for _, revision := range state.Revisions {
 		if err := validateID(revision.ID); err != nil {
@@ -2132,6 +2209,7 @@ func validatePersistedOperationalIdentities(state operationalState) error {
 			{"persisted revision contract id", revision.ContractID},
 			{"persisted revision source id", revision.SourceID},
 			{"persisted revision ref", revision.Ref},
+			{"persisted revision commit sha", revision.CommitSHA},
 		} {
 			if err := validateCanonicalIdentity(identity.name, identity.value, true); err != nil {
 				return err
@@ -2154,8 +2232,16 @@ func validatePersistedOperationalIdentities(state operationalState) error {
 				return err
 			}
 		}
-		if containsControlCharacter(review.Report.ContractID) || containsControlCharacter(review.Report.EngineVersion) {
-			return fmt.Errorf("persisted review report identity must not contain control characters")
+		for _, identity := range []struct {
+			name  string
+			value string
+		}{
+			{"persisted review report contract id", review.Report.ContractID},
+			{"persisted review report engine version", review.Report.EngineVersion},
+		} {
+			if err := validateCanonicalIdentity(identity.name, identity.value, true); err != nil {
+				return err
+			}
 		}
 	}
 	for _, record := range state.SyncRecords {
@@ -2169,7 +2255,10 @@ func validatePersistedOperationalIdentities(state operationalState) error {
 			{"persisted sync project id", record.ProjectID},
 			{"persisted sync source id", record.SourceID},
 			{"persisted sync revision id", record.RevisionID},
+			{"persisted sync trigger", record.Trigger},
 			{"persisted sync ref", record.Ref},
+			{"persisted sync commit sha", record.CommitSHA},
+			{"persisted sync spec path", record.SpecPath},
 		} {
 			if err := validateCanonicalIdentity(identity.name, identity.value, true); err != nil {
 				return err
@@ -2186,6 +2275,9 @@ func validatePersistedOperationalIdentities(state operationalState) error {
 		if err := validatePublicPath(publication.Path); err != nil {
 			return fmt.Errorf("persisted publication path: %w", err)
 		}
+		if err := validateCanonicalIdentity("persisted publication hostname", publication.Hostname, true); err != nil {
+			return err
+		}
 	}
 	for _, event := range state.AuditEvents {
 		if err := validateID(event.ID); err != nil {
@@ -2199,6 +2291,7 @@ func validatePersistedOperationalIdentities(state operationalState) error {
 			{"persisted audit track id", event.TrackID},
 			{"persisted audit revision id", event.RevisionID},
 			{"persisted audit actor id", event.ActorID},
+			{"persisted audit kind", event.Kind},
 		} {
 			if err := validateCanonicalIdentity(identity.name, identity.value, true); err != nil {
 				return err
@@ -2216,6 +2309,7 @@ func validatePersistedOperationalIdentities(state operationalState) error {
 			{"persisted outbox contract id", message.ContractID},
 			{"persisted outbox track id", message.TrackID},
 			{"persisted outbox revision id", message.RevisionID},
+			{"persisted outbox topic", message.Topic},
 		} {
 			if err := validateCanonicalIdentity(identity.name, identity.value, true); err != nil {
 				return err
@@ -2386,6 +2480,9 @@ func durableAtomicWriteWithConfirmation(
 }
 
 func validateID(id string) error {
+	if !utf8.ValidString(id) {
+		return fmt.Errorf("identity must contain valid UTF-8")
+	}
 	if id != strings.TrimSpace(id) {
 		return fmt.Errorf("identity must not contain leading or trailing whitespace")
 	}
@@ -2402,19 +2499,7 @@ func validateID(id string) error {
 }
 
 func validateCanonicalIdentity(name, value string, allowEmpty bool) error {
-	if value == "" {
-		if allowEmpty {
-			return nil
-		}
-		return fmt.Errorf("%s is required", name)
-	}
-	if value != strings.TrimSpace(value) {
-		return fmt.Errorf("%s must not contain leading or trailing whitespace", name)
-	}
-	if containsControlCharacter(value) {
-		return fmt.Errorf("%s must not contain control characters", name)
-	}
-	return nil
+	return domain.ValidateCanonicalIdentity(name, value, allowEmpty)
 }
 
 func immutableRecordsEqual(left, right any) (bool, error) {
@@ -2443,6 +2528,7 @@ func cloneImmutableRecord[T any](value T) (T, error) {
 
 func validatePublicPath(publicPath string) error {
 	if publicPath == "" ||
+		!utf8.ValidString(publicPath) ||
 		publicPath != strings.TrimSpace(publicPath) ||
 		!strings.HasPrefix(publicPath, "/") ||
 		strings.Contains(publicPath, `\`) ||

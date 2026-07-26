@@ -6,6 +6,7 @@ import (
 	"reflect"
 	"strings"
 	"time"
+	"unicode/utf8"
 )
 
 type ReleaseMode string
@@ -81,6 +82,7 @@ func ValidateReleaseAuthorization(authorization ReleaseAuthorization) error {
 		}
 	}
 	if authorization.PublicPath == "" ||
+		!utf8.ValidString(authorization.PublicPath) ||
 		authorization.PublicPath != strings.TrimSpace(authorization.PublicPath) ||
 		!strings.HasPrefix(authorization.PublicPath, "/") ||
 		strings.Contains(authorization.PublicPath, `\`) ||

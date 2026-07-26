@@ -4,9 +4,17 @@ import (
 	"fmt"
 	"strings"
 	"unicode"
+	"unicode/utf8"
 )
 
-func validateCanonicalIdentity(name, value string, allowEmpty bool) error {
+// ValidateCanonicalIdentity rejects identities that cannot round-trip through
+// deterministic UTF-8 persistence or that rely on whitespace/control-byte
+// normalization. Provider-neutral application boundaries may use the same
+// rule as domain validators before causing external effects.
+func ValidateCanonicalIdentity(name, value string, allowEmpty bool) error {
+	if !utf8.ValidString(value) {
+		return fmt.Errorf("%s must contain valid UTF-8", name)
+	}
 	if value == "" {
 		if allowEmpty {
 			return nil
@@ -22,6 +30,10 @@ func validateCanonicalIdentity(name, value string, allowEmpty bool) error {
 		}
 	}
 	return nil
+}
+
+func validateCanonicalIdentity(name, value string, allowEmpty bool) error {
+	return ValidateCanonicalIdentity(name, value, allowEmpty)
 }
 
 func containsControlCharacter(value string) bool {

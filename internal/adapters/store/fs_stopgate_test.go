@@ -10,6 +10,7 @@ import (
 	"reflect"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	"github.com/araihu/manja/application/port"
 	core "github.com/araihu/manja/domain"
@@ -195,6 +196,263 @@ func TestFileStoreMigratesAuthenticatedV3WithoutLosingAuthority(t *testing.T) {
 	}
 	if state := readOperationalStateJSON(t, root); state["version"] != float64(operationalStateVersion) {
 		t.Fatalf("migrated authenticated state version = %#v", state["version"])
+	}
+}
+
+func TestFileStoreAuthenticatedV3MigrationIgnoresUnavailableNonAuthoritativeSyncHistory(t *testing.T) {
+	ctx := context.Background()
+	root := t.TempDir()
+	store := NewFileStore(root)
+	currentKey, err := store.Put(ctx, []byte("healthy last-known-good"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	missingHistoricalKey := port.ContentAddressedBlobKey([]byte("missing historical sync blob"))
+	state := newOperationalState()
+	state.Version = authenticatedStateVersion
+	state.Revisions["revision-current"] = core.ContractRevision{
+		ID: "revision-current", ContractID: "payments", SpecBlobKey: string(currentKey),
+	}
+	state.Revisions["revision-historical"] = core.ContractRevision{
+		ID: "revision-historical", ContractID: "payments", SpecBlobKey: string(missingHistoricalKey),
+	}
+	track := core.ReleaseTrack{
+		ID: "stable", ContractID: "payments", Mode: core.ReleaseModePinned,
+		CurrentRevisionID: "revision-current", Generation: 4,
+	}
+	trackKey := releaseTrackKey(track.ContractID, track.ID)
+	state.ReleaseTracks[trackKey] = track
+	state.ReleaseTrackAuthorities[trackKey] = newReleaseTrackAuthority(track)
+	state.Publications[publicationKey("payments", "revision-current")] = core.Publication{
+		ProjectID: "payments", RevisionID: "revision-current", Public: true, Path: "/payments/stable",
+	}
+	state.SyncRecords["sync-historical"] = core.SyncRecord{
+		ID: "sync-historical", ProjectID: "payments", SourceID: "payments-git",
+		RevisionID: "revision-historical", Result: core.SyncResultSuccess,
+	}
+	if err := store.publishOperationalState(ctx, state); err != nil {
+		t.Fatal(err)
+	}
+
+	restarted := NewFileStore(root)
+	publication, err := restarted.PublicPublicationByPath(ctx, "/payments/stable")
+	if err != nil {
+		t.Fatalf("non-authoritative sync history blocked last-known-good migration: %v", err)
+	}
+	if publication.RevisionID != "revision-current" {
+		t.Fatalf("public revision = %q, want revision-current", publication.RevisionID)
+	}
+	if _, err := restarted.ContractRevision(ctx, "payments", "revision-historical"); err == nil {
+		t.Fatal("historical revision point read ignored its missing blob")
+	}
+	migrated := readOperationalStateJSON(t, root)
+	if migrated["version"] != float64(operationalStateVersion) {
+		t.Fatalf("migrated state version = %#v", migrated["version"])
+	}
+}
+
+func TestFileStoreLegacyMigrationReconcilesDuplicatePublicPathToTrackCurrent(t *testing.T) {
+	ctx := context.Background()
+	for _, version := range []int{legacyOperationalStateVersion, decisionOperationalStateVersion, authenticatedStateVersion} {
+		for _, order := range []string{"forward", "reverse"} {
+			t.Run("v"+string(rune('0'+version))+"/"+order, func(t *testing.T) {
+				root := t.TempDir()
+				store := NewFileStore(root)
+				state := duplicateLegacyPublicPathState(t, ctx, store, version, order)
+				if err := store.publishOperationalState(ctx, state); err != nil {
+					t.Fatal(err)
+				}
+
+				restarted := NewFileStore(root)
+				for attempt := 0; attempt < 32; attempt++ {
+					publication, err := restarted.PublicPublicationByPath(ctx, "/payments")
+					if err != nil {
+						t.Fatalf("read reconciled public path: %v", err)
+					}
+					if publication.RevisionID != "rev-b" {
+						t.Fatalf("public path selected %q, want track current rev-b", publication.RevisionID)
+					}
+					restarted = NewFileStore(root)
+				}
+				migrated, err := restarted.loadOperationalState(ctx)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if migrated.Publications[publicationKey("payments", "rev-a")].Public {
+					t.Fatal("legacy migration left losing publication public")
+				}
+				if !migrated.Publications[publicationKey("payments", "rev-b")].Public {
+					t.Fatal("legacy migration demoted demonstrable last-known-good publication")
+				}
+			})
+		}
+	}
+}
+
+func TestFileStoreLegacyMigrationRejectsAmbiguousDuplicatePublicPathRecoverably(t *testing.T) {
+	ctx := context.Background()
+	root := t.TempDir()
+	store := NewFileStore(root)
+	state := newOperationalState()
+	state.Version = authenticatedStateVersion
+	state.Revisions["rev-a"] = core.ContractRevision{ID: "rev-a", ContractID: "payments"}
+	state.Revisions["rev-b"] = core.ContractRevision{ID: "rev-b", ContractID: "payments"}
+	state.Publications[publicationKey("payments", "rev-a")] = core.Publication{
+		ProjectID: "payments", RevisionID: "rev-a", Public: true, Path: "/payments",
+	}
+	state.Publications[publicationKey("payments", "rev-b")] = core.Publication{
+		ProjectID: "payments", RevisionID: "rev-b", Public: true, Path: "/payments",
+	}
+	if err := store.publishOperationalState(ctx, state); err != nil {
+		t.Fatal(err)
+	}
+	before, err := os.ReadFile(filepath.Join(root, "operational", "state.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := NewFileStore(root).PublicPublicationByPath(ctx, "/payments"); err == nil {
+		t.Fatal("ambiguous legacy public path was selected by map iteration")
+	}
+	after, err := os.ReadFile(filepath.Join(root, "operational", "state.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(before, after) {
+		t.Fatal("failed duplicate-path migration changed recoverable legacy state")
+	}
+	if _, err := os.Stat(filepath.Join(root, "operational", "schema.json")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("failed duplicate-path migration published a schema marker: %v", err)
+	}
+}
+
+func duplicateLegacyPublicPathState(
+	t *testing.T,
+	ctx context.Context,
+	store *FileStore,
+	version int,
+	order string,
+) operationalState {
+	t.Helper()
+	state := newOperationalState()
+	state.Version = version
+	for _, revisionID := range []string{"rev-a", "rev-b"} {
+		key, err := store.Put(ctx, []byte("spec "+revisionID))
+		if err != nil {
+			t.Fatal(err)
+		}
+		state.Revisions[revisionID] = core.ContractRevision{
+			ID: revisionID, ContractID: "payments", SpecBlobKey: string(key),
+		}
+	}
+	track := core.ReleaseTrack{
+		ID: "stable", ContractID: "payments", Mode: core.ReleaseModePinned,
+		CurrentRevisionID: "rev-b", Generation: 9,
+	}
+	trackKey := releaseTrackKey(track.ContractID, track.ID)
+	state.ReleaseTracks[trackKey] = track
+	if version == authenticatedStateVersion {
+		state.ReleaseTrackAuthorities[trackKey] = newReleaseTrackAuthority(track)
+	}
+	publications := []core.Publication{
+		{ProjectID: "payments", RevisionID: "rev-a", Public: true, Path: "/payments"},
+		{ProjectID: "payments", RevisionID: "rev-b", Public: true, Path: "/payments"},
+	}
+	if order == "reverse" {
+		publications[0], publications[1] = publications[1], publications[0]
+	}
+	for _, publication := range publications {
+		state.Publications[publicationKey(publication.ProjectID, publication.RevisionID)] = publication
+	}
+	return state
+}
+
+func TestFileStoreRejectsInvalidUTF8BeforeCommitAndWhileLoadingState(t *testing.T) {
+	ctx := context.Background()
+	invalidIdentities := []string{
+		string([]byte("payments-\xff")),
+		string([]byte("payments-\xfe")),
+	}
+	for _, identity := range invalidIdentities {
+		if utf8.ValidString(identity) {
+			t.Fatal("test identity unexpectedly contains valid UTF-8")
+		}
+		for name, operation := range map[string]func(*FileStore) error{
+			"project id": func(store *FileStore) error {
+				return store.SaveProject(ctx, core.Project{ID: identity})
+			},
+			"project source id": func(store *FileStore) error {
+				return store.SaveProject(ctx, core.Project{ID: "payments", SourceIDs: []string{identity}})
+			},
+			"revision id": func(store *FileStore) error {
+				return store.SaveRevision(ctx, core.ContractRevision{ID: identity, ContractID: "payments"})
+			},
+			"revision contract id": func(store *FileStore) error {
+				return store.SaveRevision(ctx, core.ContractRevision{ID: "revision", ContractID: identity})
+			},
+			"revision source id": func(store *FileStore) error {
+				return store.SaveRevision(ctx, core.ContractRevision{ID: "revision", ContractID: "payments", SourceID: identity})
+			},
+			"revision ref": func(store *FileStore) error {
+				return store.SaveRevision(ctx, core.ContractRevision{ID: "revision", ContractID: "payments", Ref: identity})
+			},
+			"sync id": func(store *FileStore) error {
+				return store.SaveSyncRecord(ctx, core.SyncRecord{ID: identity, ProjectID: "payments"})
+			},
+			"sync project id": func(store *FileStore) error {
+				return store.SaveSyncRecord(ctx, core.SyncRecord{ID: "sync", ProjectID: identity})
+			},
+			"sync source id": func(store *FileStore) error {
+				return store.SaveSyncRecord(ctx, core.SyncRecord{ID: "sync", ProjectID: "payments", SourceID: identity})
+			},
+			"sync revision id": func(store *FileStore) error {
+				return store.SaveSyncRecord(ctx, core.SyncRecord{ID: "sync", ProjectID: "payments", RevisionID: identity})
+			},
+			"sync trigger": func(store *FileStore) error {
+				return store.SaveSyncRecord(ctx, core.SyncRecord{ID: "sync", ProjectID: "payments", Trigger: identity})
+			},
+			"sync ref": func(store *FileStore) error {
+				return store.SaveSyncRecord(ctx, core.SyncRecord{ID: "sync", ProjectID: "payments", Ref: identity})
+			},
+			"sync commit": func(store *FileStore) error {
+				return store.SaveSyncRecord(ctx, core.SyncRecord{ID: "sync", ProjectID: "payments", CommitSHA: identity})
+			},
+		} {
+			t.Run(name, func(t *testing.T) {
+				root := t.TempDir()
+				if err := operation(NewFileStore(root)); err == nil {
+					t.Fatal("invalid UTF-8 identity reached durable persistence")
+				}
+				if _, err := os.Stat(filepath.Join(root, "operational", "state.json")); !errors.Is(err, os.ErrNotExist) {
+					t.Fatalf("rejected invalid identity persisted operational state: %v", err)
+				}
+			})
+		}
+	}
+
+	root := t.TempDir()
+	state := newOperationalState()
+	state.Version = operationalStateVersion
+	for _, contractID := range []string{"payments-X", "payments-Y"} {
+		revision := core.ContractRevision{ID: "revision", ContractID: contractID}
+		state.Revisions[revisionStorageKey(revision)] = revision
+	}
+	encoded, err := json.MarshalIndent(state, "", "  ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	encoded = bytes.ReplaceAll(encoded, []byte("payments-X"), []byte("payments-\xff"))
+	encoded = bytes.ReplaceAll(encoded, []byte("payments-Y"), []byte("payments-\xfe"))
+	if utf8.Valid(encoded) {
+		t.Fatal("crafted operational snapshot unexpectedly contains valid UTF-8")
+	}
+	if err := os.MkdirAll(filepath.Join(root, "operational"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := durableAtomicWrite(filepath.Join(root, "operational", "state.json"), append(encoded, '\n'), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := NewFileStore(root).loadOperationalState(ctx); err == nil {
+		t.Fatal("invalid UTF-8 snapshot was normalized into colliding persisted identities")
 	}
 }
 
