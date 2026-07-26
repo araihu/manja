@@ -198,8 +198,8 @@ func normalizedRepositoryLayer(layer PolicyLayer) (PolicyLayer, error) {
 }
 
 func validateLayer(layer PolicyLayer) error {
-	if strings.TrimSpace(layer.Name) == "" {
-		return fmt.Errorf("name is required")
+	if err := validateCanonicalIdentity("name", layer.Name, false); err != nil {
+		return err
 	}
 	if layer.Source != PolicySourceRepository && layer.Source != PolicySourceServer {
 		return fmt.Errorf("source %q is invalid", layer.Source)

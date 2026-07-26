@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"reflect"
 	"sort"
-	"strings"
 	"time"
 )
 
@@ -135,8 +134,11 @@ func validateReleaseReviewReport(report ReviewReport, contractID string, baselin
 	if report.ContractID != contractID {
 		return EffectivePolicy{}, ComparisonReport{}, fmt.Errorf("review contract id %q does not match release contract id %q", report.ContractID, contractID)
 	}
-	if strings.TrimSpace(report.EngineVersion) == "" {
-		return EffectivePolicy{}, ComparisonReport{}, fmt.Errorf("review engine version is required")
+	if err := validateCanonicalIdentity("review contract id", report.ContractID, false); err != nil {
+		return EffectivePolicy{}, ComparisonReport{}, err
+	}
+	if err := validateCanonicalIdentity("review engine version", report.EngineVersion, false); err != nil {
+		return EffectivePolicy{}, ComparisonReport{}, err
 	}
 	if report.EvaluatedAt.IsZero() {
 		return EffectivePolicy{}, ComparisonReport{}, fmt.Errorf("review evaluation time is required")
@@ -229,8 +231,8 @@ func validateExpectedSnapshotRef(role string, actual, expected SnapshotRef) erro
 }
 
 func validateSnapshotRef(role string, ref SnapshotRef) error {
-	if strings.TrimSpace(ref.RevisionID) == "" {
-		return fmt.Errorf("review %s revision id is required", role)
+	if err := validateCanonicalIdentity("review "+role+" revision id", ref.RevisionID, false); err != nil {
+		return err
 	}
 	if !isLowerSHA256(ref.SpecDigest) {
 		return fmt.Errorf("review %s spec digest must be lowercase SHA-256", role)
@@ -306,6 +308,9 @@ func EvaluateReview(request ReviewRequest) (ReviewReport, error) {
 }
 
 func validateReviewRequest(request ReviewRequest) error {
+	if err := validateCanonicalIdentity("review contract id", request.ContractID, false); err != nil {
+		return err
+	}
 	if request.Target.ContractID != request.ContractID {
 		return fmt.Errorf("target contract id %q does not match review contract id %q", request.Target.ContractID, request.ContractID)
 	}
@@ -318,8 +323,8 @@ func validateReviewRequest(request ReviewRequest) error {
 	if request.EvaluatedAt.IsZero() {
 		return fmt.Errorf("evaluation time is required")
 	}
-	if strings.TrimSpace(request.EngineVersion) == "" {
-		return fmt.Errorf("engine version is required")
+	if err := validateCanonicalIdentity("engine version", request.EngineVersion, false); err != nil {
+		return err
 	}
 	return nil
 }

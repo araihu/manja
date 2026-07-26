@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"reflect"
 	"strings"
 	"sync"
 	"testing"
@@ -43,6 +44,61 @@ func TestContractSuitesRejectBrokenAdapters(t *testing.T) {
 	}
 }
 
+func TestAuthenticatedUnitOfWorkCapabilityBoundaryIsExplicit(t *testing.T) {
+	command := exec.Command(os.Args[0], "-test.run=^TestAuthenticatedUnitOfWorkCapabilityHelper$", "-test.v")
+	command.Env = append(os.Environ(), "MANJA_CONTRACTTEST_AUTHENTICATED_HELPER=1")
+	output, err := command.CombinedOutput()
+	if err != nil {
+		t.Fatalf("authenticated conformance helper failed: %v\n%s", err, output)
+	}
+	text := string(output)
+	if !strings.Contains(text, "authenticated release authority adapters use ReleaseAuthorityUnitOfWork") ||
+		!strings.Contains(text, "SKIP") {
+		t.Fatalf("authenticated capability checks were silently bypassed\n%s", output)
+	}
+}
+
+func TestAuthenticatedUnitOfWorkCapabilityHelper(t *testing.T) {
+	if os.Getenv("MANJA_CONTRACTTEST_AUTHENTICATED_HELPER") == "" {
+		t.Skip("subprocess helper")
+	}
+	UnitOfWork(t, func(testing.TB) port.UnitOfWork {
+		return &authenticatedTestUnitOfWork{testUnitOfWork: newTestUnitOfWork("")}
+	})
+}
+
+func TestReleaseAuthoritySuiteRejectsShallowChangedSave(t *testing.T) {
+	command := exec.Command(
+		os.Args[0],
+		"-test.run=^TestBrokenReleaseAuthoritySaveIsolation/nested_release_state_is_isolated_on_read_and_save$",
+		"-test.v",
+	)
+	command.Env = append(os.Environ(), "MANJA_CONTRACTTEST_SHALLOW_AUTH_SAVE=1")
+	output, err := command.CombinedOutput()
+	if err == nil {
+		t.Fatalf("authenticated adapter with shallow changed-save passed conformance\n%s", output)
+	}
+	if !strings.Contains(strings.ToLower(string(output)), "alias") {
+		t.Fatalf("shallow changed-save failure did not identify aliasing\n%s", output)
+	}
+}
+
+func TestBrokenReleaseAuthoritySaveIsolation(t *testing.T) {
+	if os.Getenv("MANJA_CONTRACTTEST_SHALLOW_AUTH_SAVE") == "" {
+		t.Skip("subprocess helper")
+	}
+	uow := newTestUnitOfWork("")
+	blobs := &testBlobStore{values: map[port.BlobKey][]byte{}}
+	uow.state.aliasSavesOnChange = true
+	uow.blobs = blobs
+	authenticated := &authenticatedTestUnitOfWork{testUnitOfWork: uow}
+	ReleaseAuthorityUnitOfWork(t, func(testing.TB) ReleaseAuthorityUnitOfWorkFixture {
+		return ReleaseAuthorityUnitOfWorkFixture{
+			UnitOfWork: authenticated, Blobs: blobs, Authorizations: authenticated,
+		}
+	})
+}
+
 func TestBrokenContractAdapter(t *testing.T) {
 	scenario := os.Getenv("MANJA_CONTRACTTEST_BROKEN")
 	if scenario == "" {
@@ -77,6 +133,15 @@ type testUnitOfWork struct {
 	scenario string
 	mu       sync.Mutex
 	state    *testOperationalStore
+	blobs    *testBlobStore
+}
+
+type authenticatedTestUnitOfWork struct {
+	*testUnitOfWork
+}
+
+func (*authenticatedTestUnitOfWork) SaveReleaseAuthorization(context.Context, domain.ReleaseAuthorization) error {
+	return nil
 }
 
 func newTestUnitOfWork(scenario string) *testUnitOfWork {
@@ -102,7 +167,12 @@ func (u *testUnitOfWork) Within(ctx context.Context, callback func(context.Conte
 	if u.scenario != "missing-blob" {
 		for _, revision := range staged.revisions {
 			if revision.SpecBlobKey != "" {
-				return errors.New("missing blob")
+				if u.blobs == nil {
+					return errors.New("missing blob")
+				}
+				if _, ok := u.blobs.values[port.BlobKey(revision.SpecBlobKey)]; !ok {
+					return errors.New("missing blob")
+				}
 			}
 		}
 	}
@@ -119,6 +189,7 @@ type testOperationalStore struct {
 	revisions            map[string]domain.ContractRevision
 	tracks               map[string]domain.ReleaseTrack
 	aliasTracks          bool
+	aliasSavesOnChange   bool
 	skipTrackTransitions bool
 }
 
@@ -134,6 +205,7 @@ func (s *testOperationalStore) clone() *testOperationalStore {
 	for key, value := range s.tracks {
 		next.tracks[key] = domain.CloneReleaseTrack(value)
 	}
+	next.aliasSavesOnChange = s.aliasSavesOnChange
 	return next
 }
 
@@ -148,7 +220,12 @@ func (s *testOperationalStore) ContractRevision(_ context.Context, contractID, r
 	}
 	return revision, nil
 }
-func (*testOperationalStore) SaveReview(context.Context, domain.ContractReview) error { return nil }
+func (s *testOperationalStore) SaveReview(_ context.Context, review domain.ContractReview) error {
+	if err := s.requireRevisionOwner(review.ContractID, review.BaselineRevisionID); err != nil {
+		return err
+	}
+	return s.requireRevisionOwner(review.ContractID, review.CandidateRevisionID)
+}
 func (*testOperationalStore) SaveSyncRecord(context.Context, domain.SyncRecord) error { return nil }
 func (s *testOperationalStore) ReleaseTrack(_ context.Context, contractID, trackID string) (domain.ReleaseTrack, error) {
 	track, ok := s.tracks[contractID+"/"+trackID]
@@ -167,6 +244,16 @@ func (s *testOperationalStore) SaveReleaseTrack(_ context.Context, expected uint
 	if err := domain.ValidateReleaseTrack(track); err != nil {
 		return err
 	}
+	if track.CurrentRevisionID != "" {
+		if err := s.requireRevisionOwner(track.ContractID, track.CurrentRevisionID); err != nil {
+			return err
+		}
+	}
+	if track.CandidateRevisionID != "" {
+		if err := s.requireRevisionOwner(track.ContractID, track.CandidateRevisionID); err != nil {
+			return err
+		}
+	}
 	key := track.ContractID + "/" + track.ID
 	current, exists := s.tracks[key]
 	if (exists && current.Generation != expected) || (!exists && expected != 0) {
@@ -177,16 +264,50 @@ func (s *testOperationalStore) SaveReleaseTrack(_ context.Context, expected uint
 			return err
 		}
 	}
-	if s.aliasTracks {
+	if exists && reflect.DeepEqual(current, track) {
+		return nil
+	}
+	if s.aliasTracks || s.aliasSavesOnChange {
 		s.tracks[key] = track
 	} else {
 		s.tracks[key] = domain.CloneReleaseTrack(track)
 	}
 	return nil
 }
-func (*testOperationalStore) SavePublication(context.Context, domain.Publication) error { return nil }
+func (s *testOperationalStore) SavePublication(_ context.Context, publication domain.Publication) error {
+	return s.requireRevisionOwner(publication.ProjectID, publication.RevisionID)
+}
 func (*testOperationalStore) AppendAuditEvent(context.Context, domain.AuditEvent) error { return nil }
 func (*testOperationalStore) Enqueue(context.Context, domain.OutboxMessage) error       { return nil }
+
+func (s *testOperationalStore) requireRevisionOwner(contractID, revisionID string) error {
+	revision, ok := s.revisions[revisionID]
+	if !ok {
+		return errors.New("missing revision")
+	}
+	if revision.ContractID != contractID {
+		return errors.New("revision belongs to another contract")
+	}
+	return nil
+}
+
+type testBlobStore struct {
+	values map[port.BlobKey][]byte
+}
+
+func (s *testBlobStore) Put(_ context.Context, data []byte) (port.BlobKey, error) {
+	key := port.ContentAddressedBlobKey(data)
+	s.values[key] = append([]byte(nil), data...)
+	return key, nil
+}
+
+func (s *testBlobStore) Get(_ context.Context, key port.BlobKey) ([]byte, error) {
+	value, ok := s.values[key]
+	if !ok {
+		return nil, errors.New("blob not found")
+	}
+	return append([]byte(nil), value...), nil
+}
 
 type brokenBlobStore struct {
 	count int

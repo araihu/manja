@@ -91,7 +91,7 @@ func UnitOfWork(t *testing.T, factory UnitOfWorkFactory) {
 	t.Run("concurrent updates do not lose generations", func(t *testing.T) {
 		uow := factory(t)
 		if _, authenticated := uow.(port.ReleaseAuthorizationWriter); authenticated {
-			return
+			t.Skip("authenticated release authority adapters use ReleaseAuthorityUnitOfWork")
 		}
 		ctx := markedContext(t)
 		track := domain.ReleaseTrack{ID: "concurrent", ContractID: "contract", Mode: domain.ReleaseModeFollowing}
@@ -136,7 +136,7 @@ func UnitOfWork(t *testing.T, factory UnitOfWorkFactory) {
 	t.Run("release track reads do not alias transactional state", func(t *testing.T) {
 		uow := factory(t)
 		if _, authenticated := uow.(port.ReleaseAuthorizationWriter); authenticated {
-			return
+			t.Skip("authenticated release authority adapters use ReleaseAuthorityUnitOfWork")
 		}
 		ctx := markedContext(t)
 		track := releaseTrackIsolationFixture()
@@ -166,7 +166,7 @@ func UnitOfWork(t *testing.T, factory UnitOfWorkFactory) {
 	t.Run("release track saves retain an isolated value", func(t *testing.T) {
 		uow := factory(t)
 		if _, authenticated := uow.(port.ReleaseAuthorizationWriter); authenticated {
-			return
+			t.Skip("authenticated release authority adapters use ReleaseAuthorityUnitOfWork")
 		}
 		ctx := markedContext(t)
 		track := releaseTrackIsolationFixture()
@@ -196,7 +196,7 @@ func UnitOfWork(t *testing.T, factory UnitOfWorkFactory) {
 	t.Run("release track decision evidence cannot be stripped", func(t *testing.T) {
 		uow := factory(t)
 		if _, authenticated := uow.(port.ReleaseAuthorizationWriter); authenticated {
-			return
+			t.Skip("authenticated release authority adapters use ReleaseAuthorityUnitOfWork")
 		}
 		ctx := markedContext(t)
 		track := releaseTrackIsolationFixture()
@@ -234,7 +234,7 @@ func UnitOfWork(t *testing.T, factory UnitOfWorkFactory) {
 	t.Run("release track state cannot bypass its decision", func(t *testing.T) {
 		uow := factory(t)
 		if _, authenticated := uow.(port.ReleaseAuthorizationWriter); authenticated {
-			return
+			t.Skip("authenticated release authority adapters use ReleaseAuthorityUnitOfWork")
 		}
 		ctx := markedContext(t)
 		track := releaseTrackIsolationFixture()

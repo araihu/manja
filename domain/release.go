@@ -84,6 +84,7 @@ func ValidateReleaseAuthorization(authorization ReleaseAuthorization) error {
 		authorization.PublicPath != strings.TrimSpace(authorization.PublicPath) ||
 		!strings.HasPrefix(authorization.PublicPath, "/") ||
 		strings.Contains(authorization.PublicPath, `\`) ||
+		containsControlCharacter(authorization.PublicPath) ||
 		path.Clean(authorization.PublicPath) != authorization.PublicPath {
 		return fmt.Errorf("release authorization public path is invalid")
 	}
@@ -343,16 +344,7 @@ func validateReleaseDecision(decision ReleaseDecision) error {
 }
 
 func validateCanonicalReleaseIdentity(name, value string, allowEmpty bool) error {
-	if value == "" {
-		if allowEmpty {
-			return nil
-		}
-		return fmt.Errorf("%s is required", name)
-	}
-	if value != strings.TrimSpace(value) {
-		return fmt.Errorf("%s must not contain leading or trailing whitespace", name)
-	}
-	return nil
+	return validateCanonicalIdentity(name, value, allowEmpty)
 }
 
 type ContractReview struct {

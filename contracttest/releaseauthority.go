@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"reflect"
+	"sync"
 	"testing"
 	"time"
 
@@ -65,13 +66,22 @@ func ReleaseAuthorityUnitOfWork(t *testing.T, factory ReleaseAuthorityUnitOfWork
 		requireReleaseAuthorityFixture(t, fixture)
 		ctx := markedContext(t)
 		evidence := seedReleaseAuthorityFixture(t, ctx, fixture, true)
+		input := domain.CloneReleaseTrack(evidence.next)
 		if err := fixture.UnitOfWork.Within(ctx, func(ctx context.Context, store port.OperationalStore) error {
-			if err := store.SaveReleaseTrack(ctx, evidence.baseline.Generation, evidence.next); err != nil {
+			if err := store.SaveReleaseTrack(ctx, evidence.baseline.Generation, input); err != nil {
 				return err
 			}
+			input.LastDecision.ReviewDigest = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
 			return appendReleaseAuthorityEffects(ctx, store, evidence)
 		}); err != nil {
 			t.Fatalf("commit authenticated release transition: %v", err)
+		}
+		persisted, err := loadTrack(ctx, fixture.UnitOfWork, evidence.next.ContractID, evidence.next.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !reflect.DeepEqual(persisted, evidence.next) {
+			t.Fatalf("saved release track retained caller alias: got=%#v want=%#v", persisted, evidence.next)
 		}
 		if err := fixture.UnitOfWork.Within(ctx, func(ctx context.Context, store port.OperationalStore) error {
 			returned, err := store.ReleaseTrack(ctx, evidence.next.ContractID, evidence.next.ID)
@@ -85,17 +95,94 @@ func ReleaseAuthorityUnitOfWork(t *testing.T, factory ReleaseAuthorityUnitOfWork
 			t.Fatalf("mutate returned nested release state: %v", err)
 		}
 		assertReleaseAuthorityTrack(t, ctx, fixture.UnitOfWork, evidence.next)
+	})
 
-		input := domain.CloneReleaseTrack(evidence.next)
+	t.Run("exact authenticated replay is concurrency safe", func(t *testing.T) {
+		fixture := factory(t)
+		requireReleaseAuthorityFixture(t, fixture)
+		ctx := markedContext(t)
+		evidence := seedReleaseAuthorityFixture(t, ctx, fixture, true)
+		const attempts = 8
+		start := make(chan struct{})
+		results := make(chan error, attempts)
+		var wait sync.WaitGroup
+		for index := 0; index < attempts; index++ {
+			wait.Add(1)
+			go func() {
+				defer wait.Done()
+				<-start
+				results <- fixture.UnitOfWork.Within(ctx, func(ctx context.Context, store port.OperationalStore) error {
+					if err := store.SaveReleaseTrack(ctx, evidence.baseline.Generation, evidence.next); err != nil {
+						return err
+					}
+					return appendReleaseAuthorityEffects(ctx, store, evidence)
+				})
+			}()
+		}
+		close(start)
+		wait.Wait()
+		close(results)
+		for err := range results {
+			if err != nil {
+				t.Errorf("authenticated exact replay: %v", err)
+			}
+		}
+		assertReleaseAuthorityTrack(t, ctx, fixture.UnitOfWork, evidence.next)
+	})
+
+	t.Run("authenticated decision evidence cannot be stripped", func(t *testing.T) {
+		fixture := factory(t)
+		requireReleaseAuthorityFixture(t, fixture)
+		ctx := markedContext(t)
+		evidence := seedReleaseAuthorityFixture(t, ctx, fixture, true)
 		if err := fixture.UnitOfWork.Within(ctx, func(ctx context.Context, store port.OperationalStore) error {
-			if err := store.SaveReleaseTrack(ctx, input.Generation, input); err != nil {
+			if err := store.SaveReleaseTrack(ctx, evidence.baseline.Generation, evidence.next); err != nil {
 				return err
 			}
-			input.LastDecision.Accepted = true
-			input.LastDecision.Verdict = domain.VerdictFail
-			return nil
+			return appendReleaseAuthorityEffects(ctx, store, evidence)
 		}); err != nil {
-			t.Fatalf("mutate nested release input after save: %v", err)
+			t.Fatal(err)
+		}
+		err := fixture.UnitOfWork.Within(ctx, func(ctx context.Context, store port.OperationalStore) error {
+			stripped, err := store.ReleaseTrack(ctx, evidence.next.ContractID, evidence.next.ID)
+			if err != nil {
+				return err
+			}
+			stripped.LastDecision = nil
+			stripped.CandidateRevisionID = ""
+			return store.SaveReleaseTrack(ctx, evidence.next.Generation, stripped)
+		})
+		if err == nil {
+			t.Fatal("authenticated release decision evidence was stripped")
+		}
+		assertReleaseAuthorityTrack(t, ctx, fixture.UnitOfWork, evidence.next)
+	})
+
+	t.Run("rejected authenticated decision cannot bypass publication", func(t *testing.T) {
+		fixture := factory(t)
+		requireReleaseAuthorityFixture(t, fixture)
+		ctx := markedContext(t)
+		evidence := seedReleaseAuthorityFixture(t, ctx, fixture, true)
+		if err := fixture.UnitOfWork.Within(ctx, func(ctx context.Context, store port.OperationalStore) error {
+			if err := store.SaveReleaseTrack(ctx, evidence.baseline.Generation, evidence.next); err != nil {
+				return err
+			}
+			return appendReleaseAuthorityEffects(ctx, store, evidence)
+		}); err != nil {
+			t.Fatal(err)
+		}
+		err := fixture.UnitOfWork.Within(ctx, func(ctx context.Context, store port.OperationalStore) error {
+			forged, err := store.ReleaseTrack(ctx, evidence.next.ContractID, evidence.next.ID)
+			if err != nil {
+				return err
+			}
+			forged.CurrentRevisionID = forged.CandidateRevisionID
+			forged.CandidateRevisionID = ""
+			forged.Generation++
+			return store.SaveReleaseTrack(ctx, evidence.next.Generation, forged)
+		})
+		if err == nil {
+			t.Fatal("rejected authenticated candidate bypassed its decision")
 		}
 		assertReleaseAuthorityTrack(t, ctx, fixture.UnitOfWork, evidence.next)
 	})

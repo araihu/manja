@@ -139,6 +139,27 @@ func TestPublicContractSuitesAreUsableByUnrelatedModule(t *testing.T) {
 			Observed: func() context.Context { return reader.ctx },
 		}
 	})
+
+	t.Run("operational revisions are contract scoped", func(t *testing.T) {
+		operational := newMemoryOperationalStore()
+		uow := &memoryUnitOfWork{store: operational, blobs: newMemoryBlobStore()}
+		if err := uow.Within(context.Background(), func(ctx context.Context, store port.OperationalStore) error {
+			for _, revision := range []domain.ContractRevision{
+				{ID: "shared", ContractID: "payments", SourceID: "payments-source"},
+				{ID: "shared", ContractID: "orders", SourceID: "orders-source"},
+			} {
+				if err := store.SaveRevision(ctx, revision); err != nil {
+					return err
+				}
+			}
+			return nil
+		}); err != nil {
+			t.Fatal(err)
+		}
+		if len(operational.revisions) != 2 {
+			t.Fatalf("contract-scoped revision count = %d, want 2", len(operational.revisions))
+		}
+	})
 }
 
 func TestSeparateRevisionReaderConstructsReleaseService(t *testing.T) {
@@ -310,7 +331,7 @@ func (u *memoryUnitOfWork) Within(ctx context.Context, fn func(context.Context, 
 
 func validateMemoryOperationalReferences(store *memoryOperationalStore) error {
 	requireOwner := func(contractID, revisionID, owner string) error {
-		revision, ok := store.revisions[revisionID]
+		revision, ok := store.revisions[memoryRevisionKey(contractID, revisionID)]
 		if !ok {
 			return errors.New(owner + " references missing revision")
 		}
@@ -411,8 +432,12 @@ func (s *memoryOperationalStore) clone() *memoryOperationalStore {
 }
 
 func (s *memoryOperationalStore) SaveRevision(_ context.Context, revision domain.ContractRevision) error {
-	s.revisions[revision.ID] = revision
+	s.revisions[memoryRevisionKey(revision.ContractID, revision.ID)] = revision
 	return nil
+}
+
+func memoryRevisionKey(contractID, revisionID string) string {
+	return contractID + "\x00" + revisionID
 }
 
 func (s *memoryOperationalStore) SaveReview(_ context.Context, review domain.ContractReview) error {

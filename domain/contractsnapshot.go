@@ -55,17 +55,11 @@ func NewContractSnapshot(contractID, revisionID string, raw []byte, idx SpecInde
 }
 
 func validateAndCloneContractSnapshot(snapshot ContractSnapshot) (ContractSnapshot, error) {
-	if strings.TrimSpace(snapshot.ContractID) == "" {
-		return ContractSnapshot{}, fmt.Errorf("contract id is required")
+	if err := validateCanonicalIdentity("contract id", snapshot.ContractID, false); err != nil {
+		return ContractSnapshot{}, err
 	}
-	if snapshot.ContractID != strings.TrimSpace(snapshot.ContractID) {
-		return ContractSnapshot{}, fmt.Errorf("contract id must be normalized")
-	}
-	if strings.TrimSpace(snapshot.RevisionID) == "" {
-		return ContractSnapshot{}, fmt.Errorf("revision id is required")
-	}
-	if snapshot.RevisionID != strings.TrimSpace(snapshot.RevisionID) {
-		return ContractSnapshot{}, fmt.Errorf("revision id must be normalized")
+	if err := validateCanonicalIdentity("revision id", snapshot.RevisionID, false); err != nil {
+		return ContractSnapshot{}, err
 	}
 	if !isLowerSHA256(snapshot.SpecDigest) {
 		return ContractSnapshot{}, fmt.Errorf("spec digest must be lowercase SHA-256")

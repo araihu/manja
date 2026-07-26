@@ -1305,6 +1305,7 @@ func TestFileStoreRejectsInventedReleaseAuthorityAndMissingTransitionEffects(t *
 		for _, test := range []struct {
 			name   string
 			mutate func(map[string]any)
+			probe  func(*FileStore) error
 		}{
 			{
 				name: "authorization",
@@ -1330,9 +1331,24 @@ func TestFileStoreRejectsInventedReleaseAuthorityAndMissingTransitionEffects(t *
 				name: "candidate blob binding",
 				mutate: func(state map[string]any) {
 					revisions := state["revisions"].(map[string]any)
-					baseline := revisions[fixture.authorization.BaselineRevisionID].(map[string]any)
-					candidate := revisions[fixture.authorization.CandidateRevisionID].(map[string]any)
+					baseline := revisions[revisionKey(
+						fixture.authorization.ContractID,
+						fixture.authorization.BaselineRevisionID,
+					)].(map[string]any)
+					candidate := revisions[revisionKey(
+						fixture.authorization.ContractID,
+						fixture.authorization.CandidateRevisionID,
+					)].(map[string]any)
 					candidate["specBlobKey"] = baseline["specBlobKey"]
+				},
+				probe: func(store *FileStore) error {
+					_, err := store.ReleaseEvidence(
+						ctx,
+						fixture.authorization.ContractID,
+						fixture.authorization.TrackID,
+						fixture.authorization.ReviewID,
+					)
+					return err
 				},
 			},
 			{
@@ -1368,7 +1384,14 @@ func TestFileStoreRejectsInventedReleaseAuthorityAndMissingTransitionEffects(t *
 				if err := writeFileAtomically(statePath, append(encoded, '\n'), 0o600); err != nil {
 					t.Fatal(err)
 				}
-				if _, err := NewFileStore(root).ReleaseTrack(ctx, fixture.next.ContractID, fixture.next.ID); err == nil {
+				probe := test.probe
+				if probe == nil {
+					probe = func(store *FileStore) error {
+						_, err := store.ReleaseTrack(ctx, fixture.next.ContractID, fixture.next.ID)
+						return err
+					}
+				}
+				if err := probe(NewFileStore(root)); err == nil {
 					t.Fatalf("stripped %s was accepted after restart", test.name)
 				}
 				if err := writeFileAtomically(statePath, original, 0o600); err != nil {
@@ -2308,7 +2331,7 @@ func TestFileStoreRestartPreservesCanonicalReleaseReviewValidation(t *testing.T)
 
 func TestFileStoreDiscardsIncompleteOperationalStagingOnRestart(t *testing.T) {
 	root := t.TempDir()
-	operationalStaging := filepath.Join(root, "operational", ".state-interrupted.tmp")
+	operationalStaging := filepath.Join(root, "operational", ".write-interrupted.tmp")
 	blobStaging := filepath.Join(root, "blobs", "sha256", ".write-interrupted.tmp")
 	stagingFiles := []string{operationalStaging, blobStaging}
 	for _, staging := range stagingFiles {
