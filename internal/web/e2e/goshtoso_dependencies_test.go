@@ -3,9 +3,14 @@ package e2e
 import (
 	"encoding/json"
 	"fmt"
+	"html"
+	"io"
+	"net/http"
+	"regexp"
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/playwright-community/playwright-go"
 
@@ -21,6 +26,401 @@ func TestPublicDocsGoshtosoCDNPrimaryJourney(t *testing.T) {
 	testPublicDocsGoshtosoDependencyJourney(t, false)
 }
 
+func TestPublicDocsGoshtosoDependencyJourneyRejectsFirstPartyAssetAndUnrelatedJavaScriptFailures(t *testing.T) {
+	for _, testCase := range []struct {
+		name          string
+		forceFallback bool
+	}{
+		{name: "normal"},
+		{name: "forced-fallback", forceFallback: true},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			testPublicDocsGoshtosoDependencyJourneyRejectsFirstPartyAssetAndUnrelatedJavaScriptFailures(t, testCase.forceFallback)
+		})
+	}
+}
+
+func testPublicDocsGoshtosoDependencyJourneyRejectsFirstPartyAssetAndUnrelatedJavaScriptFailures(t *testing.T, forceFallback bool) {
+	t.Helper()
+	if testing.Short() {
+		t.Skip("skipping e2e test in short mode")
+	}
+	chdirRepoRoot(t)
+	server := httptestServer(t, web.NewPublicServer(goshtosoFallbackIndex()))
+	expectedPrimaryURLs := goshtosoRenderedPrimaryURLs(t, server)
+
+	pw, err := playwright.Run()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pw.Stop()
+	browser, err := pw.Chromium.Launch()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer browser.Close()
+	page, err := browser.NewPage()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := page.AddInitScript(playwright.Script{Content: playwright.String(`
+		window.__manjaControlRejections = [];
+		window.addEventListener("unhandledrejection", event => {
+			window.__manjaControlRejections.push(String(event.reason));
+		});
+	`)}); err != nil {
+		t.Fatal(err)
+	}
+
+	var mu sync.Mutex
+	var routeErrors []string
+	var interceptedPrimaryURLs []string
+	if forceFallback {
+		routeGoshtosoPrimaryFailures(t, page, expectedPrimaryURLs, http.StatusBadGateway, &mu, &interceptedPrimaryURLs, &routeErrors)
+	}
+	unapprovedExternalURL := "https://example.invalid/manja-unapproved-external.js"
+	if err := page.Route(unapprovedExternalURL, func(route playwright.Route) {
+		if err := route.Fulfill(playwright.RouteFulfillOptions{
+			Status:      playwright.Int(http.StatusServiceUnavailable),
+			Body:        "simulated unapproved external asset outage",
+			ContentType: playwright.String("text/plain"),
+		}); err != nil {
+			mu.Lock()
+			routeErrors = append(routeErrors, err.Error())
+			mu.Unlock()
+		}
+	}); err != nil {
+		t.Fatal(err)
+	}
+	failedAssetURL := server + "/assets/styles.css"
+	if err := page.Route(failedAssetURL, func(route playwright.Route) {
+		if err := route.Fulfill(playwright.RouteFulfillOptions{
+			Status:      playwright.Int(503),
+			Body:        "simulated first-party asset outage",
+			ContentType: playwright.String("text/plain"),
+		}); err != nil {
+			mu.Lock()
+			routeErrors = append(routeErrors, err.Error())
+			mu.Unlock()
+		}
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	var failedResponses []goshtosoDependencyResponseFailure
+	var failedRequests []goshtosoDependencyRequestFailure
+	var consoleErrors []goshtosoDependencyConsoleError
+	var pageErrors []string
+	pageErrorSeen := make(chan string, 1)
+	page.OnResponse(func(response playwright.Response) {
+		if response.Status() < 400 {
+			return
+		}
+		mu.Lock()
+		failedResponses = append(failedResponses, goshtosoDependencyResponseFailure{
+			URL:        response.URL(),
+			RequestURL: response.Request().URL(),
+			Status:     response.Status(),
+		})
+		mu.Unlock()
+	})
+	page.OnRequestFailed(func(request playwright.Request) {
+		failure := request.Failure()
+		failureText := "unknown request failure"
+		if failure != nil {
+			failureText = failure.Error()
+		}
+		mu.Lock()
+		failedRequests = append(failedRequests, goshtosoDependencyRequestFailure{URL: request.URL(), Error: failureText})
+		mu.Unlock()
+	})
+	page.OnPageError(func(err error) {
+		message := err.Error()
+		mu.Lock()
+		pageErrors = append(pageErrors, message)
+		mu.Unlock()
+		if strings.Contains(message, "manja-unrelated-pageerror") {
+			select {
+			case pageErrorSeen <- message:
+			default:
+			}
+		}
+	})
+	page.On("console", func(message playwright.ConsoleMessage) {
+		if message.Type() != "error" {
+			return
+		}
+		mu.Lock()
+		consoleErrors = append(consoleErrors, goshtosoDependencyConsoleErrorFrom(message))
+		mu.Unlock()
+	})
+
+	if _, err := page.Goto(server+"/?selected=operation-listpets#operation-listpets", playwright.PageGotoOptions{
+		WaitUntil: playwright.WaitUntilStateDomcontentloaded,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := page.Evaluate(`async () => await window.goshtosoDependencies.ready`, nil); err != nil {
+		t.Fatalf("await Goshtoso dependency readiness: %v", err)
+	}
+	if _, err := page.Evaluate(`() => {
+		console.error("manja-unrelated-console-error");
+		Promise.reject(new Error("manja-unrelated-rejection"));
+		setTimeout(() => { throw new Error("manja-unrelated-pageerror"); }, 0);
+		const script = document.createElement("script");
+		script.src = "https://example.invalid/manja-unapproved-external.js";
+		script.addEventListener("error", () => { window.__manjaUnapprovedExternalSettled = true; });
+		document.head.appendChild(script);
+	}`, nil); err != nil {
+		t.Fatalf("inject unrelated JavaScript controls: %v", err)
+	}
+	if _, err := page.WaitForFunction(`() => window.__manjaControlRejections.some(value => value.includes("manja-unrelated-rejection"))`, nil); err != nil {
+		t.Fatalf("wait for unrelated unhandled rejection control: %v", err)
+	}
+	if _, err := page.WaitForFunction(`() => window.__manjaUnapprovedExternalSettled === true`, nil); err != nil {
+		t.Fatalf("wait for unapproved external asset control: %v", err)
+	}
+	select {
+	case <-pageErrorSeen:
+	case <-time.After(5 * time.Second):
+		t.Fatal("timed out waiting for unrelated pageerror control")
+	}
+	rawRejections, err := page.Evaluate(`() => JSON.stringify(window.__manjaControlRejections)`, nil)
+	if err != nil {
+		t.Fatalf("read unrelated rejection controls: %v", err)
+	}
+	var rejections []string
+	if err := json.Unmarshal([]byte(fmt.Sprint(rawRejections)), &rejections); err != nil {
+		t.Fatalf("decode unrelated rejection controls: %v", err)
+	}
+
+	mu.Lock()
+	defer mu.Unlock()
+	wantFailedResponseCount := 2
+	if forceFallback {
+		wantFailedResponseCount += len(expectedPrimaryURLs)
+	}
+	if len(failedResponses) != wantFailedResponseCount {
+		t.Fatalf("failed response count = %d, want %d: %#v", len(failedResponses), wantFailedResponseCount, failedResponses)
+	}
+	foundFirstPartyResponse := false
+	for _, response := range failedResponses {
+		if response.URL == failedAssetURL && response.RequestURL == failedAssetURL && response.Status == http.StatusServiceUnavailable {
+			foundFirstPartyResponse = true
+			break
+		}
+	}
+	if !foundFirstPartyResponse {
+		t.Fatalf("failed responses do not contain correlated first-party %s status 503: %#v", failedAssetURL, failedResponses)
+	}
+	failures := validateGoshtosoDependencyBrowserEvidence(forceFallback, expectedPrimaryURLs, goshtosoDependencyBrowserEvidence{
+		FailedResponses:        failedResponses,
+		FailedRequests:         failedRequests,
+		ConsoleErrors:          consoleErrors,
+		PageErrors:             pageErrors,
+		Rejections:             rejections,
+		InterceptedPrimaryURLs: interceptedPrimaryURLs,
+		RouteErrors:            routeErrors,
+	})
+	for _, sentinel := range []string{failedAssetURL, unapprovedExternalURL, "manja-unrelated-console-error", "manja-unrelated-pageerror", "manja-unrelated-rejection"} {
+		if !strings.Contains(strings.Join(failures, "\n"), sentinel) {
+			t.Errorf("strict browser validation did not block %q; failures=%v", sentinel, failures)
+		}
+	}
+	if forceFallback && !strings.Contains(strings.Join(failures, "\n"), "status=502") {
+		t.Errorf("strict browser validation did not block non-503 primary responses; failures=%v", failures)
+	}
+}
+
+type goshtosoDependencyResponseFailure struct {
+	URL        string
+	RequestURL string
+	Status     int
+}
+
+type goshtosoDependencyConsoleError struct {
+	Text string
+	URL  string
+}
+
+type goshtosoDependencyRequestFailure struct {
+	URL   string
+	Error string
+}
+
+type goshtosoDependencyBrowserEvidence struct {
+	FailedResponses        []goshtosoDependencyResponseFailure
+	FailedRequests         []goshtosoDependencyRequestFailure
+	ConsoleErrors          []goshtosoDependencyConsoleError
+	PageErrors             []string
+	Rejections             []string
+	InterceptedPrimaryURLs []string
+	RouteErrors            []string
+}
+
+func goshtosoDependencyConsoleErrorFrom(message playwright.ConsoleMessage) goshtosoDependencyConsoleError {
+	location := message.Location()
+	url := ""
+	if location != nil {
+		url = location.URL
+	}
+	return goshtosoDependencyConsoleError{Text: message.Text(), URL: url}
+}
+
+func goshtosoRenderedPrimaryURLs(t *testing.T, server string) []string {
+	t.Helper()
+	client := &http.Client{Timeout: 5 * time.Second}
+	response, err := client.Get(server + "/")
+	if err != nil {
+		t.Fatalf("GET rendered Goshtoso dependency configuration: %v", err)
+	}
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("GET rendered Goshtoso dependency configuration status = %d, want %d", response.StatusCode, http.StatusOK)
+	}
+	body, err := io.ReadAll(response.Body)
+	if err != nil {
+		t.Fatalf("read rendered Goshtoso dependency configuration: %v", err)
+	}
+	match := regexp.MustCompile(`data-goshtoso-dependencies="([^"]+)"`).FindSubmatch(body)
+	if len(match) != 2 {
+		t.Fatalf("rendered public page is missing data-goshtoso-dependencies")
+	}
+
+	type dependencyEntry struct {
+		Name       string `json:"name"`
+		PrimaryURL string `json:"primary_url"`
+	}
+	var config struct {
+		Dependencies []dependencyEntry `json:"dependencies"`
+	}
+	if err := json.Unmarshal([]byte(html.UnescapeString(string(match[1]))), &config); err != nil {
+		t.Fatalf("decode rendered Goshtoso dependency configuration: %v", err)
+	}
+
+	wantOrder := []string{"alpine-collapse", "alpine-focus", "alpine-mask", "alpine", "htmx", "combobox"}
+	if len(config.Dependencies) != len(wantOrder) {
+		t.Fatalf("rendered dependency count = %d, want %d: %#v", len(config.Dependencies), len(wantOrder), config.Dependencies)
+	}
+	primaryURLs := make([]string, 0, 5)
+	seen := make(map[string]struct{}, 5)
+	for i, wantName := range wantOrder {
+		dependency := config.Dependencies[i]
+		if dependency.Name != wantName {
+			t.Fatalf("rendered dependency %d name = %q, want %q", i, dependency.Name, wantName)
+		}
+		if i == len(wantOrder)-1 {
+			if dependency.PrimaryURL != "/assets/js/combobox.js" {
+				t.Fatalf("rendered combobox primary URL = %q, want first-party /assets/js/combobox.js", dependency.PrimaryURL)
+			}
+			continue
+		}
+		if !strings.HasPrefix(dependency.PrimaryURL, "https://unpkg.com/") {
+			t.Fatalf("rendered %s primary URL = %q, want exact-version unpkg URL", dependency.Name, dependency.PrimaryURL)
+		}
+		if _, duplicate := seen[dependency.PrimaryURL]; duplicate {
+			t.Fatalf("rendered primary URL is duplicated: %s", dependency.PrimaryURL)
+		}
+		seen[dependency.PrimaryURL] = struct{}{}
+		primaryURLs = append(primaryURLs, dependency.PrimaryURL)
+	}
+	return primaryURLs
+}
+
+func routeGoshtosoPrimaryFailures(
+	t *testing.T,
+	page playwright.Page,
+	primaryURLs []string,
+	status int,
+	mu *sync.Mutex,
+	interceptedPrimaryURLs *[]string,
+	routeErrors *[]string,
+) {
+	t.Helper()
+	for _, expectedPrimaryURL := range primaryURLs {
+		primaryURL := expectedPrimaryURL
+		if err := page.Route(primaryURL, func(route playwright.Route) {
+			mu.Lock()
+			*interceptedPrimaryURLs = append(*interceptedPrimaryURLs, route.Request().URL())
+			mu.Unlock()
+			if err := route.Fulfill(playwright.RouteFulfillOptions{
+				Status:      playwright.Int(status),
+				Body:        "simulated CDN outage",
+				ContentType: playwright.String("text/plain"),
+			}); err != nil {
+				mu.Lock()
+				*routeErrors = append(*routeErrors, err.Error())
+				mu.Unlock()
+			}
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+func validateGoshtosoDependencyBrowserEvidence(forceFallback bool, expectedPrimaryURLs []string, evidence goshtosoDependencyBrowserEvidence) []string {
+	var failures []string
+	for _, routeError := range evidence.RouteErrors {
+		failures = append(failures, "CDN interception error: "+routeError)
+	}
+	for _, pageError := range evidence.PageErrors {
+		failures = append(failures, "unexpected page error: "+pageError)
+	}
+	for _, rejection := range evidence.Rejections {
+		failures = append(failures, "unexpected unhandled rejection: "+rejection)
+	}
+
+	if !forceFallback {
+		for _, request := range evidence.FailedRequests {
+			failures = append(failures, fmt.Sprintf("unexpected failed request: URL=%s error=%s", request.URL, request.Error))
+		}
+		for _, response := range evidence.FailedResponses {
+			failures = append(failures, fmt.Sprintf("unexpected failed response: URL=%s request=%s status=%d", response.URL, response.RequestURL, response.Status))
+		}
+		for _, consoleError := range evidence.ConsoleErrors {
+			failures = append(failures, fmt.Sprintf("unexpected console error: text=%q URL=%s", consoleError.Text, consoleError.URL))
+		}
+		if len(evidence.InterceptedPrimaryURLs) != 0 {
+			failures = append(failures, fmt.Sprintf("normal journey intercepted CDN primaries: %v", evidence.InterceptedPrimaryURLs))
+		}
+		return failures
+	}
+
+	if len(expectedPrimaryURLs) != 5 {
+		failures = append(failures, fmt.Sprintf("expected primary URL count = %d, want 5", len(expectedPrimaryURLs)))
+	}
+	if len(evidence.InterceptedPrimaryURLs) != len(expectedPrimaryURLs) {
+		failures = append(failures, fmt.Sprintf("intercepted primary URL count = %d, want %d: %v", len(evidence.InterceptedPrimaryURLs), len(expectedPrimaryURLs), evidence.InterceptedPrimaryURLs))
+	}
+	if len(evidence.FailedResponses) != len(expectedPrimaryURLs) {
+		failures = append(failures, fmt.Sprintf("failed response count = %d, want %d: %#v", len(evidence.FailedResponses), len(expectedPrimaryURLs), evidence.FailedResponses))
+	}
+	if len(evidence.FailedRequests) != len(expectedPrimaryURLs) {
+		failures = append(failures, fmt.Sprintf("failed request count = %d, want %d: %#v", len(evidence.FailedRequests), len(expectedPrimaryURLs), evidence.FailedRequests))
+	}
+	if len(evidence.ConsoleErrors) != len(expectedPrimaryURLs) {
+		failures = append(failures, fmt.Sprintf("console resource error count = %d, want %d: %#v", len(evidence.ConsoleErrors), len(expectedPrimaryURLs), evidence.ConsoleErrors))
+	}
+	for i, expectedURL := range expectedPrimaryURLs {
+		if i < len(evidence.InterceptedPrimaryURLs) && evidence.InterceptedPrimaryURLs[i] != expectedURL {
+			failures = append(failures, fmt.Sprintf("intercepted primary URL %d = %q, want %q", i, evidence.InterceptedPrimaryURLs[i], expectedURL))
+		}
+		if i < len(evidence.FailedResponses) {
+			response := evidence.FailedResponses[i]
+			if response.URL != expectedURL || response.RequestURL != expectedURL || response.Status != http.StatusServiceUnavailable {
+				failures = append(failures, fmt.Sprintf("failed response %d = (URL=%q request=%q status=%d), want exact intercepted URL %q status 503", i, response.URL, response.RequestURL, response.Status, expectedURL))
+			}
+		}
+		if i < len(evidence.FailedRequests) && evidence.FailedRequests[i].URL != expectedURL {
+			failures = append(failures, fmt.Sprintf("failed request %d URL = %q, want correlated intercepted URL %q (error=%q)", i, evidence.FailedRequests[i].URL, expectedURL, evidence.FailedRequests[i].Error))
+		}
+		if i < len(evidence.ConsoleErrors) && evidence.ConsoleErrors[i].URL != expectedURL {
+			failures = append(failures, fmt.Sprintf("console resource error %d location = %q, want correlated failed response %q status 503 (text=%q)", i, evidence.ConsoleErrors[i].URL, expectedURL, evidence.ConsoleErrors[i].Text))
+		}
+	}
+	return failures
+}
+
 func testPublicDocsGoshtosoDependencyJourney(t *testing.T, forceFallback bool) {
 	t.Helper()
 	if testing.Short() {
@@ -28,6 +428,7 @@ func testPublicDocsGoshtosoDependencyJourney(t *testing.T, forceFallback bool) {
 	}
 	chdirRepoRoot(t)
 	server := httptestServer(t, web.NewPublicServer(goshtosoFallbackIndex()))
+	expectedPrimaryURLs := goshtosoRenderedPrimaryURLs(t, server)
 
 	pw, err := playwright.Run()
 	if err != nil {
@@ -65,31 +466,44 @@ func testPublicDocsGoshtosoDependencyJourney(t *testing.T, forceFallback bool) {
 	}
 
 	var mu sync.Mutex
-	var routeErrors []error
+	var routeErrors []string
+	var interceptedPrimaryURLs []string
 	if forceFallback {
-		if err := page.Route("https://unpkg.com/**", func(route playwright.Route) {
-			if err := route.Fulfill(playwright.RouteFulfillOptions{
-				Status:      playwright.Int(503),
-				Body:        "simulated CDN outage",
-				ContentType: playwright.String("text/plain"),
-			}); err != nil {
-				mu.Lock()
-				routeErrors = append(routeErrors, err)
-				mu.Unlock()
-			}
-		}); err != nil {
-			t.Fatal(err)
-		}
+		routeGoshtosoPrimaryFailures(t, page, expectedPrimaryURLs, http.StatusServiceUnavailable, &mu, &interceptedPrimaryURLs, &routeErrors)
 	}
 
+	var failedResponses []goshtosoDependencyResponseFailure
+	var failedRequests []goshtosoDependencyRequestFailure
 	var pageErrors []string
-	var consoleErrors []string
+	var consoleErrors []goshtosoDependencyConsoleError
 	stage := "boot"
 	setStage := func(next string) {
 		mu.Lock()
 		stage = next
 		mu.Unlock()
 	}
+	page.OnResponse(func(response playwright.Response) {
+		if response.Status() < 400 {
+			return
+		}
+		mu.Lock()
+		failedResponses = append(failedResponses, goshtosoDependencyResponseFailure{
+			URL:        response.URL(),
+			RequestURL: response.Request().URL(),
+			Status:     response.Status(),
+		})
+		mu.Unlock()
+	})
+	page.OnRequestFailed(func(request playwright.Request) {
+		failure := request.Failure()
+		failureText := "unknown request failure"
+		if failure != nil {
+			failureText = failure.Error()
+		}
+		mu.Lock()
+		failedRequests = append(failedRequests, goshtosoDependencyRequestFailure{URL: request.URL(), Error: failureText})
+		mu.Unlock()
+	})
 	page.OnPageError(func(err error) {
 		mu.Lock()
 		pageErrors = append(pageErrors, stage+": "+err.Error())
@@ -100,7 +514,7 @@ func testPublicDocsGoshtosoDependencyJourney(t *testing.T, forceFallback bool) {
 			return
 		}
 		mu.Lock()
-		consoleErrors = append(consoleErrors, message.Text())
+		consoleErrors = append(consoleErrors, goshtosoDependencyConsoleErrorFrom(message))
 		mu.Unlock()
 	})
 
@@ -228,19 +642,27 @@ func testPublicDocsGoshtosoDependencyJourney(t *testing.T, forceFallback bool) {
 	if overflow == true {
 		t.Error("public docs page has horizontal overflow after dependency fallback interactions")
 	}
+	rawRejections, err := page.Evaluate(`() => JSON.stringify(window.__manjaDependencyEvents.rejections)`, nil)
+	if err != nil {
+		t.Fatalf("read final unhandled rejection evidence: %v", err)
+	}
+	var finalRejections []string
+	if err := json.Unmarshal([]byte(fmt.Sprint(rawRejections)), &finalRejections); err != nil {
+		t.Fatalf("decode final unhandled rejection evidence: %v", err)
+	}
 
 	mu.Lock()
 	defer mu.Unlock()
-	if len(routeErrors) != 0 {
-		t.Errorf("CDN interception errors = %v", routeErrors)
-	}
-	if len(pageErrors) != 0 {
-		t.Errorf("page errors after dependency journey = %v", pageErrors)
-	}
-	for _, message := range consoleErrors {
-		if !strings.Contains(message, "Failed to load resource") {
-			t.Errorf("unexpected console error after dependency journey: %s", message)
-		}
+	for _, failure := range validateGoshtosoDependencyBrowserEvidence(forceFallback, expectedPrimaryURLs, goshtosoDependencyBrowserEvidence{
+		FailedResponses:        failedResponses,
+		FailedRequests:         failedRequests,
+		ConsoleErrors:          consoleErrors,
+		PageErrors:             pageErrors,
+		Rejections:             finalRejections,
+		InterceptedPrimaryURLs: interceptedPrimaryURLs,
+		RouteErrors:            routeErrors,
+	}) {
+		t.Error(failure)
 	}
 }
 
