@@ -57,10 +57,6 @@ func (s *ReleaseService) Coordinate(ctx context.Context, command ReleaseCommand)
 	if err := validateReleaseCommand(command); err != nil {
 		return ReleaseResult{}, err
 	}
-	decision, err := releaseDecision(command.Review, command.Accepted)
-	if err != nil {
-		return ReleaseResult{}, wrapError(ErrorIntegrity, "coordinate release", fmt.Errorf("identify release decision: %w", err))
-	}
 	baselineRevision, err := s.revisions.ContractRevision(ctx, command.ContractID, command.Review.BaselineRevisionID)
 	if err != nil {
 		return ReleaseResult{}, wrapError(ErrorIntegrity, "coordinate release", fmt.Errorf("load release review baseline: %w", err))
@@ -69,13 +65,28 @@ func (s *ReleaseService) Coordinate(ctx context.Context, command ReleaseCommand)
 	if err != nil {
 		return ReleaseResult{}, wrapError(ErrorIntegrity, "coordinate release", fmt.Errorf("load release review candidate: %w", err))
 	}
-	baselineRef, err := revisionSnapshotRef(baselineRevision)
+	baselineSnapshot, err := revisionReviewSnapshot(baselineRevision)
 	if err != nil {
 		return ReleaseResult{}, wrapError(ErrorIntegrity, "coordinate release", fmt.Errorf("validate release review baseline: %w", err))
 	}
-	candidateRef, err := revisionSnapshotRef(candidateRevision)
+	candidateSnapshot, err := revisionReviewSnapshot(candidateRevision)
 	if err != nil {
 		return ReleaseResult{}, wrapError(ErrorIntegrity, "coordinate release", fmt.Errorf("validate release review candidate: %w", err))
+	}
+	if err := validateContractReviewSnapshots(command.Review, baselineSnapshot, candidateSnapshot); err != nil {
+		return ReleaseResult{}, wrapError(ErrorIntegrity, "coordinate release", fmt.Errorf("bind release review to persisted revisions: %w", err))
+	}
+	if err := domain.ValidateReleaseReviewReport(
+		command.Review.Report,
+		command.ContractID,
+		baselineSnapshot,
+		candidateSnapshot,
+	); err != nil {
+		return ReleaseResult{}, wrapError(ErrorIntegrity, "coordinate release", fmt.Errorf("validate release review against persisted revisions: %w", err))
+	}
+	decision, err := releaseDecision(command.Review, command.Accepted)
+	if err != nil {
+		return ReleaseResult{}, wrapError(ErrorIntegrity, "coordinate release", fmt.Errorf("identify release decision: %w", err))
 	}
 	now := s.clock.Now(ctx).UTC()
 	var next domain.ReleaseTrack
@@ -98,14 +109,6 @@ func (s *ReleaseService) Coordinate(ctx context.Context, command ReleaseCommand)
 				track.CurrentRevisionID,
 				baselineRevision.ID,
 			)
-		}
-		if err := domain.ValidateReleaseReviewReport(
-			command.Review.Report,
-			command.ContractID,
-			baselineRef,
-			candidateRef,
-		); err != nil {
-			return fmt.Errorf("validate release review against persisted revisions: %w", err)
 		}
 		if err := operational.SaveReview(transactionContext, command.Review); err != nil {
 			return fmt.Errorf("save review: %w", err)
@@ -157,29 +160,40 @@ func releaseDecision(review domain.ContractReview, accepted bool) (domain.Releas
 		ReviewDigest: hex.EncodeToString(digest[:]),
 		Verdict:      review.Report.Verdict,
 		Accepted:     accepted,
+		EvaluatedAt:  review.Report.EvaluatedAt,
 	}, nil
 }
 
-func revisionSnapshotRef(revision domain.ContractRevision) (domain.SnapshotRef, error) {
+func revisionReviewSnapshot(revision domain.ContractRevision) (domain.ContractSnapshot, error) {
 	if revision.ReviewSnapshot == nil {
-		return domain.SnapshotRef{}, fmt.Errorf("revision %q has no canonical review snapshot", revision.ID)
+		return domain.ContractSnapshot{}, fmt.Errorf("revision %q has no canonical review snapshot", revision.ID)
 	}
 	if err := domain.ValidateContractSnapshot(*revision.ReviewSnapshot); err != nil {
-		return domain.SnapshotRef{}, fmt.Errorf("revision %q canonical review snapshot: %w", revision.ID, err)
+		return domain.ContractSnapshot{}, fmt.Errorf("revision %q canonical review snapshot: %w", revision.ID, err)
 	}
 	if revision.ReviewSnapshot.ContractID != revision.ContractID ||
 		revision.ReviewSnapshot.RevisionID != revision.ID {
-		return domain.SnapshotRef{}, fmt.Errorf("revision %q canonical review snapshot identity does not match revision", revision.ID)
+		return domain.ContractSnapshot{}, fmt.Errorf("revision %q canonical review snapshot identity does not match revision", revision.ID)
 	}
 	if revision.ReviewSnapshot.SpecDigest != revision.SpecDigest ||
 		revision.ReviewSnapshot.ContractDigest != revision.ContractDigest {
-		return domain.SnapshotRef{}, fmt.Errorf("revision %q digests do not match its canonical review snapshot", revision.ID)
+		return domain.ContractSnapshot{}, fmt.Errorf("revision %q digests do not match its canonical review snapshot", revision.ID)
 	}
-	return domain.SnapshotRef{
-		RevisionID:     revision.ReviewSnapshot.RevisionID,
-		SpecDigest:     revision.ReviewSnapshot.SpecDigest,
-		ContractDigest: revision.ReviewSnapshot.ContractDigest,
-	}, nil
+	return *revision.ReviewSnapshot, nil
+}
+
+func validateContractReviewSnapshots(review domain.ContractReview, baseline, candidate domain.ContractSnapshot) error {
+	if review.BaselineRevisionID != baseline.RevisionID ||
+		review.BaselineSpecDigest != baseline.SpecDigest ||
+		review.BaselineContractDigest != baseline.ContractDigest {
+		return fmt.Errorf("review baseline evidence does not match persisted canonical snapshot")
+	}
+	if review.CandidateRevisionID != candidate.RevisionID ||
+		review.CandidateSpecDigest != candidate.SpecDigest ||
+		review.CandidateContractDigest != candidate.ContractDigest {
+		return fmt.Errorf("review candidate evidence does not match persisted canonical snapshot")
+	}
+	return nil
 }
 
 func validateReleaseCommand(command ReleaseCommand) error {
@@ -202,22 +216,6 @@ func validateReleaseCommand(command ReleaseCommand) error {
 	}
 	if command.SyncRecord.ProjectID != command.ContractID || command.SyncRecord.RevisionID != command.RevisionID {
 		return validationError("coordinate release", "sync identity does not match release command")
-	}
-	if err := domain.ValidateReleaseReviewReport(
-		command.Review.Report,
-		command.ContractID,
-		domain.SnapshotRef{
-			RevisionID:     command.Review.BaselineRevisionID,
-			SpecDigest:     command.Review.BaselineSpecDigest,
-			ContractDigest: command.Review.BaselineContractDigest,
-		},
-		domain.SnapshotRef{
-			RevisionID:     command.Review.CandidateRevisionID,
-			SpecDigest:     command.Review.CandidateSpecDigest,
-			ContractDigest: command.Review.CandidateContractDigest,
-		},
-	); err != nil {
-		return validationError("coordinate release", "invalid review evidence: "+err.Error())
 	}
 	if command.Accepted {
 		if command.Review.Report.Verdict != domain.VerdictPass {

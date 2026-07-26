@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
@@ -479,6 +480,149 @@ func TestFileStorePersistsReleaseDecisionReplayIdentityAcrossRestart(t *testing.
 	}
 	if !reflect.DeepEqual(replayed, promoted) || promoted.CurrentRevisionID != decision.RevisionID {
 		t.Fatalf("persisted promotion replay changed track: promoted=%#v replayed=%#v", promoted, replayed)
+	}
+}
+
+func TestFileStorePersistsHistoricalDecisionReplayProtectionAcrossRestart(t *testing.T) {
+	ctx := context.Background()
+	root := t.TempDir()
+	acceptedAt := time.Date(2026, 7, 25, 12, 0, 0, 0, time.UTC)
+	acceptedDecision := core.ReleaseDecision{
+		RevisionID: "revision-next", ReviewID: "review-accepted",
+		ReviewDigest: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+		Verdict:      core.VerdictPass, Accepted: true, EvaluatedAt: acceptedAt,
+	}
+	track, changed, err := core.ConsiderReleaseDecision(core.ReleaseTrack{
+		ID: "stable", ContractID: "payments", Mode: core.ReleaseModePinned,
+		Generation: 2, CurrentRevisionID: "revision-good",
+	}, acceptedDecision)
+	if err != nil || !changed {
+		t.Fatalf("apply acceptance: changed=%t err=%v", changed, err)
+	}
+	rejectedDecision := core.ReleaseDecision{
+		RevisionID: "revision-next", ReviewID: "review-rejected",
+		ReviewDigest: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+		Verdict:      core.VerdictFail, Accepted: false, EvaluatedAt: acceptedAt.Add(time.Minute),
+	}
+	track, changed, err = core.ConsiderReleaseDecision(track, rejectedDecision)
+	if err != nil || !changed {
+		t.Fatalf("apply rejection: changed=%t err=%v", changed, err)
+	}
+
+	store := NewFileStore(root)
+	if err := store.Within(ctx, func(ctx context.Context, operational port.OperationalStore) error {
+		for _, revisionID := range []string{"revision-good", "revision-next"} {
+			if err := operational.SaveRevision(ctx, core.ContractRevision{ID: revisionID, ContractID: "payments"}); err != nil {
+				return err
+			}
+		}
+		return operational.SaveReleaseTrack(ctx, 0, track)
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	restarted := NewFileStore(root)
+	got, err := restarted.ReleaseTrack(ctx, "payments", "stable")
+	if err != nil {
+		t.Fatal(err)
+	}
+	replayed, changed, err := core.ConsiderReleaseDecision(got, acceptedDecision)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if changed || !reflect.DeepEqual(replayed, got) {
+		t.Fatalf("historical acceptance changed restarted track: replayed=%#v got=%#v changed=%t", replayed, got, changed)
+	}
+	if got.DecisionHistory == nil || len(got.DecisionHistory.SeenDecisionIDs) != 2 {
+		t.Fatalf("persisted decision history = %#v, want 2 seen ids", got.DecisionHistory)
+	}
+	if _, err := core.PromoteReleaseRevision(replayed, acceptedDecision.RevisionID); err == nil {
+		t.Fatal("historical acceptance authorized promotion after restart")
+	}
+}
+
+func TestFileStoreRestartPreservesCanonicalReleaseReviewValidation(t *testing.T) {
+	ctx := context.Background()
+	root := t.TempDir()
+	evaluatedAt := time.Date(2026, 7, 25, 12, 0, 0, 0, time.UTC)
+	baselineSpec := []byte("baseline spec")
+	candidateSpec := []byte("candidate spec")
+	baseline := core.NewContractSnapshot("payments", "revision-good", baselineSpec, core.SpecIndex{
+		Operations: []core.Operation{{Method: "GET", Path: "/payments"}},
+	})
+	candidate := core.NewContractSnapshot("payments", "revision-next", candidateSpec, core.SpecIndex{})
+	policy, err := core.MergePolicy(core.PolicyLayer{
+		Name: "stable", Source: core.PolicySourceRepository,
+		Exceptions: []core.PolicyException{{
+			RuleID: core.RuleOperationRemoved, Reason: "planned migration", Author: "api-team",
+			ExpiresAt: evaluatedAt.Add(time.Hour), Source: core.PolicySourceRepository,
+		}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	report, err := core.EvaluateReview(core.ReviewRequest{
+		ContractID: "payments", Target: baseline, Candidate: candidate, Release: &baseline,
+		Policy: policy, EvaluatedAt: evaluatedAt, EngineVersion: "test",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	report.Comparisons = []core.ComparisonReport{report.Comparisons[1]}
+	report.Verdict = report.Comparisons[0].Policy.Verdict
+	encoded, err := core.CanonicalReviewJSON(report)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var connectedReport core.ReviewReport
+	if err := json.Unmarshal(encoded, &connectedReport); err != nil {
+		t.Fatal(err)
+	}
+
+	store := NewFileStore(root)
+	baselineKey, err := store.Put(ctx, baselineSpec)
+	if err != nil {
+		t.Fatal(err)
+	}
+	candidateKey, err := store.Put(ctx, candidateSpec)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Within(ctx, func(ctx context.Context, operational port.OperationalStore) error {
+		if err := operational.SaveRevision(ctx, core.ContractRevision{
+			ID: baseline.RevisionID, ContractID: baseline.ContractID,
+			SpecBlobKey: string(baselineKey), SpecDigest: baseline.SpecDigest,
+			ContractDigest: baseline.ContractDigest, ReviewSnapshot: &baseline,
+		}); err != nil {
+			return err
+		}
+		return operational.SaveRevision(ctx, core.ContractRevision{
+			ID: candidate.RevisionID, ContractID: candidate.ContractID,
+			SpecBlobKey: string(candidateKey), SpecDigest: candidate.SpecDigest,
+			ContractDigest: candidate.ContractDigest, ReviewSnapshot: &candidate,
+		})
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	restarted := NewFileStore(root)
+	persistedBaseline, err := restarted.ContractRevision(ctx, "payments", baseline.RevisionID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	persistedCandidate, err := restarted.ContractRevision(ctx, "payments", candidate.RevisionID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for attempt := 0; attempt < 2; attempt++ {
+		if err := core.ValidateReleaseReviewReport(
+			connectedReport,
+			"payments",
+			*persistedBaseline.ReviewSnapshot,
+			*persistedCandidate.ReviewSnapshot,
+		); err != nil {
+			t.Fatalf("validate canonical report after restart attempt %d: %v", attempt, err)
+		}
 	}
 }
 

@@ -77,10 +77,11 @@ type ReviewRequest struct {
 	EngineVersion string
 }
 
-// ValidateReleaseReviewReport binds canonical review evidence to one expected
-// release candidate. Release advancement accepts exactly one release-impact
-// comparison whose immutable baseline and candidate identities are complete.
-func ValidateReleaseReviewReport(report ReviewReport, contractID string, baseline, candidate SnapshotRef) error {
+// ValidateReleaseReviewReport reconstructs canonical release evidence from the
+// independently persisted baseline and candidate snapshots. Release
+// advancement accepts exactly one release-impact comparison whose complete
+// result matches the deterministic review core.
+func ValidateReleaseReviewReport(report ReviewReport, contractID string, baseline, candidate ContractSnapshot) error {
 	if report.SchemaVersion != ReviewSchemaVersion {
 		return fmt.Errorf("unsupported review schema version %q", report.SchemaVersion)
 	}
@@ -99,7 +100,7 @@ func ValidateReleaseReviewReport(report ReviewReport, contractID string, baselin
 	if !isLowerSHA256(report.PolicyDigest) {
 		return fmt.Errorf("review policy digest must be lowercase SHA-256")
 	}
-	canonicalPolicyDigest, err := validateCanonicalPolicyProjection(report.EffectivePolicy)
+	canonicalPolicy, canonicalPolicyDigest, err := validateCanonicalPolicyProjection(report.EffectivePolicy)
 	if err != nil {
 		return fmt.Errorf("review effective policy is invalid: %w", err)
 	}
@@ -113,22 +114,43 @@ func ValidateReleaseReviewReport(report ReviewReport, contractID string, baselin
 	if comparison.Kind != ComparisonReleaseImpact {
 		return fmt.Errorf("release review comparison kind %q is not %q", comparison.Kind, ComparisonReleaseImpact)
 	}
-	if err := validateExpectedSnapshotRef("baseline", comparison.Baseline, baseline); err != nil {
+	validatedBaseline, err := validateAndCloneContractSnapshot(baseline)
+	if err != nil {
+		return fmt.Errorf("validate persisted review baseline: %w", err)
+	}
+	validatedCandidate, err := validateAndCloneContractSnapshot(candidate)
+	if err != nil {
+		return fmt.Errorf("validate persisted review candidate: %w", err)
+	}
+	if validatedBaseline.ContractID != contractID {
+		return fmt.Errorf("persisted review baseline contract id %q does not match release contract id %q", validatedBaseline.ContractID, contractID)
+	}
+	if validatedCandidate.ContractID != contractID {
+		return fmt.Errorf("persisted review candidate contract id %q does not match release contract id %q", validatedCandidate.ContractID, contractID)
+	}
+	if err := validateExpectedSnapshotRef("baseline", comparison.Baseline, snapshotRef(validatedBaseline)); err != nil {
 		return err
 	}
-	if err := validateExpectedSnapshotRef("candidate", comparison.Candidate, candidate); err != nil {
+	if err := validateExpectedSnapshotRef("candidate", comparison.Candidate, snapshotRef(validatedCandidate)); err != nil {
 		return err
 	}
-	if comparison.Policy.Verdict != VerdictPass && comparison.Policy.Verdict != VerdictFail {
-		return fmt.Errorf("unsupported comparison verdict %q", comparison.Policy.Verdict)
+	expectedComparison := evaluateComparison(
+		ComparisonReleaseImpact,
+		validatedBaseline,
+		validatedCandidate,
+		canonicalPolicy,
+		report.EvaluatedAt,
+	)
+	if !reflect.DeepEqual(comparison, expectedComparison) {
+		return fmt.Errorf("release review result does not match canonical evaluation")
 	}
-	if report.Verdict != comparison.Policy.Verdict {
-		return fmt.Errorf("review verdict %q does not match comparison verdict %q", report.Verdict, comparison.Policy.Verdict)
+	if report.Verdict != expectedComparison.Policy.Verdict {
+		return fmt.Errorf("review verdict %q does not match canonical comparison verdict %q", report.Verdict, expectedComparison.Policy.Verdict)
 	}
 	return nil
 }
 
-func validateCanonicalPolicyProjection(projection EffectivePolicyProjection) (string, error) {
+func validateCanonicalPolicyProjection(projection EffectivePolicyProjection) (EffectivePolicy, string, error) {
 	policy := EffectivePolicy{RequireReleaseBaseline: projection.RequireReleaseBaseline}
 	for layerIndex, projectedLayer := range projection.Layers {
 		layer := PolicyLayer{
@@ -140,7 +162,7 @@ func validateCanonicalPolicyProjection(projection EffectivePolicyProjection) (st
 		}
 		for _, rule := range projectedLayer.Rules {
 			if _, exists := layer.Rules[rule.RuleID]; exists {
-				return "", fmt.Errorf("policy layer %d contains duplicate rule %q", layerIndex, rule.RuleID)
+				return EffectivePolicy{}, "", fmt.Errorf("policy layer %d contains duplicate rule %q", layerIndex, rule.RuleID)
 			}
 			layer.Rules[rule.RuleID] = rule.Level
 		}
@@ -149,16 +171,16 @@ func validateCanonicalPolicyProjection(projection EffectivePolicyProjection) (st
 
 	normalized, err := normalizeEffectivePolicy(policy)
 	if err != nil {
-		return "", err
+		return EffectivePolicy{}, "", err
 	}
-	_, canonicalProjection, digest, err := canonicalReviewPolicy(normalized)
+	canonicalPolicy, canonicalProjection, digest, err := canonicalReviewPolicy(normalized)
 	if err != nil {
-		return "", err
+		return EffectivePolicy{}, "", err
 	}
 	if !reflect.DeepEqual(projection, canonicalProjection) {
-		return "", fmt.Errorf("effective policy projection is not canonical")
+		return EffectivePolicy{}, "", fmt.Errorf("effective policy projection is not canonical")
 	}
-	return digest, nil
+	return canonicalPolicy, digest, nil
 }
 
 func validateExpectedSnapshotRef(role string, actual, expected SnapshotRef) error {

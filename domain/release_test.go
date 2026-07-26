@@ -2,8 +2,17 @@ package domain
 
 import (
 	"encoding/json"
+	"reflect"
 	"testing"
+	"time"
 )
+
+func TestReleaseTrackRemainsComparableForPublicCallers(t *testing.T) {
+	track := ReleaseTrack{}
+	if track != track {
+		t.Fatal("release track did not equal itself")
+	}
+}
 
 func TestFollowingTrackAdvancesOnlyAcceptedRevision(t *testing.T) {
 	track := ReleaseTrack{
@@ -71,10 +80,11 @@ func TestPinnedTrackAppliesRejectThenAcceptForSameRevision(t *testing.T) {
 		ID: "stable", ContractID: "payments", Mode: ReleaseModePinned,
 		Generation: 2, CurrentRevisionID: "revision-good",
 	}
+	rejectedAt := time.Date(2026, 7, 25, 12, 0, 0, 0, time.UTC)
 	rejectedDecision := ReleaseDecision{
 		RevisionID: "revision-next", ReviewID: "review-rejected",
 		ReviewDigest: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-		Verdict:      VerdictFail, Accepted: false,
+		Verdict:      VerdictFail, Accepted: false, EvaluatedAt: rejectedAt,
 	}
 	rejected, changed, err := ConsiderReleaseDecision(track, rejectedDecision)
 	if err != nil {
@@ -87,7 +97,7 @@ func TestPinnedTrackAppliesRejectThenAcceptForSameRevision(t *testing.T) {
 	acceptedDecision := ReleaseDecision{
 		RevisionID: "revision-next", ReviewID: "review-accepted",
 		ReviewDigest: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
-		Verdict:      VerdictPass, Accepted: true,
+		Verdict:      VerdictPass, Accepted: true, EvaluatedAt: rejectedAt.Add(time.Minute),
 	}
 	accepted, changed, err := ConsiderReleaseDecision(rejected, acceptedDecision)
 	if err != nil {
@@ -117,7 +127,7 @@ func TestReleaseDecisionExactAcceptedReplayIsNoOp(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if changed || next != track {
+	if changed || !reflect.DeepEqual(next, track) {
 		t.Fatalf("exact replay changed track: next=%#v changed=%t", next, changed)
 	}
 }
@@ -138,7 +148,7 @@ func TestReleaseDecisionRepeatedRejectionIsNoOp(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if changed || next != track {
+	if changed || !reflect.DeepEqual(next, track) {
 		t.Fatalf("repeated rejection changed track: next=%#v changed=%t", next, changed)
 	}
 }
@@ -157,7 +167,7 @@ func TestConsiderReleaseRevisionUsesDecisionIdentityForPinnedReplay(t *testing.T
 	if err != nil {
 		t.Fatal(err)
 	}
-	if rejectedReplay != rejected {
+	if !reflect.DeepEqual(rejectedReplay, rejected) {
 		t.Fatalf("exact rejection replay changed track: %#v", rejectedReplay)
 	}
 
@@ -176,8 +186,131 @@ func TestConsiderReleaseRevisionUsesDecisionIdentityForPinnedReplay(t *testing.T
 	if err != nil {
 		t.Fatal(err)
 	}
-	if acceptedReplay != accepted {
+	if !reflect.DeepEqual(acceptedReplay, accepted) {
 		t.Fatalf("exact acceptance replay changed track: %#v", acceptedReplay)
+	}
+}
+
+func TestStaleAcceptedDecisionReplayCannotOverrideNewerRejection(t *testing.T) {
+	track := ReleaseTrack{
+		ID: "stable", ContractID: "payments", Mode: ReleaseModePinned,
+		Generation: 2, CurrentRevisionID: "revision-good",
+	}
+	acceptedAt := time.Date(2026, 7, 25, 12, 0, 0, 0, time.UTC)
+	acceptedDecision := ReleaseDecision{
+		RevisionID: "revision-next", ReviewID: "review-accepted",
+		ReviewDigest: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+		Verdict:      VerdictPass, Accepted: true, EvaluatedAt: acceptedAt,
+	}
+	accepted, changed, err := ConsiderReleaseDecision(track, acceptedDecision)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !changed {
+		t.Fatal("initial acceptance was a no-op")
+	}
+	rejectedDecision := ReleaseDecision{
+		RevisionID: "revision-next", ReviewID: "review-rejected",
+		ReviewDigest: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+		Verdict:      VerdictFail, Accepted: false, EvaluatedAt: acceptedAt.Add(time.Minute),
+	}
+	rejected, changed, err := ConsiderReleaseDecision(accepted, rejectedDecision)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !changed {
+		t.Fatal("newer rejection was a no-op")
+	}
+
+	replayed, changed, err := ConsiderReleaseDecision(rejected, acceptedDecision)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if changed || !reflect.DeepEqual(replayed, rejected) {
+		t.Fatalf("stale accepted replay changed track: replayed=%#v rejected=%#v changed=%t", replayed, rejected, changed)
+	}
+	if _, err := PromoteReleaseRevision(replayed, "revision-next"); err == nil {
+		t.Fatal("stale accepted replay restored promotion authorization")
+	}
+}
+
+func TestReleaseDecisionRejectsUnseenOlderDecision(t *testing.T) {
+	older := time.Date(2026, 7, 25, 12, 0, 0, 0, time.UTC)
+	newer := older.Add(time.Hour)
+	currentDecision := ReleaseDecision{
+		RevisionID: "revision-next", ReviewID: "review-newer",
+		ReviewDigest: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+		Verdict:      VerdictFail, Accepted: false, EvaluatedAt: newer,
+	}
+	track, changed, err := ConsiderReleaseDecision(ReleaseTrack{
+		ID: "stable", ContractID: "payments", Mode: ReleaseModePinned,
+		Generation: 2, CurrentRevisionID: "revision-good",
+	}, currentDecision)
+	if err != nil || !changed {
+		t.Fatalf("apply newer decision: changed=%t err=%v", changed, err)
+	}
+	staleUnseen := ReleaseDecision{
+		RevisionID: "revision-next", ReviewID: "review-older-unseen",
+		ReviewDigest: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+		Verdict:      VerdictPass, Accepted: true, EvaluatedAt: older,
+	}
+
+	if _, _, err := ConsiderReleaseDecision(track, staleUnseen); err == nil {
+		t.Fatal("unseen older decision was accepted")
+	}
+}
+
+func TestReleaseDecisionRejectsEqualTimeDifferentIdentity(t *testing.T) {
+	evaluatedAt := time.Date(2026, 7, 25, 12, 0, 0, 0, time.UTC)
+	currentDecision := ReleaseDecision{
+		RevisionID: "revision-next", ReviewID: "review-first",
+		ReviewDigest: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+		Verdict:      VerdictFail, Accepted: false, EvaluatedAt: evaluatedAt,
+	}
+	track, changed, err := ConsiderReleaseDecision(ReleaseTrack{
+		ID: "stable", ContractID: "payments", Mode: ReleaseModePinned,
+		Generation: 2, CurrentRevisionID: "revision-good",
+	}, currentDecision)
+	if err != nil || !changed {
+		t.Fatalf("apply first decision: changed=%t err=%v", changed, err)
+	}
+	conflicting := ReleaseDecision{
+		RevisionID: "revision-next", ReviewID: "review-conflicting",
+		ReviewDigest: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+		Verdict:      VerdictPass, Accepted: true, EvaluatedAt: evaluatedAt,
+	}
+
+	if _, _, err := ConsiderReleaseDecision(track, conflicting); err == nil {
+		t.Fatal("different decision at the same evaluation time was accepted")
+	}
+}
+
+func TestReleaseDecisionAllowsNewerAcceptanceAfterRejection(t *testing.T) {
+	rejectedAt := time.Date(2026, 7, 25, 12, 0, 0, 0, time.UTC)
+	rejectedDecision := ReleaseDecision{
+		RevisionID: "revision-next", ReviewID: "review-rejected",
+		ReviewDigest: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+		Verdict:      VerdictFail, Accepted: false, EvaluatedAt: rejectedAt,
+	}
+	rejected, changed, err := ConsiderReleaseDecision(ReleaseTrack{
+		ID: "stable", ContractID: "payments", Mode: ReleaseModePinned,
+		Generation: 2, CurrentRevisionID: "revision-good",
+	}, rejectedDecision)
+	if err != nil || !changed {
+		t.Fatalf("apply rejection: changed=%t err=%v", changed, err)
+	}
+	acceptedDecision := ReleaseDecision{
+		RevisionID: "revision-next", ReviewID: "review-accepted",
+		ReviewDigest: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+		Verdict:      VerdictPass, Accepted: true, EvaluatedAt: rejectedAt.Add(time.Minute),
+	}
+
+	accepted, changed, err := ConsiderReleaseDecision(rejected, acceptedDecision)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !changed || accepted.LastDecision == nil || !reflect.DeepEqual(*accepted.LastDecision, acceptedDecision) {
+		t.Fatalf("newer acceptance not applied: accepted=%#v changed=%t", accepted, changed)
 	}
 }
 
@@ -235,7 +368,7 @@ func TestPinnedAcceptedPromotionSurvivesRestartAndExactReplay(t *testing.T) {
 	if err != nil {
 		t.Fatalf("replay accepted promotion: %v", err)
 	}
-	if replayed != promoted {
+	if !reflect.DeepEqual(replayed, promoted) {
 		t.Fatalf("exact promotion replay changed track: %#v", replayed)
 	}
 }

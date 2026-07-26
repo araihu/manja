@@ -479,7 +479,129 @@ func TestValidateReleaseReviewReportAcceptsCanonicalEvidence(t *testing.T) {
 	}
 }
 
-func canonicalReleaseReportForTest(t *testing.T) (ReviewReport, SnapshotRef, SnapshotRef) {
+func TestValidateReleaseReviewReportRejectsRewrittenCanonicalResult(t *testing.T) {
+	report, baseline, candidate := canonicalReleaseReportWithFindingForTest(t, true)
+	if len(report.Comparisons[0].Findings) != 1 ||
+		len(report.Comparisons[0].Policy.Decisions) != 1 ||
+		len(report.Comparisons[0].Policy.AppliedExceptions) != 1 ||
+		len(report.Comparisons[0].Policy.ExceptionDispositions) != 1 {
+		t.Fatalf("test fixture lacks complete canonical result: %#v", report.Comparisons[0])
+	}
+	tests := []struct {
+		name   string
+		mutate func(*ReviewReport)
+	}{
+		{
+			name: "rewritten finding",
+			mutate: func(report *ReviewReport) {
+				report.Comparisons[0].Findings[0].Description = "forged description"
+			},
+		},
+		{
+			name: "removed finding",
+			mutate: func(report *ReviewReport) {
+				report.Comparisons[0].Findings = nil
+			},
+		},
+		{
+			name: "rewritten decision",
+			mutate: func(report *ReviewReport) {
+				report.Comparisons[0].Policy.Decisions[0].Excepted = false
+			},
+		},
+		{
+			name: "rewritten applied exception",
+			mutate: func(report *ReviewReport) {
+				report.Comparisons[0].Policy.AppliedExceptions[0].Reason = "forged reason"
+			},
+		},
+		{
+			name: "rewritten exception disposition",
+			mutate: func(report *ReviewReport) {
+				report.Comparisons[0].Policy.ExceptionDispositions[0].Disposition = ExceptionDispositionExpired
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mutated := cloneReviewReportForTest(t, report)
+			tt.mutate(&mutated)
+			if err := ValidateReleaseReviewReport(
+				mutated,
+				"payments",
+				baseline,
+				candidate,
+			); err == nil {
+				t.Fatal("rewritten canonical review result was accepted")
+			}
+		})
+	}
+}
+
+func TestValidateReleaseReviewReportRejectsForgedPassWithValidEvidence(t *testing.T) {
+	report, baseline, candidate := canonicalReleaseReportWithFindingForTest(t, false)
+	if report.Verdict != VerdictFail {
+		t.Fatalf("canonical fixture verdict = %q, want fail", report.Verdict)
+	}
+	report.Comparisons[0].Findings = nil
+	report.Comparisons[0].Policy = PolicyResult{Verdict: VerdictPass}
+	report.Verdict = VerdictPass
+
+	if err := ValidateReleaseReviewReport(
+		report,
+		"payments",
+		baseline,
+		candidate,
+	); err == nil {
+		t.Fatal("forged passing result with valid snapshot and policy evidence was accepted")
+	}
+}
+
+func canonicalReleaseReportWithFindingForTest(t *testing.T, exceptFinding bool) (ReviewReport, ContractSnapshot, ContractSnapshot) {
+	t.Helper()
+	at := time.Date(2026, 7, 25, 12, 0, 0, 0, time.UTC)
+	baseline := NewContractSnapshot("payments", "revision-good", []byte("baseline"), SpecIndex{
+		Operations: []Operation{{Method: "GET", Path: "/payments"}},
+	})
+	candidate := NewContractSnapshot("payments", "revision-next", []byte("candidate"), SpecIndex{})
+	layer := PolicyLayer{Name: "stable", Source: PolicySourceRepository}
+	if exceptFinding {
+		layer.Exceptions = []PolicyException{{
+			RuleID: RuleOperationRemoved, Reason: "planned migration", Author: "api-team",
+			ExpiresAt: at.Add(time.Hour), Source: PolicySourceRepository,
+		}}
+	}
+	policy, err := MergePolicy(layer)
+	if err != nil {
+		t.Fatal(err)
+	}
+	report, err := EvaluateReview(ReviewRequest{
+		ContractID: "payments", Target: baseline, Candidate: candidate,
+		Release: &baseline, Policy: policy, EvaluatedAt: at, EngineVersion: "test",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	report.Comparisons = []ComparisonReport{report.Comparisons[1]}
+	report.Verdict = report.Comparisons[0].Policy.Verdict
+	return report, baseline, candidate
+}
+
+func cloneReviewReportForTest(t *testing.T, report ReviewReport) ReviewReport {
+	t.Helper()
+	encoded, err := json.Marshal(report)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var cloned ReviewReport
+	if err := json.Unmarshal(encoded, &cloned); err != nil {
+		t.Fatal(err)
+	}
+	return cloned
+}
+
+func canonicalReleaseReportForTest(t *testing.T) (ReviewReport, ContractSnapshot, ContractSnapshot) {
 	t.Helper()
 	at := time.Date(2026, 7, 25, 12, 0, 0, 0, time.UTC)
 	baselineSnapshot := NewContractSnapshot("payments", "revision-good", []byte("baseline"), SpecIndex{
@@ -501,7 +623,7 @@ func canonicalReleaseReportForTest(t *testing.T) (ReviewReport, SnapshotRef, Sna
 	}
 	report.Comparisons = []ComparisonReport{report.Comparisons[1]}
 	report.Verdict = report.Comparisons[0].Policy.Verdict
-	return report, snapshotRef(baselineSnapshot), snapshotRef(candidateSnapshot)
+	return report, baselineSnapshot, candidateSnapshot
 }
 
 func reviewRequestForTest(policy EffectivePolicy) ReviewRequest {

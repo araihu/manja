@@ -2,6 +2,7 @@ package application
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"reflect"
 	"testing"
@@ -278,7 +279,19 @@ func TestReleaseServiceRejectsCallerForgedPersistedEvidence(t *testing.T) {
 		mutate func(*domain.ContractReview, *testOperationalStore)
 	}{
 		{
-			name: "candidate spec digest",
+			name: "caller candidate spec digest",
+			mutate: func(review *domain.ContractReview, _ *testOperationalStore) {
+				review.CandidateSpecDigest = "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+			},
+		},
+		{
+			name: "caller baseline contract digest",
+			mutate: func(review *domain.ContractReview, _ *testOperationalStore) {
+				review.BaselineContractDigest = "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+			},
+		},
+		{
+			name: "persisted candidate spec digest",
 			mutate: func(review *domain.ContractReview, store *testOperationalStore) {
 				forged := "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
 				review.CandidateSpecDigest = forged
@@ -289,7 +302,7 @@ func TestReleaseServiceRejectsCallerForgedPersistedEvidence(t *testing.T) {
 			},
 		},
 		{
-			name: "baseline contract digest",
+			name: "persisted baseline contract digest",
 			mutate: func(review *domain.ContractReview, store *testOperationalStore) {
 				forged := "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
 				review.BaselineContractDigest = forged
@@ -342,14 +355,116 @@ func TestReleaseServiceRejectsCallerForgedPersistedEvidence(t *testing.T) {
 	}
 }
 
+func TestReleaseServiceRejectsRewrittenCanonicalReviewResults(t *testing.T) {
+	tests := []struct {
+		name   string
+		except bool
+		mutate func(*domain.ContractReview)
+	}{
+		{
+			name:   "rewritten finding",
+			except: true,
+			mutate: func(review *domain.ContractReview) {
+				review.Report.Comparisons[0].Findings[0].Description = "forged description"
+			},
+		},
+		{
+			name:   "removed finding",
+			except: true,
+			mutate: func(review *domain.ContractReview) {
+				review.Report.Comparisons[0].Findings = nil
+			},
+		},
+		{
+			name:   "rewritten decision",
+			except: true,
+			mutate: func(review *domain.ContractReview) {
+				review.Report.Comparisons[0].Policy.Decisions[0].Excepted = false
+			},
+		},
+		{
+			name:   "rewritten applied exception",
+			except: true,
+			mutate: func(review *domain.ContractReview) {
+				review.Report.Comparisons[0].Policy.AppliedExceptions[0].Reason = "forged reason"
+			},
+		},
+		{
+			name:   "rewritten exception disposition",
+			except: true,
+			mutate: func(review *domain.ContractReview) {
+				review.Report.Comparisons[0].Policy.ExceptionDispositions[0].Disposition = domain.ExceptionDispositionExpired
+			},
+		},
+		{
+			name: "forged pass result and verdict",
+			mutate: func(review *domain.ContractReview) {
+				review.Report.Comparisons[0].Findings = nil
+				review.Report.Comparisons[0].Policy = domain.PolicyResult{Verdict: domain.VerdictPass}
+				review.Report.Verdict = domain.VerdictPass
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			originalTrack := domain.ReleaseTrack{
+				ID: "v1", ContractID: "payments", Mode: domain.ReleaseModeFollowing,
+				Generation: 3, CurrentRevisionID: "revision-good",
+			}
+			store := newTestOperationalStore()
+			store.tracks["payments/v1"] = originalTrack
+			review, baseline, candidate := releaseReviewWithFindingAtForTest(
+				"review-1",
+				"payments",
+				"revision-good",
+				"revision-next",
+				time.Date(2026, 7, 25, 12, 0, 0, 0, time.UTC),
+				tt.except,
+			)
+			persistReleaseReviewSnapshots(store, review, baseline, candidate)
+			review = cloneContractReviewForTest(t, review)
+			tt.mutate(&review)
+			service, err := NewReleaseService(ReleaseDependencies{
+				Revisions:  store,
+				UnitOfWork: &testUnitOfWork{committed: store},
+				Clock:      &testClock{now: time.Date(2026, 7, 25, 14, 0, 0, 0, time.UTC)},
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			_, err = service.Coordinate(context.Background(), ReleaseCommand{
+				ContractID: "payments", TrackID: "v1", RevisionID: "revision-next", Accepted: true,
+				Review: review,
+				SyncRecord: domain.SyncRecord{
+					ID: "sync-1", ProjectID: "payments", RevisionID: "revision-next", Result: domain.SyncResultSuccess,
+				},
+				PublicPath: "/payments/v1",
+			})
+			if err == nil {
+				t.Fatal("release advanced with rewritten canonical review result")
+			}
+			if got := store.tracks["payments/v1"]; !reflect.DeepEqual(got, originalTrack) {
+				t.Fatalf("track changed after rewritten review: %#v", got)
+			}
+			if len(store.reviews) != 0 || len(store.syncRecords) != 0 ||
+				len(store.publications) != 0 || len(store.auditEvents) != 0 || len(store.outbox) != 0 {
+				t.Fatal("rewritten review produced release side effects")
+			}
+		})
+	}
+}
+
 func TestReleaseServiceAppliesPinnedRejectThenAcceptForSameRevision(t *testing.T) {
 	store := newTestOperationalStore()
 	store.tracks["payments/stable"] = domain.ReleaseTrack{
 		ID: "stable", ContractID: "payments", Mode: domain.ReleaseModePinned,
 		Generation: 2, CurrentRevisionID: "revision-good",
 	}
-	review := releaseReviewForTest("review-1", "payments", "revision-good", "revision-next")
-	persistReleaseReviewRevisions(store, review)
+	rejectedAt := time.Date(2026, 7, 25, 12, 0, 0, 0, time.UTC)
+	rejectedReview := releaseReviewAtForTest("review-rejected", "payments", "revision-good", "revision-next", rejectedAt)
+	persistReleaseReviewRevisions(store, rejectedReview)
 	service, err := NewReleaseService(ReleaseDependencies{
 		Revisions:  store,
 		UnitOfWork: &testUnitOfWork{committed: store},
@@ -360,7 +475,7 @@ func TestReleaseServiceAppliesPinnedRejectThenAcceptForSameRevision(t *testing.T
 	}
 	command := ReleaseCommand{
 		ContractID: "payments", TrackID: "stable", RevisionID: "revision-next",
-		Review: review,
+		Review: rejectedReview,
 		SyncRecord: domain.SyncRecord{
 			ID: "sync-1", ProjectID: "payments", RevisionID: "revision-next", Result: domain.SyncResultSuccess,
 		},
@@ -372,6 +487,14 @@ func TestReleaseServiceAppliesPinnedRejectThenAcceptForSameRevision(t *testing.T
 		t.Fatalf("reject pinned candidate: %v", err)
 	}
 	command.Accepted = true
+	command.Review = releaseReviewAtForTest(
+		"review-accepted",
+		"payments",
+		"revision-good",
+		"revision-next",
+		rejectedAt.Add(time.Minute),
+	)
+	command.SyncRecord.ID = "sync-accepted"
 	result, err := service.Coordinate(context.Background(), command)
 	if err != nil {
 		t.Fatalf("accept pinned candidate: %v", err)
@@ -379,7 +502,7 @@ func TestReleaseServiceAppliesPinnedRejectThenAcceptForSameRevision(t *testing.T
 	if result.Track.Generation != 4 || result.Track.CandidateRevisionID != "revision-next" || result.Track.CurrentRevisionID != "revision-good" {
 		t.Fatalf("reject then accept track = %#v", result.Track)
 	}
-	if result.Track.LastDecision == nil || !result.Track.LastDecision.Accepted || result.Track.LastDecision.ReviewID != review.ID {
+	if result.Track.LastDecision == nil || !result.Track.LastDecision.Accepted || result.Track.LastDecision.ReviewID != command.Review.ID {
 		t.Fatalf("accepted decision not recorded: %#v", result.Track.LastDecision)
 	}
 	if len(store.auditEvents) != 2 || len(store.outbox) != 2 {
@@ -433,7 +556,94 @@ func TestReleaseServiceRepeatedPinnedRejectionIsExactReplay(t *testing.T) {
 	}
 }
 
+func TestReleaseServiceHistoricalAcceptanceReplayHasNoSideEffects(t *testing.T) {
+	store := newTestOperationalStore()
+	store.tracks["payments/stable"] = domain.ReleaseTrack{
+		ID: "stable", ContractID: "payments", Mode: domain.ReleaseModePinned,
+		Generation: 2, CurrentRevisionID: "revision-good",
+	}
+	acceptedAt := time.Date(2026, 7, 25, 12, 0, 0, 0, time.UTC)
+	acceptedReview := releaseReviewAtForTest(
+		"review-accepted",
+		"payments",
+		"revision-good",
+		"revision-next",
+		acceptedAt,
+	)
+	persistReleaseReviewRevisions(store, acceptedReview)
+	service, err := NewReleaseService(ReleaseDependencies{
+		Revisions:  store,
+		UnitOfWork: &testUnitOfWork{committed: store},
+		Clock:      &testClock{now: time.Date(2026, 7, 25, 14, 0, 0, 0, time.UTC)},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	acceptedCommand := ReleaseCommand{
+		ContractID: "payments", TrackID: "stable", RevisionID: "revision-next",
+		Accepted: true, Review: acceptedReview,
+		SyncRecord: domain.SyncRecord{
+			ID: "sync-accepted", ProjectID: "payments", RevisionID: "revision-next", Result: domain.SyncResultSuccess,
+		},
+		PublicPath: "/payments/stable",
+	}
+	if _, err := service.Coordinate(context.Background(), acceptedCommand); err != nil {
+		t.Fatalf("apply acceptance: %v", err)
+	}
+	rejectedCommand := acceptedCommand
+	rejectedCommand.Accepted = false
+	rejectedCommand.Review = releaseReviewAtForTest(
+		"review-rejected",
+		"payments",
+		"revision-good",
+		"revision-next",
+		acceptedAt.Add(time.Minute),
+	)
+	rejectedCommand.SyncRecord.ID = "sync-rejected"
+	rejectedCommand.PublicPath = ""
+	rejected, err := service.Coordinate(context.Background(), rejectedCommand)
+	if err != nil {
+		t.Fatalf("apply newer rejection: %v", err)
+	}
+	stateAfterRejection := store.clone()
+
+	replayed, err := service.Coordinate(context.Background(), acceptedCommand)
+	if err != nil {
+		t.Fatalf("replay historical acceptance: %v", err)
+	}
+	if !reflect.DeepEqual(replayed.Track, rejected.Track) {
+		t.Fatalf("historical replay changed track: replayed=%#v rejected=%#v", replayed.Track, rejected.Track)
+	}
+	if !reflect.DeepEqual(store.tracks, stateAfterRejection.tracks) ||
+		!reflect.DeepEqual(store.reviews, stateAfterRejection.reviews) ||
+		!reflect.DeepEqual(store.syncRecords, stateAfterRejection.syncRecords) ||
+		!reflect.DeepEqual(store.publications, stateAfterRejection.publications) ||
+		!reflect.DeepEqual(store.auditEvents, stateAfterRejection.auditEvents) ||
+		!reflect.DeepEqual(store.outbox, stateAfterRejection.outbox) {
+		t.Fatal("historical acceptance replay produced release side effects")
+	}
+	if len(store.reviews) != 2 || len(store.syncRecords) != 2 ||
+		len(store.publications) != 0 || len(store.auditEvents) != 2 || len(store.outbox) != 2 {
+		t.Fatalf(
+			"historical replay side effects reviews=%d sync=%d publications=%d audit=%d outbox=%d",
+			len(store.reviews), len(store.syncRecords), len(store.publications), len(store.auditEvents), len(store.outbox),
+		)
+	}
+	if _, err := domain.PromoteReleaseRevision(replayed.Track, "revision-next"); err == nil {
+		t.Fatal("historical acceptance replay restored promotion authorization")
+	}
+}
+
 func releaseReportForTest(contractID, baselineRevisionID, candidateRevisionID string) domain.ReviewReport {
+	return releaseReportAtForTest(
+		contractID,
+		baselineRevisionID,
+		candidateRevisionID,
+		time.Date(2026, 7, 25, 12, 0, 0, 0, time.UTC),
+	)
+}
+
+func releaseReportAtForTest(contractID, baselineRevisionID, candidateRevisionID string, evaluatedAt time.Time) domain.ReviewReport {
 	baseline := domain.NewContractSnapshot(contractID, baselineRevisionID, []byte("spec:"+baselineRevisionID), domain.SpecIndex{})
 	candidate := domain.NewContractSnapshot(contractID, candidateRevisionID, []byte("spec:"+candidateRevisionID), domain.SpecIndex{})
 	policy, err := domain.MergePolicy(domain.PolicyLayer{Name: "stable", Source: domain.PolicySourceRepository})
@@ -442,7 +652,7 @@ func releaseReportForTest(contractID, baselineRevisionID, candidateRevisionID st
 	}
 	report, err := domain.EvaluateReview(domain.ReviewRequest{
 		ContractID: contractID, Target: baseline, Candidate: candidate, Release: &baseline,
-		Policy: policy, EvaluatedAt: time.Date(2026, 7, 25, 12, 0, 0, 0, time.UTC), EngineVersion: "test",
+		Policy: policy, EvaluatedAt: evaluatedAt, EngineVersion: "test",
 	})
 	if err != nil {
 		panic(err)
@@ -453,7 +663,17 @@ func releaseReportForTest(contractID, baselineRevisionID, candidateRevisionID st
 }
 
 func releaseReviewForTest(id, contractID, baselineRevisionID, candidateRevisionID string) domain.ContractReview {
-	report := releaseReportForTest(contractID, baselineRevisionID, candidateRevisionID)
+	return releaseReviewAtForTest(
+		id,
+		contractID,
+		baselineRevisionID,
+		candidateRevisionID,
+		time.Date(2026, 7, 25, 12, 0, 0, 0, time.UTC),
+	)
+}
+
+func releaseReviewAtForTest(id, contractID, baselineRevisionID, candidateRevisionID string, evaluatedAt time.Time) domain.ContractReview {
+	report := releaseReportAtForTest(contractID, baselineRevisionID, candidateRevisionID, evaluatedAt)
 	return domain.ContractReview{
 		ID:                      id,
 		ContractID:              contractID,
@@ -464,6 +684,87 @@ func releaseReviewForTest(id, contractID, baselineRevisionID, candidateRevisionI
 		CandidateSpecDigest:     report.Comparisons[0].Candidate.SpecDigest,
 		CandidateContractDigest: report.Comparisons[0].Candidate.ContractDigest,
 		Report:                  report,
+	}
+}
+
+func releaseReviewWithFindingAtForTest(
+	id, contractID, baselineRevisionID, candidateRevisionID string,
+	evaluatedAt time.Time,
+	exceptFinding bool,
+) (domain.ContractReview, domain.ContractSnapshot, domain.ContractSnapshot) {
+	baseline := domain.NewContractSnapshot(
+		contractID,
+		baselineRevisionID,
+		[]byte("spec:"+baselineRevisionID),
+		domain.SpecIndex{Operations: []domain.Operation{{Method: "GET", Path: "/payments"}}},
+	)
+	candidate := domain.NewContractSnapshot(
+		contractID,
+		candidateRevisionID,
+		[]byte("spec:"+candidateRevisionID),
+		domain.SpecIndex{},
+	)
+	layer := domain.PolicyLayer{Name: "stable", Source: domain.PolicySourceRepository}
+	if exceptFinding {
+		layer.Exceptions = []domain.PolicyException{{
+			RuleID: domain.RuleOperationRemoved, Reason: "planned migration", Author: "api-team",
+			ExpiresAt: evaluatedAt.Add(time.Hour), Source: domain.PolicySourceRepository,
+		}}
+	}
+	policy, err := domain.MergePolicy(layer)
+	if err != nil {
+		panic(err)
+	}
+	report, err := domain.EvaluateReview(domain.ReviewRequest{
+		ContractID: contractID, Target: baseline, Candidate: candidate, Release: &baseline,
+		Policy: policy, EvaluatedAt: evaluatedAt, EngineVersion: "test",
+	})
+	if err != nil {
+		panic(err)
+	}
+	report.Comparisons = []domain.ComparisonReport{report.Comparisons[1]}
+	report.Verdict = report.Comparisons[0].Policy.Verdict
+	review := domain.ContractReview{
+		ID:                      id,
+		ContractID:              contractID,
+		BaselineRevisionID:      baselineRevisionID,
+		BaselineSpecDigest:      baseline.SpecDigest,
+		BaselineContractDigest:  baseline.ContractDigest,
+		CandidateRevisionID:     candidateRevisionID,
+		CandidateSpecDigest:     candidate.SpecDigest,
+		CandidateContractDigest: candidate.ContractDigest,
+		Report:                  report,
+	}
+	return review, baseline, candidate
+}
+
+func cloneContractReviewForTest(t *testing.T, review domain.ContractReview) domain.ContractReview {
+	t.Helper()
+	encoded, err := json.Marshal(review)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var cloned domain.ContractReview
+	if err := json.Unmarshal(encoded, &cloned); err != nil {
+		t.Fatal(err)
+	}
+	return cloned
+}
+
+func persistReleaseReviewSnapshots(
+	store *testOperationalStore,
+	review domain.ContractReview,
+	baseline, candidate domain.ContractSnapshot,
+) {
+	store.revisions[review.BaselineRevisionID] = domain.ContractRevision{
+		ID: review.BaselineRevisionID, ContractID: review.ContractID,
+		SpecDigest: baseline.SpecDigest, ContractDigest: baseline.ContractDigest,
+		ReviewSnapshot: &baseline,
+	}
+	store.revisions[review.CandidateRevisionID] = domain.ContractRevision{
+		ID: review.CandidateRevisionID, ContractID: review.ContractID,
+		SpecDigest: candidate.SpecDigest, ContractDigest: candidate.ContractDigest,
+		ReviewSnapshot: &candidate,
 	}
 }
 
