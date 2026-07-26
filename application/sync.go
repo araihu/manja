@@ -83,23 +83,29 @@ func (s *SyncService) Sync(ctx context.Context, command SyncCommand) (SyncResult
 		startedAt := s.clock.Now(ctx).UTC()
 		return SyncResult{}, s.recordFailure(ctx, command, spec, revision, startedAt, ErrorSource, "fetch source", err)
 	}
-	startedAt := s.clock.Now(ctx).UTC()
+	sourceRef := revision.Ref
 	revision.ContractID = command.ContractID
 	revision.SourceID = command.SourceID
 	spec.SourceID = command.SourceID
 
 	index, err := s.parser.Parse(ctx, spec, revision)
 	if err != nil {
+		startedAt := s.clock.Now(ctx).UTC()
 		return SyncResult{}, s.recordFailure(ctx, command, spec, revision, startedAt, ErrorParse, "parse source", err)
+	}
+	if err := domain.ValidateSpecIndex(index); err != nil {
+		return SyncResult{}, validationError("sync", "parser output: "+err.Error())
 	}
 	index.ProjectID = command.ContractID
 	index.RevisionID = revision.ID
 	snapshot := domain.NewContractSnapshot(command.ContractID, revision.ID, spec.Bytes, index)
+	revision.Ref = canonicalRevisionRef(revision)
 	revision.ContractID = command.ContractID
 	revision.SpecDigest = snapshot.SpecDigest
 	revision.ContractDigest = snapshot.ContractDigest
 	revision.ReviewSnapshot = &snapshot
 
+	startedAt := s.clock.Now(ctx).UTC()
 	blobKey, err := s.blobs.Put(ctx, spec.Bytes)
 	if err != nil {
 		return SyncResult{}, wrapError(ErrorIntegrity, "write spec blob", err)
@@ -109,7 +115,7 @@ func (s *SyncService) Sync(ctx context.Context, command SyncCommand) (SyncResult
 	}
 	revision.SpecBlobKey = string(blobKey)
 	finishedAt := s.clock.Now(ctx).UTC()
-	record := successfulSyncRecord(command, spec, revision, startedAt, finishedAt)
+	record := successfulSyncRecord(command, spec, revision, sourceRef, startedAt, finishedAt)
 
 	err = s.unitOfWork.Within(ctx, func(transactionContext context.Context, operational port.OperationalStore) error {
 		if err := operational.SaveRevision(transactionContext, revision); err != nil {
@@ -153,7 +159,7 @@ func (s *SyncService) recordFailure(
 	cause error,
 ) error {
 	record := domain.SyncRecord{
-		ID:           syncRecordID(command, revision, domain.SyncResultFailure),
+		ID:           syncRecordID(command, spec, revision, revision.Ref, domain.SyncResultFailure),
 		ProjectID:    command.ContractID,
 		SourceID:     firstNonEmpty(command.SourceID, revision.SourceID, spec.SourceID),
 		RevisionID:   revision.ID,
@@ -219,14 +225,20 @@ func validateSyncCommand(command SyncCommand) error {
 	return nil
 }
 
-func successfulSyncRecord(command SyncCommand, spec domain.SpecFile, revision domain.ContractRevision, startedAt, finishedAt time.Time) domain.SyncRecord {
+func successfulSyncRecord(
+	command SyncCommand,
+	spec domain.SpecFile,
+	revision domain.ContractRevision,
+	sourceRef string,
+	startedAt, finishedAt time.Time,
+) domain.SyncRecord {
 	return domain.SyncRecord{
-		ID:         syncRecordID(command, revision, domain.SyncResultSuccess),
+		ID:         syncRecordID(command, spec, revision, sourceRef, domain.SyncResultSuccess),
 		ProjectID:  command.ContractID,
 		SourceID:   firstNonEmpty(command.SourceID, revision.SourceID, spec.SourceID),
 		RevisionID: revision.ID,
 		Trigger:    firstNonEmpty(command.Trigger, "manual"),
-		Ref:        revision.Ref,
+		Ref:        sourceRef,
 		CommitSHA:  revision.CommitSHA,
 		SpecPath:   spec.Path,
 		Result:     domain.SyncResultSuccess,
@@ -235,10 +247,31 @@ func successfulSyncRecord(command SyncCommand, spec domain.SpecFile, revision do
 	}
 }
 
-func syncRecordID(command SyncCommand, revision domain.ContractRevision, result string) string {
-	value := strings.Join([]string{command.ContractID, command.SourceID, firstNonEmpty(command.Trigger, "manual"), revision.ID, revision.CommitSHA, result}, "\x00")
+func syncRecordID(
+	command SyncCommand,
+	spec domain.SpecFile,
+	revision domain.ContractRevision,
+	sourceRef, result string,
+) string {
+	value := strings.Join([]string{
+		command.ContractID,
+		command.SourceID,
+		firstNonEmpty(command.Trigger, "manual"),
+		revision.ID,
+		revision.CommitSHA,
+		sourceRef,
+		spec.Path,
+		result,
+	}, "\x00")
 	sum := sha256.Sum256([]byte(value))
 	return "sync-" + hex.EncodeToString(sum[:])[:24]
+}
+
+func canonicalRevisionRef(revision domain.ContractRevision) string {
+	if revision.CommitSHA != "" {
+		return revision.CommitSHA
+	}
+	return revision.Ref
 }
 
 func errorSummary(err error) string {

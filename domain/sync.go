@@ -8,11 +8,14 @@ const (
 )
 
 type SyncRecord struct {
-	ID           string    `json:"id"`
-	ProjectID    string    `json:"projectId"`
-	SourceID     string    `json:"sourceId"`
-	RevisionID   string    `json:"revisionId,omitempty"`
-	Trigger      string    `json:"trigger"`
+	ID         string `json:"id"`
+	ProjectID  string `json:"projectId"`
+	SourceID   string `json:"sourceId"`
+	RevisionID string `json:"revisionId,omitempty"`
+	Trigger    string `json:"trigger"`
+	// Ref is the exact source selector observed for this sync (for example
+	// HEAD, a branch, or a tag), even when ContractRevision.Ref is canonically
+	// stored as the resolved immutable commit.
 	Ref          string    `json:"ref,omitempty"`
 	CommitSHA    string    `json:"commitSha,omitempty"`
 	SpecPath     string    `json:"specPath,omitempty"`

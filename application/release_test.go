@@ -835,6 +835,34 @@ func TestReleaseServiceRejectsTrackRefPolicyAndReaderSubstitution(t *testing.T) 
 	}
 }
 
+func TestReleaseServiceAcceptsResolvedRevisionWithAuthorizedRefObservation(t *testing.T) {
+	now := time.Date(2026, 7, 26, 14, 0, 0, 0, time.UTC)
+	store, evidence, command := authorizedReleaseFixture(t, now.Add(-time.Minute))
+	const commit = "0123456789abcdef0123456789abcdef01234567"
+	candidate := store.revisions[evidence.Authorization.CandidateRevisionID]
+	candidate.Ref = commit
+	candidate.CommitSHA = commit
+	store.revisions[candidate.ID] = candidate
+	evidence.SyncRecord.CommitSHA = commit
+	store.syncRecords[evidence.SyncRecord.ID] = evidence.SyncRecord
+	command.SyncRecord = domain.SyncRecord{ID: evidence.SyncRecord.ID}
+
+	service, err := NewReleaseService(ReleaseDependencies{
+		Revisions: store, Evidence: &testReleaseEvidenceReader{evidence: evidence},
+		UnitOfWork: &testUnitOfWork{committed: store}, Clock: &testClock{now: now},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := service.Coordinate(context.Background(), command)
+	if err != nil {
+		t.Fatalf("resolved revision rejected despite authorized ref observation: %v", err)
+	}
+	if result.Track.CurrentRevisionID != candidate.ID {
+		t.Fatalf("resolved revision did not advance track: %#v", result.Track)
+	}
+}
+
 func TestReleaseServiceBoundsReviewTimeWithTrustedClock(t *testing.T) {
 	now := time.Date(2026, 7, 26, 14, 0, 0, 0, time.UTC)
 

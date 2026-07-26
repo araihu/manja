@@ -61,6 +61,9 @@ type ReleaseEvidence struct {
 // ValidateReleaseAuthorization rejects ambiguous or caller-normalized
 // identities before the authorization becomes durable release evidence.
 func ValidateReleaseAuthorization(authorization ReleaseAuthorization) error {
+	if err := validateUTF8Strings("release authorization", authorization); err != nil {
+		return err
+	}
 	for _, identity := range []struct {
 		name  string
 		value string
@@ -231,6 +234,9 @@ func CloneReleaseTrack(track ReleaseTrack) ReleaseTrack {
 // state. Legacy tracks without decision evidence remain valid only when they
 // do not claim a pending candidate.
 func ValidateReleaseTrack(track ReleaseTrack) error {
+	if err := validateUTF8Strings("release track", track); err != nil {
+		return err
+	}
 	if err := validateCanonicalReleaseIdentity("release track id", track.ID, false); err != nil {
 		return err
 	}
@@ -324,6 +330,9 @@ func ValidateReleaseTrackTransition(current, next ReleaseTrack) error {
 }
 
 func validateReleaseDecision(decision ReleaseDecision) error {
+	if err := validateUTF8Strings("release decision", decision); err != nil {
+		return err
+	}
 	if err := validateCanonicalReleaseIdentity("release decision revision id", decision.RevisionID, false); err != nil {
 		return err
 	}

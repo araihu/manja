@@ -1,14 +1,17 @@
 package store
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"unicode/utf8"
 )
 
 // strictJSONUnmarshal rejects Unicode surrogate escapes that encoding/json
-// would otherwise replace with U+FFFD. Persisted identity bytes must never be
-// normalized while decoding.
+// would otherwise replace with U+FFFD and duplicate decoded object member
+// names that encoding/json would silently overwrite. Persisted evidence must
+// never be normalized or selected by input order while decoding.
 func strictJSONUnmarshal(data []byte, value any) error {
 	if !utf8.Valid(data) {
 		return fmt.Errorf("persisted JSON must contain valid UTF-8")
@@ -19,7 +22,80 @@ func strictJSONUnmarshal(data []byte, value any) error {
 	if err := validateJSONSurrogateEscapes(data); err != nil {
 		return err
 	}
+	if err := validateJSONMemberNames(data); err != nil {
+		return err
+	}
 	return json.Unmarshal(data, value)
+}
+
+func validateJSONMemberNames(data []byte) error {
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	decoder.UseNumber()
+	if err := validateJSONValueMemberNames(decoder); err != nil {
+		return err
+	}
+	if _, err := decoder.Token(); err != io.EOF {
+		if err == nil {
+			return fmt.Errorf("persisted JSON contains multiple top-level values")
+		}
+		return fmt.Errorf("read persisted JSON after top-level value: %w", err)
+	}
+	return nil
+}
+
+func validateJSONValueMemberNames(decoder *json.Decoder) error {
+	token, err := decoder.Token()
+	if err != nil {
+		return fmt.Errorf("read persisted JSON value: %w", err)
+	}
+	delimiter, isDelimiter := token.(json.Delim)
+	if !isDelimiter {
+		return nil
+	}
+	switch delimiter {
+	case '{':
+		seen := make(map[string]struct{})
+		for decoder.More() {
+			keyToken, err := decoder.Token()
+			if err != nil {
+				return fmt.Errorf("read persisted JSON object member: %w", err)
+			}
+			key, ok := keyToken.(string)
+			if !ok {
+				return fmt.Errorf("persisted JSON object member name is not a string")
+			}
+			if _, duplicate := seen[key]; duplicate {
+				return fmt.Errorf("persisted JSON object contains duplicate decoded member name %q", key)
+			}
+			seen[key] = struct{}{}
+			if err := validateJSONValueMemberNames(decoder); err != nil {
+				return err
+			}
+		}
+		end, err := decoder.Token()
+		if err != nil {
+			return fmt.Errorf("close persisted JSON object: %w", err)
+		}
+		if end != json.Delim('}') {
+			return fmt.Errorf("persisted JSON object has invalid closing delimiter")
+		}
+	case '[':
+		for decoder.More() {
+			if err := validateJSONValueMemberNames(decoder); err != nil {
+				return err
+			}
+		}
+		end, err := decoder.Token()
+		if err != nil {
+			return fmt.Errorf("close persisted JSON array: %w", err)
+		}
+		if end != json.Delim(']') {
+			return fmt.Errorf("persisted JSON array has invalid closing delimiter")
+		}
+	default:
+		return fmt.Errorf("persisted JSON contains unexpected delimiter %q", delimiter)
+	}
+	return nil
 }
 
 func validateJSONSurrogateEscapes(data []byte) error {

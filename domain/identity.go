@@ -3,6 +3,7 @@ package domain
 import (
 	"fmt"
 	"path"
+	"reflect"
 	"strings"
 	"unicode"
 	"unicode/utf8"
@@ -51,6 +52,70 @@ func ValidateCanonicalPublicPath(name, value string, allowEmpty bool) error {
 
 func validateCanonicalIdentity(name, value string, allowEmpty bool) error {
 	return ValidateCanonicalIdentity(name, value, allowEmpty)
+}
+
+func validateUTF8Strings(name string, value any) error {
+	return validateUTF8Value(name, reflect.ValueOf(value), make(map[utf8Visit]struct{}))
+}
+
+type utf8Visit struct {
+	typ     reflect.Type
+	pointer uintptr
+}
+
+func validateUTF8Value(name string, value reflect.Value, visited map[utf8Visit]struct{}) error {
+	if !value.IsValid() {
+		return nil
+	}
+	switch value.Kind() {
+	case reflect.Interface:
+		if value.IsNil() {
+			return nil
+		}
+		return validateUTF8Value(name, value.Elem(), visited)
+	case reflect.Pointer:
+		if value.IsNil() {
+			return nil
+		}
+		visit := utf8Visit{typ: value.Type(), pointer: value.Pointer()}
+		if _, ok := visited[visit]; ok {
+			return nil
+		}
+		visited[visit] = struct{}{}
+		return validateUTF8Value(name, value.Elem(), visited)
+	case reflect.String:
+		if !utf8.ValidString(value.String()) {
+			return fmt.Errorf("%s must contain valid UTF-8", name)
+		}
+	case reflect.Struct:
+		typ := value.Type()
+		for index := 0; index < value.NumField(); index++ {
+			field := typ.Field(index)
+			if field.PkgPath != "" {
+				continue
+			}
+			if err := validateUTF8Value(name+"."+field.Name, value.Field(index), visited); err != nil {
+				return err
+			}
+		}
+	case reflect.Map:
+		iterator := value.MapRange()
+		for iterator.Next() {
+			if err := validateUTF8Value(name+" map key", iterator.Key(), visited); err != nil {
+				return err
+			}
+			if err := validateUTF8Value(name+" map value", iterator.Value(), visited); err != nil {
+				return err
+			}
+		}
+	case reflect.Slice, reflect.Array:
+		for index := 0; index < value.Len(); index++ {
+			if err := validateUTF8Value(fmt.Sprintf("%s[%d]", name, index), value.Index(index), visited); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }
 
 func containsControlCharacter(value string) bool {

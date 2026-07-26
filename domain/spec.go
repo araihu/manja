@@ -15,12 +15,15 @@ type ContractRevision struct {
 	SpecDigest     string            `json:"specDigest,omitempty"`
 	ContractDigest string            `json:"contractDigest,omitempty"`
 	ReviewSnapshot *ContractSnapshot `json:"reviewSnapshot,omitempty"`
-	Ref            string
-	CommitSHA      string
-	Version        string
-	AuthorName     string
-	AuthorEmail    string
-	Message        string
+	// Ref is the immutable revision locator. Commit-addressed sync stores the
+	// resolved CommitSHA here; the requested mutable alias remains on
+	// SyncRecord.Ref as the source observation used by release authorization.
+	Ref         string
+	CommitSHA   string
+	Version     string
+	AuthorName  string
+	AuthorEmail string
+	Message     string
 }
 
 // Revision is retained as a source-compatible name for the immutable contract

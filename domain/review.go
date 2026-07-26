@@ -81,6 +81,9 @@ type ReviewRequest struct {
 // a complete release report. New release evidence should use
 // ValidateContractReviewAgainstSnapshots.
 func ValidateContractReviewIdentities(review ContractReview) error {
+	if err := validateUTF8Strings("contract review", review); err != nil {
+		return err
+	}
 	for _, identity := range []struct {
 		name  string
 		value string
@@ -587,6 +590,9 @@ func compareSpecChanges(left, right SpecChange) int {
 // CanonicalReviewJSON returns compact standard JSON for a report. ReviewReport
 // deliberately contains no maps, so its sorted slices preserve byte stability.
 func CanonicalReviewJSON(report ReviewReport) ([]byte, error) {
+	if err := validateUTF8Strings("review report", report); err != nil {
+		return nil, err
+	}
 	return json.Marshal(report)
 }
 

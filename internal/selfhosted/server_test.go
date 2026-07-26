@@ -143,8 +143,8 @@ func TestNewWithOptionsSyncsGitSourceBeforeServingPublicDocs(t *testing.T) {
 	}
 
 	rev := onlyRevision(t, readOperationalState(t, dataDir))
-	if rev.ID == "" || rev.SourceID != repo || rev.Ref != "main" || rev.CommitSHA != commit {
-		t.Fatalf("revision = %#v, want source %q ref main commit %q", rev, repo, commit)
+	if rev.ID == "" || rev.SourceID != repo || rev.Ref != commit || rev.CommitSHA != commit {
+		t.Fatalf("revision = %#v, want source %q resolved ref/commit %q", rev, repo, commit)
 	}
 }
 
@@ -294,7 +294,7 @@ components:
 	}
 	var releaseRevision core.Revision
 	for _, rev := range state.Revisions {
-		if rev.Ref == "release/v2" {
+		if rev.CommitSHA == releaseCommit {
 			releaseRevision = rev
 		}
 	}

@@ -2371,6 +2371,212 @@ func TestFileStoreReadJSONRejectsInvalidEscapedSurrogate(t *testing.T) {
 	}
 }
 
+func TestFileStoreRejectsInvalidUTF8DisplayEvidenceBeforeCommit(t *testing.T) {
+	invalid := string([]byte("value-\xff"))
+	for _, test := range []struct {
+		name string
+		save func(context.Context, *FileStore) error
+	}{
+		{
+			name: "revision version",
+			save: func(ctx context.Context, store *FileStore) error {
+				return store.SaveRevision(ctx, core.ContractRevision{ID: "revision", ContractID: "payments", Version: invalid})
+			},
+		},
+		{
+			name: "revision author name",
+			save: func(ctx context.Context, store *FileStore) error {
+				return store.SaveRevision(ctx, core.ContractRevision{ID: "revision", ContractID: "payments", AuthorName: invalid})
+			},
+		},
+		{
+			name: "revision author email",
+			save: func(ctx context.Context, store *FileStore) error {
+				return store.SaveRevision(ctx, core.ContractRevision{ID: "revision", ContractID: "payments", AuthorEmail: invalid})
+			},
+		},
+		{
+			name: "revision message",
+			save: func(ctx context.Context, store *FileStore) error {
+				return store.SaveRevision(ctx, core.ContractRevision{ID: "revision", ContractID: "payments", Message: invalid})
+			},
+		},
+		{
+			name: "sync error summary",
+			save: func(ctx context.Context, store *FileStore) error {
+				return store.SaveSyncRecord(ctx, core.SyncRecord{
+					ID: "sync", ProjectID: "payments", Trigger: "manual",
+					Result: core.SyncResultFailure, ErrorSummary: invalid,
+				})
+			},
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			ctx := context.Background()
+			root := t.TempDir()
+			if err := test.save(ctx, NewFileStore(root)); err == nil {
+				t.Fatal("invalid UTF-8 display evidence reached persistence")
+			}
+			if _, err := os.Stat(filepath.Join(root, "operational", "state.json")); !errors.Is(err, os.ErrNotExist) {
+				t.Fatalf("rejected display evidence created operational state: %v", err)
+			}
+		})
+	}
+}
+
+func TestFileStorePreservesValidUnicodeWhitespaceAndNewlinesInDisplayEvidence(t *testing.T) {
+	ctx := context.Background()
+	root := t.TempDir()
+	store := NewFileStore(root)
+	revision := core.ContractRevision{
+		ID: "revision", ContractID: "payments",
+		Version: "  versão α  ", AuthorName: "  Operador 😀  ",
+		AuthorEmail: " operator@example.test ", Message: "first line\nsecond line",
+	}
+	record := core.SyncRecord{
+		ID: "sync", ProjectID: "payments", Trigger: "manual", Result: core.SyncResultFailure,
+		ErrorSummary: "  falha transitória 😀\nsegunda linha  ",
+	}
+	if err := store.SaveRevision(ctx, revision); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.SaveSyncRecord(ctx, record); err != nil {
+		t.Fatal(err)
+	}
+
+	restarted := NewFileStore(root)
+	gotRevision, err := restarted.ContractRevision(ctx, revision.ContractID, revision.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(gotRevision, revision) {
+		t.Fatalf("display revision changed across restart: got=%#v want=%#v", gotRevision, revision)
+	}
+	gotRecord, err := restarted.SyncRecord(ctx, record.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(gotRecord, record) {
+		t.Fatalf("display sync evidence changed across restart: got=%#v want=%#v", gotRecord, record)
+	}
+}
+
+func TestFileStoreCanonicalizesLegacyRevisionAliasToResolvedCommitOnce(t *testing.T) {
+	ctx := context.Background()
+	root := t.TempDir()
+	store := NewFileStore(root)
+	legacy := core.ContractRevision{
+		ID: "git-immutable", ContractID: "payments", SourceID: "payments-git",
+		Ref: "main", CommitSHA: "0123456789abcdef0123456789abcdef01234567",
+	}
+	if err := store.SaveRevision(ctx, legacy); err != nil {
+		t.Fatal(err)
+	}
+	canonical := legacy
+	canonical.Ref = canonical.CommitSHA
+	if err := store.SaveRevision(ctx, canonical); err != nil {
+		t.Fatalf("canonical resolved replay conflicted with legacy alias evidence: %v", err)
+	}
+	persisted, err := NewFileStore(root).ContractRevision(ctx, canonical.ContractID, canonical.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(persisted, canonical) {
+		t.Fatalf("canonical replay after restart = %#v, want %#v", persisted, canonical)
+	}
+
+	forged := canonical
+	forged.Ref = "feature"
+	if err := NewFileStore(root).SaveRevision(ctx, forged); err == nil {
+		t.Fatal("non-resolved ref rewrote canonical immutable evidence")
+	}
+	unchanged, err := NewFileStore(root).ContractRevision(ctx, canonical.ContractID, canonical.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(unchanged, canonical) {
+		t.Fatalf("forged ref changed canonical evidence: %#v", unchanged)
+	}
+}
+
+func TestFileStoreRejectsDuplicateDecodedJSONMemberNamesWithoutAdvancingState(t *testing.T) {
+	ctx := context.Background()
+	for _, version := range []int{
+		legacyOperationalStateVersion,
+		decisionOperationalStateVersion,
+		authenticatedStateVersion,
+		operationalStateVersion,
+	} {
+		t.Run(fmt.Sprintf("v%d", version), func(t *testing.T) {
+			root := t.TempDir()
+			operationalDir := filepath.Join(root, "operational")
+			if err := os.MkdirAll(operationalDir, 0o755); err != nil {
+				t.Fatal(err)
+			}
+			keyPrefix := ""
+			if version == operationalStateVersion {
+				keyPrefix = `payments\u0000`
+			}
+			raw := []byte(fmt.Sprintf(
+				`{"version":%d,"revisions":{"%srevision-\ud83d\ude00":{"ID":"revision-😀","contractId":"payments"},"%srevision-😀":{"ID":"revision-😀","contractId":"payments"}}}`,
+				version,
+				keyPrefix,
+				keyPrefix,
+			))
+			statePath := filepath.Join(operationalDir, "state.json")
+			if err := os.WriteFile(statePath, raw, 0o600); err != nil {
+				t.Fatal(err)
+			}
+
+			if _, err := NewFileStore(root).loadOperationalState(ctx); err == nil {
+				t.Fatal("duplicate decoded revision member names were accepted")
+			}
+			after, err := os.ReadFile(statePath)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !bytes.Equal(after, raw) {
+				t.Fatal("rejected duplicate-member state was rewritten")
+			}
+			if _, err := os.Stat(filepath.Join(operationalDir, "schema.json")); !errors.Is(err, os.ErrNotExist) {
+				t.Fatalf("schema marker advanced for duplicate-member state: %v", err)
+			}
+		})
+	}
+}
+
+func TestFileStoreRejectsDuplicateDecodedSchemaMarkerMembersWithoutRewrite(t *testing.T) {
+	ctx := context.Background()
+	root := t.TempDir()
+	operationalDir := filepath.Join(root, "operational")
+	if err := os.MkdirAll(operationalDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	statePath := filepath.Join(operationalDir, "state.json")
+	markerPath := filepath.Join(operationalDir, "schema.json")
+	state := []byte(`{"version":4}`)
+	marker := []byte(`{"version":3,"\u0076ersion":4}`)
+	if err := os.WriteFile(statePath, state, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(markerPath, marker, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := NewFileStore(root).loadOperationalState(ctx); err == nil {
+		t.Fatal("duplicate decoded schema marker members were accepted")
+	}
+	for path, want := range map[string][]byte{statePath: state, markerPath: marker} {
+		got, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !bytes.Equal(got, want) {
+			t.Fatalf("rejected duplicate-member JSON %q was rewritten", path)
+		}
+	}
+}
+
 func TestFileStorePersistsReleaseDecisionReplayIdentityAcrossRestart(t *testing.T) {
 	ctx := context.Background()
 	root := t.TempDir()

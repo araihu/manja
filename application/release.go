@@ -96,6 +96,13 @@ func (s *ReleaseService) Coordinate(ctx context.Context, command ReleaseCommand)
 	); err != nil {
 		return ReleaseResult{}, wrapError(ErrorIntegrity, "coordinate release", fmt.Errorf("bind release candidate revision: %w", err))
 	}
+	if candidateRevision.CommitSHA != evidence.SyncRecord.CommitSHA {
+		return ReleaseResult{}, wrapError(
+			ErrorIntegrity,
+			"coordinate release",
+			fmt.Errorf("bind release candidate revision: loaded revision commit does not match its authorized sync"),
+		)
+	}
 	baselineSnapshot, err := revisionReviewSnapshot(baselineRevision)
 	if err != nil {
 		return ReleaseResult{}, wrapError(ErrorIntegrity, "coordinate release", fmt.Errorf("validate release review baseline: %w", err))
@@ -326,7 +333,9 @@ func validateReleaseRevisionIdentity(
 	if sourceID != "" && revision.SourceID != sourceID {
 		return fmt.Errorf("loaded revision source does not match its authorized source")
 	}
-	if boundRef != "" && revision.Ref != boundRef {
+	refMatches := revision.Ref == boundRef ||
+		(revision.CommitSHA != "" && revision.Ref == revision.CommitSHA)
+	if boundRef != "" && !refMatches {
 		return fmt.Errorf("loaded revision ref does not match its authorized ref")
 	}
 	return nil

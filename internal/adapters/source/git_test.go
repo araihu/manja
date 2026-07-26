@@ -63,6 +63,39 @@ func TestGitSourceFetchesSpecAtRef(t *testing.T) {
 	}
 }
 
+func TestGitSourceRevisionIdentityCoalescesAliasesAndSeparatesCommitOrPath(t *testing.T) {
+	repo := initGitRepo(t)
+	writeGitFile(t, repo, "docs/openapi.yaml", "openapi: 3.1.0\ninfo:\n  title: Git API\n  version: v1\npaths: {}\n")
+	writeGitFile(t, repo, "docs/other.yaml", "openapi: 3.1.0\ninfo:\n  title: Other API\n  version: v1\npaths: {}\n")
+	firstCommit := gitTestOutput(t, repo, "rev-parse", "HEAD")
+	git(t, repo, "tag", "v1")
+
+	fetch := func(ref, path string) domain.ContractRevision {
+		t.Helper()
+		_, revision, err := (Git{Repo: repo, Ref: ref, Path: path}).Fetch(context.Background())
+		if err != nil {
+			t.Fatal(err)
+		}
+		return revision
+	}
+	head := fetch("HEAD", "docs/openapi.yaml")
+	branch := fetch("main", "docs/openapi.yaml")
+	tag := fetch("v1", "docs/openapi.yaml")
+	otherPath := fetch("HEAD", "docs/other.yaml")
+	if head.CommitSHA != firstCommit || head.ID != branch.ID || head.ID != tag.ID {
+		t.Fatalf("same commit/path aliases produced different revisions: HEAD=%#v branch=%#v tag=%#v", head, branch, tag)
+	}
+	if otherPath.ID == head.ID {
+		t.Fatalf("different spec paths reused revision id %q", head.ID)
+	}
+
+	writeGitFile(t, repo, "docs/openapi.yaml", "openapi: 3.1.0\ninfo:\n  title: Git API\n  version: v2\npaths: {}\n")
+	next := fetch("main", "docs/openapi.yaml")
+	if next.CommitSHA == firstCommit || next.ID == head.ID {
+		t.Fatalf("different commit reused revision identity: first=%#v next=%#v", head, next)
+	}
+}
+
 func TestGitSourceReportsMissingSpecAtRef(t *testing.T) {
 	repo := initGitRepo(t)
 	writeGitFile(t, repo, "openapi.yaml", "openapi: 3.1.0\ninfo:\n  title: Git API\n  version: v1\npaths: {}\n")

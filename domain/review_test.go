@@ -635,6 +635,74 @@ func TestValidateContractReviewRejectsNonCanonicalNestedIdentities(t *testing.T)
 	}
 }
 
+func TestValidateContractReviewIdentitiesRejectsInvalidUTF8DisplayEvidence(t *testing.T) {
+	report, baseline, candidate := canonicalReleaseReportWithFindingForTest(t, true)
+	review := ContractReview{
+		ID: "review-next", ContractID: "payments",
+		BaselineRevisionID: baseline.RevisionID, BaselineSpecDigest: baseline.SpecDigest,
+		BaselineContractDigest: baseline.ContractDigest,
+		CandidateRevisionID:    candidate.RevisionID, CandidateSpecDigest: candidate.SpecDigest,
+		CandidateContractDigest: candidate.ContractDigest, Report: report,
+	}
+	if err := ValidateContractReviewIdentities(review); err != nil {
+		t.Fatalf("valid display evidence: %v", err)
+	}
+	invalid := string([]byte("display-\xff"))
+	for _, test := range []struct {
+		name   string
+		mutate func(*ContractReview)
+	}{
+		{name: "policy exception reason", mutate: func(value *ContractReview) {
+			value.Report.EffectivePolicy.Layers[0].Exceptions[0].Reason = invalid
+		}},
+		{name: "finding severity", mutate: func(value *ContractReview) {
+			value.Report.Comparisons[0].Findings[0].Severity = invalid
+		}},
+		{name: "finding kind", mutate: func(value *ContractReview) {
+			value.Report.Comparisons[0].Findings[0].Kind = invalid
+		}},
+		{name: "finding subject", mutate: func(value *ContractReview) {
+			value.Report.Comparisons[0].Findings[0].Subject = invalid
+		}},
+		{name: "finding description", mutate: func(value *ContractReview) {
+			value.Report.Comparisons[0].Findings[0].Description = invalid
+		}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			mutated := review
+			mutated.Report = cloneReviewReportForTest(t, report)
+			test.mutate(&mutated)
+			if err := ValidateContractReviewIdentities(mutated); err == nil {
+				t.Fatal("invalid UTF-8 display evidence was accepted")
+			}
+		})
+	}
+
+	display := review
+	display.Report = cloneReviewReportForTest(t, report)
+	display.Report.EffectivePolicy.Layers[0].Exceptions[0].Reason = "  rationale 😀\nsecond line  "
+	display.Report.Comparisons[0].Findings[0].Subject = "  GET /payments  "
+	display.Report.Comparisons[0].Findings[0].Description = "first line\nsecond line"
+	if err := ValidateContractReviewIdentities(display); err != nil {
+		t.Fatalf("valid Unicode, whitespace, and newlines in display evidence were rejected: %v", err)
+	}
+}
+
+func TestCanonicalReviewJSONRejectsInvalidUTF8BeforeEncoding(t *testing.T) {
+	report := ReviewReport{
+		SchemaVersion: ReviewSchemaVersion,
+		Comparisons: []ComparisonReport{{
+			Findings: []SpecChange{{
+				Description: "breaking-\xff",
+			}},
+		}},
+	}
+
+	if _, err := CanonicalReviewJSON(report); err == nil {
+		t.Fatal("CanonicalReviewJSON accepted display evidence that JSON would normalize")
+	}
+}
+
 func canonicalReleaseReportWithFindingForTest(t *testing.T, exceptFinding bool) (ReviewReport, ContractSnapshot, ContractSnapshot) {
 	t.Helper()
 	at := time.Date(2026, 7, 25, 12, 0, 0, 0, time.UTC)

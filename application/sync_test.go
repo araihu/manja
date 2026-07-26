@@ -268,6 +268,79 @@ func TestSyncReplayUsesStableRecordAndBlobIdentity(t *testing.T) {
 	}
 }
 
+func TestSyncCoalescesGitRefAliasesAtSameCommitAndPathAcrossRestart(t *testing.T) {
+	const commit = "0123456789abcdef0123456789abcdef01234567"
+	for _, test := range []struct {
+		name  string
+		first string
+		next  string
+	}{
+		{name: "HEAD then main", first: "HEAD", next: "main"},
+		{name: "main then HEAD", first: "main", next: "HEAD"},
+		{name: "branch then tag", first: "release/v1", next: "v1.0.0"},
+		{name: "tag then branch", first: "v1.0.0", next: "release/v1"},
+		{name: "fully qualified branch then HEAD", first: "refs/heads/main", next: "HEAD"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			ctx := context.Background()
+			root := t.TempDir()
+			command := SyncCommand{ContractID: "payments", SourceID: "payments-git", Trigger: "manual"}
+			run := func(ref string) SyncResult {
+				t.Helper()
+				store := storeadapter.NewFileStore(root)
+				service, err := NewSyncService(SyncDependencies{
+					Source: &syncSourceResultFake{
+						spec: domain.SpecFile{
+							SourceID: "payments-git", Path: "docs/openapi.yaml", Format: "yaml",
+							Bytes: []byte("openapi: 3.1.0\n"),
+						},
+						revision: domain.ContractRevision{
+							ID: "git-immutable", SourceID: "payments-git", Ref: ref, CommitSHA: commit,
+						},
+					},
+					Parser: &syncParserFake{}, UnitOfWork: store, SyncRecords: store, Blobs: store,
+					Clock: &advancingSyncClock{
+						now:  time.Date(2026, 7, 25, 13, 0, 0, 0, time.UTC),
+						step: time.Minute,
+					},
+				})
+				if err != nil {
+					t.Fatal(err)
+				}
+				result, err := service.Sync(ctx, command)
+				if err != nil {
+					t.Fatalf("sync ref %q: %v", ref, err)
+				}
+				return result
+			}
+
+			first := run(test.first)
+			second := run(test.next)
+			replay := run(test.next)
+
+			if first.Revision.ID != second.Revision.ID {
+				t.Fatalf("aliases produced revision ids %q and %q", first.Revision.ID, second.Revision.ID)
+			}
+			if first.Record.ID == second.Record.ID {
+				t.Fatalf("distinct ref observations reused sync record %q", first.Record.ID)
+			}
+			if replay.Record.ID != second.Record.ID || !reflect.DeepEqual(replay.Record, second.Record) {
+				t.Fatalf("exact alias replay = %#v, want canonical evidence %#v", replay.Record, second.Record)
+			}
+			if first.Record.Ref != test.first || second.Record.Ref != test.next {
+				t.Fatalf("sync ref evidence = %q then %q", first.Record.Ref, second.Record.Ref)
+			}
+			persisted, err := storeadapter.NewFileStore(root).ContractRevision(ctx, command.ContractID, first.Revision.ID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if persisted.Ref != commit {
+				t.Fatalf("canonical revision ref = %q, want resolved commit %q", persisted.Ref, commit)
+			}
+		})
+	}
+}
+
 func TestSyncReplayWithAdvancingClockReusesDurableLogicalEvidence(t *testing.T) {
 	for _, trigger := range []string{"webhook", "poll", "manual", "ci"} {
 		t.Run(trigger+" success", func(t *testing.T) {
@@ -328,7 +401,13 @@ func TestSyncReplayWithAdvancingClockReusesDurableLogicalEvidence(t *testing.T) 
 				if !errors.As(err, &appErr) || appErr.Kind != ErrorSource || !errors.Is(err, cause) {
 					t.Fatalf("failure replay %d error = %#v, want original source failure", attempt+1, err)
 				}
-				persisted, err := store.SyncRecord(ctx, syncRecordID(command, domain.ContractRevision{}, domain.SyncResultFailure))
+				persisted, err := store.SyncRecord(ctx, syncRecordID(
+					command,
+					domain.SpecFile{},
+					domain.ContractRevision{},
+					"",
+					domain.SyncResultFailure,
+				))
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -372,7 +451,13 @@ func TestFailureReplayNormalizesUTF8AtSummaryBoundaryAcrossRestart(t *testing.T)
 	}
 
 	store := storeadapter.NewFileStore(root)
-	persisted, err := store.SyncRecord(ctx, syncRecordID(command, domain.ContractRevision{}, domain.SyncResultFailure))
+	persisted, err := store.SyncRecord(ctx, syncRecordID(
+		command,
+		domain.SpecFile{},
+		domain.ContractRevision{},
+		"",
+		domain.SyncResultFailure,
+	))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -509,6 +594,128 @@ func TestSyncUsesCommandAuthorityOverCanonicalSourceMetadata(t *testing.T) {
 	}
 }
 
+func TestSyncRejectsMalformedRawParserIndexBeforePostFetchEffects(t *testing.T) {
+	valid := domain.SpecIndex{
+		Title: "Payments",
+		Operations: []domain.Operation{{
+			ID: "list-payments", Anchor: "operation-list-payments", Method: "GET", Path: "/payments",
+			Parameters: []domain.OperationParameter{{Name: "limit", In: "query"}},
+			Responses:  []domain.OperationResponse{{Status: "200"}},
+		}},
+		Schemas:      []domain.Schema{{Name: "Payment"}},
+		Search:       []domain.SearchDocument{{ID: "search-payments", Href: "#operation-list-payments", Kind: "operation", Method: "GET", Path: "/payments", Section: "payments"}},
+		PublicRoutes: []domain.PublicRoute{{Path: "/?selected=operation-list-payments#operation-list-payments"}},
+	}
+	for _, test := range []struct {
+		name   string
+		mutate func(*domain.SpecIndex)
+	}{
+		{name: "invalid title UTF-8", mutate: func(index *domain.SpecIndex) { index.Title = "Payments-\xff" }},
+		{name: "operation path padding", mutate: func(index *domain.SpecIndex) { index.Operations[0].Path = " /payments" }},
+		{name: "operation method control", mutate: func(index *domain.SpecIndex) { index.Operations[0].Method = "GET\x00shadow" }},
+		{name: "parameter name padding", mutate: func(index *domain.SpecIndex) { index.Operations[0].Parameters[0].Name = " limit" }},
+		{name: "response status padding", mutate: func(index *domain.SpecIndex) { index.Operations[0].Responses[0].Status = "200 " }},
+		{name: "schema name padding", mutate: func(index *domain.SpecIndex) { index.Schemas[0].Name = " Payment" }},
+		{name: "search id control", mutate: func(index *domain.SpecIndex) { index.Search[0].ID = "search\x00payments" }},
+		{name: "public route padding", mutate: func(index *domain.SpecIndex) { index.PublicRoutes[0].Path = " /payments" }},
+		{name: "deep display invalid UTF-8", mutate: func(index *domain.SpecIndex) {
+			index.Operations[0].Snippets = []domain.RequestSnippet{{Label: "curl", Language: "shell", Code: "curl-\xff"}}
+		}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			index := valid
+			index.Operations = append([]domain.Operation(nil), valid.Operations...)
+			index.Operations[0].Parameters = append([]domain.OperationParameter(nil), valid.Operations[0].Parameters...)
+			index.Operations[0].Responses = append([]domain.OperationResponse(nil), valid.Operations[0].Responses...)
+			index.Schemas = append([]domain.Schema(nil), valid.Schemas...)
+			index.Search = append([]domain.SearchDocument(nil), valid.Search...)
+			index.PublicRoutes = append([]domain.PublicRoute(nil), valid.PublicRoutes...)
+			test.mutate(&index)
+
+			var events []string
+			store := newTestOperationalStore()
+			uow := &testUnitOfWork{committed: store}
+			clock := &testClock{now: time.Date(2026, 7, 25, 13, 0, 0, 0, time.UTC)}
+			blobs := newSyncBlobFake(&events)
+			service, err := NewSyncService(SyncDependencies{
+				Source: &syncSourceResultFake{
+					spec: domain.SpecFile{
+						SourceID: "source-main", Path: "openapi.yaml", Format: "yaml",
+						Bytes: []byte("openapi: 3.1.0\n"),
+					},
+					revision: domain.ContractRevision{
+						ID: "revision-1", SourceID: "source-main", Ref: "main", CommitSHA: "abc123",
+					},
+					events: &events,
+				},
+				Parser:     &syncParserResultFake{index: index, events: &events},
+				UnitOfWork: uow, SyncRecords: uow, Blobs: blobs, Clock: clock,
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			if _, err := service.Sync(context.Background(), SyncCommand{ContractID: "payments", SourceID: "source-main"}); err == nil {
+				t.Fatal("malformed raw parser index was accepted")
+			}
+			if !reflect.DeepEqual(events, []string{"source", "parse"}) {
+				t.Fatalf("malformed parser output effects = %v, want source then parse only", events)
+			}
+			if len(clock.contexts) != 0 || blobs.ctx != nil || uow.ctx != nil || len(store.calls) != 0 {
+				t.Fatalf("malformed parser output reached effects: clock=%d blob=%v uow=%v calls=%v", len(clock.contexts), blobs.ctx != nil, uow.ctx != nil, store.calls)
+			}
+		})
+	}
+}
+
+func TestSyncParseErrorStillPersistsTimestampedFailureEvidence(t *testing.T) {
+	cause := errors.New("parser unavailable")
+	var events []string
+	store := newTestOperationalStore()
+	uow := &testUnitOfWork{committed: store}
+	clock := &advancingSyncClock{
+		now:  time.Date(2026, 7, 25, 13, 0, 0, 0, time.UTC),
+		step: time.Minute,
+	}
+	service, err := NewSyncService(SyncDependencies{
+		Source: &syncSourceResultFake{
+			spec: domain.SpecFile{
+				SourceID: "source-main", Path: "openapi.yaml", Format: "yaml",
+				Bytes: []byte("openapi: 3.1.0\n"),
+			},
+			revision: domain.ContractRevision{
+				ID: "revision-1", SourceID: "source-main", Ref: "main", CommitSHA: "abc123",
+			},
+			events: &events,
+		},
+		Parser:     &syncParserErrorFake{err: cause, events: &events},
+		UnitOfWork: uow, SyncRecords: uow, Blobs: newSyncBlobFake(&events), Clock: clock,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := service.Sync(context.Background(), SyncCommand{ContractID: "payments", SourceID: "source-main"}); err == nil {
+		t.Fatal("parse error was discarded")
+	} else {
+		var appErr *Error
+		if !errors.As(err, &appErr) || appErr.Kind != ErrorParse || !errors.Is(err, cause) {
+			t.Fatalf("parse error = %#v, want classified original error", err)
+		}
+	}
+	if !reflect.DeepEqual(events, []string{"source", "parse"}) {
+		t.Fatalf("parse failure effects = %v, want source then parse only outside transaction", events)
+	}
+	if len(store.syncRecords) != 1 || len(store.revisions) != 0 {
+		t.Fatalf("parse failure state: sync=%#v revisions=%#v", store.syncRecords, store.revisions)
+	}
+	for _, record := range store.syncRecords {
+		if record.Result != domain.SyncResultFailure || record.StartedAt.IsZero() || record.FinishedAt.IsZero() {
+			t.Fatalf("parse failure evidence lost timestamps: %#v", record)
+		}
+	}
+}
+
 type invalidKeyBlobStore struct{}
 
 func (invalidKeyBlobStore) Put(context.Context, []byte) (port.BlobKey, error) {
@@ -589,6 +796,30 @@ func (p *syncParserFake) Parse(ctx context.Context, _ domain.SpecFile, revision 
 		*p.events = append(*p.events, "parse")
 	}
 	return domain.SpecIndex{RevisionID: revision.ID, Title: "Payments"}, nil
+}
+
+type syncParserResultFake struct {
+	index  domain.SpecIndex
+	events *[]string
+}
+
+func (p *syncParserResultFake) Parse(context.Context, domain.SpecFile, domain.ContractRevision) (domain.SpecIndex, error) {
+	if p.events != nil {
+		*p.events = append(*p.events, "parse")
+	}
+	return p.index, nil
+}
+
+type syncParserErrorFake struct {
+	err    error
+	events *[]string
+}
+
+func (p *syncParserErrorFake) Parse(context.Context, domain.SpecFile, domain.ContractRevision) (domain.SpecIndex, error) {
+	if p.events != nil {
+		*p.events = append(*p.events, "parse")
+	}
+	return domain.SpecIndex{}, p.err
 }
 
 type syncBlobFake struct {

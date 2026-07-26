@@ -1139,6 +1139,9 @@ func (t *operationalTransaction) SaveRevision(ctx context.Context, revision doma
 	if err := validateID(revision.ID); err != nil {
 		return err
 	}
+	if err := domain.ValidateContractRevision(revision); err != nil {
+		return err
+	}
 	for _, identity := range []struct {
 		name  string
 		value string
@@ -1174,7 +1177,8 @@ func (t *operationalTransaction) SaveRevision(ctx context.Context, revision doma
 			return err
 		}
 		if !equal {
-			if !canEnrichLegacyRevisionEvidence(existing, revision) {
+			if !canEnrichLegacyRevisionEvidence(existing, revision) &&
+				!canCanonicalizeLegacyRevisionRef(existing, revision) {
 				return fmt.Errorf("revision %q conflicts with immutable persisted evidence", revision.ID)
 			}
 			cloned, err := cloneImmutableRecord(revision)
@@ -1216,6 +1220,17 @@ func canEnrichLegacyRevisionEvidence(existing, enriched domain.ContractRevision)
 		enrichedMetadata.ContractID = ""
 	}
 	return reflect.DeepEqual(existingMetadata, enrichedMetadata)
+}
+
+func canCanonicalizeLegacyRevisionRef(existing, canonical domain.ContractRevision) bool {
+	if existing.CommitSHA == "" ||
+		canonical.CommitSHA != existing.CommitSHA ||
+		canonical.Ref != canonical.CommitSHA {
+		return false
+	}
+	expected := existing
+	expected.Ref = canonical.Ref
+	return reflect.DeepEqual(expected, canonical)
 }
 
 func (t *operationalTransaction) SaveReview(ctx context.Context, review domain.ContractReview) error {
@@ -1265,6 +1280,9 @@ func (t *operationalTransaction) SaveSyncRecord(ctx context.Context, record doma
 		return err
 	}
 	if err := validateID(record.ID); err != nil {
+		return err
+	}
+	if err := domain.ValidateSyncRecord(record); err != nil {
 		return err
 	}
 	for _, identity := range []struct {
@@ -1720,7 +1738,9 @@ func validateReleaseAuthorizationBundle(
 	if !ok || candidate.ContractID != authorization.ContractID {
 		return fmt.Errorf("candidate revision is missing or belongs to another contract")
 	}
-	if candidate.SourceID != authorization.SourceID || candidate.Ref != authorization.BoundRef {
+	candidateRefMatches := candidate.Ref == authorization.BoundRef ||
+		(candidate.CommitSHA != "" && candidate.Ref == candidate.CommitSHA)
+	if candidate.SourceID != authorization.SourceID || !candidateRefMatches {
 		return fmt.Errorf("candidate revision source/ref does not match authorization")
 	}
 	if baseline.ReviewSnapshot == nil || candidate.ReviewSnapshot == nil {
@@ -1757,7 +1777,8 @@ func validateReleaseAuthorizationBundle(
 		syncRecord.ProjectID != authorization.ContractID ||
 		syncRecord.SourceID != authorization.SourceID ||
 		syncRecord.RevisionID != authorization.CandidateRevisionID ||
-		syncRecord.Ref != authorization.BoundRef {
+		syncRecord.Ref != authorization.BoundRef ||
+		syncRecord.CommitSHA != candidate.CommitSHA {
 		return fmt.Errorf("persisted sync does not match authorization")
 	}
 	return nil
@@ -2199,6 +2220,9 @@ func validatePersistedOperationalIdentities(state operationalState) error {
 		if err := validateID(revision.ID); err != nil {
 			return fmt.Errorf("persisted revision id: %w", err)
 		}
+		if err := domain.ValidateContractRevision(revision); err != nil {
+			return fmt.Errorf("persisted revision: %w", err)
+		}
 		for _, identity := range []struct {
 			name  string
 			value string
@@ -2226,6 +2250,9 @@ func validatePersistedOperationalIdentities(state operationalState) error {
 	for _, record := range state.SyncRecords {
 		if err := validateID(record.ID); err != nil {
 			return fmt.Errorf("persisted sync id: %w", err)
+		}
+		if err := domain.ValidateSyncRecord(record); err != nil {
+			return fmt.Errorf("persisted sync record: %w", err)
 		}
 		for _, identity := range []struct {
 			name  string
