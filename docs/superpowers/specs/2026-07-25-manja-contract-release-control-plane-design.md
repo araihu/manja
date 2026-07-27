@@ -724,21 +724,45 @@ The detailed plan is
 Subproject 2 must use the promoted public packages and ports; it must not add
 new reusable release behavior to `internal/core` or `internal/app`.
 
-### Dependency Checkpoint: Goshtoso v0.0.12 Consumer Migration
+### Dependency Checkpoint: Goshtoso v0.0.13 Consumer Migration
 
 After the Open Core checkpoint and before Subproject 2 changes web templates,
-upgrade both Manja Go modules to exactly Goshtoso v0.0.12 using the tagged
-changelog, migration guide, component model, and Go reference. This is a
+upgrade every Manja consumer module to exactly Goshtoso v0.0.13 using the
+tagged changelog, migration guide, component model, head-dependency contract,
+and Go reference. This is a
 separate consumer migration, not part of the public domain/application
 boundary and not a dependency-only bump.
 
 The checkpoint includes the Go 1.26.5 minimum, a complete inventory of Manja's
 component usage, migration from removed `Variant`/`Style` and config APIs,
 composition in place of removed renderer internals, templ regeneration,
-mechanical old-API scans, root/site tests, and direct/HTMX/light/dark/theme
-browser smoke coverage. Record Goshtoso source dives as snags. The detailed
-plan is
-`docs/superpowers/plans/2026-07-25-goshtoso-v0.0.12-consumer-migration.md`.
+mechanical old-API scans, exact-version checks for nested consumer modules, and
+direct/HTMX/light/dark/theme browser smoke coverage. It uses the default
+CDN-first `head.Dependencies()` contract with exact embedded fallback and
+records every Goshtoso source dive as a snag. The detailed plans are
+`docs/superpowers/plans/2026-07-25-goshtoso-v0.0.12-consumer-migration.md` and
+`docs/superpowers/plans/2026-07-26-goshtoso-v0.0.13-followup.md`.
+
+### UI Checkpoint: Goshtoso Application Structure
+
+After the dependency checkpoint and before Subproject 2, refactor the public
+documentation and management workbench around Goshtoso's App Shell, Operations
+List, Detail Workspace, and Multi-step Workflow contracts. Preserve the
+server-rendered/static boundary, native navigation, HTMX enhancement, public
+read-only behavior, and existing domain semantics.
+
+The checkpoint establishes one shell and primary scroll owner, one synchronized
+selected identity, explicit loading/empty/error/success recovery, native form
+and link semantics, deliberate HTMX non-2xx handling, authoritative Back/refresh
+behavior, one reachable mobile drawer, semantic CSS boundaries, and the full
+390/1440 by Goshtoso/Minimal by light/dark acceptance matrix. It does not add
+release tracks, authenticated previews, provider flows, a Try It console, or an
+upstream proxy.
+
+The approved design and implementation plan are
+`docs/superpowers/specs/2026-07-27-manja-goshtoso-application-structure-design.md`
+and
+`docs/superpowers/plans/2026-07-27-manja-goshtoso-application-structure.md`.
 
 ### Subproject 1: Contract Review Core And Offline CLI
 
@@ -793,10 +817,11 @@ Scope:
 
 Subprojects 3 and 4 depend on the core model. Connected review also depends on
 release-track baselines. The Open Core checkpoint is a prerequisite for
-Subprojects 2, 3, and 4. The Goshtoso v0.0.12 consumer migration follows it and
-precedes Subproject 2 web work so component breakage stays isolated from
-release-track behavior. No subproject should be expanded to implement the
-remaining roadmap or a hosted SaaS product prematurely.
+Subprojects 2, 3, and 4. The Goshtoso v0.0.13 consumer migration and application
+structure checkpoint follow it and precede Subproject 2 web work so dependency
+and UI-structure changes stay isolated from release-track behavior. No
+subproject should be expanded to implement the remaining roadmap or a hosted
+SaaS product prematurely.
 
 ## Testing Strategy
 
@@ -852,7 +877,8 @@ remaining roadmap or a hosted SaaS product prematurely.
 - Dex integration tests for authenticated management and preview behavior
 - end-to-end candidate, review, preview, promotion, and following-track flows
 - accessible navigation and visible-target route tests
-- exact Goshtoso v0.0.12 resolution in root and `site/` modules
+- exact Goshtoso v0.0.13 resolution with no `replace` in root, `site/`, and
+  every nested consumer module
 - mechanical removed-API scans and drift-free templ regeneration
 - direct-load and HTMX smoke tests for affected public/management pages
 - light/dark checks for Manja, Goshtoso, Minimal, and other advertised themes
