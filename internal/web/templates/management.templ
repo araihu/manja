@@ -7,6 +7,7 @@ import (
 	"time"
 
 	templpkg "github.com/a-h/templ"
+	"github.com/araihu/goshtoso/components/appshell"
 	"github.com/araihu/goshtoso/components/badge"
 	"github.com/araihu/goshtoso/components/button"
 	"github.com/araihu/goshtoso/components/radio"
@@ -67,45 +68,54 @@ templ ManagementSpecPage(model ManagementOverviewModel) {
 
 templ managementShell(model ManagementOverviewModel, active string) {
 	@LayoutWithBranding("Management", core.DocsBranding{}) {
-		<div class="fixed inset-0 flex flex-col overflow-clip bg-surface text-on-surface dark:bg-surface-dark dark:text-on-surface-dark">
-			<header data-boot-anim="header" class="manja-docs-header relative z-50 shrink-0 border-b border-outline bg-surface dark:border-outline-dark dark:bg-surface-dark">
-				<div class="flex h-16 items-center justify-between gap-3 px-4 lg:px-8">
-					<div class="flex min-w-0 items-center gap-2">
-						@sidebar.Overlay(sidebar.OverlayConfig{
-							ID:                    "management-sidebar",
-							TriggerLabel:          "Open management sections",
-							RootClass:             "lg:hidden",
-							PanelPositionClass:    "fixed top-16 bottom-0 left-0",
-							PanelWidthClass:       "w-72 max-w-[85vw]",
-							BackdropPositionClass: "fixed inset-0",
-							Sidebar:               managementSidebarConfig(model, active, managementSidebarSearch("mobile"), "mobile"),
-						})
-						<a href="/manage" class="flex min-w-0 items-center gap-2 text-2xl font-bold font-title text-on-surface-strong dark:text-on-surface-dark-strong">
-							@managementLogoIcon()
-							<span class="truncate">Management</span>
-						</a>
-					</div>
-					<div class="flex min-w-0 items-center gap-3 text-sm text-on-surface-muted dark:text-on-surface-dark-muted">
-						<span class="hidden md:inline">Specs and sources</span>
-						<span class="rounded-radius border border-outline px-2 py-1 font-mono text-xs text-on-surface-strong dark:border-outline-dark dark:text-on-surface-dark-strong">{ managementSpecCount(len(model.Specs)) }</span>
-					</div>
+		<div class="fixed inset-0 overflow-clip bg-surface text-on-surface dark:bg-surface-dark dark:text-on-surface-dark">
+			@appshell.AppShell(appshell.Config{
+				Header:       managementApplicationHeader(model, active),
+				Sidebar:      managementSidebar(model, active, ""),
+				MainID:       "main-content",
+				RootClass:    "h-full",
+				HeaderClass:  "manja-docs-header relative z-50 shrink-0 border-b border-outline bg-surface dark:border-outline-dark dark:bg-surface-dark",
+				HeaderAttrs:  templpkg.Attributes{"data-boot-anim": "header"},
+				SidebarClass: "hidden h-full w-72 shrink-0 lg:block",
+				SidebarAttrs: templpkg.Attributes{"aria-label": "Management sections", "data-boot-anim": "sidebar"},
+				MainClass:    "min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden p-5 sm:p-6 lg:px-8 lg:py-8",
+				MainAttrs: templpkg.Attributes{
+					"data-boot-anim":            "main",
+					"data-manja-primary-scroll": "true",
+					"data-selected-contract":    managementSelectedSpecID(model),
+				},
+			}) {
+				<div class="mx-auto max-w-7xl">
+					{ children... }
 				</div>
-			</header>
-			<div class="flex min-h-0 flex-1 overflow-clip">
-				<aside data-boot-anim="sidebar" class="hidden h-full w-72 shrink-0 lg:block" aria-label="Management sections">
-					<div id="management-sidebar-content" class="h-full">
-						@managementSidebar(model, active, "")
-					</div>
-				</aside>
-				<main id="page-scroll" data-boot-anim="main" class="min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden p-5 sm:p-6 lg:px-8 lg:py-8">
-					<div id="main-content" class="mx-auto max-w-7xl">
-						{ children... }
-					</div>
-				</main>
-				@managementSidebarScript()
-			</div>
+			}
+			@managementSidebarScript()
 		</div>
 	}
+}
+
+templ managementApplicationHeader(model ManagementOverviewModel, active string) {
+	<div class="flex h-16 items-center justify-between gap-3 px-4 lg:px-8">
+		<div class="flex min-w-0 items-center gap-2">
+			@sidebar.Overlay(sidebar.OverlayConfig{
+				ID:                    "management-sidebar",
+				TriggerLabel:          "Open management sections",
+				RootClass:             "lg:hidden",
+				PanelPositionClass:    "fixed top-16 bottom-0 left-0",
+				PanelWidthClass:       "w-72 max-w-[85vw]",
+				BackdropPositionClass: "fixed top-16 bottom-0 left-0 right-0",
+				Sidebar:               managementSidebarConfig(model, active, managementSidebarSearch("mobile"), "mobile"),
+			})
+			<a href="/manage" class="flex min-w-0 items-center gap-2 text-2xl font-bold font-title text-on-surface-strong dark:text-on-surface-dark-strong">
+				@managementLogoIcon()
+				<span class="truncate">Management</span>
+			</a>
+		</div>
+		<div class="flex min-w-0 items-center gap-3 text-sm text-on-surface-muted dark:text-on-surface-dark-muted">
+			<span class="hidden md:inline">Specs and sources</span>
+			<span class="rounded-radius border border-outline px-2 py-1 font-mono text-xs text-on-surface-strong dark:border-outline-dark dark:text-on-surface-dark-strong">{ managementSpecCount(len(model.Specs)) }</span>
+		</div>
+	</div>
 }
 
 templ ManagementOverviewContent(model ManagementOverviewModel) {
@@ -583,7 +593,9 @@ templ managementTerm(label string, value string) {
 }
 
 templ managementSidebar(model ManagementOverviewModel, active string, idPrefix string) {
-	@sidebar.Sidebar(managementSidebarConfig(model, active, managementSidebarSearch(idPrefix), idPrefix))
+	<div id="management-sidebar-content" class="h-full">
+		@sidebar.Sidebar(managementSidebarConfig(model, active, managementSidebarSearch(idPrefix), idPrefix))
+	</div>
 }
 
 templ managementSidebarSearch(idPrefix string) {
@@ -858,7 +870,8 @@ func managementSidebarConfig(model ManagementOverviewModel, active string, searc
 			Items:       specItems,
 			IndentItems: true,
 		}},
-		SearchSlot: searchSlot,
+		SearchSlot:      searchSlot,
+		DisableSkipLink: true,
 	}
 }
 

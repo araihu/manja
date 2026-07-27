@@ -10,6 +10,7 @@ import (
 
 	templpkg "github.com/a-h/templ"
 	"github.com/araihu/goshtoso/components/accordion"
+	"github.com/araihu/goshtoso/components/appshell"
 	"github.com/araihu/goshtoso/components/badge"
 	"github.com/araihu/goshtoso/components/breadcrumbs"
 	"github.com/araihu/goshtoso/components/codeblock"
@@ -96,60 +97,69 @@ templ PublicDocsWithOptions(idx core.SpecIndex, selectedID string, opts PublicDo
 	{{ opts = opts.withDefaults() }}
 	{{ selected := selectedDocsItemFor(idx, selectedID) }}
 	@LayoutWithBranding(idx.Title, idx.Branding) {
-		<div hx-history="false" class="fixed inset-0 flex flex-col overflow-clip bg-surface text-on-surface dark:bg-surface-dark dark:text-on-surface-dark">
-			<header data-boot-anim="header" class="manja-docs-header relative z-50 shrink-0 border-b border-outline bg-surface dark:border-outline-dark dark:bg-surface-dark">
-				<div class="flex h-16 items-center justify-between gap-3 px-4 lg:px-8">
-					<div class="flex min-w-0 items-center gap-2">
-						@sidebar.Overlay(sidebar.OverlayConfig{
-							ID:                    "public-docs-sidebar",
-							TriggerLabel:          "Open API sections",
-							RootClass:             "lg:hidden",
-							PanelPositionClass:    "fixed top-16 bottom-0 left-0",
-							PanelWidthClass:       "w-72 max-w-[85vw]",
-							BackdropPositionClass: "fixed inset-0",
-							Sidebar:               publicDocsSidebarConfig(idx, selected, opts, docsSearchOpenSlot(), "mobile"),
-						})
-						<a href={ templpkg.URL(docsBrandingHomeURL(idx.Branding)) } class="flex min-w-0 items-center gap-2 text-2xl font-bold font-title text-on-surface-strong dark:text-on-surface-dark-strong">
-							if idx.Branding.Logo.Src != "" {
-								<img src={ templpkg.URL(idx.Branding.Logo.Src) } alt={ idx.Branding.Logo.Alt } width="32" height="32" class="size-8 shrink-0 rounded-radius"/>
-							}
-							<span>{ docsBrandingDisplayName(idx.Branding) }</span>
-						</a>
-					</div>
-					<div class="flex min-w-0 items-center gap-3 text-sm text-on-surface-muted dark:text-on-surface-dark-muted">
-						<div class="manja-theme-select shrink-0">
-							@selectfield.Select(selectfield.Config{
-								ID:             "manja-theme",
-								Name:           "theme",
-								Alpine:         &selectfield.AlpineConfig{Model: "theme"},
-								TriggerLeading: themeSelectIcon(),
-								Options:        themeOptions(),
-							})
-						</div>
-						@themeToggle()
-						<span class="hidden md:inline">OpenAPI docs</span>
-						if idx.Version != "" {
-							<span class="hidden rounded-radius border border-outline px-2 py-1 font-mono text-xs text-on-surface-strong dark:border-outline-dark dark:text-on-surface-dark-strong sm:inline">v{ idx.Version }</span>
-						}
-					</div>
+		<div hx-history="false" class="fixed inset-0 overflow-clip bg-surface text-on-surface dark:bg-surface-dark dark:text-on-surface-dark">
+			@appshell.AppShell(appshell.Config{
+				Header:       publicApplicationHeader(idx, selected, opts),
+				Sidebar:      publicDocsSidebar(idx, selected, opts),
+				MainID:       "main-content",
+				RootClass:    "h-full",
+				HeaderClass:  "manja-docs-header relative z-50 shrink-0 border-b border-outline bg-surface dark:border-outline-dark dark:bg-surface-dark",
+				HeaderAttrs:  templpkg.Attributes{"data-boot-anim": "header"},
+				SidebarClass: "hidden h-full w-72 shrink-0 lg:block",
+				SidebarAttrs: templpkg.Attributes{"aria-label": "API sections", "data-boot-anim": "sidebar"},
+				MainClass:    "min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden p-6 lg:px-10 lg:py-8",
+				MainAttrs: templpkg.Attributes{
+					"data-boot-anim":            "main",
+					"data-manja-primary-scroll": "true",
+					"data-selected-doc":         selected.Anchor,
+				},
+			}) {
+				<div class="mx-auto max-w-[100rem]">
+					@PublicDocsFragmentContent(idx, selectedID, opts)
 				</div>
-			</header>
-			<div class="flex min-h-0 flex-1 overflow-clip">
-				<aside data-boot-anim="sidebar" class="hidden h-full w-72 shrink-0 lg:block" aria-label="API sections">
-					<div id="sidebar-nav-content" class="h-full">
-						@publicDocsSidebar(idx, selected, opts)
-					</div>
-				</aside>
-				<main data-boot-anim="main" class="min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden p-6 lg:px-10 lg:py-8">
-					<div id="main-content" class="mx-auto max-w-[100rem]">
-						@PublicDocsFragmentContent(idx, selectedID, opts)
-					</div>
-				</main>
-				@searchfield.SearchModal(docsSearchConfig(idx.Search))
-				@manjaFuzzySearchScript()
-			</div>
+			}
+			@searchfield.SearchModal(docsSearchConfig(idx.Search))
+			@manjaFuzzySearchScript()
 		</div>
 	}
+}
+
+templ publicApplicationHeader(idx core.SpecIndex, selected selectedDocsItem, opts PublicDocsOptions) {
+	<div class="flex h-16 items-center justify-between gap-3 px-4 lg:px-8">
+		<div class="flex min-w-0 items-center gap-2">
+			@sidebar.Overlay(sidebar.OverlayConfig{
+				ID:                    "public-docs-sidebar",
+				TriggerLabel:          "Open API sections",
+				RootClass:             "lg:hidden",
+				PanelPositionClass:    "fixed top-16 bottom-0 left-0",
+				PanelWidthClass:       "w-72 max-w-[85vw]",
+				BackdropPositionClass: "fixed top-16 bottom-0 left-0 right-0",
+				Sidebar:               publicDocsSidebarConfig(idx, selected, opts, docsSearchOpenSlot(), "mobile"),
+			})
+			<a href={ templpkg.URL(docsBrandingHomeURL(idx.Branding)) } class="flex min-w-0 items-center gap-2 text-2xl font-bold font-title text-on-surface-strong dark:text-on-surface-dark-strong">
+				if idx.Branding.Logo.Src != "" {
+					<img src={ templpkg.URL(idx.Branding.Logo.Src) } alt={ idx.Branding.Logo.Alt } width="32" height="32" class="size-8 shrink-0 rounded-radius"/>
+				}
+				<span>{ docsBrandingDisplayName(idx.Branding) }</span>
+			</a>
+		</div>
+		<div class="flex min-w-0 items-center gap-3 text-sm text-on-surface-muted dark:text-on-surface-dark-muted">
+			<div class="manja-theme-select shrink-0">
+				@selectfield.Select(selectfield.Config{
+					ID:             "manja-theme",
+					Name:           "theme",
+					Alpine:         &selectfield.AlpineConfig{Model: "theme"},
+					TriggerLeading: themeSelectIcon(),
+					Options:        themeOptions(),
+				})
+			</div>
+			@themeToggle()
+			<span class="hidden md:inline">OpenAPI docs</span>
+			if idx.Version != "" {
+				<span class="hidden rounded-radius border border-outline px-2 py-1 font-mono text-xs text-on-surface-strong dark:border-outline-dark dark:text-on-surface-dark-strong sm:inline">v{ idx.Version }</span>
+			}
+		</div>
+	</div>
 }
 
 templ manjaFuzzySearchScript() {
@@ -256,15 +266,18 @@ templ PublicDocsFragmentContent(idx core.SpecIndex, selectedID string, opts Publ
 }
 
 templ publicDocsSidebar(idx core.SpecIndex, selected selectedDocsItem, opts PublicDocsOptions) {
-	@sidebar.Sidebar(publicDocsSidebarConfig(idx, selected, opts, docsSearchField(idx.Search), ""))
+	<div id="sidebar-nav-content" class="h-full">
+		@sidebar.Sidebar(publicDocsSidebarConfig(idx, selected, opts, docsSearchField(idx.Search), ""))
+	</div>
 }
 
 func publicDocsSidebarConfig(idx core.SpecIndex, selected selectedDocsItem, opts PublicDocsOptions, searchSlot templpkg.Component, idPrefix string) sidebar.Config {
 	return sidebar.Config{
-		Items: overviewSidebarItems(selected.Anchor),
+		Items:         overviewSidebarItems(selected.Anchor),
 		SectionsTitle: "API Reference",
-		Sections: sidebarSections(idx, selected.Anchor, opts.EndpointSidebarLabel, idPrefix),
-		SearchSlot: searchSlot,
+		Sections:      sidebarSections(idx, selected.Anchor, opts.EndpointSidebarLabel, idPrefix),
+		SearchSlot:    searchSlot,
+		DisableSkipLink: true,
 	}
 }
 
