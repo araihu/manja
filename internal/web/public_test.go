@@ -169,12 +169,12 @@ func TestPublicDocsRenderSearchAndOperations(t *testing.T) {
 		}
 	}
 	for _, want := range []string{
-		`fixed inset-0 flex flex-col overflow-clip`,
 		`Manja`,
 		`class="flex h-16`,
-		`flex min-h-0 flex-1 overflow-clip`,
 		`hidden h-full w-72 shrink-0 lg:block`,
-		`class="min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden p-6`,
+		`href="#main-content"`,
+		`data-manja-primary-scroll="true"`,
+		`data-selected-doc="operation-listPets"`,
 		`document.documentElement.classList.add('boot')`,
 		`data-boot-anim="header"`,
 		`data-boot-anim="sidebar"`,
