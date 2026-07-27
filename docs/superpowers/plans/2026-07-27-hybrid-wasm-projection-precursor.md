@@ -39,10 +39,29 @@ an implementation-base default.
 Fill these placeholders with literal 40-character SHAs before Task 1:
 
 ```text
-IMPLEMENTATION_BASE_SHA=<then-current exact origin/main>
-PRECURSOR_DESIGN_SHA=<merged commit containing the reviewed precursor design>
-PRECURSOR_PLAN_SHA=<merged commit containing this reviewed plan>
+IMPLEMENTATION_BASE_SHA=bdc210025f6c3c564f161d05c16da1a8b8dc006d
+PRECURSOR_DESIGN_SHA=bdc210025f6c3c564f161d05c16da1a8b8dc006d
+PRECURSOR_PLAN_SHA=bdc210025f6c3c564f161d05c16da1a8b8dc006d
 ```
+
+Implementation receipt:
+
+```text
+WORKTREE=/Users/guilhermecastro/.codex/worktrees/e17a/manja
+BRANCH=codex/hybrid-projection-precursor
+HEAD=bdc210025f6c3c564f161d05c16da1a8b8dc006d
+ORIGIN_MAIN=bdc210025f6c3c564f161d05c16da1a8b8dc006d
+MERGE_BASE=bdc210025f6c3c564f161d05c16da1a8b8dc006d
+DOMAIN_CONTRACT_DIFF=clean against 48d2b9c65f2670c928c73ca673b898c49b4e8207
+HYBRID_DESIGN_ANCESTOR=8267668e848f938659ae715c782c0d8d50cec947
+DOMAIN_SPECINDEX_ANCESTOR=48d2b9c65f2670c928c73ca673b898c49b4e8207
+POC_EVIDENCE_HEAD=ec4b4eda5667947370a52e4a1fa9d2aff89a7aa9
+```
+
+The Codex harness had already created the dedicated linked worktree at the
+exact fetched base, so Task 0 created the named branch in that existing
+worktree rather than nesting a second worktree. The preserved POC was inspected
+read-only and remains unmodified.
 
 No task may start while a placeholder remains. `IMPLEMENTATION_BASE_SHA` must
 be the exact fresh `origin/main` observed after Task 0's fetch, even when it is
@@ -106,7 +125,7 @@ requires a later plan.
    git merge-base --is-ancestor 48d2b9c65f2670c928c73ca673b898c49b4e8207 HEAD
    git log -1 --format=%H -- docs/superpowers/specs/2026-07-27-hybrid-wasm-projection-precursor-design.md
    git log -1 --format=%H -- docs/superpowers/plans/2026-07-27-hybrid-wasm-projection-precursor.md
-   ! rg -n '<[^>]+SHA|IMPLEMENTATION_BASE_SHA=<|PRECURSOR_.*=<|TBD|TODO' docs/superpowers/plans/2026-07-27-hybrid-wasm-projection-precursor.md
+   ! sed -n '1,70p' docs/superpowers/plans/2026-07-27-hybrid-wasm-projection-precursor.md | rg -n '<[^>]+SHA|IMPLEMENTATION_BASE_SHA=<|PRECURSOR_.*=<|TBD|TODO'
    ```
 
    Expected: both ancestor checks exit 0; both doc logs return 40 hex
