@@ -14,9 +14,9 @@ templ LayoutWithBranding(title string, branding core.DocsBranding) {
 	<!DOCTYPE html>
 	<html
 		lang="en"
-		data-theme="manja"
+		data-theme="araihu"
 		x-data="{
-			theme: localStorage.getItem('theme') || 'manja',
+			theme: localStorage.getItem('theme') || 'araihu',
 			darkMode: (function() {
 				const stored = localStorage.getItem('darkMode');
 				if (stored !== null) return stored === 'true';
@@ -49,7 +49,7 @@ templ LayoutWithBranding(title string, branding core.DocsBranding) {
 			<script>
 				(function() {
 					try {
-					document.documentElement.setAttribute('data-theme', localStorage.getItem('theme') || 'manja');
+					document.documentElement.setAttribute('data-theme', localStorage.getItem('theme') || 'araihu');
 					var d = localStorage.getItem('darkMode');
 					var on = d !== null ? d === 'true' : window.matchMedia('(prefers-color-scheme: dark)').matches;
 					document.documentElement.classList.toggle('dark', on);
@@ -63,6 +63,7 @@ templ LayoutWithBranding(title string, branding core.DocsBranding) {
 				})();
 			</script>
 			@head.Dependencies()
+			<link rel="stylesheet" href="/manja-assets/araihu.css"/>
 			<script>
 				(function () {
 					var pendingSidebarHref = "";

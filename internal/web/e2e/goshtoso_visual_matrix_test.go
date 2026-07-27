@@ -89,7 +89,7 @@ func TestGoshtosoAffectedSurfaceVisualMatrix(t *testing.T) {
 	}
 	for _, surface := range surfaces {
 		for _, width := range []int{390, 1440} {
-			for _, theme := range []string{"manja", "goshtoso", "minimal"} {
+			for _, theme := range []string{"araihu", "manja", "goshtoso", "minimal"} {
 				for _, dark := range []bool{false, true} {
 					name := fmt.Sprintf("%s/%d/%s/dark-%t", surface.name, width, theme, dark)
 					t.Run(name, func(t *testing.T) {

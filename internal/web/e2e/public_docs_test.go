@@ -523,6 +523,75 @@ func TestPublicDocsThemeSelectDropdownOverlaysContent(t *testing.T) {
 	}
 }
 
+func TestPublicDocsAraiHuDefaultRetainsThemeAndModeSwitching(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping e2e test in short mode")
+	}
+	chdirRepoRoot(t)
+
+	server := httptestServer(t, web.NewPublicServer(core.SpecIndex{Title: "Petstore", Version: "1.0.0"}))
+	pw, err := playwright.Run()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pw.Stop()
+	browser, err := pw.Chromium.Launch()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer browser.Close()
+	page, err := browser.NewPage()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var consoleErrors []string
+	page.On("console", func(message playwright.ConsoleMessage) {
+		if message.Type() == "error" {
+			consoleErrors = append(consoleErrors, message.Text())
+		}
+	})
+	if _, err := page.Goto(server); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := page.Evaluate(`async () => await window.goshtosoDependencies.ready`, nil); err != nil {
+		t.Fatalf("await Goshtoso dependency readiness: %v", err)
+	}
+	if _, err := page.WaitForFunction(`() => document.documentElement.dataset.theme === 'araihu' && !document.documentElement.classList.contains('dark')`, nil); err != nil {
+		t.Fatalf("Arai Hu should be default light mode: %v", err)
+	}
+	if err := page.Locator("#darkModeToggleBtn").Click(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := page.WaitForFunction(`() => document.documentElement.dataset.theme === 'araihu' && document.documentElement.classList.contains('dark') && localStorage.getItem('darkMode') === 'true'`, nil); err != nil {
+		t.Fatalf("dark mode should preserve Arai Hu theme and persist: %v", err)
+	}
+	if err := page.Locator("#manja-theme-trigger").Click(); err != nil {
+		t.Fatal(err)
+	}
+	if err := page.Locator(`#manja-theme-listbox [role='option']:has-text("Goshtoso")`).Click(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := page.WaitForFunction(`() => document.documentElement.dataset.theme === 'goshtoso' && document.documentElement.classList.contains('dark') && localStorage.getItem('theme') === 'goshtoso'`, nil); err != nil {
+		t.Fatalf("theme selection should preserve dark mode and persist: %v", err)
+	}
+	if err := page.Locator("#manja-theme-trigger").Click(); err != nil {
+		t.Fatal(err)
+	}
+	if err := page.Locator(`#manja-theme-listbox [role='option']:has-text("Arai Hû")`).Click(); err != nil {
+		t.Fatal(err)
+	}
+	if err := page.Locator("#darkModeToggleBtn").Click(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := page.WaitForFunction(`() => document.documentElement.dataset.theme === 'araihu' && !document.documentElement.classList.contains('dark') && localStorage.getItem('theme') === 'araihu' && localStorage.getItem('darkMode') === 'false'`, nil); err != nil {
+		t.Fatalf("Arai Hu and light mode should remain independently switchable: %v", err)
+	}
+	if len(consoleErrors) != 0 {
+		t.Fatalf("unexpected browser console errors: %v", consoleErrors)
+	}
+}
+
 func TestPublicDocsSidebarNavigationSwapsMainContent(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping e2e test in short mode")

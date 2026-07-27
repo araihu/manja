@@ -3498,7 +3498,8 @@ func methodBadgeTone(method string) badge.Tone {
 
 func themeOptions() []selectfield.Option {
 	return []selectfield.Option{
-		{Value: "manja", Label: "Manja", Selected: true},
+		{Value: "araihu", Label: "Arai Hû", Selected: true},
+		{Value: "manja", Label: "Manja"},
 		{Value: "goshtoso", Label: "Goshtoso"},
 		{Value: "minimal", Label: "Minimal"},
 		{Value: "modern", Label: "Modern"},

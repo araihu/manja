@@ -2,7 +2,9 @@ package web
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/json"
+	"fmt"
 	"html"
 	"mime"
 	"net/http"
@@ -96,6 +98,42 @@ func TestPublicDocsUsesGoshtosoCDNFirstDependencyFallbackContract(t *testing.T) 
 				t.Errorf("GET %s status = %d, want %d", assetURL, rec.Code, http.StatusOK)
 			}
 		})
+	}
+}
+
+func TestPublicDocsUsesCanonicalAraiHuThemeAfterGoshtoso(t *testing.T) {
+	srv := NewPublicServerWithOptions(core.SpecIndex{Title: "Petstore", Version: "1.0.0"}, PublicOptions{StaticDir: "static"})
+	rec := httptest.NewRecorder()
+	srv.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/", nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("GET / status = %d, want %d", rec.Code, http.StatusOK)
+	}
+	body := rec.Body.String()
+	for _, want := range []string{
+		`data-theme="araihu"`,
+		`theme: localStorage.getItem('theme') || 'araihu'`,
+		`localStorage.getItem('theme') || 'araihu'`,
+		`href="/manja-assets/araihu.css"`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("Arai Hu default theme markup missing %q:\n%s", want, body)
+		}
+	}
+
+	goshtosoStylesheet := strings.Index(body, `href="/assets/styles.css"`)
+	araihuStylesheet := strings.Index(body, `href="/manja-assets/araihu.css"`)
+	manjaStylesheet := strings.Index(body, `href="/manja-assets/manja.css"`)
+	if goshtosoStylesheet < 0 || araihuStylesheet < 0 || manjaStylesheet < 0 || !(goshtosoStylesheet < araihuStylesheet && araihuStylesheet < manjaStylesheet) {
+		t.Fatalf("stylesheet order must be Goshtoso, Arai Hu, then Manja: goshtoso=%d araihu=%d manja=%d", goshtosoStylesheet, araihuStylesheet, manjaStylesheet)
+	}
+
+	asset := httptest.NewRecorder()
+	srv.ServeHTTP(asset, httptest.NewRequest(http.MethodGet, "/manja-assets/araihu.css", nil))
+	if asset.Code != http.StatusOK {
+		t.Fatalf("GET /manja-assets/araihu.css status = %d, want %d", asset.Code, http.StatusOK)
+	}
+	if got := fmt.Sprintf("%x", sha256.Sum256(asset.Body.Bytes())); got != "c0bf105f332bca41af1dbd6ccb867ec9fda9c6c688beb609723c7186842044a4" {
+		t.Fatalf("Arai Hu CSS SHA-256 = %s, want canonical content hash", got)
 	}
 }
 
@@ -196,12 +234,12 @@ func TestPublicDocsRenderSearchAndOperations(t *testing.T) {
 		}
 	}
 	for _, want := range []string{
-		`data-theme="manja"`,
+		`data-theme="araihu"`,
 		`id="manja-theme"`,
 		`name="theme"`,
 		`manja-theme-trigger`,
-		`theme: localStorage.getItem('theme') || 'manja'`,
-		`localStorage.getItem('theme') || 'manja'`,
+		`theme: localStorage.getItem('theme') || 'araihu'`,
+		`localStorage.getItem('theme') || 'araihu'`,
 	} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("header theme picker or default theme missing %q:\n%s", want, body)
@@ -226,6 +264,7 @@ func TestPublicDocsRenderSearchAndOperations(t *testing.T) {
 		t.Fatalf("theme picker should be visible in the nav, not hidden behind responsive utility classes:\n%s", body)
 	}
 	for _, theme := range []string{
+		`value:&#39;araihu&#39;`,
 		`value:&#39;manja&#39;`,
 		`value:&#39;goshtoso&#39;`,
 		`value:&#39;arctic&#39;`,
@@ -247,14 +286,14 @@ func TestPublicDocsRenderSearchAndOperations(t *testing.T) {
 			t.Fatalf("theme picker missing theme option %q:\n%s", theme, body)
 		}
 	}
-	if !regexp.MustCompile(`allOptions:\s*\[\{value:&#39;manja&#39;,label:&#39;Manja&#39;\},\{value:&#39;goshtoso&#39;,label:&#39;Goshtoso&#39;\}`).MatchString(body) {
-		t.Fatalf("Manja theme option should be first and Goshtoso should remain available:\n%s", body)
+	if !regexp.MustCompile(`allOptions:\s*\[\{value:&#39;araihu&#39;,label:&#39;Arai Hû&#39;\},\{value:&#39;manja&#39;,label:&#39;Manja&#39;\},\{value:&#39;goshtoso&#39;,label:&#39;Goshtoso&#39;\}`).MatchString(body) {
+		t.Fatalf("Arai Hu theme option should be first and Goshtoso should remain available:\n%s", body)
 	}
-	if !strings.Contains(body, `selectedValues: [&#39;manja&#39;]`) {
-		t.Fatalf("Manja theme option should be selected by default:\n%s", body)
+	if !strings.Contains(body, `selectedValues: [&#39;araihu&#39;]`) {
+		t.Fatalf("Arai Hu theme option should be selected by default:\n%s", body)
 	}
 	if strings.Contains(body, `data-theme="goshtoso"`) || strings.Contains(body, `|| 'goshtoso'`) {
-		t.Fatalf("public docs should default to the Manja theme, not Goshtoso:\n%s", body)
+		t.Fatalf("public docs should default to the Arai Hu theme, not Goshtoso:\n%s", body)
 	}
 
 	css, err := os.ReadFile("static/manja.css")
