@@ -27,6 +27,7 @@ func NewServerWithOptions(idx core.SpecIndex, opts Options) http.Handler {
 	mux.Handle("/manage/spec/", management)
 	mux.Handle("/manage/publication", management)
 	mux.Handle("/manage/sync", management)
+	mux.Handle("/manage/", management)
 	mux.Handle("/api/", NewAPIServer())
 	mux.Handle("/", publishedDocsPathHandler(public, opts.Management.Store))
 	return mux

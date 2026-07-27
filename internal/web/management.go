@@ -55,6 +55,7 @@ func NewManagementServer(idx core.SpecIndex, opts ManagementOptions) http.Handle
 		syncAction:           opts.SyncAction,
 		publishedIndexLoader: opts.PublishedIndexLoader,
 		specs:                normalizeManagedSpecs(idx, opts),
+		completedMutations:   make(map[string]string),
 	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("/manage", srv.overview)
@@ -62,7 +63,11 @@ func NewManagementServer(idx core.SpecIndex, opts ManagementOptions) http.Handle
 	mux.HandleFunc("/manage/spec/", srv.specDetail)
 	mux.HandleFunc("/manage/publication", srv.updatePublication)
 	mux.HandleFunc("/manage/sync", srv.syncRef)
-	return mux
+	mux.HandleFunc("/manage/", srv.unknownRoute)
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Cache-Control", "no-store")
+		mux.ServeHTTP(w, r)
+	})
 }
 
 type managementServer struct {
@@ -70,7 +75,33 @@ type managementServer struct {
 	syncAction           ManagementSyncAction
 	publishedIndexLoader ManagementPublishedIndexLoader
 	specs                []ManagedSpec
+	completedMutations   map[string]string
 	mu                   sync.RWMutex
+}
+
+func (s *managementServer) unknownRoute(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		w.Header().Set("Allow", http.MethodGet)
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+
+	s.mu.RLock()
+	specs := cloneManagedSpecs(s.specs)
+	s.mu.RUnlock()
+	model := s.managementOverviewModel(r.Context(), specs, "")
+	component := templates.ManagementUnknownPage(model, r.URL.Path)
+	if managementWantsFragment(r) {
+		component = templates.ManagementUnknownContent(r.URL.Path)
+	}
+	var body bytes.Buffer
+	if err := component.Render(r.Context(), &body); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.WriteHeader(http.StatusNotFound)
+	_, _ = w.Write(body.Bytes())
 }
 
 func (s *managementServer) overview(w http.ResponseWriter, r *http.Request) {
@@ -128,7 +159,7 @@ func (s *managementServer) specDetail(w http.ResponseWriter, r *http.Request) {
 	}
 	specID := strings.Trim(strings.TrimPrefix(r.URL.Path, "/manage/spec/"), "/")
 	if specID == "" {
-		http.NotFound(w, r)
+		s.unknownRoute(w, r)
 		return
 	}
 
@@ -221,16 +252,22 @@ func (s *managementServer) updatePublication(w http.ResponseWriter, r *http.Requ
 			}
 		}
 		if specIndex == -1 {
-			http.Error(w, "managed spec not found", http.StatusBadRequest)
+			s.respondManagementApplicationError(w, r, cloneManagedSpecs(s.specs), specID, "validation-error", "managed spec not found", core.Publication{}, "Choose an available contract")
 			return
 		}
 	}
 	if len(s.specs) == 0 {
-		http.Error(w, "managed spec is required", http.StatusBadRequest)
+		s.respondManagementApplicationError(w, r, nil, specID, "validation-error", "managed spec is required", core.Publication{}, "Choose an available contract")
 		return
 	}
 
 	spec := s.specs[specIndex]
+	requestID := managementMutationRequestID(r)
+	mutationSlot := "publication:" + spec.ID
+	if requestID != "" && s.completedMutations[mutationSlot] == requestID {
+		s.respondManagementMutation(w, r, cloneManagedSpecs(s.specs), spec.ID)
+		return
+	}
 	pub := spec.Publication
 	pub.ProjectID = firstNonBlank(pub.ProjectID, spec.Project.ID, spec.Index.ProjectID)
 	if revisionID := strings.TrimSpace(r.FormValue("revision_id")); revisionID != "" {
@@ -241,16 +278,19 @@ func (s *managementServer) updatePublication(w http.ResponseWriter, r *http.Requ
 	pub.Path = strings.TrimSpace(r.FormValue("path"))
 	pub.Public = strings.TrimSpace(r.FormValue("visibility")) == "public"
 	if pub.ProjectID == "" || pub.RevisionID == "" {
-		http.Error(w, "publication project and revision are required", http.StatusBadRequest)
+		s.respondManagementApplicationError(w, r, cloneManagedSpecs(s.specs), spec.ID, "validation-error", "publication project and revision are required", pub, "Retry publication")
 		return
 	}
 	if s.store != nil {
 		if err := s.store.SavePublication(r.Context(), pub); err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
+			s.respondManagementApplicationError(w, r, cloneManagedSpecs(s.specs), spec.ID, "persistence-error", err.Error(), pub, "Retry publication")
 			return
 		}
 	}
 	s.specs[specIndex].Publication = pub
+	if requestID != "" {
+		s.completedMutations[mutationSlot] = requestID
+	}
 	s.respondManagementMutation(w, r, cloneManagedSpecs(s.specs), s.specs[specIndex].ID)
 }
 
@@ -265,7 +305,7 @@ func (s *managementServer) syncRef(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if s.syncAction == nil {
-		http.Error(w, "sync action is not configured", http.StatusBadRequest)
+		http.Error(w, "sync action is not configured", http.StatusInternalServerError)
 		return
 	}
 
@@ -274,52 +314,103 @@ func (s *managementServer) syncRef(w http.ResponseWriter, r *http.Request) {
 
 	specIndex, err := s.managedSpecIndex(strings.TrimSpace(r.FormValue("spec_id")))
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		s.respondManagementApplicationError(w, r, cloneManagedSpecs(s.specs), strings.TrimSpace(r.FormValue("spec_id")), "validation-error", err.Error(), core.Publication{}, "Retry sync")
 		return
 	}
 	ref := strings.TrimSpace(r.FormValue("ref"))
 	if ref == "" {
-		http.Error(w, "ref is required", http.StatusBadRequest)
+		s.respondManagementApplicationError(w, r, cloneManagedSpecs(s.specs), s.specs[specIndex].ID, "validation-error", "ref is required", core.Publication{}, "Retry sync")
 		return
 	}
 	spec := s.specs[specIndex]
 	if !managementRefAllowed(spec.Candidates, ref) {
-		http.Error(w, "ref is not available for this source", http.StatusBadRequest)
+		s.respondManagementApplicationError(w, r, cloneManagedSpecs(s.specs), spec.ID, "validation-error", "ref is not available for this source", core.Publication{}, "Retry sync")
 		return
 	}
 
-	syncCtx, cancel := context.WithTimeout(r.Context(), managementSyncTimeout)
-	defer cancel()
-	updated, err := s.syncAction(syncCtx, spec, ref)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
+	requestID := managementMutationRequestID(r)
+	syncSlot := "sync:" + spec.ID
+	updated := spec
+	if requestID == "" || s.completedMutations[syncSlot] != requestID {
+		syncCtx, cancel := context.WithTimeout(r.Context(), managementSyncTimeout)
+		defer cancel()
+		updated, err = s.syncAction(syncCtx, spec, ref)
+		if err != nil {
+			s.respondManagementApplicationError(w, r, cloneManagedSpecs(s.specs), spec.ID, "sync-error", err.Error(), core.Publication{}, "Retry sync")
+			return
+		}
+		updated = normalizeManagedSpecs(core.SpecIndex{}, ManagementOptions{Specs: []ManagedSpec{updated}})[0]
+		if len(updated.Candidates) == 0 {
+			updated.Candidates = spec.Candidates
+		}
+		s.specs[specIndex] = updated
+		if requestID != "" {
+			s.completedMutations[syncSlot] = requestID
+		}
 	}
-	updated = normalizeManagedSpecs(core.SpecIndex{}, ManagementOptions{Specs: []ManagedSpec{updated}})[0]
-	if len(updated.Candidates) == 0 {
-		updated.Candidates = spec.Candidates
-	}
-	s.specs[specIndex] = updated
 	if strings.TrimSpace(r.FormValue("publish")) == "public" {
+		publicationSlot := "sync-publication:" + spec.ID
+		if requestID != "" && s.completedMutations[publicationSlot] == requestID {
+			s.respondManagementMutation(w, r, cloneManagedSpecs(s.specs), s.specs[specIndex].ID)
+			return
+		}
 		pub := updated.Publication
 		pub.ProjectID = firstNonBlank(pub.ProjectID, updated.Project.ID, updated.Index.ProjectID)
 		pub.RevisionID = firstNonBlank(updated.Revision.ID, updated.Index.RevisionID, pub.RevisionID)
 		pub.Path = strings.TrimSpace(r.FormValue("path"))
 		pub.Public = true
 		if pub.ProjectID == "" || pub.RevisionID == "" {
-			http.Error(w, "publication project and revision are required", http.StatusBadRequest)
+			s.respondManagementApplicationError(w, r, cloneManagedSpecs(s.specs), spec.ID, "validation-error", "publication project and revision are required", pub, "Retry publication")
 			return
 		}
 		if s.store != nil {
 			if err := s.store.SavePublication(r.Context(), pub); err != nil {
-				http.Error(w, err.Error(), http.StatusBadRequest)
+				s.respondManagementApplicationError(w, r, cloneManagedSpecs(s.specs), spec.ID, "persistence-error", err.Error(), pub, "Retry publication")
 				return
 			}
 		}
 		updated.Publication = pub
 		s.specs[specIndex] = updated
+		if requestID != "" {
+			s.completedMutations[publicationSlot] = requestID
+		}
 	}
 	s.respondManagementMutation(w, r, cloneManagedSpecs(s.specs), s.specs[specIndex].ID)
+}
+
+// Expected application validation and recovery renders HTML with HTTP 200 and
+// X-Manja-Application-Status. Unexpected transport and server failures remain non-2xx.
+func (s *managementServer) respondManagementApplicationError(w http.ResponseWriter, r *http.Request, specs []ManagedSpec, selectedSpecID string, status string, message string, enteredPublication core.Publication, retryAction string) {
+	model := s.managementOverviewModel(r.Context(), specs, selectedSpecID)
+	model.ApplicationStatus = status
+	model.ApplicationError = message
+	model.EnteredRef = strings.TrimSpace(r.FormValue("ref"))
+	model.RetryAction = retryAction
+	if enteredPublication != (core.Publication{}) {
+		model.Publication = enteredPublication
+		for i := range model.Specs {
+			if model.Specs[i].ID == selectedSpecID {
+				model.Specs[i].Publication = enteredPublication
+			}
+		}
+	}
+	component := templates.ManagementSpecPage(model)
+	if managementWantsFragment(r) {
+		component = templates.ManagementSpecContent(model)
+	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Header().Set("X-Manja-Application-Status", status)
+	if err := component.Render(r.Context(), w); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+	}
+}
+
+func managementMutationRequestID(r *http.Request) string {
+	requestID := strings.TrimSpace(r.FormValue("request_id"))
+	if len(requestID) > 256 {
+		return ""
+	}
+	return requestID
 }
 
 func (s *managementServer) respondManagementMutation(w http.ResponseWriter, r *http.Request, specs []ManagedSpec, selectedSpecID string) {

@@ -224,6 +224,9 @@ func TestManagementOverviewShowsProjectSyncAndPublicationState(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d", rec.Code)
 	}
+	if got := rec.Header().Get("Cache-Control"); got != "no-store" {
+		t.Fatalf("Cache-Control = %q, want no-store", got)
+	}
 	body := rec.Body.String()
 	for _, want := range []string{
 		"Management",
@@ -989,8 +992,11 @@ func TestManagementSyncPostKeepsSyncedStateWhenPublicationSaveFails(t *testing.T
 	req := httptest.NewRequest(http.MethodPost, "/manage/sync", strings.NewReader(form.Encode()))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	srv.ServeHTTP(rec, req)
-	if rec.Code != http.StatusBadRequest {
-		t.Fatalf("sync status = %d, want %d", rec.Code, http.StatusBadRequest)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("sync status = %d, want %d", rec.Code, http.StatusOK)
+	}
+	if got := rec.Header().Get("X-Manja-Application-Status"); got != "persistence-error" {
+		t.Fatalf("application status = %q, want persistence-error", got)
 	}
 
 	rec = httptest.NewRecorder()
@@ -1085,10 +1091,18 @@ func TestManagementOverviewRendersOneSyncFormForSelectedSpec(t *testing.T) {
 		`Publish this revision`,
 		`Save route settings`,
 		`Sync selected ref`,
+		`hx-disabled-elt="find button[type='submit']"`,
+		`data-goshtoso-loading`,
+		`Publishing revision…`,
+		`Saving route…`,
+		`Syncing ref…`,
 	} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("management Goshtoso control semantics missing %q:\n%s", want, body)
 		}
+	}
+	if count := strings.Count(body, `name="request_id"`); count != 3 {
+		t.Fatalf("management mutation request ID count = %d, want 3", count)
 	}
 	inputTag := func(id string) string {
 		t.Helper()
@@ -1158,14 +1172,133 @@ func TestManagementSyncPostRejectsRefWhenCandidatesUnavailable(t *testing.T) {
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	srv.ServeHTTP(rec, req)
 
-	if rec.Code != http.StatusBadRequest {
-		t.Fatalf("status = %d, want %d", rec.Code, http.StatusBadRequest)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusOK)
+	}
+	if got := rec.Header().Get("X-Manja-Application-Status"); got != "validation-error" {
+		t.Fatalf("application status = %q, want validation-error", got)
 	}
 	if called {
 		t.Fatal("sync action should not be called for unavailable ref")
 	}
 	if !strings.Contains(rec.Body.String(), "ref is not available for this source") {
 		t.Fatalf("body = %s", rec.Body.String())
+	}
+}
+
+func TestManagementSyncRejectsUnavailableCandidateWithoutEffect(t *testing.T) {
+	var syncCalls int
+	srv := NewServerWithOptions(core.SpecIndex{}, Options{Management: ManagementOptions{
+		SyncAction: func(_ context.Context, spec ManagedSpec, _ string) (ManagedSpec, error) {
+			syncCalls++
+			return spec, nil
+		},
+		Specs: []ManagedSpec{{
+			ID:         "payments-api",
+			Index:      core.SpecIndex{ProjectID: "payments", RevisionID: "rev-main", Title: "Payments API"},
+			Project:    core.Project{ID: "payments"},
+			Source:     core.Source{ID: "payments-source"},
+			Revision:   core.Revision{ID: "rev-main", Ref: "main"},
+			Candidates: []core.RevisionCandidate{{Ref: "main"}},
+		}},
+	}})
+	form := url.Values{"spec_id": {"payments-api"}, "ref": {"forged/ref"}}
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/manage/sync", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Set("HX-Request", "true")
+	srv.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d: %s", rec.Code, http.StatusOK, rec.Body.String())
+	}
+	if got := rec.Header().Get("X-Manja-Application-Status"); got != "validation-error" {
+		t.Fatalf("application status = %q", got)
+	}
+	for _, want := range []string{`id="management-main-content"`, `data-selected-contract="payments-api"`, `data-management-application-error="true"`, `forged/ref`, `ref is not available for this source`} {
+		if !strings.Contains(rec.Body.String(), want) {
+			t.Fatalf("recovery fragment missing %q:\n%s", want, rec.Body.String())
+		}
+	}
+	if syncCalls != 0 {
+		t.Fatalf("sync effect count = %d, want 0", syncCalls)
+	}
+}
+
+func TestManagementPublicationFailureRetainsSelectedContractAndValues(t *testing.T) {
+	store := &fakeManagementPublicationStore{err: errors.New("persistence unavailable")}
+	srv := NewServerWithOptions(core.SpecIndex{}, Options{Management: ManagementOptions{
+		Store: store,
+		Specs: []ManagedSpec{{
+			ID:          "payments-api",
+			Index:       core.SpecIndex{ProjectID: "payments", RevisionID: "rev-main", Title: "Payments API"},
+			Project:     core.Project{ID: "payments"},
+			Source:      core.Source{ID: "payments-source"},
+			Revision:    core.Revision{ID: "rev-main"},
+			Publication: core.Publication{ProjectID: "payments", RevisionID: "rev-main", Path: "/old"},
+		}},
+	}})
+	form := url.Values{"spec_id": {"payments-api"}, "visibility": {"public"}, "path": {"/entered/path"}}
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/manage/publication", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Set("HX-Request", "true")
+	srv.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d: %s", rec.Code, http.StatusOK, rec.Body.String())
+	}
+	if got := rec.Header().Get("X-Manja-Application-Status"); got != "persistence-error" {
+		t.Fatalf("application status = %q", got)
+	}
+	for _, want := range []string{`data-selected-contract="payments-api"`, `data-management-application-error="true"`, `persistence unavailable`, `value="/entered/path"`, `Retry publication`} {
+		if !strings.Contains(rec.Body.String(), want) {
+			t.Fatalf("publication recovery missing %q:\n%s", want, rec.Body.String())
+		}
+	}
+	if store.saved != (core.Publication{}) {
+		t.Fatalf("committed publication = %#v, want zero", store.saved)
+	}
+}
+
+func TestManagementUnknownRouteReturnsInShellRecovery(t *testing.T) {
+	body := renderManagementRequest(t, managementStructureServer(), "/manage/not-a-route", http.StatusNotFound)
+	for _, want := range []string{`<!doctype html>`, `id="main-content"`, `id="management-main-content"`, `data-management-route-not-found="true"`, `Management page not found`, `href="/manage"`} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("unknown management route missing %q:\n%s", want, body)
+		}
+	}
+}
+
+func TestManagementRepeatedSubmissionDoesNotDuplicateEffect(t *testing.T) {
+	var syncCalls int
+	srv := NewServerWithOptions(core.SpecIndex{}, Options{Management: ManagementOptions{
+		SyncAction: func(_ context.Context, spec ManagedSpec, ref string) (ManagedSpec, error) {
+			syncCalls++
+			spec.Revision.Ref = ref
+			return spec, nil
+		},
+		Specs: []ManagedSpec{{
+			ID:         "payments-api",
+			Index:      core.SpecIndex{ProjectID: "payments", RevisionID: "rev-main", Title: "Payments API"},
+			Project:    core.Project{ID: "payments"},
+			Source:     core.Source{ID: "payments-source"},
+			Revision:   core.Revision{ID: "rev-main", Ref: "main"},
+			Candidates: []core.RevisionCandidate{{Ref: "main"}, {Ref: "release/v2"}},
+		}},
+	}})
+	form := url.Values{"spec_id": {"payments-api"}, "ref": {"release/v2"}, "request_id": {"sync-repeat-1"}}
+	for i := 0; i < 2; i++ {
+		rec := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodPost, "/manage/sync", strings.NewReader(form.Encode()))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		srv.ServeHTTP(rec, req)
+		if rec.Code != http.StatusSeeOther {
+			t.Fatalf("submission %d status = %d, want %d", i+1, rec.Code, http.StatusSeeOther)
+		}
+	}
+	if syncCalls != 1 {
+		t.Fatalf("sync effect count = %d, want 1", syncCalls)
 	}
 }
 
@@ -1219,8 +1352,11 @@ func TestManagementPublicationPostRejectsInvalidRequests(t *testing.T) {
 
 	srv.ServeHTTP(rec, req)
 
-	if rec.Code != http.StatusBadRequest {
-		t.Fatalf("status = %d, want %d", rec.Code, http.StatusBadRequest)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusOK)
+	}
+	if got := rec.Header().Get("X-Manja-Application-Status"); got != "persistence-error" {
+		t.Fatalf("application status = %q, want persistence-error", got)
 	}
 
 	rec = httptest.NewRecorder()

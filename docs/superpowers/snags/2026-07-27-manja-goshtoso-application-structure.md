@@ -192,3 +192,51 @@ authorize edits to Goshtoso or access to private/generated upstream output.
   -count=1` and `GOWORK=off go test ./internal/web/e2e -run 'TestManagement'
   -count=1`; both passed, including filters, HTMX sidebar navigation, focus,
   selected identity, and Back.
+
+## 2026-07-27 — transport recovery composition
+
+- Desired contract: failed management mutations retain the current workspace,
+  announce an honest retry state, and expose a 44px retry target without
+  inventing a competing application component.
+- Public source consulted: Goshtoso Alert and form-error public component
+  source plus the documented semantic-token boundary.
+- Source dive or missing API: the first Manja draft used non-existent
+  `danger-soft` token utilities. The public Goshtoso form-error implementation
+  confirmed the supported danger surface contract is `bg-danger/10` (and
+  `bg-danger/15` in dark mode).
+- Workaround or no-match decision: keep the transport lifecycle in Manja's
+  HTMX integration script and use the documented semantic danger classes for
+  the persistent recovery region. No Goshtoso source or theme was changed.
+- Risk: the retry region depends on documented HTMX lifecycle events; unit and
+  browser tests cover send/response failure, retained form values, and retry.
+- Upstream feedback candidate: add a transport-recovery example to the
+  application-pattern guidance alongside loading and empty states.
+
+## 2026-07-27 — loading-copy test hook
+
+- Desired contract: prove mutation buttons use Goshtoso's ancestor-form HTMX
+  loading behavior without asserting generated private markup.
+- Public source consulted: Goshtoso v0.0.13 `button.WithLoadingText` docs and
+  its public component contract test.
+- Source dive or missing API: the option docs describe the behavior but do not
+  name the stable rendered test hook. The public test identifies
+  `data-goshtoso-loading` as the contract marker.
+- Workaround or no-match decision: assert the public marker and user-visible
+  loading copy in Manja unit tests; do not inspect or copy generated component
+  implementation.
+- Risk: low. The assertion follows Goshtoso's own public contract test.
+- Upstream feedback candidate: document `data-goshtoso-loading` next to
+  `WithLoadingText` in the consumer component reference.
+
+## Task 6 RED to GREEN evidence
+
+- RED command: `GOWORK=off go test ./internal/web -run
+  'TestManagement(SyncRejectsUnavailableCandidateWithoutEffect|PublicationFailureRetainsSelectedContractAndValues|UnknownRouteReturnsInShellRecovery|RepeatedSubmissionDoesNotDuplicateEffect)$'
+  -count=1 -v`.
+- Literal failures: `status = 400, want 200: ref is not available for this
+  source`; `status = 400, want 200: persistence unavailable`; `unknown
+  management route missing "<!doctype html>": 404 page not found`; and `sync
+  effect count = 2, want 1`.
+- GREEN command: the same focused command after implementing authoritative
+  application-error fragments, outer-route delegation, and bounded
+  per-contract idempotency slots; all four tests passed.

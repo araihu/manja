@@ -25,3 +25,19 @@ effect counts exposed by fake stores/actions.
 
 Release-track promotion, preview, review, and policy actions are absent by
 design. Their implementing slice must append rows before exposing controls.
+
+## Executable response policy
+
+- Expected validation, sync, and persistence failures render the authoritative
+  selected workspace with HTTP 200 plus `X-Manja-Application-Status`; this is
+  the explicit HTMX swap contract, not a successful domain effect.
+- Malformed requests, missing server configuration, and unexpected server
+  failures remain non-2xx transport/server responses. The persistent
+  management transport region owns retry for those failures without replacing
+  the selected workspace.
+- Management responses send `Cache-Control: no-store`. Successful native POSTs
+  use 303 PRG; HTMX POSTs return the authoritative fragment and canonical
+  `HX-Push-Url`.
+- Mutation forms carry a deterministic request ID, Goshtoso loading text, and
+  `hx-disabled-elt`. The handler stores only one bounded token per contract and
+  action slot, so an immediate replay cannot duplicate a completed effect.

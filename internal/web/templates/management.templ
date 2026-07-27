@@ -1,6 +1,7 @@
 package templates
 
 import (
+	"crypto/sha256"
 	"fmt"
 	"net/url"
 	"strings"
@@ -8,6 +9,7 @@ import (
 
 	templpkg "github.com/a-h/templ"
 	"github.com/araihu/goshtoso/components/appshell"
+	"github.com/araihu/goshtoso/components/alert"
 	"github.com/araihu/goshtoso/components/badge"
 	"github.com/araihu/goshtoso/components/button"
 	"github.com/araihu/goshtoso/components/emptystate"
@@ -35,6 +37,10 @@ type ManagementOverviewModel struct {
 	Revision       core.Revision
 	Publication    core.Publication
 	SyncRecord     core.SyncRecord
+	ApplicationStatus string
+	ApplicationError  string
+	EnteredRef         string
+	RetryAction        string
 }
 
 type ManagedSpecModel struct {
@@ -73,6 +79,12 @@ templ ManagementSpecPage(model ManagementOverviewModel) {
 	}
 }
 
+templ ManagementUnknownPage(model ManagementOverviewModel, requestedPath string) {
+	@managementShell(model, "unknown") {
+		@ManagementUnknownContent(requestedPath)
+	}
+}
+
 templ managementShell(model ManagementOverviewModel, active string) {
 	@LayoutWithBranding(managementDocumentTitle(model, active), core.DocsBranding{}) {
 		<div class="fixed inset-0 overflow-clip bg-surface text-on-surface dark:bg-surface-dark dark:text-on-surface-dark">
@@ -94,12 +106,21 @@ templ managementShell(model ManagementOverviewModel, active string) {
 				},
 			}) {
 				<div class="mx-auto max-w-7xl">
+					@managementTransportRecovery()
 					{ children... }
 				</div>
 			}
 			@managementSidebarScript()
 		</div>
 	}
+}
+
+templ managementTransportRecovery() {
+	<div id="management-transport-recovery" data-management-transport-recovery="true" role="alert" aria-live="assertive" hidden class="mb-5 rounded-radius border border-danger bg-danger/10 px-4 py-3 text-on-surface dark:border-danger dark:bg-danger/15 dark:text-on-surface-dark">
+		<p class="font-semibold">The request did not reach a settled server response.</p>
+		<p class="mt-1 text-sm">Your selected contract and entered values remain in this workspace. Check the connection, then retry.</p>
+		<button type="button" data-management-retry="true" class="mt-3 inline-flex min-h-11 min-w-11 items-center justify-center rounded-radius border border-danger px-4 py-2 text-sm font-semibold focus-visible:outline-2 focus-visible:outline-offset-2 dark:border-danger">Retry request</button>
+	</div>
 }
 
 templ managementApplicationHeader(model ManagementOverviewModel, active string) {
@@ -175,10 +196,46 @@ templ ManagementSpecsContent(model ManagementOverviewModel) {
 templ ManagementSpecContent(model ManagementOverviewModel) {
 	{{ spec, ok := managementSelectedSpec(model) }}
 	<div id="management-main-content" data-selected-contract={ model.SelectedSpecID } data-document-title={ managementDocumentTitle(model, "spec:" + model.SelectedSpecID) } class="grid gap-6">
+		if model.ApplicationStatus != "" {
+			@managementApplicationError(model)
+		}
 		if ok {
 			@ManagementSpecPanel(spec)
 		} else {
 			@managementSpecNotFound(model.SelectedSpecID)
+		}
+	</div>
+}
+
+templ ManagementUnknownContent(requestedPath string) {
+	<div id="management-main-content" data-selected-contract="" data-document-title="Management page not found · Management" data-management-route-not-found="true" class="grid gap-6">
+		@pageheader.PageHeader(pageheader.Config{
+			Title:       "Management page not found",
+			Description: "The requested management route is unavailable.",
+			RootAttrs:   templpkg.Attributes{"data-management-page-header": "route-not-found"},
+			TitleAttrs:  templpkg.Attributes{"id": "management-route-not-found-heading", "tabindex": "-1", "data-manja-settled-focus": "true"},
+		})
+		@emptystate.EmptyState(emptystate.Config{
+			Title:       "Return to the management workbench",
+			Description: "Use the overview to choose an available managed contract.",
+			Action:      managementOverviewRecoveryLink("Open management overview"),
+			RootAttrs:   templpkg.Attributes{"data-requested-management-route": requestedPath},
+		})
+	</div>
+}
+
+templ managementApplicationError(model ManagementOverviewModel) {
+	<div data-management-application-error="true" data-application-status={ model.ApplicationStatus } data-autofocus="true" tabindex="-1" class="focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-danger dark:focus-visible:outline-danger-dark">
+		@alert.Alert(alert.Config{
+			Title:       managementApplicationErrorTitle(model),
+			Description: model.ApplicationError,
+			Tone:        alert.ToneDanger,
+		})
+		if model.EnteredRef != "" {
+			<p class="mt-2 text-sm text-on-surface-muted dark:text-on-surface-dark-muted">Entered ref: <code class="font-mono text-on-surface-strong dark:text-on-surface-dark-strong">{ model.EnteredRef }</code></p>
+		}
+		if model.RetryAction != "" {
+			<p class="mt-2 text-sm font-medium text-on-surface-strong dark:text-on-surface-dark-strong">{ model.RetryAction } using the retained form below.</p>
 		}
 	</div>
 }
@@ -219,6 +276,7 @@ templ managementSpecHeader(spec ManagedSpecModel) {
 		TitleAttrs: templpkg.Attributes{
 			"id":                                "management-spec-heading-" + spec.ID,
 			"tabindex":                          "-1",
+			"data-autofocus":                    "true",
 			"data-management-contract-identity": spec.ID,
 			"data-manja-settled-focus":          "true",
 		},
@@ -401,9 +459,11 @@ templ managementPublishCandidatePanel(spec ManagedSpecModel) {
 				hx-post="/manage/publication"
 				hx-target="#management-main-content"
 				hx-swap="outerHTML"
+				hx-disabled-elt="find button[type='submit']"
 				class="grid gap-4 border-t border-outline pt-4 dark:border-outline-dark"
 			>
 				<input type="hidden" name="spec_id" value={ spec.ID }/>
+				<input type="hidden" name="request_id" value={ managementMutationID("publish", spec) }/>
 				<input type="hidden" name="visibility" value="public"/>
 				<input type="hidden" name="path" value={ managementPublicationPathValue(spec.Publication, spec.Project) }/>
 				<input type="hidden" name="revision_id" value={ spec.Revision.ID }/>
@@ -414,6 +474,7 @@ templ managementPublishCandidatePanel(spec ManagedSpecModel) {
 				@button.Button(
 					button.WithTone(button.TonePrimary),
 					button.WithType("submit"),
+					button.WithLoadingText("Publishing revision…"),
 					button.WithRootClass("w-fit"),
 				) {
 					Publish this revision
@@ -503,9 +564,11 @@ templ managementRouteSettingsPanel(spec ManagedSpecModel) {
 			hx-post="/manage/publication"
 			hx-target="#management-main-content"
 			hx-swap="outerHTML"
+			hx-disabled-elt="find button[type='submit']"
 			class="grid gap-4 border-t border-outline pt-4 dark:border-outline-dark"
 		>
 			<input type="hidden" name="spec_id" value={ spec.ID }/>
+			<input type="hidden" name="request_id" value={ managementMutationID("route", spec) }/>
 			<fieldset class="grid gap-2">
 				<legend class="text-xs font-semibold uppercase tracking-normal text-on-surface-muted dark:text-on-surface-dark-muted">Visibility</legend>
 				@radio.RadioBar() {
@@ -524,6 +587,7 @@ templ managementRouteSettingsPanel(spec ManagedSpecModel) {
 			@button.Button(
 				button.WithTone(button.ToneAlternate),
 				button.WithType("submit"),
+				button.WithLoadingText("Saving route…"),
 				button.WithRootClass("w-fit"),
 			) {
 				Save route settings
@@ -640,9 +704,11 @@ templ managementSyncForm(spec ManagedSpecModel, idPrefix string) {
 		hx-post="/manage/sync"
 		hx-target="#management-main-content"
 		hx-swap="outerHTML"
+		hx-disabled-elt="find button[type='submit']"
 		class="grid gap-4 border-t border-outline pt-4 dark:border-outline-dark"
 	>
 		<input type="hidden" name="spec_id" value={ spec.ID }/>
+		<input type="hidden" name="request_id" value={ managementMutationID("sync", spec) }/>
 		@selectfield.Select(selectfield.Config{
 			ID:        idPrefix + "-sync-ref",
 			Name:      "ref",
@@ -670,6 +736,7 @@ templ managementSyncForm(spec ManagedSpecModel, idPrefix string) {
 		@button.Button(
 			button.WithTone(button.TonePrimary),
 			button.WithType("submit"),
+			button.WithLoadingText("Syncing ref…"),
 			button.WithRootClass("w-fit"),
 		) {
 			Sync selected ref
@@ -747,6 +814,25 @@ templ managementSidebarScript() {
 	<script>
 		(function () {
 			var focusAfterSettle = false;
+			var lastMutationForm = null;
+
+			function transportRecovery() {
+				return document.querySelector("[data-management-transport-recovery='true']");
+			}
+
+			function hideTransportRecovery() {
+				var recovery = transportRecovery();
+				if (recovery) recovery.hidden = true;
+			}
+
+			function showTransportRecovery() {
+				if (!lastMutationForm || !lastMutationForm.isConnected) return;
+				var recovery = transportRecovery();
+				if (!recovery) return;
+				recovery.hidden = false;
+				var retry = recovery.querySelector("[data-management-retry='true']");
+				if (retry) retry.focus({ preventScroll: true });
+			}
 
 			function cleanPath(href) {
 				try {
@@ -869,10 +955,28 @@ templ managementSidebarScript() {
 			document.addEventListener("input", function (event) {
 				if (event.target && event.target.matches("[data-management-sidebar-search]")) filterSidebar(event.target);
 			});
+			document.addEventListener("click", function (event) {
+				var retry = event.target && event.target.closest && event.target.closest("[data-management-retry='true']");
+				if (!retry || !lastMutationForm || !lastMutationForm.isConnected) return;
+				hideTransportRecovery();
+				if (window.htmx) window.htmx.trigger(lastMutationForm, "submit");
+				else lastMutationForm.requestSubmit();
+			});
 			document.addEventListener("htmx:beforeRequest", function (event) {
 				var detail = event && event.detail;
 				var element = detail && (detail.elt || (detail.requestConfig && detail.requestConfig.elt));
-				focusAfterSettle = !!(element && element.closest && element.closest("[data-management-nav], #management-specs-table a"));
+				var mutationForm = element && element.closest && element.closest("form[hx-post^='/manage/']");
+				if (mutationForm) {
+					lastMutationForm = mutationForm;
+					hideTransportRecovery();
+				}
+				focusAfterSettle = !!(mutationForm || (element && element.closest && element.closest("[data-management-nav], #management-specs-table a")));
+			});
+			document.addEventListener("htmx:sendError", showTransportRecovery);
+			document.addEventListener("htmx:timeout", showTransportRecovery);
+			document.addEventListener("htmx:responseError", showTransportRecovery);
+			document.addEventListener("htmx:afterRequest", function (event) {
+				if (event && event.detail && event.detail.successful) hideTransportRecovery();
 			});
 			document.addEventListener("htmx:beforeCleanupElement", function (event) {
 				var target = event && event.detail && event.detail.elt;
@@ -895,8 +999,9 @@ templ managementSidebarScript() {
 				}
 				if (content.dataset.documentTitle) document.title = content.dataset.documentTitle;
 				refreshActive();
-				if (focusAfterSettle) {
-					var focusTarget = content.querySelector('[data-manja-settled-focus="true"]');
+				var focusTarget = content.querySelector('[data-autofocus="true"]');
+				if (focusTarget || focusAfterSettle) {
+					focusTarget = focusTarget || content.querySelector('[data-manja-settled-focus="true"]');
 					if (focusTarget) focusTarget.focus({ preventScroll: true });
 				}
 				focusAfterSettle = false;
@@ -1113,6 +1218,32 @@ func managementDocumentTitle(model ManagementOverviewModel, active string) strin
 		return "Managed specs · Management"
 	}
 	return "Management"
+}
+
+func managementApplicationErrorTitle(model ManagementOverviewModel) string {
+	switch model.ApplicationStatus {
+	case "persistence-error":
+		return "Publication was not saved"
+	case "sync-error":
+		return "Sync did not complete"
+	default:
+		return "Check the submitted values"
+	}
+}
+
+func managementMutationID(action string, spec ManagedSpecModel) string {
+	state := strings.Join([]string{
+		action,
+		spec.ID,
+		spec.Revision.ID,
+		spec.Revision.Ref,
+		spec.Revision.CommitSHA,
+		spec.Publication.RevisionID,
+		spec.Publication.Path,
+		fmt.Sprintf("%t", spec.Publication.Public),
+	}, "\x00")
+	sum := sha256.Sum256([]byte(state))
+	return fmt.Sprintf("%x", sum)
 }
 
 func managementSpecCount(count int) string {
