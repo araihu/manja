@@ -30,6 +30,59 @@ func TestUnmarshalRejectsDuplicateAndOrphanSchemaNodes(t *testing.T) {
 		assertGraphDecodeFailure(t, document, "duplicate")
 	})
 
+	t.Run("unequal collision", func(t *testing.T) {
+		document := mustBuild(t, fullFixture())
+		collision := document.SchemaNodes[0]
+		collision.Ordinal = uint32(len(document.SchemaNodes))
+		collision.Description += " changed"
+		document.SchemaNodes = append(document.SchemaNodes, collision)
+		assertGraphDecodeFailure(t, document, "hash_collision")
+	})
+
+	t.Run("unsorted", func(t *testing.T) {
+		document := mustBuild(t, fullFixture())
+		document.SchemaNodes[0], document.SchemaNodes[1] = document.SchemaNodes[1], document.SchemaNodes[0]
+		document.SchemaNodes[0].Ordinal = 0
+		document.SchemaNodes[1].Ordinal = 1
+		assertGraphDecodeFailure(t, document, "unsorted")
+	})
+
+	t.Run("ordinal mismatch", func(t *testing.T) {
+		document := mustBuild(t, fullFixture())
+		document.SchemaNodes[0].Ordinal = 1
+		assertGraphDecodeFailure(t, document, "ordinal_mismatch")
+	})
+
+	t.Run("duplicate property", func(t *testing.T) {
+		document := mustBuild(t, fullFixture())
+		for index := range document.SchemaNodes {
+			if len(document.SchemaNodes[index].Properties) == 0 {
+				continue
+			}
+			property := document.SchemaNodes[index].Properties[0]
+			property.Ordinal = uint32(len(document.SchemaNodes[index].Properties))
+			document.SchemaNodes[index].Properties = append(document.SchemaNodes[index].Properties, property)
+			assertGraphDecodeFailure(t, document, "duplicate_property")
+			return
+		}
+		t.Fatal("fixture has no schema property")
+	})
+
+	t.Run("items cardinality", func(t *testing.T) {
+		document := mustBuild(t, fullFixture())
+		for index := range document.SchemaNodes {
+			if len(document.SchemaNodes[index].Items) == 0 {
+				continue
+			}
+			item := document.SchemaNodes[index].Items[0]
+			item.Ordinal = 1
+			document.SchemaNodes[index].Items = append(document.SchemaNodes[index].Items, item)
+			assertGraphDecodeFailure(t, document, "invalid_cardinality")
+			return
+		}
+		t.Fatal("fixture has no schema items")
+	})
+
 	t.Run("orphan", func(t *testing.T) {
 		input := emptyFixture()
 		input.Operations = []domain.Operation{{

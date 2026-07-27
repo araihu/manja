@@ -24,42 +24,18 @@ func TestGoldenV2OperationProjection(t *testing.T) {
 }
 
 func TestGoldenV2FullProjection(t *testing.T) {
-	document := mustBuild(t, fullFixture())
-	encoded, err := Marshal(document)
-	if err != nil {
-		t.Fatal(err)
-	}
-	goldenPath := fixturePath("v2-full.json")
-	digestPath := fixturePath("v2-full.sha256")
-	if os.Getenv("MANJA_UPDATE_PROJECTION_GOLDEN") == "1" {
-		if err := os.WriteFile(fixturePath("v2-full.candidate.json"), encoded, 0o644); err != nil {
-			t.Fatal(err)
-		}
-		if err := os.WriteFile(fixturePath("v2-full.candidate.sha256"), []byte(Digest(encoded)+"\n"), 0o644); err != nil {
-			t.Fatal(err)
-		}
-	}
-	want, err := os.ReadFile(goldenPath)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !bytes.Equal(encoded, want) {
-		t.Fatalf("full golden differs; inspect candidate before acceptance")
-	}
-	wantDigest := strings.TrimSpace(string(mustReadPath(t, digestPath)))
-	if Digest(encoded) != wantDigest {
-		t.Fatalf("full digest = %s, want %s", Digest(encoded), wantDigest)
-	}
+	assertGolden(t, "v2-full", fullFixture())
 }
 
 func TestFullFixtureManifest(t *testing.T) {
 	document := mustBuild(t, fullFixture())
 	counts := map[string]int{
 		"operations": len(document.Operations), "schemas": len(document.Schemas),
-		"search": len(document.Search), "routes": len(document.PublicRoutes),
+		"schemaNodes": len(document.SchemaNodes),
+		"search":      len(document.Search), "routes": len(document.PublicRoutes),
 		"servers": len(document.Overview.Servers), "sidebar": len(document.SidebarSections),
 	}
-	want := map[string]int{"operations": 2, "schemas": 2, "search": 3, "routes": 4, "servers": 2, "sidebar": 3}
+	want := map[string]int{"operations": 2, "schemas": 2, "schemaNodes": 6, "search": 3, "routes": 4, "servers": 2, "sidebar": 3}
 	for key, count := range want {
 		if counts[key] != count {
 			t.Errorf("manifest %s count = %d, want %d", key, counts[key], count)
@@ -76,6 +52,15 @@ func TestFullFixtureManifest(t *testing.T) {
 func assertGolden(t *testing.T, name string, input domain.SpecIndex) {
 	t.Helper()
 	got := mustMarshal(t, mustBuild(t, input))
+	if os.Getenv("MANJA_UPDATE_PROJECTION_GOLDEN") == "1" {
+		if err := os.WriteFile(fixturePath(name+".candidate.json"), got, 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(fixturePath(name+".candidate.sha256"), []byte(Digest(got)+"\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	promoteReviewedGolden(t, name, got)
 	want := mustReadFixture(t, name+".json")
 	if len(want) == 0 || want[len(want)-1] == '\n' {
 		t.Fatalf("%s has final newline", name)
@@ -86,6 +71,35 @@ func assertGolden(t *testing.T, name string, input domain.SpecIndex) {
 	digest := strings.TrimSpace(string(mustReadFixture(t, name+".sha256")))
 	if len(digest) != 64 || Digest(got) != digest {
 		t.Fatalf("%s digest mismatch", name)
+	}
+}
+
+func promoteReviewedGolden(t *testing.T, name string, got []byte) {
+	t.Helper()
+	if os.Getenv("MANJA_ACCEPT_REVIEWED_PROJECTION_GOLDEN") != "1" {
+		return
+	}
+	acceptedJSON := fixturePath(name + ".json")
+	acceptedDigest := fixturePath(name + ".sha256")
+	if _, err := os.Stat(acceptedJSON); !os.IsNotExist(err) {
+		t.Fatalf("refusing to overwrite accepted golden %s", name)
+	}
+	if _, err := os.Stat(acceptedDigest); !os.IsNotExist(err) {
+		t.Fatalf("refusing to overwrite accepted digest %s", name)
+	}
+	candidateJSON := fixturePath(name + ".candidate.json")
+	candidateDigest := fixturePath(name + ".candidate.sha256")
+	candidate := mustReadPath(t, candidateJSON)
+	digest := strings.TrimSpace(string(mustReadPath(t, candidateDigest)))
+	if !bytes.Equal(candidate, got) || len(candidate) == 0 || candidate[len(candidate)-1] == '\n' || Digest(candidate) != digest {
+		t.Fatalf("reviewed candidate %s no longer matches current canonical output", name)
+	}
+	if err := os.Rename(candidateDigest, acceptedDigest); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Rename(candidateJSON, acceptedJSON); err != nil {
+		_ = os.Rename(acceptedDigest, candidateDigest)
+		t.Fatal(err)
 	}
 }
 

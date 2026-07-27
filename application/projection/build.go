@@ -2,6 +2,7 @@ package projection
 
 import (
 	"context"
+	"crypto/sha256"
 	"errors"
 	"fmt"
 	"net/url"
@@ -12,6 +13,10 @@ import (
 )
 
 func (Builder) Build(ctx context.Context, index domain.SpecIndex) (Document, error) {
+	return buildWithSchemaHasher(ctx, index, sha256.Sum256)
+}
+
+func buildWithSchemaHasher(ctx context.Context, index domain.SpecIndex, hasher schemaHashFunc) (Document, error) {
 	if err := ctx.Err(); err != nil {
 		return Document{}, err
 	}
@@ -31,7 +36,8 @@ func (Builder) Build(ctx context.Context, index domain.SpecIndex) (Document, err
 		return Document{}, err
 	}
 	state := buildState{
-		ctx: ctx,
+		ctx:         ctx,
+		schemaGraph: newSchemaGraphBuilder(hasher),
 		targets: map[string]string{
 			"main-content":       "fixed",
 			"overview":           "overview",
@@ -53,9 +59,10 @@ func (Builder) Build(ctx context.Context, index domain.SpecIndex) (Document, err
 }
 
 type buildState struct {
-	ctx     context.Context
-	targets map[string]string
-	aliases map[string]string
+	ctx         context.Context
+	targets     map[string]string
+	aliases     map[string]string
+	schemaGraph *schemaGraphBuilder
 }
 
 type indexedOperation struct {
@@ -103,8 +110,8 @@ func (s *buildState) build(index domain.SpecIndex) (Document, error) {
 	if err != nil {
 		return Document{}, err
 	}
-	return Document{
-		FormatVersion: 1, ProjectID: index.ProjectID, RevisionID: index.RevisionID,
+	document := Document{
+		FormatVersion: 2, ProjectID: index.ProjectID, RevisionID: index.RevisionID,
 		Title: index.Title, APIVersion: index.Version,
 		Branding: Branding{
 			DisplayName: index.Branding.DisplayName, LogoSrc: index.Branding.Logo.Src,
@@ -116,8 +123,12 @@ func (s *buildState) build(index domain.SpecIndex) (Document, error) {
 		OperationGroupHeading: Heading{ID: "operations-heading", Text: "Operations", Level: 2},
 		SchemaGroupHeading:    Heading{ID: "schemas-heading", Text: "Schemas", Level: 2},
 		SidebarSections:       sections, Operations: operationDirectories, OperationDetails: operationDetails,
-		Schemas: schemaDirectories, SchemaDetails: schemaDetails, Search: search, PublicRoutes: routes,
-	}, nil
+		Schemas: schemaDirectories, SchemaDetails: schemaDetails, SchemaNodes: []SchemaNode{}, Search: search, PublicRoutes: routes,
+	}
+	if err := s.finalizeSchemaGraph(&document); err != nil {
+		return Document{}, err
+	}
+	return document, nil
 }
 
 func (s *buildState) checkpoint() error {
@@ -277,7 +288,7 @@ func (s *buildState) buildOperationDetail(ordinal uint32, indexed indexedOperati
 		if err := s.checkpoint(); err != nil {
 			return OperationDetail{}, err
 		}
-		schema, err := s.buildWireSchema(parameter.Schema)
+		schemaRef, err := s.internSchema(parameter.Schema)
 		if err != nil {
 			return OperationDetail{}, err
 		}
@@ -290,7 +301,7 @@ func (s *buildState) buildOperationDetail(ordinal uint32, indexed indexedOperati
 		if parameter.Example != "" {
 			examples = append(examples, Example{Ordinal: 0, ID: "primary", Text: parameter.Example, Provided: true})
 		}
-		parameters = append(parameters, Parameter{Ordinal: uint32(sourceIndex), ID: id, Name: parameter.Name, In: parameter.In, Required: parameter.Required, Description: parameter.Description, Schema: schema, Examples: examples})
+		parameters = append(parameters, Parameter{Ordinal: uint32(sourceIndex), ID: id, Name: parameter.Name, In: parameter.In, Required: parameter.Required, Description: parameter.Description, SchemaRef: schemaRef, Examples: examples})
 	}
 	requestBody := RequestBody{MediaTypes: []MediaType{}}
 	hasRequestBody := operation.RequestBody != nil
@@ -357,7 +368,7 @@ func (s *buildState) buildMediaTypes(source []domain.OperationMediaType) ([]Medi
 			return nil, projectionFailure("operations.mediaTypes", "duplicate_record")
 		}
 		ids[media.ContentType] = struct{}{}
-		schema, err := s.buildWireSchema(media.Schema)
+		schemaRef, err := s.internSchema(media.Schema)
 		if err != nil {
 			return nil, err
 		}
@@ -365,49 +376,9 @@ func (s *buildState) buildMediaTypes(source []domain.OperationMediaType) ([]Medi
 		if media.ExampleProvided {
 			examples = append(examples, Example{Ordinal: 0, ID: "primary", Text: media.Example, Provided: true})
 		}
-		result = append(result, MediaType{Ordinal: uint32(sourceIndex), ID: media.ContentType, ContentType: media.ContentType, Schema: schema, Examples: examples})
+		result = append(result, MediaType{Ordinal: uint32(sourceIndex), ID: media.ContentType, ContentType: media.ContentType, SchemaRef: schemaRef, Examples: examples})
 	}
 	return result, nil
-}
-
-func (s *buildState) buildWireSchema(source domain.SchemaSummary) (WireSchema, error) {
-	if err := s.checkpoint(); err != nil {
-		return WireSchema{}, err
-	}
-	canonicalJSON := ""
-	var err error
-	if source.JSON != "" {
-		canonicalJSON, err = canonicalEmbeddedJSON(source.JSON)
-		if err != nil {
-			return WireSchema{}, err
-		}
-	}
-	properties := make([]SchemaProperty, 0, len(source.Properties))
-	propertyIDs := make(map[string]struct{})
-	for sourceIndex, property := range source.Properties {
-		if _, duplicate := propertyIDs[property.Name]; duplicate {
-			return WireSchema{}, projectionFailure("schema.properties", "duplicate_record")
-		}
-		propertyIDs[property.Name] = struct{}{}
-		schema, err := s.buildWireSchema(property.Schema)
-		if err != nil {
-			return WireSchema{}, err
-		}
-		properties = append(properties, SchemaProperty{Ordinal: uint32(sourceIndex), ID: property.Name, Name: property.Name, Required: property.Required, Description: property.Description, Schema: schema})
-	}
-	items := []SchemaItem{}
-	if source.Items != nil {
-		item, err := s.buildWireSchema(*source.Items)
-		if err != nil {
-			return WireSchema{}, err
-		}
-		items = append(items, SchemaItem{Ordinal: 0, ID: "items", Schema: item})
-	}
-	return WireSchema{
-		Name: source.Name, Type: source.Type, Format: source.Format, Description: source.Description,
-		DefaultValue: source.Default, ExampleText: source.Example, JSON: canonicalJSON,
-		Properties: properties, Items: items,
-	}, nil
 }
 
 func (s *buildState) buildSchemas(source []indexedSchema) ([]SchemaDirectory, []SchemaDetail, *SidebarSection, error) {
@@ -418,7 +389,7 @@ func (s *buildState) buildSchemas(source []indexedSchema) ([]SchemaDirectory, []
 		if err := s.checkpoint(); err != nil {
 			return nil, nil, nil, err
 		}
-		schema, err := s.buildWireSchema(indexed.source.Summary)
+		schemaRef, err := s.internSchema(indexed.source.Summary)
 		if err != nil {
 			return nil, nil, nil, err
 		}
@@ -436,7 +407,7 @@ func (s *buildState) buildSchemas(source []indexedSchema) ([]SchemaDirectory, []
 		ordinal := uint32(sourceIndex)
 		href := selectedHref(indexed.anchor)
 		directories = append(directories, SchemaDirectory{Ordinal: ordinal, ID: indexed.anchor, Anchor: indexed.anchor, Href: href, Name: indexed.source.Name, Title: indexed.source.Name, Description: indexed.source.Description})
-		details = append(details, SchemaDetail{Ordinal: ordinal, ID: indexed.anchor, Anchor: indexed.anchor, Href: href, HeadingID: indexed.anchor, Heading: indexed.source.Name, HeadingLevel: 3, Description: indexed.source.Description, Schema: schema, ExampleSchemaJSON: exampleSchemaJSON, Examples: examples})
+		details = append(details, SchemaDetail{Ordinal: ordinal, ID: indexed.anchor, Anchor: indexed.anchor, Href: href, HeadingID: indexed.anchor, Heading: indexed.source.Name, HeadingLevel: 3, Description: indexed.source.Description, SchemaRef: schemaRef, ExampleSchemaJSON: exampleSchemaJSON, Examples: examples})
 		items = append(items, SidebarItem{Ordinal: ordinal, ID: indexed.anchor, Anchor: indexed.anchor, Href: href, Label: indexed.source.Name})
 	}
 	if len(source) == 0 {

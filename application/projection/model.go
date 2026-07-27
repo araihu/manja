@@ -18,6 +18,7 @@ type Document struct {
 	OperationDetails      []OperationDetail    `json:"operationDetails"`
 	Schemas               []SchemaDirectory    `json:"schemas"`
 	SchemaDetails         []SchemaDetail       `json:"schemaDetails"`
+	SchemaNodes           []SchemaNode         `json:"schemaNodes"`
 	Search                []SearchRecord       `json:"search"`
 	PublicRoutes          []PublicRoute        `json:"publicRoutes"`
 }
@@ -143,14 +144,14 @@ type OperationDetail struct {
 }
 
 type Parameter struct {
-	Ordinal     uint32     `json:"ordinal"`
-	ID          string     `json:"id"`
-	Name        string     `json:"name"`
-	In          string     `json:"in"`
-	Required    bool       `json:"required"`
-	Description string     `json:"description"`
-	Schema      WireSchema `json:"schema"`
-	Examples    []Example  `json:"examples"`
+	Ordinal     uint32    `json:"ordinal"`
+	ID          string    `json:"id"`
+	Name        string    `json:"name"`
+	In          string    `json:"in"`
+	Required    bool      `json:"required"`
+	Description string    `json:"description"`
+	SchemaRef   SchemaRef `json:"schemaRef"`
+	Examples    []Example `json:"examples"`
 }
 
 type RequestBody struct {
@@ -168,11 +169,11 @@ type Response struct {
 }
 
 type MediaType struct {
-	Ordinal     uint32     `json:"ordinal"`
-	ID          string     `json:"id"`
-	ContentType string     `json:"contentType"`
-	Schema      WireSchema `json:"schema"`
-	Examples    []Example  `json:"examples"`
+	Ordinal     uint32    `json:"ordinal"`
+	ID          string    `json:"id"`
+	ContentType string    `json:"contentType"`
+	SchemaRef   SchemaRef `json:"schemaRef"`
+	Examples    []Example `json:"examples"`
 }
 
 type SecurityRequirement struct {
@@ -190,31 +191,35 @@ type CodeSample struct {
 	Code     string `json:"code"`
 }
 
-type WireSchema struct {
-	Name         string           `json:"name"`
-	Type         string           `json:"type"`
-	Format       string           `json:"format"`
-	Description  string           `json:"description"`
-	DefaultValue string           `json:"defaultValue"`
-	ExampleText  string           `json:"exampleText"`
-	JSON         string           `json:"json"`
-	Properties   []SchemaProperty `json:"properties"`
-	Items        []SchemaItem     `json:"items"`
+type SchemaRef uint32
+
+type SchemaNode struct {
+	Ordinal      uint32               `json:"ordinal"`
+	ID           string               `json:"id"`
+	Name         string               `json:"name"`
+	Type         string               `json:"type"`
+	Format       string               `json:"format"`
+	Description  string               `json:"description"`
+	DefaultValue string               `json:"defaultValue"`
+	ExampleText  string               `json:"exampleText"`
+	JSON         string               `json:"json"`
+	Properties   []SchemaNodeProperty `json:"properties"`
+	Items        []SchemaNodeItem     `json:"items"`
 }
 
-type SchemaProperty struct {
-	Ordinal     uint32     `json:"ordinal"`
-	ID          string     `json:"id"`
-	Name        string     `json:"name"`
-	Required    bool       `json:"required"`
-	Description string     `json:"description"`
-	Schema      WireSchema `json:"schema"`
+type SchemaNodeProperty struct {
+	Ordinal     uint32    `json:"ordinal"`
+	ID          string    `json:"id"`
+	Name        string    `json:"name"`
+	Required    bool      `json:"required"`
+	Description string    `json:"description"`
+	SchemaRef   SchemaRef `json:"schemaRef"`
 }
 
-type SchemaItem struct {
-	Ordinal uint32     `json:"ordinal"`
-	ID      string     `json:"id"`
-	Schema  WireSchema `json:"schema"`
+type SchemaNodeItem struct {
+	Ordinal   uint32    `json:"ordinal"`
+	ID        string    `json:"id"`
+	SchemaRef SchemaRef `json:"schemaRef"`
 }
 
 type Example struct {
@@ -235,17 +240,17 @@ type SchemaDirectory struct {
 }
 
 type SchemaDetail struct {
-	Ordinal           uint32     `json:"ordinal"`
-	ID                string     `json:"id"`
-	Anchor            string     `json:"anchor"`
-	Href              string     `json:"href"`
-	HeadingID         string     `json:"headingId"`
-	Heading           string     `json:"heading"`
-	HeadingLevel      uint32     `json:"headingLevel"`
-	Description       string     `json:"description"`
-	Schema            WireSchema `json:"schema"`
-	ExampleSchemaJSON string     `json:"exampleSchemaJSON"`
-	Examples          []Example  `json:"examples"`
+	Ordinal           uint32    `json:"ordinal"`
+	ID                string    `json:"id"`
+	Anchor            string    `json:"anchor"`
+	Href              string    `json:"href"`
+	HeadingID         string    `json:"headingId"`
+	Heading           string    `json:"heading"`
+	HeadingLevel      uint32    `json:"headingLevel"`
+	Description       string    `json:"description"`
+	SchemaRef         SchemaRef `json:"schemaRef"`
+	ExampleSchemaJSON string    `json:"exampleSchemaJSON"`
+	Examples          []Example `json:"examples"`
 }
 
 type SearchRecord struct {

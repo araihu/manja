@@ -16,6 +16,7 @@ import (
 const (
 	maxOperationBytes  = 256 * 1024
 	maxSchemaBytes     = 512 * 1024
+	maxSchemaNodeBytes = 512 * 1024
 	maxProjectionBytes = 16 * 1024 * 1024
 )
 
@@ -39,6 +40,15 @@ func Marshal(document projection.Document) ([]byte, error) {
 		}
 		if len(encoded) > maxSchemaBytes {
 			return nil, codecFailure("schemaDetails", "record_too_large")
+		}
+	}
+	for index := range document.SchemaNodes {
+		encoded, err := json.Marshal(document.SchemaNodes[index])
+		if err != nil {
+			return nil, codecFailure("schemaNodes", "invalid_source")
+		}
+		if len(encoded) > maxSchemaNodeBytes {
+			return nil, codecFailure("schemaNodes", "record_too_large")
 		}
 	}
 	encoded, err := json.Marshal(document)

@@ -2,10 +2,12 @@ package projectionjson
 
 import (
 	"bytes"
+	"crypto/sha256"
+	"encoding/binary"
+	"encoding/hex"
 	"encoding/json"
 	"net/url"
 	"reflect"
-	"sort"
 	"strings"
 	"unicode"
 	"unicode/utf8"
@@ -13,8 +15,16 @@ import (
 	"github.com/araihu/manja/application/projection"
 )
 
+const (
+	maxSchemaGraphNodes          = 100_000
+	maxExpandedSchemaOccurrences = 100_000
+	maxSchemaGraphEdges          = 100_000
+)
+
+var schemaNodeDomain = []byte("manja.projection.schema-node.v2\x00")
+
 func validateDocument(document projection.Document) error {
-	if document.FormatVersion != 1 {
+	if document.FormatVersion != 2 {
 		return codecFailure("formatVersion", "invalid_source")
 	}
 	if !validIdentity(document.ProjectID) || !validIdentity(document.RevisionID) {
@@ -30,10 +40,10 @@ func validateDocument(document projection.Document) error {
 		document.SchemaGroupHeading != (projection.Heading{ID: "schemas-heading", Text: "Schemas", Level: 2}) {
 		return codecFailure("navigation", "invalid_source")
 	}
-	if err := validateTopLevelRecords(document); err != nil {
+	if err := validateSchemaGraph(document); err != nil {
 		return err
 	}
-	if err := validateWireSchemas(document); err != nil {
+	if err := validateTopLevelRecords(document); err != nil {
 		return err
 	}
 	return nil
@@ -163,58 +173,270 @@ func validateOperationNested(detail projection.OperationDetail) error {
 	return nil
 }
 
-func validateWireSchemas(document projection.Document) error {
-	type entry struct {
-		schema *projection.WireSchema
-		depth  int
+func validateSchemaGraph(document projection.Document) error {
+	if len(document.SchemaNodes) > maxSchemaGraphNodes {
+		return codecFailure("schemaNodes", "node_budget")
 	}
-	stack := []entry{}
-	push := func(schema *projection.WireSchema) { stack = append(stack, entry{schema: schema, depth: 1}) }
-	for index := range document.OperationDetails {
-		detail := &document.OperationDetails[index]
-		for parameterIndex := range detail.Parameters {
-			push(&detail.Parameters[parameterIndex].Schema)
+	edges := 0
+	for _, node := range document.SchemaNodes {
+		edges += len(node.Properties) + len(node.Items)
+		if edges > maxSchemaGraphEdges {
+			return codecFailure("schemaNodes", "edge_budget")
 		}
-		for mediaIndex := range detail.RequestBody.MediaTypes {
-			push(&detail.RequestBody.MediaTypes[mediaIndex].Schema)
+	}
+
+	preimages := make([][]byte, len(document.SchemaNodes))
+	seenIDs := make(map[string]int, len(document.SchemaNodes))
+	previousID := ""
+	for index := range document.SchemaNodes {
+		node := &document.SchemaNodes[index]
+		if node.Ordinal != uint32(index) {
+			return codecFailure("schemaNodes", "ordinal_mismatch")
 		}
-		for responseIndex := range detail.Responses {
-			for mediaIndex := range detail.Responses[responseIndex].MediaTypes {
-				push(&detail.Responses[responseIndex].MediaTypes[mediaIndex].Schema)
+		if _, err := schemaDigestFromID(node.ID); err != nil {
+			return err
+		}
+		if len(node.Items) > 1 {
+			return codecFailure("schemaNodes.items", "invalid_cardinality")
+		}
+		propertyIDs := make(map[string]struct{}, len(node.Properties))
+		for propertyIndex, property := range node.Properties {
+			if property.Ordinal != uint32(propertyIndex) || property.ID != property.Name {
+				return codecFailure("schemaNodes.properties", "non_canonical")
+			}
+			if _, duplicate := propertyIDs[property.ID]; duplicate {
+				return codecFailure("schemaNodes.properties", "duplicate_property")
+			}
+			propertyIDs[property.ID] = struct{}{}
+			if int(property.SchemaRef) >= len(document.SchemaNodes) {
+				return codecFailure("schemaNodes.properties.schemaRef", "schema_ref")
 			}
 		}
+		for itemIndex, item := range node.Items {
+			if itemIndex != 0 || item.Ordinal != 0 || item.ID != "items" {
+				return codecFailure("schemaNodes.items", "non_canonical")
+			}
+			if int(item.SchemaRef) >= len(document.SchemaNodes) {
+				return codecFailure("schemaNodes.items.schemaRef", "schema_ref")
+			}
+		}
+		if err := validateEmbeddedString(node.JSON); err != nil {
+			return err
+		}
+		preimage, err := schemaNodePreimage(document.SchemaNodes, *node)
+		if err != nil {
+			return err
+		}
+		preimages[index] = preimage
+		if previousIndex, duplicate := seenIDs[node.ID]; duplicate {
+			if !bytes.Equal(preimages[previousIndex], preimage) {
+				return codecFailure("schemaNodes", "hash_collision")
+			}
+			return codecFailure("schemaNodes", "duplicate")
+		}
+		seenIDs[node.ID] = index
+		if index > 0 && node.ID < previousID {
+			return codecFailure("schemaNodes", "unsorted")
+		}
+		previousID = node.ID
 	}
-	for index := range document.SchemaDetails {
-		push(&document.SchemaDetails[index].Schema)
+
+	roots, err := schemaRoots(document)
+	if err != nil {
+		return err
 	}
-	nodes := 0
-	for len(stack) != 0 {
+	if err := rejectSchemaCycles(document.SchemaNodes); err != nil {
+		return err
+	}
+	reachable := make([]bool, len(document.SchemaNodes))
+	type occurrence struct {
+		ref   projection.SchemaRef
+		depth int
+	}
+	stack := make([]occurrence, 0, len(roots))
+	for _, root := range roots {
+		stack = append(stack, occurrence{ref: root, depth: 1})
+	}
+	expanded := 0
+	for len(stack) > 0 {
 		last := len(stack) - 1
 		current := stack[last]
 		stack = stack[:last]
-		nodes++
-		if current.depth > 64 || nodes > 100_000 || len(current.schema.Items) > 1 {
-			return codecFailure("wireSchema", "invalid_source")
+		expanded++
+		if expanded > maxExpandedSchemaOccurrences {
+			return codecFailure("schemaNodes", "expanded_budget")
 		}
-		if err := validateEmbeddedString(current.schema.JSON); err != nil {
-			return err
+		if current.depth > 64 {
+			return codecFailure("schemaNodes", "depth")
 		}
-		for index := range current.schema.Properties {
-			property := &current.schema.Properties[index]
-			if property.Ordinal != uint32(index) || property.ID != property.Name {
-				return codecFailure("wireSchema.properties", "non_canonical")
-			}
-			stack = append(stack, entry{schema: &property.Schema, depth: current.depth + 1})
+		reachable[current.ref] = true
+		node := document.SchemaNodes[current.ref]
+		for _, property := range node.Properties {
+			stack = append(stack, occurrence{ref: property.SchemaRef, depth: current.depth + 1})
 		}
-		for index := range current.schema.Items {
-			item := &current.schema.Items[index]
-			if item.Ordinal != 0 || item.ID != "items" {
-				return codecFailure("wireSchema.items", "non_canonical")
-			}
-			stack = append(stack, entry{schema: &item.Schema, depth: current.depth + 1})
+		for _, item := range node.Items {
+			stack = append(stack, occurrence{ref: item.SchemaRef, depth: current.depth + 1})
+		}
+	}
+	for _, reached := range reachable {
+		if !reached {
+			return codecFailure("schemaNodes", "orphan")
+		}
+	}
+	for index, node := range document.SchemaNodes {
+		digest := sha256.Sum256(preimages[index])
+		if node.ID != "schema-node-"+hex.EncodeToString(digest[:]) {
+			return codecFailure("schemaNodes", "hash_mismatch")
 		}
 	}
 	return nil
+}
+
+func schemaRoots(document projection.Document) ([]projection.SchemaRef, error) {
+	roots := make([]projection.SchemaRef, 0)
+	appendRoot := func(ref projection.SchemaRef) error {
+		if int(ref) >= len(document.SchemaNodes) {
+			return codecFailure("schemaRef", "schema_ref")
+		}
+		roots = append(roots, ref)
+		return nil
+	}
+	for _, operation := range document.OperationDetails {
+		for _, parameter := range operation.Parameters {
+			if err := appendRoot(parameter.SchemaRef); err != nil {
+				return nil, err
+			}
+		}
+		for _, media := range operation.RequestBody.MediaTypes {
+			if err := appendRoot(media.SchemaRef); err != nil {
+				return nil, err
+			}
+		}
+		for _, response := range operation.Responses {
+			for _, media := range response.MediaTypes {
+				if err := appendRoot(media.SchemaRef); err != nil {
+					return nil, err
+				}
+			}
+		}
+	}
+	for _, detail := range document.SchemaDetails {
+		if err := appendRoot(detail.SchemaRef); err != nil {
+			return nil, err
+		}
+	}
+	return roots, nil
+}
+
+func rejectSchemaCycles(nodes []projection.SchemaNode) error {
+	type frame struct {
+		ref      projection.SchemaRef
+		children []projection.SchemaRef
+		next     int
+	}
+	colors := make([]uint8, len(nodes))
+	for start := range nodes {
+		if colors[start] != 0 {
+			continue
+		}
+		stack := []frame{{ref: projection.SchemaRef(start), children: schemaChildren(nodes[start])}}
+		colors[start] = 1
+		for len(stack) > 0 {
+			current := &stack[len(stack)-1]
+			if current.next == len(current.children) {
+				colors[current.ref] = 2
+				stack = stack[:len(stack)-1]
+				continue
+			}
+			child := current.children[current.next]
+			current.next++
+			switch colors[child] {
+			case 1:
+				return codecFailure("schemaNodes", "cycle")
+			case 0:
+				colors[child] = 1
+				stack = append(stack, frame{ref: child, children: schemaChildren(nodes[child])})
+			}
+		}
+	}
+	return nil
+}
+
+func schemaChildren(node projection.SchemaNode) []projection.SchemaRef {
+	children := make([]projection.SchemaRef, 0, len(node.Properties)+len(node.Items))
+	for _, property := range node.Properties {
+		children = append(children, property.SchemaRef)
+	}
+	for _, item := range node.Items {
+		children = append(children, item.SchemaRef)
+	}
+	return children
+}
+
+func schemaNodePreimage(nodes []projection.SchemaNode, node projection.SchemaNode) ([]byte, error) {
+	preimage := append([]byte(nil), schemaNodeDomain...)
+	for _, value := range []string{node.Name, node.Type, node.Format, node.Description, node.DefaultValue, node.ExampleText, node.JSON} {
+		preimage = appendSchemaString(preimage, value)
+	}
+	preimage = appendSchemaUint64(preimage, uint64(len(node.Properties)))
+	for _, property := range node.Properties {
+		preimage = appendSchemaUint32(preimage, property.Ordinal)
+		preimage = appendSchemaString(preimage, property.ID)
+		preimage = appendSchemaString(preimage, property.Name)
+		if property.Required {
+			preimage = append(preimage, 1)
+		} else {
+			preimage = append(preimage, 0)
+		}
+		preimage = appendSchemaString(preimage, property.Description)
+		digest, err := schemaDigestFromID(nodes[property.SchemaRef].ID)
+		if err != nil {
+			return nil, err
+		}
+		preimage = append(preimage, digest[:]...)
+	}
+	preimage = appendSchemaUint64(preimage, uint64(len(node.Items)))
+	for _, item := range node.Items {
+		preimage = appendSchemaUint32(preimage, item.Ordinal)
+		preimage = appendSchemaString(preimage, item.ID)
+		digest, err := schemaDigestFromID(nodes[item.SchemaRef].ID)
+		if err != nil {
+			return nil, err
+		}
+		preimage = append(preimage, digest[:]...)
+	}
+	return preimage, nil
+}
+
+func schemaDigestFromID(id string) ([32]byte, error) {
+	var digest [32]byte
+	const prefix = "schema-node-"
+	if !strings.HasPrefix(id, prefix) || len(id) != len(prefix)+64 || id[len(prefix):] != strings.ToLower(id[len(prefix):]) {
+		return digest, codecFailure("schemaNodes.id", "non_canonical")
+	}
+	decoded, err := hex.DecodeString(id[len(prefix):])
+	if err != nil || len(decoded) != len(digest) {
+		return digest, codecFailure("schemaNodes.id", "non_canonical")
+	}
+	copy(digest[:], decoded)
+	return digest, nil
+}
+
+func appendSchemaString(target []byte, value string) []byte {
+	target = appendSchemaUint64(target, uint64(len([]byte(value))))
+	return append(target, value...)
+}
+
+func appendSchemaUint32(target []byte, value uint32) []byte {
+	var encoded [4]byte
+	binary.BigEndian.PutUint32(encoded[:], value)
+	return append(target, encoded[:]...)
+}
+
+func appendSchemaUint64(target []byte, value uint64) []byte {
+	var encoded [8]byte
+	binary.BigEndian.PutUint64(encoded[:], value)
+	return append(target, encoded[:]...)
 }
 
 func validateEmbeddedString(value string) error {
@@ -252,5 +474,3 @@ func parseSelectedHref(value string) (string, error) {
 	}
 	return reference.Fragment, nil
 }
-
-var _ = sort.Strings

@@ -1,9 +1,15 @@
-# Projection version 1 fixtures
+# Projection version 2 fixtures
 
-Version-1 fixtures are independent canonical-wire oracles. Ordinary tests must
-never rewrite accepted `.json` or `.sha256` files. Vector A and B bytes come
-from the reviewed design; Vector C requires a separately reviewed candidate and
-literal manifest before acceptance.
+Version-2 fixtures are independent canonical-wire oracles. Ordinary tests never
+rewrite accepted `.json` or `.sha256` files. All three candidates received an
+independent byte, digest, graph-preimage, reference, and semantic review before
+promotion.
+
+| Vector | Bytes | SHA-256 |
+| --- | ---: | --- |
+| `v2-empty` | 889 | `2f69e78dff07b7275ab021ca6c8006332ec822703f606fec086f06538df0642c` |
+| `v2-operation` | 2,797 | `93281a850731cf51d286a27f1eb40468b202b28ccc39c8be5406eb0f9608e95d` |
+| `v2-full` | 10,129 | `639c40aeb0afcce1da80e04dbe672c31860086543bd3ed1247ec70f91563b573` |
 
 ## Vector C manifest
 
@@ -21,8 +27,9 @@ literal manifest before acceptance.
 | Security | `oauth`; scopes `write` ordinal 0 and `read` ordinal 1 |
 | Code samples | cURL/shell ordinal 0; JavaScript/javascript ordinal 1 |
 | Schemas | ordinal 0 `schema-error`; ordinal 1 `schema-pet` |
-| Error schema | object with one `items` record containing string schema |
-| Pet schema | object; `id` property; embedded JSON `{"n":0,"script":"\u003cscript\u003e"}` |
+| Schema graph | six unique nodes, five roots, seven expanded occurrences, maximum depth two |
+| Error schema | object node with one `items` edge to the shared string node |
+| Pet schema | object node; `id` edge to the shared string node; embedded JSON `{"n":0,"script":"\u003cscript\u003e"}` |
 | Pet example | schema JSON `{"shape":1}` and distinct primary text `__EXPLICIT_PET__` |
 | Search | ordinal 0 `operation-list`; ordinal 1 `overview`; ordinal 2 `schema-pet` |
 | Public routes | four records: root, create, list, and Pet, sorted by path then title |
