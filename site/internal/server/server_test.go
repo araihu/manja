@@ -106,7 +106,7 @@ func TestDemoManagementRedirectsStayMounted(t *testing.T) {
 	srv := httptest.NewServer(newTestServer(t))
 	t.Cleanup(srv.Close)
 
-	form := strings.NewReader("visibility=public&path=%2Fpayments%2Fv1")
+	form := strings.NewReader("visibility=public&path=%2Fpayments%2Fv1&request_id=site-demo-request-token")
 	req, err := http.NewRequest(http.MethodPost, srv.URL+"/demo/manage/publication", form)
 	if err != nil {
 		t.Fatal(err)
@@ -141,7 +141,7 @@ func TestDemoManagementHTMXMutationStaysMounted(t *testing.T) {
 	srv := httptest.NewServer(newTestServer(t))
 	t.Cleanup(srv.Close)
 
-	form := strings.NewReader("visibility=public&path=%2Fpayments%2Fv1")
+	form := strings.NewReader("visibility=public&path=%2Fpayments%2Fv1&request_id=site-demo-request-token")
 	req, err := http.NewRequest(http.MethodPost, srv.URL+"/demo/manage/publication", form)
 	if err != nil {
 		t.Fatal(err)

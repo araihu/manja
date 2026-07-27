@@ -392,3 +392,18 @@ authorize edits to Goshtoso or access to private/generated upstream output.
   and Manja remains representative on success surfaces. The full combined
   classifier/state/theme/viewport matrix passed in 160.632 seconds and the
   evidence directory contains 160 screenshots.
+
+## Recursive site consumer token fixture correction
+
+- The final recursive root gate exposed two demo consumer tests that manually
+  posted publication mutations without the newly required request token.
+  Literal RED failures were `status = 200, want 303` and `HX-Push-Url = "",
+  want /demo/manage/spec/...` in `TestDemoManagementRedirectsStayMounted` and
+  `TestDemoManagementHTMXMutationStaysMounted`.
+- After explicit control-plane ownership expansion limited to the two test
+  fixtures, both forms submit `request_id=site-demo-request-token`, satisfying
+  the renderer's 1–256-byte supported-character contract. No production site
+  code changed.
+- GREEN command: `GOWORK=off go test ./internal/server -run
+  'TestDemoManagement(RedirectsStayMounted|HTMXMutationStaysMounted)$'
+  -count=1 -v`; both tests passed.
