@@ -389,33 +389,82 @@ func validateGoshtosoDependencyBrowserEvidence(forceFallback bool, expectedPrima
 	if len(expectedPrimaryURLs) != 5 {
 		failures = append(failures, fmt.Sprintf("expected primary URL count = %d, want 5", len(expectedPrimaryURLs)))
 	}
-	if len(evidence.InterceptedPrimaryURLs) != len(expectedPrimaryURLs) {
-		failures = append(failures, fmt.Sprintf("intercepted primary URL count = %d, want %d: %v", len(evidence.InterceptedPrimaryURLs), len(expectedPrimaryURLs), evidence.InterceptedPrimaryURLs))
+	expectedURLCounts := goshtosoDependencyURLCounts(expectedPrimaryURLs)
+	if len(expectedURLCounts) != len(expectedPrimaryURLs) {
+		failures = append(failures, fmt.Sprintf("expected primary URLs are not unique: %v", expectedPrimaryURLs))
 	}
-	if len(evidence.FailedResponses) != len(expectedPrimaryURLs) {
-		failures = append(failures, fmt.Sprintf("failed response count = %d, want %d: %#v", len(evidence.FailedResponses), len(expectedPrimaryURLs), evidence.FailedResponses))
-	}
-	if len(evidence.FailedRequests) != len(expectedPrimaryURLs) {
-		failures = append(failures, fmt.Sprintf("failed request count = %d, want %d: %#v", len(evidence.FailedRequests), len(expectedPrimaryURLs), evidence.FailedRequests))
-	}
-	if len(evidence.ConsoleErrors) != len(expectedPrimaryURLs) {
-		failures = append(failures, fmt.Sprintf("console resource error count = %d, want %d: %#v", len(evidence.ConsoleErrors), len(expectedPrimaryURLs), evidence.ConsoleErrors))
-	}
-	for i, expectedURL := range expectedPrimaryURLs {
-		if i < len(evidence.InterceptedPrimaryURLs) && evidence.InterceptedPrimaryURLs[i] != expectedURL {
-			failures = append(failures, fmt.Sprintf("intercepted primary URL %d = %q, want %q", i, evidence.InterceptedPrimaryURLs[i], expectedURL))
+	failures = append(failures, goshtosoExactURLMultisetFailures("intercepted primary URL", expectedPrimaryURLs, evidence.InterceptedPrimaryURLs)...)
+
+	failedResponseURLs := make([]string, 0, len(evidence.FailedResponses))
+	validResponseCounts := make(map[string]int, len(evidence.FailedResponses))
+	for _, response := range evidence.FailedResponses {
+		failedResponseURLs = append(failedResponseURLs, response.URL)
+		if response.URL != response.RequestURL || response.Status != http.StatusServiceUnavailable {
+			failures = append(failures, fmt.Sprintf("failed response URL=%s request=%s status=%d, want matching URL and status=503", response.URL, response.RequestURL, response.Status))
+			continue
 		}
-		if i < len(evidence.FailedResponses) {
-			response := evidence.FailedResponses[i]
-			if response.URL != expectedURL || response.RequestURL != expectedURL || response.Status != http.StatusServiceUnavailable {
-				failures = append(failures, fmt.Sprintf("failed response %d = (URL=%q request=%q status=%d), want exact intercepted URL %q status 503", i, response.URL, response.RequestURL, response.Status, expectedURL))
-			}
+		validResponseCounts[response.URL]++
+	}
+	failures = append(failures, goshtosoExactURLMultisetFailures("failed response URL", expectedPrimaryURLs, failedResponseURLs)...)
+
+	consoleErrorURLs := make([]string, 0, len(evidence.ConsoleErrors))
+	for _, consoleError := range evidence.ConsoleErrors {
+		consoleErrorURLs = append(consoleErrorURLs, consoleError.URL)
+		if expectedURLCounts[consoleError.URL] != 1 || !strings.Contains(consoleError.Text, "Failed to load resource") {
+			failures = append(failures, fmt.Sprintf("unexpected console error: text=%q URL=%s", consoleError.Text, consoleError.URL))
 		}
-		if i < len(evidence.FailedRequests) && evidence.FailedRequests[i].URL != expectedURL {
-			failures = append(failures, fmt.Sprintf("failed request %d URL = %q, want correlated intercepted URL %q (error=%q)", i, evidence.FailedRequests[i].URL, expectedURL, evidence.FailedRequests[i].Error))
+	}
+	failures = append(failures, goshtosoExactURLMultisetFailures("console resource error URL", expectedPrimaryURLs, consoleErrorURLs)...)
+
+	failedRequestCounts := make(map[string]int, len(evidence.FailedRequests))
+	for _, request := range evidence.FailedRequests {
+		failedRequestCounts[request.URL]++
+		if failedRequestCounts[request.URL] > 1 {
+			failures = append(failures, fmt.Sprintf("failed request URL %q count = %d, want at most 1", request.URL, failedRequestCounts[request.URL]))
 		}
-		if i < len(evidence.ConsoleErrors) && evidence.ConsoleErrors[i].URL != expectedURL {
-			failures = append(failures, fmt.Sprintf("console resource error %d location = %q, want correlated failed response %q status 503 (text=%q)", i, evidence.ConsoleErrors[i].URL, expectedURL, evidence.ConsoleErrors[i].Text))
+		if expectedURLCounts[request.URL] != 1 {
+			failures = append(failures, fmt.Sprintf("failed request URL %q is outside the exact expected primary URL set (error=%q)", request.URL, request.Error))
+			continue
+		}
+		if validResponseCounts[request.URL] != 1 {
+			failures = append(failures, fmt.Sprintf("failed request URL %q has %d correlated response(s) with matching request URL and status=503, want 1 (error=%q)", request.URL, validResponseCounts[request.URL], request.Error))
+		}
+	}
+	return failures
+}
+
+func goshtosoDependencyURLCounts(urls []string) map[string]int {
+	counts := make(map[string]int, len(urls))
+	for _, url := range urls {
+		counts[url]++
+	}
+	return counts
+}
+
+func goshtosoExactURLMultisetFailures(channel string, expectedURLs, actualURLs []string) []string {
+	expectedCounts := goshtosoDependencyURLCounts(expectedURLs)
+	actualCounts := goshtosoDependencyURLCounts(actualURLs)
+	var failures []string
+
+	seenExpected := make(map[string]struct{}, len(expectedCounts))
+	for _, expectedURL := range expectedURLs {
+		if _, seen := seenExpected[expectedURL]; seen {
+			continue
+		}
+		seenExpected[expectedURL] = struct{}{}
+		if actualCounts[expectedURL] != expectedCounts[expectedURL] {
+			failures = append(failures, fmt.Sprintf("%s %q count = %d, want %d", channel, expectedURL, actualCounts[expectedURL], expectedCounts[expectedURL]))
+		}
+	}
+
+	seenActual := make(map[string]struct{}, len(actualCounts))
+	for _, actualURL := range actualURLs {
+		if _, seen := seenActual[actualURL]; seen {
+			continue
+		}
+		seenActual[actualURL] = struct{}{}
+		if expectedCounts[actualURL] == 0 {
+			failures = append(failures, fmt.Sprintf("%s contains unexpected URL %q count=%d", channel, actualURL, actualCounts[actualURL]))
 		}
 	}
 	return failures
