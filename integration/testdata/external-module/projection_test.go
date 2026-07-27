@@ -21,8 +21,11 @@ func TestProjectionPublicContractIsUsableByUnrelatedModule(t *testing.T) {
 	if err != nil {
 		t.Fatalf("build projection: %v", err)
 	}
-	if document.FormatVersion != 1 {
-		t.Fatalf("format version = %d, want 1", document.FormatVersion)
+	if document.FormatVersion != 2 {
+		t.Fatalf("format version = %d, want 2", document.FormatVersion)
+	}
+	if document.SchemaNodes == nil || len(document.SchemaNodes) != 0 {
+		t.Fatalf("schema nodes = %#v, want non-nil empty", document.SchemaNodes)
 	}
 	if document.ProjectID != "payments" || document.RevisionID != "rev-0001" {
 		t.Fatalf("identity = %q/%q, want payments/rev-0001", document.ProjectID, document.RevisionID)

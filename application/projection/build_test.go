@@ -13,13 +13,13 @@ import (
 	"github.com/araihu/manja/domain"
 )
 
-func TestBuilderBuildsVersionOneDocument(t *testing.T) {
+func TestBuilderBuildsVersionTwoDocument(t *testing.T) {
 	input := fullBuilderFixture()
 	document, err := (Builder{}).Build(context.Background(), input)
 	if err != nil {
 		t.Fatalf("Build: %v", err)
 	}
-	if document.FormatVersion != 1 || document.ProjectID != "payments" || document.RevisionID != "rev-0001" {
+	if document.FormatVersion != 2 || document.ProjectID != "payments" || document.RevisionID != "rev-0001" {
 		t.Fatalf("identity/version = %d %q %q", document.FormatVersion, document.ProjectID, document.RevisionID)
 	}
 	if document.Branding.DisplayName != "Payments" || document.Overview.SpecDownloadFilename != "openapi.json" {
@@ -180,7 +180,8 @@ func TestBuilderPreservesDisplayExampleText(t *testing.T) {
 		t.Fatal(err)
 	}
 	parameter := document.OperationDetails[0].Parameters[0]
-	if parameter.Examples[0].Text != "true" || parameter.Schema.DefaultValue != "1e+03" || parameter.Schema.ExampleText != "{\"looks\":\"json\"}" {
+	node := document.SchemaNodes[parameter.SchemaRef]
+	if parameter.Examples[0].Text != "true" || node.DefaultValue != "1e+03" || node.ExampleText != "{\"looks\":\"json\"}" {
 		t.Fatalf("display text changed: %#v", parameter)
 	}
 	if examples := document.OperationDetails[0].RequestBody.MediaTypes[0].Examples; len(examples) != 1 || examples[0].Text != "" || !examples[0].Provided {
@@ -199,7 +200,8 @@ func TestBuilderSeparatesSchemaJSONAndExample(t *testing.T) {
 		t.Fatal(err)
 	}
 	detail := document.SchemaDetails[0]
-	if detail.Schema.JSON != "{\"schema\":1000}" || detail.ExampleSchemaJSON != "{\"shape\":1}" || detail.Examples[0].Text != "__EXPLICIT_TEXT__" {
+	node := document.SchemaNodes[detail.SchemaRef]
+	if node.JSON != "{\"schema\":1000}" || detail.ExampleSchemaJSON != "{\"shape\":1}" || detail.Examples[0].Text != "__EXPLICIT_TEXT__" {
 		t.Fatalf("paired schema payloads = %#v", detail)
 	}
 }
@@ -286,7 +288,7 @@ func fullBuilderFixture() domain.SpecIndex {
 
 func assertDocumentSlicesNonNil(t *testing.T, document Document) {
 	t.Helper()
-	values := []any{document.Overview.Servers, document.SidebarSections, document.Operations, document.OperationDetails, document.Schemas, document.SchemaDetails, document.Search, document.PublicRoutes}
+	values := []any{document.Overview.Servers, document.SidebarSections, document.Operations, document.OperationDetails, document.Schemas, document.SchemaDetails, document.SchemaNodes, document.Search, document.PublicRoutes}
 	for index, value := range values {
 		if reflect.ValueOf(value).IsNil() {
 			t.Errorf("top-level slice %d is nil", index)

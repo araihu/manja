@@ -60,13 +60,13 @@ func FuzzBuildDeterminism(f *testing.F) {
 }
 
 func FuzzUnmarshalCanonicalProjection(f *testing.F) {
-	for _, name := range []string{"v1-empty.json", "v1-operation.json", "v1-full.json"} {
+	for _, name := range []string{"v2-empty.json", "v2-operation.json", "v2-full.json"} {
 		f.Add(readFuzzFixture(f, name))
 	}
 	for _, seed := range [][]byte{
 		[]byte(`{"formatVersion":1,"formatVersion":1}`),
 		[]byte(`{"unknown":true}`),
-		append(append([]byte(nil), readFuzzFixture(f, "v1-empty.json")...), '\n'),
+		append(append([]byte(nil), readFuzzFixture(f, "v2-empty.json")...), '\n'),
 		{0xff},
 	} {
 		f.Add(seed)

@@ -106,7 +106,8 @@ func projectionPublicAPI() map[string]map[string]projectionField {
 			"Operations":            f("[]OperationDirectory", "operations"),
 			"OperationDetails":      f("[]OperationDetail", "operationDetails"),
 			"Schemas":               f("[]SchemaDirectory", "schemas"), "SchemaDetails": f("[]SchemaDetail", "schemaDetails"),
-			"Search": f("[]SearchRecord", "search"), "PublicRoutes": f("[]PublicRoute", "publicRoutes"),
+			"SchemaNodes": f("[]SchemaNode", "schemaNodes"),
+			"Search":      f("[]SearchRecord", "search"), "PublicRoutes": f("[]PublicRoute", "publicRoutes"),
 		},
 		"Branding": {
 			"DisplayName": f("string", "displayName"), "LogoSrc": f("string", "logoSrc"),
@@ -159,7 +160,7 @@ func projectionPublicAPI() map[string]map[string]projectionField {
 		"Parameter": {
 			"Ordinal": f("uint32", "ordinal"), "ID": f("string", "id"), "Name": f("string", "name"),
 			"In": f("string", "in"), "Required": f("bool", "required"), "Description": f("string", "description"),
-			"Schema": f("WireSchema", "schema"), "Examples": f("[]Example", "examples"),
+			"SchemaRef": f("SchemaRef", "schemaRef"), "Examples": f("[]Example", "examples"),
 		},
 		"RequestBody": {"Description": f("string", "description"), "Required": f("bool", "required"), "MediaTypes": f("[]MediaType", "mediaTypes")},
 		"Response": {
@@ -168,7 +169,7 @@ func projectionPublicAPI() map[string]map[string]projectionField {
 		},
 		"MediaType": {
 			"Ordinal": f("uint32", "ordinal"), "ID": f("string", "id"), "ContentType": f("string", "contentType"),
-			"Schema": f("WireSchema", "schema"), "Examples": f("[]Example", "examples"),
+			"SchemaRef": f("SchemaRef", "schemaRef"), "Examples": f("[]Example", "examples"),
 		},
 		"SecurityRequirement": {
 			"Ordinal": f("uint32", "ordinal"), "ID": f("string", "id"), "Name": f("string", "name"),
@@ -178,17 +179,19 @@ func projectionPublicAPI() map[string]map[string]projectionField {
 			"Ordinal": f("uint32", "ordinal"), "ID": f("string", "id"), "Label": f("string", "label"),
 			"Language": f("string", "language"), "Code": f("string", "code"),
 		},
-		"WireSchema": {
-			"Name": f("string", "name"), "Type": f("string", "type"), "Format": f("string", "format"),
-			"Description": f("string", "description"), "DefaultValue": f("string", "defaultValue"),
-			"ExampleText": f("string", "exampleText"), "JSON": f("string", "json"),
-			"Properties": f("[]SchemaProperty", "properties"), "Items": f("[]SchemaItem", "items"),
-		},
-		"SchemaProperty": {
+		"SchemaRef": {},
+		"SchemaNode": {
 			"Ordinal": f("uint32", "ordinal"), "ID": f("string", "id"), "Name": f("string", "name"),
-			"Required": f("bool", "required"), "Description": f("string", "description"), "Schema": f("WireSchema", "schema"),
+			"Type": f("string", "type"), "Format": f("string", "format"), "Description": f("string", "description"),
+			"DefaultValue": f("string", "defaultValue"), "ExampleText": f("string", "exampleText"),
+			"JSON": f("string", "json"), "Properties": f("[]SchemaNodeProperty", "properties"),
+			"Items": f("[]SchemaNodeItem", "items"),
 		},
-		"SchemaItem": {"Ordinal": f("uint32", "ordinal"), "ID": f("string", "id"), "Schema": f("WireSchema", "schema")},
+		"SchemaNodeProperty": {
+			"Ordinal": f("uint32", "ordinal"), "ID": f("string", "id"), "Name": f("string", "name"),
+			"Required": f("bool", "required"), "Description": f("string", "description"), "SchemaRef": f("SchemaRef", "schemaRef"),
+		},
+		"SchemaNodeItem": {"Ordinal": f("uint32", "ordinal"), "ID": f("string", "id"), "SchemaRef": f("SchemaRef", "schemaRef")},
 		"Example": {
 			"Ordinal": f("uint32", "ordinal"), "ID": f("string", "id"), "Text": f("string", "text"), "Provided": f("bool", "provided"),
 		},
@@ -201,7 +204,7 @@ func projectionPublicAPI() map[string]map[string]projectionField {
 			"Ordinal": f("uint32", "ordinal"), "ID": f("string", "id"), "Anchor": f("string", "anchor"),
 			"Href": f("string", "href"), "HeadingID": f("string", "headingId"), "Heading": f("string", "heading"),
 			"HeadingLevel": f("uint32", "headingLevel"), "Description": f("string", "description"),
-			"Schema": f("WireSchema", "schema"), "ExampleSchemaJSON": f("string", "exampleSchemaJSON"),
+			"SchemaRef": f("SchemaRef", "schemaRef"), "ExampleSchemaJSON": f("string", "exampleSchemaJSON"),
 			"Examples": f("[]Example", "examples"),
 		},
 		"SearchRecord": {
@@ -276,6 +279,12 @@ func exportedValueSpec(spec ast.Spec) bool {
 
 func assertProjectionStruct(t *testing.T, filename string, typeSpec *ast.TypeSpec, want map[string]projectionField) {
 	t.Helper()
+	if typeSpec.Name.Name == "SchemaRef" {
+		if got := projectionNodeString(t, typeSpec.Type); got != "uint32" || len(want) != 0 {
+			t.Errorf("%s: SchemaRef type = %s, want uint32", filename, got)
+		}
+		return
+	}
 	structType, ok := typeSpec.Type.(*ast.StructType)
 	if !ok {
 		t.Errorf("%s: exported type %s must be a concrete struct", filename, typeSpec.Name.Name)

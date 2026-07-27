@@ -17,7 +17,7 @@ func TestMarshalUsesCanonicalGoJSON(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := mustReadFixture(t, "v1-empty.json")
+	want := mustReadFixture(t, "v2-empty.json")
 	if !bytes.Equal(got, want) {
 		t.Fatalf("canonical bytes differ\ngot:  %s\nwant: %s", got, want)
 	}
@@ -36,8 +36,8 @@ func TestMarshalRejectsInvalidUTF8BeforeEncoding(t *testing.T) {
 }
 
 func TestDigestHashesExactBytes(t *testing.T) {
-	bytes := mustReadFixture(t, "v1-empty.json")
-	want := "8267e1a8a597a6561409e81492b06c24b44b6cbd12875fc90985295c5765889d"
+	bytes := mustReadFixture(t, "v2-empty.json")
+	want := strings.TrimSpace(string(mustReadFixture(t, "v2-empty.sha256")))
 	if got := Digest(bytes); got != want {
 		t.Fatalf("Digest = %q, want %q", got, want)
 	}
@@ -54,9 +54,9 @@ func TestErrorsDoNotDiscloseProjectionContent(t *testing.T) {
 	document.ProjectID = sentinel + "\x00"
 	assertCodecErrorSafe(t, func() error { _, err := Marshal(document); return err }, sentinel)
 
-	unknown := []byte(`{"formatVersion":1,"` + sentinel + `":true}`)
+	unknown := []byte(`{"formatVersion":2,"` + sentinel + `":true}`)
 	assertCodecErrorSafe(t, func() error { _, err := Unmarshal(unknown); return err }, sentinel)
-	malformed := append([]byte(`{"formatVersion":1,"title":"`+sentinel), 0xff)
+	malformed := append([]byte(`{"formatVersion":2,"title":"`+sentinel), 0xff)
 	assertCodecErrorSafe(t, func() error { _, err := Unmarshal(malformed); return err }, sentinel)
 }
 

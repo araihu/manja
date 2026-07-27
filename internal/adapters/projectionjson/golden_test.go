@@ -15,27 +15,27 @@ import (
 	"github.com/araihu/manja/domain"
 )
 
-func TestGoldenEmptyProjection(t *testing.T) {
-	assertGolden(t, "v1-empty", emptyFixture(), 872, "8267e1a8a597a6561409e81492b06c24b44b6cbd12875fc90985295c5765889d")
+func TestGoldenV2EmptyProjection(t *testing.T) {
+	assertGolden(t, "v2-empty", emptyFixture())
 }
 
-func TestGoldenOperationProjection(t *testing.T) {
-	assertGolden(t, "v1-operation", operationFixture(), 2780, "6609c4e78e6556c8a178e500aeff8da85801ce30aaa784129c85b2c4e63cdc41")
+func TestGoldenV2OperationProjection(t *testing.T) {
+	assertGolden(t, "v2-operation", operationFixture())
 }
 
-func TestGoldenFullProjection(t *testing.T) {
+func TestGoldenV2FullProjection(t *testing.T) {
 	document := mustBuild(t, fullFixture())
 	encoded, err := Marshal(document)
 	if err != nil {
 		t.Fatal(err)
 	}
-	goldenPath := fixturePath("v1-full.json")
-	digestPath := fixturePath("v1-full.sha256")
+	goldenPath := fixturePath("v2-full.json")
+	digestPath := fixturePath("v2-full.sha256")
 	if os.Getenv("MANJA_UPDATE_PROJECTION_GOLDEN") == "1" {
-		if err := os.WriteFile(fixturePath("v1-full.candidate.json"), encoded, 0o644); err != nil {
+		if err := os.WriteFile(fixturePath("v2-full.candidate.json"), encoded, 0o644); err != nil {
 			t.Fatal(err)
 		}
-		if err := os.WriteFile(fixturePath("v1-full.candidate.sha256"), []byte(Digest(encoded)+"\n"), 0o644); err != nil {
+		if err := os.WriteFile(fixturePath("v2-full.candidate.sha256"), []byte(Digest(encoded)+"\n"), 0o644); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -73,20 +73,18 @@ func TestFullFixtureManifest(t *testing.T) {
 	}
 }
 
-func assertGolden(t *testing.T, name string, input domain.SpecIndex, byteCount int, digest string) {
+func assertGolden(t *testing.T, name string, input domain.SpecIndex) {
 	t.Helper()
 	got := mustMarshal(t, mustBuild(t, input))
 	want := mustReadFixture(t, name+".json")
-	if len(want) != byteCount || len(got) != byteCount {
-		t.Fatalf("%s byte count got/want = %d/%d, expected %d", name, len(got), len(want), byteCount)
-	}
 	if len(want) == 0 || want[len(want)-1] == '\n' {
 		t.Fatalf("%s has final newline", name)
 	}
 	if !bytes.Equal(got, want) {
 		t.Fatalf("%s bytes differ\ngot:  %s\nwant: %s", name, got, want)
 	}
-	if Digest(got) != digest || strings.TrimSpace(string(mustReadFixture(t, name+".sha256"))) != digest {
+	digest := strings.TrimSpace(string(mustReadFixture(t, name+".sha256")))
+	if len(digest) != 64 || Digest(got) != digest {
 		t.Fatalf("%s digest mismatch", name)
 	}
 }
@@ -161,14 +159,6 @@ func marshalUnchecked(t *testing.T, document projection.Document) []byte {
 		t.Fatal(err)
 	}
 	return bytes
-}
-
-func nestedSchema(depth int) projection.WireSchema {
-	current := projection.WireSchema{Properties: []projection.SchemaProperty{}, Items: []projection.SchemaItem{}}
-	for index := 1; index < depth; index++ {
-		current = projection.WireSchema{Properties: []projection.SchemaProperty{}, Items: []projection.SchemaItem{{Ordinal: 0, ID: "items", Schema: current}}}
-	}
-	return current
 }
 
 func fixtureDigest(input []byte) string {

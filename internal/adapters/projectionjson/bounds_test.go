@@ -6,9 +6,10 @@ import (
 	"testing"
 
 	"github.com/araihu/manja/application/projection"
+	"github.com/araihu/manja/domain"
 )
 
-func TestMarshalEnforcesInclusiveBounds(t *testing.T) {
+func TestMarshalEnforcesInternedRecordNodeAndDocumentBounds(t *testing.T) {
 	t.Run("operation", func(t *testing.T) {
 		document := mustBuild(t, operationFixture())
 		assertRecordBoundary(t, &document, 256*1024, func(filler string) {
@@ -20,6 +21,18 @@ func TestMarshalEnforcesInclusiveBounds(t *testing.T) {
 		assertRecordBoundary(t, &document, 512*1024, func(filler string) {
 			document.SchemaDetails[0].Description = filler
 		}, func() any { return document.SchemaDetails[0] })
+	})
+	t.Run("schema node", func(t *testing.T) {
+		for _, size := range []int{maxSchemaNodeBytes - 1, maxSchemaNodeBytes, maxSchemaNodeBytes + 1} {
+			document, recordBytes := documentWithSchemaNodeSize(t, size)
+			encoded, err := Marshal(document)
+			if size <= maxSchemaNodeBytes && (err != nil || encoded == nil || recordBytes != size) {
+				t.Fatalf("schema node size %d rejected or changed: record=%d err=%v", size, recordBytes, err)
+			}
+			if size > maxSchemaNodeBytes && (err == nil || encoded != nil) {
+				t.Fatalf("schema node size %d accepted", size)
+			}
+		}
 	})
 	t.Run("document", func(t *testing.T) {
 		for _, size := range []int{maxProjectionBytes - 1, maxProjectionBytes, maxProjectionBytes + 1} {
@@ -33,6 +46,33 @@ func TestMarshalEnforcesInclusiveBounds(t *testing.T) {
 			}
 		}
 	})
+}
+
+func documentWithSchemaNodeSize(t *testing.T, target int) (projection.Document, int) {
+	t.Helper()
+	low, high := 0, target
+	for low <= high {
+		middle := low + (high-low)/2
+		input := emptyFixture()
+		input.Schemas = []domain.Schema{{
+			Name: "Bounded", Summary: domain.SchemaSummary{Type: "string", Description: strings.Repeat("x", middle)},
+		}}
+		document := mustBuild(t, input)
+		record, err := json.Marshal(document.SchemaNodes[document.SchemaDetails[0].SchemaRef])
+		if err != nil {
+			t.Fatal(err)
+		}
+		switch {
+		case len(record) < target:
+			low = middle + 1
+		case len(record) > target:
+			high = middle - 1
+		default:
+			return document, len(record)
+		}
+	}
+	t.Fatalf("cannot construct schema node of %d bytes", target)
+	return projection.Document{}, 0
 }
 
 func TestUnmarshalPreflightUsesActualInputLength(t *testing.T) {
