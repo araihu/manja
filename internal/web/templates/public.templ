@@ -156,6 +156,7 @@ templ publicApplicationHeader(idx core.SpecIndex, selected selectedDocsItem, opt
 					Name:           "theme",
 					Alpine:         &selectfield.AlpineConfig{Model: "theme"},
 					TriggerLeading: themeSelectIcon(),
+					TriggerAttrs:   templpkg.Attributes{"aria-label": "Theme"},
 					Options:        themeOptions(),
 				})
 			</div>
@@ -444,25 +445,25 @@ templ overviewSection(idx core.SpecIndex, opts PublicDocsOptions) {
 									<dl class="grid gap-5 border-t border-outline-dark px-8 py-6">
 										for _, variable := range server.Variables {
 											<div class="grid gap-2">
-												<div class="flex flex-wrap items-baseline gap-2">
-													<dt class="font-mono text-sm font-bold text-on-surface-dark-strong">{ variable.Name }</dt>
-													<dd class="text-sm text-on-surface-dark-muted">string</dd>
-												</div>
-												if variable.Description != "" {
-													if hasMarkdown(opts.MarkdownRenderer, variable.Description) {
-														<div class="max-w-[70ch] text-sm">
-															@renderedMarkdown(opts.MarkdownRenderer, variable.Description)
-														</div>
-													} else {
-														<p class="text-sm leading-6 text-on-surface-dark">{ variable.Description }</p>
+												<dt class="font-mono text-sm font-bold text-on-surface-dark-strong">{ variable.Name }</dt>
+												<dd class="grid gap-2 text-sm text-on-surface-dark-muted">
+													<span>string</span>
+													if variable.Description != "" {
+														if hasMarkdown(opts.MarkdownRenderer, variable.Description) {
+															<div class="max-w-[70ch] text-sm">
+																@renderedMarkdown(opts.MarkdownRenderer, variable.Description)
+															</div>
+														} else {
+															<p class="text-sm leading-6 text-on-surface-dark">{ variable.Description }</p>
+														}
 													}
-												}
-												if variable.Default != "" {
-													<p class="text-xs text-on-surface-dark-muted">
-														Default:
-														<code class="ml-1 rounded-radius bg-surface-dark-alt px-1.5 py-0.5 font-mono text-xs text-on-surface-dark">{ variable.Default }</code>
-													</p>
-												}
+													if variable.Default != "" {
+														<p class="text-xs text-on-surface-dark-muted">
+															Default:
+															<code class="ml-1 rounded-radius bg-surface-dark-alt px-1.5 py-0.5 font-mono text-xs text-on-surface-dark">{ variable.Default }</code>
+														</p>
+													}
+												</dd>
 											</div>
 										}
 									</dl>

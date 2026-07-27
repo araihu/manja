@@ -280,6 +280,34 @@ authorize edits to Goshtoso or access to private/generated upstream output.
 - Upstream feedback candidate: add a many-tab mobile composition to the Tabs
   application-pattern example and document the min-content shrink boundary.
 
+## 2026-07-27 — Select shell trigger needs an explicit accessible name
+
+- Desired contract: the public theme picker exposes a discernible button name
+  to assistive technology while retaining Goshtoso Select behavior.
+- Public source consulted: Goshtoso v0.0.13 Select `TriggerAttrs` documentation
+  and axe-core 4.10.3 WCAG output.
+- Source dive or missing API: axe reported `button-name` on
+  `#manja-theme-trigger`; the visible current-theme value did not provide a
+  reliable accessible name in this shell composition.
+- Workaround or no-match decision: set `aria-label="Theme"` through the
+  exported `TriggerAttrs` API. No generated or private markup is targeted.
+- Risk: low. The final axe run reports zero violations on public and management
+  entry points.
+- Upstream feedback candidate: consider requiring or deriving an accessible
+  trigger name when Select is rendered without a visible `Label`.
+
+## Final accessibility RED to GREEN evidence
+
+- RED command: axe-core 4.10.3 against `/` and `/manage` with WCAG 2 A/AA,
+  2.1 AA, and 2.2 AA tags. Public docs reported six issues:
+  `button-name` on `#manja-theme-trigger`, `definition-list` on the server
+  variable list, and four `dlitem` occurrences. Management reported zero.
+- Fix: name the Select trigger through its public attribute hook and make each
+  server-variable `<dt>`/`<dd>` pair direct children of its allowed definition
+  group, with description/default content inside the `<dd>`.
+- GREEN command: the identical two-URL axe run reported zero violations for
+  both public docs and management.
+
 ## Task 6 RED to GREEN evidence
 
 - RED command: `GOWORK=off go test ./internal/web -run
