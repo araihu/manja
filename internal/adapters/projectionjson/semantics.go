@@ -407,7 +407,7 @@ func validCanonicalPublicRoute(value string, targets map[string]string) bool {
 		return false
 	}
 	kind := targets[reference.Fragment]
-	if kind != "overview" && kind != "operation" && kind != "schema" {
+	if kind != "overview" && kind != "operation" && kind != "schema" && kind != "search-result" {
 		return false
 	}
 	return value == reference.Path+selectedHref(reference.Fragment)
