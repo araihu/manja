@@ -3,7 +3,9 @@ package web
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/url"
 	"strings"
@@ -55,7 +57,7 @@ func NewManagementServer(idx core.SpecIndex, opts ManagementOptions) http.Handle
 		syncAction:           opts.SyncAction,
 		publishedIndexLoader: opts.PublishedIndexLoader,
 		specs:                normalizeManagedSpecs(idx, opts),
-		completedMutations:   make(map[string]string),
+		completedMutations:   make(map[string]managementCompletedMutation),
 	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("/manage", srv.overview)
@@ -75,8 +77,13 @@ type managementServer struct {
 	syncAction           ManagementSyncAction
 	publishedIndexLoader ManagementPublishedIndexLoader
 	specs                []ManagedSpec
-	completedMutations   map[string]string
+	completedMutations   map[string]managementCompletedMutation
 	mu                   sync.RWMutex
+}
+
+type managementCompletedMutation struct {
+	RequestID          string
+	PayloadFingerprint string
 }
 
 func (s *managementServer) unknownRoute(w http.ResponseWriter, r *http.Request) {
@@ -91,7 +98,8 @@ func (s *managementServer) unknownRoute(w http.ResponseWriter, r *http.Request) 
 	s.mu.RUnlock()
 	model := s.managementOverviewModel(r.Context(), specs, "")
 	component := templates.ManagementUnknownPage(model, r.URL.Path)
-	if managementWantsFragment(r) {
+	isFragment := managementWantsFragment(r)
+	if isFragment {
 		component = templates.ManagementUnknownContent(r.URL.Path)
 	}
 	var body bytes.Buffer
@@ -100,7 +108,11 @@ func (s *managementServer) unknownRoute(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	w.WriteHeader(http.StatusNotFound)
+	if isFragment {
+		w.Header().Set("X-Manja-Application-Status", "not-found")
+	} else {
+		w.WriteHeader(http.StatusNotFound)
+	}
 	_, _ = w.Write(body.Bytes())
 }
 
@@ -168,7 +180,8 @@ func (s *managementServer) specDetail(w http.ResponseWriter, r *http.Request) {
 	s.mu.RUnlock()
 	model := s.managementOverviewModel(r.Context(), specs, specID)
 	component := templates.ManagementSpecPage(model)
-	if managementWantsFragment(r) {
+	isFragment := managementWantsFragment(r)
+	if isFragment {
 		component = templates.ManagementSpecContent(model)
 	}
 	var body bytes.Buffer
@@ -178,7 +191,11 @@ func (s *managementServer) specDetail(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	if _, ok := managedSpecByID(specs, specID); !ok {
-		w.WriteHeader(http.StatusNotFound)
+		if isFragment {
+			w.Header().Set("X-Manja-Application-Status", "not-found")
+		} else {
+			w.WriteHeader(http.StatusNotFound)
+		}
 	}
 	_, _ = w.Write(body.Bytes())
 }
@@ -264,10 +281,6 @@ func (s *managementServer) updatePublication(w http.ResponseWriter, r *http.Requ
 	spec := s.specs[specIndex]
 	requestID := managementMutationRequestID(r)
 	mutationSlot := "publication:" + spec.ID
-	if requestID != "" && s.completedMutations[mutationSlot] == requestID {
-		s.respondManagementMutation(w, r, cloneManagedSpecs(s.specs), spec.ID)
-		return
-	}
 	pub := spec.Publication
 	pub.ProjectID = firstNonBlank(pub.ProjectID, spec.Project.ID, spec.Index.ProjectID)
 	if revisionID := strings.TrimSpace(r.FormValue("revision_id")); revisionID != "" {
@@ -277,6 +290,16 @@ func (s *managementServer) updatePublication(w http.ResponseWriter, r *http.Requ
 	}
 	pub.Path = strings.TrimSpace(r.FormValue("path"))
 	pub.Public = strings.TrimSpace(r.FormValue("visibility")) == "public"
+	payloadFingerprint := managementMutationPayloadFingerprint("publication", r)
+	replay, conflict := s.completedMutationStatus(mutationSlot, requestID, payloadFingerprint)
+	if conflict {
+		s.respondManagementApplicationError(w, r, cloneManagedSpecs(s.specs), spec.ID, "validation-error", "request token does not match the submitted publication values", pub, "Reload this contract before retrying publication")
+		return
+	}
+	if replay {
+		s.respondManagementMutation(w, r, cloneManagedSpecs(s.specs), spec.ID)
+		return
+	}
 	if pub.ProjectID == "" || pub.RevisionID == "" {
 		s.respondManagementApplicationError(w, r, cloneManagedSpecs(s.specs), spec.ID, "validation-error", "publication project and revision are required", pub, "Retry publication")
 		return
@@ -289,7 +312,7 @@ func (s *managementServer) updatePublication(w http.ResponseWriter, r *http.Requ
 	}
 	s.specs[specIndex].Publication = pub
 	if requestID != "" {
-		s.completedMutations[mutationSlot] = requestID
+		s.completedMutations[mutationSlot] = managementCompletedMutation{RequestID: requestID, PayloadFingerprint: payloadFingerprint}
 	}
 	s.respondManagementMutation(w, r, cloneManagedSpecs(s.specs), s.specs[specIndex].ID)
 }
@@ -329,9 +352,15 @@ func (s *managementServer) syncRef(w http.ResponseWriter, r *http.Request) {
 	}
 
 	requestID := managementMutationRequestID(r)
+	payloadFingerprint := managementMutationPayloadFingerprint("sync", r)
 	syncSlot := "sync:" + spec.ID
+	replay, conflict := s.completedMutationStatus(syncSlot, requestID, payloadFingerprint)
+	if conflict {
+		s.respondManagementApplicationError(w, r, cloneManagedSpecs(s.specs), spec.ID, "validation-error", "request token does not match the submitted sync values", core.Publication{}, "Reload this contract before retrying sync")
+		return
+	}
 	updated := spec
-	if requestID == "" || s.completedMutations[syncSlot] != requestID {
+	if !replay {
 		syncCtx, cancel := context.WithTimeout(r.Context(), managementSyncTimeout)
 		defer cancel()
 		updated, err = s.syncAction(syncCtx, spec, ref)
@@ -345,12 +374,17 @@ func (s *managementServer) syncRef(w http.ResponseWriter, r *http.Request) {
 		}
 		s.specs[specIndex] = updated
 		if requestID != "" {
-			s.completedMutations[syncSlot] = requestID
+			s.completedMutations[syncSlot] = managementCompletedMutation{RequestID: requestID, PayloadFingerprint: payloadFingerprint}
 		}
 	}
 	if strings.TrimSpace(r.FormValue("publish")) == "public" {
 		publicationSlot := "sync-publication:" + spec.ID
-		if requestID != "" && s.completedMutations[publicationSlot] == requestID {
+		publicationReplay, publicationConflict := s.completedMutationStatus(publicationSlot, requestID, payloadFingerprint)
+		if publicationConflict {
+			s.respondManagementApplicationError(w, r, cloneManagedSpecs(s.specs), spec.ID, "validation-error", "request token does not match the submitted sync values", core.Publication{}, "Reload this contract before retrying sync")
+			return
+		}
+		if publicationReplay {
 			s.respondManagementMutation(w, r, cloneManagedSpecs(s.specs), s.specs[specIndex].ID)
 			return
 		}
@@ -372,7 +406,7 @@ func (s *managementServer) syncRef(w http.ResponseWriter, r *http.Request) {
 		updated.Publication = pub
 		s.specs[specIndex] = updated
 		if requestID != "" {
-			s.completedMutations[publicationSlot] = requestID
+			s.completedMutations[publicationSlot] = managementCompletedMutation{RequestID: requestID, PayloadFingerprint: payloadFingerprint}
 		}
 	}
 	s.respondManagementMutation(w, r, cloneManagedSpecs(s.specs), s.specs[specIndex].ID)
@@ -413,12 +447,62 @@ func managementMutationRequestID(r *http.Request) string {
 	return requestID
 }
 
+func managementMutationPayloadFingerprint(action string, r *http.Request) string {
+	values := []string{action, strings.TrimSpace(r.FormValue("spec_id"))}
+	switch action {
+	case "publication":
+		values = append(values,
+			strings.TrimSpace(r.FormValue("revision_id")),
+			strings.TrimSpace(r.FormValue("visibility")),
+			strings.TrimSpace(r.FormValue("path")),
+		)
+	case "sync":
+		values = append(values,
+			strings.TrimSpace(r.FormValue("ref")),
+			strings.TrimSpace(r.FormValue("publish")),
+			strings.TrimSpace(r.FormValue("path")),
+		)
+	}
+	sum := sha256.Sum256([]byte(strings.Join(values, "\x00")))
+	return fmt.Sprintf("%x", sum)
+}
+
+func (s *managementServer) completedMutationStatus(slot string, requestID string, payloadFingerprint string) (replay bool, conflict bool) {
+	if requestID == "" {
+		return false, false
+	}
+	completed, ok := s.completedMutations[slot]
+	if !ok || completed.RequestID != requestID {
+		return false, false
+	}
+	if completed.PayloadFingerprint != payloadFingerprint {
+		return false, true
+	}
+	return true, false
+}
+
+func managementMutationReplacesCurrentURL(r *http.Request, redirectPath string) bool {
+	currentURL := strings.TrimSpace(r.Header.Get("HX-Current-URL"))
+	if currentURL == "" {
+		return false
+	}
+	parsed, err := url.Parse(currentURL)
+	if err != nil {
+		return false
+	}
+	return parsed.Path == redirectPath
+}
+
 func (s *managementServer) respondManagementMutation(w http.ResponseWriter, r *http.Request, specs []ManagedSpec, selectedSpecID string) {
 	redirectPath := managementSpecRedirectPath(ManagedSpec{ID: selectedSpecID})
 	if managementWantsFragment(r) {
 		model := s.managementOverviewModel(r.Context(), specs, selectedSpecID)
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		w.Header().Set("HX-Push-Url", redirectPath)
+		if managementMutationReplacesCurrentURL(r, redirectPath) {
+			w.Header().Set("HX-Replace-Url", redirectPath)
+		} else {
+			w.Header().Set("HX-Push-Url", redirectPath)
+		}
 		if err := templates.ManagementSpecContent(model).Render(r.Context(), w); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 		}

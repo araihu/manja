@@ -1302,6 +1302,112 @@ func TestManagementRepeatedSubmissionDoesNotDuplicateEffect(t *testing.T) {
 	}
 }
 
+func TestManagementSameTokenDifferentPayloadIsRejectedWithoutEffect(t *testing.T) {
+	var syncCalls int
+	store := &fakeManagementPublicationStore{}
+	srv := NewServerWithOptions(core.SpecIndex{}, Options{Management: ManagementOptions{
+		Store: store,
+		SyncAction: func(_ context.Context, spec ManagedSpec, ref string) (ManagedSpec, error) {
+			syncCalls++
+			spec.Revision.ID = "rev-" + strings.ReplaceAll(ref, "/", "-")
+			spec.Revision.Ref = ref
+			return spec, nil
+		},
+		Specs: []ManagedSpec{{
+			ID:         "payments-api",
+			Index:      core.SpecIndex{ProjectID: "payments", RevisionID: "rev-main", Title: "Payments API"},
+			Project:    core.Project{ID: "payments"},
+			Source:     core.Source{ID: "payments-source"},
+			Revision:   core.Revision{ID: "rev-main", Ref: "main"},
+			Candidates: []core.RevisionCandidate{{Ref: "main"}, {Ref: "release/v2"}},
+		}},
+	}})
+
+	first := url.Values{"spec_id": {"payments-api"}, "ref": {"release/v2"}, "request_id": {"stale-tab-token"}}
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/manage/sync", strings.NewReader(first.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	srv.ServeHTTP(rec, req)
+	if rec.Code != http.StatusSeeOther {
+		t.Fatalf("first status = %d, want %d", rec.Code, http.StatusSeeOther)
+	}
+
+	second := url.Values{
+		"spec_id":    {"payments-api"},
+		"ref":        {"main"},
+		"publish":    {"public"},
+		"path":       {"/payments/stale"},
+		"request_id": {"stale-tab-token"},
+	}
+	rec = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodPost, "/manage/sync", strings.NewReader(second.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Set("HX-Request", "true")
+	srv.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("conflict status = %d, want %d", rec.Code, http.StatusOK)
+	}
+	if got := rec.Header().Get("X-Manja-Application-Status"); got != "validation-error" {
+		t.Fatalf("application status = %q, want validation-error", got)
+	}
+	if !strings.Contains(rec.Body.String(), "request token does not match the submitted sync values") {
+		t.Fatalf("payload conflict recovery missing: %s", rec.Body.String())
+	}
+	if syncCalls != 1 {
+		t.Fatalf("sync effects = %d, want 1", syncCalls)
+	}
+	if store.saved != (core.Publication{}) {
+		t.Fatalf("conflicting stale tab published %#v, want zero", store.saved)
+	}
+}
+
+func TestManagementHTMXNotFoundReturnsSwappableRecovery(t *testing.T) {
+	for _, path := range []string{"/manage/spec/unknown-api", "/manage/not-a-route"} {
+		t.Run(path, func(t *testing.T) {
+			srv := managementStructureServer()
+			rec := httptest.NewRecorder()
+			req := httptest.NewRequest(http.MethodGet, path, nil)
+			req.Header.Set("HX-Request", "true")
+			req.Header.Set("HX-Target", "management-main-content")
+			srv.ServeHTTP(rec, req)
+			if rec.Code != http.StatusOK {
+				t.Fatalf("status = %d, want %d: %s", rec.Code, http.StatusOK, rec.Body.String())
+			}
+			if got := rec.Header().Get("X-Manja-Application-Status"); got != "not-found" {
+				t.Fatalf("application status = %q, want not-found", got)
+			}
+			if !strings.Contains(rec.Body.String(), `id="management-main-content"`) {
+				t.Fatalf("recovery fragment missing: %s", rec.Body.String())
+			}
+		})
+	}
+}
+
+func TestManagementSameURLMutationUsesReplaceURLAndDisablesHistorySnapshots(t *testing.T) {
+	srv := managementStructureServer()
+	form := url.Values{"spec_id": {"payments-api"}, "visibility": {"private"}, "path": {"/payments/v1"}}
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/manage/publication", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Set("HX-Request", "true")
+	req.Header.Set("HX-Current-URL", "http://example.test/manage/spec/payments-api")
+	srv.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusOK)
+	}
+	if got := rec.Header().Get("HX-Replace-Url"); got != "/manage/spec/payments-api" {
+		t.Fatalf("HX-Replace-Url = %q", got)
+	}
+	if got := rec.Header().Get("HX-Push-Url"); got != "" {
+		t.Fatalf("HX-Push-Url = %q, want empty", got)
+	}
+
+	body := renderManagementRequest(t, srv, "/manage/spec/payments-api", http.StatusOK)
+	if !strings.Contains(body, `hx-history="false"`) {
+		t.Fatalf("management shell must disable HTMX history snapshots: %s", body)
+	}
+}
+
 func TestManagementPublicationPostCanMakeRevisionPrivate(t *testing.T) {
 	store := &fakeManagementPublicationStore{}
 	srv := NewServerWithOptions(core.SpecIndex{}, Options{

@@ -320,3 +320,51 @@ authorize edits to Goshtoso or access to private/generated upstream output.
 - GREEN command: the same focused command after implementing authoritative
   application-error fragments, outer-route delegation, and bounded
   per-contract idempotency slots; all four tests passed.
+
+## Primary review correction RED to GREEN evidence
+
+- Independent review found that a completed mutation token was bound only to
+  the contract/action slot. A stale tab could therefore reuse that token with
+  different ref/path/publish values, skip sync, and publish the prior current
+  revision. Review also found same-URL mutation pushes plus HTMX history
+  snapshots could restore stale workspaces, and HTMX not-found responses were
+  non-swappable 404s.
+- RED command: `GOWORK=off go test ./internal/web -run
+  'TestManagement(SameTokenDifferentPayloadIsRejectedWithoutEffect|HTMXNotFoundReturnsSwappableRecovery|SameURLMutationUsesReplaceURLAndDisablesHistorySnapshots)$'
+  -count=1 -v`. Literal failures were `application status = "", want
+  validation-error`, `status = 404, want 200` for both missing contract and
+  unknown route, and `HX-Replace-Url = ""`.
+- Fix: bind each bounded completed token to a SHA-256 fingerprint of the
+  canonical submitted action payload; fail closed on a token/payload mismatch
+  before sync or publication. Return 200 plus
+  `X-Manja-Application-Status: not-found` for HTMX recovery fragments while
+  preserving direct-load 404. Replace same-canonical-URL history entries and
+  disable HTMX snapshot caching on management shells.
+- GREEN evidence: the identical focused unit command passed. Browser tests
+  also passed for HTMX missing-contract URL/content/focus/title/selection
+  identity and mutation Back, Forward, and reload freshness.
+
+## Review visual-state matrix correction
+
+- Review identified that the visual gate covered success pages only, used
+  390x900 instead of the frozen 390x844 mobile viewport, and did not open the
+  management drawer.
+- The executable matrix now covers public detail plus management detail, list,
+  filtered-empty, not-found, loading, application-error, and transport-error
+  states at 390x844 and 1440x900 in Arai Hû, Goshtoso, and Minimal light/dark.
+  The legacy Manja theme remains in representative public/detail coverage.
+- Management detail mobile rows open the real drawer, assert positive viewport
+  intersection and placement below the header, then verify Escape closure and
+  trigger-focus restoration. The intentionally aborted transport request must
+  first expose retained-context recovery; console cleanliness is measured from
+  that settled recovery state onward.
+- Direct not-found RED: the first complete matrix run failed all twelve direct
+  not-found rows with Chromium's exact `Failed to load resource: the server
+  responded with a status of 404 (Not Found)` diagnostic. The first attempted
+  status-only reset was rejected as too broad by the control-plane guard.
+- Fail-closed GREEN: the diagnostic is scoped only when mode is direct, state
+  is not-found, the main document response is exactly 404, and the console
+  location URL exactly equals that deliberately requested document. Permanent
+  negative controls prove a same-origin unexpected 503, unrelated JavaScript
+  error, wrong resource URL, HTMX mode, and pageerror remain blocking. The
+  focused classifier plus twelve not-found theme/viewport rows passed.

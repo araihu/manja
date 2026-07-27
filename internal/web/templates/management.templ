@@ -93,7 +93,7 @@ templ managementShell(model ManagementOverviewModel, active string) {
 				Sidebar:      managementSidebar(model, active, ""),
 				MainID:       "main-content",
 				RootClass:    "h-full",
-				RootAttrs:    templpkg.Attributes{"data-manja-app-shell": "true"},
+				RootAttrs:    templpkg.Attributes{"data-manja-app-shell": "true", "hx-history": "false"},
 				HeaderClass:  "manja-docs-header relative z-50 shrink-0 border-b border-outline bg-surface dark:border-outline-dark dark:bg-surface-dark",
 				HeaderAttrs:  templpkg.Attributes{"data-boot-anim": "header"},
 				SidebarClass: "hidden h-full w-72 shrink-0 lg:block",
@@ -214,7 +214,7 @@ templ ManagementUnknownContent(requestedPath string) {
 			Title:       "Management page not found",
 			Description: "The requested management route is unavailable.",
 			RootAttrs:   templpkg.Attributes{"data-management-page-header": "route-not-found"},
-			TitleAttrs:  templpkg.Attributes{"id": "management-route-not-found-heading", "tabindex": "-1", "data-manja-settled-focus": "true"},
+			TitleAttrs:  templpkg.Attributes{"id": "management-route-not-found-heading", "tabindex": "-1", "data-manja-settled-focus": "true", "data-autofocus": "true"},
 		})
 		@emptystate.EmptyState(emptystate.Config{
 			Title:       "Return to the management workbench",
@@ -366,7 +366,7 @@ templ managementSpecNotFound(specID string) {
 		Title:       "Spec not found",
 		Description: "The requested managed spec is unavailable or no longer exists.",
 		RootAttrs:   templpkg.Attributes{"data-management-page-header": "not-found"},
-		TitleAttrs:  templpkg.Attributes{"id": "management-spec-not-found-heading", "tabindex": "-1", "data-manja-settled-focus": "true"},
+		TitleAttrs:  templpkg.Attributes{"id": "management-spec-not-found-heading", "tabindex": "-1", "data-manja-settled-focus": "true", "data-autofocus": "true"},
 	})
 	@emptystate.EmptyState(emptystate.Config{
 		Title:       "Choose another managed spec",

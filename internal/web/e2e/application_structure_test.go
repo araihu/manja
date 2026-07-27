@@ -205,6 +205,159 @@ func TestManagementApplicationErrorSwapsAndFocusesRecovery(t *testing.T) {
 	}
 }
 
+func TestManagementHTMXMissingContractSwapsAuthoritativeRecovery(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping e2e test in short mode")
+	}
+	chdirRepoRoot(t)
+
+	server := httptestServer(t, managementWorkflowServer(func(_ context.Context, spec web.ManagedSpec, _ string) (web.ManagedSpec, error) {
+		return spec, nil
+	}))
+	pw, browser, page := managementWorkflowPage(t, server)
+	defer pw.Stop()
+	defer browser.Close()
+	if _, err := page.Evaluate(`() => {
+		const link = document.createElement('a');
+		link.href = '/manage/spec/unknown-api';
+		link.textContent = 'Open missing contract';
+		link.dataset.testMissingContract = 'true';
+		link.dataset.managementNav = 'true';
+		link.setAttribute('hx-get', link.getAttribute('href'));
+		link.setAttribute('hx-target', '#management-main-content');
+		link.setAttribute('hx-swap', 'outerHTML');
+		link.setAttribute('hx-push-url', 'true');
+		document.body.appendChild(link);
+		window.htmx.process(link);
+	}`, nil); err != nil {
+		t.Fatal(err)
+	}
+	response, err := page.ExpectResponse("**/manage/spec/unknown-api", func() error {
+		_, clickErr := page.Evaluate(`() => document.querySelector('[data-test-missing-contract="true"]').click()`, nil)
+		return clickErr
+	}, playwright.PageExpectResponseOptions{Timeout: playwright.Float(5000)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if response.Status() != 200 {
+		t.Fatalf("HTMX missing-contract status = %d, want 200", response.Status())
+	}
+	if got, err := response.HeaderValue("X-Manja-Application-Status"); err != nil || got != "not-found" {
+		t.Fatalf("application status = %q, err=%v", got, err)
+	}
+	if err := page.Locator(`[data-management-spec-not-found="true"]`).WaitFor(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := page.WaitForFunction(`() =>
+		location.pathname === '/manage/spec/unknown-api' &&
+		document.querySelector('#management-main-content')?.dataset.selectedContract === 'unknown-api' &&
+		document.activeElement?.id === 'management-spec-not-found-heading' &&
+		!document.querySelector('aside[aria-label="Management sections"] [aria-current="page"]') &&
+		document.title === 'Spec not found · Management'`, nil, playwright.PageWaitForFunctionOptions{Timeout: playwright.Float(5000)}); err != nil {
+		t.Fatalf("missing-contract identity did not settle: %v", err)
+	}
+}
+
+func TestManagementMutationBackForwardAndReloadRemainAuthoritative(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping e2e test in short mode")
+	}
+	chdirRepoRoot(t)
+
+	server := httptestServer(t, web.NewServerWithOptions(core.SpecIndex{}, web.Options{Management: web.ManagementOptions{
+		Store: &recordingPublicationStore{},
+		Specs: []web.ManagedSpec{{
+			ID:          "payments-api",
+			Index:       core.SpecIndex{ProjectID: "payments", RevisionID: "rev-main", Title: "Payments API"},
+			Project:     core.Project{ID: "payments", Name: "Payments"},
+			Source:      core.Source{ID: "payments-source", Kind: "git"},
+			Revision:    core.Revision{ID: "rev-main", Ref: "main"},
+			Publication: core.Publication{ProjectID: "payments", RevisionID: "rev-main", Path: "/payments/old"},
+		}},
+	}}))
+	pw, err := playwright.Run()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pw.Stop()
+	browser, err := pw.Chromium.Launch()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer browser.Close()
+	page, err := browser.NewPage()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := page.Goto(server + "/manage/specs"); err != nil {
+		t.Fatal(err)
+	}
+	if err := page.Locator(`aside[aria-label="Management sections"] a[href="/manage/spec/payments-api"]`).Click(); err != nil {
+		t.Fatal(err)
+	}
+	if err := page.Locator(`[data-management-contract-identity="payments-api"]`).WaitFor(); err != nil {
+		t.Fatal(err)
+	}
+	before, err := page.Evaluate(`() => history.length`, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := page.Locator(`[role="tab"]:has-text("Route")`).Click(); err != nil {
+		t.Fatal(err)
+	}
+	pathInput := page.Locator(`#management-main-content [role="tabpanel"][aria-label="Route"] input[name="path"]`)
+	if err := pathInput.Fill("/payments/fresh"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := page.ExpectResponse("**/manage/publication", func() error {
+		return page.Locator(`#management-main-content [role="tabpanel"][aria-label="Route"] button:has-text("Save route settings")`).Click()
+	}, playwright.PageExpectResponseOptions{Timeout: playwright.Float(5000)}); err != nil {
+		t.Fatal(err)
+	}
+	after, err := page.Evaluate(`() => history.length`, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if after != before {
+		t.Fatalf("same-URL mutation history length = %#v, want %#v", after, before)
+	}
+	if _, err := page.GoBack(); err != nil {
+		t.Fatal(err)
+	}
+	if err := page.Locator(`[data-management-page-header="specs"]`).WaitFor(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := page.GoForward(); err != nil {
+		t.Fatal(err)
+	}
+	if err := page.Locator(`[data-management-contract-identity="payments-api"]`).WaitFor(); err != nil {
+		t.Fatal(err)
+	}
+	assertManagementPublicationPath(t, page, "/payments/fresh")
+	if _, err := page.Reload(); err != nil {
+		t.Fatal(err)
+	}
+	assertManagementPublicationPath(t, page, "/payments/fresh")
+}
+
+func assertManagementPublicationPath(t *testing.T, page playwright.Page, want string) {
+	t.Helper()
+	if err := page.Locator(`[role="tab"]:has-text("Route")`).Click(); err != nil {
+		t.Fatal(err)
+	}
+	input := page.Locator(`#management-main-content [role="tabpanel"][aria-label="Route"] input[name="path"]`)
+	if err := input.WaitFor(); err != nil {
+		t.Fatal(err)
+	}
+	got, err := input.InputValue()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != want {
+		t.Fatalf("authoritative publication path = %q, want %q", got, want)
+	}
+}
+
 func managementWorkflowServer(syncAction web.ManagementSyncAction) http.Handler {
 	return web.NewServerWithOptions(core.SpecIndex{}, web.Options{Management: web.ManagementOptions{
 		SyncAction: syncAction,
