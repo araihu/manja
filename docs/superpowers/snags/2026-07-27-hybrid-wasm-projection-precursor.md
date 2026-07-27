@@ -39,7 +39,7 @@ This is observable on frozen main: schema `author_association` produces legacy
 search/public targets `schema-author_association`, while the new ASCII slug is
 `schema-author-association`.
 
-Resolution: version-1 projection metadata owns the future canonical anchor,
+Resolution: version-2 projection metadata owns the future canonical anchor,
 base-relative selected href, heading, and landmark values. The precursor does
 not modify the current server renderer. Later server/Wasm parity work must
 consume projection values and remove duplicate derivation under its own tests.
@@ -116,12 +116,54 @@ precursor also adds explicit IDs, ordinals, directories/details, and canonical
 metadata while retaining bounded schema-detail JSON. Source inspection cannot
 prove that the resulting projection will fit the approved 16 MiB total bound.
 
-Resolution: the future GitHub fixture test is a blocking measurement gate with
-an explicitly unknown pre-implementation outcome. A `record_too_large` or
-`projection_too_large` result stops delivery for a reviewed DTO-reduction
-amendment; it does not authorize raising a bound, omitting required fields ad
-hoc, or bypassing the codec. The POC's raw size remains risk evidence, not a
-projected-size claim.
+Resolution: the GitHub fixture test is a blocking measurement gate. Its first
+version-1 run stopped delivery and triggered the independently reviewed
+format-version-2 global-schema-interning amendment recorded below. The unchanged
+bounds still forbid raising a limit, omitting required fields ad hoc, or
+bypassing the codec. The POC's raw size remains risk evidence, not a projected
+size claim.
+
+### Implementation measurement
+
+**Date:** 2026-07-27
+
+The frozen-base implementation reached the blocking scale gate. Two fresh runs
+both reported `operationDetails[570]: record_too_large bytes=282995
+limit=262144`. Bounded diagnostic measurement then established this literal
+version-1 evidence:
+
+- complete document: 25,026,875 bytes;
+- operation detail at canonical index 570: 282,995 bytes;
+- dominant response within that record: 261,580 bytes;
+- dominant schema within that response: 233,624 bytes;
+- dominant example within that schema: 27,784 bytes;
+- schema roots across operation parameters/media and schema details: 3,453;
+- unique flat schema nodes: 2,236.
+
+The owning record was identified only by bounded canonical index; its source
+content was not logged. The inclusive 262,144-byte shallow-operation,
+524,288-byte shallow-schema-detail, and 16,777,216-byte document limits remain
+unchanged.
+
+Independent read-only review returned GO for a version-2 global schema-node
+interning amendment and STOP for implementation until the exact design and plan
+are parent-accepted. The amended shape adds `Document.schemaNodes`, uses
+`SchemaRef uint32` for every root/child edge, content-addresses nodes from a
+domain-separated length-framed semantic preimage with raw child digests, and
+strictly rejects invalid graph structure. Every schema display and embedded-JSON
+value remains present; no omission or limit increase is authorized.
+
+The parent's conservative diagnostic estimate is 8,067,080 total version-2
+bytes, maximum shallow operation 35,906 bytes, and maximum node 30,657 bytes.
+That estimate is design evidence only, not final acceptance. Delivery resumes
+only after the canonical version-2 scale proof passes twice with identical
+digest while reporting total, maximum operation, maximum schema detail, maximum
+node, root count, and unique-node count.
+
+Outcome: this turn commits only the version-2 design/plan/snag checkpoint and
+stops for parent acceptance. The pre-existing uncommitted Task 5 files preserve
+the Wasm/scale attempt unchanged. No production/test file is edited, staged,
+committed, discarded, or cleaned.
 
 ## No Repository Markdown Link Checker
 

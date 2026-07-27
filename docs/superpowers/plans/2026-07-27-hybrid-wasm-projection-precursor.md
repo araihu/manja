@@ -18,6 +18,154 @@ adding product routes, UI, assets, browser runtime, storage, or rollout behavior
 task. Do not port a POC file before its new test fails on the frozen
 implementation base. Do not cherry-pick any POC commit.
 
+## Authoritative Post-Task-5 Format-Version-2 Amendment
+
+**Gate:** STOP all production and test mutation until the parent accepts this
+exact design-and-plan checkpoint. Tasks 0-4 below are preserved as historical
+receipts for the unpublished version-1 attempt; their recursive DTO/golden
+instructions are superseded and must not be rerun. The existing uncommitted Task
+5 evidence files stay untouched until acceptance.
+
+The pre-integration version-1 candidate is abandoned. The continuation replaces
+it with `formatVersion: 2` and explicitly rejects version 1; no parallel
+version-1 decoder is added unless a real consumer is discovered. If one is
+discovered, stop for a reviewed compatibility plan.
+
+### Amended DTO and Algorithm
+
+- Add `Document.schemaNodes []SchemaNode` immediately after `schemaDetails`.
+- Define `SchemaRef uint32` on `Parameter`, `MediaType`, `SchemaDetail`, and
+  schema-node property/item edges.
+- Remove recursive `WireSchema`, `SchemaProperty`, and `SchemaItem` from the
+  version-2 contract.
+- Define `SchemaNode` wire fields in this exact order: `ordinal`, `id`, `name`,
+  `type`, `format`, `description`, `defaultValue`, `exampleText`, `json`,
+  `properties`, `items`.
+- Property edges retain `ordinal`, `id`, `name`, `required`, `description`, then
+  add `schemaRef`; item edges retain `ordinal`, `id`, then add `schemaRef`.
+- Preserve every existing schema display and embedded-JSON value; omit nothing.
+
+A node ID is `schema-node-` plus lowercase SHA-256 of a domain-separated,
+length-framed semantic preimage. Its exact prefix is
+`manja.projection.schema-node.v2\x00`. Strings use uint64-big-endian byte length
+plus UTF-8 bytes; Booleans use one byte; ordinals use uint32 big-endian; slices
+use uint64-big-endian count plus elements. Child edges use the raw 32-byte child
+digest. Global node ordinal/index, final numeric refs, and the derived node ID
+are excluded from the preimage.
+
+Build bottom-up: canonicalize embedded JSON, identify children before parents,
+intern by digest/preimage, deduplicate only equal digest plus equal preimage,
+fail unequal preimages sharing a digest with `hash_collision`, sort IDs
+lexicographically, assign `ordinal == index`, then convert internal/root digests
+to `uint32` references. SHA-256 is fixed in production; collision injection is
+available only through an internal test helper.
+
+The decoder validates iteratively and rejects the whole document for bad or
+out-of-range references, duplicate/unsorted IDs or ordinal mismatch,
+digest/body mismatch, unequal collision, orphan, cycle, depth greater than 64,
+more than 100,000 unique nodes, more than 100,000 expanded occurrences across
+all roots, more than 100,000 edges, duplicate properties, `items` cardinality
+other than zero or one, `null` slices, invalid `uint32` spelling/range,
+unknown/duplicate/trailing JSON, or noncanonical bytes. It returns a zero
+document and bounded non-disclosing error. Cycle detection precedes iterative
+depth/expanded-occurrence traversal.
+
+The unchanged inclusive limits are 262,144 bytes per shallow
+`OperationDetail`, 524,288 bytes per shallow `SchemaDetail`, and 16,777,216
+bytes per document. Add 524,288 bytes per `SchemaNode`. A globally interned node
+is counted once. Visual expansion remains protected by a later renderer fragment
+limit. The digest remains over the full uncompressed canonical version-2
+document. The `js/wasm` build remains standard-library plus `domain` only, an
+invalid graph rejects the entire document, and SSR fallback remains later work.
+
+### Step A: Add Literal Version-2 RED
+
+Before changing production code, add and run these exact tests:
+
+```text
+TestBuilderInternsSchemasAcrossAllRoots
+TestBuilderSchemaNodeIdentityUsesChildDigest
+TestBuilderSchemaNodeOrderIgnoresTraversalOrder
+TestBuilderSchemaHashCollisionFailsClosed
+TestBuilderPreservesAllInternedSchemaContent
+TestUnmarshalRejectsOutOfRangeSchemaRefs
+TestUnmarshalRejectsSchemaNodeDigestMismatch
+TestUnmarshalRejectsDuplicateAndOrphanSchemaNodes
+TestUnmarshalRejectsSchemaCycles
+TestUnmarshalEnforcesExpandedSchemaDepthAndNodeBudget
+TestMarshalEnforcesInternedRecordNodeAndDocumentBounds
+TestUnmarshalRejectsSupersededV1
+TestGoldenV2EmptyProjection
+TestGoldenV2OperationProjection
+TestGoldenV2FullProjection
+```
+
+Run the smallest owning-package commands with `-count=1` and record literal
+compile/assertion failures caused by the still-recursive version-1 model. The
+GitHub scale RED retains the literal version-1 failure at operation index 570,
+282,995 bytes versus the 262,144-byte limit. Do not accept a RED caused only by
+test syntax, fixture lookup, or an unrelated failure.
+
+### Step B: Minimal Version-2 GREEN
+
+Implement only the DTO, bottom-up canonicalizer/interner, reference conversion,
+strict iterative graph validation, and bound accounting required by the RED.
+Delete/replace the version-1 goldens with independently reviewed
+`v2-empty`, `v2-operation`, and `v2-full` bytes/digests. Keep version-1 hashes
+only as historical ledger evidence. Candidate generation must not overwrite an
+accepted oracle, and every accepted fixture must prove exact bytes, digest, and
+no final newline.
+
+Run these exact minimum GREEN commands:
+
+```bash
+GOWORK=off go test ./application/projection \
+  -run 'Intern|SchemaNode|HashCollision|GitHubFixture' -count=2
+
+GOWORK=off go test ./internal/adapters/projectionjson \
+  -run 'SchemaRef|SchemaNode|Cycle|Depth|Bound|GoldenV2|SupersededV1' -count=1
+
+GOWORK=off go test ./application/projection ./internal/adapters/projectionjson -count=1
+
+GOWORK=off go test ./architecture -run Projection -count=1
+
+(cd integration/testdata/external-module &&
+  GOWORK=off go test ./... -run Projection -count=1)
+
+node --test integration/testdata/projection-consumer/projection.test.mjs
+
+GOOS=js GOARCH=wasm GOWORK=off \
+  go build -trimpath ./application/projection
+```
+
+### Step C: Twice-Run Scale Acceptance
+
+Run the GitHub fixture proof twice. Each run records:
+
+- complete canonical document bytes;
+- maximum shallow operation bytes;
+- maximum shallow schema-detail bytes;
+- maximum schema-node bytes;
+- schema-root count;
+- unique-node count;
+- full document digest.
+
+Both runs must report an identical digest and remain within every unchanged
+limit. Then run the plan's full repository, nested-site, external Go, Node,
+architecture, vet, build, generation-drift, tidy-diff, exact-owned-path, and
+clean-status gates. Any remaining oversize record/document, nondeterminism,
+graph-validation gap, excluded data, boundary violation, or `js/wasm` compile
+failure blocks delivery; never raise a limit or omit a value.
+
+### Measurement Ledger
+
+The rejected version-1 measurement is exact: document 25,026,875 bytes;
+`operationDetails[570]` 282,995 bytes; dominant response 261,580 bytes, schema
+233,624 bytes, example 27,784 bytes; 3,453 roots; 2,236 unique nodes. The parent
+conservative estimate for version 2 is 8,067,080 total bytes, maximum shallow
+operation 35,906 bytes, and maximum node 30,657 bytes. These estimates are
+design evidence only and are not final acceptance.
+
 ## Frozen Authority and Placeholders
 
 Docs authoring state and known reviewed prerequisites:
@@ -160,7 +308,7 @@ abandoned. If the gate blocks before the commit, remove only the new,
 still-clean task worktree/branch when the control plane authorizes cleanup.
 Never touch the preserved POC.
 
-## Task 1: Add RED Architecture and Consumer Contracts
+## Historical Task 1 Receipt: RED Architecture and Consumer Contracts
 
 **Files:**
 
@@ -238,7 +386,7 @@ git commit -m "test(projection): require deterministic public boundary"
 
 **Reversal:** Revert this one test commit. No product path exists yet.
 
-## Task 2: Build the Pure Version-1 DTO
+## Historical Task 2 Receipt: Unpublished Version-1 DTO
 
 **Files:**
 
@@ -416,7 +564,7 @@ git commit -m "feat(projection): define deterministic projection model"
 **Reversal:** Revert this commit, then the Task 1 RED commit if abandoning the
 precursor. No runtime consumer exists.
 
-## Task 3: Implement Strict Canonical JSON and Frozen Goldens
+## Historical Task 3 Receipt: Unpublished Version-1 Codec and Goldens
 
 **Files:**
 
@@ -564,7 +712,7 @@ git commit -m "feat(projection): add canonical version one wire codec"
 **Reversal:** Revert this commit. Task 2 model remains unused and has no wire
 consumer.
 
-## Task 4: Add Property and Fuzz Assurance
+## Historical Task 4 Receipt: Property and Fuzz Assurance
 
 **Files:**
 
@@ -635,7 +783,7 @@ git commit -m "test(projection): add property and fuzz assurance"
 **Reversal:** Revert the assurance commit. If it contains a conditional
 regression fix, revert that fix only together with the saved regression test.
 
-## Task 5: Prove WebAssembly and Large-Fixture Compatibility
+## Blocked Task 5 Receipt: Version-1 Wasm and Scale Attempt
 
 **Files:**
 
@@ -803,7 +951,7 @@ before="$(git status --porcelain=v1)"
 GOWORK=off go test ./application/projection ./internal/adapters/projectionjson -count=1
 after="$(git status --porcelain=v1)"
 test "$before" = "$after"
-shasum -a 256 application/projection/testdata/v1-empty.json application/projection/testdata/v1-operation.json application/projection/testdata/v1-full.json
+shasum -a 256 application/projection/testdata/v2-empty.json application/projection/testdata/v2-operation.json application/projection/testdata/v2-full.json
 ```
 
 Expected: tests do not rewrite goldens; hashes match checked-in files.
@@ -823,7 +971,7 @@ Expected: tests do not rewrite goldens; hashes match checked-in files.
    separately:
 
    ```bash
-   git add docs/superpowers/plans/2026-07-27-hybrid-wasm-projection-precursor.md docs/superpowers/snags/2026-07-27-hybrid-wasm-projection-precursor.md
+   git add docs/superpowers/specs/2026-07-27-hybrid-wasm-projection-precursor-design.md docs/superpowers/plans/2026-07-27-hybrid-wasm-projection-precursor.md docs/superpowers/snags/2026-07-27-hybrid-wasm-projection-precursor.md
    git commit -m "docs(projection): record precursor verification evidence"
    ```
 
@@ -844,6 +992,7 @@ Expected: tests do not rewrite goldens; hashes match checked-in files.
 | Pure DTO/builder | `feat(projection): define deterministic projection model` | Revert DTO then RED boundary if abandoning |
 | Canonical codec/goldens | `feat(projection): add canonical version one wire codec` | Revert codec/goldens; DTO stays unused |
 | Property/fuzz assurance | `test(projection): add property and fuzz assurance` | Revert tests; pair any regression fix with its saved case |
+| Version-2 amendment checkpoint | `docs(projection): amend precursor to schema graph v2` | Revert docs only; code remains stopped |
 | Wasm/scale proof | `test(projection): prove wasm and scale compatibility` | Revert test-only proof; `go build` leaves no runtime artifact |
 | Evidence update | `docs(projection): record precursor verification evidence` | Revert docs only |
 
