@@ -1,6 +1,6 @@
 # Hybrid Wasm Public Docs Design
 
-**Status:** Architecture approved; review changes incorporated, pending re-review
+**Status:** Approved design; implementation plan deferred by Integration DAG
 
 **Date:** 2026-07-27
 
