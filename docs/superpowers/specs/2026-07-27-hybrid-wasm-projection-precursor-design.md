@@ -255,7 +255,8 @@ The version-1 golden bytes are deleted/replaced. Their hashes remain historical
 ledger evidence only:
 
 - `v1-empty`: `8267e1a8a597a6561409e81492b06c24b44b6cbd12875fc90985295c5765889d`;
-- `v1-operation`: `6609c4e78e6556c8a178e500aeff8da85801ce30aaa784129c85b2c4e63cdc41`.
+- `v1-operation`: `6609c4e78e6556c8a178e500aeff8da85801ce30aaa784129c85b2c4e63cdc41`;
+- `v1-full`: `5007d945b1c0440ce02cf5662f26777cde3e2b95b0521ffeba2c676d05cea440`.
 
 The accepted oracles are independently reviewed, no-final-newline `v2-empty`,
 `v2-operation`, and `v2-full` bytes/digests. Production output may create only
