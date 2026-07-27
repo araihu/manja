@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/playwright-community/playwright-go"
 
@@ -20,19 +21,24 @@ func TestManagementMutationLoadingPreventsDuplicateSubmission(t *testing.T) {
 
 	var calls atomic.Int32
 	release := make(chan struct{})
+	entered := make(chan struct{}, 1)
+	handler := managementWorkflowServer(func(_ context.Context, spec web.ManagedSpec, ref string) (web.ManagedSpec, error) {
+		calls.Add(1)
+		select {
+		case entered <- struct{}{}:
+		default:
+		}
+		<-release
+		spec.Revision.Ref = ref
+		return spec, nil
+	})
+	server := httptestServer(t, handler)
 	released := false
 	t.Cleanup(func() {
 		if !released {
 			close(release)
 		}
 	})
-	handler := managementWorkflowServer(func(_ context.Context, spec web.ManagedSpec, ref string) (web.ManagedSpec, error) {
-		calls.Add(1)
-		<-release
-		spec.Revision.Ref = ref
-		return spec, nil
-	})
-	server := httptestServer(t, handler)
 
 	pw, browser, page := managementWorkflowPage(t, server)
 	defer pw.Stop()
@@ -48,6 +54,11 @@ func TestManagementMutationLoadingPreventsDuplicateSubmission(t *testing.T) {
 		return Boolean(button && button.disabled && button.textContent.includes('Syncing ref'));
 	}`, nil, playwright.PageWaitForFunctionOptions{Timeout: playwright.Float(5000)}); err != nil {
 		t.Fatalf("mutation did not expose its disabled loading state: %v", err)
+	}
+	select {
+	case <-entered:
+	case <-time.After(5 * time.Second):
+		t.Fatal("sync handler did not receive the in-flight mutation")
 	}
 	if got := calls.Load(); got != 1 {
 		t.Fatalf("in-flight sync count = %d, want 1", got)
