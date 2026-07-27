@@ -657,15 +657,29 @@ The management UI remains server-rendered HTML and uses Goshtoso primitives.
 All management mutations, including sync, track configuration, promotion,
 publication, withdrawal, deletion, and reauthorization, require an
 authenticated manager and action/contract-scoped authorization. Browser
-mutations also require either a session-bound CSRF token or an explicitly
-selected header-only policy that requires both an exact trusted `Origin` and
-`Sec-Fetch-Site: same-origin`. Missing, malformed, opaque, scheme/host/port
-mismatched, same-site, cross-site, or `none` evidence is rejected before form
-parsing or effects. Forwarded origin data is accepted only through an
-explicitly trusted proxy adapter. Idempotency tokens prevent replay but are not
-authentication or CSRF protection. Self-hosted CLI credentials and source
-secrets terminate at `internal/selfhosted` or internal adapters and never
-enter public domain types, HTML, logs, or stored release records.
+mutations also require either a session-bound CSRF token carried in a dedicated
+request header or a configured strict policy that requires both an exact
+trusted `Origin` and `Sec-Fetch-Site: same-origin`. Missing,
+malformed, opaque, scheme/host/port mismatched, same-site, cross-site, or
+`none` evidence is rejected before reading the body.
+
+The executable order is authentication; method/content-type validation;
+CSRF/origin validation; syntactic target extraction; scoped authorization;
+then lookup, remaining form parsing, mutation-slot/idempotency handling, and
+effects. New endpoints place canonical project/track IDs in the route path.
+During legacy `/manage/sync` and `/manage/publication` migration only, target
+IDs may be extracted after browser protection from one strictly bounded,
+retained body buffer by decoding only allowlisted target keys. Missing,
+duplicate, conflicting, malformed, or oversized targets fail closed.
+Canonicalizing an ID proves syntax only: it performs no target lookup and
+reveals no existence. Authorization denial therefore occurs before contract,
+track, revision, source, cache, mutation-slot, or persistence access.
+
+Forwarded origin data is accepted only through an explicitly trusted proxy
+adapter. Idempotency tokens prevent replay but are not authentication or CSRF
+protection. Self-hosted CLI credentials and source secrets terminate at
+`internal/selfhosted` or internal adapters and never enter public domain
+types, HTML, logs, or stored release records.
 
 ## Routing And Rendering
 
@@ -794,8 +808,10 @@ track workflow.
 - Source and provider credentials are stored through `SecretStore`.
 - Management, preview, review, policy, and exception routes require
   authentication.
-- Every management mutation requires action/contract-scoped authorization and
-  strict same-origin browser mutation protection before form parsing.
+- Every management mutation authenticates first and enforces its configured
+  CSRF-header or strict Origin/Sec-Fetch protection before body reads. Scoped
+  authorization follows syntactic target extraction and precedes lookup,
+  remaining form parsing, mutation-slot acquisition, and effects.
 - CI tokens are scoped to baseline/policy read and evidence upload.
 - Promotion uses separate manager or automation authority.
 - Uploaded evidence cannot make the server fetch an arbitrary user-provided URL.
@@ -989,8 +1005,9 @@ SaaS product prematurely.
 - atomic track-advancement tests
 - preview authentication and no-index tests
 - authentication-before-lookup and preview scope non-disclosure tests
-- manager authentication/authorization and exact Origin/Sec-Fetch mutation
-  protection tests for sync, track configuration, promotion, and publication
+- manager authentication/authorization, CSRF-header, and exact
+  Origin/Sec-Fetch ordering tests for sync, track configuration, promotion,
+  publication, withdrawal, deletion, and reauthorization
 - public/private/withdrawn/deleted transition, tombstone restart,
   reauthorization, and scoped purge-failure tests
 - exact `401`/`403`/`404`/`410` response/header tests

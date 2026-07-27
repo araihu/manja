@@ -73,12 +73,28 @@ Withdrawal and deletion must persist their durable authority before attempting a
 All management mutation endpoints use this exact order:
 
 1. authenticate the manager;
-2. authorize the concrete project/track action;
-3. validate method and content type;
-4. require a valid CSRF token bound to the authenticated session; or, for deployments that explicitly select header-only protection, require canonical same-origin `Origin` and `Sec-Fetch-Site: same-origin`;
-5. only then parse identifiers or execute the command.
+2. validate the method and allowed content type;
+3. before reading the request body, require either a valid session-bound CSRF token from a dedicated request header or, in strict Origin/Sec-Fetch mode, canonical same-origin `Origin` and `Sec-Fetch-Site: same-origin`;
+4. obtain and syntactically canonicalize the project/track target without lookup or effect, preferably from IDs in a scoped route path;
+5. authorize the concrete project/track/action using only those canonical IDs;
+6. only after authorization, look up target existence, parse remaining fields, acquire a mutation slot, or execute the command.
 
 Header-only protection rejects missing, malformed, opaque, cross-origin, scheme-mismatched, host-mismatched, or port-mismatched `Origin`, and rejects missing or non-`same-origin` `Sec-Fetch-Site`. Reverse-proxy normalization must use a trusted-proxy adapter and must not trust arbitrary forwarding headers. Tests cover POSTs to sync, track configuration, promotion, publication, withdrawal, deletion, and reauthorization for accepted same-origin requests and every rejection above.
+
+New mutation routes place the authorization target in the path, such as
+`/manage/spec/{specID}/sync` or a contract/track-scoped equivalent. During
+migration only, legacy `/manage/sync` and `/manage/publication` may extract
+the target after browser protection by reading one strictly bounded buffered
+form body and decoding only the allowlisted target keys. The buffer is retained
+for the authorized full parse; it is never reparsed from the network. Missing,
+duplicate, conflicting, malformed, or oversized target input fails closed
+without lookup.
+
+Target extraction and canonicalization validate syntax only. They neither
+confirm existence nor access contract, track, revision, source, cache, mutation
+slot, or persistence state. Responses reveal no existence until authorization
+succeeds. CSRF values are never accepted from the body because protection must
+complete before body parsing.
 
 ## Planned Implementation Files
 
@@ -775,14 +791,40 @@ Start with current `POST /manage/sync` and `POST /manage/publication`. Add the p
 For every route assert the processing order:
 
 1. manager authentication;
-2. project/track/action authorization;
-3. method and allowed content-type validation;
-4. CSRF or strict same-origin validation;
-5. body/form parse and canonical identifier validation;
-6. application command;
-7. reload committed state for the response.
+2. method and allowed content-type validation;
+3. header-carried CSRF or strict same-origin validation before any body read;
+4. extraction and syntactic canonicalization of project/track target IDs from the scoped route path, or the bounded legacy target-only buffer;
+5. project/track/action authorization using those canonical IDs;
+6. target lookup, remaining body/form parse, idempotency and mutation-slot handling;
+7. application command/effects;
+8. reload committed state for the response.
 
-Spies must prove a denied request does not parse meaningful identifiers, look up contract/track/revision existence, invoke source/network adapters, acquire a mutation slot, or write response-derived cache state.
+Authentication denial may inspect only authentication inputs and must perform
+no mutation method/content-type, browser-protection, target, or body processing.
+Method/content-type or CSRF/origin denial must perform no body read or target
+processing. Authorization denial may observe only canonical target ID values;
+spies must prove it performs no target-existence lookup, remaining form parse,
+source/network call, mutation-slot acquisition, command, persistence, or
+response-derived cache write.
+
+Add scoped routes with project or track IDs in their path. For the current
+legacy POSTs, test a migration-only extractor that runs after browser
+protection, retains one bounded request-body buffer, decodes only allowlisted
+`spec_id`/`track_id` target keys, and rejects absent, duplicate, conflicting,
+malformed, or oversized values before authorization. After authorization, the
+handler may parse the retained body for `ref`, `revision_id`, `path`,
+`visibility`, `publish`, and idempotency values. A conflicting target
+repeated in the authorized full form fails closed.
+
+Syntactic target parsing is not a lookup and must not reveal whether the target
+exists. Unknown canonical IDs and known IDs outside the principal's scope
+produce the same generic authorization response until authorization succeeds.
+
+The test table also proves unauthenticated requests stop at authentication even
+when method, content type, browser headers, path target, or body are invalid;
+authenticated invalid methods return `405`; invalid content types or browser
+protection do not read the body; and the legacy target extractor accepts the
+configured byte limit exactly but rejects one byte over it.
 
 Missing or invalid manager authentication is exactly `401` with the configured challenge. An authenticated principal lacking the action is exactly `403`. Both use `Cache-Control: no-store` and a generic body.
 
@@ -792,9 +834,9 @@ Keep the existing management mutation request token/payload fingerprint as an id
 
 Replace in-memory publication/sync mutation as authority. Handlers call Task 5 application services and render state reloaded from persistence. HTMX and full-page requests use the same command and security path.
 
-**Step 3: Implement and test CSRF-token mode**
+**Step 3: Implement and test CSRF-header mode**
 
-The default browser mode uses a cryptographically random token bound to the authenticated session, delivered only in protected management HTML, and validated in constant time on every mutation. Cover:
+CSRF-header mode uses a cryptographically random token bound to the authenticated session, delivered only in protected management HTML, submitted through a dedicated request header, and validated in constant time before reading the body. Form-field CSRF tokens are forbidden because they would require body parsing before browser protection. Cover:
 
 - valid token;
 - missing token;
@@ -802,14 +844,14 @@ The default browser mode uses a cryptographically random token bound to the auth
 - token from another session/principal;
 - expired/rotated token;
 - token replay after session invalidation;
-- HTMX form/header transport;
+- HTMX/header transport and absence of fallback to a form-field token;
 - no token in URLs, logs, metrics, durable state, or error bodies.
 
 Session/cookie creation and secret material stay in an internal adapter. Use `Secure`, `HttpOnly`, and an appropriate `SameSite` policy; CSRF remains required even with `SameSite`.
 
-**Step 4: Implement and test the explicit header-only alternative**
+**Step 4: Implement and test strict Origin/Sec-Fetch mode**
 
-Only deployments that explicitly select header-only protection may use it. Require both:
+Require both:
 
 - a canonical `Origin` exactly equal to the effective management origin, including scheme, normalized host, and port;
 - `Sec-Fetch-Site: same-origin`.
@@ -817,6 +859,11 @@ Only deployments that explicitly select header-only protection may use it. Requi
 Table-test rejection of missing Origin, multiple Origin values, malformed/opaque/null Origin, userinfo, cross-origin scheme/host/port, missing `Sec-Fetch-Site`, and values `none`, `same-site`, or `cross-site`. Reject before body parsing.
 
 Derive the effective origin from the direct request by default. Honor forwarding headers only through an explicitly configured trusted-proxy adapter that validates the immediate peer and canonicalizes a single value. Test spoofed forwarding headers from untrusted peers.
+
+Self-hosted composition defaults to this strict Origin/Sec-Fetch mode so the
+current native management forms remain executable without a body-carried CSRF
+token. A deployment may select CSRF-header mode only when every mutation client
+sets the dedicated header; it must not silently fall back to a form-field token.
 
 **Step 5: Add action-specific authorization tests**
 

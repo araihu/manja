@@ -94,3 +94,29 @@ templ issue, or workaround found while reconciling the design and plan:
 - Risk: a stale top-level path would make the final dependency command fail
   before it tested the intended consumer.
 - Upstream feedback candidate: none; this is a Manja plan-path correction.
+
+## 2026-07-27 — scoped management authorization target ordering
+
+- Desired contract: authenticate first, reject unsafe browser mutations before
+  body parsing, and authorize the concrete project/track/action before any
+  existence lookup or effect.
+- Public source consulted: current `internal/web/management.go`,
+  `POST /manage/publication`, `POST /manage/sync`, and the reconciled
+  management security contract.
+- Source dive or missing API: both current handlers call `r.ParseForm()`
+  before reading `spec_id`. Requiring scoped authorization before parsing any
+  identifier is therefore circular because the authorization target currently
+  exists only in the form body.
+- Workaround or no-match decision: prefer new scoped routes whose canonical
+  target IDs live in the path. During legacy endpoint migration only, perform
+  authentication, method/content-type checks, and header-carried CSRF or strict
+  Origin/Sec-Fetch validation first; then extract only allowlisted target keys
+  from one strictly bounded retained body buffer, authorize those syntactic
+  IDs, and defer lookup, remaining form parsing, mutation-slot handling, and
+  effects until authorization succeeds.
+- Risk: parsing an unbounded or full form before browser protection expands
+  attacker-controlled work; authorizing before a target exists is
+  unimplementable; looking up a target before scoped authorization leaks
+  existence.
+- Upstream feedback candidate: none; this is a Manja endpoint-contract
+  migration.
