@@ -167,6 +167,45 @@ html.boot [data-boot-anim="main"] {
   color: var(--color-primary-dark);
 }
 
+[data-management-nav] {
+  pointer-events: auto;
+}
+
+[data-management-nav]:not([aria-current="page"]) {
+  border-color: var(--color-outline);
+  color: var(--color-on-surface);
+  font-weight: 500;
+}
+
+[data-management-nav][aria-current="page"] {
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+  font-weight: 700;
+  pointer-events: none;
+}
+
+.dark [data-management-nav]:not([aria-current="page"]) {
+  border-color: var(--color-outline-dark);
+  color: var(--color-on-surface-dark);
+}
+
+.dark [data-management-nav][aria-current="page"] {
+  border-color: var(--color-primary-dark);
+  color: var(--color-primary-dark);
+}
+
+#management-main-content [role="tab"][aria-selected="true"] {
+  border-bottom-color: var(--color-primary);
+  border-bottom-width: 2px;
+  color: var(--color-primary);
+  font-weight: 700;
+}
+
+.dark #management-main-content [role="tab"][aria-selected="true"] {
+  border-bottom-color: var(--color-primary-dark);
+  color: var(--color-primary-dark);
+}
+
 .manja-management-facts {
   display: grid;
   gap: 0.75rem;

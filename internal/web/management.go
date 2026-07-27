@@ -1,6 +1,7 @@
 package web
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"net/http"
@@ -106,6 +107,9 @@ func (s *managementServer) specsOverview(w http.ResponseWriter, r *http.Request)
 	s.mu.RUnlock()
 
 	model := s.managementOverviewModel(r.Context(), specs, "")
+	model.SpecFilter = strings.TrimSpace(r.URL.Query().Get("q"))
+	model.SpecStatus = normalizedManagementSpecStatus(r.URL.Query().Get("status"))
+	model.FilteredSpecs = filterManagementSpecModels(model.Specs, model.SpecFilter, model.SpecStatus)
 	component := templates.ManagementSpecsPage(model)
 	if managementWantsFragment(r) {
 		component = templates.ManagementSpecsContent(model)
@@ -131,20 +135,65 @@ func (s *managementServer) specDetail(w http.ResponseWriter, r *http.Request) {
 	s.mu.RLock()
 	specs := cloneManagedSpecs(s.specs)
 	s.mu.RUnlock()
-	if _, ok := managedSpecByID(specs, specID); !ok {
-		http.NotFound(w, r)
-		return
-	}
-
 	model := s.managementOverviewModel(r.Context(), specs, specID)
 	component := templates.ManagementSpecPage(model)
 	if managementWantsFragment(r) {
 		component = templates.ManagementSpecContent(model)
 	}
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	if err := component.Render(r.Context(), w); err != nil {
+	var body bytes.Buffer
+	if err := component.Render(r.Context(), &body); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
 	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	if _, ok := managedSpecByID(specs, specID); !ok {
+		w.WriteHeader(http.StatusNotFound)
+	}
+	_, _ = w.Write(body.Bytes())
+}
+
+func normalizedManagementSpecStatus(value string) string {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "public":
+		return "public"
+	case "private":
+		return "private"
+	default:
+		return ""
+	}
+}
+
+func filterManagementSpecModels(specs []templates.ManagedSpecModel, query string, status string) []templates.ManagedSpecModel {
+	query = strings.ToLower(strings.TrimSpace(query))
+	filtered := make([]templates.ManagedSpecModel, 0, len(specs))
+	for _, spec := range specs {
+		if status == "public" && !spec.Publication.Public {
+			continue
+		}
+		if status == "private" && spec.Publication.Public {
+			continue
+		}
+		if query != "" {
+			haystack := strings.ToLower(strings.Join([]string{
+				spec.ID,
+				spec.Title,
+				spec.Version,
+				spec.Project.ID,
+				spec.Project.Name,
+				spec.Source.ID,
+				spec.Source.Kind,
+				spec.Source.SpecPath,
+				spec.Revision.ID,
+				spec.Revision.Ref,
+				spec.Revision.CommitSHA,
+			}, " "))
+			if !strings.Contains(haystack, query) {
+				continue
+			}
+		}
+		filtered = append(filtered, spec)
+	}
+	return filtered
 }
 
 func (s *managementServer) updatePublication(w http.ResponseWriter, r *http.Request) {
@@ -394,11 +443,16 @@ func (s *managementServer) managementOverviewModel(ctx context.Context, specs []
 	if len(model.Specs) > 0 {
 		selected := model.Specs[0]
 		if selectedSpecID != "" {
+			found := false
 			for _, spec := range model.Specs {
 				if spec.ID == selectedSpecID {
 					selected = spec
+					found = true
 					break
 				}
+			}
+			if !found {
+				return model
 			}
 		}
 		model.SelectedSpecID = selected.ID
@@ -478,7 +532,10 @@ func managementSpecRedirectPath(spec ManagedSpec) string {
 }
 
 func managementWantsFragment(r *http.Request) bool {
-	return strings.EqualFold(r.Header.Get("HX-Request"), "true")
+	return strings.EqualFold(r.Header.Get("HX-Request"), "true") &&
+		!strings.EqualFold(r.Header.Get("HX-Boosted"), "true") &&
+		!strings.EqualFold(strings.TrimSpace(r.Header.Get("HX-Target")), "body") &&
+		!strings.EqualFold(r.Header.Get("HX-History-Restore-Request"), "true")
 }
 
 func managementRefAllowed(candidates []core.RevisionCandidate, ref string) bool {

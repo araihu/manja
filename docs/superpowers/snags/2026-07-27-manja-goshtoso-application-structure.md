@@ -136,3 +136,59 @@ authorize edits to Goshtoso or access to private/generated upstream output.
 - GREEN commands: `GOWORK=off go test ./internal/web -run
   'TestPublicDocs' -count=1` and `GOWORK=off go test ./internal/web/e2e -run
   'TestPublicDocs' -count=1`; both passed.
+
+## 2026-07-27 — management navigation and tab state after swaps
+
+- Desired contract: server-authored management selection and tab ARIA state
+  remain visually accurate without JavaScript copies of Goshtoso private class
+  lists.
+- Public source consulted: Goshtoso Sidebar item attributes, Table row-link and
+  actions documentation, Tabs ARIA output, and the post-Goshtoso consumer CSS
+  boundary.
+- Source dive or missing API: no private source dive. The existing Manja
+  workaround copied Sidebar and Tabs implementation classes into JavaScript.
+- Workaround or no-match decision: delete those class maps, toggle only
+  `aria-current`, `aria-selected`, `tabindex`, and panel visibility, and style
+  those semantic states through narrowly scoped Manja CSS selectors.
+- Risk: low and testable. Visual state now follows stable accessibility
+  attributes; Alpine reinitialization remains limited to swapped controls.
+- Upstream feedback candidate: document semantic CSS hooks for consumers that
+  need to keep persistent navigation outside an HTMX swap target.
+
+## 2026-07-27 — Table LinkBoost and fragment negotiation
+
+- Desired contract: a safe native Table row link may use Goshtoso `LinkBoost`
+  without blanking the management application.
+- Public source consulted: the exported Table `Row.Link`, `Row.Actions`, and
+  `LinkBoost` documentation plus Manja's existing public full-document HTMX
+  negotiation rule.
+- Source dive or missing API: no Goshtoso source dive. Browser RED showed the
+  management handler returned a fragment to a `LinkBoost` request whose public
+  output uses `hx-target="body"` and `hx-select="body"` without an `HX-Boosted`
+  request header, leaving the browser with an empty body.
+- Workaround or no-match decision: use documented `LinkFull` for the Table's
+  safe native first-cell anchor and keep the persistent Sidebar as the targeted
+  HTMX navigation path. The browser test proves both row safety and HTMX
+  selected-identity behavior without ambiguous server negotiation.
+- Risk: low. Table navigation incurs a full page load, while the first-class
+  sidebar HTMX path retains context and history. Both paths remain native-link
+  recoverable.
+- Upstream feedback candidate: document that `LinkBoost` is body-targeted HTMX,
+  not an `hx-boost` request, so server fragment negotiation can recognize it.
+
+## Task 5 RED to GREEN evidence
+
+- RED command: `GOWORK=off go test ./internal/web -run
+  'TestManagement(Specs|TableRows|SpecUses|UnknownSpec|SelectedIdentity)'
+  -count=1`. Literal failures included `management specs list missing
+  "data-management-page-header=\"specs\""` and an unknown request rendering
+  `Payments API` instead of preserving `unknown-api`.
+- Browser RED command: `GOWORK=off go test ./internal/web/e2e -run
+  'TestManagementListFiltersAndSelectedIdentity' -count=1`. Literal failure:
+  `management detail did not settle`, with URL changed to
+  `/manage/spec/payments-api` while `body:""`; the captured row link used
+  `hx-select:"body"` and `hx-target:"body"`.
+- GREEN commands: `GOWORK=off go test ./internal/web -run 'TestManagement'
+  -count=1` and `GOWORK=off go test ./internal/web/e2e -run 'TestManagement'
+  -count=1`; both passed, including filters, HTMX sidebar navigation, focus,
+  selected identity, and Back.

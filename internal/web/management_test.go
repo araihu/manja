@@ -12,7 +12,154 @@ import (
 	"time"
 
 	core "github.com/araihu/manja/domain"
+	"github.com/araihu/manja/internal/web/templates"
 )
+
+func TestManagementSpecsUsesPageHeaderToolbarAndTable(t *testing.T) {
+	body := renderManagementRequest(t, managementStructureServer(), "/manage/specs", http.StatusOK)
+
+	for _, want := range []string{
+		`data-management-page-header="specs"`,
+		`role="toolbar"`,
+		`aria-label="Managed spec tools"`,
+		`id="management-specs-table"`,
+		`data-management-results="true"`,
+		`aria-live="polite"`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("management specs list missing %q:\n%s", want, body)
+		}
+	}
+}
+
+func TestManagementSpecsEmptyAndFilteredEmptyDiffer(t *testing.T) {
+	var emptyOutput strings.Builder
+	if err := templates.ManagementSpecsPage(templates.ManagementOverviewModel{}).Render(context.Background(), &emptyOutput); err != nil {
+		t.Fatal(err)
+	}
+	emptyBody := emptyOutput.String()
+	for _, want := range []string{`data-management-empty="true"`, `No managed specs`} {
+		if !strings.Contains(emptyBody, want) {
+			t.Fatalf("zero-data empty state missing %q:\n%s", want, emptyBody)
+		}
+	}
+
+	filteredBody := renderManagementRequest(t, managementStructureServer(), "/manage/specs?q=missing", http.StatusOK)
+	for _, want := range []string{`data-management-filtered-empty="true"`, `No specs match these filters`, `href="/manage/specs"`} {
+		if !strings.Contains(filteredBody, want) {
+			t.Fatalf("filtered empty state missing %q:\n%s", want, filteredBody)
+		}
+	}
+	if strings.Contains(filteredBody, `data-management-empty="true"`) {
+		t.Fatalf("filtered empty state must remain distinct from zero-data state:\n%s", filteredBody)
+	}
+}
+
+func TestManagementTableRowsKeepNativeLinkAndActionsSeparate(t *testing.T) {
+	body := renderManagementRequest(t, managementStructureServer(), "/manage/specs", http.StatusOK)
+
+	nativeLink := regexp.MustCompile(`(?s)<a[^>]*href="/manage/spec/payments-api"[^>]*>.*?Payments API.*?</a>`)
+	if !nativeLink.MatchString(body) {
+		t.Fatalf("management table should expose a native detail link:\n%s", body)
+	}
+	if !strings.Contains(body, `>View published docs</a>`) {
+		t.Fatalf("management table should keep the published-docs action separate:\n%s", body)
+	}
+	if regexp.MustCompile(`<tr[^>]*(hx-get|x-on:click|onclick)=`).MatchString(body) {
+		t.Fatalf("management rows with actions must not be row-click handlers:\n%s", body)
+	}
+}
+
+func TestManagementSpecUsesPageHeaderAndDominantWorkspace(t *testing.T) {
+	body := renderManagementRequest(t, managementStructureServer(), "/manage/spec/payments-api", http.StatusOK)
+
+	for _, want := range []string{
+		`data-management-page-header="detail"`,
+		`data-management-contract-identity="payments-api"`,
+		`data-management-detail-workspace="true"`,
+		`Payments API`,
+		`role="tablist"`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("management detail workspace missing %q:\n%s", want, body)
+		}
+	}
+	if got := strings.Count(body, "<h1"); got != 1 {
+		t.Fatalf("management detail h1 count = %d, want 1:\n%s", got, body)
+	}
+}
+
+func TestManagementUnknownSpecKeepsApplicationShell(t *testing.T) {
+	body := renderManagementRequest(t, managementStructureServer(), "/manage/spec/unknown-api", http.StatusNotFound)
+
+	for _, want := range []string{
+		`id="main-content"`,
+		`id="management-main-content"`,
+		`data-selected-contract="unknown-api"`,
+		`data-management-spec-not-found="true"`,
+		`Spec not found`,
+		`href="/manage/specs"`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("unknown management spec should retain shell marker %q:\n%s", want, body)
+		}
+	}
+}
+
+func TestManagementSelectedIdentityIsServerAuthored(t *testing.T) {
+	body := renderManagementRequest(t, managementStructureServer(), "/manage/spec/payments-api", http.StatusOK)
+
+	for _, want := range []string{
+		`data-selected-contract="payments-api"`,
+		`data-document-title="Payments API · Management"`,
+		`data-management-contract-identity="payments-api"`,
+		`aria-current="page"`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("management selected identity missing %q:\n%s", want, body)
+		}
+	}
+	for _, reject := range []string{`activeItemClasses`, `topIconActive`, `tabClassNames`} {
+		if strings.Contains(body, reject) {
+			t.Fatalf("management selection must not copy Goshtoso private classes %q:\n%s", reject, body)
+		}
+	}
+}
+
+func managementStructureServer() http.Handler {
+	return NewServerWithOptions(core.SpecIndex{}, Options{Management: ManagementOptions{
+		Specs: []ManagedSpec{
+			{
+				ID:          "payments-api",
+				Index:       core.SpecIndex{Title: "Payments API", Version: "v1"},
+				Project:     core.Project{ID: "payments", Name: "Payments"},
+				Source:      core.Source{ID: "payments-source", Kind: "git", SpecPath: "openapi/payments.yaml"},
+				Revision:    core.Revision{ID: "payments-rev", Ref: "main", CommitSHA: "abc123"},
+				Publication: core.Publication{Public: true, Path: "/payments/v1"},
+				SyncRecord:  core.SyncRecord{Result: core.SyncResultSuccess},
+			},
+			{
+				ID:          "billing-api",
+				Index:       core.SpecIndex{Title: "Billing API", Version: "v2"},
+				Project:     core.Project{ID: "billing", Name: "Billing"},
+				Source:      core.Source{ID: "billing-source", Kind: "file", SpecPath: "billing.yaml"},
+				Revision:    core.Revision{ID: "billing-rev", Ref: "main"},
+				Publication: core.Publication{Public: false},
+			},
+		},
+	}})
+}
+
+func renderManagementRequest(t *testing.T, handler http.Handler, path string, wantStatus int) string {
+	t.Helper()
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, path, nil)
+	handler.ServeHTTP(rec, req)
+	if rec.Code != wantStatus {
+		t.Fatalf("%s status = %d, want %d: %s", path, rec.Code, wantStatus, rec.Body.String())
+	}
+	return rec.Body.String()
+}
 
 func TestManagementOverviewShowsProjectSyncAndPublicationState(t *testing.T) {
 	srv := NewServerWithOptions(core.SpecIndex{

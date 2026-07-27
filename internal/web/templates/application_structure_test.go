@@ -80,6 +80,28 @@ func TestApplicationShellsExposeOnePrimaryScrollRegion(t *testing.T) {
 	}
 }
 
+func TestManagementRoutesExposeOnePageHeading(t *testing.T) {
+	model := ManagementOverviewModel{
+		Specs: []ManagedSpecModel{{ID: "payments", Title: "Payments API", Version: "v1"}},
+		SelectedSpecID: "payments",
+	}
+	for _, test := range []struct {
+		name    string
+		content templ.Component
+	}{
+		{name: "overview", content: ManagementOverview(model)},
+		{name: "specs", content: ManagementSpecsPage(model)},
+		{name: "detail", content: ManagementSpecPage(model)},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			doc := parseRenderedDocument(t, test.content)
+			assertNodeCount(t, doc, func(node *html.Node) bool {
+				return node.Type == html.ElementNode && node.Data == "h1"
+			}, 1, "page h1")
+		})
+	}
+}
+
 func parseRenderedDocument(t *testing.T, component templ.Component) *html.Node {
 	t.Helper()
 
