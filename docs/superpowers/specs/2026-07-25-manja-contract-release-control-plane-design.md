@@ -47,6 +47,29 @@ Those pieces remain valuable. The main product change is the organizing model:
 the current spec/revision publication workflow becomes a contract, candidate,
 review, and release-track workflow.
 
+### Reconciled implementation checkpoint
+
+This design was reconciled on 2026-07-27 against exact `origin/main`
+`23293e9c96cf0a05d5ce5d261fcf5c069b7b741e`.
+
+That checkpoint already contains:
+
+- the public `domain`, `application`, `application/port`, and `contracttest`
+  extension surface;
+- generation-checked filesystem `UnitOfWork` persistence for revisions,
+  canonical reviews, sync evidence, release tracks, publications, audit, and
+  outbox records;
+- deterministic release authorization and canonical snapshot validation;
+- exact Goshtoso v0.0.13 consumption across root, `site/`, and the external
+  consumer fixture;
+- the Goshtoso AppShell-based public docs and management workbench, including
+  one scroll owner, server-authored selected identity, HTMX recovery, native
+  forms/links, and current Publish/Diff/Route/Sync/History/Details behavior.
+
+The remaining release-track slice extends those contracts. It does not recreate
+the open-core boundary, rerun a Goshtoso migration, or replace the integrated
+application structure.
+
 ## Product Goals
 
 Manja should let an API team:
@@ -166,11 +189,21 @@ a view over a revision, not a publication entity.
 
 Preview routes:
 
-- require authentication
+- authenticate the request before contract or revision lookup
+- require authorization scoped to the requested contract and revision
 - never imply public release
 - are excluded from public search and sitemap generation
-- emit no-index directives
+- emit `X-Robots-Tag: noindex, nofollow, noarchive`, matching HTML metadata,
+  and `Cache-Control: private, no-store`
+- never enter the public publication projection or a future offline-publication
+  descriptor/cache
 - may display manager-safe diagnostics when a candidate cannot render
+
+Missing or invalid credentials return `401` with the configured authentication
+challenge before lookup. A valid identity without the requested scope returns
+the same `404` shape as an unknown revision so the preview surface does not
+confirm private contract or revision existence. Preview authorization never
+returns public release state and never persists or logs raw credentials.
 
 ### Release Track
 
@@ -188,6 +221,8 @@ A track owns:
 - current immutable last-known-good revision
 - candidate revision when one is awaiting promotion
 - review and promotion history
+- authoritative public visibility state and its generation
+- durable withdrawal/deletion tombstone state for any route that was public
 
 Advancement modes are:
 
@@ -198,6 +233,22 @@ Advancement modes are:
 
 Both modes serve an immutable last-known-good revision. Following a ref never
 means rendering arbitrary mutable source state directly.
+
+Public visibility states are provider-neutral domain values:
+
+- `private`: never eligible for anonymous routing; indistinguishable from an
+  unknown public route
+- `public`: eligible only when `CurrentRevisionID` names a stored, valid,
+  immutable revision
+- `withdrawn`: durable tombstone for a formerly public route
+- `deleted`: durable tombstone retained after logical track deletion
+
+Changing a public track to private is a withdrawal, not erasure. The route and
+tombstone remain durable across restart. Physical track removal must not remove
+that authority. Reauthorization is a separate authenticated transition that
+names a new or explicitly reauthorized immutable revision, advances the
+visibility generation, records actor/audit evidence, and then permits public
+serving again. A source ref becoming healthy cannot reauthorize a route.
 
 ### Domain Invariants
 
@@ -214,6 +265,12 @@ means rendering arbitrary mutable source state directly.
   release semantics.
 - Public state advances only after source, parse, analysis, policy, and
   persistence gates succeed.
+- Public visibility is checked before revision lookup, parser work, response
+  body writes, cache headers, or cache writes.
+- Withdrawal and deletion are durable state transitions, not best-effort cache
+  operations.
+- An unknown commit outcome is recovered by reloading durable generation and
+  deterministic operation identity before any idempotent replay.
 
 ## Architecture
 
@@ -402,6 +459,16 @@ The Manja server:
 - serves public docs from track state
 - records sync, review, exception, and promotion activity
 
+Startup is recovery-first. It opens and validates persisted operational state,
+materializes public resolvers from immutable stored revision, spec-blob, and
+parsed-index artifacts, and only then attempts mutable source discovery or
+sync. Successful candidate parsing persists a deterministic, versioned index
+artifact bound to the same revision and spec digest before release can select
+it. A source, candidate-parse, review, policy, or provider failure after
+persisted state loads cannot prevent serving the stored last-known-good bytes
+and index. A corrupt or missing referenced artifact fails closed for that track
+and never falls back to the startup candidate or another track.
+
 Filesystem-backed adapters remain the initial implementation. Domain and
 application ports preserve an evolution path to SQLite or another store without
 putting persistence behavior in the core.
@@ -587,13 +654,41 @@ available.
 
 The management UI remains server-rendered HTML and uses Goshtoso primitives.
 
+All management mutations, including sync, track configuration, promotion,
+publication, withdrawal, deletion, and reauthorization, require an
+authenticated manager and action/contract-scoped authorization. Browser
+mutations also require either a session-bound CSRF token or an explicitly
+selected header-only policy that requires both an exact trusted `Origin` and
+`Sec-Fetch-Site: same-origin`. Missing, malformed, opaque, scheme/host/port
+mismatched, same-site, cross-site, or `none` evidence is rejected before form
+parsing or effects. Forwarded origin data is accepted only through an
+explicitly trusted proxy adapter. Idempotency tokens prevent replay but are not
+authentication or CSRF protection. Self-hosted CLI credentials and source
+secrets terminate at `internal/selfhosted` or internal adapters and never
+enter public domain types, HTML, logs, or stored release records.
+
 ## Routing And Rendering
 
-Public documentation routes resolve:
+Every public reader entry point, including root and nested document loads,
+hostname routes, selected-detail and HTMX requests, `search.json`,
+`openapi.json`, and track-local `sitemap.xml`, resolves:
 
 ```text
-public path or hostname -> release track -> last-known-good revision -> renderer
+normalized hostname + longest segment-safe public path
+-> route binding
+-> ReleaseTrack
+-> authoritative visibility state
+-> immutable CurrentRevisionID
+-> contract-scoped stored revision metadata
+-> content-addressed blob
+-> content-addressed parsed-index artifact for those exact bytes
+-> renderer
 ```
+
+No matched track may reuse a renderer or `SpecIndex` constructed from a startup
+candidate, another track, or mutable source state. Shared first-party and
+Goshtoso assets may be mounted ahead of dynamic docs; all publication-scoped
+reader resources use the resolution chain above.
 
 Authenticated preview routes resolve:
 
@@ -609,6 +704,31 @@ Concurrent tracks may render different revisions of one logical API. Each track
 owns its canonical URL and SEO state. A failure on one track does not change
 another track.
 
+Controlled public responses use `X-Manja-Publication-State`:
+
+- `public`: normal public response. A missing selected anchor may still be
+  `404`, but it remains a response from a known public publication.
+- `revoked`: `410 Gone` for a withdrawn formerly public route.
+- `deleted`: `410 Gone` for a deleted formerly public route.
+- `disabled`: `503 Service Unavailable` only for an explicit deployment-level
+  public-docs disable/kill switch.
+
+A `private` track and an unknown route both return the same `404` without a
+publication-state header. When a formerly public track becomes private, the
+public route becomes the generic `revoked` tombstone; it does not reveal the
+private successor. Anonymous public routing never returns `401` or `403`.
+`401` is reserved for an authentication challenge such as preview/management
+auth; `403` is reserved for an authenticated management identity that lacks the
+requested manager action. Authenticated preview scope denial remains `404`.
+
+The state decision and response policy are established before body or public
+cache writes. Non-public states use `Cache-Control: no-store`. Withdrawal and
+deletion synchronously persist the tombstone, then best-effort purge only the
+matching public/search/sitemap/future-offline cache keys. Purge failure is
+reported but cannot roll back or bypass the durable tombstone. A later explicit
+reauthorization performs fresh immutable revision validation and never
+resurrects cached tombstoned bytes.
+
 ## Resilience And Error Handling
 
 Review and release decisions fail closed:
@@ -619,6 +739,10 @@ Review and release decisions fail closed:
 - invalid uploaded evidence is rejected
 - missing required dual-baseline evidence is an execution error
 - persistence failure prevents track advancement
+- authentication or authorization failure prevents lookup and mutation
+- CSRF/origin failure prevents form parsing and mutation
+- withdrawal/delete persistence failure leaves the prior authoritative state
+  unchanged; cache purge alone never changes visibility
 
 Public output remains non-destructive:
 
@@ -627,6 +751,12 @@ Public output remains non-destructive:
 - every public track retains its last-known-good revision on failure
 - failed candidates and revisions remain visible to authenticated managers
 - public readers never receive private source, credential, or error details
+- restart serves persisted immutable last-known-good bytes without requiring
+  mutable source availability
+- an `ErrCommitOutcomeUnknown` result triggers reload and deterministic
+  idempotency/generation comparison; callers never guess whether to advance
+- a matched route with missing/corrupt immutable evidence returns a bounded
+  unavailable response and never falls back to a startup renderer
 
 Provider outages may make connected context stale. They do not prevent local
 offline review.
@@ -664,11 +794,19 @@ track workflow.
 - Source and provider credentials are stored through `SecretStore`.
 - Management, preview, review, policy, and exception routes require
   authentication.
+- Every management mutation requires action/contract-scoped authorization and
+  strict same-origin browser mutation protection before form parsing.
 - CI tokens are scoped to baseline/policy read and evidence upload.
 - Promotion uses separate manager or automation authority.
 - Uploaded evidence cannot make the server fetch an arbitrary user-provided URL.
 - Public routes reveal only public contract and freshness metadata.
 - Preview responses are no-index and absent from public sitemap/search payloads.
+- Preview authentication precedes contract/revision lookup; scope denial and
+  unknown private identity share one `404` response.
+- Private tracks are indistinguishable from unknown anonymous routes. Formerly
+  public routes expose only generic durable `revoked`/`deleted` tombstone state.
+- Public visibility is decided before render, body write, cache header, or cache
+  write. Cache purge is scoped and best-effort after durable state commits.
 - Provider links and report content are treated as untrusted input when rendered.
 - Logs and reports never contain source credentials or private keys.
 
@@ -687,6 +825,12 @@ For each current managed spec:
 6. Derive a stable track identifier from the existing public path; use
    `default` only when the publication path has no usable segment.
 7. Preserve current renderer and route behavior through the new track lookup.
+
+Private legacy publications migrate to private tracks and do not enter the
+anonymous route index. A legacy public path that is withdrawn during migration
+retains a durable tombstone. Migration and reconciliation are deterministic,
+generation-checked, idempotent, and recover unknown commit outcomes by reload;
+they never reset a stored current revision from deployment configuration.
 
 Legacy tracks start pinned. Operators may bind a source ref and change a track
 to following only after migration.
@@ -724,24 +868,23 @@ The detailed plan is
 Subproject 2 must use the promoted public packages and ports; it must not add
 new reusable release behavior to `internal/core` or `internal/app`.
 
-### Dependency Checkpoint: Goshtoso v0.0.13 Consumer Migration
+### Integrated Dependency Checkpoint: Goshtoso v0.0.13
 
-After the Open Core checkpoint and before Subproject 2 changes web templates,
-upgrade every Manja consumer module to exactly Goshtoso v0.0.13 using the
-tagged changelog, migration guide, component model, head-dependency contract,
-and Go reference. This is a
-separate consumer migration, not part of the public domain/application
-boundary and not a dependency-only bump.
+The exact Goshtoso v0.0.13 consumer checkpoint is already integrated at the
+reconciled implementation base. Root, `site/`, and every discovered nested or
+external consumer resolve exactly `github.com/araihu/goshtoso v0.0.13` with Go
+1.26.5 or newer and no Goshtoso replacement. Release-track implementation keeps
+the recursive architecture gate green; it does not rerun historical dependency
+migrations or change the dependency.
 
-The checkpoint includes the Go 1.26.5 minimum, a complete inventory of Manja's
-component usage, migration from removed `Variant`/`Style` and config APIs,
-composition in place of removed renderer internals, templ regeneration,
-mechanical old-API scans, exact-version checks for nested consumer modules, and
-direct/HTMX/light/dark/theme browser smoke coverage. It uses the default
-CDN-first `head.Dependencies()` contract with exact embedded fallback and
-records every Goshtoso source dive as a snag. The detailed plans are
-`docs/superpowers/plans/2026-07-25-goshtoso-v0.0.12-consumer-migration.md` and
-`docs/superpowers/plans/2026-07-26-goshtoso-v0.0.13-followup.md`.
+Goshtoso's later public runtime-manifest/library-identity work is separate. It
+exists in later Goshtoso source history but was not present in any tag newer
+than v0.0.13 at this reconciliation checkpoint. Release tracks and previews do
+not need that API and must not use a replacement or pseudo-version for it. The
+hybrid Wasm/offline-publication slice must wait for a released exact tag that
+contains the public runtime manifest, then perform its own isolated consumer
+checkpoint. That future tag is a hybrid prerequisite, not a release-track
+blocker.
 
 ### UI Checkpoint: Goshtoso Application Structure
 
@@ -845,9 +988,17 @@ SaaS product prematurely.
 - restart recovery tests for stored revisions, reviews, and track state
 - atomic track-advancement tests
 - preview authentication and no-index tests
+- authentication-before-lookup and preview scope non-disclosure tests
+- manager authentication/authorization and exact Origin/Sec-Fetch mutation
+  protection tests for sync, track configuration, promotion, and publication
+- public/private/withdrawn/deleted transition, tombstone restart,
+  reauthorization, and scoped purge-failure tests
+- exact `401`/`403`/`404`/`410` response/header tests
 - scoped-token authorization tests
 - legacy publication migration tests
 - public route, search, sitemap, and renderer regressions
+- root/nested/hostname/HTMX/search/download/sitemap tests proving each request
+  uses the resolved track's exact immutable revision and never a startup index
 
 ### Public Extension And Licensing
 
@@ -914,3 +1065,13 @@ The product direction is realized when:
 12. Manja claims Apache-2.0 licensing only after authority and provenance are
     confirmed, and every shipped artifact carries the required license and
     notice material with machine-verifiable dependency and SBOM evidence.
+13. Every public reader entry point resolves hostname/path to one release track,
+    then its immutable current revision and stored bytes; no matched route can
+    reuse a different startup renderer.
+14. Private routes do not disclose existence, while formerly public withdrawn
+    or deleted routes retain durable generic tombstones, return exact state and
+    status, purge scoped caches best-effort, and require explicit
+    reauthorization.
+15. Preview and management authentication precede protected lookup/effects;
+    management mutations also enforce scoped authorization and strict
+    same-origin browser protection.

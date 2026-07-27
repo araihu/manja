@@ -1,783 +1,498 @@
 # Release Tracks And Authenticated Previews Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **Implementation note:** Execute this plan task by task with test-driven development. This document was reconciled on 2026-07-27 against integrated Manja commit `23293e9c96cf0a05d5ce5d261fcf5c069b7b741e`; implementation must begin from the then-current `origin/main` in a fresh task worktree and must re-inspect every named API before editing.
 
-**Goal:** Replace mutable publication lookup with persistent release tracks that serve immutable last-known-good revisions, advance through deterministic pinned/following transitions, survive restarts and failed syncs, and expose authenticated no-index previews for stored revisions.
+**Goal:** Deliver durable release tracks, immutable last-known-good public documentation, authenticated revision previews, and manager-protected release mutations without exposing credentials or adding an upstream request proxy.
 
-**Architecture:** This slice follows the Open Core extension-surface checkpoint. Extend its provider-neutral release track with stored-review types and richer pure transition functions in public `domain`; keep filesystem persistence behind `application/port.UnitOfWork` and extend the existing generation-checked atomic operational transaction for track state, review evidence, publication, audit, and outbox. Public `application` services load immutable revision artifacts, evaluate release-impact reviews with the shared analysis/policy core, migrate legacy publications, and resolve both public track docs and authenticated revision previews through callbacks consumed by `internal/web`. Self-hosted adapter selection remains in `internal/selfhosted`/`cmd/manja`. Repository `.manja.yaml` remains portable policy; a separate deployment-owned release config contains paths, hostnames, ref bindings, modes, and server-added policy.
+**Architecture:** Extend the existing provider-neutral `domain` and `application` contracts. Resolve every public request from hostname and mounted path to one `ReleaseTrack`, then to its immutable `CurrentRevisionID`, persisted spec/index artifacts, and Goshtoso renderer. Keep authorization, source credentials, filesystem details, and HTTP security in ports or internal composition.
 
-**Tech Stack:** Go 1.26.5 or newer, standard-library `crypto/sha256`, `crypto/subtle`, `encoding/json`, `net/http`, `sync`, and filesystem primitives; existing kin-openapi parser, templ v0.3.1020, exactly Goshtoso v0.0.12, and YAML v3.0.1.
+**Integrated consumer checkpoint:** Go 1.26.5, templ v0.3.1020, YAML v3.0.1, and exact Goshtoso v0.0.13 in the root, `site/`, and `integration/testdata/external-module/` consumers. `architecture/goshtoso_dependency_test.go` is the recursive exact-version and no-replacement guard. The later unpublished Goshtoso runtime-manifest capability belongs only to the hybrid Wasm plan; it is not a release-track blocker unless implementation introduces that manifest contract.
 
-## Global Constraints
+## Authority And Global Constraints
 
-- Complete `docs/superpowers/plans/2026-07-25-open-core-extension-surface-and-licensing.md` first on its own branch and merge its verified compatibility checkpoint before implementing this slice. Rebase this plan's implementation worktree onto that resulting `origin/main`.
-- Then complete `docs/superpowers/plans/2026-07-25-goshtoso-v0.0.12-consumer-migration.md` on its own branch and merge its verified consumer checkpoint before this slice edits public or management templates.
-- Work only in `/tmp/manja-release-tracks-previews` on `codex/release-tracks-previews`, created from `origin/main` at `58fb3ddbb2ee47d20d5daa5c13acfbf7b6c9fa85`.
-- The path/branch constraint above describes this planning checkpoint. When implementation resumes after the prerequisite merge, create a fresh dedicated release-tracks worktree from the new `origin/main`; do not reuse the planning worktree.
-- Put new reusable behavior in `domain`, `application`, and `application/port`. Do not recreate it under `internal/core` or `internal/app`.
-- Every application and port operation accepts `context.Context` first and propagates the incoming context unchanged.
-- Persist review, sync, track, publication, audit, and outbox mutations through the public operational `UnitOfWork`. Content-addressed blobs may be written first under the prerequisite plan's documented replay/orphan model.
-- Keep raw preview/source credentials in self-hosted composition; public application configuration uses only opaque secret references.
-- Treat the current `Project.ID` as the contract identity at compatibility boundaries; new release types use `ContractID` and do not introduce provider-specific objects.
-- A ref is never public state. Public routing resolves `hostname/path -> ReleaseTrack -> CurrentRevisionID -> stored immutable blob -> parser/index`.
-- Pinned tracks only change `CurrentRevisionID` through explicit `PromoteRelease`; following tracks only advance after a passing persisted release-impact review.
-- Every failed fetch, parse, snapshot, policy, review-save, or generation-checked track-save leaves `CurrentRevisionID` unchanged.
-- Repository policy remains in `.manja.yaml`. Public routes, hostnames, track modes, ref selectors, and server-added rules live only in deployment-owned release config.
-- Preview routes are `/preview/{contractID}/{revisionID}` plus revision-local subroutes. Authentication runs before revision lookup, every response is `noindex`, and preview routes never enter public track lookup or sitemap generation.
-- Ship a narrow replaceable request-authentication boundary and a self-hosted HTTP Basic adapter whose password is read from a file. Do not place credentials in URLs, YAML, logs, HTML, or persisted track/review documents.
-- OIDC/Dex lifecycle, connected baseline/evidence APIs, CI tokens, provider actions, management information-architecture migration, and new promotion REST endpoints remain outside this subproject.
-- Keep the existing management pages and legacy publication POST contract working while migration compatibility is present; do not extend the old peer-tab information architecture.
-- Preserve the read-only renderer. Do not add Try It, OpenAPI authoring, or upstream request proxying.
-- Never hand-edit `internal/web/templates/*_templ.go`; regenerate after `.templ` edits.
-- Keep canonical review schema `manja.review/v1`; the new server-side release review uses the same report model with one `release_impact` comparison.
-- Record any Goshtoso component/helper/docs/generated-templ source dive as a snag before the review gate.
+- Read `AGENTS.md`, the companion design, the current application-structure design and plan, and the hybrid Wasm design before implementation.
+- Reinspect the literal current signatures in `domain`, `application`, `application/port`, `internal/adapters/store`, `internal/web`, and `internal/selfhosted`. Do not copy signatures from this plan if current code has moved.
+- Create a fresh dedicated worktree from the then-current `origin/main` under the repository's required worktree policy. Record the implementation base and keep unrelated changes out; this reconciliation does not prescribe a reusable path, branch, or historical base.
+- Keep core provider-neutral, ports-first, deterministic, idempotent, generation/CAS safe, and recoverable after `port.ErrCommitOutcomeUnknown`.
+- Write content-addressed blobs before transactional metadata. Publish revision, release, visibility/tombstone authority, audit, and outbox changes through one coarse `port.UnitOfWork`.
+- Never let a source, parse, review, policy, store, cache, or restart failure replace or erase the prior immutable last-known-good public revision.
+- Startup serves persisted immutable last-known-good bytes without requiring mutable source access. A startup sync may propose a candidate only after the persisted public surface is ready.
+- Never silently serve the startup `SpecIndex` for a request that resolved to a different revision.
+- Authenticate previews before contract, track, or revision lookup. Authorize the requested scope; return non-disclosing failures; mark previews `noindex`; exclude them from public publication, sitemap, search, offline, and Wasm projections.
+- Require manager authentication and authorization for sync, track configuration, promotion, publication, withdrawal, deletion, and reauthorization. Browser mutations also require the exact same-origin policy in this plan.
+- Raw preview credentials, manager credentials, Git tokens, and SSH keys terminate in internal adapters or `internal/selfhosted` composition. Public domain/application values carry principals, scopes, and opaque secret references only.
+- Do not persist or log raw credentials, bearer values, session secrets, or CSRF tokens.
+- Preserve the current Goshtoso `head.Dependencies`, AppShell, operation, schema, search, and management structures. Extend their route/base-path inputs; do not replace the integrated UI.
+- Do not add a Try It console or any server-side upstream API proxy.
+- Every future assurance deferral requires a GitHub issue receipt. Minimum implementation gates written here are planned acceptance gates, not debt and not deferrable by labeling them future work.
+- Record every Goshtoso source dive, API gap, workaround, generated-template friction, or dependency friction in a task-specific snag ledger.
 
-## Predecessor State At Implementation Handoff
+## Current Integrated Contracts To Extend
 
-The Open Core predecessor already publishes the first release boundary. This
-plan extends that API; it does not recreate it or use its existence as an
-expected RED condition:
+At the reconciliation checkpoint:
 
-- `domain/release.go` already defines `ReleaseMode`, the minimal
-  `ReleaseTrack`, `ConsiderReleaseRevision`, and `PromoteReleaseRevision`.
-- `domain/review.go` already defines canonical `manja.review/v1` reports and
-  release-evidence validation for contract, candidate, baseline, digest, and
-  comparison identity.
-- `application/release.go` already exposes constructor-injected
-  `ReleaseService.Coordinate`, including evidence binding, idempotent replay,
-  transactional publication retirement, audit, and outbox writes.
-- `application/port.UnitOfWork` and the filesystem adapter already provide one
-  generation-checked operational manifest. Callback and pre-publication
-  failures roll back; a post-rename durability failure is explicitly reported
-  as `port.ErrCommitOutcomeUnknown` and requires reload plus idempotent replay.
-- `OperationalStore` already persists revisions, `ContractReview`, sync
-  records, tracks, publications, audit events, and outbox messages. This slice
-  evolves `ContractReview` into the richer track-scoped `StoredReview` model and
-  adds deterministic listing and route-resolution reads.
+- `domain.ReleaseTrack` contains `ID`, `ContractID`, `BoundRef`, `Mode`, `Generation`, `CurrentRevisionID`, `CandidateRevisionID`, and `LastDecision`.
+- `domain.ReleaseAuthorization` already binds a track, persisted `ContractReview`, `SyncRecord`, baseline/candidate revisions, source/ref, route, and policy digest.
+- `application.ReleaseService.Coordinate` already reloads that persisted evidence and immutable revisions, validates their bindings, applies `ConsiderReleaseDecision`, and writes through `port.UnitOfWork`.
+- `application.RevisionService.LoadSpec` already verifies content-addressed blob integrity.
+- `port.OperationalStore` is the transactional write surface; `RevisionReader`, `ReleaseEvidenceReader`, `PublicationReader`, and `ReleaseAuthorizationWriter` are narrow read/write ports.
+- `internal/adapters/store.FileStore` already implements manifest-based atomic commits, generation conflicts, immutable revisions/evidence, and unknown-outcome reporting.
+- `internal/web/server.go` currently resolves a legacy `PublicationByPath` and rewrites it to one startup public renderer. That compatibility handler is the defect this plan removes.
+- `internal/selfhosted.NewServer` currently performs source-first startup and constructs one startup `SpecIndex`. Recovery-first startup must invert that dependency.
+- `internal/web` already renders the current AppShell public UI, `/search.json`, `/openapi.json`, `/sitemap.xml`, HTMX-selected content, assets, and management workbench routes.
+- Existing management POST replay tokens are idempotency controls, not authentication or browser mutation protection.
 
-When implementation starts from the merged predecessor, first run the existing
-release/application/store tests as characterization tests. New RED steps must
-fail on the specifically missing richer behavior described below, not because
-the predecessor files, track type, service, or atomic manifest are absent.
+## Authoritative Public HTTP Contract
 
-## File Structure
+For every public root, nested documentation path, hostname-mounted route, HTMX selection, search document, OpenAPI download, and sitemap request:
 
-- `domain/release.go`: extend the existing release-track transitions with stored-review/history types, validation, and deterministic IDs.
-- `domain/release_test.go`: domain invariants, replay idempotency, generation behavior, and last-known-good preservation.
-- `domain/review.go`: release-impact-only evaluation using the existing canonical report and policy projection.
-- `domain/spec.go`: immutable revision artifact metadata needed after restart.
-- `application/sync.go`: populate immutable revision metadata before persistence.
-- `application/port/operational.go`: transaction-scoped revision, review, release, publication, audit, and outbox persistence.
-- `internal/adapters/store/fs.go`: contract-scoped revision lookup, atomic release/review storage, compare-and-swap updates, deterministic listing, and legacy publication listing.
-- `internal/adapters/config/server.go`: strict deployment-owned release-track and preview-auth configuration.
-- `internal/adapters/config/testdata/server.yaml`: two-track server fixture using `v1` and `v2`.
-- `internal/adapters/auth/basic.go`: constant-time HTTP Basic authenticator backed by an injected password or password file.
-- `application/revisiondocs.go`: load a stored revision, blob, parser index, and contract snapshot after restart.
-- `application/release.go`: extend the existing `ReleaseService` to migrate legacy publications, reconcile configured track definitions, evaluate mapped sync results, persist reviews, and apply richer track transitions.
-- `internal/selfhosted/server.go`: recovery-first startup, release sync wiring, dynamic docs resolvers, adapter selection, and compatibility management state.
-- `internal/web/docs.go`: public-track request matching, preview path parsing/authentication, path rewriting, and response policy.
-- `internal/web/public.go`: renderer base-path and indexability options.
-- `internal/web/templates/layout.templ`: optional robots metadata.
-- `internal/web/templates/public.templ`: base-path-aware home, search, download, HTMX, and public-route links.
-- `cmd/manja/main.go`: optional repository policy, server release config, and preview password-file flags.
-- `README.md`: release config, migration, authentication, routes, and failure behavior.
+1. Canonicalize the externally trusted hostname and path.
+2. Resolve exactly one route binding to its `ReleaseTrack` identity.
+3. Load that track and decide its durable visibility before any revision, blob, index, renderer, body, or shared-cache work.
+4. If public, snapshot the track generation and immutable `CurrentRevisionID`.
+5. Load that exact stored `ContractRevision`, verify its content-addressed spec and parsed-index artifacts plus parser/codec binding, and render the decoded index with the track's base path.
+6. Revalidate generation/visibility before publishing cache entries or response bytes when concurrent mutation can intervene.
 
----
+The controlled response matrix is exact:
 
-### Task 1: Canonical Release Reviews And Pure Track Transitions
+| Effective state | Anonymous response | `X-Manja-Publication-State` |
+| --- | --- | --- |
+| public and route exists | normal public status | `public` |
+| public and docs anchor/resource is unknown | `404` | `public` |
+| private or route never existed | `404` | absent |
+| withdrawn durable tombstone | `410` | `revoked` |
+| deleted durable tombstone | `410` | `deleted` |
+| administratively disabled | `503` | `disabled` |
+
+Anonymous public routes never use `401` or `403`. An unauthenticated preview or management challenge is `401` with the adapter-selected challenge. An authenticated principal without the requested preview scope gets indistinguishable `404`; an authenticated manager without the requested action gets `403`. All protected-route denials use `Cache-Control: no-store`.
+
+Withdrawal and deletion must persist their durable authority before attempting a best-effort purge scoped to the affected route, track, revision, visibility generation, and host. Purge failure cannot restore visibility. Republishing a tombstoned route requires an explicit reauthorization command that revalidates manager authority, policy/review evidence, current immutable revision, route ownership, and an expected generation; changing source configuration or restarting is insufficient.
+
+## Browser Mutation Policy
+
+All management mutation endpoints use this exact order:
+
+1. authenticate the manager;
+2. authorize the concrete project/track action;
+3. validate method and content type;
+4. require a valid CSRF token bound to the authenticated session; or, for deployments that explicitly select header-only protection, require canonical same-origin `Origin` and `Sec-Fetch-Site: same-origin`;
+5. only then parse identifiers or execute the command.
+
+Header-only protection rejects missing, malformed, opaque, cross-origin, scheme-mismatched, host-mismatched, or port-mismatched `Origin`, and rejects missing or non-`same-origin` `Sec-Fetch-Site`. Reverse-proxy normalization must use a trusted-proxy adapter and must not trust arbitrary forwarding headers. Tests cover POSTs to sync, track configuration, promotion, publication, withdrawal, deletion, and reauthorization for accepted same-origin requests and every rejection above.
+
+## Planned Implementation Files
+
+- Modify: `domain/release.go`, `domain/publication.go`
+- Test: `domain/release_test.go`, `domain/publication_test.go`
+- Modify: `application/release.go`, `application/revision.go`, `application/publication.go`
+- Create or modify: focused `application/*_test.go` and `application/port/operational.go`
+- Modify: `internal/adapters/store/fs.go`, `internal/adapters/store/fs_test.go`
+- Modify: `internal/web/server.go`, `internal/web/public.go`, `internal/web/management.go`, focused web tests, and current source `.templ` files only when the UI requires it
+- Modify: `internal/selfhosted/server.go`, `internal/selfhosted/server_test.go`, `cmd/manja/main.go` only for concrete composition
+- Regenerate tracked `*_templ.go` only after source template edits; never hand-edit it
+- Modify: `api/*.yaml` and regenerate `internal/web/api.gen.go` only if a real external API integration requires the management mutation surface
+- Update: task-specific snag ledger and operator/public documentation required by the implemented contracts
+
+### Task 1: Put Authoritative Visibility And Tombstones On Release Tracks
 
 **Files:**
 - Modify: `domain/release.go`
 - Modify: `domain/release_test.go`
-- Modify: `domain/review.go`
-- Modify: `domain/review_test.go`
+- Modify: `domain/publication.go`
+- Create: `domain/publication_test.go`
 
-**Interfaces:**
-- Consumes: `ContractSnapshot`, `EffectivePolicy`, `EvaluateFindings`, `ReviewReport`, and `CanonicalReviewJSON`.
-- Produces: `EvaluateReleaseReview`, `StoredReview`, `ReleaseTrack`, `ConsiderReleaseReview`, `PromoteRelease`, and deterministic review/event IDs.
+**Purpose:** Make visibility, durable tombstones, reauthorization, and immutable current-revision selection explicit on the release track while evolving legacy publication records into route bindings.
 
-- [ ] **Step 1: Write failing release-impact review tests**
+**Step 1: Write failing release-track visibility tests**
 
-Add tests requiring a single `release_impact` comparison and canonical stability:
+Extend the existing `ReleaseTrack` tests with these cases:
 
-```go
-func TestEvaluateReleaseReviewProducesCanonicalReleaseImpact(t *testing.T) {
-	at := time.Date(2026, 7, 25, 12, 0, 0, 0, time.UTC)
-	baseline := NewContractSnapshot("payments", "rev-v1", []byte("v1"), SpecIndex{
-		Operations: []Operation{{Method: "GET", Path: "/payments"}},
-	})
-	candidate := NewContractSnapshot("payments", "rev-v2", []byte("v2"), SpecIndex{})
-	policy, err := MergePolicy(PolicyLayer{Name: "stable", Source: PolicySourceRepository})
-	if err != nil {
-		t.Fatal(err)
-	}
+- a new never-public track may be `private` with no current revision or tombstone;
+- a public track requires a canonical non-empty `CurrentRevisionID`;
+- making a formerly public track private is a withdrawal and persists a `revoked` tombstone before the private successor is visible to management;
+- explicit withdrawal creates the same immutable tombstone bound to contract, track, route identity, current revision, prior generation, actor, and timestamp;
+- deletion creates durable `deleted` evidence and retains the route identity;
+- exact command replay is a no-op;
+- stale expected generation returns a typed generation conflict;
+- generation exhaustion fails closed;
+- a different command at the same idempotency key fails closed;
+- a tombstoned track cannot become public through a normal visibility toggle;
+- explicit reauthorization may return a tombstoned track to public only with matching expected generations and complete reauthorization evidence;
+- rejected or pinned release decisions preserve prior `CurrentRevisionID` and visibility;
+- following acceptance changes current only to the persisted authorized candidate;
+- pinned promotion requires the recorded accepted candidate;
+- malformed identities, states, timestamps, or tombstone bindings fail validation;
+- clone helpers isolate pointer-backed decision and tombstone evidence.
 
-	report, err := EvaluateReleaseReview(ReleaseReviewRequest{
-		ContractID: "payments", Baseline: baseline, Candidate: candidate,
-		Policy: policy, EvaluatedAt: at, EngineVersion: "test",
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(report.Comparisons) != 1 || report.Comparisons[0].Kind != ComparisonReleaseImpact {
-		t.Fatalf("comparisons = %#v", report.Comparisons)
-	}
-	first, _ := CanonicalReviewJSON(report)
-	second, _ := CanonicalReviewJSON(report)
-	if !bytes.Equal(first, second) {
-		t.Fatalf("canonical reports differ:\n%s\n%s", first, second)
-	}
-}
-```
-
-Also test contract mismatch, zero evaluation time, blank engine version, and a
-missing immutable baseline. Release-track advancement never invents an empty
-baseline; a new track must be explicitly bootstrapped by migration or a future
-authorized workflow.
-
-- [ ] **Step 2: Run the release-review tests and verify RED**
+The stored track vocabulary is exactly `private`, `public`, `withdrawn`, and `deleted`. Map `withdrawn` to the HTTP header value `revoked` only at the web boundary. `disabled` is an effective deployment-level kill-switch response, not a persisted substitute for track visibility.
 
 Run:
 
 ```bash
-go test ./domain -run TestEvaluateReleaseReview -count=1
+go test ./domain -run 'Test(ReleaseTrack|ReleaseVisibility|ReleaseTombstone|ReleaseReauthorization|ConsiderReleaseDecision|PromoteReleaseRevision)' -count=1
 ```
 
-Expected: compile failure because `ReleaseReviewRequest` and
-`EvaluateReleaseReview` do not exist.
+Expected: compile failures for the visibility/tombstone model and new pure transitions.
 
-- [ ] **Step 3: Implement release-impact evaluation by reusing canonical helpers**
+**Step 2: Add the smallest deterministic track extension**
 
-Add:
-
-```go
-type ReleaseReviewRequest struct {
-	ContractID    string
-	Baseline      ContractSnapshot
-	Candidate     ContractSnapshot
-	Policy        EffectivePolicy
-	EvaluatedAt   time.Time
-	EngineVersion string
-}
-
-func EvaluateReleaseReview(request ReleaseReviewRequest) (ReviewReport, error)
-```
-
-Validate and clone both snapshots with the same helpers as `EvaluateReview`,
-normalize policy with `normalizeEffectivePolicy`, produce exactly one
-`evaluateComparison(ComparisonReleaseImpact, ...)`, and set the overall verdict
-from that comparison. Extract shared report construction only after both old
-and new review tests are green.
-
-- [ ] **Step 4: Write failing track transition tests**
-
-Extend the predecessor's public shapes in the tests. Retain `ReleaseMode` and
-its `ReleaseModePinned` / `ReleaseModeFollowing` constants; do not introduce a
-duplicate advancement-mode type:
+Extend the current `domain.ReleaseTrack`; do not replace `ContractReview`, `ReleaseAuthorization`, `ReleaseEvidence`, `LastDecision`, `ConsiderReleaseDecision`, or `PromoteReleaseRevision`. The implementation may refine names after literal inspection, but the record must carry the equivalent of:
 
 ```go
-type StoredReview struct {
-	ID                  string       `json:"id"`
-	ContractID          string       `json:"contractId"`
-	TrackID             string       `json:"trackId"`
-	SourceRef           string       `json:"sourceRef"`
-	BaselineRevisionID  string       `json:"baselineRevisionId"`
-	CandidateRevisionID string       `json:"candidateRevisionId"`
-	Report              ReviewReport `json:"report"`
-	CreatedAt           time.Time    `json:"createdAt"`
-}
+type ReleaseVisibility string
 
-type ReleaseEvent struct {
-	ID             string    `json:"id"`
-	Kind           string    `json:"kind"`
-	RevisionID     string    `json:"revisionId"`
-	ReviewID       string    `json:"reviewId,omitempty"`
-	ActorID        string    `json:"actorId,omitempty"`
-	PreviousID     string    `json:"previousRevisionId,omitempty"`
-	OccurredAt     time.Time `json:"occurredAt"`
-	StateGeneration uint64   `json:"stateGeneration"`
-}
+const (
+    ReleaseVisibilityPrivate   ReleaseVisibility = "private"
+    ReleaseVisibilityPublic    ReleaseVisibility = "public"
+    ReleaseVisibilityWithdrawn ReleaseVisibility = "withdrawn"
+    ReleaseVisibilityDeleted   ReleaseVisibility = "deleted"
+)
 
 type ReleaseTrack struct {
-	ID                    string          `json:"id"`
-	ContractID            string          `json:"contractId"`
-	SourceID              string          `json:"sourceId"`
-	BoundRef              string          `json:"boundRef,omitempty"`
-	PublicPath            string          `json:"publicPath"`
-	Hostname              string          `json:"hostname,omitempty"`
-	PolicyProfile         string          `json:"policyProfile"`
-	ServerPolicy          PolicyLayer     `json:"serverPolicy"`
-	Mode                  ReleaseMode     `json:"mode"`
-	CurrentRevisionID     string          `json:"currentRevisionId,omitempty"`
-	CandidateRevisionID   string          `json:"candidateRevisionId,omitempty"`
-	CandidateReviewID     string          `json:"candidateReviewId,omitempty"`
-	Generation            uint64          `json:"generation"`
-	CreatedAt             time.Time       `json:"createdAt"`
-	UpdatedAt             time.Time       `json:"updatedAt"`
-	History               []ReleaseEvent  `json:"history"`
+    // existing identity, mode, generation, revision, and decision fields
+    Visibility           ReleaseVisibility
+    VisibilityGeneration uint64
+    Tombstone            *ReleaseTombstone
 }
 ```
 
-Cover:
+A tombstone records the last publicly authorized immutable revision and canonical route identity. It is authority, not a cache hint. Provide validators, deep-clone helpers, and one generation-checked pure visibility transition. It must not load credentials, stores, clocks, policies, or caches.
 
-- a passing review on a pinned track sets candidate only
-- explicit promotion advances current and clears candidate
-- a passing review on a following track advances current immediately
-- a failing review, ref mismatch, contract mismatch, or stale baseline leaves
-  current unchanged
-- replaying the same review produces `changed == false`
-- event IDs and stored-review IDs are deterministic
-- mode, path, hostname, policy source, timestamps, and IDs are validated
+Use canonical serialization and a deterministic command/idempotency digest. Do not use map iteration, local time, random IDs, or adapter-specific values in equality.
 
-- [ ] **Step 5: Run transition tests and verify RED**
+**Step 3: Turn publication into the route binding**
 
-Run:
+Evolve the current `domain.Publication` into the canonical hostname/base-path binding to a `TrackID`. Preserve `RevisionID` and `Public` only as decode inputs for Task 4 migration; new route writes must not use them as revision or visibility authority.
 
-```bash
-go test ./domain -run 'Test(ConsiderReleaseReview|PromoteRelease|NewStoredReview|ValidateReleaseTrack)' -count=1
-```
+Add route-binding tests for:
 
-Expected: compile failures for the new `StoredReview`, `ReleaseEvent`, and
-review-aware transition APIs, plus assertion failures for validation/history
-fields not yet present on the existing `ReleaseTrack`.
+- canonical contract, track, host, and segment-safe base path;
+- optional explicit route generation for CAS-safe reconfiguration;
+- no raw credentials or source values;
+- deterministic equality and cloning;
+- legacy decode followed by one explicit migration;
+- validation against a track with matching contract/track identity.
 
-- [ ] **Step 6: Implement minimal provider-neutral release state**
+A route record must not copy `CurrentRevisionID`, visibility, or tombstone state from the track.
 
-Extend the existing `ReleaseTrack` and implement:
+**Step 4: Implement pure cross-invariants**
 
-```go
-func NewStoredReview(track ReleaseTrack, sourceRef string, report ReviewReport, createdAt time.Time) (StoredReview, error)
-func ValidateReleaseTrack(track ReleaseTrack) error
-func ConsiderReleaseReview(track ReleaseTrack, review StoredReview) (next ReleaseTrack, changed bool, err error)
-func PromoteRelease(track ReleaseTrack, review StoredReview, actorID string, occurredAt time.Time) (next ReleaseTrack, changed bool, err error)
-```
+Add helpers that validate a route binding against a `ReleaseTrack`. A public track must have a non-empty current revision. A tombstone must bind to the recorded last public revision and route while leaving current/candidate history intact.
 
-Keep `ConsiderReleaseRevision` and `PromoteReleaseRevision` as compatibility
-entry points while predecessor call sites migrate. They must preserve their
-existing idempotent replay semantics and delegate to shared transition helpers
-where possible; do not replace `ReleaseMode` with another public enum.
+Do not add host lookup or cache concerns to release-decision functions. Task 5 coordinates release and visibility transitions atomically through the existing `UnitOfWork`.
 
-Hash the canonical report plus NUL-delimited contract, track, baseline,
-candidate, and source-ref identities for `StoredReview.ID`. Hash the event kind,
-track identity, next generation, revision, review, actor, and UTC timestamp for
-`ReleaseEvent.ID`. Clone slices/maps before returning; do not mutate caller
-state. `ConsiderReleaseReview` accepts only `VerdictPass`; pinned mode records
-the accepted candidate, following mode atomically projects it as current.
-`PromoteRelease` accepts only the currently recorded candidate and review.
-
-- [ ] **Step 7: Run all core release/review tests**
-
-Run:
+**Step 5: Run focused and package tests**
 
 ```bash
-go test ./domain -run 'Release|Review|Policy|ContractSnapshot' -count=1
+go test ./domain -run 'Test(Publication|PublicRoute|ReleaseTrack|ReleaseVisibility|ReleaseTombstone|ReleaseReauthorization|ConsiderReleaseDecision|PromoteReleaseRevision|ValidateReleaseAuthorization)' -count=1
+go test ./domain -count=1
 ```
 
 Expected: PASS.
-
-- [ ] **Step 8: Commit core release behavior**
-
-```bash
-git add domain/release.go domain/release_test.go domain/review.go domain/review_test.go
-git commit -m "feat(core): model deterministic release tracks"
-```
-
 ---
 
-### Task 2: Immutable Revision Artifact Metadata
+### Task 2: Make Immutable Revisions Independently Renderable
 
 **Files:**
 - Modify: `domain/spec.go`
+- Modify: `application/revision.go`
+- Modify: `application/revision_test.go`
+- Create or modify: a narrow deterministic `application/port` index-artifact codec contract
 - Modify: `application/sync.go`
 - Modify: `application/sync_test.go`
-- Modify: `application/port/operational.go`
-- Modify: `internal/adapters/store/fs.go`
-- Modify: `internal/adapters/store/fs_test.go`
 
-**Interfaces:**
-- Produces: restart-safe revision artifact metadata,
-  `port.RevisionReader.ContractRevision`, and transactional revision writes
-  through `port.OperationalStore`.
-- Preserves: the self-hosted adapter's legacy
-  `Revision(ctx, revisionID)` compatibility method while migration is active.
+**Purpose:** Ensure a committed revision contains every non-secret locator needed to load its exact public or preview index from persisted immutable spec and parsed-index bytes after restart.
 
-- [ ] **Step 1: Write failing sync metadata and immutability tests**
+**Step 1: Write failing metadata-validation tests**
 
-Require successful sync to persist:
+Extend revision tests for:
 
-```go
-type Revision struct {
-	ID          string
-	ContractID  string
-	SourceID    string
-	Ref         string
-	CommitSHA   string
-	Version     string
-	AuthorName  string
-	AuthorEmail string
-	Message     string
-	SpecPath    string
-	SpecFormat  string
-	SpecDigest  string
-	BlobKey     string
-	CreatedAt   time.Time
-}
-```
+- canonical contract/revision/source identities;
+- required content-addressed `SpecBlobKey`, matching `SpecDigest`, and existing review snapshot invariants;
+- required content-addressed parsed-index artifact key/digest plus an explicit codec/parser identity;
+- persisted canonical spec path and format sufficient to rebuild `domain.SpecFile`;
+- immutable metadata replay as a no-op;
+- a conflicting record under the same contract/revision identity failing closed;
+- no source URL, token, username, private key, bearer value, or raw credential entering revision metadata.
 
-Assert `SpecDigest` is lowercase SHA-256 of raw bytes, `BlobKey` equals
-`SpecBlobKey`, and `CreatedAt` uses the injected clock port. Add filesystem
-tests that:
-
-- save and load the same revision under
-  `revisions/{contractID}/{revisionID}.json`
-- replay an identical save successfully
-- reject the same contract/revision identity with changed immutable fields
-- allow the same revision ID in two contracts
-- read the old flat revision file through the legacy method
-
-- [ ] **Step 2: Run targeted tests and verify RED**
+Use small `SpecPath`, `SpecFormat`, and index-artifact metadata extensions to `ContractRevision` unless current inspection shows equivalent persisted fields. Do not infer them from mutable deployment options during restart.
 
 Run:
 
 ```bash
-go test ./domain ./application ./internal/adapters/store -run 'Revision|Sync.*Metadata' -count=1
+go test ./domain ./application -run 'Test(ValidateContractRevision|RevisionService|Sync.*Revision)' -count=1
 ```
 
-Expected: assertions or compile failure because contract/artifact fields and
-contract-scoped lookup do not exist.
+Expected: failure because restart-render metadata and the exact loader do not exist yet.
 
-- [ ] **Step 3: Add the read port and use the transactional write port**
+**Step 2: Write failing exact-revision loader tests**
 
-Add without expanding every existing store fake:
+Introduce a provider-neutral application service that accepts `RevisionReader`, `BlobStore`, and a deterministic index-artifact decoder, then exposes the equivalent of:
 
 ```go
-type RevisionReader interface {
-	ContractRevision(context.Context, string, string) (domain.Revision, error)
-}
+LoadIndex(ctx context.Context, contractID, revisionID string) (domain.SpecIndex, error)
 ```
 
-`OperationalStore.SaveRevision` remains the only public write boundary. Keep
-the adapter's legacy flat lookup private for migration compatibility.
+Test this order and these failures:
 
-- [ ] **Step 4: Populate immutable metadata before blob/revision persistence**
+1. validate canonical contract/revision input;
+2. call `ContractRevision(ctx, contractID, revisionID)`;
+3. verify the loaded record matches both requested identities;
+4. call the existing content-integrity path used by `RevisionService.LoadSpec`;
+5. load and content-verify the persisted parsed-index artifact referenced by that same revision;
+6. strictly decode the declared artifact format/codec identity with bounds and no unknown/trailing data;
+7. verify `SpecIndex.ProjectID == contractID` and `SpecIndex.RevisionID == revisionID`;
+8. verify the index artifact is bound to the stored spec blob/digest and parser identity before returning.
 
-After parse succeeds and before `Blobs.Put`, normalize `Revision.ContractID`,
-`SourceID`, `SpecPath`, `SpecFormat`, `SpecDigest`, `BlobKey`, and `CreatedAt`.
-Use the same prepared revision in the blob key, operational transaction, sync
-record, and returned `SyncResult`. Do not enter `UnitOfWork` if blob storage
-fails; transaction failure may leave only the content-addressed orphan defined
-by the prerequisite plan.
+Test missing revision, malformed metadata, missing spec or index blob, either digest mismatch, unsupported codec/parser identity, strict-decode failure, and index identity mismatch. In every case the service returns an integrity/not-found error and never substitutes a startup index, current source result, candidate, another revision, or a reparsed mutable-source result.
 
-- [ ] **Step 5: Implement contract-scoped immutable filesystem storage**
+**Step 3: Implement the minimal loader**
 
-Use `revisions/{contractID}/{revisionID}.json` for revisions carrying a contract
-ID. Inside the file adapter's `UnitOfWork`, read any existing record and compare
-every immutable field; return a descriptive conflict instead of overwriting
-different content. Write identical replays as no-ops. Keep legacy flat lookup
-only for migration.
+Reuse or compose `RevisionService.LoadSpec`; do not duplicate content-address verification in HTTP handlers. The parser stays behind the existing `port.Parser` on the candidate/sync path. Encode its successful `domain.SpecIndex` through a deterministic, versioned artifact codec and store those immutable bytes content-addressed before committing revision metadata.
 
-- [ ] **Step 6: Run sync/store and full core tests**
+Any in-memory index cache is an adapter concern keyed by at least contract ID, revision ID, spec blob key, index artifact key, parser/codec identity, and visibility generation. Cache misses reload the same verified persisted index artifact. Corrupt or unsupported artifacts fail closed for that track; they never trigger source access or another-revision fallback.
 
-Run:
+The public/preview loader has neither source fetcher nor parser. That absence is the restart/LKG invariant and ensures later candidate parse failure cannot disturb the committed index.
+
+**Step 4: Persist render locators during sync**
+
+Update `application.SyncService` so a successful source fetch and parse records canonical path/format with the immutable revision before its `UnitOfWork` commit. Preserve the current order:
+
+1. fetch candidate bytes;
+2. parse and build review snapshot without changing public authority;
+3. deterministically encode the parsed index and bind it to the contract, revision, spec digest, and parser/codec identity;
+4. content-address and persist immutable spec and index bytes;
+5. atomically save revision/sync/index evidence;
+6. return a candidate/index to management.
+
+Test source failure, parse failure, blob failure, metadata commit failure, and `ErrCommitOutcomeUnknown`. None may mutate a release track or route binding. On unknown outcome, reload by stable IDs before deciding whether an idempotent retry is needed.
+
+**Step 5: Run focused tests**
 
 ```bash
-go test ./domain ./application ./internal/adapters/store -count=1
+go test ./application -run 'Test(RevisionService|RevisionArtifact|Sync)' -count=1
+go test ./application/port ./domain -count=1
 ```
 
 Expected: PASS.
-
-- [ ] **Step 7: Commit immutable revision metadata**
-
-```bash
-git add domain/spec.go application/sync.go application/sync_test.go application/port/operational.go internal/adapters/store/fs.go internal/adapters/store/fs_test.go
-git commit -m "feat(store): persist immutable revision artifacts"
-```
-
 ---
 
-### Task 3: Atomic Release And Review Persistence
+### Task 3: Persist Host Routes, Tracks, Visibility, And Tombstones Atomically
 
 **Files:**
 - Modify: `application/port/operational.go`
+- Modify: `application/port/port_test.go`
 - Modify: `internal/adapters/store/fs.go`
 - Modify: `internal/adapters/store/fs_test.go`
+- Modify: `application/publication.go`
+- Modify: `application/publication_test.go`
 
-**Interfaces:**
-- Produces: the filesystem implementation of `port.UnitOfWork`, atomic
-  generation-checked release transactions, deterministic read models, public
-  request lookup, and persisted canonical reviews.
+**Purpose:** Make hostname/path routing and visibility durable, indexed, generation-safe, and recoverable under unknown commit outcomes.
 
-- [ ] **Step 1: Write failing persistence and recovery tests**
+**Step 1: Write failing port contract tests**
 
-Add tests that create `v1` and `v2` tracks plus reviews, reopen a new
-`FileStore` at the same root, and require byte-equivalent state. Cover:
-
-- deterministic `ReleaseTracks(contractID)` ordering by track ID
-- lookup by `(contractID, trackID)` and review ID
-- longest segment-boundary public-path match
-- hostname matching after lowercase and request-port removal
-- duplicate hostname/path rejection across tracks
-- generation-checked update succeeds once and rejects a stale replay
-- a failed stale update leaves the on-disk current revision unchanged
-- malformed/truncated JSON returns an error and never becomes public
-- review replay with identical bytes is a no-op; conflicting bytes are rejected
-
-- [ ] **Step 2: Run store tests and verify RED**
-
-Run:
-
-```bash
-go test ./internal/adapters/store -run 'ReleaseTrack|StoredReview|PublicRelease' -count=1
-```
-
-Expected: compile failures for `StoredReview`, deterministic track listing, and
-public-track lookup, plus assertion failures for route collision and immutable
-review behavior. Basic generation-checked track persistence and the atomic
-manifest already exist from the predecessor.
-
-- [ ] **Step 3: Extend the operational transaction and read ports**
-
-Add:
+Add the narrow reads needed by public resolution without exposing `FileStore`:
 
 ```go
-type ReleaseReader interface {
-	ReleaseTrack(context.Context, string, string) (domain.ReleaseTrack, error)
-	ReleaseTracks(context.Context, string) ([]domain.ReleaseTrack, error)
-	PublicReleaseTrack(context.Context, string, string) (domain.ReleaseTrack, error)
-	StoredReview(context.Context, string, string) (domain.StoredReview, error)
+type ReleaseTrackReader interface {
+    ReleaseTrack(context.Context, string, string) (domain.ReleaseTrack, error)
 }
 
-type OperationalStore interface {
-	SaveRevision(context.Context, domain.Revision) error
-	SaveStoredReview(context.Context, domain.StoredReview) error
-	SaveSyncRecord(context.Context, domain.SyncRecord) error
-	SaveReleaseTrack(context.Context, uint64, domain.ReleaseTrack) error
-	SavePublication(context.Context, domain.Publication) error
-	AppendAuditEvent(context.Context, domain.AuditEvent) error
-	Enqueue(context.Context, domain.OutboxMessage) error
+type PublicationReader interface {
+    PublicRoute(context.Context, string, string) (domain.Publication, error)
 }
 ```
 
-`PublicReleaseTrack` accepts request hostname and path; it returns only tracks
-with a non-empty current revision and an exact hostname plus longest safe path
-prefix match. Legacy publication/revision readers remain private adapter
-interfaces used only by migration.
+Names may follow current conventions, but the arguments are canonical hostname and request path, and the result is a route binding to one track, not a renderer or caller-selected revision. The trusted application resolver then loads authoritative visibility from that track; anonymous disclosure policy belongs above the store.
 
-- [ ] **Step 4: Extend the atomic operational transaction**
-
-Extend the filesystem `UnitOfWork`, which already stages revision, review,
-sync, track, publication, audit, and outbox changes together:
-
-1. load and validate expected generations under the store write lock
-2. apply callback mutations to an isolated in-memory or transaction-directory snapshot
-3. marshal complete JSON documents plus one newline
-4. write, chmod `0600`, fsync, and close all temporary files
-5. atomically publish a transaction manifest or complete state snapshot
-6. remove or recover incomplete staging on startup
-
-Guard release/review reads and writes with a `sync.RWMutex` on `FileStore`.
-Perform generation read/check/write and the complete callback while holding the
-write lock. A callback error, stale generation, audit error, outbox error, or
-any failure before manifest rename publishes none of its staged records. A
-failure opening or syncing the parent directory after rename must continue to
-wrap `port.ErrCommitOutcomeUnknown`; recovery reloads the complete manifest and
-replays only deterministic/idempotent operations. Do not expose temp files
-through list methods.
-
-- [ ] **Step 5: Implement deterministic paths and route collision checks**
-
-Store:
-
-```text
-release-tracks/{contractID}/{trackID}.json
-reviews/{contractID}/{reviewID}.json
-```
-
-Validate IDs with the existing safe-ID rules. Normalize public paths with
-`path.Clean`, require a leading slash, preserve `/`, lowercase hostnames, and
-strip request ports with `net.SplitHostPort`. Reject path-prefix matches that do
-not end on a segment boundary.
-
-- [ ] **Step 6: Run store tests including restart and stale-generation cases**
+Change route-binding writes to require an expected route generation, either by evolving `OperationalStore.SavePublication` or by an equivalently coarse CAS method. Track visibility/tombstone changes continue to use `SaveReleaseTrack` with its expected generation in the same transaction. Update compile-time port fakes first.
 
 Run:
 
 ```bash
-go test ./internal/adapters/store -count=1
+go test ./application/port -count=1
 ```
 
-Expected: PASS.
+Expected: compile failures in every adapter/fake that must adopt the CAS and route-reader contract.
 
-- [ ] **Step 7: Commit release persistence**
-
-```bash
-git add application/port/operational.go internal/adapters/store/fs.go internal/adapters/store/fs_test.go
-git commit -m "feat(store): persist atomic release state"
-```
-
----
-
-### Task 4: Deployment Release Configuration And Legacy Migration
-
-**Files:**
-- Create: `internal/adapters/config/server.go`
-- Create: `internal/adapters/config/server_test.go`
-- Create: `internal/adapters/config/testdata/server.yaml`
-- Create: `application/migration.go`
-- Create: `application/migration_test.go`
-
-**Interfaces:**
-- Consumes: repository `ContractConfig.PolicyLayer`, legacy publications,
-  contract revisions, release read ports, and `UnitOfWork`.
-- Produces: strict deployment track definitions, idempotent config
-  reconciliation, and publication-to-pinned-track migration.
-
-- [ ] **Step 1: Write failing strict server-config tests**
-
-Use this fixture shape:
-
-```yaml
-version: 1
-tracks:
-  - id: v1
-    contract: payments
-    source: payments-git
-    ref: refs/heads/v1
-    path: /payments/v1
-    mode: pinned
-    policy: stable
-    serverPolicy:
-      rules:
-        schema.removed: fail
-  - id: v2
-    contract: payments
-    source: payments-git
-    ref: refs/heads/v2
-    path: /payments/v2
-    mode: following
-    policy: next
-```
-
-Require `KnownFields(true)`, one YAML document, version 1, unique
-contract/track IDs, unique hostname/path routes, safe IDs/paths, valid modes,
-nonblank repository policy names, and server rules that convert to
-`PolicySourceServer`. Reject preview credentials in YAML.
-
-- [ ] **Step 2: Run config tests and verify RED**
-
-Run:
-
-```bash
-go test ./internal/adapters/config -run 'Server|ReleaseTrack' -count=1
-```
-
-Expected: compile failure because server config types do not exist.
-
-- [ ] **Step 3: Implement deployment-owned server configuration**
-
-Expose:
-
-```go
-type ServerFile struct {
-	Version int                 `yaml:"version"`
-	Tracks  []ServerTrackConfig `yaml:"tracks"`
-}
-
-type ServerTrackConfig struct {
-	ID            string             `yaml:"id"`
-	ContractID    string             `yaml:"contract"`
-	SourceID      string             `yaml:"source"`
-	RefSelector   string             `yaml:"ref"`
-	PublicPath    string             `yaml:"path"`
-	Hostname      string             `yaml:"hostname"`
-	Mode          string             `yaml:"mode"`
-	PolicyProfile string             `yaml:"policy"`
-	ServerPolicy ServerPolicyConfig `yaml:"serverPolicy"`
-}
-
-func LoadServer(path string) (ServerFile, error)
-func (f ServerFile) ReleaseTracks(now time.Time) ([]domain.ReleaseTrack, error)
-```
-
-Keep repository profiles out of this file; store only the selected profile
-name and server strengthening layer.
-
-- [ ] **Step 4: Write failing legacy migration tests**
+**Step 2: Write failing filesystem tests**
 
 Cover:
 
-- `/payments/v1` becomes pinned track `v1`
-- `/` or an unusable final segment becomes `default`
-- two colliding derived IDs gain a stable digest suffix
-- path, hostname, project/contract, and current revision are preserved exactly
-- private publications are not migrated
-- old flat revision metadata is copied into contract-scoped storage without
-  moving or deleting the blob
-- rerunning migration is a no-op
-- a pre-existing conflicting track fails closed without changing either record
-- a one-time implicit root publication may be seeded only when no public
-  publication and no release track exists
-
-- [ ] **Step 5: Run migration tests and verify RED**
-
-Run:
-
-```bash
-go test ./application -run 'Migration|LegacyPublication' -count=1
-```
-
-Expected: compile failure because the migrator does not exist.
-
-- [ ] **Step 6: Implement idempotent migration and configuration reconciliation**
-
-Add:
-
-```go
-type ReleaseMigrator struct {
-	Legacy     LegacyPublicationReader
-	Revisions  LegacyRevisionReader
-	UnitOfWork port.UnitOfWork
-	Clock      port.Clock
-}
-
-func (m ReleaseMigrator) Migrate(ctx context.Context) error
-func (m ReleaseMigrator) SeedImplicitRoot(ctx context.Context, contractID, sourceID, revisionID string) error
-
-type TrackReconciler struct {
-	Releases  port.ReleaseReader
-	UnitOfWork port.UnitOfWork
-	Clock      port.Clock
-}
-
-func (r TrackReconciler) Reconcile(ctx context.Context, definitions []domain.ReleaseTrack) error
-```
-
-Reconciliation may update route, hostname, ref selector, mode, policy profile,
-and server policy while preserving current/candidate revisions, generation, and
-history. Check the expected generation and save inside `UnitOfWork`; never reset
-public state from configuration.
-
-- [ ] **Step 7: Run config, migration, and store tests**
+- route identity is the canonical tuple of hostname and mounted base path;
+- hostnames are case-normalized, ports handled deliberately, and invalid/ambiguous host inputs rejected before lookup;
+- path matching selects the longest canonical mounted prefix on a segment boundary;
+- `/docs` does not match `/docs-other`;
+- one route deterministically resolves exactly one contract/track;
+- duplicate or overlapping bindings that would be ambiguous fail closed;
+- root, nested content, HTMX, search, download, and sitemap paths all resolve through the same route binding;
+- route bindings plus private, public, withdrawn, and deleted track states survive reopen;
+- the deployment-level disabled overlay does not rewrite persisted track visibility;
+- withdrawn/deleted tombstone evidence survives reopen even after cache purge failure;
+- exact replay is a no-op and does not increment generation;
+- stale expected generation returns `port.ErrGenerationConflict`;
+- a pre-publication commit failure exposes only the prior complete manifest;
+- a post-publication durability failure returns `port.ErrCommitOutcomeUnknown` and reopen exposes either the prior or next complete manifest, never a mixture;
+- an unknown-outcome retry reloads state and converges without duplicate audit/outbox records;
+- concurrent readers observe complete old or complete new route/track/visibility generations;
+- stored records never contain credentials or request headers.
 
 Run:
 
 ```bash
-go test ./internal/adapters/config ./internal/adapters/store ./application -run 'Server|Release|Migration|Publication' -count=1
+go test ./internal/adapters/store -run 'Test(FileStore.*(PublicRoute|Publication|ReleaseTrack|Tombstone|Generation|CommitOutcome))' -count=1
+```
+
+Expected: failures for host/path indexes, publication CAS, and durable tombstones.
+
+**Step 3: Implement one manifest-owned route index**
+
+Extend the existing operational manifest and immutable record layout. The route index must point to a route binding, which names one release track by canonical host/base-path identity. It must not point directly to visibility, a revision, a `SpecIndex`, mutable source ref, or startup renderer.
+
+Continue using `FileStore.Within` for coarse atomicity. Validate all staged revision, authorization, review, sync, track, publication/tombstone, audit, and outbox references before the manifest rename. Preserve the existing rule that post-rename uncertainty wraps `ErrCommitOutcomeUnknown`.
+
+When a track visibility mutation requires purge, commit the track tombstone and deterministic scoped purge intent in the same transaction. Dispatch is best effort after authority commits. A failed dispatch remains replayable and cannot roll state back to public.
+
+**Step 4: Replace the legacy public resolver contract**
+
+Refactor `application.PublicResolver` from `PublicationByPath(path)` into a trusted resolution that returns a route binding plus its `ReleaseTrack`. It must:
+
+- accept already-normalized host and path value objects or validate both itself;
+- load the route binding, then the identified track;
+- classify track visibility as never-existed/private, tombstoned, or public and apply the separate deployment-disabled overlay;
+- for public, snapshot track `Generation`, `VisibilityGeneration`, and `CurrentRevisionID`;
+- validate route/track contract and track identities;
+- never use legacy `Publication.RevisionID` as public revision authority;
+- expose no raw credentials or adapter types.
+
+Add resolver tests proving no revision/blob/index read occurs for private, withdrawn, deleted, or disabled routes.
+
+**Step 5: Run focused and adapter tests**
+
+```bash
+go test ./application -run 'TestPublicResolver' -count=1
+go test ./internal/adapters/store -run 'Test(FileStore.*(PublicRoute|Publication|ReleaseTrack|Tombstone|Generation|CommitOutcome))' -count=1
+go test ./application/port ./application ./internal/adapters/store -count=1
 ```
 
 Expected: PASS.
-
-- [ ] **Step 8: Commit configuration and migration**
-
-```bash
-git add internal/adapters/config/server.go internal/adapters/config/server_test.go internal/adapters/config/testdata/server.yaml application/migration.go application/migration_test.go
-git commit -m "feat(release): migrate publications to tracks"
-```
-
 ---
 
-### Task 5: Restart-Safe Revision Loading And Release Coordination
+### Task 4: Add Deterministic Deployment Configuration And Legacy Migration
 
 **Files:**
-- Create: `application/revisiondocs.go`
-- Create: `application/revisiondocs_test.go`
-- Modify: `application/release.go`
-- Modify: `application/release_test.go`
-- Modify: `application/port/operational.go`
+- Modify: `internal/selfhosted/server.go`
+- Modify: `internal/selfhosted/server_test.go`
+- Modify: `cmd/manja/main.go`
+- Modify: `cmd/manja/main_test.go`
+- Modify: `internal/adapters/store/fs.go`
+- Modify: `internal/adapters/store/fs_test.go`
 
-**Interfaces:**
-- Consumes: `port.RevisionReader`, `port.BlobStore`, `port.Parser`,
-  `port.ContractSnapshotBuilder`, repository policy, `port.ReleaseReader`, and
-  `port.UnitOfWork`.
-- Produces: `RevisionDocsService.Load`, `ReleaseService.ApplySyncResult`,
-  `ReleaseService.Promote`, and read-only public/preview resolvers.
+**Purpose:** Configure track routes and opaque auth references at composition while upgrading the existing single-publication state exactly once.
 
-- [ ] **Step 1: Write failing revision loader tests**
+**Step 1: Write failing configuration tests**
 
-Require:
+Extend `internal/selfhosted.Options` with the smallest concrete configuration for:
 
-```go
-type RevisionDocs struct {
-	Revision domain.Revision
-	File     domain.SpecFile
-	Index    domain.SpecIndex
-	Snapshot domain.ContractSnapshot
-}
+- stable track ID;
+- release mode and bound ref;
+- canonical public hostname and mounted path;
+- initial desired visibility;
+- preview authentication adapter selection and opaque secret reference;
+- manager authentication/authorization adapter selection and opaque secret reference;
+- browser mutation protection mode;
+- trusted proxy policy, disabled by default.
 
-type RevisionDocsService struct {
-	Revisions port.RevisionReader
-	Blobs     port.BlobStore
-	Parser    port.Parser
-	Snapshots port.ContractSnapshotBuilder
-}
+Test duplicate track IDs, duplicate or ambiguous host/path routes, malformed paths/hosts, unsupported modes/states, missing opaque secret references when auth is enabled, and any configuration that attempts to embed a raw token/key in public domain or application values.
 
-func (s RevisionDocsService) Load(context.Context, string, string) (RevisionDocs, error)
-```
-
-Test exact call order and identity propagation. Add corrupt/missing blob, parse
-failure, mismatched contract, and context-cancellation cases. Confirm loading a
-stored revision does not fetch a source or mutate release state.
-
-- [ ] **Step 2: Run loader tests and verify RED**
+Do not move `GitToken`, `GitSSHPrivateKey`, or future session-signing material out of `internal/selfhosted`/internal adapters. CLI flags and environment variables may feed those concrete options, but logs and errors must name only the option or secret reference, never its value.
 
 Run:
 
 ```bash
-go test ./application -run TestRevisionDocsService -count=1
+go test ./internal/selfhosted ./cmd/manja -run 'Test.*(ReleaseTrack|Route|PreviewAuth|ManagerAuth|MutationProtection|Secret)' -count=1
 ```
 
-Expected: compile failure because the service does not exist.
+Expected: compile failures for new configuration and validation.
 
-- [ ] **Step 3: Implement immutable artifact loading**
+**Step 2: Implement validated composition types**
 
-Read contract-scoped revision metadata, fetch exactly `Revision.BlobKey`, parse
-with its stored spec path/format, set index contract/revision identities, and
-build the snapshot from the same bytes. Wrap errors by stage:
-`load revision`, `load revision blob`, `parse revision`, and
-`build revision snapshot`.
+Keep deployment configuration out of `domain`. Convert validated concrete options into domain/application commands at the composition boundary. Sort tracks and route bindings by canonical identity before creating deterministic commands or diagnostics.
 
-- [ ] **Step 4: Write failing release coordinator tests**
+The normal release-track slice remains on the integrated Goshtoso dependency. Do not add the unpublished runtime-manifest API, pseudo-versions, module replacements, or hybrid artifact configuration here.
 
-Extend the constructor-injected predecessor service instead of redefining it
-with exported dependency fields:
+**Step 3: Write failing migration tests**
 
-```go
-type ReleaseDependencies struct {
-	Releases      port.ReleaseReader
-	UnitOfWork    port.UnitOfWork
-	Docs          RevisionDocsService
-	RepoPolicies  RepositoryPolicyReader
-	Clock          port.Clock
-	EngineVersion string
-}
+Seed real pre-migration `FileStore` fixtures representing the current integrated states:
 
-func NewReleaseService(ReleaseDependencies) (*ReleaseService, error)
-func (s *ReleaseService) ApplySyncResult(context.Context, domain.SyncResult) error
-func (s *ReleaseService) Promote(context.Context, string, string, string, string) error
+- a public legacy `Publication{ProjectID, RevisionID, Public: true, Path, Hostname}`;
+- a private legacy publication;
+- no publication;
+- corrupt/ambiguous legacy records;
+- an already migrated operational manifest;
+- a crash before and an unknown outcome after the migration manifest rename.
+
+Assert:
+
+- public legacy state creates one configured track with `CurrentRevisionID` equal to the legacy immutable revision and explicit public authority;
+- private legacy state creates private authority without a tombstone;
+- absent legacy state remains non-disclosing and does not synthesize a tombstone;
+- migration never selects the latest source revision or candidate;
+- migration reads only the legacy immutable spec blob, parses it once with the integrated parser, and persists the deterministic index artifact required by Task 2 before changing schema authority;
+- migrated route records use track ID plus host/base path; legacy `RevisionID` stops being routing authority;
+- exact rerun is a no-op;
+- configuration mismatch with already-migrated durable authority fails closed with operator guidance;
+- unknown outcome is resolved by reopening and validating the migration marker and records;
+- corrupt/ambiguous evidence aborts without partial publication;
+- source fetcher is never called by migration; parser failure leaves the prior manifest and public state untouched.
+
+Run:
+
+```bash
+go test ./internal/adapters/store ./internal/selfhosted -run 'Test.*(LegacyPublication|ReleaseMigration|MigrationCommitOutcome)' -count=1
 ```
 
-Preserve `ReleaseService.Coordinate` as the narrow transactional compatibility
-entry point until all predecessor call sites and external fixtures use the
-richer methods. Keep its review-evidence and replay tests green.
+Expected: failures for the explicit schema migration.
 
-Tests must prove:
+**Step 4: Implement one idempotent operational migration**
 
-- only tracks whose contract/source/ref selector match the synced immutable
-  revision are considered
-- current baseline is loaded from storage, never from mutable source state
-- repository and server policy merge monotonically
-- review, sync evidence, generation-checked track state, publication, audit,
-  and outbox are committed together in one `UnitOfWork`
-- pinned pass records candidate only
-- following pass advances current
-- failed policy saves review evidence but preserves current
-- parse/snapshot/policy/transaction/audit/outbox failures preserve current
-- repeating the same sync produces no duplicate event or generation
-- two concurrent generation attempts allow one winner and force the loser to
-  reload/re-evaluate once; a second stale result returns a conflict
-- `Promote` loads the stored accepted review and delegates to core transition
+Use the existing manifest schema marker and `UnitOfWork`; do not create loose marker files. Validate the referenced immutable revision/blob and persist its content-addressed index artifact before making a formerly public record public under a track. Persist revision artifact metadata, route binding, track visibility authority, audit event, outbox message, and schema marker atomically.
 
-- [ ] **Step 5: Run coordinator tests and verify RED**
+A pre-commit failure leaves the old manifest readable. A post-rename unknown result is reconciled by reopen. Never delete legacy bytes during this slice; a later garbage collector may remove unreachable data only after proving no committed manifest references it.
+
+**Step 5: Run focused tests**
+
+```bash
+go test ./internal/adapters/store -run 'Test.*(LegacyPublication|ReleaseMigration|MigrationCommitOutcome)' -count=1
+go test ./internal/selfhosted ./cmd/manja -run 'Test.*(ReleaseTrack|Route|Auth|MutationProtection|Secret|Migration)' -count=1
+```
+
+Expected: PASS.
+---
+
+### Task 5: Coordinate Review-Bound Releases And Visibility Commands
+
+**Files:**
+- Modify: `application/release.go`
+- Modify: `application/release_test.go`
+- Create or modify: focused `application/publication_command*.go` and tests
+- Modify: `application/port/operational.go` only for the minimal narrow readers required
+- Modify: `internal/adapters/store/fs_test.go` for integration of the coarse transaction
+
+**Purpose:** Evolve the current persisted-evidence release service and add explicit manager-authorized publication lifecycle commands without accepting caller-forged evidence.
+
+**Step 1: Lock the current release trust boundary with failing tests**
+
+Start from `application.ReleaseService.Coordinate`, `ReleaseDependencies`, `ReleaseEvidenceReader`, `RevisionReader`, and `UnitOfWork`. Do not introduce `StoredReview` or a second review model.
+
+Refine `ReleaseCommand` so untrusted callers select stable IDs and intent, not authoritative `ContractReview` or `SyncRecord` bodies. Test that coordination reloads:
+
+- `ReleaseAuthorization` selected by contract, track, and review identity;
+- its persisted `ContractReview` and `SyncRecord`;
+- baseline and candidate `ContractRevision` records and their canonical snapshots;
+- the current generation of the identified `ReleaseTrack`.
+
+Keep all current binding checks: contract, track, source, bound ref, route, policy digest, commit SHA, review digest/verdict/time, exception expiry, baseline, candidate, and actor identity. Caller disagreement or missing evidence fails closed before `UnitOfWork`.
 
 Run:
 
@@ -785,449 +500,451 @@ Run:
 go test ./application -run 'TestReleaseService' -count=1
 ```
 
-Expected: compile failures for `ApplySyncResult`, `Promote`, and their added
-dependencies, plus behavior failures for multi-track evaluation. The basic
-`ReleaseService.Coordinate` predecessor already exists.
-
-- [ ] **Step 6: Implement review-first, generation-checked coordination**
-
-For each matching track:
-
-1. load the current immutable baseline
-2. build/reuse the candidate snapshot from `SyncResult`
-3. merge selected repository policy with the track server layer
-4. call `EvaluateReleaseReview`
-5. call `NewStoredReview`
-6. compute the pure transition
-7. enter `UnitOfWork`
-8. reload/check expected generation, persist review and sync evidence, save the
-   whole track/publication, append audit, and enqueue work atomically
-
-Sort tracks by contract/ID before processing. Continue independent tracks after
-a policy rejection, but return joined infrastructure errors after all tracks
-have been attempted. Never let failure on `v2` change `v1`.
-
-- [ ] **Step 7: Run application, core, and store tests**
-
-Run:
-
-```bash
-go test ./application ./domain ./internal/adapters/store -count=1
-```
-
-Expected: PASS.
-
-- [ ] **Step 8: Commit revision loading and release coordination**
-
-```bash
-git add application/revisiondocs.go application/revisiondocs_test.go application/release.go application/release_test.go application/port/operational.go
-git commit -m "feat(release): coordinate reviewed track advancement"
-```
-
----
-
-### Task 6: Dynamic Last-Known-Good Public Routing
-
-**Files:**
-- Create: `internal/web/docs.go`
-- Create: `internal/web/docs_test.go`
-- Modify: `internal/web/public.go`
-- Modify: `internal/web/public_test.go`
-- Modify: `internal/web/server.go`
-- Modify: `internal/web/seo_test.go`
-- Modify: `internal/web/templates/layout.templ`
-- Modify: `internal/web/templates/public.templ`
-- Regenerate: `internal/web/templates/layout_templ.go`
-- Regenerate: `internal/web/templates/public_templ.go`
-
-**Interfaces:**
-- Consumes: read-only resolver callbacks returning a track plus immutable
-  `SpecIndex`.
-- Produces: base-path-aware renderer, public track router, and preview renderer
-  policy shared by Task 7.
-
-- [ ] **Step 1: Read the templ escaping gotchas before editing templates**
-
-Read:
-
-```bash
-cat .agents/skills/templ/reference/gotchas.md
-```
-
-Do not change existing Alpine or HTMX JavaScript expressions unless a failing
-test requires it.
-
-- [ ] **Step 2: Write failing base-path renderer tests**
-
-Extend `PublicOptions` and `templates.PublicDocsOptions` with:
-
-```go
-BasePath string
-NoIndex bool
-```
-
-Render at `/payments/v1` and require:
-
-- home and generated public-route links stay below `/payments/v1`
-- search loads `/payments/v1/search.json`
-- download uses `/payments/v1/openapi.json`
-- HTMX fragment links keep the same base
-- public static assets remain shared at `/assets/` and `/manja-assets/`
-- `NoIndex=true` emits `<meta name="robots" content="noindex,nofollow,noarchive">`
-  and an `X-Robots-Tag` header
-- sitemap is absent when `NoIndex=true`
-
-- [ ] **Step 3: Run renderer tests and verify RED**
-
-Run:
-
-```bash
-go test ./internal/web -run 'BasePath|NoIndex|Sitemap' -count=1
-```
-
-Expected: assertion or compile failure because renderer options are not
-base-path/indexability aware.
-
-- [ ] **Step 4: Parameterize renderer URLs without duplicating templates**
-
-Add a `docsURL(basePath, localPath string) string` helper and use it for home,
-search, download, selected route, and branding defaults. Add a small layout
-options type so only preview pages emit robots metadata. Keep all user/source
-URLs passed through `templ.URL`; do not use `templ.SafeURL`.
-
-- [ ] **Step 5: Regenerate templ output and rerun renderer tests**
-
-Run:
-
-```bash
-go run github.com/a-h/templ/cmd/templ generate
-go test ./internal/web -run 'BasePath|NoIndex|Sitemap|Public' -count=1
-```
-
-Expected: PASS with generated changes only in matching `_templ.go` files.
-
-- [ ] **Step 6: Write failing dynamic public-route tests**
-
-Define web-level callbacks:
-
-```go
-type ResolvedTrackDocs struct {
-	Track domain.ReleaseTrack
-	Index domain.SpecIndex
-}
-
-type PublicDocsResolver func(context.Context, string, string) (ResolvedTrackDocs, error)
-type PreviewDocsResolver func(context.Context, string, string) (domain.SpecIndex, error)
-```
-
-Test two tracks of one contract serving different titles/versions and search
-payloads. Verify request path stripping for:
-
-```text
-/payments/v1
-/payments/v1?selected=operation
-/payments/v1/search.json
-/payments/v1/openapi.json
-```
-
-Also verify unknown/empty-current tracks return 404, a resolver failure returns
-503 without error detail, the longest safe route wins, and `v1` failure does not
-change or contaminate `v2`.
-
-- [ ] **Step 7: Run router tests and verify RED**
-
-Run:
-
-```bash
-go test ./internal/web -run 'TrackDocs|DynamicPublic' -count=1
-```
-
-Expected: compile failure because dynamic docs routing does not exist.
-
-- [ ] **Step 8: Implement dynamic request resolution**
-
-Resolve track state on every request (the filesystem adapter may cache later),
-build a renderer for the resolved immutable index, clone the request, strip only
-the matched base path, and preserve query/fragment semantics. Mount shared
-assets before dynamic docs. Do not fall back to the startup candidate index when
-a track exists but cannot load.
-
-- [ ] **Step 9: Run web and SEO regressions**
-
-Run:
-
-```bash
-go test ./internal/web ./internal/web/e2e -count=1
-```
-
-Expected: PASS.
-
-- [ ] **Step 10: Commit dynamic public routing**
-
-```bash
-git add internal/web/docs.go internal/web/docs_test.go internal/web/public.go internal/web/public_test.go internal/web/server.go internal/web/seo_test.go internal/web/templates/layout.templ internal/web/templates/layout_templ.go internal/web/templates/public.templ internal/web/templates/public_templ.go
-git commit -m "feat(web): serve docs from release tracks"
-```
-
----
-
-### Task 7: Authenticated Revision Previews
-
-**Files:**
-- Create: `internal/adapters/auth/basic.go`
-- Create: `internal/adapters/auth/basic_test.go`
-- Modify: `internal/web/docs.go`
-- Modify: `internal/web/docs_test.go`
-- Modify: `internal/web/server.go`
-
-**Interfaces:**
-- Produces: constant-time Basic authentication and authenticated,
-  contract-scoped preview routing.
-
-- [ ] **Step 1: Write failing authenticator tests**
-
-Expose:
-
-```go
-var ErrUnauthenticated = errors.New("unauthenticated")
-
-type BasicAuthenticator struct {
-	Username   string
-	Password   []byte
-	ContractIDs []string
-}
-
-func LoadBasicAuthenticator(username, passwordFile string, contractIDs []string) (BasicAuthenticator, error)
-func (a BasicAuthenticator) Authenticate(*http.Request) (domain.Actor, error)
-```
-
-Test missing/malformed headers, wrong username, wrong password, empty secret,
-cancelled request, and successful actor scoping. Require constant-time digest
-comparison in implementation; tests should assert behavior, not timing.
-
-- [ ] **Step 2: Run auth tests and verify RED**
-
-Run:
-
-```bash
-go test ./internal/adapters/auth -count=1
-```
-
-Expected: package or compile failure.
-
-- [ ] **Step 3: Implement the Basic adapter**
-
-Read the password once at startup, trim one trailing CRLF/LF only, reject empty
-credentials, copy secret bytes, compare SHA-256 digests with
-`subtle.ConstantTimeCompare`, and return a `domain.Actor` whose project/contract
-scope is a sorted copy. Never include supplied credentials in errors.
-
-- [ ] **Step 4: Write failing preview route tests**
-
-Add:
-
-```go
-type PreviewAuthenticator func(*http.Request) (domain.Actor, error)
-```
+Expected: focused failures for the ID-only command and any newly exposed gap, while existing evidence-integrity cases remain green after fixture updates.
+
+**Step 2: Write failing coordination-state tests**
+
+Cover following and pinned modes:
+
+- accepted following decision atomically changes `CurrentRevisionID`, clears candidate, appends audit/outbox, and retains visibility state;
+- failed review or rejected authorization records candidate/decision as current code specifies but preserves the prior current revision and public LKG;
+- pinned acceptance records only the candidate;
+- explicit promotion reloads the accepted decision/evidence and generation, then changes current;
+- release/promotion never writes a caller-selected `Publication.RevisionID`;
+- public cache purge intent is scoped to host/path/contract/track/old revision/new revision/track generation;
+- source, parse, review, policy, blob, evidence, or commit failure leaves prior public state readable;
+- exact replay is a no-op with stable generation and event IDs;
+- stale generation fails with `ErrGenerationConflict`;
+- `ErrCommitOutcomeUnknown` is returned unchanged, then reload by stable track ID proves old or new complete state; retry converges idempotently;
+- two concurrent promotions cannot both win.
+
+The service must not publish response bytes or invalidate caches before the authoritative commit.
+
+**Step 3: Write failing publication lifecycle service tests**
+
+Add application commands for track configuration, make-public/private, withdrawal, deletion, and explicit reauthorization. Keep the administrative disabled response as validated deployment composition, not a release-track visibility transition. Each command contains:
+
+- canonical project, track, hostname, and base path identities;
+- expected track/publication generations;
+- stable idempotency key;
+- authenticated manager principal/actor identity and already-resolved action scope, or a provider-neutral authorization value whose verifier is a port;
+- trusted command time;
+- for reauthorization, the persisted evidence identity that authorizes the current immutable revision.
 
 Test:
 
-- authentication executes before contract/revision lookup
-- missing/bad credentials return 401 plus
-  `WWW-Authenticate: Basic realm="Manja preview"`
-- an authenticated actor lacking the contract scope receives 404
-- `/preview/payments/rev-2` and revision-local search/download routes render
-  the immutable preview index
-- every preview response has `X-Robots-Tag:
-  noindex, nofollow, noarchive`
-- `/preview/.../sitemap.xml` is 404
-- preview URLs never appear in the public track sitemap or public
-  `/search.json`
-- HTMX fragments remain inside the authenticated preview prefix
+- public authorization requires a non-empty current revision and valid persisted release evidence;
+- a never-public private route resolves anonymously as non-disclosing not-found;
+- making a formerly public route private commits the same durable `revoked` tombstone as withdrawal, so its old public URL returns `410` without revealing the private successor;
+- withdrawal/deletion commits a durable tombstone and deterministic purge intent before any purge call;
+- purge failure leaves `410` authority intact;
+- reconfiguration, sync, source changes, or restart cannot clear a tombstone;
+- reauthorization revalidates manager scope, route ownership, current revision, policy/review evidence, and expected generations;
+- a route claimed by another track fails closed;
+- replay and unknown outcomes converge;
+- credentials never enter commands, events, errors, or stored records.
 
-- [ ] **Step 5: Run preview tests and verify RED**
+**Step 4: Implement coarse, deterministic orchestration**
 
-Run:
+Reuse the existing `UnitOfWork` and typed application errors. Validate outside the transaction only when the evidence is immutable; reload generation-sensitive track/publication state inside it. Create deterministic audit, outbox, and purge-intent IDs from canonical command/evidence bytes.
 
-```bash
-go test ./internal/web -run 'Preview|Authentication|NoIndex' -count=1
-```
+For withdrawal/deletion, commit tombstone authority and purge intent together. Invoke a cache-purge port only after the transaction reports a confirmed commit. If outcome is unknown, reload first; dispatch the idempotent purge only when the durable intent exists.
 
-Expected: compile/assertion failure because preview routing/authentication is
-not wired.
+For release or promotion of a public track, the route stays bound to the track. Readers discover the new revision through `CurrentRevisionID`; no route-record revision rewrite is allowed.
 
-- [ ] **Step 6: Implement auth-first preview routing**
-
-Parse exactly two escaped identity segments after `/preview/`, then preserve
-the remaining revision-local renderer path for search, downloads, assets, and
-document fragments. Reject empty, slash-containing, dot, and dot-dot identity
-segments; reject additional identity segments, not valid local renderer path
-segments. Authenticate before invoking `PreviewDocsResolver`, check
-`Actor.ProjectIDs`, validate the local path, and delegate it to the
-base-path-aware renderer with `NoIndex=true`. Do not log resolver errors or
-render manager diagnostics to anonymous callers.
-
-- [ ] **Step 7: Run auth and web suites**
-
-Run:
+**Step 5: Run application and store integration tests**
 
 ```bash
-go test ./internal/adapters/auth ./internal/web ./internal/web/e2e -count=1
+go test ./application -run 'Test(ReleaseService|Promotion|PublicationLifecycle|Reauthorization|Withdrawal|Deletion)' -count=1
+go test ./internal/adapters/store -run 'Test.*(ReleaseTrack|Publication|Tombstone|PurgeIntent|CommitOutcome)' -count=1
+go test ./application ./application/port ./internal/adapters/store -count=1
 ```
 
 Expected: PASS.
-
-- [ ] **Step 8: Commit authenticated previews**
-
-```bash
-git add internal/adapters/auth/basic.go internal/adapters/auth/basic_test.go internal/web/docs.go internal/web/docs_test.go internal/web/server.go
-git commit -m "feat(preview): authenticate immutable revision docs"
-```
-
 ---
 
-### Task 8: Recovery-First Server Wiring And End-To-End Verification
+### Task 6: Route Every Public Surface Through The Exact Current Revision
+
+**Files:**
+- Modify: `internal/web/server.go`
+- Create: `internal/web/server_test.go`
+- Modify: `internal/web/public.go`
+- Modify: `internal/web/public_test.go`
+- Modify: current `internal/web/templates/*.templ` files only for base-path/noindex inputs
+- Regenerate: matching `internal/web/templates/*_templ.go`
+- Modify: focused `internal/web/e2e/*_test.go`
+
+**Purpose:** Remove the startup-renderer rewrite and make the integrated AppShell render a request-resolved immutable revision on every public entry point.
+
+**Step 1: Write failing top-level routing tests**
+
+Replace tests for `publishedDocsPathHandler` with a dynamic public handler whose dependencies are provider-neutral resolver and immutable index loader ports/services. Cover this exact call order:
+
+1. normalize trusted hostname and request path;
+2. resolve route visibility;
+3. load the bound track and stop on private, tombstoned, or disabled effective state before revision/blob/index reads;
+4. for public state, snapshot track ID, track generation, visibility generation, and `CurrentRevisionID`;
+5. load the persisted index/artifact for that exact contract/revision;
+6. verify index identities;
+7. render to a private buffer;
+8. re-read or CAS-validate route/track generations;
+9. only then set shared-cache headers and write body bytes.
+
+Use spies that panic on forbidden reads. Prove the old startup `SpecIndex` is never used after a different revision resolves. The production self-hosted route must not fall back to `NewPublicServer(startupIndex)` when a resolver dependency is missing; composition failure is safer.
+
+Run:
+
+```bash
+go test ./internal/web -run 'Test(DynamicPublic|PublicRouteResolution|PublishedDocs)' -count=1
+```
+
+Expected: failures because `server.go` still rewrites an accepted path to `/` on the single startup renderer.
+
+**Step 2: Lock the response matrix before implementation**
+
+Add black-box tests for body, status, cache headers, and `X-Manja-Publication-State`:
+
+- public existing root/nested/resource: normal status and `public`;
+- public unknown docs path/anchor: `404` and `public`;
+- private and never-existed route: observably indistinguishable `404`, no state header, no body/cache write from the private revision;
+- withdrawn: `410`, `revoked`;
+- deleted: `410`, `deleted`;
+- disabled: `503`, `disabled`;
+- anonymous public requests never return `401` or `403`;
+- GET and HEAD have matching status/headers with no HEAD body;
+- unsupported methods fail before render;
+- concurrent withdrawal/deletion between render and response revalidation discards the buffer and returns the new non-public state;
+- generation change to a new public revision retries resolution within a strict bound or returns a non-cacheable service error, never stale bytes labeled as new.
+
+Non-public/error bodies must be generic and must not disclose contract, track, revision, title, path ownership, or existence history beyond the approved `410` state.
+
+**Step 3: Make the existing public renderer base-path aware**
+
+Extend `PublicOptions` and `templates.PublicDocsOptions` with request-scoped mounted base path and robots/noindex state. Preserve the integrated Goshtoso `head.Dependencies`, AppShell, sidebar, operation/schema views, semantic tokens, and search behavior.
+
+Refactor URL helpers so all generated links stay under the resolved base path:
+
+- root and selected HTMX content;
+- operation/schema anchors and `?selected=` navigation;
+- `search.json` result hrefs;
+- `openapi.json` download;
+- `sitemap.xml` locations;
+- Goshtoso and Manja asset mounts where the existing head contract requires absolute paths.
+
+Keep search result DOM IDs distinct from content anchors. Shared versioned asset handlers may remain outside release resolution, but no docs body, index, search data, download, or sitemap may bypass it.
+
+**Step 4: Test every entry point against two revisions**
+
+Create two deliberately different persisted indexes and two tracks/routes. For root-mounted, nested-mounted, and hostname-selected routes, assert:
+
+- HTML title/version/content comes only from the resolved `CurrentRevisionID`;
+- nested operation/schema navigation stays within the mount;
+- HTMX fragments use the same revision and state header;
+- search JSON contains only that revision and base-prefixed hrefs;
+- OpenAPI download bytes/filename come only from that revision;
+- sitemap includes only public routes for that revision and correct host/base paths;
+- promotion flips every surface together;
+- a candidate that is not current never appears;
+- private/withdrawn/deleted tracks are excluded from any aggregate public search or sitemap;
+- no Try It controls or upstream request endpoint appears.
+
+**Step 5: Add safe cache semantics**
+
+Cache only immutable index/render artifacts after identity validation. Key them by canonical host, base path, contract, track, track generation, visibility generation, revision ID, artifact digest, renderer identity, and representation/fragment selector.
+
+Private, preview, tombstone, disabled, authorization error, and failed revalidation responses are `Cache-Control: no-store`. Public immutable content may use scoped validators, but must not be stored before the final state/generation check. Purge is defense in depth; durable visibility checks remain authoritative on every request.
+
+**Step 6: Implement and run web tests**
+
+Delete the compatibility behavior that accepts a route then rewrites it onto a different startup index. Keep the static `NewPublicServer(idx)` helper only for isolated renderer tests/demo use if current callers require it; production `NewServerWithOptions` must take the dynamic dependencies explicitly.
+
+```bash
+go run github.com/a-h/templ/cmd/templ generate
+go test ./internal/web -run 'Test(DynamicPublic|PublicRoute|PublicServer|Search|OpenAPI|Sitemap|HTMX|PublicationState)' -count=1
+go test ./internal/web/e2e -run 'Test.*(Public|Release|Route|Search|Sitemap)' -count=1
+```
+
+Expected: PASS and no generated template drift.
+---
+
+### Task 7: Add Authenticated, Scope-Bound Revision Previews
+
+**Files:**
+- Create or modify: focused `application/preview*.go` and tests
+- Create or modify: focused `application/port` principal/authorization contracts and tests
+- Create or modify: `internal/web/preview.go`, `internal/web/preview_test.go`
+- Modify: `internal/web/server.go`
+- Modify: `internal/web/public.go` only to reuse the base-path-aware renderer
+- Modify: `internal/selfhosted/server.go` only for internal adapter composition
+- Modify: `internal/selfhosted/server_test.go`
+
+**Purpose:** Let an authenticated, authorized principal inspect one persisted immutable revision without making it a public release.
+
+**Step 1: Write failing authentication-order tests**
+
+Add a preview route with syntactically canonical identifiers, for example `/preview/{contractID}/{revisionID}/...`. Use spies to assert:
+
+1. credential extraction and authentication run first;
+2. unauthenticated requests return `401` with the configured challenge;
+3. only after successful authentication may scope authorization inspect the requested canonical identifier values;
+4. only after successful scope authorization may revision/blob/index lookup occur;
+5. scope denial returns the same generic `404` as an authorized lookup of a missing revision;
+6. malformed or credential-bearing query URLs fail without store access.
+
+No contract, track, release, publication, revision, blob, or index lookup may occur before authentication. Authentication errors must not echo credentials.
+
+Run:
+
+```bash
+go test ./internal/web -run 'TestPreview.*(Authentication|Authorization|LookupOrder|NonDisclosure)' -count=1
+```
+
+Expected: failure because no preview boundary exists.
+
+**Step 2: Define provider-neutral principal and scope contracts**
+
+Keep HTTP credential parsing in an internal web/self-hosted adapter. Pass only a validated principal and explicit scopes to application code. A preview grant must bind at least principal, contract, revision or approved revision set, action `preview:read`, expiry where applicable, and authentication method identity.
+
+Do not place `http.Request`, bearer strings, cookies, raw token digests, Git credentials, or concrete identity-provider SDK types in `domain` or reusable `application`.
+
+If the self-hosted adapter accepts static bearer credentials, store only a one-way configured digest, compare fixed-size digests with `crypto/subtle`, reject query-string credentials, and never log presented/configured values. Production session/OIDC adapters remain internal and must provide the same principal contract.
+
+**Step 3: Reuse the exact immutable revision loader**
+
+After authentication and scope authorization, call the Task 2 loader for the requested contract/revision. Preview must not:
+
+- read or mutate `ReleaseTrack.CurrentRevisionID`;
+- create/update `Publication`;
+- create public route bindings, search aggregation, sitemap entries, offline bundles, or hybrid publication projections;
+- update release review/policy evidence;
+- proxy requests to the documented upstream API.
+
+The preview may render HTML, HTMX fragments, and a preview-scoped download/search response only if the same authenticated request scope covers them. Preview sitemap and offline endpoints return non-disclosing `404`.
+
+**Step 4: Write failing browser/cache/robots tests**
+
+For full HTML, HTMX, search, and download preview responses assert:
+
+- `Cache-Control: no-store, private`;
+- `X-Robots-Tag: noindex, nofollow, noarchive`;
+- an equivalent `<meta name="robots" ...>` in full HTML;
+- a credential-aware `Vary` header where relevant;
+- no `X-Manja-Publication-State: public`;
+- every link stays under the authenticated preview base path;
+- promoted or public status of the same revision does not change preview authorization;
+- credentials never appear in response bodies, locations, URLs, logs, metrics labels, persisted records, snapshots, or test failure strings.
+
+Test GET/HEAD and HTMX consistently. Unsupported methods must not invoke lookup.
+
+**Step 5: Implement the preview handler and redaction tests**
+
+Reuse the integrated AppShell with request-scoped base path and noindex options. Keep auth middleware outside the public resolver so a future refactor cannot accidentally look up existence first.
+
+Install a recording `slog.Handler` in tests and search every attribute/message for the presented credential and configured secret. Add store snapshot inspection to the same test.
+
+**Step 6: Run preview and public-isolation tests**
+
+```bash
+go test ./application -run 'TestPreview' -count=1
+go test ./internal/web -run 'TestPreview' -count=1
+go test ./internal/selfhosted -run 'Test.*Preview' -count=1
+go test ./internal/web -run 'Test.*(PublicSearch|Sitemap|Offline|Publication).*Preview' -count=1
+```
+
+Expected: PASS.
+---
+
+### Task 8: Protect Every Management Mutation
+
+**Files:**
+- Modify: `internal/web/management.go`
+- Modify: `internal/web/management_test.go`
+- Modify: current management `.templ` sources when CSRF fields are needed
+- Regenerate: matching `*_templ.go`
+- Modify: `internal/web/server.go`
+- Modify: `internal/selfhosted/server.go`
+- Modify: `internal/selfhosted/server_test.go`
+- Modify: `api/*.yaml` and regenerate `internal/web/api.gen.go` only if an external management API is actually exposed
+
+**Purpose:** Require authenticated manager authority and browser mutation protection before sync, track, promotion, or publication state changes.
+
+**Step 1: Inventory and lock every mutation route**
+
+Start with current `POST /manage/sync` and `POST /manage/publication`. Add the planned track configuration, promotion, make-private/public, withdrawal, deletion, and reauthorization routes to one test table. If an API route invokes the same commands, include it too.
+
+For every route assert the processing order:
+
+1. manager authentication;
+2. project/track/action authorization;
+3. method and allowed content-type validation;
+4. CSRF or strict same-origin validation;
+5. body/form parse and canonical identifier validation;
+6. application command;
+7. reload committed state for the response.
+
+Spies must prove a denied request does not parse meaningful identifiers, look up contract/track/revision existence, invoke source/network adapters, acquire a mutation slot, or write response-derived cache state.
+
+Missing or invalid manager authentication is exactly `401` with the configured challenge. An authenticated principal lacking the action is exactly `403`. Both use `Cache-Control: no-store` and a generic body.
+
+**Step 2: Preserve idempotency without treating it as security**
+
+Keep the existing management mutation request token/payload fingerprint as an idempotency mechanism. Tests must prove it cannot substitute for authentication, authorization, or CSRF/origin validation, and it is checked only after those gates.
+
+Replace in-memory publication/sync mutation as authority. Handlers call Task 5 application services and render state reloaded from persistence. HTMX and full-page requests use the same command and security path.
+
+**Step 3: Implement and test CSRF-token mode**
+
+The default browser mode uses a cryptographically random token bound to the authenticated session, delivered only in protected management HTML, and validated in constant time on every mutation. Cover:
+
+- valid token;
+- missing token;
+- malformed token;
+- token from another session/principal;
+- expired/rotated token;
+- token replay after session invalidation;
+- HTMX form/header transport;
+- no token in URLs, logs, metrics, durable state, or error bodies.
+
+Session/cookie creation and secret material stay in an internal adapter. Use `Secure`, `HttpOnly`, and an appropriate `SameSite` policy; CSRF remains required even with `SameSite`.
+
+**Step 4: Implement and test the explicit header-only alternative**
+
+Only deployments that explicitly select header-only protection may use it. Require both:
+
+- a canonical `Origin` exactly equal to the effective management origin, including scheme, normalized host, and port;
+- `Sec-Fetch-Site: same-origin`.
+
+Table-test rejection of missing Origin, multiple Origin values, malformed/opaque/null Origin, userinfo, cross-origin scheme/host/port, missing `Sec-Fetch-Site`, and values `none`, `same-site`, or `cross-site`. Reject before body parsing.
+
+Derive the effective origin from the direct request by default. Honor forwarding headers only through an explicitly configured trusted-proxy adapter that validates the immediate peer and canonicalizes a single value. Test spoofed forwarding headers from untrusted peers.
+
+**Step 5: Add action-specific authorization tests**
+
+Use distinct permissions for:
+
+- `sync`;
+- `track:configure`;
+- `release:promote`;
+- `publication:publish`;
+- `publication:make-private`;
+- `publication:withdraw`;
+- `publication:delete`;
+- `publication:reauthorize`.
+
+A manager authorized for one project/track/action cannot mutate another. Scope denial is `403` without target-existence details. Reauthorization requires its own permission and cannot be inferred from publish permission.
+
+**Step 6: Add credential/log/store hygiene tests**
+
+Use recording log, metrics, response, redirect, and store adapters. Search them for manager credentials, preview credentials, cookies, CSRF tokens, raw secret references, Git tokens, and SSH keys. Assert only opaque principal/secret-reference identifiers cross the internal composition boundary.
+
+**Step 7: Run management security tests**
+
+```bash
+go run github.com/a-h/templ/cmd/templ generate
+go test ./internal/web -run 'TestManagement.*(Authentication|Authorization|CSRF|Origin|Mutation|Sync|Track|Promotion|Publication|Withdrawal|Deletion|Reauthorization)' -count=1
+go test ./internal/selfhosted -run 'Test.*(Manager|CSRF|Origin|Secret)' -count=1
+```
+
+If API YAML changed, also run:
+
+```bash
+npm run api:bundle
+npm run api:lint
+go run github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen \
+  -generate types,strict-server \
+  -package web \
+  -o internal/web/api.gen.go \
+  api/dist/openapi.yaml
+go test ./internal/web -run 'TestAPI.*Management' -count=1
+```
+
+Expected: PASS and generated output matches source.
+---
+
+### Task 9: Make Startup Recovery-First And Prove The Complete Slice
 
 **Files:**
 - Modify: `internal/selfhosted/server.go`
 - Modify: `internal/selfhosted/server_test.go`
 - Modify: `cmd/manja/main.go`
 - Modify: `cmd/manja/main_test.go`
-- Modify: `README.md`
-- Create: `internal/web/e2e/release_tracks_test.go`
+- Modify: focused `internal/web/e2e/*_test.go`
+- Modify: operator/public docs and the task-specific snag ledger
 
-**Interfaces:**
-- Consumes: server/repository config, migrator, track reconciler,
-  `ReleaseService`, `RevisionDocsService`, Basic authenticator, and web
-  resolver callbacks.
-- Produces: self-hosted startup/restart behavior and documented flags:
-  `--config`, `--release-config`, `--contract`, `--preview-user`, and
-  `--preview-password-file`.
+**Purpose:** Serve durable immutable last-known-good documentation before touching mutable sources, then verify the complete release, visibility, auth, and restart contract.
 
-- [ ] **Step 1: Write failing CLI configuration tests**
+**Step 1: Write failing startup-order tests**
 
-Require:
+Instrument every composition dependency and assert this order:
 
-```text
-manja
-  --config .manja.yaml
-  --release-config /etc/manja/release.yaml
-  --contract payments
-  --preview-user local-admin
-  --preview-password-file /run/secrets/manja-preview-password
-```
+1. validate deployment configuration and resolve opaque secret references inside internal adapters;
+2. open the operational store and reconcile any unknown prior manifest outcome;
+3. run the idempotent legacy schema migration;
+4. load route bindings and their release tracks;
+5. validate every public/tombstoned track reference and make each public current revision's persisted immutable render artifact available;
+6. construct the dynamic public, preview, and manager-protected handlers;
+7. report readiness;
+8. only after readiness, attempt configured source discovery/sync and candidate review.
 
-`--preview-user` and `--preview-password-file` are an all-or-nothing pair.
-Release config requires repository config because tracks select repository
-policy profiles. Existing server flags and `manja check --config` behavior stay
-unchanged.
-
-- [ ] **Step 2: Run command tests and verify RED**
+Source fetch, Git ref discovery, candidate parse, review, or policy evaluation must not be prerequisites for serving an already committed LKG. A deployment with no prior valid public revision may fail readiness with an operator-safe error; it must not silently publish a new source result.
 
 Run:
 
 ```bash
-go test ./cmd/manja -run 'ServerConfig|PreviewAuth|RunServer|RunCheck' -count=1
+go test ./internal/selfhosted -run 'Test.*(StartupOrder|RecoveryFirst|LastKnownGood|Readiness)' -count=1
 ```
 
-Expected: assertions fail because new flags are not parsed.
+Expected: failure because current `NewServer` calls `syncSource` before it can construct the handler.
 
-- [ ] **Step 3: Write failing recovery-first application tests**
+**Step 2: Write restart and failure-matrix tests**
 
-Use a persisted track/current revision plus a source that fails and require
-`selfhosted.NewServer` to return a handler that still serves last-known-good public
-docs. Add cases for:
+Persist revision A as public LKG, then introduce candidate B. Restart or operate under each failure:
 
-- no stored state plus source failure returns an error
-- stored state plus corrupt/missing current blob returns an error
-- successful first sync with no publications/tracks seeds one pinned `/`
-  compatibility track
-- legacy migration happens before route resolution
-- configured track definitions preserve stored current state
-- successful mapped sync invokes release coordination
-- Git sources sync each unique non-empty configured track ref in sorted order;
-  one ref failure does not prevent independent refs from retaining or advancing
-  their own tracks
-- file sources perform one singleton sync and match the stored file ref
-- release coordination failure does not prevent existing public docs from
-  serving, but is recorded in management sync state
-- restart constructs indexes from stored revision metadata, not the latest
-  source ref
-- previews are not mounted unless authentication is configured
+- source unavailable or credentials rejected;
+- ref discovery failure;
+- candidate parse/index failure;
+- review or policy failure;
+- blob write failure;
+- metadata/store failure before commit;
+- `ErrCommitOutcomeUnknown` after atomic publication;
+- cache read/write/purge failure;
+- corrupt candidate artifact;
+- process restart during promotion, withdrawal, deletion, and reauthorization.
 
-- [ ] **Step 4: Run application tests and verify RED**
+Assert A remains the only public body until a fully authorized B transition commits. After confirmed promotion, every public surface serves B. After withdrawal/deletion, restart returns the durable `410` state even if all caches still contain A. Private remains non-disclosing `404`; disabled remains `503`.
 
-Run:
+Parser failure during a later candidate sync must not affect A. Startup must load A's persisted immutable render artifact without invoking the source fetcher or requiring the mutable candidate parser path.
 
-```bash
-go test ./internal/selfhosted -run 'Recovery|ReleaseTrack|Preview|LastKnownGood' -count=1
-```
+**Step 3: Reconcile unknown commit outcomes**
 
-Expected: assertions fail because startup remains source-first and uses one
-startup index.
+At every application command boundary, handle `port.ErrCommitOutcomeUnknown` by reopening/reloading stable record IDs and comparing the full expected generation/evidence state. Return a confirmed success only when the intended complete state is durable; return retryable uncertainty otherwise. Automatic retries are allowed only for deterministic idempotent commands and must not duplicate audit, outbox, or purge intents.
 
-- [ ] **Step 5: Refactor startup in recovery-first order**
+Test both possible reopen results after injected post-rename failure. Never infer success from an in-memory object.
 
-Wire startup in this order:
+**Step 4: Compose concrete security adapters**
 
-1. open filesystem store
-2. migrate legacy publications
-3. load repository/server configs and reconcile definitions
-4. validate every stored current track can load immutable docs
-5. configure public/preview resolver callbacks
-6. attempt one file sync or each sorted unique configured Git ref
-7. on first successful legacy-compatible startup, seed pinned `/` only if no
-   release/public state exists
-8. apply mapped release reviews/transitions
-9. construct management compatibility model from the latest healthy candidate
-   while public handlers remain store-backed
+Wire preview and manager authentication, authorization, CSRF/origin policy, secret resolution, trusted-proxy policy, and cache purge under `internal/selfhosted`. Keep reusable core free of concrete providers and raw secrets.
 
-If a source/release attempt fails after step 4, retain the handler and expose
-only manager-safe summary state; never swap a public track to the failed
-candidate.
+Startup diagnostics may name a missing secret reference or adapter kind but never its value. Add a final recursive scan of logs, operational manifests, cached artifacts, and rendered output for test credentials.
 
-- [ ] **Step 6: Add end-to-end concurrent-track and preview tests**
+**Step 5: Add end-to-end release/visibility scenarios**
 
-Persist two revisions and two tracks, start the real HTTP handler, and assert:
+Using the real filesystem store, OpenAPI parser, current AppShell renderer, and `httptest`:
 
-- `/payments/v1` renders revision v1
-- `/payments/v2` renders revision v2
-- each track returns its own search/download data
-- authenticated `/preview/payments/{revision}` can render either revision
-- anonymous preview is 401
-- preview HTML/search routes are noindex and absent from public sitemap/search
-- after restart with source failure, both public routes still return the same
-  content
-- a failed following candidate leaves its track on the prior revision
-- a passing following candidate changes only its mapped track
+1. seed public revision A and start with source offline;
+2. verify root, nested route, hostname route, HTMX, search, download, and sitemap all serve A;
+3. sync/review candidate B and prove no public surface changes;
+4. promote/accept B and prove all surfaces switch together;
+5. preview a non-current revision only with valid scoped auth and verify noindex/no-store/public isolation;
+6. deny preview before lookup for absent credentials and deny wrong scope without existence disclosure;
+7. deny every management mutation without manager auth and browser protection;
+8. withdraw, inject purge failure, and prove immediate plus restarted `410 revoked`;
+9. prove config/source changes do not restore it;
+10. reauthorize with valid evidence/expected generation and prove public service returns;
+11. delete and prove durable `410 deleted`;
+12. assert the HTML has no Try It console and the server exposes no upstream proxy path.
 
-- [ ] **Step 7: Run targeted end-to-end tests**
-
-Run:
-
-```bash
-go test ./internal/selfhosted ./internal/web ./internal/web/e2e ./cmd/manja -count=1
-```
-
-Expected: PASS.
-
-- [ ] **Step 8: Document self-hosted release operation**
-
-Document:
-
-- portable repository policy vs deployment release config
-- legacy publication migration and pinned default behavior
-- pinned vs following semantics
-- Basic preview credential file, required TLS/reverse-proxy protection, and
-  replaceable auth boundary
-- public and preview route examples
-- last-known-good behavior on source/parser/policy/store failure
-- OIDC/Dex and connected review APIs as later roadmap slices
-- no Try It or upstream proxy
-
-- [ ] **Step 9: Run complete project gates**
-
-Run:
+**Step 6: Run full relevant gates**
 
 ```bash
 npm ci
@@ -1235,79 +952,91 @@ npm run api:bundle
 npm run api:lint
 go run github.com/a-h/templ/cmd/templ generate
 go test ./...
+GOWORK=off go test ./architecture -count=1
 (cd site && GOWORK=off go test ./...)
-git diff --check
+(cd integration/testdata/external-module && GOWORK=off go test ./...)
 ```
 
-Expected: all commands exit 0; API lint may report only the same three
-pre-existing warnings.
-
-- [ ] **Step 10: Run restart and deterministic-state smoke checks**
-
-Using a temporary data directory:
-
-1. start Manja with the committed repository/server fixtures and preview
-   password file
-2. request both public tracks and one authenticated preview
-3. stop Manja
-4. make the configured source unavailable
-5. restart against the same data directory
-6. require both public responses to remain byte-equivalent
-7. verify persisted track/review JSON contains no preview password
-
-Expected: public requests remain HTTP 200; anonymous preview is 401;
-authenticated preview is HTTP 200 and noindex.
-
-- [ ] **Step 11: Run the Goshtoso snag checkpoint**
-
-Ask:
-
-```text
-Did Goshtoso components, helpers, docs, examples, generated templ behavior, or
-release/dependency workflow slow this task down or force source-diving?
-```
-
-If yes, record exact component/symbol/source/workaround before review. If no,
-state explicitly that only existing Manja template helpers were changed.
-
-- [ ] **Step 12: Commit wiring and docs**
+Run container-backed integration tests only if implementation actually changes Forgejo, Dex, or another container-backed source/auth adapter:
 
 ```bash
-git add internal/selfhosted/server.go internal/selfhosted/server_test.go cmd/manja/main.go cmd/manja/main_test.go README.md internal/web/e2e/release_tracks_test.go
-git commit -m "feat(release): wire tracks and authenticated previews"
+go test -tags=integration ./internal/integration -v
 ```
+
+Expected: PASS. Confirm root, `site/`, and `integration/testdata/external-module/` still resolve exact Goshtoso v0.0.13 with no replacement. Record every source dive or friction item in the snag ledger.
 
 ---
 
 ## Final Review Gate
 
-Before requesting review:
+### Requirements-To-Task Traceability
+
+| Required contract | Planned coverage |
+| --- | --- |
+| Exact integrated Goshtoso v0.0.13 consumer checkpoint across root/site/external fixture | Authority, Task 9 |
+| Later unpublished runtime manifest is hybrid-only, not a release blocker | Authority, Task 4 |
+| Current public AppShell UI is extended rather than replaced | Tasks 6, 7 |
+| Host/path resolves track then immutable current revision then stored artifact | Tasks 2, 3, 6 |
+| Root, nested, hostname, HTMX, search, download, sitemap use same revision | Tasks 6, 9 |
+| Exact visibility header/status and non-disclosure matrix | Authority, Tasks 1, 6 |
+| Durable withdrawal/deletion tombstone, scoped purge, explicit reauthorization | Tasks 1, 3, 5, 9 |
+| LKG survives source/parse/review/policy/store/cache/restart failure | Tasks 2, 5, 6, 9 |
+| Startup serves persisted immutable LKG without source availability | Tasks 2, 4, 9 |
+| Preview authenticates before lookup, authorizes scope, noindex/no-store, stays non-public | Task 7, Task 9 |
+| Manager auth/authz and browser mutation protection for every mutation | Task 8, Task 9 |
+| Raw credentials terminate at internal composition and never persist/log | Authority, Tasks 4, 7, 8, 9 |
+| Provider-neutral, ports-first, deterministic, idempotent, CAS/unknown-outcome safe | Tasks 1, 3, 5, 9 |
+| No Try It console and no upstream proxy | Authority, Tasks 6, 7, 9 |
+| Goshtoso source dives/API gaps/workarounds become snags | Authority, Task 9 |
+
+### Delivery Blockers Versus Assurance
+
+The following are delivery blockers and cannot be deferred:
+
+- any public entry point can bypass visibility/track/current-revision resolution;
+- private existence can be inferred from status, headers, body, lookup order, search, sitemap, or cache;
+- tombstone authority is not durable before purge;
+- LKG startup depends on mutable source or candidate parsing;
+- preview lookup precedes authentication or scope authorization;
+- any management mutation lacks manager authorization or the configured browser mutation protection;
+- credentials cross the internal boundary, persist, or appear in logs/output;
+- CAS, idempotency, or unknown-outcome recovery tests fail;
+- dependency guard, generation, unit, Markdown/API generation, or relevant integration gates fail.
+
+Deferrable assurance is limited to additional evidence beyond the minimum gates, such as a broader browser/device matrix or an extra provider integration not used by this slice. Deferral requires a linked GitHub issue receipt with owner, scope, risk, and acceptance gate. Without that receipt, classify the item as unresolved and stop.
+
+### Commands Before Requesting Implementation Review
+
+Run from the dedicated implementation worktree:
 
 ```bash
 git status --short
 git log --oneline origin/main..HEAD
 git diff --stat origin/main...HEAD
 git diff --check origin/main...HEAD
-go test ./...
-(cd site && GOWORK=off go test ./...)
+npm ci
 npm run api:bundle
 npm run api:lint
 go run github.com/a-h/templ/cmd/templ generate
+go test ./...
+GOWORK=off go test ./architecture -count=1
+(cd site && GOWORK=off go test ./...)
+(cd integration/testdata/external-module && GOWORK=off go test ./...)
 git status --short
 ```
 
-Then review requirements line by line:
+Also inspect literal module resolution and replacements:
 
-- provider-neutral core and ports-first persistence
-- immutable revision loading after restart
-- independent `v1`/`v2` current state
-- pinned and following transition rules
-- review-first and generation-checked advancement
-- last-known-good preservation at every failure stage
-- authenticated no-index preview isolation
-- legacy publication migration without path loss
-- no connected API/provider/management-IA/Try-It scope
-- no Goshtoso snag left unrecorded
+```bash
+go list -m all | rg 'github.com/araihu/goshtoso'
+(cd site && GOWORK=off go list -m all | rg 'github.com/araihu/goshtoso')
+(cd integration/testdata/external-module && GOWORK=off go list -m all | rg 'github.com/araihu/goshtoso')
+go list -m -json all
+(cd site && GOWORK=off go list -m -json all)
+(cd integration/testdata/external-module && GOWORK=off go list -m -json all)
+```
+
+Review the traceability table line by line against fresh code and test evidence. Audit exact changed paths, generated drift, local Markdown links, balanced fences, and the snag ledger. Record every delivery blocker and every deferrable item with its issue receipt.
 
 Stop at this gate with the branch/worktree, commit range, fresh command output,
 and review findings. Do not merge, push, or clean the worktree without explicit
