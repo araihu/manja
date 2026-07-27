@@ -407,3 +407,17 @@ authorize edits to Goshtoso or access to private/generated upstream output.
 - GREEN command: `GOWORK=off go test ./internal/server -run
   'TestDemoManagement(RedirectsStayMounted|HTMXMutationStaysMounted)$'
   -count=1 -v`; both tests passed.
+
+## Recursive self-hosted fixture token correction
+
+- After the site fixtures were corrected, the recursive root gate exposed four
+  manual mutation POSTs across three self-hosted integration-style unit tests
+  that also omitted required request tokens. Literal failures were publication
+  or sync `status = 200` where the fixtures expected 303 redirects.
+- After a second, final fixture-only ownership expansion, each POST uses a
+  distinct valid token so the same test can intentionally submit different
+  sync payloads without triggering the same-token/different-payload guard. No
+  production self-hosted code or test behavior changed.
+- GREEN command: `GOWORK=off go test ./internal/selfhosted -run
+  'TestNewWithOptions(SyncsSpecBeforeServingPublicDocs|ManagesGitRefDiscoveryAndSyncPublication|RefreshesGitCandidatesAfterManualSync)$'
+  -count=1 -v`; all three tests passed.

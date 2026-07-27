@@ -60,6 +60,7 @@ func TestNewWithOptionsSyncsSpecBeforeServingPublicDocs(t *testing.T) {
 	form := url.Values{
 		"visibility": {"public"},
 		"path":       {"/synced/v1"},
+		"request_id": {"selfhosted-publication-token"},
 	}
 	rec = httptest.NewRecorder()
 	req = httptest.NewRequest(http.MethodPost, "/manage/publication", strings.NewReader(form.Encode()))
@@ -249,9 +250,10 @@ components:
 	}
 
 	form := url.Values{
-		"ref":     {"release/v2"},
-		"publish": {"public"},
-		"path":    {"/release/v2"},
+		"ref":        {"release/v2"},
+		"publish":    {"public"},
+		"path":       {"/release/v2"},
+		"request_id": {"selfhosted-release-sync-token"},
 	}
 	rec = httptest.NewRecorder()
 	req = httptest.NewRequest(http.MethodPost, "/manage/sync", strings.NewReader(form.Encode()))
@@ -272,7 +274,8 @@ components:
 	}
 
 	form = url.Values{
-		"ref": {"main"},
+		"ref":        {"main"},
+		"request_id": {"selfhosted-main-sync-token"},
 	}
 	rec = httptest.NewRecorder()
 	req = httptest.NewRequest(http.MethodPost, "/manage/sync", strings.NewReader(form.Encode()))
@@ -331,7 +334,8 @@ func TestNewWithOptionsRefreshesGitCandidatesAfterManualSync(t *testing.T) {
 	appGit(t, repo, "checkout", "main")
 
 	form := url.Values{
-		"ref": {"main"},
+		"ref":        {"main"},
+		"request_id": {"selfhosted-refresh-sync-token"},
 	}
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodPost, "/manage/sync", strings.NewReader(form.Encode()))
