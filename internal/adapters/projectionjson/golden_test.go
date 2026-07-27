@@ -1,0 +1,179 @@
+package projectionjson
+
+import (
+	"bytes"
+	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+
+	"github.com/araihu/manja/application/projection"
+	"github.com/araihu/manja/domain"
+)
+
+func TestGoldenEmptyProjection(t *testing.T) {
+	assertGolden(t, "v1-empty", emptyFixture(), 872, "8267e1a8a597a6561409e81492b06c24b44b6cbd12875fc90985295c5765889d")
+}
+
+func TestGoldenOperationProjection(t *testing.T) {
+	assertGolden(t, "v1-operation", operationFixture(), 2780, "6609c4e78e6556c8a178e500aeff8da85801ce30aaa784129c85b2c4e63cdc41")
+}
+
+func TestGoldenFullProjection(t *testing.T) {
+	document := mustBuild(t, fullFixture())
+	encoded, err := Marshal(document)
+	if err != nil {
+		t.Fatal(err)
+	}
+	goldenPath := fixturePath("v1-full.json")
+	digestPath := fixturePath("v1-full.sha256")
+	if os.Getenv("MANJA_UPDATE_PROJECTION_GOLDEN") == "1" {
+		if err := os.WriteFile(fixturePath("v1-full.candidate.json"), encoded, 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(fixturePath("v1-full.candidate.sha256"), []byte(Digest(encoded)+"\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	want, err := os.ReadFile(goldenPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(encoded, want) {
+		t.Fatalf("full golden differs; inspect candidate before acceptance")
+	}
+	wantDigest := strings.TrimSpace(string(mustReadPath(t, digestPath)))
+	if Digest(encoded) != wantDigest {
+		t.Fatalf("full digest = %s, want %s", Digest(encoded), wantDigest)
+	}
+}
+
+func TestFullFixtureManifest(t *testing.T) {
+	document := mustBuild(t, fullFixture())
+	counts := map[string]int{
+		"operations": len(document.Operations), "schemas": len(document.Schemas),
+		"search": len(document.Search), "routes": len(document.PublicRoutes),
+		"servers": len(document.Overview.Servers), "sidebar": len(document.SidebarSections),
+	}
+	want := map[string]int{"operations": 2, "schemas": 2, "search": 3, "routes": 4, "servers": 2, "sidebar": 3}
+	for key, count := range want {
+		if counts[key] != count {
+			t.Errorf("manifest %s count = %d, want %d", key, counts[key], count)
+		}
+	}
+	readme := string(mustReadFixture(t, "README.md"))
+	for _, required := range []string{"operation-create-pet", "operation-list-pets", "schema-error", "schema-pet", "__MANJA_SPEC_DOWNLOAD_SENTINEL_7d67d7e4__", "__MANJA_EXAMPLE_SPEC_SENTINEL_12eb9dc1__"} {
+		if !strings.Contains(readme, required) {
+			t.Errorf("manifest lacks %q", required)
+		}
+	}
+}
+
+func assertGolden(t *testing.T, name string, input domain.SpecIndex, byteCount int, digest string) {
+	t.Helper()
+	got := mustMarshal(t, mustBuild(t, input))
+	want := mustReadFixture(t, name+".json")
+	if len(want) != byteCount || len(got) != byteCount {
+		t.Fatalf("%s byte count got/want = %d/%d, expected %d", name, len(got), len(want), byteCount)
+	}
+	if len(want) == 0 || want[len(want)-1] == '\n' {
+		t.Fatalf("%s has final newline", name)
+	}
+	if !bytes.Equal(got, want) {
+		t.Fatalf("%s bytes differ\ngot:  %s\nwant: %s", name, got, want)
+	}
+	if Digest(got) != digest || strings.TrimSpace(string(mustReadFixture(t, name+".sha256"))) != digest {
+		t.Fatalf("%s digest mismatch", name)
+	}
+}
+
+func emptyFixture() domain.SpecIndex {
+	return domain.SpecIndex{
+		ProjectID: "payments", RevisionID: "rev-0001", Title: "Payments <API>\u2028", Version: "1.2.3",
+		Operations: []domain.Operation{}, Schemas: []domain.Schema{}, Search: []domain.SearchDocument{}, PublicRoutes: []domain.PublicRoute{},
+		Overview: domain.SpecOverview{Servers: []domain.SpecServer{}},
+	}
+}
+
+func operationFixture() domain.SpecIndex {
+	return domain.SpecIndex{
+		ProjectID: "pets", RevisionID: "rev-0002", Title: "Petstore", Version: "1.0.0",
+		Overview:     domain.SpecOverview{Servers: []domain.SpecServer{}},
+		Operations:   []domain.Operation{{ID: "listPets", Anchor: "operation-list/pets", Method: "GET", Path: "/pets", Summary: "List pets", Tags: []string{"Pets"}}},
+		Schemas:      []domain.Schema{},
+		Search:       []domain.SearchDocument{{ID: "op-list", Title: "List pets", Href: "#operation-list/pets", Kind: "Operation", Method: "GET", Path: "/pets", Section: "Pets", Keywords: []string{"pets"}}},
+		PublicRoutes: []domain.PublicRoute{{Path: "/", Title: "Petstore"}, {Path: "/?selected=operation-list%2Fpets#operation-list/pets", Title: "List pets"}},
+	}
+}
+
+func fullFixture() domain.SpecIndex {
+	input := domain.SpecIndex{
+		ProjectID: "payments", RevisionID: "rev-0001", Title: "Payments <API>\u2028", Version: "2026-07",
+		Branding: domain.DocsBranding{DisplayName: "Payments", Logo: domain.DocsBrandingLogo{Src: "/logo.svg", Alt: "Payments", HomeURL: "/"}, Favicon: "/favicon.svg"},
+		Overview: domain.SpecOverview{
+			Description: "Payments\nAPI", TermsOfService: "/terms",
+			Contact: domain.SpecContact{Name: "API team", URL: "/contact", Email: "api@example.com"},
+			License: domain.SpecLicense{Name: "MIT", URL: "/license", Identifier: "MIT"},
+			Servers: []domain.SpecServer{{URL: "https://api.example", Variables: []domain.SpecServerVariable{{Name: "region", Default: "us", Enum: []string{"us", "eu"}}}}, {URL: "https://sandbox.example"}},
+		},
+		SpecDownload:    domain.SpecDownload{Filename: "openapi.json", JSON: []byte("__MANJA_SPEC_DOWNLOAD_SENTINEL_7d67d7e4__")},
+		ExampleSpecJSON: "__MANJA_EXAMPLE_SPEC_SENTINEL_12eb9dc1__",
+		Operations: []domain.Operation{
+			{ID: "createPet", Anchor: "operation-create-pet", Method: "POST", Path: "/pets", Summary: "Create pet", Tags: []string{"Pets", "Admin", "Pets"}, Parameters: []domain.OperationParameter{{Name: "trace", In: "header", Example: "true"}, {Name: "dryRun", In: "query", Schema: domain.SchemaSummary{Default: "1e+03", Example: "{\"looks\":\"json\"}"}}}, RequestBody: &domain.OperationRequestBody{Required: true, MediaTypes: []domain.OperationMediaType{{ContentType: "application/json", Schema: domain.SchemaSummary{JSON: "{\"z\":1e+03,\"a\":1e-3}"}, Example: "", ExampleProvided: true}}}, Responses: []domain.OperationResponse{{Status: "500"}, {Status: "201"}}, Security: []domain.OperationSecurity{{Name: "oauth", Scopes: []string{"write", "read"}}}, Snippets: []domain.RequestSnippet{{Label: "cURL", Language: "shell", Code: "curl"}, {Label: "JavaScript", Language: "javascript", Code: "fetch()"}}},
+			{ID: "listPets", Anchor: "operation-list-pets", Method: "GET", Path: "/pets", Summary: "List pets", Tags: []string{"Pets"}},
+		},
+		Schemas: []domain.Schema{
+			{Name: "Pet", Description: "A pet", Summary: domain.SchemaSummary{Type: "object", JSON: "{\"script\":\"<script>\",\"n\":-0}", Properties: []domain.SchemaProperty{{Name: "id", Required: true, Schema: domain.SchemaSummary{Type: "string"}}}}, Example: domain.SchemaExample{JSON: "{\"shape\":1.0}", Example: "__EXPLICIT_PET__", Provided: true}},
+			{Name: "Error", Summary: domain.SchemaSummary{Type: "object", Items: &domain.SchemaSummary{Type: "string"}}},
+		},
+		Search:       []domain.SearchDocument{{ID: "schema-pet", Kind: "Schema", Href: "#schema-pet"}, {ID: "operation-list", Kind: "Operation", Href: "#operation-list-pets"}, {ID: "overview", Kind: "Overview", Href: "#overview"}},
+		PublicRoutes: []domain.PublicRoute{{Path: "/", Title: "Payments"}, {Path: "/?selected=operation-create-pet#operation-create-pet", Title: "Create pet"}, {Path: "/?selected=operation-list-pets#operation-list-pets", Title: "List pets"}, {Path: "/?selected=schema-pet#schema-pet", Title: "Pet"}},
+	}
+	return input
+}
+
+func mustReadFixture(t *testing.T, name string) []byte {
+	t.Helper()
+	return mustReadPath(t, fixturePath(name))
+}
+
+func mustReadPath(t *testing.T, path string) []byte {
+	t.Helper()
+	bytes, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return bytes
+}
+
+func fixturePath(name string) string {
+	return filepath.Join("..", "..", "..", "application", "projection", "testdata", name)
+}
+
+func marshalUnchecked(t *testing.T, document projection.Document) []byte {
+	t.Helper()
+	bytes, err := json.Marshal(document)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return bytes
+}
+
+func nestedSchema(depth int) projection.WireSchema {
+	current := projection.WireSchema{Properties: []projection.SchemaProperty{}, Items: []projection.SchemaItem{}}
+	for index := 1; index < depth; index++ {
+		current = projection.WireSchema{Properties: []projection.SchemaProperty{}, Items: []projection.SchemaItem{{Ordinal: 0, ID: "items", Schema: current}}}
+	}
+	return current
+}
+
+func fixtureDigest(input []byte) string {
+	hash := sha256.Sum256(input)
+	return hex.EncodeToString(hash[:])
+}
+
+var _ = context.Background
