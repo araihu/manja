@@ -165,6 +165,26 @@ stops for parent acceptance. The pre-existing uncommitted Task 5 files preserve
 the Wasm/scale attempt unchanged. No production/test file is edited, staged,
 committed, discarded, or cleaned.
 
+### External consumer tidy closure
+
+**Date:** 2026-07-27
+
+Fresh Task 6 repository verification found one dependency-receipt snag. The
+unrelated external module imported `application/projection`; Go's tidy package
+loading then included `application/projection` tests, whose approved GitHub
+scale proof imports `internal/adapters/openapi`. The focused external consumer
+test and vet passed, but `GOWORK=off go mod tidy -diff` requested checksums for
+the parser's already-root-declared transitive modules.
+
+Resolution: the parent independently reproduced and narrowly authorized the
+exact mechanical `integration/testdata/external-module/go.sum` update. It adds
+14 checksum lines: module and `go.mod` hashes for kin-openapi v0.140.0,
+jsonpointer v0.22.5, swag/jsonname v0.25.5, oasdiff/yaml v0.1.0,
+oasdiff/yaml3 v0.0.13, jsonschema/v6 v6.0.2, and x/text v0.34.0. No `go.mod`,
+version, replace directive, production dependency, test placement, or build tag
+changes. The scale test remains literal and the external tidy-diff gate remains
+enabled.
+
 ## No Repository Markdown Link Checker
 
 **Date:** 2026-07-27

@@ -234,6 +234,7 @@ internal/adapters/projectionjson/
 architecture/projection_boundary_test.go
 architecture/projection_wasm_build_test.go
 integration/testdata/external-module/projection_test.go
+integration/testdata/external-module/go.sum
 integration/testdata/projection-consumer/
 ```
 
@@ -915,6 +916,19 @@ git diff --exit-code
 `git diff --exit-code` mechanically proves generation produced no tracked drift
 because Task 5 ended clean and this plan changes no template. Redocly's existing
 warnings may remain, but new errors fail.
+
+### Task 6 dependency receipt
+
+Fresh verification exposed one mechanical checksum consequence of the approved
+scale proof: external-module tidy loads tests for `application/projection`, and
+`github_fixture_test.go` imports `internal/adapters/openapi`. Parent review
+narrowly extended ownership to
+`integration/testdata/external-module/go.sum` for the exact 14-line
+`GOWORK=off go mod tidy` result. The receipt adds module and `go.mod` checksums
+only for kin-openapi v0.140.0, jsonpointer v0.22.5, swag/jsonname v0.25.5,
+oasdiff/yaml v0.1.0, oasdiff/yaml3 v0.0.13, jsonschema/v6 v6.0.2, and x/text
+v0.34.0. Any `go.mod`, version, replacement, or additional checksum change
+remains a delivery blocker.
 
 ### Exact owned-path gate
 
