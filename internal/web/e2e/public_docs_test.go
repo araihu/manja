@@ -907,6 +907,13 @@ func TestPublicDocsSidebarOverlayOnSmallDevices(t *testing.T) {
 	if err := trigger.WaitFor(playwright.LocatorWaitForOptions{State: playwright.WaitForSelectorStateVisible}); err != nil {
 		t.Fatal(err)
 	}
+	triggerBox, err := trigger.BoundingBox()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if triggerBox == nil || triggerBox.Width < 44 || triggerBox.Height < 44 {
+		t.Fatalf("mobile navigation trigger must be at least 44x44, box=%#v", triggerBox)
+	}
 	desktopAsideHidden, err := page.Locator(`aside[aria-label="API sections"]`).IsHidden()
 	if err != nil {
 		t.Fatal(err)
@@ -921,6 +928,28 @@ func TestPublicDocsSidebarOverlayOnSmallDevices(t *testing.T) {
 	panel := page.Locator(`#public-docs-sidebar-panel`)
 	if err := panel.WaitFor(playwright.LocatorWaitForOptions{State: playwright.WaitForSelectorStateVisible}); err != nil {
 		t.Fatal(err)
+	}
+	if _, err := page.WaitForFunction(`() => {
+		const panel = document.querySelector('#public-docs-sidebar-panel');
+		if (!panel) return false;
+		const box = panel.getBoundingClientRect();
+		return box.right > 0 && box.left < innerWidth && box.bottom > 0 && box.top < innerHeight;
+	}`, nil, playwright.PageWaitForFunctionOptions{Timeout: playwright.Float(5000)}); err != nil {
+		t.Fatalf("mobile drawer did not enter the viewport: %v", err)
+	}
+	panelBox, err := panel.BoundingBox()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if panelBox == nil || panelBox.X >= 390 || panelBox.X+panelBox.Width <= 0 || panelBox.Y >= 740 || panelBox.Y+panelBox.Height <= 0 {
+		t.Fatalf("mobile drawer must positively intersect the 390px viewport, box=%#v", panelBox)
+	}
+	headerBox, err := page.Locator(`header[data-boot-anim="header"]`).BoundingBox()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if headerBox == nil || panelBox.Y < headerBox.Y+headerBox.Height-1 {
+		t.Fatalf("mobile drawer must be viewport-owned below the header, panel=%#v header=%#v", panelBox, headerBox)
 	}
 	focusedSkipLink, err := page.Evaluate(`() => {
 		const active = document.activeElement;
@@ -940,6 +969,21 @@ func TestPublicDocsSidebarOverlayOnSmallDevices(t *testing.T) {
 	}
 	if expanded != "true" {
 		t.Fatalf("mobile sidebar trigger aria-expanded = %q, want true", expanded)
+	}
+	if err := page.Keyboard().Press("Escape"); err != nil {
+		t.Fatal(err)
+	}
+	if err := panel.WaitFor(playwright.LocatorWaitForOptions{State: playwright.WaitForSelectorStateHidden}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := page.WaitForFunction(`() => document.activeElement?.getAttribute('aria-label') === 'Open API sections'`, nil); err != nil {
+		t.Fatalf("Escape should restore focus to the mobile navigation trigger: %v", err)
+	}
+	if err := trigger.Click(); err != nil {
+		t.Fatal(err)
+	}
+	if err := panel.WaitFor(playwright.LocatorWaitForOptions{State: playwright.WaitForSelectorStateVisible}); err != nil {
+		t.Fatal(err)
 	}
 
 	tagControl := panel.Locator(`a[aria-controls="mobile-tag-pets-children"]`)

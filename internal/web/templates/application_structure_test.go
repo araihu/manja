@@ -3,11 +3,10 @@ package templates
 import (
 	"bytes"
 	"context"
-	"strings"
+	"regexp"
 	"testing"
 
 	"github.com/a-h/templ"
-	"golang.org/x/net/html"
 
 	core "github.com/araihu/manja/domain"
 )
@@ -54,9 +53,7 @@ func TestApplicationShellsExposeOneMobileNavigationTrigger(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			doc := parseRenderedDocument(t, test.content)
-			assertNodeCount(t, doc, func(node *html.Node) bool {
-				return node.Type == html.ElementNode && node.Data == "button" && attribute(node, "aria-label") == test.label
-			}, 1, "mobile navigation trigger")
+			assertTagCount(t, doc, "button", map[string]string{"aria-label": test.label}, 1, "mobile navigation trigger")
 		})
 	}
 }
@@ -73,16 +70,14 @@ func TestApplicationShellsExposeOnePrimaryScrollRegion(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			doc := parseRenderedDocument(t, test.content)
-			assertNodeCount(t, doc, func(node *html.Node) bool {
-				return node.Type == html.ElementNode && attribute(node, "data-manja-primary-scroll") == "true"
-			}, 1, "primary scroll region")
+			assertElementCount(t, doc, map[string]string{"data-manja-primary-scroll": "true"}, 1, "primary scroll region")
 		})
 	}
 }
 
 func TestManagementRoutesExposeOnePageHeading(t *testing.T) {
 	model := ManagementOverviewModel{
-		Specs: []ManagedSpecModel{{ID: "payments", Title: "Payments API", Version: "v1"}},
+		Specs:          []ManagedSpecModel{{ID: "payments", Title: "Payments API", Version: "v1"}},
 		SelectedSpecID: "payments",
 	}
 	for _, test := range []struct {
@@ -95,71 +90,61 @@ func TestManagementRoutesExposeOnePageHeading(t *testing.T) {
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			doc := parseRenderedDocument(t, test.content)
-			assertNodeCount(t, doc, func(node *html.Node) bool {
-				return node.Type == html.ElementNode && node.Data == "h1"
-			}, 1, "page h1")
+			assertTagCount(t, doc, "h1", nil, 1, "page h1")
 		})
 	}
 }
 
-func parseRenderedDocument(t *testing.T, component templ.Component) *html.Node {
+func parseRenderedDocument(t *testing.T, component templ.Component) string {
 	t.Helper()
 
 	var output bytes.Buffer
 	if err := component.Render(context.Background(), &output); err != nil {
 		t.Fatalf("render component: %v", err)
 	}
-	doc, err := html.Parse(strings.NewReader(output.String()))
-	if err != nil {
-		t.Fatalf("parse rendered HTML: %v", err)
-	}
-	return doc
+	document := regexp.MustCompile(`(?is)<script\b.*?</script>`).ReplaceAllString(output.String(), "")
+	return regexp.MustCompile(`(?is)<style\b.*?</style>`).ReplaceAllString(document, "")
 }
 
-func assertApplicationShellContract(t *testing.T, doc *html.Node, mobileTriggerLabel string) {
+func assertApplicationShellContract(t *testing.T, doc string, mobileTriggerLabel string) {
 	t.Helper()
 
-	assertNodeCount(t, doc, func(node *html.Node) bool {
-		return node.Type == html.ElementNode && node.Data == "a" && attribute(node, "href") == "#main-content"
-	}, 1, "skip link")
-	assertNodeCount(t, doc, func(node *html.Node) bool {
-		return node.Type == html.ElementNode && node.Data == "header"
-	}, 1, "header landmark")
-	assertNodeCount(t, doc, func(node *html.Node) bool {
-		return node.Type == html.ElementNode && node.Data == "main" && attribute(node, "id") == "main-content" && attribute(node, "tabindex") == "-1"
-	}, 1, "focusable main landmark")
-	assertNodeCount(t, doc, func(node *html.Node) bool {
-		return node.Type == html.ElementNode && node.Data == "button" && attribute(node, "aria-label") == mobileTriggerLabel
-	}, 1, "mobile navigation trigger")
-	assertNodeCount(t, doc, func(node *html.Node) bool {
-		return node.Type == html.ElementNode && attribute(node, "data-manja-primary-scroll") == "true"
-	}, 1, "primary scroll region")
+	assertTagCount(t, doc, "a", map[string]string{"href": "#main-content"}, 1, "skip link")
+	assertTagCount(t, doc, "header", map[string]string{"data-boot-anim": "header"}, 1, "application header landmark")
+	assertTagCount(t, doc, "main", map[string]string{"id": "main-content", "tabindex": "-1"}, 1, "focusable main landmark")
+	assertTagCount(t, doc, "button", map[string]string{"aria-label": mobileTriggerLabel}, 1, "mobile navigation trigger")
+	assertElementCount(t, doc, map[string]string{"data-manja-primary-scroll": "true"}, 1, "primary scroll region")
 }
 
-func assertNodeCount(t *testing.T, root *html.Node, match func(*html.Node) bool, want int, label string) {
+func assertTagCount(t *testing.T, document string, tag string, attributes map[string]string, want int, label string) {
 	t.Helper()
+	pattern := regexp.MustCompile(`(?i)<` + regexp.QuoteMeta(tag) + `\b[^>]*>`)
+	assertMatchingTagCount(t, pattern.FindAllString(document, -1), attributes, want, label)
+}
 
+func assertElementCount(t *testing.T, document string, attributes map[string]string, want int, label string) {
+	t.Helper()
+	pattern := regexp.MustCompile(`(?i)<[a-z][a-z0-9-]*\b[^>]*>`)
+	assertMatchingTagCount(t, pattern.FindAllString(document, -1), attributes, want, label)
+}
+
+func assertMatchingTagCount(t *testing.T, tags []string, attributes map[string]string, want int, label string) {
+	t.Helper()
 	got := 0
-	var visit func(*html.Node)
-	visit = func(node *html.Node) {
-		if match(node) {
+	for _, tag := range tags {
+		matches := true
+		for key, value := range attributes {
+			attributePattern := regexp.MustCompile(`\b` + regexp.QuoteMeta(key) + `="` + regexp.QuoteMeta(value) + `"`)
+			if !attributePattern.MatchString(tag) {
+				matches = false
+				break
+			}
+		}
+		if matches {
 			got++
 		}
-		for child := node.FirstChild; child != nil; child = child.NextSibling {
-			visit(child)
-		}
 	}
-	visit(root)
 	if got != want {
-		t.Fatalf("%s count = %d, want %d", label, got, want)
+		t.Fatalf("%s count = %d, want %d; tags=%q", label, got, want, tags)
 	}
-}
-
-func attribute(node *html.Node, key string) string {
-	for _, attr := range node.Attr {
-		if attr.Key == key {
-			return attr.Val
-		}
-	}
-	return ""
 }

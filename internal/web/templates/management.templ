@@ -8,8 +8,8 @@ import (
 	"time"
 
 	templpkg "github.com/a-h/templ"
-	"github.com/araihu/goshtoso/components/appshell"
 	"github.com/araihu/goshtoso/components/alert"
+	"github.com/araihu/goshtoso/components/appshell"
 	"github.com/araihu/goshtoso/components/badge"
 	"github.com/araihu/goshtoso/components/button"
 	"github.com/araihu/goshtoso/components/emptystate"
@@ -129,6 +129,7 @@ templ managementApplicationHeader(model ManagementOverviewModel, active string) 
 			@sidebar.Overlay(sidebar.OverlayConfig{
 				ID:                    "management-sidebar",
 				TriggerLabel:          "Open management sections",
+				TriggerClass:          "min-h-11 min-w-11",
 				RootClass:             "lg:hidden",
 				PanelPositionClass:    "fixed top-16 bottom-0 left-0",
 				PanelWidthClass:       "w-72 max-w-[85vw]",
@@ -241,17 +242,19 @@ templ managementApplicationError(model ManagementOverviewModel) {
 }
 
 templ ManagementSpecPanel(spec ManagedSpecModel) {
-	<section class="grid gap-5" aria-labelledby={ "management-spec-heading-" + spec.ID }>
+	<section class="grid min-w-0 gap-5" aria-labelledby={ "management-spec-heading-" + spec.ID }>
 		@managementSpecHeader(spec)
 		@panel.Panel(panel.Config{
 			Body:      managementSpecTabs(spec),
+			RootClass: "min-w-0 max-w-full",
+			BodyClass: "min-w-0 max-w-full",
 			RootAttrs: templpkg.Attributes{"data-management-detail-workspace": "true"},
 		})
 	</section>
 }
 
 templ managementOverviewSpecWorkspace(spec ManagedSpecModel) {
-	<section class="grid gap-5" aria-labelledby={ "management-overview-spec-heading-" + spec.ID }>
+	<section class="grid min-w-0 gap-5" aria-labelledby={ "management-overview-spec-heading-" + spec.ID }>
 		<div class="flex flex-wrap items-start justify-between gap-4">
 			<div class="min-w-0">
 				<p class="text-xs font-semibold uppercase tracking-normal text-on-surface-muted dark:text-on-surface-dark-muted">Selected contract</p>
@@ -272,6 +275,7 @@ templ managementSpecHeader(spec ManagedSpecModel) {
 		Title:       spec.Title,
 		Description: "Live route " + managementProductionRoute(spec.Publication) + ".",
 		Actions:     managementSpecHeaderActions(spec),
+		RootClass:   "min-w-0 max-w-full",
 		RootAttrs:   templpkg.Attributes{"data-management-page-header": "detail"},
 		TitleAttrs: templpkg.Attributes{
 			"id":                                "management-spec-heading-" + spec.ID,
@@ -384,7 +388,7 @@ templ managementSpecTabs(spec ManagedSpecModel) {
 	@tabs.Tabs(tabs.Config{
 		ID:         "management-spec-tabs-" + spec.ID,
 		DefaultTab: "publish",
-		RootClass: "rounded-radius border border-outline bg-surface-alt dark:border-outline-dark dark:bg-surface-dark-alt",
+		RootClass: "min-w-0 max-w-full rounded-radius border border-outline bg-surface-alt dark:border-outline-dark dark:bg-surface-dark-alt",
 		Tabs: []tabs.Tab{
 			{
 				ID:      "publish",

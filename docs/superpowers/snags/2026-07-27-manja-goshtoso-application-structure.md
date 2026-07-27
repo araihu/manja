@@ -228,6 +228,58 @@ authorize edits to Goshtoso or access to private/generated upstream output.
 - Upstream feedback candidate: document `data-goshtoso-loading` next to
   `WithLoadingText` in the consumer component reference.
 
+## 2026-07-27 — structural test parser expands nested site tidy closure
+
+- Desired contract: retain DOM-meaningful structural assertions while every
+  consumer module remains tidy with no unrelated dependency-file changes.
+- Public source consulted: Manja's recursive Goshtoso consumer dependency gate,
+  `go mod why`, and the generated shell output.
+- Source dive or missing API: the first root gate reported missing `x/net`
+  checksums in `site/go.sum`. The initial suspicion that the new Alert import
+  caused it was disproved; `go mod why` traced the package to the new
+  `internal/web/templates/application_structure_test.go` HTML parser.
+- Workaround or no-match decision: replace the external test-only HTML parser
+  with a standard-library tag scanner that removes script/style bodies before
+  counting semantic tags and attributes. Keep Goshtoso Alert in product code
+  and leave the out-of-scope `site/go.sum` untouched.
+- Risk: low. The scanner asserts only exact structural hooks and tags; real
+  browser accessibility coverage remains authoritative for DOM behavior.
+- Upstream feedback candidate: none; this was downstream test-dependency
+  leakage, not a Goshtoso product API gap.
+
+## 2026-07-27 — default Overlay trigger misses the 44px target
+
+- Desired contract: the single mobile navigation trigger provides a minimum
+  44 by 44 pixel interactive target on both application shells.
+- Public source consulted: Goshtoso v0.0.13 `sidebar.OverlayConfig` docs and
+  Manja's 390px browser geometry test.
+- Source dive or missing API: browser RED measured the documented default
+  trigger at 36 by 36 pixels.
+- Workaround or no-match decision: use the exported `TriggerClass` extension
+  with `min-h-11 min-w-11` for public and management overlays. No private
+  component class or upstream theme was changed.
+- Risk: low. Bounding-box tests lock the actual interactive geometry.
+- Upstream feedback candidate: consider making the default Overlay trigger at
+  least 44 by 44 pixels or document the target-size extension explicitly.
+
+## 2026-07-27 — Tabs min-content width clips the mobile workspace
+
+- Desired contract: management Tabs and Panel composition shrinks to the 390px
+  workspace without page overflow or hidden horizontal clipping.
+- Public source consulted: Goshtoso v0.0.13 PageHeader, Panel, and Tabs public
+  configuration docs plus the captured visual matrix.
+- Source dive or missing API: the default grid min-content contribution from
+  the six-tab list expanded detail descendants to 566px inside a 390px main
+  region. Viewport overflow remained false only because the main region clipped
+  the excess, which hid real content.
+- Workaround or no-match decision: apply documented `RootClass`/`BodyClass`
+  extensions with `min-w-0 max-w-full` at the PageHeader, Panel, and Tabs
+  composition boundaries. No private class map or arbitrary CSS rule is used.
+- Risk: low. The visual matrix now asserts both viewport overflow and internal
+  main-workspace clipping across all themes and widths.
+- Upstream feedback candidate: add a many-tab mobile composition to the Tabs
+  application-pattern example and document the min-content shrink boundary.
+
 ## Task 6 RED to GREEN evidence
 
 - RED command: `GOWORK=off go test ./internal/web -run
