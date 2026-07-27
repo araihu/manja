@@ -1,6 +1,6 @@
 # Hybrid Wasm Public Docs Design
 
-**Status:** Approved architecture, pending written-spec review
+**Status:** Architecture approved; review changes incorporated, pending re-review
 
 **Date:** 2026-07-27
 
@@ -54,6 +54,37 @@ current Manja/Goshtoso workspace; it does not create a second documentation UI.
   smaller dependency graph and compressed delivery; TinyGo remains a later
   compatibility investigation.
 
+## Integration DAG and Base Authority
+
+This design-only branch starts at `origin/main` commit
+`6216bcb2d9a50083b130daa37cf381c6e2b4b601`. That base is sufficient to review
+the architecture, but it is not authorized as the implementation base for the
+complete hybrid feature.
+
+Writing the implementation plan or product code must wait until the control
+plane verifies all of these prerequisites on then-current `origin/main`:
+
+1. Goshtoso `v0.0.13` and its public runtime/fallback asset contract;
+2. the application-structure public-docs UI checkpoint;
+3. release-tracks and authenticated-previews integration, including the
+   authoritative public/private publication resolver used for eligibility.
+
+After those commits land, create a fresh implementation worktree and branch from
+that exact `origin/main`. Carry this reviewed spec forward as documentation, but
+do not rebase, merge, or build the complete feature on stale `6216bcb`. The
+implementation plan must record the new base SHA and literal prerequisite SHAs
+before its first task.
+
+An independent projection-only precursor is permitted earlier only through its
+own spec, plan, worktree, and review. It may depend solely on `domain.SpecIndex`
+and deterministic serialization; it cannot touch Goshtoso assets, publication
+eligibility, lazy UI, Service Worker, offline storage, or default-on rollout.
+This design does not currently split out that precursor.
+
+The product dependency order is therefore: prerequisite integrations, fresh
+implementation base, projection contract, lazy SSR/HTMX UI, integrated runtime
+assets, Wasm renderer, Service Worker/storage, then default-on eligibility.
+
 ## Chosen Architecture
 
 ### Progressive enhancement
@@ -63,7 +94,7 @@ immediately. The page is usable before any local runtime work starts.
 
 Eligible HTML includes a small, non-secret enhancement descriptor containing:
 
-- a stable public-publication cache key;
+- a stable public publication cache key;
 - the immutable revision identifier and projection digest;
 - same-origin projection, sidebar-section, spec-download, worker, and Wasm URLs;
 - the canonical publication base path;
@@ -98,13 +129,51 @@ complete OpenAPI JSON into every detail. Original JSON/YAML remains a separate
 same-origin resource. It is cached after local navigation is ready so download
 support does not delay enhancement activation.
 
+The wire model uses explicit DTO structs and slices only. It has no map-valued
+fields and no generic JSON objects. Records use this stable order before
+encoding:
+
+- sidebar sections by kind, then canonical section ID;
+- operations and operation details by canonical anchor;
+- schemas and schema details by canonical anchor;
+- search records by stable search ID;
+- public routes by canonical path, then title;
+- nested parameters, responses, media types, properties, examples, and code
+  samples by explicit ordinal followed by their canonical ID.
+
+When source order affects presentation, the builder assigns the ordinal before
+sorting and transmits it as a non-negative integer. Decimal OpenAPI values use
+canonical decimal strings; the wire model has no floating-point fields. Bounded
+example/config JSON is validated separately and encoded as a JSON string, never
+inserted as an arbitrary object. Operation-scoped inputs are limited to 256 KiB
+per record and schema-scoped inputs to 512 KiB per record.
+
+Canonical encoding is Go `encoding/json.Marshal` over the versioned DTO:
+
+- struct declaration fixes object field order;
+- input must already be valid UTF-8; replacement of invalid bytes is forbidden;
+- standard Go JSON escaping applies, including HTML-sensitive and U+2028/U+2029
+  escapes;
+- integers use base-10 JSON number syntax with no leading zero;
+- output is compact and has no trailing newline or insignificant whitespace;
+- a strict token pass rejects duplicate object keys at every depth, unknown DTO
+  fields, trailing values, invalid UTF-8, and out-of-range integers before any
+  DTO decode or cache write.
+
 Canonical projection bytes are hashed with SHA-256. The response uses an ETag
 whose opaque value is the lowercase hexadecimal digest and content type
 `application/vnd.manja.publication+json; version=1`. Projection responses are
 limited to 16 MiB, individual generated fragments to 2 MiB, and original spec
-downloads to 64 MiB for offline caching. The client verifies format version,
-declared identity, response bounds, byte digest, and all record keys before
-committing storage or activating Wasm.
+downloads to 64 MiB for offline caching. The digest covers the exact uncompressed
+HTTP entity bytes before content coding; browser verification uses the decoded
+response bytes returned by Fetch. The client verifies format version, declared
+identity, response bounds, duplicate-key rules, byte digest, and all record keys
+before committing storage or activating Wasm.
+
+`SpecDownload.JSON` and the complete `ExampleSpecJSON` are explicitly excluded.
+The builder extracts only the bounded detail-scoped inputs named above. A test
+with sentinel bytes in both excluded fields must prove they do not occur in the
+projection or affect its digest.
 
 The projection builder is a provider-neutral application service. HTTP response
 details stay in `internal/web`; serialization and browser-runtime adapters stay
@@ -117,8 +186,8 @@ Wasm and enhancement assets ship with the main Manja server and its reproducible
 build. There is no standalone `pwa/index.html`, copied `openapi.json`, or separate
 documentation server.
 
-Static assets live under a Manja-owned asset prefix. The worker may have root
-scope to cover multiple publication paths, but its fetch handler uses exact
+Static assets live under a Manja-owned asset prefix. The worker has root scope
+to cover multiple publication paths, but its fetch handler uses exact
 same-origin route allowlists from validated descriptors. All other requests pass
 through untouched. The worker response sets `Service-Worker-Allowed: /`; no
 other asset response may widen its scope.
@@ -127,9 +196,47 @@ The Wasm command imports the projection model and canonical public-docs renderer
 only. It must not import source adapters, the OpenAPI parser, management wiring,
 filesystem stores, or network clients.
 
+### Offline runtime dependency contract
+
+Offline readiness is bound to the integrated Goshtoso `v0.0.13` dependency
+contract, not to paths copied from the Go module cache. Manja may consume only
+Goshtoso's public `assets.Handler()` and public dependency/URL exports. If
+`v0.0.13` does not publicly expose enough information to build a same-version
+fallback manifest, implementation stops and records a Goshtoso snag; it must not
+import an `internal` package or scrape private generated files.
+
+The enhancement descriptor identifies the exact Goshtoso version and ordered
+embedded fallback manifest used by the rendered page. The offline shell preserves
+this document execution order:
+
+1. Goshtoso compiled CSS;
+2. Alpine collapse plugin;
+3. Alpine focus plugin;
+4. Alpine Mask plugin;
+5. Alpine core;
+6. HTMX;
+7. combobox navigation;
+8. Manja CSS, schema-example, request-composer, and page enhancer assets.
+
+The worker runtime additionally caches the matching Go runtime before loading
+the Manja Wasm module. Every Goshtoso fallback response must come from the same
+version's `assets.Handler()`. A successful CDN response may improve online load,
+but CDN availability, DNS, or cache state is never an offline-readiness input.
+
+The offline shell body and its security headers are cached atomically. If the
+integrated layout uses a CSP nonce, every cached inline nonce must match the
+cached `Content-Security-Policy` header; the worker serves both unchanged and
+never rewrites shell HTML. New enhancement code uses external scripts; local
+routing does not add inline executable content or weaken the integrated CSP.
+
+Offline-ready is withheld until all fallback responses above, the offline shell,
+Go runtime, enhancer, and Wasm validate. Browser acceptance blocks every CDN
+request, proves fallback activation, then disconnects all network and repeats
+reload, search, sidebar expansion, and detail navigation.
+
 ### HTTP routes
 
-Each canonical public-publication base exposes these reader resources. A route
+Each canonical public publication base exposes these reader resources. A route
 join helper maps root publication `/` without producing a double slash:
 
 - `GET <base>/_manja/projection.json` — projection bytes;
@@ -178,9 +285,10 @@ and the existing server search resource otherwise. Search result IDs remain
 distinct from visible content anchors, and every href resolves to a visible
 selected section.
 
-Mobile overlay and desktop sidebar use the same section data contract. A section
-may appear in only the active presentation container; the implementation must
-not duplicate the full menu in hidden desktop/mobile DOM.
+Mobile overlay and desktop sidebar use the same section data contract. A
+materialized section exists in exactly one presentation container selected for
+the current viewport; only compact group headers may be duplicated. Hidden
+desktop/mobile DOM never contains a second complete menu.
 
 ## Storage and Lifecycle
 
@@ -213,8 +321,9 @@ are forbidden.
 ### Freshness
 
 Revalidation occurs on initial enhancement, browser `online`, and return to a
-visible document after a bounded stale interval. All triggers share one in-flight
-operation. Requests use the active projection ETag.
+visible document when the last authoritative observation is older than five
+minutes. All triggers share one in-flight operation. Requests use the active
+projection ETag.
 
 - `304`: retain the active generation and refresh observation time.
 - Valid changed projection: prepare, commit, and activate automatically.
@@ -225,6 +334,48 @@ operation. Requests use the active projection ETag.
 The reader does not ask for a second confirmation. Publication approval already
 occurred in Manja's release control plane.
 
+### Visibility withdrawal and deletion
+
+These online observations authoritatively disable a known cached publication:
+
+- `401`, `403`, `404`, or `410` from its projection, offline-shell, or original
+  spec resource;
+- `401`, `403`, or `410` from its canonical document route;
+- `404` from its canonical document route when the response identifies the
+  publication as missing;
+- a successful canonical document response carrying
+  `X-Manja-Publication-State: private`, `revoked`, `deleted`, or `disabled`;
+- removal of the enhancement descriptor paired with that state header.
+
+A selected-detail `404` without the publication-state header means only an
+unknown anchor and does not revoke the publication cache. Updated Manja servers
+always emit `X-Manja-Publication-State` on controlled public-document responses,
+including SSR pages that no longer contain an enhancement descriptor.
+
+On the first authoritative withdrawal observation, the worker must:
+
+1. disable local routing for the publication in memory before awaiting I/O;
+2. abort in-flight preparation/revalidation and pass the authoritative server
+   response through;
+3. persist a disabled tombstone so cached bytes cannot be served even if deletion
+   fails or the browser immediately goes offline;
+4. reject every new projection, spec, shell, fragment, or private-successor write;
+5. notify controlled clients to keep pure SSR/HTMX behavior;
+6. best-effort delete active, previous, candidate, offline-shell, spec-download,
+   recovery-pointer, and LRU records for that publication only.
+
+Re-enablement requires a later authoritative public descriptor with a new or
+explicitly reauthorized immutable revision. It performs a fresh projection
+validation; it never resurrects tombstoned bytes.
+
+This design does not claim cryptographic recall. Bytes legitimately delivered
+while a publication was public may have been copied outside Manja, and a browser
+that never reconnects can keep reading its already active public cache until
+eviction or deletion. After any authoritative online withdrawal observation,
+the persisted tombstone prevents further local disclosure. Product v1 accepts
+this boundary and does not impose a short offline lease that would weaken the
+offline guarantee.
+
 ### Offline navigation
 
 Online document requests remain network-first SSR. The worker stores one
@@ -232,7 +383,7 @@ canonical offline shell per eligible publication. When document navigation is
 offline, it serves that same Manja workspace shell and then resolves the current
 URL's selected anchor through the active local projection.
 
-The page may claim “offline ready” only after the shell, projection, runtime,
+The page must not claim “offline ready” until the shell, projection, runtime,
 required static assets, complete search index, and current publication detail
 records are validated locally. Original spec download readiness is reported
 separately and does not block documentation navigation.
@@ -276,36 +427,111 @@ delete server publication data or change routes.
 
 ## Performance Gates
 
-The GitHub REST fixture remains the reference large specification. Product
-integration must meet these gates on the project Chromium harness:
+One committed Playwright-Go harness,
+`internal/web/e2e/local_docs_performance_test.go`, measures baseline and candidate
+with the same Go/Node/Chromium toolchains and runner. It writes the machine-
+readable receipt
+`docs/superpowers/evidence/local-docs-performance.json`. A run without its receipt
+or with an uncommitted harness is not release evidence.
 
-- SSR selected content is visible without waiting for Service Worker/Wasm.
-- SSR first-content P95 does not regress by more than 10% from the pre-change
-  baseline.
-- Full selected-operation HTML is at most 250 KB uncompressed.
-- Ready selected-operation DOM is at most 2,000 elements at desktop width.
-- Raw Wasm is at most 10 MB; compressed transfer is at most 4 MB.
+The frozen historical baseline is
+`6216bcb2d9a50083b130daa37cf381c6e2b4b601`. The implementation receipt also
+records the fresh post-prerequisite base SHA required by the integration DAG and
+runs that base immediately before the candidate on the same machine. Candidate
+SSR regression is evaluated against this immediate base; the historical result
+remains visible for drift. Both SHAs and every prerequisite SHA are literal
+receipt fields.
+
+The reference fixture is
+`internal/adapters/openapi/testdata/github-v3-rest.json`, SHA-256
+`dedfee9ad6a676c2f7186b8e2137d887d6449cad8b7af8253aecdaae24b27977`.
+The exact benchmark URL is:
+
+```text
+/?selected=operation-enterprise-admin-delete-global-webhook#operation-enterprise-admin-delete-global-webhook
+```
+
+The harness uses a production-built Manja binary, loopback HTTP without Air,
+Chromium headless at 1440x900 CSS pixels, device scale factor 1, default CPU,
+no network throttling, and reduced-motion media. OS, CPU model, core count,
+memory, Go version, Node version, Chromium version, and Manja build SHAs are
+recorded.
+
+For each baseline/candidate metric, the harness discards three warm-up samples
+and records 30 samples. P95 uses nearest rank: sort ascending and select the
+one-based element `ceil(0.95 * n)`. Mean, median, P95, minimum, maximum, and raw
+sample values are stored. Baseline and candidate groups alternate order to limit
+thermal/order bias.
+
+Cold samples use a new browser context and origin per sample, with no Service
+Worker registration, CacheStorage, IndexedDB, HTTP cache, localStorage, or
+sessionStorage carried from another sample. Warm navigation samples begin only
+after one publication is local-ready; three complete unrecorded round trips
+between `delete-global-webhook` and `get-global-webhook` precede 30 alternating
+recorded navigations.
+
+“First content” is elapsed navigation-start to the exact selected anchor
+`#operation-enterprise-admin-delete-global-webhook` becoming visible in the SSR
+document. It must occur without waiting for `manja:local-ready`. Full HTML size
+is the decoded, uncompressed byte length of the complete HTTP 200 document body
+for the exact URL, not an HTMX fragment. DOM count occurs after selected content
+is visible and, for the candidate, after `manja:local-ready`, before opening
+search, expanding another sidebar section, or changing viewport.
+
+Cold activation is measured from `manja:activation-start` to
+`manja:local-ready` in a cold context. Worker-restart hydration first establishes
+offline-ready, terminates the active worker through the harness, reloads the
+exact URL with retained origin storage, then measures the same marks until the
+replacement worker reports the same publication digest ready.
+
+The harness installs a `PerformanceObserver` before navigation. It records long
+tasks overlapping the interval from `manja:activation-start` through one second
+after `manja:local-ready`; unsupported Long Tasks API is a failed receipt, not a
+zero. No overlapping entry may exceed 50 milliseconds.
+
+Wasm size gates use the raw `manja.wasm` and a reproducible precompressed
+`manja.wasm.br` generated with Brotli quality 11 and window 22. The HTTP test
+sends `Accept-Encoding: br`, requires `Content-Encoding: br`, and records encoded
+and decoded sizes. Gzip may also ship but is not the 4 MB gate measurement.
+
+Product integration must meet all gates:
+
+- SSR first-content P95 with default enhancement does not regress by more than
+  10% from the immediate post-prerequisite base.
+- Complete decoded selected-operation HTML is at most 250 KiB.
+- Selected-operation DOM is at most 2,000 elements at the defined count point.
+- Raw Wasm is at most 10 MiB; Brotli artifact is at most 4 MiB.
 - Background cold activation P95 is at most 1.5 seconds and never blocks input.
 - Worker-restart hydration P95 is at most 500 milliseconds.
 - Local operation navigation P95 is no slower than server HTMX navigation.
-- No task attributable to activation blocks the main thread for over 50 ms.
+- The defined activation window contains no long task over 50 milliseconds.
 
-Artifact, HTML, and DOM limits are hard CI gates. Runtime timing is recorded over
-multiple samples with generous regression thresholds to avoid single-sample
-flakiness; a material regression blocks rollout even when functional tests pass.
+Artifact, HTML, DOM, sample protocol, and receipt-schema checks are hard CI
+gates. Runtime comparisons run on one runner job against its freshly built base;
+a material regression blocks rollout even when functional tests pass.
 
 ## Testing Strategy
 
 ### Go unit and contract tests
 
-- Deterministic projection bytes, digest, version, identity, and size bounds.
-- Projection excludes full spec-download bytes and parser-only data.
+- Canonical projection bytes stay identical across repeated builds and shuffled
+  equivalent input; strict decoding rejects duplicate keys, unknown fields,
+  invalid UTF-8, trailing values, floats, and out-of-range integers.
+- Deterministic digest, version, identity, stable ordering, per-record bounds,
+  and total response bounds.
+- Sentinel bytes prove `SpecDownload.JSON`, full `ExampleSpecJSON`, and
+  parser-only data neither appear in projection bytes nor affect the digest.
 - Root and nested publication route construction cannot escape publication base.
 - Server and Wasm renderers produce equivalent canonical anchors, hrefs,
   headings, and fragment landmarks.
 - Default-on eligibility, kill switch, public/private boundary, and pure SSR
   fallback.
 - Lazy sidebar section rendering and selected ancestor behavior.
+- Enhancement manifest uses only public Goshtoso `v0.0.13` exports, preserves
+  dependency order, and every embedded fallback resolves through
+  `assets.Handler()` with the declared version.
+- Offline-shell cached body, CSP header, and any nonce form one valid immutable
+  response pair.
 
 ### JavaScript worker/storage tests
 
@@ -314,6 +540,12 @@ flakiness; a material regression blocks rollout even when functional tests pass.
 - Multipublication active/previous storage, LRU three-publication eviction, quota
   recovery, corruption rebuild, rollback, and concurrency serialization.
 - Conditional revalidation and automatic valid-revision activation.
+- `401`, `403`, `404`, `410`, disabled descriptor, public-to-private successor,
+  and deleted publication disable routing before I/O, persist tombstones, reject
+  new writes, and perform publication-scoped best-effort purge.
+- Purge failure cannot bypass a tombstone or affect another publication.
+- Offline-ready rejects a missing, wrong-version, non-embedded, or failed
+  Goshtoso fallback and rejects shell body/header CSP mismatch.
 - Worker control recovery without reload loops.
 - Server fallback for every runtime, storage, digest, and routing failure.
 
@@ -326,8 +558,14 @@ flakiness; a material regression blocks rollout even when functional tests pass.
 - Sidebar DOM is lazy and does not duplicate complete mobile/desktop menus.
 - Three public publications work online and offline; a fourth evicts the oldest.
 - New revision activates automatically; corrupt active rolls back to previous.
+- Public-to-private transition and deleted publication stop local routing on the
+  first authoritative online observation, never cache a private successor, and
+  remain disabled offline even when physical purge is forced to fail.
 - Full reload and pasted deep links work online and after offline readiness.
 - Private publication and `/manage` produce no persistent docs cache entries.
+- Forced CDN failure still reaches offline-ready from exact embedded Goshtoso
+  fallbacks; after full network disconnection, reload, search, sidebar expansion,
+  request interactions, and detail navigation pass with valid CSP.
 - Browser console has no errors or HTMX OOB/attribute parsing warnings.
 
 ### Benchmark evidence
@@ -338,7 +576,9 @@ projection bytes, raw/compressed Wasm bytes, DOM count, and long tasks.
 
 ## Rollout and Reversal
 
-Implementation proceeds in independently reversible slices:
+No slice starts until the Integration DAG prerequisites are verified and a fresh
+implementation worktree records its exact base. Implementation then proceeds in
+independently reversible slices:
 
 1. deterministic projection and server endpoints, unused by the page;
 2. lazy sidebar and client search on normal SSR/HTMX;
@@ -347,10 +587,13 @@ Implementation proceeds in independently reversible slices:
 5. multipublication offline storage and automatic freshness;
 6. default-on eligibility for public publications.
 
-Each slice keeps server rendering deployable. The kill switch reverses client
-activation immediately. Removing the descriptor returns readers to pure SSR;
-stored public cache data becomes unreachable and is deleted by a later bounded
-worker cleanup, not during request handling.
+Each slice keeps server rendering deployable. The kill switch makes projection
+and offline-shell resources return authoritative disabled state and removes the
+descriptor from new SSR responses. A connected worker disables local routing on
+its next document response, `online` event, or five-minute visibility
+revalidation; an offline worker retains the same unavoidable disclosure boundary
+as a withdrawn public publication. The worker tombstones before best-effort
+publication cleanup. Unknown or unrelated caches are never deleted.
 
 ## POC Reuse Policy
 
@@ -375,6 +618,10 @@ revision activation, and 503-only behavior when the local engine is unavailable.
   across reload and Service Worker restart.
 - Three recent public publications and two revisions each recover correctly;
   private publications are never persisted.
+- Authoritative public-to-private, disabled, revoked, and deleted observations
+  tombstone the publication before purge and stop local disclosure thereafter;
+  acceptance acknowledges that previously public bytes cannot be recalled from
+  a browser that never reconnects.
 - Published revision changes activate automatically and preserve rollback.
 - Current Manja/Goshtoso UI and canonical URLs remain unchanged.
 - Functional, security, corruption, parity, and performance gates pass.
