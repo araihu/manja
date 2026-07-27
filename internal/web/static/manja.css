@@ -52,6 +52,10 @@
   width: 100%;
 }
 
+[data-manja-app-shell="true"] {
+  overflow: clip;
+}
+
 .manja-doc-title {
   min-width: 0;
   overflow-wrap: anywhere;
@@ -121,6 +125,46 @@ html.boot [data-boot-anim="main"] {
   transition:
     opacity 220ms ease-out,
     transform 220ms ease-out;
+}
+
+#public-docs-loading.htmx-indicator {
+  display: none;
+  opacity: 1;
+}
+
+#public-docs-loading.htmx-request {
+  display: block;
+}
+
+#public-docs-loading.htmx-request + [data-public-docs-content="true"] {
+  opacity: 0.35;
+}
+
+[data-manja-sidebar-nav="true"] {
+  pointer-events: auto;
+}
+
+[data-manja-sidebar-nav="true"]:not([aria-current="page"]) {
+  border-color: var(--color-outline);
+  color: var(--color-on-surface);
+  font-weight: 500;
+}
+
+[data-manja-sidebar-nav="true"][aria-current="page"] {
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+  font-weight: 700;
+  pointer-events: none;
+}
+
+.dark [data-manja-sidebar-nav="true"]:not([aria-current="page"]) {
+  border-color: var(--color-outline-dark);
+  color: var(--color-on-surface-dark);
+}
+
+.dark [data-manja-sidebar-nav="true"][aria-current="page"] {
+  border-color: var(--color-primary-dark);
+  color: var(--color-primary-dark);
 }
 
 .manja-management-facts {

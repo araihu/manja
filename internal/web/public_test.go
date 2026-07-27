@@ -1055,6 +1055,113 @@ func TestPublicDocsFragmentRequestReturnsOnlyMainContent(t *testing.T) {
 	}
 }
 
+func TestPublicDocsSelectedContentUsesPageHeader(t *testing.T) {
+	idx := core.SpecIndex{
+		Title: "Petstore",
+		Operations: []core.Operation{{
+			ID:      "createPet",
+			Method:  "POST",
+			Path:    "/pets",
+			Summary: "Create pet",
+		}},
+		Schemas: []core.Schema{{Name: "Pet"}},
+	}
+	srv := NewPublicServer(idx)
+
+	for _, test := range []struct {
+		name     string
+		selected string
+		identity string
+		title    string
+	}{
+		{name: "operation", selected: "operation-createPet", identity: "operation-createPet", title: "Create pet"},
+		{name: "schema", selected: "schema-pet", identity: "schema-pet", title: "Pet"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			body := renderPublicDocs(t, srv, "/?selected="+test.selected)
+			if got := strings.Count(body, "<h1"); got != 1 {
+				t.Fatalf("h1 count = %d, want 1:\n%s", got, body)
+			}
+			heading := regexp.MustCompile(`(?s)<h1[^>]*data-public-doc-identity="` + regexp.QuoteMeta(test.identity) + `"[^>]*>.*?` + regexp.QuoteMeta(test.title) + `.*?</h1>`)
+			if !heading.MatchString(body) {
+				t.Fatalf("selected detail should expose PageHeader identity %q:\n%s", test.identity, body)
+			}
+			if strings.Contains(heading.FindString(body), "sr-only") {
+				t.Fatalf("selected detail heading should be visible:\n%s", heading.FindString(body))
+			}
+		})
+	}
+}
+
+func TestPublicDocsUnknownSelectionUsesInShellEmptyState(t *testing.T) {
+	idx := core.SpecIndex{
+		Title: "Petstore",
+		Operations: []core.Operation{{
+			ID:      "listPets",
+			Method:  "GET",
+			Path:    "/pets",
+			Summary: "List pets",
+		}},
+	}
+	body := renderPublicDocs(t, NewPublicServer(idx), "/?selected=operation-missing")
+
+	for _, want := range []string{
+		`data-public-docs-not-found="true"`,
+		`data-selected-doc="operation-missing"`,
+		`href="/?selected=overview#overview"`,
+		`Documentation not found`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("unknown selection should render in-shell recovery marker %q:\n%s", want, body)
+		}
+	}
+	if strings.Contains(body, `id="operation-listPets"`) {
+		t.Fatalf("unknown selection must not silently substitute a different operation:\n%s", body)
+	}
+}
+
+func TestPublicDocsLoadingStateMatchesFinalWorkspaceShape(t *testing.T) {
+	body := renderPublicDocs(t, NewPublicServer(core.SpecIndex{Title: "Petstore"}), "/")
+
+	for _, want := range []string{
+		`data-public-docs-loading="true"`,
+		`aria-busy="true"`,
+		`aria-label="Loading public documentation"`,
+		`data-manja-primary-scroll="true"`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("public loading state missing %q:\n%s", want, body)
+		}
+	}
+}
+
+func TestPublicDocsNavigationSyncUsesServerAuthoredIdentity(t *testing.T) {
+	body := renderPublicDocs(t, NewPublicServer(core.SpecIndex{
+		Title: "Petstore",
+		Operations: []core.Operation{{
+			ID:      "listPets",
+			Method:  "GET",
+			Path:    "/pets",
+			Summary: "List pets",
+		}},
+	}), "/?selected=operation-listPets")
+
+	for _, want := range []string{
+		`data-public-docs-content="true"`,
+		`data-document-title="List pets · Petstore"`,
+		`target.dataset.selectedDoc = content.dataset.selectedDoc`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("public navigation sync missing server-authored marker %q:\n%s", want, body)
+		}
+	}
+	for _, reject := range []string{`sidebarLinkClasses`, `iconActive`, `classProfile(link)`} {
+		if strings.Contains(body, reject) {
+			t.Fatalf("public navigation sync must not copy Goshtoso private classes %q:\n%s", reject, body)
+		}
+	}
+}
+
 func TestPublicDocsRendersPoweredByFooterInFullPageAndFragments(t *testing.T) {
 	idx := core.SpecIndex{
 		Title: "Petstore",

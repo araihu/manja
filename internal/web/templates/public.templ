@@ -14,10 +14,14 @@ import (
 	"github.com/araihu/goshtoso/components/badge"
 	"github.com/araihu/goshtoso/components/breadcrumbs"
 	"github.com/araihu/goshtoso/components/codeblock"
+	"github.com/araihu/goshtoso/components/emptystate"
+	"github.com/araihu/goshtoso/components/pageheader"
+	"github.com/araihu/goshtoso/components/panel"
 	"github.com/araihu/goshtoso/components/schemaform"
 	searchfield "github.com/araihu/goshtoso/components/search"
 	selectfield "github.com/araihu/goshtoso/components/select"
 	"github.com/araihu/goshtoso/components/sidebar"
+	"github.com/araihu/goshtoso/components/skeleton"
 	"github.com/araihu/goshtoso/components/table"
 	"github.com/araihu/goshtoso/components/tabs"
 
@@ -96,13 +100,14 @@ templ PublicDocs(idx core.SpecIndex, selectedID string) {
 templ PublicDocsWithOptions(idx core.SpecIndex, selectedID string, opts PublicDocsOptions) {
 	{{ opts = opts.withDefaults() }}
 	{{ selected := selectedDocsItemFor(idx, selectedID) }}
-	@LayoutWithBranding(idx.Title, idx.Branding) {
+	@LayoutWithBranding(publicDocsDocumentTitle(idx, selected), idx.Branding) {
 		<div hx-history="false" class="fixed inset-0 overflow-clip bg-surface text-on-surface dark:bg-surface-dark dark:text-on-surface-dark">
 			@appshell.AppShell(appshell.Config{
 				Header:       publicApplicationHeader(idx, selected, opts),
 				Sidebar:      publicDocsSidebar(idx, selected, opts),
 				MainID:       "main-content",
 				RootClass:    "h-full",
+				RootAttrs:    templpkg.Attributes{"data-manja-app-shell": "true"},
 				HeaderClass:  "manja-docs-header relative z-50 shrink-0 border-b border-outline bg-surface dark:border-outline-dark dark:bg-surface-dark",
 				HeaderAttrs:  templpkg.Attributes{"data-boot-anim": "header"},
 				SidebarClass: "hidden h-full w-72 shrink-0 lg:block",
@@ -259,10 +264,58 @@ templ PublicDocsFragmentWithOptions(idx core.SpecIndex, selectedID string, opts 
 
 templ PublicDocsFragmentContent(idx core.SpecIndex, selectedID string, opts PublicDocsOptions) {
 	{{ selected := selectedDocsItemFor(idx, selectedID) }}
-	<h1 class="sr-only">{ idx.Title } OpenAPI docs</h1>
-	@selectedDocsBreadcrumbs(idx, selected)
-	@selectedDocsContent(idx, selected, opts)
+	@publicDocsLoading(selected)
+	<div data-public-docs-content="true" data-selected-doc={ selected.Anchor } data-document-title={ publicDocsDocumentTitle(idx, selected) }>
+		@publicDocsPageHeader(idx, selected)
+		@selectedDocsContent(idx, selected, opts)
+	</div>
 	@publicDocsFooter()
+}
+
+templ publicDocsPageHeader(idx core.SpecIndex, selected selectedDocsItem) {
+	@pageheader.PageHeader(pageheader.Config{
+		Title:       publicDocsPageTitle(idx, selected),
+		Description: publicDocsPageDescription(idx, selected),
+		Breadcrumbs: selectedDocsBreadcrumbs(idx, selected),
+		Actions:     publicDocsPageActions(idx, selected),
+		RootClass:   "mb-8",
+		RootAttrs: templpkg.Attributes{
+			"data-public-page-header": "true",
+		},
+		TitleClass: "manja-doc-title",
+		TitleAttrs: templpkg.Attributes{
+			"id":                       selected.Anchor + "-heading",
+			"tabindex":                 "-1",
+			"data-public-doc-identity": selected.Anchor,
+			"data-manja-settled-focus": "true",
+		},
+	})
+}
+
+templ publicDocsPageActions(idx core.SpecIndex, selected selectedDocsItem) {
+	<div class="flex flex-wrap items-center gap-2">
+		if selected.Kind == "overview" && idx.Version != "" {
+			@badge.Badge(badge.Config{Label: "v" + idx.Version, Appearance: badge.AppearanceSoft, Size: badge.SizeSM})
+		}
+		if selected.Kind == "overview" && overviewHasSpecDownload(idx) {
+			<a href="/openapi.json" download={ overviewSpecFilename(idx.SpecDownload) } aria-label="Download OpenAPI JSON spec" class="inline-flex min-h-11 shrink-0 items-center justify-center gap-2 rounded-radius border border-outline bg-surface-alt px-3 text-sm font-semibold text-on-surface-strong transition hover:bg-surface focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary dark:border-outline-dark dark:bg-surface-dark-alt dark:text-on-surface-dark-strong dark:hover:bg-surface-dark dark:focus-visible:outline-primary-dark">
+				@downloadIcon()
+				<span>Download JSON</span>
+			</a>
+		}
+	</div>
+}
+
+templ publicDocsLoading(selected selectedDocsItem) {
+	<div id="public-docs-loading" data-public-docs-loading="true" data-loading-doc={ selected.Anchor } class="htmx-indicator mb-8" aria-busy="true">
+		@skeleton.Skeleton(skeleton.Config{
+			Shape:     skeleton.ShapeRectangle,
+			Count:     3,
+			Label:     "Loading public documentation",
+			RootClass: "grid gap-4",
+			ItemClass: "min-h-16",
+		})
+	</div>
 }
 
 templ publicDocsSidebar(idx core.SpecIndex, selected selectedDocsItem, opts PublicDocsOptions) {
@@ -294,12 +347,38 @@ templ selectedDocsContent(idx core.SpecIndex, selected selectedDocsItem, opts Pu
 			<h2 id="schemas-heading" data-toc-heading class="sr-only">Schemas</h2>
 			@schemaSection(selected.Schema, idx.ExampleSpecJSON, opts)
 		</section>
+	} else if selected.Kind == "missing" {
+		@publicDocsNotFound(idx, selected.Anchor)
 	} else {
-		<section class="rounded-radius border border-outline bg-surface-alt p-6 dark:border-outline-dark dark:bg-surface-dark-alt">
-			<h2 class="font-title text-2xl font-bold text-on-surface-strong dark:text-on-surface-dark-strong">No public documentation</h2>
-			<p class="mt-2 text-sm text-on-surface-muted dark:text-on-surface-dark-muted">Publish a spec with operations or schemas to populate this view.</p>
-		</section>
+		@publicDocsEmpty(idx)
 	}
+}
+
+templ publicDocsEmpty(idx core.SpecIndex) {
+	@emptystate.EmptyState(emptystate.Config{
+		Title:       "No public documentation",
+		Description: "Publish a spec with operations or schemas to populate this view.",
+		Action:      publicDocsOverviewLink("Open contract overview"),
+		RootAttrs: templpkg.Attributes{
+			"data-public-docs-empty": "true",
+		},
+	})
+}
+
+templ publicDocsNotFound(idx core.SpecIndex, requested string) {
+	@emptystate.EmptyState(emptystate.Config{
+		Title:       "Documentation not found",
+		Description: "The requested operation or schema is not part of the current contract.",
+		Action:      publicDocsOverviewLink("Return to contract overview"),
+		RootAttrs: templpkg.Attributes{
+			"data-public-docs-not-found": "true",
+			"data-requested-doc":         requested,
+		},
+	})
+}
+
+templ publicDocsOverviewLink(label string) {
+	<a href={ templpkg.URL(selectedDocsHref("overview")) } class="inline-flex min-h-11 items-center justify-center rounded-radius bg-primary px-4 py-2 text-sm font-semibold text-on-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary dark:bg-primary-dark dark:text-on-primary-dark dark:focus-visible:outline-primary-dark">{ label }</a>
 }
 
 templ publicDocsFooter() {
@@ -329,32 +408,11 @@ templ selectedDocsBreadcrumbs(idx core.SpecIndex, selected selectedDocsItem) {
 templ overviewSection(idx core.SpecIndex, opts PublicDocsOptions) {
 	<section id="overview" aria-labelledby="overview-heading" class="scroll-mt-24">
 		<div class="max-w-[88rem]">
-			<div class="flex flex-wrap items-start justify-between gap-6 border-b border-outline pb-8 dark:border-outline-dark">
-				<div class="min-w-0">
-					<h2 id="overview-heading" data-toc-heading class="font-title text-4xl font-bold leading-tight text-on-surface-strong dark:text-on-surface-dark-strong lg:text-5xl">{ idx.Title }</h2>
-					if idx.Version != "" {
-						<div class="mt-4">
-							<span class="rounded-radius border border-outline bg-surface-alt px-2 py-1 font-mono text-xs font-semibold text-on-surface-strong dark:border-outline-dark dark:bg-surface-dark-alt dark:text-on-surface-dark-strong">v{ idx.Version }</span>
-						</div>
-					}
-				</div>
-				if overviewHasSpecDownload(idx) {
-					<a href="/openapi.json" download={ overviewSpecFilename(idx.SpecDownload) } aria-label="Download OpenAPI JSON spec" class="inline-flex h-10 shrink-0 items-center justify-center gap-2 rounded-radius border border-outline bg-surface-alt px-3 text-sm font-semibold text-on-surface-strong transition hover:bg-surface focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary dark:border-outline-dark dark:bg-surface-dark-alt dark:text-on-surface-dark-strong dark:hover:bg-surface-dark dark:focus-visible:outline-primary-dark">
-						@downloadIcon()
-						<span>Download JSON</span>
-					</a>
-				}
-			</div>
-			<dl class="mt-6 grid max-w-3xl gap-3 sm:grid-cols-2">
-				<div class="rounded-radius border border-outline bg-surface-alt px-4 py-3 dark:border-outline-dark dark:bg-surface-dark-alt">
-					<dt class="text-sm font-medium text-on-surface-muted dark:text-on-surface-dark-muted">Endpoints</dt>
-					<dd class="mt-1 font-title text-lg font-bold text-on-surface-strong dark:text-on-surface-dark-strong">{ pluralizedCount(len(idx.Operations), "endpoint") }</dd>
-				</div>
-				<div class="rounded-radius border border-outline bg-surface-alt px-4 py-3 dark:border-outline-dark dark:bg-surface-dark-alt">
-					<dt class="text-sm font-medium text-on-surface-muted dark:text-on-surface-dark-muted">Schemas</dt>
-					<dd class="mt-1 font-title text-lg font-bold text-on-surface-strong dark:text-on-surface-dark-strong">{ pluralizedCount(len(idx.Schemas), "schema") }</dd>
-				</div>
-			</dl>
+			@panel.Panel(panel.Config{
+				Body:      overviewSummary(idx),
+				RootClass: "max-w-3xl",
+				RootAttrs: templpkg.Attributes{"data-public-overview-summary": "true"},
+			})
 			if len(idx.Overview.Servers) > 0 {
 				<section class="mt-10 overflow-hidden rounded-radius border border-outline bg-surface-dark text-on-surface-dark dark:border-outline-dark" aria-labelledby="overview-base-url-heading">
 					<div class="border-b border-outline-dark bg-surface-dark px-4 py-3">
@@ -448,6 +506,19 @@ templ overviewSection(idx core.SpecIndex, opts PublicDocsOptions) {
 	</section>
 }
 
+templ overviewSummary(idx core.SpecIndex) {
+	<dl class="grid gap-4 sm:grid-cols-2">
+		<div>
+			<dt class="text-sm font-medium text-on-surface-muted dark:text-on-surface-dark-muted">Endpoints</dt>
+			<dd class="mt-1 font-title text-lg font-bold text-on-surface-strong dark:text-on-surface-dark-strong">{ pluralizedCount(len(idx.Operations), "endpoint") }</dd>
+		</div>
+		<div>
+			<dt class="text-sm font-medium text-on-surface-muted dark:text-on-surface-dark-muted">Schemas</dt>
+			<dd class="mt-1 font-title text-lg font-bold text-on-surface-strong dark:text-on-surface-dark-strong">{ pluralizedCount(len(idx.Schemas), "schema") }</dd>
+		</div>
+	</dl>
+}
+
 templ overviewIcon() {
 	<svg xmlns="http://www.w3.org/2000/svg" class="size-full" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
 		<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6M9 16h6M8 4h8l3 3v13H5V4h3Z"></path>
@@ -539,7 +610,6 @@ templ endpointSection(op core.Operation, servers []core.SpecServer, exampleSpecJ
 							@badge.Badge(badge.Config{Label: "Deprecated", Tone: badge.ToneWarning, Appearance: badge.AppearanceSoft, Size: badge.SizeSM})
 						</div>
 					}
-					<h3 class="manja-doc-title font-title text-3xl font-bold leading-tight text-on-surface-strong dark:text-on-surface-dark-strong lg:text-4xl">{ operationTitle(op) }</h3>
 					<div aria-label="Endpoint route" class="mt-4 inline-flex max-w-full items-center gap-3 rounded-radius border border-outline bg-surface-alt px-3 py-2 dark:border-outline-dark dark:bg-surface-dark-alt">
 						@methodBadge(op.Method)
 						<p class="min-w-0 break-words font-mono text-sm font-semibold text-on-surface-strong dark:text-on-surface-dark-strong">{ op.Path }</p>
@@ -752,7 +822,6 @@ templ schemaSection(schema core.Schema, exampleSpecJSON string, opts PublicDocsO
 	<section id={ schemaAnchor(schema) } class="scroll-mt-24">
 		<div class="max-w-3xl border-b border-outline pb-8 dark:border-outline-dark">
 			<p class="font-mono text-sm font-semibold uppercase text-on-surface-muted dark:text-on-surface-dark-muted">Schema</p>
-			<h3 class="manja-doc-title mt-4 font-title text-4xl font-bold leading-tight text-on-surface-strong dark:text-on-surface-dark-strong lg:text-5xl">{ schema.Name }</h3>
 			if summary.Description != "" {
 				if hasMarkdown(opts.MarkdownRenderer, summary.Description) {
 					<div class="mt-6 max-w-[70ch]">
@@ -1299,15 +1368,45 @@ func selectedDocsItemFor(idx core.SpecIndex, selectedID string) selectedDocsItem
 			return selectedDocsItem{Anchor: anchor, Kind: "schema", Schema: schema}
 		}
 	}
-	if len(idx.Operations) > 0 {
-		anchor := operationAnchor(idx.Operations[0])
-		return selectedDocsItem{Anchor: anchor, Kind: "operation", Operation: idx.Operations[0]}
+	return selectedDocsItem{Anchor: selectedID, Kind: "missing"}
+}
+
+func publicDocsPageTitle(idx core.SpecIndex, selected selectedDocsItem) string {
+	switch selected.Kind {
+	case "operation":
+		return operationTitle(selected.Operation)
+	case "schema":
+		return selected.Schema.Name
+	case "missing":
+		return "Documentation not found"
+	default:
+		return firstNonEmpty(idx.Title, "OpenAPI documentation")
 	}
-	if len(idx.Schemas) > 0 {
-		anchor := schemaAnchor(idx.Schemas[0])
-		return selectedDocsItem{Anchor: anchor, Kind: "schema", Schema: idx.Schemas[0]}
+}
+
+func publicDocsPageDescription(idx core.SpecIndex, selected selectedDocsItem) string {
+	switch selected.Kind {
+	case "operation":
+		return strings.TrimSpace(strings.ToUpper(selected.Operation.Method) + " " + selected.Operation.Path)
+	case "schema":
+		return "Schema reference"
+	case "missing":
+		return "The requested documentation is not part of this contract."
+	default:
+		if idx.Version != "" {
+			return "OpenAPI " + idx.Version
+		}
+		return "OpenAPI contract overview"
 	}
-	return selectedDocsItem{Anchor: "overview", Kind: "overview"}
+}
+
+func publicDocsDocumentTitle(idx core.SpecIndex, selected selectedDocsItem) string {
+	pageTitle := publicDocsPageTitle(idx, selected)
+	contractTitle := firstNonEmpty(idx.Title, "Manja")
+	if pageTitle == contractTitle {
+		return contractTitle
+	}
+	return pageTitle + " · " + contractTitle
 }
 
 func operationBreadcrumbItems(idx core.SpecIndex, op core.Operation, fallbackAnchor string) []breadcrumbs.Item {
@@ -1396,6 +1495,7 @@ func sidebarNavigationAttrs(label string, href string) templpkg.Attributes {
 	attrs["hx-target"] = "#main-content"
 	attrs["hx-swap"] = "innerHTML swap:120ms settle:240ms"
 	attrs["hx-push-url"] = "true"
+	attrs["hx-indicator"] = "#public-docs-loading"
 	attrs["data-manja-sidebar-nav"] = "true"
 	return attrs
 }

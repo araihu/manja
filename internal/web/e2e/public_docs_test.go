@@ -731,6 +731,54 @@ func TestPublicDocsSidebarNavigationSwapsMainContent(t *testing.T) {
 	if got := page.URL(); got != server+"/?selected=operation-target#operation-target" {
 		t.Fatalf("page URL = %q, want %q", got, server+"/?selected=operation-target#operation-target")
 	}
+	identity, err := page.Evaluate(`() => ({
+		selected: document.querySelector('main')?.dataset.selectedDoc,
+		content: document.querySelector('[data-public-docs-content]')?.dataset.selectedDoc,
+		focus: document.activeElement?.dataset.publicDocIdentity,
+		current: Array.from(document.querySelectorAll('aside[aria-label="API sections"] [aria-current="page"]')).map(link => link.getAttribute('href')),
+		title: document.title
+	})`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantIdentity := map[string]any{
+		"selected": "operation-target",
+		"content":  "operation-target",
+		"focus":    "operation-target",
+		"current":  []any{"/?selected=operation-target#operation-target"},
+		"title":    "Target operation · Petstore",
+	}
+	if fmt.Sprint(identity) != fmt.Sprint(wantIdentity) {
+		t.Fatalf("HTMX selected identity = %#v, want %#v", identity, wantIdentity)
+	}
+
+	if _, err := page.GoBack(); err != nil {
+		t.Fatal(err)
+	}
+	if err := page.Locator("#operation-filler-0:visible").WaitFor(); err != nil {
+		t.Fatal(err)
+	}
+	backIdentity, err := page.Evaluate(`() => document.querySelector('main')?.dataset.selectedDoc + '|' + document.querySelector('[data-public-docs-content]')?.dataset.selectedDoc + '|' + document.querySelector('aside[aria-label="API sections"] [aria-current="page"]')?.getAttribute('href')`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if backIdentity != "operation-filler-0|operation-filler-0|/?selected=operation-filler-0#operation-filler-0" {
+		t.Fatalf("Back selected identity = %#v", backIdentity)
+	}
+
+	if _, err := page.GoForward(); err != nil {
+		t.Fatal(err)
+	}
+	if err := page.Locator("#operation-target:visible").WaitFor(); err != nil {
+		t.Fatal(err)
+	}
+	forwardIdentity, err := page.Evaluate(`() => document.querySelector('main')?.dataset.selectedDoc + '|' + document.querySelector('[data-public-docs-content]')?.dataset.selectedDoc + '|' + document.querySelector('aside[aria-label="API sections"] [aria-current="page"]')?.getAttribute('href')`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if forwardIdentity != "operation-target|operation-target|/?selected=operation-target#operation-target" {
+		t.Fatalf("Forward selected identity = %#v", forwardIdentity)
+	}
 }
 
 func TestPublicDocsSidebarTagGroupsToggleIndependently(t *testing.T) {
@@ -984,6 +1032,11 @@ func TestPublicDocsScrollsMainContentInsideShell(t *testing.T) {
 				asideRectHeight: asideRect ? Math.round(asideRect.height) : 0,
 				asideRectTop: asideRect ? Math.round(asideRect.top) : 0,
 				headerRectBottom: headerRect ? Math.round(headerRect.bottom) : 0,
+				headerRectHeight: headerRect ? Math.round(headerRect.height) : 0,
+				headerDisplay: header ? getComputedStyle(header).display : '',
+				headerChildHeight: header?.firstElementChild ? Math.round(header.firstElementChild.getBoundingClientRect().height) : 0,
+				mainRectTop: main ? Math.round(main.getBoundingClientRect().top) : 0,
+				asideParentTop: aside?.parentElement ? Math.round(aside.parentElement.getBoundingClientRect().top) : 0,
 				windowInnerHeight: window.innerHeight,
 				shellOverflow: shell ? getComputedStyle(shell).overflow : '',
 				mainOverflowY: main ? getComputedStyle(main).overflowY : '',

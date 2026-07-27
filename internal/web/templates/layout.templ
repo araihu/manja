@@ -67,18 +67,6 @@ templ LayoutWithBranding(title string, branding core.DocsBranding) {
 			<script>
 				(function () {
 					var pendingSidebarHref = "";
-					var sidebarLinkClasses = {
-						item: {
-							active: "flex items-center gap-2 py-2 text-base font-medium text-primary dark:text-primary-dark".split(" "),
-							inactive: "flex items-center gap-2 py-2 text-base text-on-surface transition-colors hover:text-on-surface-strong dark:text-on-surface-dark dark:hover:text-on-surface-dark-strong".split(" "),
-							iconActive: "shrink-0 size-8 rounded-sm p-1.5 bg-primary/10 text-primary dark:bg-primary-dark/10 dark:text-primary-dark".split(" "),
-							iconInactive: "shrink-0 size-8 rounded-sm p-1.5 bg-surface-alt text-on-surface dark:bg-surface-dark-alt dark:text-on-surface-dark".split(" ")
-						},
-						section: {
-							active: "pointer-events-none flex items-center gap-2 border-l-2 border-primary py-2.5 pl-4 text-sm font-bold text-primary dark:border-primary-dark dark:text-primary-dark".split(" "),
-							inactive: "flex items-center gap-2 border-l border-outline py-2.5 pl-4 text-sm font-medium text-on-surface transition duration-200 hover:border-l-2 hover:border-outline-strong hover:text-on-surface-strong dark:border-outline-dark dark:text-on-surface-dark dark:hover:border-outline-dark-strong dark:hover:text-on-surface-dark-strong".split(" ")
-						}
-					};
 
 					function sidebarLinkFromEvent(event) {
 						var detail = event && event.detail;
@@ -106,25 +94,7 @@ templ LayoutWithBranding(title string, branding core.DocsBranding) {
 						return null;
 					}
 
-					function directIcon(link) {
-						for (var i = 0; i < link.children.length; i++) {
-							var child = link.children[i];
-							if (child.classList && child.classList.contains('size-8')) {
-								return child;
-							}
-						}
-						return null;
-					}
-
-					function classProfile(link) {
-						if (link.closest('[data-sidebar-section]')) return sidebarLinkClasses.section;
-						return sidebarLinkClasses.item;
-					}
-
 					function setSidebarLinkActive(link, active) {
-						var profile = classProfile(link);
-						link.classList.remove.apply(link.classList, profile.active.concat(profile.inactive));
-						link.classList.add.apply(link.classList, active ? profile.active : profile.inactive);
 						if (active) {
 							link.setAttribute('aria-current', 'page');
 							if (!activeMarker(link)) {
@@ -138,11 +108,6 @@ templ LayoutWithBranding(title string, branding core.DocsBranding) {
 							var marker = activeMarker(link);
 							if (marker) marker.remove();
 						}
-
-						var icon = directIcon(link);
-						if (!icon || !profile.iconActive || !profile.iconInactive) return;
-						icon.classList.remove.apply(icon.classList, profile.iconActive.concat(profile.iconInactive));
-						icon.classList.add.apply(icon.classList, active ? profile.iconActive : profile.iconInactive);
 					}
 
 					function updateSidebarActiveLink(href) {
@@ -169,9 +134,21 @@ templ LayoutWithBranding(title string, branding core.DocsBranding) {
 					document.addEventListener('htmx:afterSwap', function (e) {
 						var target = e && e.detail && e.detail.target;
 						if (!target || target.id !== 'main-content') return;
+						var content = target.querySelector('[data-public-docs-content="true"]');
+						if (content && content.dataset.selectedDoc) {
+							target.dataset.selectedDoc = content.dataset.selectedDoc;
+						}
+						if (content && content.dataset.documentTitle) {
+							document.title = content.dataset.documentTitle;
+						}
+						var shouldFocus = pendingSidebarHref !== "";
 						updateSidebarActiveLink(pendingSidebarHref || (window.location.pathname + window.location.search + window.location.hash));
 						pendingSidebarHref = "";
-						window.scrollTo({ top: 0 });
+						target.scrollTo({ top: 0 });
+						if (shouldFocus) {
+							var focusTarget = target.querySelector('[data-manja-settled-focus="true"]');
+							if (focusTarget) focusTarget.focus({ preventScroll: true });
+						}
 					});
 				})();
 			</script>

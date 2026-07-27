@@ -74,6 +74,7 @@ templ managementShell(model ManagementOverviewModel, active string) {
 				Sidebar:      managementSidebar(model, active, ""),
 				MainID:       "main-content",
 				RootClass:    "h-full",
+				RootAttrs:    templpkg.Attributes{"data-manja-app-shell": "true"},
 				HeaderClass:  "manja-docs-header relative z-50 shrink-0 border-b border-outline bg-surface dark:border-outline-dark dark:bg-surface-dark",
 				HeaderAttrs:  templpkg.Attributes{"data-boot-anim": "header"},
 				SidebarClass: "hidden h-full w-72 shrink-0 lg:block",

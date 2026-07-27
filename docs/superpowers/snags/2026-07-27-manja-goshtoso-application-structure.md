@@ -45,3 +45,94 @@ authorize edits to Goshtoso or access to private/generated upstream output.
 - Upstream feedback candidate: expose a documented immutable full dependency
   manifest and exact library-version API in a separately reviewed Goshtoso
   release.
+
+## 2026-07-27 — public detail workspace composition examples
+
+- Desired contract: compose selected public documentation identity, loading,
+  empty, and neutral workspace regions from the documented `PageHeader`,
+  `Panel`, `EmptyState`, and `Skeleton` APIs without relying on
+  component-private classes.
+- Public source consulted: `go doc` for the four Goshtoso v0.0.13 component
+  `Config` types and the public application-pattern example at
+  `examples/application-patterns/views.templ`.
+- Source dive or missing API: read the public example implementation to confirm
+  supported component composition after the component reference documented the
+  fields but not the complete detail-workspace call shape.
+- Workaround or no-match decision: use only exported configuration fields and
+  Manja-owned semantic hooks; do not copy example-only CSS or inspect generated
+  or private component output.
+- Risk: low. The implementation remains on the documented public API, but the
+  extra example lookup is consumer friction that should remain visible.
+- Upstream feedback candidate: add a compact, copyable detail-workspace
+  composition to the consumer component reference so downstream users do not
+  need to inspect the example source.
+
+## 2026-07-27 — HTMX loading indicator display boundary
+
+- Desired contract: keep the selected public detail visible until navigation
+  begins, then expose an accessible skeleton within the same stable workspace.
+- Public source consulted: Goshtoso `Skeleton` configuration documentation and
+  the existing Manja HTMX swap contract.
+- Source dive or missing API: no missing Goshtoso API; the library does not own
+  consumer-specific HTMX indicator display timing.
+- Workaround or no-match decision: add a narrowly scoped Manja CSS rule for
+  `#public-docs-loading` and the standard `htmx-request` state. All color and
+  geometry continue to come from Goshtoso primitives and semantic tokens.
+- Risk: the indicator depends on HTMX's documented request-state class, which
+  is already part of the application navigation contract.
+- Upstream feedback candidate: none; this is an application-owned integration
+  boundary rather than a Goshtoso component gap.
+
+## 2026-07-27 — sidebar selection after an out-of-shell HTMX swap
+
+- Desired contract: URL, detail identity, focus destination, visual selection,
+  and `aria-current` remain identical after direct load, HTMX navigation, Back,
+  and Forward without copying Goshtoso's private classes into JavaScript.
+- Public source consulted: Goshtoso Sidebar public item attributes and Manja's
+  frozen selective-focus and HTMX history contracts.
+- Source dive or missing API: the v0.0.13 Sidebar does not expose a public
+  client-side selection-state controller for a sidebar that lives outside the
+  consumer's swap target.
+- Workaround or no-match decision: the fragment emits authoritative
+  `data-selected-doc` and document-title values; one small handler copies only
+  those semantic values, toggles `aria-current`, and focuses the explicit
+  settled heading. Manja-owned CSS styles the semantic selection state after
+  the post-Goshtoso stylesheet boundary.
+- Risk: selection synchronization remains a small consumer integration surface,
+  but it no longer snapshots or mutates Goshtoso implementation class lists.
+- Upstream feedback candidate: document an attribute-driven selection update
+  contract or provide a replaceable selection subregion for out-of-shell HTMX
+  detail swaps.
+
+## 2026-07-27 — hash navigation and the AppShell root scroll container
+
+- Desired contract: exactly one primary scroll owner; direct hash navigation
+  must scroll the main workspace without moving the persistent header or shell.
+- Public source consulted: the exported AppShell `RootAttrs` hook and the frozen
+  browser scroll-owner acceptance test.
+- Source dive or missing API: browser evidence showed AppShell's default
+  `overflow-hidden` root remained programmatically scrollable, allowing a direct
+  hash to shift the entire shell upward by the 65px header height.
+- Workaround or no-match decision: mark the consumer root through `RootAttrs`
+  and override only that root to `overflow: clip` in post-Goshtoso Manja CSS.
+  Main retains `overflow-y: auto` as the sole primary scroll owner.
+- Risk: low and browser-locked. `clip` intentionally removes programmatic shell
+  scrolling while retaining the AppShell's visual clipping boundary.
+- Upstream feedback candidate: consider `overflow-clip` as the AppShell default
+  when its contract promises a single scrollable main region.
+
+## Task 4 RED to GREEN evidence
+
+- RED command: `GOWORK=off go test ./internal/web -run
+  'TestPublicDocs(SelectedContent|UnknownSelection|LoadingState)' -count=1`.
+  Literal failures: `selected detail should expose PageHeader identity
+  "operation-createPet"`; unknown selection rendered `operation-listPets`;
+  `public loading state missing "data-public-docs-loading=\"true\""`.
+- RED command: `GOWORK=off go test ./internal/web/e2e -run
+  'TestPublicDocsScrollsMainContentInsideShell' -count=1`. Literal failure:
+  `aside should keep the viewport-height navigation rail; want 768 got 703`,
+  with `headerRectBottom:0`, `headerRectHeight:65`, and `mainRectTop:0`, proving
+  the shell root had scrolled by the header height.
+- GREEN commands: `GOWORK=off go test ./internal/web -run
+  'TestPublicDocs' -count=1` and `GOWORK=off go test ./internal/web/e2e -run
+  'TestPublicDocs' -count=1`; both passed.
