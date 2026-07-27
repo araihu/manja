@@ -20,6 +20,7 @@ func TestMarshalEnforcesInternedRecordNodeAndDocumentBounds(t *testing.T) {
 		document := mustBuild(t, fullFixture())
 		assertRecordBoundary(t, &document, 512*1024, func(filler string) {
 			document.SchemaDetails[0].Description = filler
+			document.Schemas[0].Description = filler
 		}, func() any { return document.SchemaDetails[0] })
 	})
 	t.Run("schema node", func(t *testing.T) {
@@ -126,7 +127,7 @@ func documentWithCanonicalSize(t *testing.T, target int) projection.Document {
 	low, high := 0, target
 	for low <= high {
 		middle := low + (high-low)/2
-		document.Title = strings.Repeat("x", middle)
+		document.APIVersion = strings.Repeat("x", middle)
 		encoded, err := json.Marshal(document)
 		if err != nil {
 			t.Fatal(err)

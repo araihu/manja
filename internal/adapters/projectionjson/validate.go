@@ -87,90 +87,7 @@ func validateValue(value reflect.Value) error {
 }
 
 func validateTopLevelRecords(document projection.Document) error {
-	if len(document.Operations) != len(document.OperationDetails) || len(document.Schemas) != len(document.SchemaDetails) {
-		return codecFailure("records", "invalid_source")
-	}
-	targets := map[string]string{"overview": "overview"}
-	previous := ""
-	for index := range document.Operations {
-		directory := document.Operations[index]
-		detail := document.OperationDetails[index]
-		if directory.Ordinal != uint32(index) || detail.Ordinal != uint32(index) || directory.Anchor <= previous ||
-			directory.ID != directory.Anchor || directory.Href != selectedHref(directory.Anchor) ||
-			detail.ID != directory.Anchor || detail.Anchor != directory.Anchor || detail.Href != directory.Href ||
-			detail.HeadingID != directory.Anchor || detail.HeadingLevel != 3 {
-			return codecFailure("operations", "non_canonical")
-		}
-		if _, duplicate := targets[directory.Anchor]; duplicate {
-			return codecFailure("operations", "duplicate_record")
-		}
-		targets[directory.Anchor] = "operation"
-		previous = directory.Anchor
-		if err := validateOperationNested(detail); err != nil {
-			return err
-		}
-	}
-	previous = ""
-	for index := range document.Schemas {
-		directory := document.Schemas[index]
-		detail := document.SchemaDetails[index]
-		if directory.Ordinal != uint32(index) || detail.Ordinal != uint32(index) || directory.Anchor <= previous ||
-			directory.ID != directory.Anchor || directory.Href != selectedHref(directory.Anchor) ||
-			detail.ID != directory.Anchor || detail.Anchor != directory.Anchor || detail.Href != directory.Href ||
-			detail.HeadingID != directory.Anchor || detail.HeadingLevel != 3 {
-			return codecFailure("schemas", "non_canonical")
-		}
-		if _, duplicate := targets[directory.Anchor]; duplicate {
-			return codecFailure("schemas", "duplicate_record")
-		}
-		targets[directory.Anchor] = "schema"
-		previous = directory.Anchor
-		if err := validateEmbeddedString(detail.ExampleSchemaJSON); err != nil {
-			return err
-		}
-	}
-	previous = ""
-	for index, record := range document.Search {
-		if record.Ordinal != uint32(index) || record.ID <= previous || record.ResultID == record.ID {
-			return codecFailure("search", "non_canonical")
-		}
-		target, err := parseSelectedHref(record.Href)
-		if err != nil || targets[target] != record.Kind {
-			return codecFailure("search", "invalid_source")
-		}
-		previous = record.ID
-	}
-	previousKey := ""
-	for index, route := range document.PublicRoutes {
-		key := route.Path + "\x00" + route.Title
-		if route.Ordinal != uint32(index) || index > 0 && key <= previousKey {
-			return codecFailure("publicRoutes", "non_canonical")
-		}
-		previousKey = key
-	}
-	for index, section := range document.SidebarSections {
-		if section.Ordinal != uint32(index) || section.Items == nil {
-			return codecFailure("sidebarSections", "non_canonical")
-		}
-	}
-	return nil
-}
-
-func validateOperationNested(detail projection.OperationDetail) error {
-	if detail.RequestBody.MediaTypes == nil || detail.Tags == nil || detail.Parameters == nil || detail.Responses == nil || detail.Security == nil || detail.CodeSamples == nil {
-		return codecFailure("operationDetails", "non_canonical")
-	}
-	for index, parameter := range detail.Parameters {
-		if parameter.Ordinal != uint32(index) || parameter.Examples == nil {
-			return codecFailure("operationDetails.parameters", "non_canonical")
-		}
-	}
-	for index, response := range detail.Responses {
-		if response.Ordinal != uint32(index) || response.MediaTypes == nil {
-			return codecFailure("operationDetails.responses", "non_canonical")
-		}
-	}
-	return nil
+	return validateRecordSemantics(document)
 }
 
 func validateSchemaGraph(document projection.Document) error {
@@ -469,7 +386,10 @@ func selectedHref(anchor string) string {
 
 func parseSelectedHref(value string) (string, error) {
 	reference, err := url.Parse(value)
-	if err != nil || reference.Path != "" || reference.Fragment == "" || reference.Query().Get("selected") != reference.Fragment || len(reference.Query()) != 1 {
+	if err != nil || reference.IsAbs() || reference.Host != "" || reference.User != nil ||
+		reference.Path != "" || reference.Fragment == "" || strings.Contains(value, "\\") ||
+		strings.TrimSpace(value) != value || reference.Query().Get("selected") != reference.Fragment ||
+		len(reference.Query()) != 1 || value != selectedHref(reference.Fragment) {
 		return "", codecFailure("href", "invalid_source")
 	}
 	return reference.Fragment, nil

@@ -153,12 +153,12 @@ func TestCodecRejectsNoncanonicalRecordSemantics(t *testing.T) {
 			mutation.mutate(&document)
 
 			if encoded, err := Marshal(document); err == nil {
-				t.Fatalf("Marshal accepted noncanonical document (%d bytes)", len(encoded))
+				t.Errorf("Marshal accepted noncanonical document (%d bytes)", len(encoded))
 			}
 
 			decoded, err := Unmarshal(marshalUnchecked(t, document))
 			if err == nil {
-				t.Fatal("Unmarshal accepted noncanonical document")
+				t.Error("Unmarshal accepted noncanonical document")
 			}
 			if !reflect.ValueOf(decoded).IsZero() {
 				t.Fatalf("Unmarshal returned nonzero document: formatVersion=%d", decoded.FormatVersion)

@@ -930,6 +930,25 @@ oasdiff/yaml v0.1.0, oasdiff/yaml3 v0.0.13, jsonschema/v6 v6.0.2, and x/text
 v0.34.0. Any `go.mod`, version, replacement, or additional checksum change
 remains a delivery blocker.
 
+### Focused semantic-canonicality correction receipt
+
+Independent review of exact head
+`3311b54d7802eefcc17c678c820add134d55ef8f` demonstrated that the shared
+`Marshal`/`Unmarshal` validator accepted Builder-inconsistent nested records.
+The correction adds a permanent 44-case table covering every non-graph
+derived-record family. Each case requires `Marshal` rejection, `Unmarshal`
+rejection, and a zero decoded document. The internal validator now enforces all
+Builder-derived IDs, ordinals, ordering, navigation, presence flags, and
+directory/detail/sidebar/search/route relationships. Existing schema-graph
+tests continue to own node/ref/digest/cycle/orphan semantics.
+
+Acceptance requires unchanged v2 golden bytes/digests, one unchanged GitHub
+fixture measurement/digest, full projection/codec tests, focused codec race,
+architecture Projection, external Go and dependency-free Node consumers,
+js/wasm build, representative root/site tests, and root/site/external
+vet/build/tidy-diff. No runtime, UI, route, asset, API, module, or dependency
+change is authorized by this correction.
+
 ### Exact owned-path gate
 
 ```bash

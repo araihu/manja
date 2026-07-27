@@ -185,6 +185,33 @@ version, replace directive, production dependency, test placement, or build tag
 changes. The scale test remains literal and the external tidy-diff gate remains
 enabled.
 
+## Strict JSON Was Not Complete Semantic Canonicality
+
+**Date:** 2026-07-27
+
+Independent differential review found that strict token decoding, concrete
+`DisallowUnknownFields` decoding, DTO validation, re-marshalling, and byte
+equality still accepted forged nested semantics. `Marshal` and `Unmarshal`
+shared the same incomplete validator, so mutually inconsistent IDs, ordinals,
+navigation, presence flags, and cross-record relationships could become
+self-consistent canonical bytes.
+
+Resolution: a permanent 44-case table mutates every non-graph derived-record
+family and requires rejection from both codec directions plus a zero document
+from `Unmarshal`. Complete internal semantic validation now derives record IDs,
+checks dense/source ordinals, validates nested examples/media/security/text
+records, binds operation and schema directories to details, rebuilds sidebar
+memberships, binds search and public routes to known canonical targets, and
+rejects absolute navigation. Existing iterative schema-graph validation remains
+unchanged.
+
+The correction changes validation only. All three accepted v2 vectors retain
+their exact bytes and digests. One canonical GitHub-fixture run retains
+7,446,944 bytes, digest
+`b7252b4adf6cacfd60e37608d240699a60e5c9da3d9af3e78f5a51f055f66835`,
+maximum operation 35,611, maximum schema detail 22,423, maximum node 27,546,
+3,453 roots, and 2,236 nodes.
+
 ## No Repository Markdown Link Checker
 
 **Date:** 2026-07-27
