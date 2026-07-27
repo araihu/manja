@@ -1,12 +1,51 @@
 package projectionjson
 
 import (
+	"bytes"
 	"reflect"
 	"testing"
 
 	"github.com/araihu/manja/application/projection"
 	"github.com/araihu/manja/domain"
 )
+
+func TestCodecRoundTripsPublicRouteTargetingSearchResult(t *testing.T) {
+	const searchResultID = "search-result-80ca9d5437c89af2e36d976fa2d1962fd6fe24841ed57b962f2389dc52f68db8"
+	wantPath := "/search?selected=" + searchResultID + "#" + searchResultID
+	input := fullFixture()
+	input.PublicRoutes = append(input.PublicRoutes, domain.PublicRoute{Path: wantPath, Title: "Search result"})
+	document := mustBuild(t, input)
+
+	found := false
+	for _, route := range document.PublicRoutes {
+		if route.Path == wantPath {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("Builder omitted canonical search-result route %q", wantPath)
+	}
+
+	encoded, err := Marshal(document)
+	if err != nil {
+		t.Fatalf("Marshal Builder document: %v", err)
+	}
+	decoded, err := Unmarshal(encoded)
+	if err != nil {
+		t.Fatalf("Unmarshal canonical document: %v", err)
+	}
+	if !reflect.DeepEqual(decoded, document) {
+		t.Fatal("roundtrip document differs from Builder document")
+	}
+	reencoded, err := Marshal(decoded)
+	if err != nil {
+		t.Fatalf("Marshal roundtrip document: %v", err)
+	}
+	if !bytes.Equal(reencoded, encoded) {
+		t.Fatal("roundtrip bytes are not canonical and identical")
+	}
+}
 
 func TestCodecRejectsNoncanonicalRecordSemantics(t *testing.T) {
 	mutations := []struct {
