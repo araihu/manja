@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -98,17 +99,12 @@ func TestManagementOverviewShowsProjectSyncAndPublicationState(t *testing.T) {
 		`data-management-nav="top"`,
 		`hx-target="#management-main-content"`,
 		`action="/manage/publication"`,
-		`border-success bg-surface text-success`,
-		`inline-flex w-fit overflow-clip rounded-radius border border-outline bg-surface-alt divide-x`,
-		`has-checked:bg-primary has-checked:text-on-primary`,
 		`id="management-public-path-payments-source1-rev1"`,
 		`name="visibility"`,
 		`value="public"`,
 		`value="private"`,
 		`name="path"`,
 		`value="/payments/v1"`,
-		`focus-visible:outline-primary`,
-		`rounded-2xl font-medium tracking-wide`,
 		"Production docs",
 		"Live route",
 		"Published revision",
@@ -130,17 +126,18 @@ func TestManagementOverviewShowsProjectSyncAndPublicationState(t *testing.T) {
 		"Readers are pinned to this docs revision until another candidate is promoted.",
 		"Endpoints",
 		"Schemas",
-		`<dd class="min-w-0 truncate font-mono text-sm text-on-surface-strong dark:text-on-surface-dark-strong">2</dd>`,
-		`<dd class="min-w-0 truncate font-mono text-sm text-on-surface-strong dark:text-on-surface-dark-strong">1</dd>`,
 	} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("body missing %q:\n%s", want, body)
 		}
 	}
-	for _, reject := range []string{
-		`inline-grid w-fit grid-cols-2`,
-		`href="/">View docs`,
-	} {
+	for label, value := range map[string]string{"Endpoints": "2", "Schemas": "1"} {
+		pattern := regexp.MustCompile(`(?s)<dt[^>]*>` + regexp.QuoteMeta(label) + `</dt>\s*<dd[^>]*>` + regexp.QuoteMeta(value) + `</dd>`)
+		if !pattern.MatchString(body) {
+			t.Fatalf("management metric %q should have value %q in its description list:\n%s", label, value, body)
+		}
+	}
+	for _, reject := range []string{`href="/">View docs`} {
 		if strings.Contains(body, reject) {
 			t.Fatalf("body should use Goshtoso component vocabulary instead of %q:\n%s", reject, body)
 		}
@@ -932,6 +929,53 @@ func TestManagementOverviewRendersOneSyncFormForSelectedSpec(t *testing.T) {
 	}
 	if count := strings.Count(rec.Body.String(), `action="/manage/sync"`); count != 1 {
 		t.Fatalf("sync form count = %d, body:\n%s", count, rec.Body.String())
+	}
+	body := rec.Body.String()
+	for _, want := range []string{
+		`<legend`,
+		`>Visibility</legend>`,
+		`type="submit"`,
+		`Publish this revision`,
+		`Save route settings`,
+		`Sync selected ref`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("management Goshtoso control semantics missing %q:\n%s", want, body)
+		}
+	}
+	inputTag := func(id string) string {
+		t.Helper()
+		tag := regexp.MustCompile(`<input\b[^>]*\bid="` + regexp.QuoteMeta(id) + `"[^>]*>`).FindString(body)
+		if tag == "" {
+			t.Fatalf("management control input %q missing:\n%s", id, body)
+		}
+		return tag
+	}
+	assertAttrs := func(id string, want ...string) string {
+		t.Helper()
+		tag := inputTag(id)
+		for _, attr := range want {
+			if !strings.Contains(tag, attr) {
+				t.Fatalf("management control %q missing semantic attribute %q in %s", id, attr, tag)
+			}
+		}
+		return tag
+	}
+	publicRadio := assertAttrs("management-visibility-public-payments-api", `type="radio"`, `name="visibility"`, `value="public"`)
+	assertAttrs("management-visibility-private-payments-api", `type="radio"`, `name="visibility"`, `value="private"`, ` checked`)
+	if strings.Contains(publicRadio, ` checked`) {
+		t.Fatalf("public visibility radio should not be checked: %s", publicRadio)
+	}
+	if !strings.Contains(body, `for="management-visibility-public-payments-api"`) ||
+		!strings.Contains(body, `for="management-visibility-private-payments-api"`) {
+		t.Fatalf("visibility radios should have associated labels:\n%s", body)
+	}
+	toggleTag := assertAttrs("management-payments-api-sync-publish", `type="checkbox"`, `role="switch"`, `name="publish"`, `value="public"`)
+	if strings.Contains(toggleTag, ` checked`) {
+		t.Fatalf("publish-on-sync switch should start unchecked: %s", toggleTag)
+	}
+	if !strings.Contains(body, `for="management-payments-api-sync-publish"`) {
+		t.Fatalf("publish-on-sync switch should have an associated label:\n%s", body)
 	}
 }
 

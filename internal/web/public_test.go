@@ -3,6 +3,7 @@ package web
 import (
 	"context"
 	"encoding/json"
+	"html"
 	"mime"
 	"net/http"
 	"net/http/httptest"
@@ -12,10 +13,91 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/a-h/templ"
+
 	core "github.com/araihu/manja/domain"
 	markdownadapter "github.com/araihu/manja/internal/adapters/markdown"
 	openapiadapter "github.com/araihu/manja/internal/adapters/openapi"
 )
+
+func TestPublicDocsUsesGoshtosoCDNFirstDependencyFallbackContract(t *testing.T) {
+	type dependencyEntry struct {
+		Name                string `json:"name"`
+		PrimaryURL          string `json:"primary_url"`
+		FallbackURL         string `json:"fallback_url,omitempty"`
+		Integrity           string `json:"integrity,omitempty"`
+		WaitForWindowLoaded bool   `json:"wait_for_window_loaded,omitempty"`
+	}
+	type dependencyConfig struct {
+		Dependencies []dependencyEntry `json:"dependencies"`
+	}
+
+	srv := NewPublicServer(core.SpecIndex{Title: "Petstore", Version: "1.0.0"})
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	req = req.WithContext(templ.WithNonce(req.Context(), "manja-csp-nonce"))
+	srv.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusOK)
+	}
+	body := rec.Body.String()
+	loaderTag := regexp.MustCompile(`<script[^>]*src="/assets/js/dependency-loader\.js"[^>]*>`).FindString(body)
+	if loaderTag == "" {
+		t.Fatalf("public docs head missing Goshtoso dependency loader:\n%s", body)
+	}
+	if !strings.Contains(loaderTag, `nonce="manja-csp-nonce"`) {
+		t.Fatalf("Goshtoso dependency loader did not inherit the request CSP nonce: %s", loaderTag)
+	}
+
+	match := regexp.MustCompile(`data-goshtoso-dependencies="([^"]+)"`).FindStringSubmatch(loaderTag)
+	if len(match) != 2 {
+		t.Fatalf("dependency loader missing public configuration: %s", loaderTag)
+	}
+	var config dependencyConfig
+	if err := json.Unmarshal([]byte(html.UnescapeString(match[1])), &config); err != nil {
+		t.Fatalf("decode dependency loader configuration: %v\n%s", err, loaderTag)
+	}
+
+	want := []dependencyEntry{
+		{Name: "alpine-collapse", PrimaryURL: "https://unpkg.com/@alpinejs/collapse@3.14.9/dist/cdn.min.js", FallbackURL: "/assets/js/runtime/alpinejs-collapse/3.14.9/alpine-collapse.min.js"},
+		{Name: "alpine-focus", PrimaryURL: "https://unpkg.com/@alpinejs/focus@3.14.9/dist/cdn.min.js", FallbackURL: "/assets/js/runtime/alpinejs-focus/3.14.9/alpine-focus.min.js"},
+		{Name: "alpine-mask", PrimaryURL: "https://unpkg.com/@alpinejs/mask@3.14.9/dist/cdn.min.js", FallbackURL: "/assets/js/runtime/alpinejs-mask/3.14.9/alpine-mask.min.js"},
+		{Name: "alpine", PrimaryURL: "https://unpkg.com/alpinejs@3.14.9/dist/cdn.min.js", FallbackURL: "/assets/js/runtime/alpinejs/3.14.9/alpine.min.js"},
+		{Name: "htmx", PrimaryURL: "https://unpkg.com/htmx.org@2.0.8/dist/htmx.min.js", FallbackURL: "/assets/js/runtime/htmx.org/2.0.8/htmx.min.js", WaitForWindowLoaded: true},
+		{Name: "combobox", PrimaryURL: "/assets/js/combobox.js"},
+	}
+	if len(config.Dependencies) != len(want) {
+		t.Fatalf("dependency count = %d, want %d: %#v", len(config.Dependencies), len(want), config.Dependencies)
+	}
+	for i, expected := range want {
+		got := config.Dependencies[i]
+		if got.Name != expected.Name || got.PrimaryURL != expected.PrimaryURL || got.FallbackURL != expected.FallbackURL {
+			t.Errorf("dependency %d = (%q, %q, %q), want (%q, %q, %q)", i, got.Name, got.PrimaryURL, got.FallbackURL, expected.Name, expected.PrimaryURL, expected.FallbackURL)
+		}
+		if got.WaitForWindowLoaded != expected.WaitForWindowLoaded {
+			t.Errorf("%s wait_for_window_loaded = %t, want %t", got.Name, got.WaitForWindowLoaded, expected.WaitForWindowLoaded)
+		}
+		if got.Name != "combobox" && !strings.HasPrefix(got.Integrity, "sha384-") {
+			t.Errorf("%s integrity = %q, want SHA-384 SRI", got.Name, got.Integrity)
+		}
+	}
+
+	assetURLs := []string{"/assets/styles.css", "/assets/js/dependency-loader.js", "/assets/js/combobox.js"}
+	for _, dependency := range want {
+		if dependency.FallbackURL != "" {
+			assetURLs = append(assetURLs, dependency.FallbackURL)
+		}
+	}
+	for _, assetURL := range assetURLs {
+		t.Run(assetURL, func(t *testing.T) {
+			rec := httptest.NewRecorder()
+			srv.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, assetURL, nil))
+			if rec.Code != http.StatusOK {
+				t.Errorf("GET %s status = %d, want %d", assetURL, rec.Code, http.StatusOK)
+			}
+		})
+	}
+}
 
 func TestPublicDocsRenderSearchAndOperations(t *testing.T) {
 	idx := core.SpecIndex{
@@ -78,22 +160,17 @@ func TestPublicDocsRenderSearchAndOperations(t *testing.T) {
 	if strings.Contains(body, `<section id="operation-createPet"`) {
 		t.Fatalf("operation page should render only the selected sidebar item, got create operation content:\n%s", body)
 	}
-	sidebarMethodBadge := regexp.MustCompile(`<a href="/\?selected=operation-listPets#operation-listPets"[^>]*><span class="min-w-0 flex-1 truncate">List pets</span>\s*<sup[^>]*ml-auto shrink-0[^"]*border-primary[^"]*bg-surface[^"]*text-primary[^"]*"[^>]*>GET</sup>`)
+	sidebarMethodBadge := regexp.MustCompile(`<a href="/\?selected=operation-listPets#operation-listPets"[^>]*><span[^>]*>List pets</span>\s*<sup[^>]*>GET</sup>`)
 	if !sidebarMethodBadge.MatchString(body) {
-		t.Fatalf("operation sidebar item should render flex endpoint label with right-aligned soft Goshtoso method badge:\n%s", body)
+		t.Fatalf("operation sidebar link should associate its label with the GET method text:\n%s", body)
 	}
-	postMethodBadge := regexp.MustCompile(`<a href="/\?selected=operation-createPet#operation-createPet"[^>]*><span class="min-w-0 flex-1 truncate">Create pet</span>\s*<sup[^>]*border-success[^"]*bg-surface[^"]*text-success[^"]*"[^>]*>POST</sup>`)
+	postMethodBadge := regexp.MustCompile(`<a href="/\?selected=operation-createPet#operation-createPet"[^>]*><span[^>]*>Create pet</span>\s*<sup[^>]*>POST</sup>`)
 	if !postMethodBadge.MatchString(body) {
-		t.Fatalf("POST sidebar method badge should use Goshtoso soft success styling:\n%s", body)
+		t.Fatalf("operation sidebar link should associate its label with the POST method text:\n%s", body)
 	}
-	pageMethodBadge := regexp.MustCompile(`<span class="[^"]*rounded-radius[^"]*w-fit[^"]*font-medium[^"]*text-\[10px\][^"]*px-1\.5[^"]*py-0\.5[^"]*border-primary[^"]*bg-primary[^"]*text-on-primary[^"]*font-mono[^"]*font-bold[^"]*">GET</span>`)
+	pageMethodBadge := regexp.MustCompile(`<div aria-label="Endpoint route"[^>]*>\s*<span[^>]*>GET</span>\s*<p[^>]*>/pets</p>`)
 	if !pageMethodBadge.MatchString(body) {
-		t.Fatalf("operation cards should render methods with Goshtoso badge component classes:\n%s", body)
-	}
-	for _, reject := range []string{"bg-sky-700", "bg-sky-400", "bg-emerald-700", "bg-emerald-400", "bg-rose-700", "bg-rose-400", "text-white", "text-neutral-950"} {
-		if strings.Contains(body, reject) {
-			t.Fatalf("method badges should use Goshtoso badge variants, got custom class %q:\n%s", reject, body)
-		}
+		t.Fatalf("selected endpoint should expose its method and path in the labelled native route group:\n%s", body)
 	}
 	sidebarTagGroup := regexp.MustCompile(`<div data-sidebar-section="Operations">.*<div x-data="\{ open: true \}">.*<a href="#"[^>]*x-on:click\.prevent="open = !open"[^>]*aria-controls="tag-pets-children"[^>]*><span class="min-w-0 flex-1 truncate">Pets</span>.*<div id="tag-pets-children" x-show="open" class="ml-4 flex flex-col">.*<a href="/\?selected=operation-listPets#operation-listPets"[^>]*><span class="min-w-0 flex-1 truncate">List pets</span>\s*<sup[^>]*>GET</sup>`)
 	if !sidebarTagGroup.MatchString(body) {
@@ -125,7 +202,6 @@ func TestPublicDocsRenderSearchAndOperations(t *testing.T) {
 		`manja-theme-trigger`,
 		`theme: localStorage.getItem('theme') || 'manja'`,
 		`localStorage.getItem('theme') || 'manja'`,
-		`theme = opt.value`,
 	} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("header theme picker or default theme missing %q:\n%s", want, body)
@@ -896,6 +972,7 @@ func TestPublicDocsFragmentRequestReturnsOnlyMainContent(t *testing.T) {
 		`hx-target="#main-content"`,
 		`hx-swap="innerHTML swap:120ms settle:240ms"`,
 		`hx-push-url="true"`,
+		`hx-history="false"`,
 	} {
 		if !strings.Contains(full, want) {
 			t.Fatalf("full page missing fragment navigation marker %q:\n%s", want, full)
@@ -920,6 +997,21 @@ func TestPublicDocsFragmentRequestReturnsOnlyMainContent(t *testing.T) {
 	for _, reject := range []string{`<!doctype html>`, `<html`, `id="main-content"`, `hx-swap-oob`, `id="sidebar-nav-content"`} {
 		if strings.Contains(body, reject) {
 			t.Fatalf("fragment response should not include shell/sidebar marker %q:\n%s", reject, body)
+		}
+	}
+
+	historyRec := httptest.NewRecorder()
+	historyReq := httptest.NewRequest(http.MethodGet, "/?selected=operation-listPets", nil)
+	historyReq.Header.Set("HX-Request", "true")
+	historyReq.Header.Set("HX-History-Restore-Request", "true")
+	srv.ServeHTTP(historyRec, historyReq)
+	if historyRec.Code != http.StatusOK {
+		t.Fatalf("history restore status = %d", historyRec.Code)
+	}
+	historyBody := historyRec.Body.String()
+	for _, want := range []string{`<!doctype html>`, `<html`, `id="main-content"`, `id="sidebar-nav-content"`, `hx-history="false"`} {
+		if !strings.Contains(historyBody, want) {
+			t.Fatalf("history restore should return a complete public document with %q:\n%s", want, historyBody)
 		}
 	}
 }
@@ -1454,6 +1546,7 @@ func TestPublicDocsRenderEndpointDetails(t *testing.T) {
 		`Header Parameters`,
 		`Request configuration`,
 		`data-manja-request-config-panel`,
+		`allowMultiple: true`,
 		`px-1 text-sm font-semibold text-on-surface-strong dark:text-on-surface-dark-strong`,
 		`bg-surface-alt/40 dark:bg-surface-dark-alt/50`,
 		`x-collapse`,
@@ -1772,7 +1865,7 @@ func TestPublicDocsResponseStatusBadgesUseStatusClassHierarchy(t *testing.T) {
 	}
 }
 
-func TestPublicDocsMethodBadgesUseSideEffectHierarchy(t *testing.T) {
+func TestPublicDocsMethodBadgesAssociateMethodsWithOperations(t *testing.T) {
 	idx := core.SpecIndex{
 		Title: "Method API",
 		Operations: []core.Operation{{
@@ -1809,35 +1902,25 @@ func TestPublicDocsMethodBadgesUseSideEffectHierarchy(t *testing.T) {
 	}
 
 	body := renderPublicDocs(t, NewPublicServer(idx), "/")
-	for _, want := range []string{
-		`border-primary bg-surface text-primary`,
-		`border-success bg-surface text-success`,
-		`border-warning bg-surface text-warning`,
-		`border-danger bg-surface text-danger`,
-		`>GET</sup>`,
-		`>POST</sup>`,
-		`>PUT</sup>`,
-		`>PATCH</sup>`,
-		`>DELETE</sup>`,
-	} {
-		if !strings.Contains(body, want) {
-			t.Fatalf("sidebar method hierarchy missing %q:\n%s", want, body)
-		}
-	}
 	for _, item := range []struct {
 		anchor  string
 		method  string
-		classes string
+		summary string
 	}{
-		{"operation-read", "GET", `border-primary bg-primary text-on-primary`},
-		{"operation-create", "POST", `border-success bg-success text-on-success`},
-		{"operation-replace", "PUT", `border-warning bg-warning text-on-warning`},
-		{"operation-update", "PATCH", `border-warning bg-warning text-on-warning`},
-		{"operation-delete", "DELETE", `border-danger bg-danger text-on-danger`},
+		{"operation-read", "GET", "Read resource"},
+		{"operation-create", "POST", "Create resource"},
+		{"operation-replace", "PUT", "Replace resource"},
+		{"operation-update", "PATCH", "Update resource"},
+		{"operation-delete", "DELETE", "Delete resource"},
 	} {
+		sidebarPattern := regexp.MustCompile(`<a href="/\?selected=` + regexp.QuoteMeta(item.anchor) + `#` + regexp.QuoteMeta(item.anchor) + `"[^>]*><span[^>]*>` + regexp.QuoteMeta(item.summary) + `</span>\s*<sup[^>]*>` + regexp.QuoteMeta(item.method) + `</sup>`)
+		if !sidebarPattern.MatchString(body) {
+			t.Fatalf("sidebar operation %s should associate %q with method %s:\n%s", item.anchor, item.summary, item.method, body)
+		}
 		endpointBody := renderPublicDocs(t, NewPublicServer(idx), "/?selected="+item.anchor)
-		if !strings.Contains(endpointBody, item.classes) || !strings.Contains(endpointBody, ">"+item.method+"</span>") {
-			t.Fatalf("endpoint method badge for %s should stay solid with %q:\n%s", item.method, item.classes, endpointBody)
+		endpointPattern := regexp.MustCompile(`(?s)<section id="` + regexp.QuoteMeta(item.anchor) + `"[^>]*>.*?<div aria-label="Endpoint route"[^>]*>\s*<span[^>]*>` + regexp.QuoteMeta(item.method) + `</span>\s*<p[^>]*>/resource</p>`)
+		if !endpointPattern.MatchString(endpointBody) {
+			t.Fatalf("endpoint %s should expose method %s and its path in the labelled route group:\n%s", item.anchor, item.method, endpointBody)
 		}
 	}
 }

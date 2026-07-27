@@ -1,6 +1,6 @@
 module example.com/manja-extension
 
-go 1.26.1
+go 1.26.5
 
 require github.com/araihu/manja v0.0.0
 

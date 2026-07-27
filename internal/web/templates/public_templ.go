@@ -160,7 +160,7 @@ func PublicDocsWithOptions(idx core.SpecIndex, selectedID string, opts PublicDoc
 				}()
 			}
 			ctx = templ.InitializeContext(ctx)
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<div class=\"fixed inset-0 flex flex-col overflow-clip bg-surface text-on-surface dark:bg-surface-dark dark:text-on-surface-dark\"><header data-boot-anim=\"header\" class=\"manja-docs-header relative z-50 shrink-0 border-b border-outline bg-surface dark:border-outline-dark dark:bg-surface-dark\"><div class=\"flex h-16 items-center justify-between gap-3 px-4 lg:px-8\"><div class=\"flex min-w-0 items-center gap-2\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<div hx-history=\"false\" class=\"fixed inset-0 flex flex-col overflow-clip bg-surface text-on-surface dark:bg-surface-dark dark:text-on-surface-dark\"><header data-boot-anim=\"header\" class=\"manja-docs-header relative z-50 shrink-0 border-b border-outline bg-surface dark:border-outline-dark dark:bg-surface-dark\"><div class=\"flex h-16 items-center justify-between gap-3 px-4 lg:px-8\"><div class=\"flex min-w-0 items-center gap-2\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -1205,7 +1205,7 @@ func endpointSection(op core.Operation, servers []core.SpecServer, exampleSpecJS
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = badge.Badge(badge.Config{Label: "Deprecated", Variant: badge.Warning, Style: badge.StyleSoft, Size: badge.SizeSM}).Render(ctx, templ_7745c5c3_Buffer)
+			templ_7745c5c3_Err = badge.Badge(badge.Config{Label: "Deprecated", Tone: badge.ToneWarning, Appearance: badge.AppearanceSoft, Size: badge.SizeSM}).Render(ctx, templ_7745c5c3_Buffer)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -1534,7 +1534,7 @@ func requestComposer(opID string, op core.Operation, servers []core.SpecServer, 
 				ID:            opID + "-request-config-accordion",
 				Items:         items,
 				AllowMultiple: true,
-				Variant:       accordion.Default,
+				Appearance:    accordion.AppearanceDefault,
 				RootClass:     "min-w-0 shadow-sm",
 			}).Render(ctx, templ_7745c5c3_Buffer)
 			if templ_7745c5c3_Err != nil {
@@ -3269,13 +3269,12 @@ func sidebarSections(idx core.SpecIndex, selectedAnchor string, labelMode Endpoi
 				label := operationSidebarLabel(op, labelMode)
 				href := selectedDocsHref(anchor)
 				tagItems[tag] = append(tagItems[tag], sidebar.Item{
-					ID:         sidebarItemID(idPrefix, anchor),
-					Label:      label,
-					Href:       href,
-					Active:     active,
-					Badge:      op.Method,
-					BadgeClass: methodBadgeClass(op.Method),
-					LinkAttrs:  sidebarNavigationAttrs(label, href),
+					ID:        sidebarItemID(idPrefix, anchor),
+					Label:     label,
+					Href:      href,
+					Active:    active,
+					Badge:     op.Method,
+					LinkAttrs: sidebarNavigationAttrs(label, href),
 				})
 			}
 		}
@@ -3469,7 +3468,7 @@ func methodBadge(method string) templ.Component {
 		ctx = templ.ClearChildren(ctx)
 		templ_7745c5c3_Err = badge.Badge(badge.Config{
 			Label:     strings.ToUpper(strings.TrimSpace(method)),
-			Variant:   methodBadgeVariant(method),
+			Tone:      methodBadgeTone(method),
 			Size:      badge.SizeSM,
 			RootClass: "font-mono font-bold",
 		}).Render(ctx, templ_7745c5c3_Buffer)
@@ -3480,24 +3479,20 @@ func methodBadge(method string) templ.Component {
 	})
 }
 
-func methodBadgeClass(method string) string {
-	return badge.Config{Variant: methodBadgeVariant(method), Size: badge.SizeSM}.SoftVariantClasses()
-}
-
-func methodBadgeVariant(method string) badge.Variant {
+func methodBadgeTone(method string) badge.Tone {
 	switch strings.ToUpper(strings.TrimSpace(method)) {
 	case "GET":
-		return badge.Primary
+		return badge.TonePrimary
 	case "POST":
-		return badge.Success
+		return badge.ToneSuccess
 	case "PUT":
-		return badge.Warning
+		return badge.ToneWarning
 	case "PATCH":
-		return badge.Warning
+		return badge.ToneWarning
 	case "DELETE":
-		return badge.Danger
+		return badge.ToneDanger
 	default:
-		return badge.Default
+		return badge.ToneDefault
 	}
 }
 
@@ -3956,7 +3951,7 @@ func responseStatusBadge(status string) templ.Component {
 		ctx = templ.ClearChildren(ctx)
 		templ_7745c5c3_Err = badge.Badge(badge.Config{
 			Label:     status,
-			Variant:   responseBadgeVariant(status),
+			Tone:      responseBadgeTone(status),
 			RootClass: "font-mono font-bold",
 		}).Render(ctx, templ_7745c5c3_Buffer)
 		if templ_7745c5c3_Err != nil {
@@ -3966,21 +3961,21 @@ func responseStatusBadge(status string) templ.Component {
 	})
 }
 
-func responseBadgeVariant(status string) badge.Variant {
+func responseBadgeTone(status string) badge.Tone {
 	trimmed := strings.TrimSpace(status)
 	if strings.HasPrefix(trimmed, "2") {
-		return badge.Success
+		return badge.ToneSuccess
 	}
 	if strings.HasPrefix(trimmed, "3") {
-		return badge.Primary
+		return badge.TonePrimary
 	}
 	if strings.HasPrefix(trimmed, "4") {
-		return badge.Warning
+		return badge.ToneWarning
 	}
 	if strings.HasPrefix(trimmed, "5") {
-		return badge.Danger
+		return badge.ToneDanger
 	}
-	return badge.Default
+	return badge.ToneDefault
 }
 
 func requiredMark(required bool) string {

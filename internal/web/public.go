@@ -264,7 +264,9 @@ func NewPublicServerWithOptions(idx core.SpecIndex, opts PublicOptions) http.Han
 			MarkdownRenderer:     opts.MarkdownRenderer,
 		}
 		component := templates.PublicDocsWithOptions(idx, selected, renderOpts)
-		if r.Header.Get("HX-Request") == "true" && r.Header.Get("HX-Boosted") != "true" {
+		if r.Header.Get("HX-Request") == "true" &&
+			r.Header.Get("HX-Boosted") != "true" &&
+			r.Header.Get("HX-History-Restore-Request") != "true" {
 			component = templates.PublicDocsFragmentWithOptions(idx, selected, renderOpts)
 		}
 		if err := component.Render(r.Context(), w); err != nil {

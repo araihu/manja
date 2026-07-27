@@ -43,6 +43,10 @@ func TestManagementTabActionsInitializeSwappedContent(t *testing.T) {
 					AuthorEmail: "ada@acme.test",
 					Message:     "Require payment versioning and retire customers endpoint",
 				},
+				Candidates: []core.RevisionCandidate{
+					{SourceID: "local-git/payments-api.git", Ref: "release/breaking-auth", Kind: "branch", CommitSHA: "2da5e5002090fcc0cfb63194eeda0bc65c098f0d"},
+					{SourceID: "local-git/payments-api.git", Ref: "main", Kind: "branch", CommitSHA: "64d8e2a013f76b5f28c9f14881065d3f6c4f8e17"},
+				},
 				Publication: core.Publication{
 					ProjectID:  "payments",
 					RevisionID: "rev-live",
@@ -79,6 +83,9 @@ func TestManagementTabActionsInitializeSwappedContent(t *testing.T) {
 	if _, err := page.Goto(server + "/manage/spec/payments-api"); err != nil {
 		t.Fatal(err)
 	}
+	if _, err := page.Evaluate(`async () => await window.goshtosoDependencies.ready`, nil); err != nil {
+		t.Fatalf("await Goshtoso dependency readiness: %v", err)
+	}
 	if err := page.Locator(`[role="tab"]:has-text("Publish")`).WaitFor(); err != nil {
 		t.Fatal(err)
 	}
@@ -104,6 +111,26 @@ func TestManagementTabActionsInitializeSwappedContent(t *testing.T) {
 		t.Fatal(err)
 	}
 	assertVisibleManagementTabPanels(t, page, []string{"Publish"})
+
+	if err := page.Locator(`[role="tab"]:has-text("Route")`).Click(); err != nil {
+		t.Fatal(err)
+	}
+	assertVisibleManagementTabPanels(t, page, []string{"Route"})
+	focusManagementControl(t, page, `#management-visibility-public-payments-api`)
+	assertKeyboardControlWithoutScroll(t, page, "ArrowRight", `() => {
+		const control = document.querySelector('#management-visibility-private-payments-api');
+		return Boolean(control && control.checked && document.activeElement === control);
+	}`)
+
+	if err := page.Locator(`[role="tab"]:has-text("Sync")`).Click(); err != nil {
+		t.Fatal(err)
+	}
+	assertVisibleManagementTabPanels(t, page, []string{"Sync"})
+	focusManagementControl(t, page, `#management-payments-api-sync-publish`)
+	assertKeyboardControlWithoutScroll(t, page, "Space", `() => {
+		const control = document.querySelector('#management-payments-api-sync-publish');
+		return Boolean(control && control.checked && document.activeElement === control);
+	}`)
 }
 
 type recordingPublicationStore struct {
@@ -113,6 +140,60 @@ type recordingPublicationStore struct {
 func (s *recordingPublicationStore) SavePublication(_ context.Context, publication core.Publication) error {
 	s.publication = publication
 	return nil
+}
+
+func assertKeyboardControlWithoutScroll(t *testing.T, page playwright.Page, key string, settled string) {
+	t.Helper()
+
+	before, err := page.Evaluate(`() => [window.scrollX, window.scrollY]`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := page.Keyboard().Press(key); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := page.WaitForFunction(settled, nil, playwright.PageWaitForFunctionOptions{Timeout: playwright.Float(5000)}); err != nil {
+		t.Fatalf("control did not settle after %s: %v", key, err)
+	}
+	unchanged, err := page.Evaluate(`(before) => window.scrollX === before[0] && window.scrollY === before[1]`, before)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if unchanged != true {
+		t.Fatalf("%s should operate the focused control without scrolling; before=%#v", key, before)
+	}
+}
+
+func focusManagementControl(t *testing.T, page playwright.Page, selector string) {
+	t.Helper()
+
+	focused, err := page.Evaluate(`(selector) => {
+		const control = document.querySelector(selector);
+		if (!control) return false;
+		control.focus();
+		return document.activeElement === control;
+	}`, selector)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if focused != true {
+		metrics, metricsErr := page.Evaluate(`(selector) => {
+			const control = document.querySelector(selector);
+			const panel = control && control.closest('[role="tabpanel"]');
+			const bounds = control && control.getBoundingClientRect();
+			return {
+				exists: Boolean(control),
+				disabled: Boolean(control && control.disabled),
+				hidden: Boolean(control && control.hidden),
+				offsetParent: Boolean(control && control.offsetParent),
+				panelDisplay: panel ? getComputedStyle(panel).display : '',
+				panelInert: Boolean(panel && panel.inert),
+				width: bounds ? bounds.width : 0,
+				height: bounds ? bounds.height : 0,
+			};
+		}`, selector)
+		t.Fatalf("management control %s should accept browser focus; metrics=%#v err=%v", selector, metrics, metricsErr)
+	}
 }
 
 func assertVisibleManagementTabPanels(t *testing.T, page playwright.Page, want []string) {

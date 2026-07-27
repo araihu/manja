@@ -184,11 +184,11 @@ templ managementProductionHeader(spec ManagedSpecModel) {
 			</div>
 			<div class="flex flex-wrap items-center gap-2 lg:justify-end">
 				@badge.Badge(badge.Config{
-					Label:   managementPublicationLabel(spec.Publication),
-					Variant: managementPublicationBadgeVariant(spec.Publication),
-					Style:   badge.StyleSoft,
+					Label:      managementPublicationLabel(spec.Publication),
+					Tone:       managementPublicationBadgeTone(spec.Publication),
+					Appearance: badge.AppearanceSoft,
 				})
-				<span class={ table.BadgeCellClasses(managementSyncTableColor(spec.SyncRecord)) }>{ managementValue(string(spec.SyncRecord.Result)) }</span>
+				@managementStatusBadge(managementValue(string(spec.SyncRecord.Result)), managementSyncTone(spec.SyncRecord))
 				if managementPublishedDocsHref(spec.Publication) != "" {
 					<a href={ templpkg.URL(managementPublishedDocsHref(spec.Publication)) } class="inline-flex h-10 shrink-0 items-center justify-center rounded-radius border border-outline bg-surface px-3 text-sm font-semibold text-on-surface-strong transition hover:bg-surface-alt focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary dark:border-outline-dark dark:bg-surface-dark dark:text-on-surface-dark-strong dark:hover:bg-surface-dark-alt dark:focus-visible:outline-primary-dark">View docs</a>
 				} else {
@@ -262,7 +262,7 @@ templ managementPublishCandidatePanel(spec ManagedSpecModel) {
 					<p class="text-xs font-semibold uppercase tracking-normal text-on-surface-muted dark:text-on-surface-dark-muted">Ready revision</p>
 					<p class="mt-1 break-words font-mono text-base font-semibold text-on-surface-strong dark:text-on-surface-dark-strong">{ managementRevisionLabel(spec.Revision) }</p>
 				</div>
-				<span class={ table.BadgeCellClasses(managementSyncTableColor(spec.SyncRecord)) }>{ managementCandidateState(spec) }</span>
+				@managementStatusBadge(managementCandidateState(spec), managementSyncTone(spec.SyncRecord))
 			</div>
 			<dl class="manja-management-candidate-grid">
 				@managementCompactMetric("Version", spec.Version)
@@ -288,7 +288,11 @@ templ managementPublishCandidatePanel(spec ManagedSpecModel) {
 					<p>Publish this revision at <code class="font-mono text-on-surface-strong dark:text-on-surface-dark-strong">{ managementPublicationPathValue(spec.Publication, spec.Project) }</code>.</p>
 					<p class="text-xs">Route settings below control the path, privacy, hostname, and indexing policy.</p>
 				</div>
-				@button.Button(button.Config{Variant: button.Primary, Type: "submit", RootClass: "w-fit"}) {
+				@button.Button(
+					button.WithTone(button.TonePrimary),
+					button.WithType("submit"),
+					button.WithRootClass("w-fit"),
+				) {
 					Publish this revision
 				}
 			</form>
@@ -304,7 +308,7 @@ templ managementContractDiffPanel(spec ManagedSpecModel) {
 				<h3 id={ "management-contract-check-" + spec.ID } class="mt-1 text-sm font-semibold text-on-surface-strong dark:text-on-surface-dark-strong">Contract check</h3>
 				<p class="mt-1 text-sm leading-5 text-on-surface-muted dark:text-on-surface-dark-muted">{ managementContractDescription(spec) }</p>
 			</div>
-			<span class={ table.BadgeCellClasses(managementContractColor(spec)) }>{ managementContractLabel(spec) }</span>
+			@managementStatusBadge(managementContractLabel(spec), managementContractTone(spec))
 		</div>
 		<dl class="manja-management-contract-counts">
 			@managementCompactMetric("Breaking", managementChangeCountLabel(len(spec.Diff.BreakingChanges), "change"))
@@ -333,7 +337,7 @@ templ managementContractDiffPanel(spec ManagedSpecModel) {
 					for _, change := range managementContractChanges(spec.Diff) {
 						<li class="grid gap-1 rounded-radius border border-outline bg-surface-alt px-3 py-2 dark:border-outline-dark dark:bg-surface-dark-alt">
 							<div class="flex flex-wrap items-center gap-2">
-								<span class={ table.BadgeCellClasses(managementContractChangeColor(change)) }>{ change.Severity }</span>
+								@managementStatusBadge(string(change.Severity), managementContractChangeTone(change))
 								<span class="text-sm font-semibold text-on-surface-strong dark:text-on-surface-dark-strong">{ change.Kind }</span>
 							</div>
 							<p class="break-words font-mono text-sm text-on-surface-strong dark:text-on-surface-dark-strong">{ change.Subject }</p>
@@ -355,9 +359,9 @@ templ managementRouteSettingsPanel(spec ManagedSpecModel) {
 		<div class="grid gap-3 rounded-radius border border-outline bg-surface px-3 py-3 dark:border-outline-dark dark:bg-surface-dark">
 			@managementStatusRow("Visibility") {
 				@badge.Badge(badge.Config{
-					Label:   managementPublicationLabel(spec.Publication),
-					Variant: managementPublicationBadgeVariant(spec.Publication),
-					Style:   badge.StyleSoft,
+					Label:      managementPublicationLabel(spec.Publication),
+					Tone:       managementPublicationBadgeTone(spec.Publication),
+					Appearance: badge.AppearanceSoft,
 				})
 			}
 			@managementStatusRow("Configured path") {
@@ -382,8 +386,8 @@ templ managementRouteSettingsPanel(spec ManagedSpecModel) {
 			<fieldset class="grid gap-2">
 				<legend class="text-xs font-semibold uppercase tracking-normal text-on-surface-muted dark:text-on-surface-dark-muted">Visibility</legend>
 				@radio.RadioBar() {
-					@radio.Radio(radio.Config{ID: "management-visibility-public-" + spec.ID, Name: "visibility", Value: "public", Label: "Public", Checked: spec.Publication.Public, Variant: radio.Primary, Segmented: true})
-					@radio.Radio(radio.Config{ID: "management-visibility-private-" + spec.ID, Name: "visibility", Value: "private", Label: "Private", Checked: !spec.Publication.Public, Variant: radio.Primary, Segmented: true})
+					@radio.Radio(radio.Config{ID: "management-visibility-public-" + spec.ID, Name: "visibility", Value: "public", Label: "Public", Checked: spec.Publication.Public, Tone: radio.TonePrimary, Segmented: true})
+					@radio.Radio(radio.Config{ID: "management-visibility-private-" + spec.ID, Name: "visibility", Value: "private", Label: "Private", Checked: !spec.Publication.Public, Tone: radio.TonePrimary, Segmented: true})
 				}
 			</fieldset>
 			@textinput.TextInput(textinput.Config{
@@ -394,7 +398,11 @@ templ managementRouteSettingsPanel(spec ManagedSpecModel) {
 				Value:       managementPublicationPathValue(spec.Publication, spec.Project),
 				RootClass:   "font-mono",
 			})
-			@button.Button(button.Config{Variant: button.Alternate, Type: "submit", RootClass: "w-fit"}) {
+			@button.Button(
+				button.WithTone(button.ToneAlternate),
+				button.WithType("submit"),
+				button.WithRootClass("w-fit"),
+			) {
 				Save route settings
 			}
 		</form>
@@ -405,7 +413,7 @@ templ managementSyncPanel(spec ManagedSpecModel) {
 	@managementActionPanel("Sync", "Source revision", "Choose a discovered source ref and optionally publish that revision in one pass.") {
 		<div class="grid gap-3 rounded-radius border border-outline bg-surface px-3 py-3 dark:border-outline-dark dark:bg-surface-dark">
 			@managementStatusRow("Result") {
-				<span class={ table.BadgeCellClasses(managementSyncTableColor(spec.SyncRecord)) }>{ managementValue(string(spec.SyncRecord.Result)) }</span>
+				@managementStatusBadge(managementValue(string(spec.SyncRecord.Result)), managementSyncTone(spec.SyncRecord))
 			}
 			@managementStatusRow("Finished") {
 				<span class="font-mono text-sm text-on-surface-strong dark:text-on-surface-dark-strong">{ managementTime(spec.SyncRecord.FinishedAt) }</span>
@@ -430,17 +438,17 @@ templ managementReleaseHistory(spec ManagedSpecModel) {
 			<p class="mt-1 text-sm text-on-surface-muted dark:text-on-surface-dark-muted">Production docs keep serving the published revision until a newer candidate is explicitly promoted.</p>
 		</div>
 		<div class="manja-management-release-list p-4">
-			@managementReleaseRow("Published revision", managementReleaseTitle(spec), managementReleaseDescription(spec), managementPublicationTableColor(spec.Publication))
-			@managementReleaseRow("Last sync", managementSyncReleaseTitle(spec.SyncRecord), managementSyncReleaseDescription(spec.SyncRecord), managementSyncTableColor(spec.SyncRecord))
-			@managementReleaseRow("Rollback", "Previous release history", "Rollback controls will appear here once Manja persists multiple publication revisions.", "neutral")
+			@managementReleaseRow("Published revision", managementReleaseTitle(spec), managementReleaseDescription(spec), managementPublicationBadgeTone(spec.Publication))
+			@managementReleaseRow("Last sync", managementSyncReleaseTitle(spec.SyncRecord), managementSyncReleaseDescription(spec.SyncRecord), managementSyncTone(spec.SyncRecord))
+			@managementReleaseRow("Rollback", "Previous release history", "Rollback controls will appear here once Manja persists multiple publication revisions.", badge.ToneDefault)
 		</div>
 	</section>
 }
 
-templ managementReleaseRow(label string, title string, description string, color string) {
+templ managementReleaseRow(label string, title string, description string, tone badge.Tone) {
 	<div class="manja-management-release-row">
 		<div class="manja-management-release-marker">
-			<span class={ table.BadgeCellClasses(color) }>{ label }</span>
+			@managementStatusBadge(label, tone)
 		</div>
 		<div class="min-w-0">
 			<p class="font-mono text-sm font-semibold text-on-surface-strong dark:text-on-surface-dark-strong">{ title }</p>
@@ -520,13 +528,13 @@ templ managementSyncForm(spec ManagedSpecModel, idPrefix string) {
 			RootClass: "font-mono",
 		})
 		@toggle.Toggle(toggle.Config{
-			ID:        idPrefix + "-sync-publish",
-			Name:      "publish",
-			Value:     "public",
-			Label:     "Publish synced revision",
-			Variant:   toggle.Success,
-			Style:     toggle.StyleContainer,
-			RootClass: "w-full",
+			ID:         idPrefix + "-sync-publish",
+			Name:       "publish",
+			Value:      "public",
+			Label:      "Publish synced revision",
+			Tone:       toggle.ToneSuccess,
+			Appearance: toggle.AppearanceContainer,
+			RootClass:  "w-full",
 		})
 		@textinput.TextInput(textinput.Config{
 			ID:          idPrefix + "-sync-public-path",
@@ -536,7 +544,11 @@ templ managementSyncForm(spec ManagedSpecModel, idPrefix string) {
 			Value:       managementPublicationPathValue(spec.Publication, spec.Project),
 			RootClass:   "font-mono",
 		})
-		@button.Button(button.Config{Variant: button.Primary, Type: "submit", RootClass: "w-fit"}) {
+		@button.Button(
+			button.WithTone(button.TonePrimary),
+			button.WithType("submit"),
+			button.WithRootClass("w-fit"),
+		) {
 			Sync selected ref
 		}
 	</form>
@@ -884,14 +896,14 @@ func managementSpecsTableConfig(model ManagementOverviewModel) table.Config {
 					Component: managementTableStatusCell(
 						managementPublicationLabel(spec.Publication),
 						managementValue(spec.Publication.Path),
-						managementPublicationTableColor(spec.Publication),
+						managementPublicationBadgeTone(spec.Publication),
 					),
 				},
 				"sync": {
 					Component: managementTableStatusCell(
 						managementValue(string(spec.SyncRecord.Result)),
 						managementSyncTableDescription(spec.SyncRecord),
-						managementSyncTableColor(spec.SyncRecord),
+						managementSyncTone(spec.SyncRecord),
 					),
 				},
 			},
@@ -917,11 +929,15 @@ func managementSpecsTableConfig(model ManagementOverviewModel) table.Config {
 	}
 }
 
-templ managementTableStatusCell(label string, description string, color string) {
+templ managementTableStatusCell(label string, description string, tone badge.Tone) {
 	<div class="flex flex-col items-start gap-1">
-		<span class={ table.BadgeCellClasses(color) }>{ label }</span>
+		@managementStatusBadge(label, tone)
 		<span class="text-xs text-on-surface-muted dark:text-on-surface-dark-muted">{ description }</span>
 	</div>
+}
+
+templ managementStatusBadge(label string, tone badge.Tone) {
+	@badge.Badge(badge.Config{Label: label, Tone: tone, Size: badge.SizeSM})
 }
 
 func managementSelectedSpec(model ManagementOverviewModel) (ManagedSpecModel, bool) {
@@ -1027,28 +1043,21 @@ func managementPublicationLabel(pub core.Publication) string {
 	return "Private"
 }
 
-func managementPublicationBadgeVariant(pub core.Publication) badge.Variant {
+func managementPublicationBadgeTone(pub core.Publication) badge.Tone {
 	if pub.Public {
-		return badge.Success
+		return badge.ToneSuccess
 	}
-	return badge.Warning
+	return badge.ToneWarning
 }
 
-func managementPublicationTableColor(pub core.Publication) string {
-	if pub.Public {
-		return "success"
-	}
-	return "warning"
-}
-
-func managementSyncTableColor(record core.SyncRecord) string {
+func managementSyncTone(record core.SyncRecord) badge.Tone {
 	switch record.Result {
 	case core.SyncResultSuccess:
-		return "success"
+		return badge.ToneSuccess
 	case core.SyncResultFailure:
-		return "danger"
+		return badge.ToneDanger
 	default:
-		return "neutral"
+		return badge.ToneDefault
 	}
 }
 
@@ -1134,14 +1143,14 @@ func managementContractLabel(spec ManagedSpecModel) string {
 	return "No contract breaks"
 }
 
-func managementContractColor(spec ManagedSpecModel) string {
+func managementContractTone(spec ManagedSpecModel) badge.Tone {
 	if !spec.DiffAvailable {
-		return "warning"
+		return badge.ToneWarning
 	}
 	if len(spec.Diff.BreakingChanges) > 0 {
-		return "danger"
+		return badge.ToneDanger
 	}
-	return "success"
+	return badge.ToneSuccess
 }
 
 func managementContractDescription(spec ManagedSpecModel) string {
@@ -1178,14 +1187,14 @@ func managementContractChanges(diff core.SpecDiff) []core.SpecChange {
 	return changes
 }
 
-func managementContractChangeColor(change core.SpecChange) string {
+func managementContractChangeTone(change core.SpecChange) badge.Tone {
 	switch change.Severity {
 	case core.SpecChangeBreaking:
-		return "danger"
+		return badge.ToneDanger
 	case core.SpecChangeAdditive:
-		return "success"
+		return badge.ToneSuccess
 	default:
-		return "neutral"
+		return badge.ToneDefault
 	}
 }
 
