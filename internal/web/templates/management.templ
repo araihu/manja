@@ -248,9 +248,17 @@ templ ManagementSpecPanel(spec ManagedSpecModel) {
 			Body:      managementSpecTabs(spec),
 			RootClass: "min-w-0 max-w-full",
 			BodyClass: "min-w-0 max-w-full",
-			RootAttrs: templpkg.Attributes{"data-management-detail-workspace": "true"},
+			RootAttrs: managementDetailWorkspaceAttrs(spec),
 		})
 	</section>
+}
+
+func managementDetailWorkspaceAttrs(spec ManagedSpecModel) templpkg.Attributes {
+	attrs := templpkg.Attributes{"data-management-detail-workspace": "true"}
+	if spec.SyncRecord.Result == core.SyncResultFailure && spec.Publication.Public {
+		attrs["data-management-partial"] = "true"
+	}
+	return attrs
 }
 
 templ managementOverviewSpecWorkspace(spec ManagedSpecModel) {

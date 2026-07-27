@@ -279,7 +279,11 @@ func (s *managementServer) updatePublication(w http.ResponseWriter, r *http.Requ
 	}
 
 	spec := s.specs[specIndex]
-	requestID := managementMutationRequestID(r)
+	requestID, validRequestID := managementMutationRequestID(r)
+	if !validRequestID {
+		s.respondManagementApplicationError(w, r, cloneManagedSpecs(s.specs), spec.ID, "validation-error", "valid request token is required", spec.Publication, "Reload this contract before retrying publication")
+		return
+	}
 	mutationSlot := "publication:" + spec.ID
 	pub := spec.Publication
 	pub.ProjectID = firstNonBlank(pub.ProjectID, spec.Project.ID, spec.Index.ProjectID)
@@ -351,7 +355,11 @@ func (s *managementServer) syncRef(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	requestID := managementMutationRequestID(r)
+	requestID, validRequestID := managementMutationRequestID(r)
+	if !validRequestID {
+		s.respondManagementApplicationError(w, r, cloneManagedSpecs(s.specs), spec.ID, "validation-error", "valid request token is required", core.Publication{}, "Reload this contract before retrying sync")
+		return
+	}
 	payloadFingerprint := managementMutationPayloadFingerprint("sync", r)
 	syncSlot := "sync:" + spec.ID
 	replay, conflict := s.completedMutationStatus(syncSlot, requestID, payloadFingerprint)
@@ -439,12 +447,22 @@ func (s *managementServer) respondManagementApplicationError(w http.ResponseWrit
 	}
 }
 
-func managementMutationRequestID(r *http.Request) string {
+func managementMutationRequestID(r *http.Request) (string, bool) {
 	requestID := strings.TrimSpace(r.FormValue("request_id"))
-	if len(requestID) > 256 {
-		return ""
+	if requestID == "" || len(requestID) > 256 {
+		return "", false
 	}
-	return requestID
+	for i := 0; i < len(requestID); i++ {
+		character := requestID[i]
+		allowed := character >= 'a' && character <= 'z' ||
+			character >= 'A' && character <= 'Z' ||
+			character >= '0' && character <= '9' ||
+			character == '-' || character == '_' || character == '.' || character == ':'
+		if !allowed {
+			return "", false
+		}
+	}
+	return requestID, true
 }
 
 func managementMutationPayloadFingerprint(action string, r *http.Request) string {

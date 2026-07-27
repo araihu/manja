@@ -47,4 +47,6 @@ design. Their implementing slice must append rows before exposing controls.
   canonical submitted-payload fingerprint per contract and action slot. An
   immediate replay is idempotent only when both match; reusing a token with
   different ref, publish, revision, visibility, or path values fails closed
-  before any effect.
+  before any effect. Missing, oversized, or non-ASCII/unsupported-character
+  request tokens are validation errors and are rejected before sync or
+  publication effects.

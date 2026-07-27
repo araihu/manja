@@ -565,7 +565,7 @@ func TestManagementHomeListsMultipleSpecsAndUpdatesChosenPublication(t *testing.
 		"path":       {"/billing/v2"},
 	}
 	rec = httptest.NewRecorder()
-	req = httptest.NewRequest(http.MethodPost, "/manage/publication", strings.NewReader(form.Encode()))
+	req = httptest.NewRequest(http.MethodPost, "/manage/publication", strings.NewReader(managementMutationForm(form).Encode()))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	srv.ServeHTTP(rec, req)
 
@@ -667,7 +667,7 @@ func TestManagementPublicationPostSavesPublicationAndUpdatesOverview(t *testing.
 		"path":       {"/payments/v1"},
 	}
 	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPost, "/manage/publication", strings.NewReader(form.Encode()))
+	req := httptest.NewRequest(http.MethodPost, "/manage/publication", strings.NewReader(managementMutationForm(form).Encode()))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 
 	srv.ServeHTTP(rec, req)
@@ -714,7 +714,7 @@ func TestManagementPublicationPostPromotesExplicitCandidateRevision(t *testing.T
 		"revision_id": {"rev-candidate"},
 	}
 	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPost, "/manage/publication", strings.NewReader(form.Encode()))
+	req := httptest.NewRequest(http.MethodPost, "/manage/publication", strings.NewReader(managementMutationForm(form).Encode()))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 
 	srv.ServeHTTP(rec, req)
@@ -810,7 +810,7 @@ func TestManagementSyncPostSyncsSelectedGitRefAndCanPublish(t *testing.T) {
 		"path":    {"/payments/v2"},
 	}
 	rec = httptest.NewRecorder()
-	req = httptest.NewRequest(http.MethodPost, "/manage/sync", strings.NewReader(form.Encode()))
+	req = httptest.NewRequest(http.MethodPost, "/manage/sync", strings.NewReader(managementMutationForm(form).Encode()))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	srv.ServeHTTP(rec, req)
 	if rec.Code != http.StatusSeeOther {
@@ -853,7 +853,7 @@ func TestManagementPublicationPostCanReturnHTMXFragment(t *testing.T) {
 		"path":       {"/payments/v1"},
 	}
 	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPost, "/manage/publication", strings.NewReader(form.Encode()))
+	req := httptest.NewRequest(http.MethodPost, "/manage/publication", strings.NewReader(managementMutationForm(form).Encode()))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.Header.Set("HX-Request", "true")
 
@@ -912,7 +912,7 @@ func TestManagementSyncPostCanReturnHTMXFragment(t *testing.T) {
 		"path":    {"/payments/v2"},
 	}
 	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPost, "/manage/sync", strings.NewReader(form.Encode()))
+	req := httptest.NewRequest(http.MethodPost, "/manage/sync", strings.NewReader(managementMutationForm(form).Encode()))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.Header.Set("HX-Request", "true")
 
@@ -989,7 +989,7 @@ func TestManagementSyncPostKeepsSyncedStateWhenPublicationSaveFails(t *testing.T
 		"path":    {"unsafe"},
 	}
 	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPost, "/manage/sync", strings.NewReader(form.Encode()))
+	req := httptest.NewRequest(http.MethodPost, "/manage/sync", strings.NewReader(managementMutationForm(form).Encode()))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	srv.ServeHTTP(rec, req)
 	if rec.Code != http.StatusOK {
@@ -1041,7 +1041,7 @@ func TestManagementSyncPostPassesDeadlineToSyncAction(t *testing.T) {
 		"ref":     {"main"},
 	}
 	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPost, "/manage/sync", strings.NewReader(form.Encode()))
+	req := httptest.NewRequest(http.MethodPost, "/manage/sync", strings.NewReader(managementMutationForm(form).Encode()))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	srv.ServeHTTP(rec, req)
 	if rec.Code != http.StatusSeeOther {
@@ -1168,7 +1168,7 @@ func TestManagementSyncPostRejectsRefWhenCandidatesUnavailable(t *testing.T) {
 		"ref":     {"release/v2"},
 	}
 	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPost, "/manage/sync", strings.NewReader(form.Encode()))
+	req := httptest.NewRequest(http.MethodPost, "/manage/sync", strings.NewReader(managementMutationForm(form).Encode()))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	srv.ServeHTTP(rec, req)
 
@@ -1204,7 +1204,7 @@ func TestManagementSyncRejectsUnavailableCandidateWithoutEffect(t *testing.T) {
 	}})
 	form := url.Values{"spec_id": {"payments-api"}, "ref": {"forged/ref"}}
 	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPost, "/manage/sync", strings.NewReader(form.Encode()))
+	req := httptest.NewRequest(http.MethodPost, "/manage/sync", strings.NewReader(managementMutationForm(form).Encode()))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.Header.Set("HX-Request", "true")
 	srv.ServeHTTP(rec, req)
@@ -1240,7 +1240,7 @@ func TestManagementPublicationFailureRetainsSelectedContractAndValues(t *testing
 	}})
 	form := url.Values{"spec_id": {"payments-api"}, "visibility": {"public"}, "path": {"/entered/path"}}
 	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPost, "/manage/publication", strings.NewReader(form.Encode()))
+	req := httptest.NewRequest(http.MethodPost, "/manage/publication", strings.NewReader(managementMutationForm(form).Encode()))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.Header.Set("HX-Request", "true")
 	srv.ServeHTTP(rec, req)
@@ -1290,7 +1290,7 @@ func TestManagementRepeatedSubmissionDoesNotDuplicateEffect(t *testing.T) {
 	form := url.Values{"spec_id": {"payments-api"}, "ref": {"release/v2"}, "request_id": {"sync-repeat-1"}}
 	for i := 0; i < 2; i++ {
 		rec := httptest.NewRecorder()
-		req := httptest.NewRequest(http.MethodPost, "/manage/sync", strings.NewReader(form.Encode()))
+		req := httptest.NewRequest(http.MethodPost, "/manage/sync", strings.NewReader(managementMutationForm(form).Encode()))
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 		srv.ServeHTTP(rec, req)
 		if rec.Code != http.StatusSeeOther {
@@ -1361,6 +1361,71 @@ func TestManagementSameTokenDifferentPayloadIsRejectedWithoutEffect(t *testing.T
 	}
 }
 
+func TestManagementInvalidMutationTokensAreRejectedWithoutEffect(t *testing.T) {
+	invalidTokens := []struct {
+		name  string
+		token string
+	}{
+		{name: "missing", token: ""},
+		{name: "oversized", token: strings.Repeat("a", 257)},
+		{name: "malformed", token: "token with spaces!"},
+	}
+	for _, action := range []string{"sync", "publication"} {
+		for _, invalid := range invalidTokens {
+			t.Run(action+"/"+invalid.name, func(t *testing.T) {
+				var syncCalls int
+				store := &fakeManagementPublicationStore{}
+				srv := NewServerWithOptions(core.SpecIndex{}, Options{Management: ManagementOptions{
+					Store: store,
+					SyncAction: func(_ context.Context, spec ManagedSpec, ref string) (ManagedSpec, error) {
+						syncCalls++
+						spec.Revision.Ref = ref
+						return spec, nil
+					},
+					Specs: []ManagedSpec{{
+						ID:         "payments-api",
+						Index:      core.SpecIndex{ProjectID: "payments", RevisionID: "rev-main", Title: "Payments API"},
+						Project:    core.Project{ID: "payments"},
+						Source:     core.Source{ID: "payments-source"},
+						Revision:   core.Revision{ID: "rev-main", Ref: "main"},
+						Candidates: []core.RevisionCandidate{{Ref: "main"}},
+					}},
+				}})
+				form := url.Values{"spec_id": {"payments-api"}, "request_id": {invalid.token}}
+				path := "/manage/publication"
+				if action == "sync" {
+					path = "/manage/sync"
+					form.Set("ref", "main")
+				} else {
+					form.Set("revision_id", "rev-main")
+					form.Set("visibility", "public")
+					form.Set("path", "/payments")
+				}
+				rec := httptest.NewRecorder()
+				req := httptest.NewRequest(http.MethodPost, path, strings.NewReader(managementMutationForm(form).Encode()))
+				req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+				req.Header.Set("HX-Request", "true")
+				srv.ServeHTTP(rec, req)
+				if rec.Code != http.StatusOK {
+					t.Fatalf("status = %d, want %d: %s", rec.Code, http.StatusOK, rec.Body.String())
+				}
+				if got := rec.Header().Get("X-Manja-Application-Status"); got != "validation-error" {
+					t.Fatalf("application status = %q, want validation-error", got)
+				}
+				if !strings.Contains(rec.Body.String(), "valid request token is required") {
+					t.Fatalf("token recovery missing: %s", rec.Body.String())
+				}
+				if syncCalls != 0 {
+					t.Fatalf("sync effects = %d, want 0", syncCalls)
+				}
+				if store.saved != (core.Publication{}) {
+					t.Fatalf("publication effect = %#v, want zero", store.saved)
+				}
+			})
+		}
+	}
+}
+
 func TestManagementHTMXNotFoundReturnsSwappableRecovery(t *testing.T) {
 	for _, path := range []string{"/manage/spec/unknown-api", "/manage/not-a-route"} {
 		t.Run(path, func(t *testing.T) {
@@ -1387,7 +1452,7 @@ func TestManagementSameURLMutationUsesReplaceURLAndDisablesHistorySnapshots(t *t
 	srv := managementStructureServer()
 	form := url.Values{"spec_id": {"payments-api"}, "visibility": {"private"}, "path": {"/payments/v1"}}
 	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPost, "/manage/publication", strings.NewReader(form.Encode()))
+	req := httptest.NewRequest(http.MethodPost, "/manage/publication", strings.NewReader(managementMutationForm(form).Encode()))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.Header.Set("HX-Request", "true")
 	req.Header.Set("HX-Current-URL", "http://example.test/manage/spec/payments-api")
@@ -1423,7 +1488,7 @@ func TestManagementPublicationPostCanMakeRevisionPrivate(t *testing.T) {
 		"path":       {"/payments/v1"},
 	}
 	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPost, "/manage/publication", strings.NewReader(form.Encode()))
+	req := httptest.NewRequest(http.MethodPost, "/manage/publication", strings.NewReader(managementMutationForm(form).Encode()))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 
 	srv.ServeHTTP(rec, req)
@@ -1453,7 +1518,7 @@ func TestManagementPublicationPostRejectsInvalidRequests(t *testing.T) {
 		"path":       {"payments/v1"},
 	}
 	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPost, "/manage/publication", strings.NewReader(form.Encode()))
+	req := httptest.NewRequest(http.MethodPost, "/manage/publication", strings.NewReader(managementMutationForm(form).Encode()))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 
 	srv.ServeHTTP(rec, req)
@@ -1479,6 +1544,17 @@ func TestManagementPublicationPostRejectsInvalidRequests(t *testing.T) {
 type fakeManagementPublicationStore struct {
 	saved core.Publication
 	err   error
+}
+
+func managementMutationForm(form url.Values) url.Values {
+	withToken := make(url.Values, len(form)+1)
+	for key, values := range form {
+		withToken[key] = append([]string(nil), values...)
+	}
+	if _, present := withToken["request_id"]; !present {
+		withToken.Set("request_id", "test-request-token")
+	}
+	return withToken
 }
 
 func (s *fakeManagementPublicationStore) SavePublication(_ context.Context, pub core.Publication) error {

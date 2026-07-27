@@ -368,3 +368,27 @@ authorize edits to Goshtoso or access to private/generated upstream output.
   negative controls prove a same-origin unexpected 503, unrelated JavaScript
   error, wrong resource URL, HTMX mode, and pageerror remain blocking. The
   focused classifier plus twelve not-found theme/viewport rows passed.
+
+## Scoped re-review correction evidence
+
+- Scoped re-review found that missing or greater-than-256-byte mutation tokens
+  were normalized to an empty string and therefore bypassed replay protection.
+  RED command: `GOWORK=off go test ./internal/web -run
+  TestManagementInvalidMutationTokensAreRejectedWithoutEffect -count=1 -v`.
+  All six sync/publication cases for missing, oversized, and malformed tokens
+  failed with `application status = "", want validation-error`.
+- Fix: require a 1–256 byte ASCII token restricted to letters, digits,
+  hyphen, underscore, period, and colon. Invalid tokens render an authoritative
+  validation-error workspace before `SyncAction` or `SavePublication`.
+  GREEN: the identical six-case test passed with zero sync and publication
+  effects; replay and same-token/different-payload regressions also passed.
+- Scoped re-review also identified missing consequential visual fixtures. The
+  matrix now exercises a real held-request public Skeleton state, public
+  not-found, a true management empty fixture, and an explicit partial
+  last-known-good publication with failed latest sync, in addition to the
+  prior success/list/filtered-empty/unknown/loading/application/transport rows.
+  These added states use explicit DOM markers and the required Goshtoso/Minimal
+  light/dark 390x844 and 1440x900 coverage; Arai Hû remains included throughout
+  and Manja remains representative on success surfaces. The full combined
+  classifier/state/theme/viewport matrix passed in 160.632 seconds and the
+  evidence directory contains 160 screenshots.

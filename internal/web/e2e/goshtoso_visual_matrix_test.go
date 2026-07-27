@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
 	"os"
 	"path/filepath"
 	"sync"
@@ -14,6 +15,7 @@ import (
 
 	core "github.com/araihu/manja/domain"
 	"github.com/araihu/manja/internal/web"
+	"github.com/araihu/manja/internal/web/templates"
 )
 
 func TestGoshtosoAffectedSurfaceVisualMatrix(t *testing.T) {
@@ -21,8 +23,12 @@ func TestGoshtosoAffectedSurfaceVisualMatrix(t *testing.T) {
 		t.Skip("skipping e2e test in short mode")
 	}
 	chdirRepoRoot(t)
+	partialIndex := managementCandidateIndex()
+	partialIndex.ProjectID = "partial"
+	partialIndex.RevisionID = "rev-last-known-good"
+	partialIndex.Title = "Partial API"
 
-	server := httptestServer(t, web.NewServerWithOptions(goshtosoFallbackIndex(), web.Options{
+	primaryHandler := web.NewServerWithOptions(goshtosoFallbackIndex(), web.Options{
 		Management: web.ManagementOptions{
 			Store: &visualMatrixPublicationStore{},
 			SyncAction: func(_ context.Context, spec web.ManagedSpec, _ string) (web.ManagedSpec, error) {
@@ -67,8 +73,36 @@ func TestGoshtosoAffectedSurfaceVisualMatrix(t *testing.T) {
 					Result:     core.SyncResultSuccess,
 					Trigger:    "e2e",
 				},
+			}, {
+				ID:    "partial-api",
+				Index: partialIndex,
+				Project: core.Project{
+					ID:   "partial",
+					Name: "Partial API",
+				},
+				Source:      core.Source{ID: "local-git/partial-api.git", ProjectID: "partial", Kind: "git", SpecPath: "openapi.yaml"},
+				Revision:    core.Revision{ID: "rev-last-known-good", SourceID: "local-git/partial-api.git", Ref: "main", CommitSHA: "1111111111111111111111111111111111111111"},
+				Candidates:  []core.RevisionCandidate{{SourceID: "local-git/partial-api.git", Ref: "main", Kind: "branch", CommitSHA: "2222222222222222222222222222222222222222"}},
+				Publication: core.Publication{ProjectID: "partial", RevisionID: "rev-last-known-good", Public: true, Path: "/partial/v1"},
+				SyncRecord:  core.SyncRecord{ProjectID: "partial", SourceID: "local-git/partial-api.git", RevisionID: "rev-last-known-good", Result: core.SyncResultFailure, Trigger: "e2e", ErrorSummary: "latest source refresh failed; serving last-known-good publication"},
 			}},
 		},
+	})
+	server := httptestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("HX-Request") == "true" && r.URL.Query().Get("visual_hold") == "true" {
+			time.Sleep(2 * time.Second)
+		}
+		primaryHandler.ServeHTTP(w, r)
+	}))
+	emptyManagementServer := httptestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/manage/specs" {
+			w.Header().Set("Content-Type", "text/html; charset=utf-8")
+			if err := templates.ManagementSpecsPage(templates.ManagementOverviewModel{}).Render(r.Context(), w); err != nil {
+				t.Fatalf("render empty management visual fixture: %v", err)
+			}
+			return
+		}
+		primaryHandler.ServeHTTP(w, r)
 	}))
 
 	pw, err := playwright.Run()
@@ -95,6 +129,7 @@ func TestGoshtosoAffectedSurfaceVisualMatrix(t *testing.T) {
 
 	surfaces := []struct {
 		name           string
+		serverURL      string
 		path           string
 		root           string
 		kind           string
@@ -102,14 +137,18 @@ func TestGoshtosoAffectedSurfaceVisualMatrix(t *testing.T) {
 		expectedStatus int
 		includeLegacy  bool
 	}{
-		{name: "public-detail", path: "/?selected=operation-listpets#operation-listpets", root: "#main-content", kind: "public", state: "success", expectedStatus: 200, includeLegacy: true},
-		{name: "management-detail", path: "/manage/spec/payments-api", root: "#management-main-content", kind: "management", state: "success", expectedStatus: 200, includeLegacy: true},
-		{name: "management-list", path: "/manage/specs", root: "#management-main-content", kind: "management", state: "list", expectedStatus: 200},
-		{name: "management-filtered-empty", path: "/manage/specs?q=does-not-exist", root: `[data-management-filtered-empty="true"]`, kind: "management", state: "empty", expectedStatus: 200},
-		{name: "management-not-found", path: "/manage/spec/does-not-exist", root: `[data-management-spec-not-found="true"]`, kind: "management", state: "not-found", expectedStatus: 404},
-		{name: "management-loading", path: "/manage/spec/payments-api", root: "#management-main-content", kind: "management", state: "loading", expectedStatus: 200},
-		{name: "management-application-error", path: "/manage/spec/payments-api", root: "#management-main-content", kind: "management", state: "application-error", expectedStatus: 200},
-		{name: "management-transport-error", path: "/manage/spec/payments-api", root: "#management-main-content", kind: "management", state: "transport-error", expectedStatus: 200},
+		{name: "public-detail", serverURL: server, path: "/?selected=operation-listpets#operation-listpets", root: "#main-content", kind: "public", state: "success", expectedStatus: 200, includeLegacy: true},
+		{name: "public-loading", serverURL: server, path: "/", root: "#main-content", kind: "public", state: "public-loading", expectedStatus: 200},
+		{name: "public-not-found", serverURL: server, path: "/?selected=operation-does-not-exist", root: `[data-public-docs-not-found="true"]`, kind: "public", state: "public-not-found", expectedStatus: 200},
+		{name: "management-detail", serverURL: server, path: "/manage/spec/payments-api", root: "#management-main-content", kind: "management", state: "success", expectedStatus: 200, includeLegacy: true},
+		{name: "management-list", serverURL: server, path: "/manage/specs", root: "#management-main-content", kind: "management", state: "list", expectedStatus: 200},
+		{name: "management-empty", serverURL: emptyManagementServer, path: "/manage/specs", root: `[data-management-empty="true"]`, kind: "management", state: "true-empty", expectedStatus: 200},
+		{name: "management-filtered-empty", serverURL: server, path: "/manage/specs?q=does-not-exist", root: `[data-management-filtered-empty="true"]`, kind: "management", state: "filtered-empty", expectedStatus: 200},
+		{name: "management-not-found", serverURL: server, path: "/manage/spec/does-not-exist", root: `[data-management-spec-not-found="true"]`, kind: "management", state: "not-found", expectedStatus: 404},
+		{name: "management-partial", serverURL: server, path: "/manage/spec/partial-api", root: `[data-management-partial="true"]`, kind: "management", state: "partial", expectedStatus: 200},
+		{name: "management-loading", serverURL: server, path: "/manage/spec/payments-api", root: "#management-main-content", kind: "management", state: "loading", expectedStatus: 200},
+		{name: "management-application-error", serverURL: server, path: "/manage/spec/payments-api", root: "#management-main-content", kind: "management", state: "application-error", expectedStatus: 200},
+		{name: "management-transport-error", serverURL: server, path: "/manage/spec/payments-api", root: "#management-main-content", kind: "management", state: "transport-error", expectedStatus: 200},
 	}
 	for _, surface := range surfaces {
 		for _, width := range []int{390, 1440} {
@@ -162,7 +201,7 @@ func TestGoshtosoAffectedSurfaceVisualMatrix(t *testing.T) {
 							mu.Unlock()
 						})
 
-						response, err := page.Goto(server+surface.path, playwright.PageGotoOptions{WaitUntil: playwright.WaitUntilStateDomcontentloaded})
+						response, err := page.Goto(surface.serverURL+surface.path, playwright.PageGotoOptions{WaitUntil: playwright.WaitUntilStateDomcontentloaded})
 						if err != nil {
 							t.Fatal(err)
 						}
@@ -262,6 +301,15 @@ func TestGoshtosoAffectedSurfaceVisualMatrix(t *testing.T) {
 								t.Fatalf("capture visual evidence: %v", err)
 							}
 						}
+						if surface.state == "public-loading" {
+							if _, err := page.WaitForFunction(`() => {
+								const loading = document.querySelector('[data-public-docs-loading="true"]');
+								const content = document.querySelector('[data-public-docs-content="true"]');
+								return Boolean(content?.dataset.selectedDoc === 'operation-listpets' && (!loading || loading.getClientRects().length === 0));
+							}`, nil, playwright.PageWaitForFunctionOptions{Timeout: playwright.Float(5000)}); err != nil {
+								t.Fatalf("public loading request did not settle after visual evidence: %v", err)
+							}
+						}
 
 						mu.Lock()
 						defer mu.Unlock()
@@ -348,6 +396,33 @@ func TestVisualMatrixConsoleClassifierFailsClosed(t *testing.T) {
 
 func prepareManagementVisualState(t *testing.T, page playwright.Page, state string) {
 	t.Helper()
+	if state == "public-loading" {
+		if _, err := page.Evaluate(`() => {
+			const href = '/?selected=operation-listpets&visual_hold=true#operation-listpets';
+			const trigger = document.createElement('button');
+			trigger.type = 'button';
+			trigger.textContent = 'Load visual operation';
+			trigger.setAttribute('hx-get', href);
+			trigger.setAttribute('hx-target', '#main-content');
+			trigger.setAttribute('hx-swap', 'innerHTML');
+			trigger.setAttribute('hx-indicator', '#public-docs-loading');
+			document.body.appendChild(trigger);
+			window.htmx.process(trigger);
+			trigger.click();
+		}`, nil); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := page.WaitForFunction(`() => {
+			const loading = document.querySelector('[data-public-docs-loading="true"]');
+			return Boolean(loading && loading.getClientRects().length > 0 && loading.getAttribute('aria-busy') === 'true');
+		}`, nil, playwright.PageWaitForFunctionOptions{Timeout: playwright.Float(5000)}); err != nil {
+			t.Fatalf("wait for public visual loading state: %v", err)
+		}
+		if _, err := page.Evaluate(`() => document.querySelector('#main-content')?.scrollTo({ top: 0 })`, nil); err != nil {
+			t.Fatal(err)
+		}
+		return
+	}
 	if state != "loading" && state != "application-error" && state != "transport-error" {
 		return
 	}
