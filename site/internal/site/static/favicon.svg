@@ -1,11 +1,24 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-labelledby="title desc">
-  <title id="title">Manja favicon</title>
-  <desc id="desc">An open API publication with one routed live endpoint.</desc>
-  <rect width="64" height="64" rx="12" fill="#07111f" />
-  <g transform="scale(.5)">
-    <path d="M16 26c16-7 32-5 48 6 16-11 32-13 48-6v76c-16-7-32-5-48 6-16-11-32-13-48-6Z" fill="none" stroke="#f3f2e9" stroke-width="14" stroke-linecap="round" stroke-linejoin="round" />
-    <path d="M64 32v76" fill="none" stroke="#31588f" stroke-width="10" stroke-linecap="round" />
-    <path d="M82 52h13c7 0 11 4 11 10s-4 10-11 10H85c-6 0-9 4-9 10" fill="none" stroke="#31588f" stroke-width="8" stroke-linecap="round" />
-    <circle cx="76" cy="86" r="9" fill="#c7ff4a" stroke="#f3f2e9" stroke-width="6" />
-  </g>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" role="img" aria-labelledby="title desc" class="araihu-brand-v11">
+  <title id="title">Manja v11 icon</title>
+  <desc id="desc">Adaptive Manja icon with an adaptive surface; colors respond to light and dark themes.</desc>
+  <style>.v11-surface {
+  fill: var(--araihu-logo-surface, var(--araihu-logo-auto-surface, #f3f2e9));
+}
+.v11-ink {
+  fill: var(--araihu-logo-ink, var(--araihu-logo-auto-ink, #07111f));
+}
+.v11-signal {
+  fill: var(--araihu-logo-signal, var(--araihu-logo-auto-signal, #c7ff4a));
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --araihu-logo-auto-surface: #07111f;
+    --araihu-logo-auto-ink: #f3f2e9;
+    --araihu-logo-auto-signal: #c7ff4a;
+  }
+}</style>
+  <path d="M0 0h1024v1024H0z" class="v11-surface" />
+  <path d="M740.516 586.051a4269 4269 0 0 0-.111 54.036c-.032 35.586 1.189 61.065-25.524 89.511-16.592 17.669-40.5 27.406-64.575 27.45-24.372.045-49.014-.073-73.482-.086l-136.537.052-60.221.012c-13.996.032-33.461.818-46.637-1.702a89.6 89.6 0 0 1-45.738-23.939c-19.324-18.791-27.07-42.262-27.117-68.63-.128-72.573-.097-145.192-.084-217.761l.005-61.348c.005-13.331-.655-32.591 1.815-45.14 3.22-16.362 12.61-33.691 24.488-45.383 19.345-19.043 39.955-26.515 66.687-26.696l212.725.034 57.605.001c35.944-.053 61.748-1.787 89.838 25.908 29.128 28.717 26.76 54.967 26.769 92.381l.049 54.743c33.758.29 62.433-4.679 88.787 22.021 29.263 29.649 29.06 73.892-.613 103.231-19.808 19.586-43.09 22.006-69.516 21.021-4.015-.117-15.022-.133-18.613.284" class="v11-ink" />
+  <path d="M740.516 586.051c-.7.086-1.313.149-2.024.151-32.696.079-65.402-.122-98.097-.008l-33.352.125c-9.262.032-21.334.46-30.232-1.4-13.199-2.76-27.529-10.081-37.146-19.591a73.18 73.18 0 0 1-21.764-52.538 72.6 72.6 0 0 1 21.111-51.407 74.4 74.4 0 0 1 35.268-19.831c13.057-3.098 47.037-2.085 61.858-2.093l104.333.035c33.758.29 62.433-4.679 88.787 22.021 29.263 29.649 29.06 73.892-.613 103.231-19.808 19.586-43.09 22.006-69.516 21.021-4.015-.117-15.022-.133-18.613.284" class="v11-signal" />
+  <path d="M740.471 439.494c33.758.29 62.433-4.679 88.787 22.021 29.263 29.649 29.06 73.892-.613 103.231-19.808 19.586-43.09 22.006-69.516 21.021-4.015-.117-15.022-.133-18.613.284z" class="v11-ink" />
 </svg>

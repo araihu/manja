@@ -24,6 +24,7 @@ func TestRoutesRender(t *testing.T) {
 		{
 			path: "/",
 			want: []string{
+				`src="/static/manja-logo.svg" alt="Manja" width="160" height="40"`,
 				"Point Manja at your spec.",
 				"Source-connected OpenAPI publishing",
 				"Versions stay close to source",
@@ -206,9 +207,19 @@ func TestStaticAssetsRender(t *testing.T) {
 		}
 	}
 
-	favicon := get(t, srv.URL+"/static/favicon.svg", http.StatusOK)
-	if !strings.Contains(favicon, "<svg") {
-		t.Fatalf("favicon.svg did not render as svg")
+	for _, path := range []string{"/static/favicon.svg", "/static/manja-mark.svg", "/static/manja-logo.svg"} {
+		asset := get(t, srv.URL+path, http.StatusOK)
+		for _, want := range []string{
+			`class="araihu-brand-v11"`,
+			"--araihu-logo-surface",
+			"--araihu-logo-ink",
+			"--araihu-logo-signal",
+			"@media (prefers-color-scheme: dark)",
+		} {
+			if !strings.Contains(asset, want) {
+				t.Fatalf("%s did not preserve v11 adaptive logo contract %q", path, want)
+			}
+		}
 	}
 
 	demoCSS := get(t, srv.URL+"/demo/payments/v1/manja-assets/manja.css", http.StatusOK)

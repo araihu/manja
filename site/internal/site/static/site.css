@@ -107,11 +107,11 @@ pre {
   letter-spacing: 0;
 }
 
-.brand-mark {
-  border-radius: 8px;
+.brand-logo {
   display: block;
   height: 2.5rem;
-  width: 2.5rem;
+  max-width: min(10rem, 42vw);
+  width: auto;
 }
 
 .nav-actions {
