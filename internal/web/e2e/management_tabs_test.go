@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/playwright-community/playwright-go"
+	"github.com/mxschmitt/playwright-go"
 
 	core "github.com/araihu/manja/domain"
 	"github.com/araihu/manja/internal/web"
