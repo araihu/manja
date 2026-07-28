@@ -132,7 +132,7 @@ func TestPublicDocsUsesCanonicalAraiHuThemeAfterGoshtoso(t *testing.T) {
 	if asset.Code != http.StatusOK {
 		t.Fatalf("GET /manja-assets/araihu.css status = %d, want %d", asset.Code, http.StatusOK)
 	}
-	if got := fmt.Sprintf("%x", sha256.Sum256(asset.Body.Bytes())); got != "c0bf105f332bca41af1dbd6ccb867ec9fda9c6c688beb609723c7186842044a4" {
+	if got := fmt.Sprintf("%x", sha256.Sum256(asset.Body.Bytes())); got != "9e7756cea751aa95bcf2f0b6545dc32ab9037a47a08a91287502dae52829d265" {
 		t.Fatalf("Arai Hu CSS SHA-256 = %s, want canonical content hash", got)
 	}
 }

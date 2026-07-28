@@ -24,6 +24,8 @@ func TestRoutesRender(t *testing.T) {
 		{
 			path: "/",
 			want: []string{
+				`<html lang="en" data-theme="araihu">`,
+				`href="/static/araihu.css"`,
 				`src="/static/manja-logo.svg" alt="Manja" width="160" height="40"`,
 				"Point Manja at your spec.",
 				"Source-connected OpenAPI publishing",
@@ -193,8 +195,14 @@ func TestStaticAssetsRender(t *testing.T) {
 	t.Cleanup(srv.Close)
 
 	css := get(t, srv.URL+"/static/site.css", http.StatusOK)
-	if !strings.Contains(css, "--accent: #18d6a7") {
-		t.Fatalf("site.css did not include Manja accent token")
+	if !strings.Contains(css, "--accent: var(--color-primary)") {
+		t.Fatalf("site.css did not map its accent to the canonical theme token")
+	}
+	theme := get(t, srv.URL+"/static/araihu.css", http.StatusOK)
+	for _, want := range []string{`[data-theme="araihu"]`, `--color-primary: #173b72`, `--color-primary-dark: #c7ff4a`} {
+		if !strings.Contains(theme, want) {
+			t.Fatalf("araihu.css missing canonical token %q", want)
+		}
 	}
 	for _, want := range []string{
 		".docs-content section {\n  min-width: 0;",
