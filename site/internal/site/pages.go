@@ -44,13 +44,14 @@ func pageFor(key PageKey) page {
 }
 
 var pageTemplate = template.Must(template.New("page").Parse(`<!doctype html>
-<html lang="en">
+<html lang="en" data-theme="araihu">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{{.Title}}</title>
   <meta name="description" content="{{.Description}}">
   <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/static/araihu.css">
   <link rel="stylesheet" href="/static/site.css">
   <script>
     (function () {
