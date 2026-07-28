@@ -6,8 +6,8 @@ require (
 	github.com/a-h/templ v0.3.1020
 	github.com/araihu/goshtoso v0.0.13
 	github.com/getkin/kin-openapi v0.140.0
+	github.com/mxschmitt/playwright-go v0.6100.0
 	github.com/oapi-codegen/oapi-codegen/v2 v2.7.1
-	github.com/playwright-community/playwright-go v0.5700.1
 	github.com/testcontainers/testcontainers-go v0.42.0
 	github.com/testcontainers/testcontainers-go/modules/forgejo v0.42.0
 	github.com/yuin/goldmark v1.8.2
@@ -41,7 +41,7 @@ require (
 	github.com/fatih/color v1.16.0 // indirect
 	github.com/felixge/httpsnoop v1.0.4 // indirect
 	github.com/fsnotify/fsnotify v1.7.0 // indirect
-	github.com/go-jose/go-jose/v3 v3.0.4 // indirect
+	github.com/go-jose/go-jose/v3 v3.0.5 // indirect
 	github.com/go-logr/logr v1.4.3 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
 	github.com/go-ole/go-ole v1.2.6 // indirect

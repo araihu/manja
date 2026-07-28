@@ -9,7 +9,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/playwright-community/playwright-go"
+	"github.com/mxschmitt/playwright-go"
 
 	core "github.com/araihu/manja/domain"
 	openapiadapter "github.com/araihu/manja/internal/adapters/openapi"

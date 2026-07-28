@@ -67,8 +67,7 @@ var pageTemplate = template.Must(template.New("page").Parse(`<!doctype html>
   <header class="site-header">
     <nav class="site-nav" aria-label="Main">
       <a class="brand" href="/" aria-label="Manja home">
-        <img class="brand-mark" src="/static/manja-mark.svg" alt="" width="40" height="40">
-        <span>Manja</span>
+        <img class="brand-logo" src="/static/manja-logo.svg" alt="Manja" width="160" height="40">
       </a>
       <div class="nav-actions">
         <a href="/demo" target="_blank" rel="noopener"{{if eq .Path "/demo"}} aria-current="page"{{end}}>Demo</a>
