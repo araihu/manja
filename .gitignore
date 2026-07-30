@@ -4,6 +4,7 @@
 .manja/
 .superpowers/
 /node_modules/
+.DS_Store
 *.test
 go.work
 go.work.sum
