@@ -44,31 +44,34 @@ func pageFor(key PageKey) page {
 }
 
 var pageTemplate = template.Must(template.New("page").Parse(`<!doctype html>
-<html lang="en" data-theme="araihu">
+<html lang="en" data-theme="araihu" data-theme-source="default">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{{.Title}}</title>
   <meta name="description" content="{{.Description}}">
-  <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+  <link rel="icon" href="/static/favicon.svg" type="image/svg+xml" crossorigin="anonymous" data-asset-brand="icon">
   <link rel="stylesheet" href="/static/araihu.css">
   <link rel="stylesheet" href="/static/site.css">
   <script>
     (function () {
       try {
+        var storedTheme = localStorage.getItem("theme");
+        document.documentElement.dataset.themeSource = storedTheme ? "preference" : "default";
         var stored = localStorage.getItem("darkMode");
         var on = stored !== null ? stored === "true" : window.matchMedia("(prefers-color-scheme: dark)").matches;
         document.documentElement.classList.toggle("dark", on);
       } catch (error) {}
     })();
   </script>
+  <script defer src="https://araihu.com/assets/campaign/v1.js" data-channel="https://araihu.com/assets/releases/current" integrity="sha384-oPH7l1vK9vKP1Dn+18sO3yEXlz4ts6KzPEQl0SW4Y/+im05gOaamNNaQAf6bGH/n" crossorigin="anonymous"></script>
 </head>
 <body>
   <a class="skip-link" href="#main">Skip to content</a>
   <header class="site-header">
     <nav class="site-nav" aria-label="Main">
       <a class="brand" href="/" aria-label="Manja home">
-        <img class="brand-logo" src="/static/manja-logo.svg" alt="Manja" width="160" height="40">
+        <img class="brand-logo" src="/static/manja-logo.svg" alt="Manja" width="160" height="40" crossorigin="anonymous" data-asset-brand="logo">
       </a>
       <div class="nav-actions">
         <a href="/demo" target="_blank" rel="noopener"{{if eq .Path "/demo"}} aria-current="page"{{end}}>Demo</a>
@@ -82,6 +85,9 @@ var pageTemplate = template.Must(template.New("page").Parse(`<!doctype html>
           <svg class="theme-icon theme-icon-moon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
             <path stroke-linecap="round" stroke-linejoin="round" d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79Z"></path>
           </svg>
+        </button>
+        <button class="theme-toggle" hidden type="button" aria-label="Use seasonal appearance" aria-pressed="false" data-campaign-toggle data-use-campaign-label="Use seasonal appearance" data-use-baseline-label="Use standard appearance">
+          <span data-campaign-toggle-icon aria-hidden="true"></span>
         </button>
       </div>
     </nav>

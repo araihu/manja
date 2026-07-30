@@ -7,14 +7,15 @@ import (
 )
 
 templ Layout(title string) {
-	@LayoutWithBranding(title, core.DocsBranding{})
+	@LayoutWithBranding(title, core.DocsBranding{}, false, false)
 }
 
-templ LayoutWithBranding(title string, branding core.DocsBranding) {
+templ LayoutWithBranding(title string, branding core.DocsBranding, seasonalCampaign bool, manageFavicon bool) {
 	<!DOCTYPE html>
 	<html
 		lang="en"
 		data-theme="araihu"
+		data-theme-source="default"
 		x-data="{
 			theme: localStorage.getItem('theme') || 'araihu',
 			darkMode: (function() {
@@ -22,7 +23,7 @@ templ LayoutWithBranding(title string, branding core.DocsBranding) {
 				if (stored !== null) return stored === 'true';
 				return window.matchMedia('(prefers-color-scheme: dark)').matches;
 			})(),
-			setTheme(name) { this.theme = name; document.documentElement.setAttribute('data-theme', name); },
+			setTheme(name) { this.theme = name; document.documentElement.setAttribute('data-theme', name); document.documentElement.dataset.themeSource = 'preference'; },
 			applyDarkMode(on) { document.documentElement.classList.toggle('dark', on); },
 			toggleDarkMode() { this.darkMode = !this.darkMode; }
 		}"
@@ -32,6 +33,7 @@ templ LayoutWithBranding(title string, branding core.DocsBranding) {
 			$watch('theme', value => {
 				localStorage.setItem('theme', value);
 				document.documentElement.setAttribute('data-theme', value);
+				document.documentElement.dataset.themeSource = 'preference';
 			});
 			$watch('darkMode', value => {
 				localStorage.setItem('darkMode', value ? 'true' : 'false');
@@ -44,12 +46,18 @@ templ LayoutWithBranding(title string, branding core.DocsBranding) {
 			<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 			<title>{ title }</title>
 			if branding.Favicon != "" {
-				<link rel="icon" href={ templpkg.URL(branding.Favicon) }/>
+				if manageFavicon {
+					<link rel="icon" href={ templpkg.URL(branding.Favicon) } crossorigin="anonymous" data-asset-brand="icon"/>
+				} else {
+					<link rel="icon" href={ templpkg.URL(branding.Favicon) }/>
+				}
 			}
 			<script>
 				(function() {
 					try {
-					document.documentElement.setAttribute('data-theme', localStorage.getItem('theme') || 'araihu');
+						var savedTheme = localStorage.getItem('theme');
+						document.documentElement.setAttribute('data-theme', savedTheme || 'araihu');
+						document.documentElement.dataset.themeSource = savedTheme ? 'preference' : 'default';
 					var d = localStorage.getItem('darkMode');
 					var on = d !== null ? d === 'true' : window.matchMedia('(prefers-color-scheme: dark)').matches;
 					document.documentElement.classList.toggle('dark', on);
@@ -153,6 +161,15 @@ templ LayoutWithBranding(title string, branding core.DocsBranding) {
 				})();
 			</script>
 			<link rel="stylesheet" href="/manja-assets/manja.css"/>
+			if seasonalCampaign {
+				<script
+					defer
+					src="https://araihu.com/assets/campaign/v1.js"
+					data-channel="https://araihu.com/assets/releases/current"
+					integrity="sha384-oPH7l1vK9vKP1Dn+18sO3yEXlz4ts6KzPEQl0SW4Y/+im05gOaamNNaQAf6bGH/n"
+					crossorigin="anonymous"
+				></script>
+			}
 			<script defer src="/manja-assets/schema-example.js"></script>
 			<script defer src="/manja-assets/request-composer.js"></script>
 			<style>[x-cloak] { display: none !important; }</style>

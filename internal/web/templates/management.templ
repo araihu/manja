@@ -86,7 +86,7 @@ templ ManagementUnknownPage(model ManagementOverviewModel, requestedPath string)
 }
 
 templ managementShell(model ManagementOverviewModel, active string) {
-	@LayoutWithBranding(managementDocumentTitle(model, active), core.DocsBranding{}) {
+	@LayoutWithBranding(managementDocumentTitle(model, active), core.DocsBranding{}, false, false) {
 		<div class="fixed inset-0 overflow-clip bg-surface text-on-surface dark:bg-surface-dark dark:text-on-surface-dark">
 			@appshell.AppShell(appshell.Config{
 				Header:       managementApplicationHeader(model, active),

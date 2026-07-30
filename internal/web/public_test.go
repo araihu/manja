@@ -671,13 +671,79 @@ func TestPublicDocsBrandingDefaultsToManjaAssets(t *testing.T) {
 
 	for _, want := range []string{
 		`<title>Petstore</title>`,
-		`<link rel="icon" href="/manja-assets/favicon.svg">`,
+		`<link rel="icon" href="/manja-assets/favicon.svg" crossorigin="anonymous" data-asset-brand="icon">`,
 		`href="/" class="flex min-w-0 items-center gap-2`,
-		`<img src="/manja-assets/manja-mark.svg" alt="" width="32" height="32"`,
+		`<img src="/manja-assets/manja-mark.svg" alt="" width="32" height="32" crossorigin="anonymous" data-asset-brand="logo"`,
 		`<span>Manja</span>`,
 	} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("default branding missing %q:\n%s", want, body)
+		}
+	}
+}
+
+func TestPublicDocsSeasonalAssetsManageOnlyApplicationDefaults(t *testing.T) {
+	const (
+		runtimeURL = "https://araihu.com/assets/campaign/v1.js"
+		channelURL = "https://araihu.com/assets/releases/current"
+		runtimeSRI = "sha384-oPH7l1vK9vKP1Dn+18sO3yEXlz4ts6KzPEQl0SW4Y/+im05gOaamNNaQAf6bGH/n"
+	)
+
+	defaultBody := renderPublicDocs(t, NewPublicServer(core.SpecIndex{Title: "Petstore"}))
+	for _, want := range []string{
+		`data-theme-source="default"`,
+		`src="` + runtimeURL + `"`,
+		`data-channel="` + channelURL + `"`,
+		`integrity="` + runtimeSRI + `"`,
+		`data-campaign-toggle`,
+		`data-campaign-toggle-icon`,
+		`data-use-campaign-label="Use seasonal appearance"`,
+		`data-use-baseline-label="Use standard appearance"`,
+	} {
+		if !strings.Contains(defaultBody, want) {
+			t.Fatalf("default seasonal contract missing %q:\n%s", want, defaultBody)
+		}
+	}
+	defaultLogo := regexp.MustCompile(`<img[^>]*src="/manja-assets/manja-mark\.svg"[^>]*>`).FindString(defaultBody)
+	if !strings.Contains(defaultLogo, `data-asset-brand="logo"`) || !strings.Contains(defaultLogo, `width="32" height="32"`) {
+		t.Fatalf("default logo is not a fixed-size managed fallback: %s", defaultLogo)
+	}
+	defaultFavicon := regexp.MustCompile(`<link[^>]*href="/manja-assets/favicon\.svg"[^>]*>`).FindString(defaultBody)
+	if !strings.Contains(defaultFavicon, `data-asset-brand="icon"`) {
+		t.Fatalf("default favicon is not managed: %s", defaultFavicon)
+	}
+	if bootstrap, runtime := strings.Index(defaultBody, "dataset.themeSource"), strings.Index(defaultBody, runtimeURL); bootstrap < 0 || runtime < 0 || bootstrap > runtime {
+		t.Fatal("theme preference bootstrap must precede campaign runtime")
+	}
+
+	customBody := renderPublicDocs(t, NewPublicServerWithOptions(core.SpecIndex{
+		Title: "Petstore",
+		Branding: core.DocsBranding{
+			Logo:    core.DocsBrandingLogo{Src: "https://customer.example/logo.svg"},
+			Favicon: "https://customer.example/favicon.svg",
+		},
+	}, PublicOptions{}))
+	customLogo := regexp.MustCompile(`<img[^>]*src="https://customer\.example/logo\.svg"[^>]*>`).FindString(customBody)
+	if customLogo == "" || strings.Contains(customLogo, "data-asset-brand") {
+		t.Fatalf("caller logo must remain authoritative and unmanaged: %s", customLogo)
+	}
+	customFavicon := regexp.MustCompile(`<link[^>]*href="https://customer\.example/favicon\.svg"[^>]*>`).FindString(customBody)
+	if customFavicon == "" || strings.Contains(customFavicon, "data-asset-brand") {
+		t.Fatalf("caller favicon must remain authoritative and unmanaged: %s", customFavicon)
+	}
+}
+
+func TestPublicDocsUseAssetsV011FallbackHashes(t *testing.T) {
+	for path, want := range map[string]string{
+		"static/favicon.svg":    "d622096910fa1d2a4d5f64b8d75ade1b3b521f28915e91e70627c52649e9dc1e",
+		"static/manja-mark.svg": "d622096910fa1d2a4d5f64b8d75ade1b3b521f28915e91e70627c52649e9dc1e",
+	} {
+		data, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatalf("read %s: %v", path, err)
+		}
+		if got := fmt.Sprintf("%x", sha256.Sum256(data)); got != want {
+			t.Fatalf("%s SHA-256 = %s, want Assets v0.1.1 %s", path, got, want)
 		}
 	}
 }

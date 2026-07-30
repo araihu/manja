@@ -46,6 +46,8 @@ const (
 type PublicDocsOptions struct {
 	EndpointSidebarLabel EndpointSidebarLabelMode
 	MarkdownRenderer     port.MarkdownRenderer
+	ManageDefaultLogo    bool
+	ManageDefaultFavicon bool
 }
 
 const (
@@ -100,7 +102,7 @@ templ PublicDocs(idx core.SpecIndex, selectedID string) {
 templ PublicDocsWithOptions(idx core.SpecIndex, selectedID string, opts PublicDocsOptions) {
 	{{ opts = opts.withDefaults() }}
 	{{ selected := selectedDocsItemFor(idx, selectedID) }}
-	@LayoutWithBranding(publicDocsDocumentTitle(idx, selected), idx.Branding) {
+	@LayoutWithBranding(publicDocsDocumentTitle(idx, selected), idx.Branding, true, opts.ManageDefaultFavicon) {
 		<div hx-history="false" class="fixed inset-0 overflow-clip bg-surface text-on-surface dark:bg-surface-dark dark:text-on-surface-dark">
 			@appshell.AppShell(appshell.Config{
 				Header:       publicApplicationHeader(idx, selected, opts),
@@ -144,7 +146,11 @@ templ publicApplicationHeader(idx core.SpecIndex, selected selectedDocsItem, opt
 			})
 			<a href={ templpkg.URL(docsBrandingHomeURL(idx.Branding)) } class="flex min-w-0 items-center gap-2 text-2xl font-bold font-title text-on-surface-strong dark:text-on-surface-dark-strong">
 				if idx.Branding.Logo.Src != "" {
-					<img src={ templpkg.URL(idx.Branding.Logo.Src) } alt={ idx.Branding.Logo.Alt } width="32" height="32" class="size-8 shrink-0 rounded-radius"/>
+					if opts.ManageDefaultLogo {
+						<img src={ templpkg.URL(idx.Branding.Logo.Src) } alt={ idx.Branding.Logo.Alt } width="32" height="32" crossorigin="anonymous" data-asset-brand="logo" class="size-8 shrink-0 rounded-radius"/>
+					} else {
+						<img src={ templpkg.URL(idx.Branding.Logo.Src) } alt={ idx.Branding.Logo.Alt } width="32" height="32" class="size-8 shrink-0 rounded-radius"/>
+					}
 				}
 				<span>{ docsBrandingDisplayName(idx.Branding) }</span>
 			</a>
@@ -161,6 +167,18 @@ templ publicApplicationHeader(idx core.SpecIndex, selected selectedDocsItem, opt
 				})
 			</div>
 			@themeToggle()
+			<button
+				hidden
+				type="button"
+				aria-pressed="false"
+				data-campaign-toggle
+				data-use-campaign-label="Use seasonal appearance"
+				data-use-baseline-label="Use standard appearance"
+				class="inline-flex min-h-11 min-w-11 items-center justify-center rounded-radius border border-outline text-on-surface-strong dark:border-outline-dark dark:text-on-surface-dark-strong"
+			>
+				<span data-campaign-toggle-icon aria-hidden="true"></span>
+				<span class="sr-only">Use seasonal appearance</span>
+			</button>
 			<span class="hidden md:inline">OpenAPI docs</span>
 			if idx.Version != "" {
 				<span class="hidden rounded-radius border border-outline px-2 py-1 font-mono text-xs text-on-surface-strong dark:border-outline-dark dark:text-on-surface-dark-strong sm:inline">v{ idx.Version }</span>
