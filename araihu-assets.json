@@ -1,0 +1,79 @@
+{
+  "schemaVersion": 1,
+  "assetsRepository": "araihu/assets",
+  "assetsRevision": "74c36ed038ad127cab72d10ac6c5a8ca79646244",
+  "release": "v0.1.1",
+  "releaseUrl": "https://github.com/araihu/assets/releases/download/v0.1.1/araihu-assets-v0.1.1.tar.gz",
+  "releaseSha256": "4f9549a5975a284921fa7eb263cbd1a92c065d323ab395e82c3eac1d0a46886b",
+  "releaseJsonSha256": "eb2f556224ce1bcab979e3f1c8c8f05813dc0c3381b30ae757df32216027ebb9",
+  "mappings": [
+    {
+      "source": "themes/araihu.css",
+      "destination": "internal/web/static/araihu.css"
+    },
+    {
+      "source": "platform/web/manja/favicon.svg",
+      "destination": "internal/web/static/favicon.svg",
+      "canonicalName": "platform-web-manja-favicon-svg",
+      "namespace": "brand",
+      "product": "manja",
+      "artwork": "icon",
+      "appearance": "adaptive",
+      "surface": "transparent",
+      "framing": "optical",
+      "format": "svg"
+    },
+    {
+      "source": "icons/brand/manja-icon-adaptive-transparent-optical.svg",
+      "destination": "internal/web/static/manja-mark.svg",
+      "canonicalName": "manja-icon-adaptive-transparent-optical",
+      "namespace": "brand",
+      "product": "manja",
+      "artwork": "icon",
+      "appearance": "adaptive",
+      "surface": "transparent",
+      "framing": "optical",
+      "format": "svg"
+    },
+    {
+      "source": "themes/araihu.css",
+      "destination": "site/internal/site/static/araihu.css"
+    },
+    {
+      "source": "platform/web/manja/favicon.svg",
+      "destination": "site/internal/site/static/favicon.svg",
+      "canonicalName": "platform-web-manja-favicon-svg",
+      "namespace": "brand",
+      "product": "manja",
+      "artwork": "icon",
+      "appearance": "adaptive",
+      "surface": "transparent",
+      "framing": "optical",
+      "format": "svg"
+    },
+    {
+      "source": "brand/manja/logo/adaptive-transparent-optical.svg",
+      "destination": "site/internal/site/static/manja-logo.svg",
+      "canonicalName": "manja-logo-adaptive-transparent-optical",
+      "namespace": "brand",
+      "product": "manja",
+      "artwork": "logo",
+      "appearance": "adaptive",
+      "surface": "transparent",
+      "framing": "optical",
+      "format": "svg"
+    },
+    {
+      "source": "icons/brand/manja-icon-adaptive-transparent-optical.svg",
+      "destination": "site/internal/site/static/manja-mark.svg",
+      "canonicalName": "manja-icon-adaptive-transparent-optical",
+      "namespace": "brand",
+      "product": "manja",
+      "artwork": "icon",
+      "appearance": "adaptive",
+      "surface": "transparent",
+      "framing": "optical",
+      "format": "svg"
+    }
+  ]
+}
