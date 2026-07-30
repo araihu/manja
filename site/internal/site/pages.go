@@ -28,15 +28,15 @@ func pageFor(key PageKey) page {
 	switch key {
 	case Docs:
 		return page{
-			Title:       "Manja Docs",
-			Description: "Setup notes for pointing Manja at an OpenAPI specification source and publishing a stable version.",
+			Title:       "Run and publish Manja | OpenAPI docs",
+			Description: "Run Manja locally or with Docker, connect an OpenAPI source, choose a revision, and publish read-only documentation from a known-good version.",
 			Path:        "/docs",
 			Body:        docsBody,
 		}
 	default:
 		return page{
-			Title:       "Manja",
-			Description: "Source-connected OpenAPI publishing that renders stable public API documentation from the specs teams already keep in source control.",
+			Title:       "Publish OpenAPI docs from source | Manja",
+			Description: "Connect Manja to an OpenAPI file or Git source, choose a revision, and publish read-only API documentation from a stable known-good version.",
 			Path:        "/",
 			Body:        homeBody,
 		}
@@ -102,12 +102,12 @@ var pageTemplate = template.Must(template.New("page").Parse(`<!doctype html>
 var homeBody = template.HTML(`
 <section class="hero shell">
   <div class="hero-copy">
-    <p class="eyebrow">Source-connected OpenAPI publishing</p>
-    <h1>Point Manja at your spec.</h1>
-    <p class="lead">Manja tracks the source, understands revisions, renders the OpenAPI reference, and keeps the public version stable. Say where the spec lives; the rest should fall into place without asking developers to change their workflow.</p>
+    <p class="eyebrow">OpenAPI publishing from source</p>
+    <h1>Publish OpenAPI docs from the source you already maintain.</h1>
+    <p class="lead">Connect an OpenAPI file or Git source, choose a revision, and publish a read-only reference. Manja keeps readers on the selected known-good version when a later sync or parse fails.</p>
     <div class="actions">
-      <a class="button button-primary" href="/demo" target="_blank" rel="noopener">View live demo</a>
-      <a class="button button-secondary" href="/docs">Read setup docs</a>
+      <a class="button button-primary" href="/demo" target="_blank" rel="noopener">Open the live demo</a>
+      <a class="button button-secondary" href="/docs">Run Manja</a>
     </div>
   </div>
 </section>
@@ -148,8 +148,8 @@ var homeBody = template.HTML(`
 var docsBody = template.HTML(`
 <section class="page-hero shell">
   <p class="eyebrow">Docs</p>
-  <h1>Setup docs</h1>
-  <p class="lead">Manja starts from the spec file and source revision developers already maintain. Connect the source, choose the revision to publish, and keep the public docs pinned to a stable known-good version.</p>
+  <h1>Run and publish Manja</h1>
+  <p class="lead">Start with a local spec or container, then connect the source and choose the revision readers should see. Manja keeps public docs pinned to that known-good version until a healthy publication replaces it.</p>
 </section>
 
 <section class="docs-layout shell">
