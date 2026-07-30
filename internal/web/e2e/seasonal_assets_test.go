@@ -81,6 +81,34 @@ func TestSeasonalAssetsRuntimeFailurePreservesPreferenceAndFallback(t *testing.T
 	if hidden, err := page.Locator(`[data-campaign-toggle]`).IsHidden(); err != nil || !hidden {
 		t.Fatalf("campaign toggle hidden after runtime failure = %t, err = %v", hidden, err)
 	}
+	if _, err := page.Evaluate(`() => {
+		const button = document.querySelector('[data-campaign-toggle]');
+		const icon = document.querySelector('[data-campaign-toggle-icon]');
+		button.hidden = false;
+		button.setAttribute('aria-pressed', 'true');
+		icon.replaceChildren(document.createElementNS('http://www.w3.org/2000/svg', 'svg'));
+		document.dispatchEvent(new CustomEvent('araihu:campaign:applied'));
+	}`, nil); err != nil {
+		t.Fatal(err)
+	}
+	button := page.Locator(`[data-campaign-toggle]`)
+	if got, err := button.GetAttribute("aria-label"); err != nil || got != "Use standard appearance" {
+		t.Fatalf("active campaign toggle label = %q, err = %v", got, err)
+	}
+	iconBox, err := page.Locator(`[data-campaign-toggle-icon] > svg`).BoundingBox()
+	if err != nil || iconBox == nil || iconBox.Width != 20 || iconBox.Height != 20 {
+		t.Fatalf("campaign toggle icon bounds = %#v, err = %v", iconBox, err)
+	}
+	if _, err := page.Evaluate(`() => {
+		const button = document.querySelector('[data-campaign-toggle]');
+		button.setAttribute('aria-pressed', 'false');
+		document.dispatchEvent(new CustomEvent('araihu:campaign:restored'));
+	}`, nil); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := button.GetAttribute("aria-label"); err != nil || got != "Use seasonal appearance" {
+		t.Fatalf("baseline campaign toggle label = %q, err = %v", got, err)
+	}
 	mu.Lock()
 	defer mu.Unlock()
 	if len(pageErrors) != 0 {

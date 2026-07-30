@@ -697,6 +697,8 @@ func TestPublicDocsSeasonalAssetsManageOnlyApplicationDefaults(t *testing.T) {
 		`integrity="` + runtimeSRI + `"`,
 		`data-campaign-toggle`,
 		`data-campaign-toggle-icon`,
+		`data-campaign-toggle-label`,
+		`aria-label="Use seasonal appearance"`,
 		`data-use-campaign-label="Use seasonal appearance"`,
 		`data-use-baseline-label="Use standard appearance"`,
 	} {

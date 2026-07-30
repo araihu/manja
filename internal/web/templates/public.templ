@@ -170,14 +170,15 @@ templ publicApplicationHeader(idx core.SpecIndex, selected selectedDocsItem, opt
 			<button
 				hidden
 				type="button"
+				aria-label="Use seasonal appearance"
 				aria-pressed="false"
 				data-campaign-toggle
 				data-use-campaign-label="Use seasonal appearance"
 				data-use-baseline-label="Use standard appearance"
 				class="inline-flex min-h-11 min-w-11 items-center justify-center rounded-radius border border-outline text-on-surface-strong dark:border-outline-dark dark:text-on-surface-dark-strong"
 			>
-				<span data-campaign-toggle-icon aria-hidden="true"></span>
-				<span class="sr-only">Use seasonal appearance</span>
+				<span class="manja-campaign-toggle-icon" data-campaign-toggle-icon aria-hidden="true"></span>
+				<span class="sr-only" data-campaign-toggle-label>Use seasonal appearance</span>
 			</button>
 			<span class="hidden md:inline">OpenAPI docs</span>
 			if idx.Version != "" {

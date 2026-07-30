@@ -150,6 +150,14 @@ pre {
   color: var(--ink);
 }
 
+.campaign-toggle-icon,
+.campaign-toggle-icon > * {
+  display: block;
+  flex: 0 0 auto;
+  height: 1.25rem;
+  width: 1.25rem;
+}
+
 .theme-icon {
   height: 1.25rem;
   width: 1.25rem;

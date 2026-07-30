@@ -87,7 +87,7 @@ var pageTemplate = template.Must(template.New("page").Parse(`<!doctype html>
           </svg>
         </button>
         <button class="theme-toggle" hidden type="button" aria-label="Use seasonal appearance" aria-pressed="false" data-campaign-toggle data-use-campaign-label="Use seasonal appearance" data-use-baseline-label="Use standard appearance">
-          <span data-campaign-toggle-icon aria-hidden="true"></span>
+          <span class="campaign-toggle-icon" data-campaign-toggle-icon aria-hidden="true"></span>
         </button>
       </div>
     </nav>

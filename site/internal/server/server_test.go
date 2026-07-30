@@ -120,6 +120,7 @@ func TestSeasonalAssetsContractAndFallbacks(t *testing.T) {
 		`data-asset-brand="icon"`,
 		`data-campaign-toggle`,
 		`data-campaign-toggle-icon`,
+		`aria-label="Use seasonal appearance"`,
 		`localStorage.getItem("theme")`,
 	} {
 		if !strings.Contains(body, want) {
@@ -131,6 +132,16 @@ func TestSeasonalAssetsContractAndFallbacks(t *testing.T) {
 	}
 	if stylesheet, runtime := strings.Index(body, `href="/static/site.css"`), strings.Index(body, `src="https://araihu.com/assets/campaign/v1.js"`); stylesheet < 0 || runtime < 0 || stylesheet > runtime {
 		t.Fatal("product-site fallback stylesheet must precede campaign runtime")
+	}
+	themeJS := get(t, srv.URL+"/static/theme.js", http.StatusOK)
+	for _, want := range []string{"araihu:campaign:applied", "araihu:campaign:restored", "useBaselineLabel", "useCampaignLabel"} {
+		if !strings.Contains(themeJS, want) {
+			t.Fatalf("product-site toggle label sync missing %q", want)
+		}
+	}
+	siteCSS := get(t, srv.URL+"/static/site.css", http.StatusOK)
+	if !strings.Contains(siteCSS, ".campaign-toggle-icon > *") {
+		t.Fatal("product-site campaign icon is not bounded")
 	}
 
 	for path, want := range map[string]string{

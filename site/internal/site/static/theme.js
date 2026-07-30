@@ -14,7 +14,23 @@
     });
   }
 
+  function syncCampaignToggleLabels() {
+    document.querySelectorAll("[data-campaign-toggle]").forEach(function (button) {
+      var label = button.getAttribute("aria-pressed") === "true"
+        ? button.dataset.useBaselineLabel
+        : button.dataset.useCampaignLabel;
+      if (!label) return;
+      button.setAttribute("aria-label", label);
+      var text = button.querySelector("[data-campaign-toggle-label]");
+      if (text) text.textContent = label;
+    });
+  }
+
+  document.addEventListener("araihu:campaign:applied", syncCampaignToggleLabels);
+  document.addEventListener("araihu:campaign:restored", syncCampaignToggleLabels);
+
   document.addEventListener("DOMContentLoaded", function () {
+		syncCampaignToggleLabels();
     apply(preferredDark());
     document.querySelectorAll("[data-theme-toggle]").forEach(function (button) {
       button.addEventListener("click", function () {

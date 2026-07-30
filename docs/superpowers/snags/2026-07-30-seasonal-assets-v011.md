@@ -41,6 +41,11 @@
 - The Impeccable design hook reported existing typography/color literals while
   touched CSS files were inspected. None was introduced or changed by the
   seasonal slice, so no unrelated design token or suppression was added.
+- Focused differential review found that Assets runtime v0.1.1 changes the
+  campaign toggle's `aria-pressed` state and inserts an SVG/image, but direct
+  DOM consumers must synchronize the accessible action label and bound the
+  inserted child themselves. Manja now handles both in its renderer and
+  product-site shells; no private Assets helper was copied.
 
 ## Evidence
 
@@ -63,6 +68,8 @@
 - Chromium forced-runtime-failure smoke at 390x844: pass; explicit `minimal`
   preference and local Manja logo/favicon survived HTTP 503, the campaign
   toggle remained hidden, and no page error occurred.
+- Focused correction smoke also proves active/restored campaign events switch
+  the toggle action label and keep the injected icon at 20x20 pixels.
 - Changed-package test, race, vet, and root/site `go mod tidy -diff`: pass.
 - Second `templ generate`: zero updates and identical generated hashes.
 - Live runtime, channel, and immutable v0.1.1 asset: GET and HEAD HTTP 200.
