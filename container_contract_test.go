@@ -8,7 +8,7 @@ import (
 
 func TestContainerImageContract(t *testing.T) {
 	dockerfile := readFile(t, "Dockerfile")
-	assertContains(t, dockerfile, "FROM golang:1.26.1-alpine AS build")
+	assertContains(t, dockerfile, "FROM golang:"+moduleGoVersion(t)+"-alpine AS build")
 	assertContains(t, dockerfile, "FROM alpine:")
 	assertContains(t, dockerfile, "ARG MANJA_VERSION=dev")
 	assertContains(t, dockerfile, "CGO_ENABLED=0 GOOS=linux go build")
@@ -16,6 +16,18 @@ func TestContainerImageContract(t *testing.T) {
 	assertContains(t, dockerfile, "apk add --no-cache ca-certificates git")
 	assertContains(t, dockerfile, "internal/web/static")
 	assertContains(t, dockerfile, "internal/adapters/openapi/testdata/github-v3-rest.json")
+}
+
+func moduleGoVersion(t *testing.T) string {
+	t.Helper()
+	for _, line := range strings.Split(readFile(t, "go.mod"), "\n") {
+		fields := strings.Fields(line)
+		if len(fields) == 2 && fields[0] == "go" {
+			return fields[1]
+		}
+	}
+	t.Fatal("go.mod has no go directive")
+	return ""
 }
 
 func TestContainerPublishWorkflowContract(t *testing.T) {
