@@ -29,11 +29,11 @@ func TestRoutesRender(t *testing.T) {
 				`<html lang="en" data-theme="araihu" data-theme-source="default">`,
 				`href="/static/araihu.css"`,
 				`src="/static/manja-logo.svg" alt="Manja" width="160" height="40"`,
-				"Point Manja at your spec.",
-				"Source-connected OpenAPI publishing",
+				"Publish OpenAPI docs from the source you already maintain.",
+				"OpenAPI publishing from source",
 				"Versions stay close to source",
 				`href="/demo" target="_blank" rel="noopener"`,
-				`href="/demo" target="_blank" rel="noopener">View live demo</a>`,
+				`href="/demo" target="_blank" rel="noopener">Open the live demo</a>`,
 			},
 		},
 		{
@@ -81,7 +81,7 @@ func TestRoutesRender(t *testing.T) {
 		{
 			path: "/docs",
 			want: []string{
-				"Setup docs",
+				"Run and publish Manja",
 				"go run ./cmd/manja",
 				"ghcr.io/araihu/manja:main",
 				`href="#run-with-docker"`,
