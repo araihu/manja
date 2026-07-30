@@ -1,6 +1,8 @@
 package server_test
 
 import (
+	"crypto/sha256"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -24,7 +26,7 @@ func TestRoutesRender(t *testing.T) {
 		{
 			path: "/",
 			want: []string{
-				`<html lang="en" data-theme="araihu">`,
+				`<html lang="en" data-theme="araihu" data-theme-source="default">`,
 				`href="/static/araihu.css"`,
 				`src="/static/manja-logo.svg" alt="Manja" width="160" height="40"`,
 				"Point Manja at your spec.",
@@ -100,6 +102,57 @@ func TestRoutesRender(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestSeasonalAssetsContractAndFallbacks(t *testing.T) {
+	t.Parallel()
+
+	srv := httptest.NewServer(newTestServer(t))
+	t.Cleanup(srv.Close)
+	body := get(t, srv.URL+"/", http.StatusOK)
+	for _, want := range []string{
+		`data-theme-source="default"`,
+		`src="https://araihu.com/assets/campaign/v1.js"`,
+		`data-channel="https://araihu.com/assets/releases/current"`,
+		`integrity="sha384-oPH7l1vK9vKP1Dn+18sO3yEXlz4ts6KzPEQl0SW4Y/+im05gOaamNNaQAf6bGH/n"`,
+		`data-asset-brand="logo"`,
+		`data-asset-brand="icon"`,
+		`data-campaign-toggle`,
+		`data-campaign-toggle-icon`,
+		`aria-label="Use seasonal appearance"`,
+		`localStorage.getItem("theme")`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("product site seasonal contract missing %q", want)
+		}
+	}
+	if bootstrap, runtime := strings.Index(body, `localStorage.getItem("theme")`), strings.Index(body, `src="https://araihu.com/assets/campaign/v1.js"`); bootstrap < 0 || runtime < 0 || bootstrap > runtime {
+		t.Fatal("product-site preference bootstrap must precede campaign runtime")
+	}
+	if stylesheet, runtime := strings.Index(body, `href="/static/site.css"`), strings.Index(body, `src="https://araihu.com/assets/campaign/v1.js"`); stylesheet < 0 || runtime < 0 || stylesheet > runtime {
+		t.Fatal("product-site fallback stylesheet must precede campaign runtime")
+	}
+	themeJS := get(t, srv.URL+"/static/theme.js", http.StatusOK)
+	for _, want := range []string{"araihu:campaign:applied", "araihu:campaign:restored", "useBaselineLabel", "useCampaignLabel"} {
+		if !strings.Contains(themeJS, want) {
+			t.Fatalf("product-site toggle label sync missing %q", want)
+		}
+	}
+	siteCSS := get(t, srv.URL+"/static/site.css", http.StatusOK)
+	if !strings.Contains(siteCSS, ".campaign-toggle-icon > *") {
+		t.Fatal("product-site campaign icon is not bounded")
+	}
+
+	for path, want := range map[string]string{
+		"/static/favicon.svg":    "d622096910fa1d2a4d5f64b8d75ade1b3b521f28915e91e70627c52649e9dc1e",
+		"/static/manja-mark.svg": "d622096910fa1d2a4d5f64b8d75ade1b3b521f28915e91e70627c52649e9dc1e",
+		"/static/manja-logo.svg": "309ff1be58cc19126a0e70e317c864a53c71ee664767e0f1b8e8a1995a780391",
+	} {
+		asset := []byte(get(t, srv.URL+path, http.StatusOK))
+		if got := fmt.Sprintf("%x", sha256.Sum256(asset)); got != want {
+			t.Fatalf("%s SHA-256 = %s, want Assets v0.1.1 %s", path, got, want)
+		}
 	}
 }
 
@@ -217,16 +270,8 @@ func TestStaticAssetsRender(t *testing.T) {
 
 	for _, path := range []string{"/static/favicon.svg", "/static/manja-mark.svg", "/static/manja-logo.svg"} {
 		asset := get(t, srv.URL+path, http.StatusOK)
-		for _, want := range []string{
-			`class="araihu-brand-v11"`,
-			"--araihu-logo-surface",
-			"--araihu-logo-ink",
-			"--araihu-logo-signal",
-			"@media (prefers-color-scheme: dark)",
-		} {
-			if !strings.Contains(asset, want) {
-				t.Fatalf("%s did not preserve v11 adaptive logo contract %q", path, want)
-			}
+		if !strings.Contains(asset, `<svg xmlns="http://www.w3.org/2000/svg"`) {
+			t.Fatalf("%s did not serve an SVG", path)
 		}
 	}
 

@@ -179,6 +179,8 @@ func NewPublicServer(idx core.SpecIndex) http.Handler {
 
 func NewPublicServerWithOptions(idx core.SpecIndex, opts PublicOptions) http.Handler {
 	opts = opts.withDefaults()
+	manageDefaultLogo := strings.TrimSpace(idx.Branding.Logo.Src) == "" && strings.TrimSpace(opts.Branding.Logo.Src) == ""
+	manageDefaultFavicon := strings.TrimSpace(idx.Branding.Favicon) == "" && strings.TrimSpace(opts.Branding.Favicon) == ""
 	idx.Branding = docsBranding(idx.Branding, opts.Branding)
 	mux := http.NewServeMux()
 	mux.Handle("/assets/", assets.Handler())
@@ -262,6 +264,8 @@ func NewPublicServerWithOptions(idx core.SpecIndex, opts PublicOptions) http.Han
 		renderOpts := templates.PublicDocsOptions{
 			EndpointSidebarLabel: opts.EndpointSidebarLabel,
 			MarkdownRenderer:     opts.MarkdownRenderer,
+			ManageDefaultLogo:    manageDefaultLogo,
+			ManageDefaultFavicon: manageDefaultFavicon,
 		}
 		component := templates.PublicDocsWithOptions(idx, selected, renderOpts)
 		if r.Header.Get("HX-Request") == "true" &&

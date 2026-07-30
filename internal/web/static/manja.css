@@ -1010,6 +1010,14 @@ summary.manja-schema-row::marker {
   display: none;
 }
 
+.manja-campaign-toggle-icon,
+.manja-campaign-toggle-icon > * {
+  display: block;
+  flex: 0 0 auto;
+  height: 1.25rem;
+  width: 1.25rem;
+}
+
 #management-main-content [role="tablist"] + div > [role="tabpanel"]:first-child {
   display: block;
 }
