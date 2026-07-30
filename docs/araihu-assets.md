@@ -5,15 +5,17 @@ allowlist used to refresh Manja's local no-JavaScript fallbacks. The updater
 never reads the mutable `current` channel and never changes campaign runtime
 configuration.
 
-Manja has two independently embedded surfaces:
+Manja has two independently shipped surfaces:
 
-- `internal/web/static` serves renderer fallbacks under `/manja-assets/`;
-- `site/internal/site/static` serves the product site and demo fallbacks.
+- `internal/web/static` is the renderer's filesystem fallback source served
+  under `/manja-assets/`;
+- `site/internal/site/static` is embedded into the product site and serves its
+  own pages plus the demo.
 
 Both surfaces receive the canonical Arai Hu theme, adaptive transparent Manja
 mark, and web favicon. The product site also receives the adaptive transparent
-Manja wordmark. These files are source assets embedded by Go; they are not templ
-or JavaScript generator outputs.
+Manja wordmark. These are authoritative source assets, not templ or JavaScript
+generator outputs.
 
 Run a pinned release locally after separately verifying its archive:
 
