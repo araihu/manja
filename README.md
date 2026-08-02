@@ -10,9 +10,10 @@ provides Ctrl+K search across indexed operations and schemas.
 
 ```bash
 go test ./...
-npm ci
-npm run api:bundle
-npm run api:lint
+go tool muamba verify --strict
+go run ./cmd/webassets check
+scripts/redocly bundle api/openapi.yaml -o api/dist/openapi.yaml
+scripts/redocly lint api/openapi.yaml
 go run ./cmd/manja -data-dir .manja/data
 ```
 
@@ -21,12 +22,12 @@ Open <http://localhost:8080>.
 For live development, run:
 
 ```bash
-npm run dev
+go run ./cmd/dev
 ```
 
 Air watches Go, templ, API description, and static asset sources. On rebuild it
-regenerates templ output, rebuilds schema example assets, runs `css:build` when
-that npm script exists, and restarts Manja.
+regenerates templ output, rebuilds the browser assets with the pinned Go
+toolchain, and restarts Manja.
 
 Generated templ Go files, static CSS bundles, and the schema example JS bundle
 are excluded from the watcher so build outputs do not trigger rebuild loops.
@@ -38,14 +39,14 @@ not the app URL, when you want the standalone renderer with reload. To pin ports
 explicitly, run:
 
 ```bash
-npm run dev -- --app-port 8080 --proxy-port 7331 --site-port 8180
+go run ./cmd/dev --app-port 8080 --proxy-port 7331 --site-port 8180
 ```
 
-Use `npm run dev -- --print-ports` to inspect the selected ports without
+Use `go run ./cmd/dev --print-ports` to inspect the selected ports without
 starting the servers. Extra flags are passed through to Manja:
 
 ```bash
-npm run dev -- -spec internal/adapters/openapi/testdata/petstore.yaml
+go run ./cmd/dev -- -spec internal/adapters/openapi/testdata/petstore.yaml
 ```
 
 ## Contract review

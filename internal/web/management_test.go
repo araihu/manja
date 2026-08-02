@@ -789,10 +789,6 @@ func TestManagementSyncPostSyncsSelectedGitRefAndCanPublish(t *testing.T) {
 		`hx-post="/manage/sync"`,
 		`id="management-payments-api-sync-ref-trigger"`,
 		`name="ref"`,
-		`release/v2 branch def456`,
-		"branch",
-		"tag",
-		"v1.0.0",
 		`role="switch"`,
 		`name="publish"`,
 		`value="public"`,
@@ -801,6 +797,9 @@ func TestManagementSyncPostSyncsSelectedGitRefAndCanPublish(t *testing.T) {
 		if !strings.Contains(body, want) {
 			t.Fatalf("body missing %q:\n%s", want, body)
 		}
+	}
+	if !selectConfigContainsValues(body, "main", "release/v2", "v1.0.0") {
+		t.Fatalf("available refs missing from encoded select configuration:\n%s", body)
 	}
 
 	form := url.Values{

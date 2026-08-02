@@ -11,7 +11,7 @@ import (
 
 const (
 	goshtosoModulePath = "github.com/araihu/goshtoso"
-	goshtosoVersion    = "v0.0.13"
+	goshtosoVersion    = "v0.1.4"
 	minimumGoVersion   = "go1.26.5"
 )
 
@@ -30,7 +30,7 @@ type moduleFile struct {
 	Go string
 }
 
-func TestGoshtosoConsumerModulesUseV0013(t *testing.T) {
+func TestGoshtosoConsumerModulesUseV014(t *testing.T) {
 	root := repositoryRoot(t)
 	for _, module := range discoverConsumerModules(t, root) {
 		t.Run(module.name, func(t *testing.T) {

@@ -1,0 +1,374 @@
+schema: 1
+resources:
+  readme-httpsnippet:
+    version: "11.1.0"
+    downloads:
+      archive:
+        url: https://registry.npmjs.org/@readme/httpsnippet/-/httpsnippet-${version}.tgz
+        path: internal/webassets/vendor/readme-httpsnippet/${version}/package.tgz
+        max_size: 8MiB
+        integrity: sha384-Jxx05d9j6X+TT+frRKIldtWRg4nfzieAQXPl0GqmSz0gnyww5DQnR0HiMvSKsGVX
+      license:
+        url: https://unpkg.com/@readme/httpsnippet@${version}/LICENSE
+        path: internal/webassets/vendor/readme-httpsnippet/${version}/LICENSE
+        integrity: sha384-56Rt2Gkt74g6H88f53cebpoTAQnbPW5cjph+/2R1MCrrfJVYUsSxUk8Jy6ZdflgK
+  base64-js:
+    version: "1.5.1"
+    downloads:
+      archive:
+        url: https://registry.npmjs.org/base64-js/-/base64-js-${version}.tgz
+        path: internal/webassets/vendor/base64-js/${version}/package.tgz
+        max_size: 8MiB
+        integrity: sha384-miGZkm3Li5yaXcozuAzBW2Uk1BwXJPRpNvx6tmUfr9D1+IZJz11c/cZySk0rmo53
+      license:
+        url: https://unpkg.com/base64-js@${version}/LICENSE
+        path: internal/webassets/vendor/base64-js/${version}/LICENSE
+        integrity: sha384-+j1ZdOsvQS1N7d5kuo1M5WSTY+iZa4pbjnkAxwUdoENypt8H3/M035xIRxHGvC56
+  buffer:
+    version: "6.0.3"
+    downloads:
+      archive:
+        url: https://registry.npmjs.org/buffer/-/buffer-${version}.tgz
+        path: internal/webassets/vendor/buffer/${version}/package.tgz
+        max_size: 8MiB
+        integrity: sha384-GdytcEcmkXZTYv50coLjPT3KATArE6nZZ4ab0zZumscGexpuUDVCYhu7+87FtuQ8
+      license:
+        url: https://unpkg.com/buffer@${version}/LICENSE
+        path: internal/webassets/vendor/buffer/${version}/LICENSE
+        integrity: sha384-8haS+N/x7ZnoChhuiKAy2oaPZymxS6f+jLYSx52R5q3rOKKeEcXJbAxqThMuamVx
+  call-bind-apply-helpers:
+    version: "1.0.2"
+    downloads:
+      archive:
+        url: https://registry.npmjs.org/call-bind-apply-helpers/-/call-bind-apply-helpers-${version}.tgz
+        path: internal/webassets/vendor/call-bind-apply-helpers/${version}/package.tgz
+        max_size: 8MiB
+        integrity: sha384-C3c5bjZk5vfZjJGeNotlRSlXPO3d9FA7NnD/+JLDfAyGsPH6vygNPqonxqppAvZD
+      license:
+        url: https://unpkg.com/call-bind-apply-helpers@${version}/LICENSE
+        path: internal/webassets/vendor/call-bind-apply-helpers/${version}/LICENSE
+        integrity: sha384-nOEwX6b6hH7lVVKO6wOK8khIn/tHzSQ8CA2vsWbP33IWyVKlPhVyixLhR0/u/J67
+  call-bound:
+    version: "1.0.4"
+    downloads:
+      archive:
+        url: https://registry.npmjs.org/call-bound/-/call-bound-${version}.tgz
+        path: internal/webassets/vendor/call-bound/${version}/package.tgz
+        max_size: 8MiB
+        integrity: sha384-Kex3Y7tn/TdksfJ6Gvcxf/VtfSZpS5DiJMpDsqIKHW8Px5tIpze+AW8bIzkQsPF8
+      license:
+        url: https://unpkg.com/call-bound@${version}/LICENSE
+        path: internal/webassets/vendor/call-bound/${version}/LICENSE
+        integrity: sha384-nOEwX6b6hH7lVVKO6wOK8khIn/tHzSQ8CA2vsWbP33IWyVKlPhVyixLhR0/u/J67
+  dunder-proto:
+    version: "1.0.1"
+    downloads:
+      archive:
+        url: https://registry.npmjs.org/dunder-proto/-/dunder-proto-${version}.tgz
+        path: internal/webassets/vendor/dunder-proto/${version}/package.tgz
+        max_size: 8MiB
+        integrity: sha384-+GT3Tn0fRB4Et3yfGrClf/CHXj040FfHFXHIfKi2xCLMrkfOI5YANpoI6PPPCA5o
+      license:
+        url: https://unpkg.com/dunder-proto@${version}/LICENSE
+        path: internal/webassets/vendor/dunder-proto/${version}/LICENSE
+        integrity: sha384-5cvYgHRfLvBGqmUzvt7r8JE7YurRpyxSlO60s/+SeTYtzsBDU1QV50DDPNvdvtTP
+  es-define-property:
+    version: "1.0.1"
+    downloads:
+      archive:
+        url: https://registry.npmjs.org/es-define-property/-/es-define-property-${version}.tgz
+        path: internal/webassets/vendor/es-define-property/${version}/package.tgz
+        max_size: 8MiB
+        integrity: sha384-InfiYJedFxJs4NgJAeonqOl9MiQwZqG3o2S3fUVek0k+tRaAX6CmIu201+mYrWwR
+      license:
+        url: https://unpkg.com/es-define-property@${version}/LICENSE
+        path: internal/webassets/vendor/es-define-property/${version}/LICENSE
+        integrity: sha384-nOEwX6b6hH7lVVKO6wOK8khIn/tHzSQ8CA2vsWbP33IWyVKlPhVyixLhR0/u/J67
+  es-errors:
+    version: "1.3.0"
+    downloads:
+      archive:
+        url: https://registry.npmjs.org/es-errors/-/es-errors-${version}.tgz
+        path: internal/webassets/vendor/es-errors/${version}/package.tgz
+        max_size: 8MiB
+        integrity: sha384-WOF0aCnKA4bXVXFnuKeeQa5+/LKLWe7DV9unqs6OEIsC/FB+PXFR2n6vy7SA0IW1
+      license:
+        url: https://unpkg.com/es-errors@${version}/LICENSE
+        path: internal/webassets/vendor/es-errors/${version}/LICENSE
+        integrity: sha384-nOEwX6b6hH7lVVKO6wOK8khIn/tHzSQ8CA2vsWbP33IWyVKlPhVyixLhR0/u/J67
+  es-object-atoms:
+    version: "1.1.2"
+    downloads:
+      archive:
+        url: https://registry.npmjs.org/es-object-atoms/-/es-object-atoms-${version}.tgz
+        path: internal/webassets/vendor/es-object-atoms/${version}/package.tgz
+        max_size: 8MiB
+        integrity: sha384-TRf+eu5H3apzsiNTdK0IWFh4vbIjZq7anayItWlF13AREYwsRFXb5axcz/aI1omC
+      license:
+        url: https://unpkg.com/es-object-atoms@${version}/LICENSE
+        path: internal/webassets/vendor/es-object-atoms/${version}/LICENSE
+        integrity: sha384-nOEwX6b6hH7lVVKO6wOK8khIn/tHzSQ8CA2vsWbP33IWyVKlPhVyixLhR0/u/J67
+  function-bind:
+    version: "1.1.2"
+    downloads:
+      archive:
+        url: https://registry.npmjs.org/function-bind/-/function-bind-${version}.tgz
+        path: internal/webassets/vendor/function-bind/${version}/package.tgz
+        max_size: 8MiB
+        integrity: sha384-GKDHMUncWA9xbFIqa2X20cQW8egGrSpjwNieufkQ3LHp0JR+eU3zHFojI7W/L01W
+      license:
+        url: https://unpkg.com/function-bind@${version}/LICENSE
+        path: internal/webassets/vendor/function-bind/${version}/LICENSE
+        integrity: sha384-2QqZ1qsjVRJmyNPDJ1WQLAe43DPyNnSWLrA9YR0UnLSb/7IQ0rc85fHun/juKrNq
+  get-intrinsic:
+    version: "1.3.0"
+    downloads:
+      archive:
+        url: https://registry.npmjs.org/get-intrinsic/-/get-intrinsic-${version}.tgz
+        path: internal/webassets/vendor/get-intrinsic/${version}/package.tgz
+        max_size: 8MiB
+        integrity: sha384-K4kkvsiuZGaAKR998rwJMU16gU+n/wT8PUApb0C/O6VrWIQ7BFg8Iv61+nI1ePLQ
+      license:
+        url: https://unpkg.com/get-intrinsic@${version}/LICENSE
+        path: internal/webassets/vendor/get-intrinsic/${version}/LICENSE
+        integrity: sha384-S+oRoCMxsLTm4kl1+lIhikCjkgQOqmlOSBwuvPKaA1A23JNdHV1Ayi95BOP6MOCy
+  get-own-enumerable-property-symbols:
+    version: "3.0.2"
+    downloads:
+      archive:
+        url: https://registry.npmjs.org/get-own-enumerable-property-symbols/-/get-own-enumerable-property-symbols-${version}.tgz
+        path: internal/webassets/vendor/get-own-enumerable-property-symbols/${version}/package.tgz
+        max_size: 8MiB
+        integrity: sha384-hnkm2zOSV3Z9G6dnCWyc99tOfTv8yQvxdtDQJLf0JrbNrudvLeQcQBHcZKuGYlLT
+      license:
+        url: https://unpkg.com/get-own-enumerable-property-symbols@${version}/LICENSE
+        path: internal/webassets/vendor/get-own-enumerable-property-symbols/${version}/LICENSE
+        integrity: sha384-RvkQkzPo6ePY1AhBIpenxnFwOiUVL9welLLcZ2NfMnXXALcy1m3fkaSlgN3b2Z3A
+  get-proto:
+    version: "1.0.1"
+    downloads:
+      archive:
+        url: https://registry.npmjs.org/get-proto/-/get-proto-${version}.tgz
+        path: internal/webassets/vendor/get-proto/${version}/package.tgz
+        max_size: 8MiB
+        integrity: sha384-6vt7IpgTrnNUzCA9LnMRScauh5ztw5r8x0fd0DLWEiRprk/XxqjYdFPm8kSlBjHz
+      license:
+        url: https://unpkg.com/get-proto@${version}/LICENSE
+        path: internal/webassets/vendor/get-proto/${version}/LICENSE
+        integrity: sha384-fYIH/X6BhXq04zuB2XNc3XDucQunR9WCBG+7OwAEX1GcMYJM8ZEaJ9IPCdSgdf4C
+  gopd:
+    version: "1.2.0"
+    downloads:
+      archive:
+        url: https://registry.npmjs.org/gopd/-/gopd-${version}.tgz
+        path: internal/webassets/vendor/gopd/${version}/package.tgz
+        max_size: 8MiB
+        integrity: sha384-mcv2n6CK/DHI52kWMnSp2YXpKNOkJe98JT5wtDIfPJi8pdx65Z16CvNS8LyZhmyl
+      license:
+        url: https://unpkg.com/gopd@${version}/LICENSE
+        path: internal/webassets/vendor/gopd/${version}/LICENSE
+        integrity: sha384-b7v0eorBG719ixPqHyFkkWj23PhoWqyzQTMOBY7SIkaG5s6TlAQEVKJGZDXHVb+X
+  has-symbols:
+    version: "1.1.0"
+    downloads:
+      archive:
+        url: https://registry.npmjs.org/has-symbols/-/has-symbols-${version}.tgz
+        path: internal/webassets/vendor/has-symbols/${version}/package.tgz
+        max_size: 8MiB
+        integrity: sha384-GnMZhDzjy2D5Hkye7xCXe01cUyywxfU7xP6nJ/53Q0kehoZSICbRSqyzj/ueKpPg
+      license:
+        url: https://unpkg.com/has-symbols@${version}/LICENSE
+        path: internal/webassets/vendor/has-symbols/${version}/LICENSE
+        integrity: sha384-ZHvdfConR/93237iyZSQsPfyUjGaRgdAs8d6AEccEoAg8Ci5zmkNjlK7hrk7TAg5
+  hasown:
+    version: "2.0.4"
+    downloads:
+      archive:
+        url: https://registry.npmjs.org/hasown/-/hasown-${version}.tgz
+        path: internal/webassets/vendor/hasown/${version}/package.tgz
+        max_size: 8MiB
+        integrity: sha384-xamh5U6j+q9TbiIv46p0ZH0+Y0hGyjhxnoxNwYqQ2RszY8y0gZ147FW5xwUQps7a
+      license:
+        url: https://unpkg.com/hasown@${version}/LICENSE
+        path: internal/webassets/vendor/hasown/${version}/LICENSE
+        integrity: sha384-YjYA2W1RZUF1OGoK3UhH9Xn/WqBaJIPUuSBR95iT3XfF4HG2Cc/0SKgDo4+dVA3b
+  highlight-js:
+    version: "11.11.1"
+    downloads:
+      archive:
+        url: https://registry.npmjs.org/highlight.js/-/highlight.js-${version}.tgz
+        path: internal/webassets/vendor/highlight-js/${version}/package.tgz
+        max_size: 8MiB
+        integrity: sha384-JV/RW+JLkX+EzR9f6tAxKDnEaVDQ79yyJZ+nP50fF+ODjrRzctd4HbEjDclrMcTB
+      license:
+        url: https://unpkg.com/highlight.js@${version}/LICENSE
+        path: internal/webassets/vendor/highlight-js/${version}/LICENSE
+        integrity: sha384-PdMCsAZNy5AH7gGEL6XVxHEXIrtvn5oA704FTocp7whxdzCQ+AuammKPDLS1ubFV
+  ieee754:
+    version: "1.2.1"
+    downloads:
+      archive:
+        url: https://registry.npmjs.org/ieee754/-/ieee754-${version}.tgz
+        path: internal/webassets/vendor/ieee754/${version}/package.tgz
+        max_size: 8MiB
+        integrity: sha384-z3S8NLXNdMqAFB4NI8gPc6wnrn0YJFcs76uKHMd62QqxgGbTbcEifwggt2Pi2YRI
+      license:
+        url: https://unpkg.com/ieee754@${version}/LICENSE
+        path: internal/webassets/vendor/ieee754/${version}/LICENSE
+        integrity: sha384-oU49W4wCvv6TTkIRWRAEPsmgykEcmXlE9GvRrWl+vHC9k2Vi7mrGOjxpqKcqZzCt
+  is-obj:
+    version: "1.0.1"
+    downloads:
+      archive:
+        url: https://registry.npmjs.org/is-obj/-/is-obj-${version}.tgz
+        path: internal/webassets/vendor/is-obj/${version}/package.tgz
+        max_size: 8MiB
+        integrity: sha384-RsaEetEsnhO0KpZvu9RiuXSvw9h7mP7Iehy6+2UF2ZGH5f0t7Pf7A2/Nbu/x6hGg
+      license:
+        url: https://unpkg.com/is-obj@${version}/license
+        path: internal/webassets/vendor/is-obj/${version}/LICENSE
+        integrity: sha384-iV4S+jImW22aEcJRDn6m22rrcF0FP6uzqf5lWKlFtPqa9fJkc7MiSZ2T9r/pjn5y
+  is-regexp:
+    version: "1.0.0"
+    downloads:
+      archive:
+        url: https://registry.npmjs.org/is-regexp/-/is-regexp-${version}.tgz
+        path: internal/webassets/vendor/is-regexp/${version}/package.tgz
+        max_size: 8MiB
+        integrity: sha384-Wq7lmnDxfCQp+PxZxMBN1aKB2DixRFrGtCAlEQUbZ4mSdFEZxyyNRcVqWw6jexNg
+      license:
+        url: https://raw.githubusercontent.com/sindresorhus/is-regexp/v${version}/license
+        path: internal/webassets/vendor/is-regexp/${version}/LICENSE
+        integrity: sha384-iV4S+jImW22aEcJRDn6m22rrcF0FP6uzqf5lWKlFtPqa9fJkc7MiSZ2T9r/pjn5y
+  math-intrinsics:
+    version: "1.1.0"
+    downloads:
+      archive:
+        url: https://registry.npmjs.org/math-intrinsics/-/math-intrinsics-${version}.tgz
+        path: internal/webassets/vendor/math-intrinsics/${version}/package.tgz
+        max_size: 8MiB
+        integrity: sha384-9LBqQgW/hNzUaNc2+WqwmHJtZbuuIzAxYvbCmdfWYHqbsriEtzmPE0yiXeBFtfR/
+      license:
+        url: https://unpkg.com/math-intrinsics@${version}/LICENSE
+        path: internal/webassets/vendor/math-intrinsics/${version}/LICENSE
+        integrity: sha384-5cvYgHRfLvBGqmUzvt7r8JE7YurRpyxSlO60s/+SeTYtzsBDU1QV50DDPNvdvtTP
+  object-inspect:
+    version: "1.13.4"
+    downloads:
+      archive:
+        url: https://registry.npmjs.org/object-inspect/-/object-inspect-${version}.tgz
+        path: internal/webassets/vendor/object-inspect/${version}/package.tgz
+        max_size: 8MiB
+        integrity: sha384-kUkdzSUKTYQQNLZTbo8LnlqXL0JbfOvPPhpCNop9fPoBS7IG9V7N5JF5MMNiryvc
+      license:
+        url: https://unpkg.com/object-inspect@${version}/LICENSE
+        path: internal/webassets/vendor/object-inspect/${version}/LICENSE
+        integrity: sha384-aPGxbHgAUFmDBlITyR6Ou4fSIbyqPs52RCyqhhJ3n3/FVLWvyOtZVJtnlvIdf//n
+  punycode:
+    version: "1.4.1"
+    downloads:
+      archive:
+        url: https://registry.npmjs.org/punycode/-/punycode-${version}.tgz
+        path: internal/webassets/vendor/punycode/${version}/package.tgz
+        max_size: 8MiB
+        integrity: sha384-gt2ZN3k7UdxgOropKlBYGd91YAl3hXEiuei/nH3kcMb8/vs7DybWsKKt3u9/CIGy
+      license:
+        url: https://unpkg.com/punycode@${version}/LICENSE-MIT.txt
+        path: internal/webassets/vendor/punycode/${version}/LICENSE
+        integrity: sha384-4MwI++9TLS982UwpGrNVFH/gzXKXwk2tGkNrsfGVDAvKpcnUxPR29aZyOl8qrQx3
+  qs:
+    version: "6.15.2"
+    downloads:
+      archive:
+        url: https://registry.npmjs.org/qs/-/qs-${version}.tgz
+        path: internal/webassets/vendor/qs/${version}/package.tgz
+        max_size: 8MiB
+        integrity: sha384-NcbVIiyJrQxe+uM1Xdlu6cJtk6Q7iEVkgxibbEXlQqmFznztc56GZJMCpabRuwVN
+      license:
+        url: https://unpkg.com/qs@${version}/LICENSE.md
+        path: internal/webassets/vendor/qs/${version}/LICENSE
+        integrity: sha384-J3VLuTym57wPow41UUWiSDGy0CQgL6IgsHnkpP41noTGITesbBXUqRu0QbOEDC0p
+  side-channel:
+    version: "1.1.0"
+    downloads:
+      archive:
+        url: https://registry.npmjs.org/side-channel/-/side-channel-${version}.tgz
+        path: internal/webassets/vendor/side-channel/${version}/package.tgz
+        max_size: 8MiB
+        integrity: sha384-zdx2S+F05yWM/4ZLMpYt7djbrbUjO6wXJ8LL4jVL7vsY3hhJ9VnmBLxHN/K3Lwx6
+      license:
+        url: https://unpkg.com/side-channel@${version}/LICENSE
+        path: internal/webassets/vendor/side-channel/${version}/LICENSE
+        integrity: sha384-1L+2zWz9H+m3HkLB3Gf4KTk7wG6yssnIH1CIAwT7azk2kXx/1+SDHNTZ9gViR/ts
+  side-channel-list:
+    version: "1.0.1"
+    downloads:
+      archive:
+        url: https://registry.npmjs.org/side-channel-list/-/side-channel-list-${version}.tgz
+        path: internal/webassets/vendor/side-channel-list/${version}/package.tgz
+        max_size: 8MiB
+        integrity: sha384-ZOKMxIBRjSU0hmBrbV+NVYO6MA96FS9WBz5teTQ80wEUHxSazmVTmHfFHXCLSm4h
+      license:
+        url: https://unpkg.com/side-channel-list@${version}/LICENSE
+        path: internal/webassets/vendor/side-channel-list/${version}/LICENSE
+        integrity: sha384-nOEwX6b6hH7lVVKO6wOK8khIn/tHzSQ8CA2vsWbP33IWyVKlPhVyixLhR0/u/J67
+  side-channel-map:
+    version: "1.0.1"
+    downloads:
+      archive:
+        url: https://registry.npmjs.org/side-channel-map/-/side-channel-map-${version}.tgz
+        path: internal/webassets/vendor/side-channel-map/${version}/package.tgz
+        max_size: 8MiB
+        integrity: sha384-WX+hK3J0zilroBOnK8X6pG0y9dq67DJJ7njWGF/GybHa6PzIiNxkJSPovRrykbD7
+      license:
+        url: https://unpkg.com/side-channel-map@${version}/LICENSE
+        path: internal/webassets/vendor/side-channel-map/${version}/LICENSE
+        integrity: sha384-nOEwX6b6hH7lVVKO6wOK8khIn/tHzSQ8CA2vsWbP33IWyVKlPhVyixLhR0/u/J67
+  side-channel-weakmap:
+    version: "1.0.2"
+    downloads:
+      archive:
+        url: https://registry.npmjs.org/side-channel-weakmap/-/side-channel-weakmap-${version}.tgz
+        path: internal/webassets/vendor/side-channel-weakmap/${version}/package.tgz
+        max_size: 8MiB
+        integrity: sha384-q99gHEkioNWWquN8rkljdtP9zCDzjM+lQIYotx56/fJwj9RjZisn1YwBHfkyaf3q
+      license:
+        url: https://unpkg.com/side-channel-weakmap@${version}/LICENSE
+        path: internal/webassets/vendor/side-channel-weakmap/${version}/LICENSE
+        integrity: sha384-1L+2zWz9H+m3HkLB3Gf4KTk7wG6yssnIH1CIAwT7azk2kXx/1+SDHNTZ9gViR/ts
+  stringify-object:
+    version: "3.3.0"
+    downloads:
+      archive:
+        url: https://registry.npmjs.org/stringify-object/-/stringify-object-${version}.tgz
+        path: internal/webassets/vendor/stringify-object/${version}/package.tgz
+        max_size: 8MiB
+        integrity: sha384-TulGqk9RiB0ncKKE+hG+W4AxMFamc9VOvTlmtR1CE4q7KkLNbTY9cxeej2OGbZQk
+      license:
+        url: https://unpkg.com/stringify-object@${version}/LICENSE
+        path: internal/webassets/vendor/stringify-object/${version}/LICENSE
+        integrity: sha384-xQqHDkPFA6MVG8bG/+b/Th+CpQ82sCSljkOJe8ocP4leO7lnMHKLW72m9mMs12s9
+  url:
+    version: "0.11.4"
+    downloads:
+      archive:
+        url: https://registry.npmjs.org/url/-/url-${version}.tgz
+        path: internal/webassets/vendor/url/${version}/package.tgz
+        max_size: 8MiB
+        integrity: sha384-gJc1pp2bxGyWQt0tVdYfkSZJXH9a8lOhSPVqrCRn+TOXNvfrO497xIe91+tkaKI3
+      license:
+        url: https://unpkg.com/url@${version}/LICENSE
+        path: internal/webassets/vendor/url/${version}/LICENSE
+        integrity: sha384-ZT3Rl+rQCAogv3Sl46exe6sVfWpYsiii4opA/M91guVtRTC6wzkGk0P5aUQR1JLF
+  openapi-sampler:
+    version: "1.7.4"
+    downloads:
+      archive:
+        url: https://registry.npmjs.org/openapi-sampler/-/openapi-sampler-${version}.tgz
+        path: internal/webassets/vendor/openapi-sampler/${version}/package.tgz
+        max_size: 8MiB
+        integrity: sha384-H5dtU5Psuynks+Xc5OhL6DKy1uoIkUXMvAdpYc5DOLVINlHhmmhjihY5bDPbELDV
+      license:
+        url: https://unpkg.com/openapi-sampler@${version}/LICENSE
+        path: internal/webassets/vendor/openapi-sampler/${version}/LICENSE
+        integrity: sha384-b6ApeabhkpX6p0J5u9mOPpfJ4oMQZIcW8aVvc4Hk+eV3YglpBx5ibQ1XvFV4o0x2

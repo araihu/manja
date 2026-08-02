@@ -64,9 +64,9 @@ func TestPublicDocsUsesGoshtosoCDNFirstDependencyFallbackContract(t *testing.T) 
 		{Name: "alpine-collapse", PrimaryURL: "https://unpkg.com/@alpinejs/collapse@3.14.9/dist/cdn.min.js", FallbackURL: "/assets/js/runtime/alpinejs-collapse/3.14.9/alpine-collapse.min.js"},
 		{Name: "alpine-focus", PrimaryURL: "https://unpkg.com/@alpinejs/focus@3.14.9/dist/cdn.min.js", FallbackURL: "/assets/js/runtime/alpinejs-focus/3.14.9/alpine-focus.min.js"},
 		{Name: "alpine-mask", PrimaryURL: "https://unpkg.com/@alpinejs/mask@3.14.9/dist/cdn.min.js", FallbackURL: "/assets/js/runtime/alpinejs-mask/3.14.9/alpine-mask.min.js"},
+		{Name: "first-party", PrimaryURL: "/assets/js/goshtoso.min.js"},
 		{Name: "alpine", PrimaryURL: "https://unpkg.com/alpinejs@3.14.9/dist/cdn.min.js", FallbackURL: "/assets/js/runtime/alpinejs/3.14.9/alpine.min.js"},
 		{Name: "htmx", PrimaryURL: "https://unpkg.com/htmx.org@2.0.8/dist/htmx.min.js", FallbackURL: "/assets/js/runtime/htmx.org/2.0.8/htmx.min.js", WaitForWindowLoaded: true},
-		{Name: "combobox", PrimaryURL: "/assets/js/combobox.js"},
 	}
 	if len(config.Dependencies) != len(want) {
 		t.Fatalf("dependency count = %d, want %d: %#v", len(config.Dependencies), len(want), config.Dependencies)
@@ -79,12 +79,12 @@ func TestPublicDocsUsesGoshtosoCDNFirstDependencyFallbackContract(t *testing.T) 
 		if got.WaitForWindowLoaded != expected.WaitForWindowLoaded {
 			t.Errorf("%s wait_for_window_loaded = %t, want %t", got.Name, got.WaitForWindowLoaded, expected.WaitForWindowLoaded)
 		}
-		if got.Name != "combobox" && !strings.HasPrefix(got.Integrity, "sha384-") {
+		if got.Name != "first-party" && !strings.HasPrefix(got.Integrity, "sha384-") {
 			t.Errorf("%s integrity = %q, want SHA-384 SRI", got.Name, got.Integrity)
 		}
 	}
 
-	assetURLs := []string{"/assets/styles.css", "/assets/js/dependency-loader.js", "/assets/js/combobox.js"}
+	assetURLs := []string{"/assets/styles.css", "/assets/js/dependency-loader.js", "/assets/js/goshtoso.min.js"}
 	for _, dependency := range want {
 		if dependency.FallbackURL != "" {
 			assetURLs = append(assetURLs, dependency.FallbackURL)
@@ -263,34 +263,9 @@ func TestPublicDocsRenderSearchAndOperations(t *testing.T) {
 	if strings.Contains(body, `class="hidden w-36 sm:block"`) {
 		t.Fatalf("theme picker should be visible in the nav, not hidden behind responsive utility classes:\n%s", body)
 	}
-	for _, theme := range []string{
-		`value:&#39;araihu&#39;`,
-		`value:&#39;manja&#39;`,
-		`value:&#39;goshtoso&#39;`,
-		`value:&#39;arctic&#39;`,
-		`value:&#39;minimal&#39;`,
-		`value:&#39;modern&#39;`,
-		`value:&#39;high-contrast&#39;`,
-		`value:&#39;neo-brutalism&#39;`,
-		`value:&#39;halloween&#39;`,
-		`value:&#39;zombie&#39;`,
-		`value:&#39;pastel&#39;`,
-		`value:&#39;90s&#39;`,
-		`value:&#39;christmas&#39;`,
-		`value:&#39;prototype&#39;`,
-		`value:&#39;news&#39;`,
-		`value:&#39;industrial&#39;`,
-		`value:&#39;dracula&#39;`,
-	} {
-		if !strings.Contains(body, theme) {
-			t.Fatalf("theme picker missing theme option %q:\n%s", theme, body)
-		}
-	}
-	if !regexp.MustCompile(`allOptions:\s*\[\{value:&#39;araihu&#39;,label:&#39;Arai Hû&#39;\},\{value:&#39;manja&#39;,label:&#39;Manja&#39;\},\{value:&#39;goshtoso&#39;,label:&#39;Goshtoso&#39;\}`).MatchString(body) {
-		t.Fatalf("Arai Hu theme option should be first and Goshtoso should remain available:\n%s", body)
-	}
-	if !strings.Contains(body, `selectedValues: [&#39;araihu&#39;]`) {
-		t.Fatalf("Arai Hu theme option should be selected by default:\n%s", body)
+	themeValues := []string{"araihu", "manja", "goshtoso", "arctic", "minimal", "modern", "high-contrast", "neo-brutalism", "halloween", "zombie", "pastel", "90s", "christmas", "prototype", "news", "industrial", "dracula"}
+	if !selectConfigContainsValues(body, themeValues...) || !selectConfigStartsWith(body, []string{"araihu", "manja", "goshtoso"}, []string{"araihu"}) {
+		t.Fatalf("theme picker options or default selection missing from encoded select configuration: %#v", decodedSelectConfigs(body))
 	}
 	if strings.Contains(body, `data-theme="goshtoso"`) || strings.Contains(body, `|| 'goshtoso'`) {
 		t.Fatalf("public docs should default to the Arai Hu theme, not Goshtoso:\n%s", body)
@@ -1628,7 +1603,7 @@ func TestPublicDocsSearchTargetsVisibleSectionsWithUniqueIDs(t *testing.T) {
 		}
 	}
 
-	idPattern := regexp.MustCompile(`\bid="([^"]+)"`)
+	idPattern := regexp.MustCompile(`\sid="([^"]+)"`)
 	seen := map[string]bool{}
 	for _, match := range idPattern.FindAllStringSubmatch(body, -1) {
 		id := match[1]

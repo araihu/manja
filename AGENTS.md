@@ -20,12 +20,13 @@ requests.
 ## Commands
 
 ```bash
-# Install Node tools for Redocly, httpsnippet, and openapi-sampler.
-npm ci
+# Download pinned Go modules and verify vendored browser sources.
+go mod download
+go tool muamba verify --strict
 
 # Verify the API description and regenerate the untracked bundled spec.
-npm run api:bundle
-npm run api:lint
+scripts/redocly bundle api/openapi.yaml -o api/dist/openapi.yaml
+scripts/redocly lint api/openapi.yaml
 
 # Regenerate API Go types after changing api/*.yaml.
 go run github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen \
@@ -44,10 +45,10 @@ go test ./...
 go test -tags=integration ./internal/integration -v
 
 # Run the local public docs server with Air reload and per-worktree ports.
-npm run dev
+go run ./cmd/dev
 ```
 
-`npm run dev` prints the raw renderer URL, the Air reload proxy URL, and the
+`go run ./cmd/dev` prints the raw renderer URL, the Air reload proxy URL, and the
 product site URL. Open and share the product site URL when the task asks for the
 site; use the Air proxy URL when you are inspecting the standalone renderer. By
 default the renderer uses the GitHub REST fixture from
@@ -55,7 +56,7 @@ default the renderer uses the GitHub REST fixture from
 arguments after `--`, for example:
 
 ```bash
-npm run dev -- -spec internal/adapters/openapi/testdata/github-v3-rest.json
+go run ./cmd/dev -- -spec internal/adapters/openapi/testdata/github-v3-rest.json
 ```
 
 Use `go run ./cmd/manja -data-dir .manja/data` only when you deliberately need a
@@ -65,21 +66,21 @@ non-reloading raw server.
 
 Use Air for local auto reload. Do not default to `templ generate --watch` for
 normal sessions: templ's watcher handles `.templ` and Go rebuilds, but Manja's
-dev loop also needs schema-example bundling and optional Tailwind CSS output.
+dev loop also needs both browser bundles regenerated from Muamba inputs.
 
 The standard command is:
 
 ```bash
-npm run dev
+go run ./cmd/dev
 ```
 
-This runs `scripts/dev-server.mjs`, which chooses stable available ports per
-worktree, passes the renderer ports to Air, runs the Air proxy, and starts the
-product site server from the `site/` module. Inspect the chosen ports without
-starting the servers with:
+The Go launcher chooses stable available ports per worktree, passes the
+renderer ports to Air, runs the Air proxy, and starts the product site server
+from the `site/` module. Inspect the chosen ports without starting the servers
+with:
 
 ```bash
-node scripts/dev-server.mjs --print-ports
+go run ./cmd/dev --print-ports
 ```
 
 Rules:
@@ -91,19 +92,18 @@ Rules:
   task explicitly needs it, using `MANJA_DEV_APP_PORT`,
   `MANJA_DEV_PROXY_PORT`, `MANJA_DEV_SITE_PORT`, `--app-port`, `--proxy-port`,
   or `--site-port`.
-- Keep `.air.toml` as the single watcher config. Its build command is
-  `npm run dev:build`, which regenerates templ output, rebuilds the schema
-  example and request composer assets, runs `npm run css:build --if-present`,
-  and builds `./tmp/manja-dev`.
+- Keep `.air.toml` as the single watcher config. Its build command regenerates
+  the schema example and request composer assets with `cmd/webassets`,
+  regenerates templ output, and builds `./tmp/manja-dev`.
 - Never add generated outputs to Air watch triggers. In particular, keep
   `_templ.go`, `internal/web/static/schema-example.js`,
   `internal/web/static/request-composer.js`, generated CSS, `api/dist`,
-  `.manja`, `tmp`, `vendor`, `node_modules`, and `.git` excluded unless you
+  `.manja`, `tmp`, vendored inputs, and `.git` excluded unless you
   are deliberately changing the dev-loop contract.
-- If you change `.air.toml`, `scripts/dev-server.mjs`, generated output paths,
+- If you change `.air.toml`, `cmd/dev`, generated output paths,
   templ generation, schema-example bundling, request-composer bundling, or CSS
   build behavior, stress-test server startup and rebuild loops before merging. Run
-  `npm run dev`, wait for the initial build to settle, touch representative
+  `go run ./cmd/dev`, wait for the initial build to settle, touch representative
   source files (`.templ`, source CSS/JS, or Go), and confirm generated writes do
   not trigger repeated builds while the servers are idle. Confirm both the
   product site URL and Air proxy URL return HTTP 200.
@@ -132,7 +132,8 @@ Start every task with:
 git fetch origin
 git worktree add -b <type>/<short-slug> /tmp/manja-<short-slug> origin/main
 cd /tmp/manja-<short-slug>
-npm ci
+go mod download
+go tool muamba verify --strict
 ```
 
 Rules:
@@ -157,10 +158,11 @@ Never hand-edit generated files:
 - `internal/web/templates/*_templ.go` - regenerate with
   `go run github.com/a-h/templ/cmd/templ generate`
 - `internal/web/static/request-composer.js` - regenerate with
-  `npm run examples:build`
+  `go run ./cmd/webassets generate`
 - `internal/web/api.gen.go` - regenerate from `api/dist/openapi.yaml` with
   `oapi-codegen`
-- `api/dist/openapi.yaml` - regenerate with `npm run api:bundle`; it is ignored
+- `api/dist/openapi.yaml` - regenerate with
+  `scripts/redocly bundle api/openapi.yaml -o api/dist/openapi.yaml`; it is ignored
   and should not be committed
 
 When resolving merge conflicts, resolve source `.templ` files and split
@@ -214,9 +216,11 @@ Rules:
 Before opening a PR, run the gates relevant to the change:
 
 ```bash
-npm ci
-npm run api:bundle
-npm run api:lint
+go tool muamba verify --strict
+go tool muamba generate-go --strict --check --dir internal/webassets --output muamba_gen.go
+go run ./cmd/webassets check
+scripts/redocly bundle api/openapi.yaml -o api/dist/openapi.yaml
+scripts/redocly lint api/openapi.yaml
 go run github.com/a-h/templ/cmd/templ generate
 go test ./...
 ```

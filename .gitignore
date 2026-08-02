@@ -3,7 +3,7 @@
 /api/dist/
 .manja/
 .superpowers/
-/node_modules/
+/.cache/muamba/
 *.test
 go.work
 go.work.sum

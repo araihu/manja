@@ -2,14 +2,17 @@ package selfhosted
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"html"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -245,7 +248,7 @@ components:
 	if rec.Code != http.StatusOK {
 		t.Fatalf("management status = %d", rec.Code)
 	}
-	if body := rec.Body.String(); !containsAll(body, "Main API", "Available refs", "release/v2", "v1.0.0") {
+	if body := rec.Body.String(); !containsAll(body, "Main API", "Available refs") || !selectConfigContainsValues(body, "release/v2", "v1.0.0") {
 		t.Fatalf("management body = %s", body)
 	}
 
@@ -311,6 +314,35 @@ components:
 	}
 }
 
+func selectConfigContainsValues(body string, values ...string) bool {
+	type option struct {
+		Value string `json:"value"`
+	}
+	type config struct {
+		Options []option `json:"options"`
+	}
+	found := make(map[string]bool, len(values))
+	for _, match := range regexp.MustCompile(`data-select-config="([^"]+)"`).FindAllStringSubmatch(body, -1) {
+		decoded, err := base64.StdEncoding.DecodeString(html.UnescapeString(match[1]))
+		if err != nil {
+			continue
+		}
+		var current config
+		if err := json.Unmarshal(decoded, &current); err != nil {
+			continue
+		}
+		for _, item := range current.Options {
+			found[item.Value] = true
+		}
+	}
+	for _, value := range values {
+		if !found[value] {
+			return false
+		}
+	}
+	return true
+}
+
 func TestNewWithOptionsRefreshesGitCandidatesAfterManualSync(t *testing.T) {
 	ctx := context.Background()
 	dataDir := t.TempDir()
@@ -348,7 +380,7 @@ func TestNewWithOptionsRefreshesGitCandidatesAfterManualSync(t *testing.T) {
 	rec = httptest.NewRecorder()
 	req = httptest.NewRequest(http.MethodGet, "/manage", nil)
 	handler.ServeHTTP(rec, req)
-	if body := rec.Body.String(); !strings.Contains(body, "release/v2") {
+	if body := rec.Body.String(); !selectConfigContainsValues(body, "release/v2") {
 		t.Fatalf("management body missing refreshed ref:\n%s", body)
 	}
 }

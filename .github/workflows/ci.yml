@@ -13,6 +13,8 @@ permissions:
 jobs:
   test:
     runs-on: ubuntu-latest
+    env:
+      MUAMBA_CACHE_DIR: .cache/muamba
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-go@v7
@@ -21,16 +23,26 @@ jobs:
       - uses: actions/setup-node@v7
         with:
           node-version: 22
-          cache: npm
-      - run: npm ci
+      - uses: actions/cache@v5
+        with:
+          path: .cache/muamba
+          key: muamba-${{ runner.os }}-${{ hashFiles('muamba.yaml') }}
+          restore-keys: |
+            muamba-${{ runner.os }}-
       - run: go mod tidy
       - run: git diff --exit-code go.mod go.sum
+      - run: go tool muamba sync --strict
+      - run: go tool muamba verify --strict
+      - run: go tool muamba generate-go --strict --check --dir internal/webassets --output muamba_gen.go
+      - run: go run ./cmd/webassets check
+      - run: scripts/redocly bundle api/openapi.yaml -o api/dist/openapi.yaml
+      - run: scripts/redocly lint api/openapi.yaml
+      - run: go run github.com/a-h/templ/cmd/templ generate
+      - run: git diff --exit-code
       - run: go run github.com/mxschmitt/playwright-go/cmd/playwright@v0.6100.0 install --with-deps chromium
       - run: go test ./...
       - run: go test ./...
         working-directory: site
-      - run: npm run api:bundle
-      - run: npm run api:lint
 
   integration:
     runs-on: ubuntu-latest
