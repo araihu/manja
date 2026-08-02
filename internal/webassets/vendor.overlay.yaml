@@ -1,0 +1,442 @@
+schema: 1
+metadata:
+  bundles:
+    schema-example:
+      packages:
+        - openapi-sampler
+    request-composer:
+      packages:
+        - readme-httpsnippet
+        - base64-js
+        - buffer
+        - call-bind-apply-helpers
+        - call-bound
+        - dunder-proto
+        - es-define-property
+        - es-errors
+        - es-object-atoms
+        - function-bind
+        - get-intrinsic
+        - get-own-enumerable-property-symbols
+        - get-proto
+        - gopd
+        - has-symbols
+        - hasown
+        - highlight-js
+        - ieee754
+        - is-obj
+        - is-regexp
+        - math-intrinsics
+        - object-inspect
+        - punycode
+        - qs
+        - side-channel
+        - side-channel-list
+        - side-channel-map
+        - side-channel-weakmap
+        - stringify-object
+        - url
+resources:
+  readme-httpsnippet:
+    metadata:
+      package_name: "@readme/httpsnippet"
+      spdx: MIT
+      homepage: https://github.com/readmeio/httpsnippet
+      license_ref: readme-httpsnippet/license
+    downloads:
+      archive:
+        metadata:
+          kind: npm-archive
+      license:
+        metadata:
+          kind: license
+  base64-js:
+    metadata:
+      package_name: "base64-js"
+      spdx: MIT
+      homepage: https://github.com/beatgammit/base64-js
+      license_ref: base64-js/license
+    downloads:
+      archive:
+        metadata:
+          kind: npm-archive
+      license:
+        metadata:
+          kind: license
+  buffer:
+    metadata:
+      package_name: "buffer"
+      spdx: MIT
+      homepage: https://github.com/feross/buffer
+      license_ref: buffer/license
+    downloads:
+      archive:
+        metadata:
+          kind: npm-archive
+      license:
+        metadata:
+          kind: license
+  call-bind-apply-helpers:
+    metadata:
+      package_name: "call-bind-apply-helpers"
+      spdx: MIT
+      homepage: https://github.com/ljharb/call-bind-apply-helpers
+      license_ref: call-bind-apply-helpers/license
+    downloads:
+      archive:
+        metadata:
+          kind: npm-archive
+      license:
+        metadata:
+          kind: license
+  call-bound:
+    metadata:
+      package_name: "call-bound"
+      spdx: MIT
+      homepage: https://github.com/ljharb/call-bound
+      license_ref: call-bound/license
+    downloads:
+      archive:
+        metadata:
+          kind: npm-archive
+      license:
+        metadata:
+          kind: license
+  dunder-proto:
+    metadata:
+      package_name: "dunder-proto"
+      spdx: MIT
+      homepage: https://github.com/es-shims/dunder-proto
+      license_ref: dunder-proto/license
+    downloads:
+      archive:
+        metadata:
+          kind: npm-archive
+      license:
+        metadata:
+          kind: license
+  es-define-property:
+    metadata:
+      package_name: "es-define-property"
+      spdx: MIT
+      homepage: https://github.com/ljharb/es-define-property
+      license_ref: es-define-property/license
+    downloads:
+      archive:
+        metadata:
+          kind: npm-archive
+      license:
+        metadata:
+          kind: license
+  es-errors:
+    metadata:
+      package_name: "es-errors"
+      spdx: MIT
+      homepage: https://github.com/ljharb/es-errors
+      license_ref: es-errors/license
+    downloads:
+      archive:
+        metadata:
+          kind: npm-archive
+      license:
+        metadata:
+          kind: license
+  es-object-atoms:
+    metadata:
+      package_name: "es-object-atoms"
+      spdx: MIT
+      homepage: https://github.com/ljharb/es-object-atoms
+      license_ref: es-object-atoms/license
+    downloads:
+      archive:
+        metadata:
+          kind: npm-archive
+      license:
+        metadata:
+          kind: license
+  function-bind:
+    metadata:
+      package_name: "function-bind"
+      spdx: MIT
+      homepage: https://github.com/Raynos/function-bind
+      license_ref: function-bind/license
+    downloads:
+      archive:
+        metadata:
+          kind: npm-archive
+      license:
+        metadata:
+          kind: license
+  get-intrinsic:
+    metadata:
+      package_name: "get-intrinsic"
+      spdx: MIT
+      homepage: https://github.com/ljharb/get-intrinsic
+      license_ref: get-intrinsic/license
+    downloads:
+      archive:
+        metadata:
+          kind: npm-archive
+      license:
+        metadata:
+          kind: license
+  get-own-enumerable-property-symbols:
+    metadata:
+      package_name: "get-own-enumerable-property-symbols"
+      spdx: ISC
+      homepage: https://github.com/mightyiam/get-own-enumerable-property-symbols
+      license_ref: get-own-enumerable-property-symbols/license
+    downloads:
+      archive:
+        metadata:
+          kind: npm-archive
+      license:
+        metadata:
+          kind: license
+  get-proto:
+    metadata:
+      package_name: "get-proto"
+      spdx: MIT
+      homepage: https://github.com/ljharb/get-proto
+      license_ref: get-proto/license
+    downloads:
+      archive:
+        metadata:
+          kind: npm-archive
+      license:
+        metadata:
+          kind: license
+  gopd:
+    metadata:
+      package_name: "gopd"
+      spdx: MIT
+      homepage: https://github.com/ljharb/gopd
+      license_ref: gopd/license
+    downloads:
+      archive:
+        metadata:
+          kind: npm-archive
+      license:
+        metadata:
+          kind: license
+  has-symbols:
+    metadata:
+      package_name: "has-symbols"
+      spdx: MIT
+      homepage: https://github.com/inspect-js/has-symbols
+      license_ref: has-symbols/license
+    downloads:
+      archive:
+        metadata:
+          kind: npm-archive
+      license:
+        metadata:
+          kind: license
+  hasown:
+    metadata:
+      package_name: "hasown"
+      spdx: MIT
+      homepage: https://github.com/inspect-js/hasOwn
+      license_ref: hasown/license
+    downloads:
+      archive:
+        metadata:
+          kind: npm-archive
+      license:
+        metadata:
+          kind: license
+  highlight-js:
+    metadata:
+      package_name: "highlight.js"
+      spdx: BSD-3-Clause
+      homepage: https://highlightjs.org/
+      license_ref: highlight-js/license
+    downloads:
+      archive:
+        metadata:
+          kind: npm-archive
+      license:
+        metadata:
+          kind: license
+  ieee754:
+    metadata:
+      package_name: "ieee754"
+      spdx: BSD-3-Clause
+      homepage: https://github.com/feross/ieee754
+      license_ref: ieee754/license
+    downloads:
+      archive:
+        metadata:
+          kind: npm-archive
+      license:
+        metadata:
+          kind: license
+  is-obj:
+    metadata:
+      package_name: "is-obj"
+      spdx: MIT
+      homepage: https://github.com/sindresorhus/is-obj
+      license_ref: is-obj/license
+    downloads:
+      archive:
+        metadata:
+          kind: npm-archive
+      license:
+        metadata:
+          kind: license
+  is-regexp:
+    metadata:
+      package_name: "is-regexp"
+      spdx: MIT
+      homepage: https://github.com/sindresorhus/is-regexp
+      license_ref: is-regexp/license
+    downloads:
+      archive:
+        metadata:
+          kind: npm-archive
+      license:
+        metadata:
+          kind: license
+  math-intrinsics:
+    metadata:
+      package_name: "math-intrinsics"
+      spdx: MIT
+      homepage: https://github.com/es-shims/math-intrinsics
+      license_ref: math-intrinsics/license
+    downloads:
+      archive:
+        metadata:
+          kind: npm-archive
+      license:
+        metadata:
+          kind: license
+  object-inspect:
+    metadata:
+      package_name: "object-inspect"
+      spdx: MIT
+      homepage: https://github.com/inspect-js/object-inspect
+      license_ref: object-inspect/license
+    downloads:
+      archive:
+        metadata:
+          kind: npm-archive
+      license:
+        metadata:
+          kind: license
+  punycode:
+    metadata:
+      package_name: "punycode"
+      spdx: MIT
+      homepage: https://github.com/bestiejs/punycode.js
+      license_ref: punycode/license
+    downloads:
+      archive:
+        metadata:
+          kind: npm-archive
+      license:
+        metadata:
+          kind: license
+  qs:
+    metadata:
+      package_name: "qs"
+      spdx: BSD-3-Clause
+      homepage: https://github.com/ljharb/qs
+      license_ref: qs/license
+    downloads:
+      archive:
+        metadata:
+          kind: npm-archive
+      license:
+        metadata:
+          kind: license
+  side-channel:
+    metadata:
+      package_name: "side-channel"
+      spdx: MIT
+      homepage: https://github.com/ljharb/side-channel
+      license_ref: side-channel/license
+    downloads:
+      archive:
+        metadata:
+          kind: npm-archive
+      license:
+        metadata:
+          kind: license
+  side-channel-list:
+    metadata:
+      package_name: "side-channel-list"
+      spdx: MIT
+      homepage: https://github.com/ljharb/side-channel-list
+      license_ref: side-channel-list/license
+    downloads:
+      archive:
+        metadata:
+          kind: npm-archive
+      license:
+        metadata:
+          kind: license
+  side-channel-map:
+    metadata:
+      package_name: "side-channel-map"
+      spdx: MIT
+      homepage: https://github.com/ljharb/side-channel-map
+      license_ref: side-channel-map/license
+    downloads:
+      archive:
+        metadata:
+          kind: npm-archive
+      license:
+        metadata:
+          kind: license
+  side-channel-weakmap:
+    metadata:
+      package_name: "side-channel-weakmap"
+      spdx: MIT
+      homepage: https://github.com/ljharb/side-channel-weakmap
+      license_ref: side-channel-weakmap/license
+    downloads:
+      archive:
+        metadata:
+          kind: npm-archive
+      license:
+        metadata:
+          kind: license
+  stringify-object:
+    metadata:
+      package_name: "stringify-object"
+      spdx: BSD-2-Clause
+      homepage: https://github.com/yeoman/stringify-object
+      license_ref: stringify-object/license
+    downloads:
+      archive:
+        metadata:
+          kind: npm-archive
+      license:
+        metadata:
+          kind: license
+  url:
+    metadata:
+      package_name: "url"
+      spdx: MIT
+      homepage: https://github.com/defunctzombie/node-url
+      license_ref: url/license
+    downloads:
+      archive:
+        metadata:
+          kind: npm-archive
+      license:
+        metadata:
+          kind: license
+  openapi-sampler:
+    metadata:
+      package_name: "openapi-sampler"
+      spdx: MIT
+      homepage: https://github.com/Redocly/openapi-sampler
+      license_ref: openapi-sampler/license
+    downloads:
+      archive:
+        metadata:
+          kind: npm-archive
+      license:
+        metadata:
+          kind: license
