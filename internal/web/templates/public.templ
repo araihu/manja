@@ -1113,6 +1113,7 @@ func docsSearchConfig(docs []core.SearchDocument) searchfield.Config {
 		Placeholder:    "Search operations and schemas",
 		GlobalShortcut: true,
 		ItemsURL:       "/search.json",
+		MatchMode:      searchfield.MatchModeFuzzy,
 		MaxResults:     8,
 		EmptyText:      "No operations or schemas found.",
 	}

@@ -3380,6 +3380,7 @@ func docsSearchConfig(docs []core.SearchDocument) searchfield.Config {
 		Placeholder:    "Search operations and schemas",
 		GlobalShortcut: true,
 		ItemsURL:       "/search.json",
+		MatchMode:      searchfield.MatchModeFuzzy,
 		MaxResults:     8,
 		EmptyText:      "No operations or schemas found.",
 	}
@@ -3449,7 +3450,7 @@ func parameterDescriptionCell(renderer port.MarkdownRenderer, description string
 				var templ_7745c5c3_Var108 string
 				templ_7745c5c3_Var108, templ_7745c5c3_Err = templ.JoinStringErrs(description)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/public.templ`, Line: 1155, Col: 19}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/public.templ`, Line: 1156, Col: 19}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var108))
 				if templ_7745c5c3_Err != nil {
@@ -3469,7 +3470,7 @@ func parameterDescriptionCell(renderer port.MarkdownRenderer, description string
 			var templ_7745c5c3_Var109 string
 			templ_7745c5c3_Var109, templ_7745c5c3_Err = templ.JoinStringErrs(example)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/public.templ`, Line: 1161, Col: 174}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/public.templ`, Line: 1162, Col: 174}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var109))
 			if templ_7745c5c3_Err != nil {
