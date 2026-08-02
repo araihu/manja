@@ -149,6 +149,9 @@ func ValidateSpecIndex(index SpecIndex) error {
 				return err
 			}
 		}
+		if err := validateOperationFacets(prefix, operation.Facets); err != nil {
+			return err
+		}
 		if operation.RequestBody != nil {
 			for mediaIndex, media := range operation.RequestBody.MediaTypes {
 				if err := validateOperationMediaTypeIdentities(
@@ -234,6 +237,25 @@ func ValidateSpecIndex(index SpecIndex) error {
 	}
 	if err := validateSpecIndexSurfaceUniqueness(index); err != nil {
 		return err
+	}
+	return nil
+}
+
+func validateOperationFacets(prefix string, facets []Facet) error {
+	for index, facet := range facets {
+		if err := ValidateCanonicalIdentity(fmt.Sprintf("%s facet %d name", prefix, index), facet.Name, false); err != nil {
+			return err
+		}
+		if err := ValidateCanonicalIdentity(fmt.Sprintf("%s facet %d value", prefix, index), facet.Value, false); err != nil {
+			return err
+		}
+		if index == 0 {
+			continue
+		}
+		previous := facets[index-1]
+		if previous.Name > facet.Name || previous.Name == facet.Name && previous.Value >= facet.Value {
+			return fmt.Errorf("%s facets must be sorted and unique", prefix)
+		}
 	}
 	return nil
 }

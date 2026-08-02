@@ -118,6 +118,7 @@ type Operation struct {
 	Summary     string
 	Description string
 	Tags        []string
+	Facets      []Facet
 	Deprecated  bool
 	Parameters  []OperationParameter
 	RequestBody *OperationRequestBody
