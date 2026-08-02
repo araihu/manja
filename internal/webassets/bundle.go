@@ -124,10 +124,16 @@ func buildArtifacts(repoRoot string) (map[string][]byte, Report, error) {
 	if err := validateReportPackages(bundles, []BundleReport{schemaReport, composerReport}); err != nil {
 		return nil, Report{}, err
 	}
+	report := Report{Bundles: []BundleReport{composerReport, schemaReport}}
+	notices, err := renderNotices(bundles, report)
+	if err != nil {
+		return nil, Report{}, err
+	}
 	return map[string][]byte{
 		"internal/web/static/schema-example.js":   schema,
 		"internal/web/static/request-composer.js": composer,
-	}, Report{Bundles: []BundleReport{composerReport, schemaReport}}, nil
+		"docs/legal/browser-bundles.md":           notices,
+	}, report, nil
 }
 
 func buildSchemaExample(repoRoot, modules string) ([]byte, BundleReport, error) {

@@ -31,13 +31,17 @@ type DownloadMetadata struct {
 }
 
 type Package struct {
-	Resource   string
-	Name       string
-	Version    string
-	SPDX       string
-	Homepage   string
-	ArchiveRef assetmeta.Ref
-	LicenseRef assetmeta.Ref
+	Resource    string
+	Name        string
+	Version     string
+	SPDX        string
+	Homepage    string
+	ArchiveURL  string
+	ArchiveHash string
+	LicenseURL  string
+	LicensePath string
+	ArchiveRef  assetmeta.Ref
+	LicenseRef  assetmeta.Ref
 }
 
 type Bundle struct {
@@ -99,9 +103,13 @@ func LoadMetadata(reader io.Reader) ([]Bundle, error) {
 		if len(metadata.Downloads) != 2 || metadata.Downloads["archive"].Metadata.Kind != "npm-archive" || metadata.Downloads["license"].Metadata.Kind != "license" {
 			return nil, fmt.Errorf("resource %q: archive/license kind metadata mismatch", resource.Name)
 		}
+		archive, _ := document.Resolve(archiveRef)
+		license, _ := document.Resolve(licenseRef)
 		packages[resource.Name] = Package{
 			Resource: resource.Name, Name: metadata.Metadata.PackageName, Version: resource.Version,
 			SPDX: metadata.Metadata.SPDX, Homepage: metadata.Metadata.Homepage,
+			ArchiveURL: archive.Download.URL, ArchiveHash: archive.Download.Hash,
+			LicenseURL: license.Download.URL, LicensePath: license.Download.Path,
 			ArchiveRef: archiveRef, LicenseRef: licenseRef,
 		}
 	}

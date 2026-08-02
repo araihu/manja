@@ -12,8 +12,8 @@ artifact is presently cleared for Apache-2.0 distribution.
 - A dependency is `shipped` only when its code, assets, or required notices are
   present in the inspected final artifact.
 - A dependency used only to compile, generate, lint, or test is `build-only` or
-  `test-only`; presence in `go.mod` or `package-lock.json` is not sufficient to
-  call it redistributed.
+  `test-only`; presence in `go.mod` or an acquisition manifest is not sufficient
+  to call it redistributed.
 - Generated JavaScript bundles are inspected by bundle content and source
   inputs, not by the package's `devDependency` label.
 - Every release inspection operates on a built archive/image/site artifact, not
@@ -36,7 +36,8 @@ artifact is presently cleared for Apache-2.0 distribution.
   the generated file contains Faker-related MIT notices.
 - `request-composer.js`: esbuild output containing `@readme/httpsnippet`,
   `buffer`, selected `highlight.js` language modules, transitive dependencies,
-  and Manja's hydrator.
+  and Manja's hydrator. Exact source files and retained licenses are listed in
+  [`browser-bundles.md`](browser-bundles.md).
 - Manja CSS, SVGs, favicons, and small hydration scripts copied by the image or
   embedded by the site.
 
