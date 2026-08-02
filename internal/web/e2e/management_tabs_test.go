@@ -96,6 +96,7 @@ func TestManagementTabActionsInitializeSwappedContent(t *testing.T) {
 	}, playwright.PageExpectResponseOptions{Timeout: playwright.Float(5000)}); err != nil {
 		t.Fatal(err)
 	}
+	waitForManagementSettleFocus(t, page)
 	assertVisibleManagementTabPanels(t, page, []string{"Publish"})
 
 	if err := page.Locator(`[role="tab"]:has-text("Route")`).Click(); err != nil {
@@ -110,6 +111,7 @@ func TestManagementTabActionsInitializeSwappedContent(t *testing.T) {
 	}, playwright.PageExpectResponseOptions{Timeout: playwright.Float(5000)}); err != nil {
 		t.Fatal(err)
 	}
+	waitForManagementSettleFocus(t, page)
 	assertVisibleManagementTabPanels(t, page, []string{"Publish"})
 
 	if err := page.Locator(`[role="tab"]:has-text("Route")`).Click(); err != nil {
@@ -131,6 +133,13 @@ func TestManagementTabActionsInitializeSwappedContent(t *testing.T) {
 		const control = document.querySelector('#management-payments-api-sync-publish');
 		return Boolean(control && control.checked && document.activeElement === control);
 	}`)
+}
+
+func waitForManagementSettleFocus(t *testing.T, page playwright.Page) {
+	t.Helper()
+	if _, err := page.WaitForFunction(`() => document.activeElement?.matches('[data-manja-settled-focus="true"]') === true`, nil, playwright.PageWaitForFunctionOptions{Timeout: playwright.Float(5000)}); err != nil {
+		t.Fatalf("management swap did not reach settled focus: %v", err)
+	}
 }
 
 func TestManagementListFiltersAndSelectedIdentity(t *testing.T) {
@@ -287,7 +296,12 @@ func assertKeyboardControlWithoutScroll(t *testing.T, page playwright.Page, key 
 		t.Fatal(err)
 	}
 	if _, err := page.WaitForFunction(settled, nil, playwright.PageWaitForFunctionOptions{Timeout: playwright.Float(5000)}); err != nil {
-		t.Fatalf("control did not settle after %s: %v", key, err)
+		state, stateErr := page.Evaluate(`() => ({
+			activeID: document.activeElement && document.activeElement.id,
+			publicChecked: document.querySelector('#management-visibility-public-payments-api')?.checked,
+			privateChecked: document.querySelector('#management-visibility-private-payments-api')?.checked,
+		})`)
+		t.Fatalf("control did not settle after %s: %v; state=%#v stateErr=%v", key, err, state, stateErr)
 	}
 	unchanged, err := page.Evaluate(`(before) => window.scrollX === before[0] && window.scrollY === before[1]`, before)
 	if err != nil {
