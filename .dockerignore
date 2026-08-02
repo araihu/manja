@@ -4,7 +4,6 @@
 .superpowers
 api/dist
 bin
-node_modules
 tmp
 vendor
 *.test

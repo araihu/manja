@@ -21,7 +21,8 @@ git remote -v
 rg -n -i 'Copyright|SPDX-License-Identifier|Licensed under|generated|DO NOT EDIT' .
 go list -m -json all
 go list -deps ./cmd/manja
-npm ls --all --json
+go tool muamba verify --strict
+go run ./cmd/webassets check
 git ls-files
 ```
 
