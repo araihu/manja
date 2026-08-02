@@ -10,10 +10,10 @@
     "api:lint": "redocly lint api/openapi.yaml"
   },
   "devDependencies": {
-    "@readme/httpsnippet": "^11.1.0",
+    "@readme/httpsnippet": "^11.4.0",
     "@redocly/cli": "^1.34.5",
     "buffer": "^6.0.3",
-    "esbuild": "^0.28.0",
+    "esbuild": "^0.28.1",
     "highlight.js": "^11.11.1",
     "openapi-sampler": "^1.7.4",
     "url": "^0.11.4"
