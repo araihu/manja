@@ -62,22 +62,31 @@ func TestCatalogShellProvidesOneResponsiveSidebarWithMobileDrawerControls(t *tes
 	}
 }
 
-func TestCatalogShellProvidesGlobalServerSearchShortcut(t *testing.T) {
+func TestCatalogShellProvidesClientFirstSearchModalWithServerFallback(t *testing.T) {
 	t.Parallel()
 
 	body := renderCatalogTemplate(t, catalogTemplateFixture())
 	for _, want := range []string{
-		`data-catalog-search-href="/kubernetes/search"`,
-		`data-catalog-search-shortcut="true"`,
-		`event.metaKey || event.ctrlKey`,
-		`document.getElementById("catalog-search-query")`,
+		`src="/manja-assets/catalog-search.js"`,
+		`id="catalog-search-dialog"`,
+		`role="dialog"`,
+		`x-data="manjaCatalogSearch($el)"`,
+		`data-search-child-base="/kubernetes/snapshots/snapshot-sha256-`,
+		`/search-data/"`,
+		`data-search-directory-path="search/directory.json"`,
+		`data-search-directory-sha256="`,
+		`data-search-fallback-url="/kubernetes/search.json"`,
+		`x-on:keydown.window="handleWindowKey($event)"`,
+		`x-on:keydown.escape.prevent="closeSearch()"`,
+		`Recently visited`,
+		`id="catalog-search-current-visit"`,
 	} {
 		if !strings.Contains(body, want) {
-			t.Errorf("catalog search shortcut missing %q", want)
+			t.Errorf("catalog search modal missing %q", want)
 		}
 	}
-	if strings.Contains(body, `href="/kubernetes/search" aria-keyshortcuts=`) {
-		t.Fatal("catalog header duplicates the global search shortcut with a Search button")
+	if strings.Contains(body, `window.location.assign(href)`) && strings.Contains(body, `data-catalog-search-shortcut`) {
+		t.Fatal("catalog Ctrl+K shortcut still navigates to a separate page")
 	}
 }
 
@@ -163,5 +172,7 @@ func catalogTemplateFixture() CatalogPageData {
 		Mount: "/kubernetes", SnapshotID: catalog.SnapshotID("snapshot-sha256-" + strings.Repeat("b", 64)), Directory: directory,
 		Documents:    []CatalogDocumentOption{{Key: "core-v1", Label: "core-v1", Href: "/kubernetes/documents/core-v1/"}, {Key: "apps-v1", Label: "apps-v1", Href: "/kubernetes/documents/apps-v1/"}},
 		DownloadHref: "/kubernetes/catalog.json", SearchHref: "/kubernetes/search",
+		SearchChildBase: "/kubernetes/snapshots/snapshot-sha256-" + strings.Repeat("b", 64) + "/search-data/",
+		SearchDirectoryPath: "search/directory.json", SearchDirectoryLength: 42, SearchDirectorySHA256: strings.Repeat("c", 64),
 	}
 }

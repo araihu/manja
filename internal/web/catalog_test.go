@@ -228,6 +228,7 @@ func TestCatalogDownloadAndCacheContracts(t *testing.T) {
 	for _, path := range []string{
 		base + "snapshots/" + string(snapshot.ID) + "/openapi/core-v1.json",
 		base + "snapshots/" + string(snapshot.ID) + "/catalog.json",
+		base + "snapshots/" + string(snapshot.ID) + "/search-data/search/directory.json",
 	} {
 		get := httptest.NewRecorder()
 		handler.ServeHTTP(get, httptest.NewRequest(http.MethodGet, path, nil))
@@ -238,6 +239,31 @@ func TestCatalogDownloadAndCacheContracts(t *testing.T) {
 		handler.ServeHTTP(head, httptest.NewRequest(http.MethodHead, path, nil))
 		if head.Code != http.StatusOK || head.Body.Len() != 0 || head.Header().Get("Content-Length") != get.Header().Get("Content-Length") || head.Header().Get("ETag") != get.Header().Get("ETag") {
 			t.Errorf("HEAD %s = %d bytes=%d headers=%v", path, head.Code, head.Body.Len(), head.Header())
+		}
+	}
+	for _, path := range []string{
+		base + "snapshots/" + string(snapshot.ID) + "/search-data/details/core.json",
+		base + "snapshots/" + string(snapshot.ID) + "/search-data/../catalog.json",
+	} {
+		response := httptest.NewRecorder()
+		handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, path, nil))
+		if response.Code != http.StatusNotFound && response.Code != http.StatusBadRequest {
+			t.Errorf("non-search child %s = %d, want 404/400", path, response.Code)
+		}
+	}
+}
+
+func TestCatalogAssetsServeClientSearchRouter(t *testing.T) {
+	t.Parallel()
+
+	response := httptest.NewRecorder()
+	NewCatalogAssetsHandler().ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/manja-assets/catalog-search.js", nil))
+	if response.Code != http.StatusOK {
+		t.Fatalf("catalog search asset = %d, want 200", response.Code)
+	}
+	for _, contract := range []string{"crypto.subtle.digest", "Browser index", "Server fallback", "manja.catalog.recent.v1"} {
+		if !strings.Contains(response.Body.String(), contract) {
+			t.Errorf("catalog search asset missing %q", contract)
 		}
 	}
 }

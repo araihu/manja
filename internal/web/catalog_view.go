@@ -32,6 +32,15 @@ func (handler *CatalogHandler) catalogPageData(
 	}
 	data.SearchHref, _ = catalogURL(mount, "search")
 	data.DownloadHref, _ = catalogURL(mount, "catalog.json")
+	searchIdentity, exists := catalogChildIdentity(snapshot.Manifest, snapshot.Directory.SearchChild)
+	if !exists || searchIdentity.Kind != "search-directory" {
+		return templates.CatalogPageData{}, fmt.Errorf("catalog search directory identity is missing")
+	}
+	data.SearchDirectoryPath = searchIdentity.Path
+	data.SearchDirectoryLength = searchIdentity.Length
+	data.SearchDirectorySHA256 = searchIdentity.SHA256
+	data.SearchChildBase, _ = catalogURL(mount, "snapshots", string(snapshot.ID), "search-data")
+	data.SearchChildBase += "/"
 	for _, document := range snapshot.Directory.Documents {
 		href, err := catalogURL(mount, "documents", document.Key)
 		if err != nil {
@@ -51,6 +60,10 @@ func (handler *CatalogHandler) catalogPageData(
 	data.DownloadHref, _ = catalogURL(mount, "openapi", document.Key+extension)
 	documentHref, _ := catalogURL(mount, "documents", document.Key)
 	documentHref += "/"
+	data.CurrentVisit = &templates.CatalogSearchItemData{
+		ID: "document-" + document.Key, Title: document.Key, Description: document.Title,
+		Href: documentHref, Kind: "Document", Section: snapshot.Directory.Title,
+	}
 
 	type operationGroup struct {
 		label      string
@@ -132,6 +145,18 @@ func (handler *CatalogHandler) catalogPageData(
 			return templates.CatalogPageData{}, err
 		}
 		data.Selected = &detail
+		if detail.Operation != nil {
+			data.CurrentVisit = &templates.CatalogSearchItemData{
+				ID: string(detail.ID), Title: detail.Operation.Heading, Description: detail.Operation.Description,
+				Href: catalogDetailHref(documentHref, detail.ID), Kind: "Operation", Method: detail.Operation.Method,
+				Path: detail.Operation.Path, Section: document.Key,
+			}
+		} else if detail.Schema != nil {
+			data.CurrentVisit = &templates.CatalogSearchItemData{
+				ID: string(detail.ID), Title: detail.Schema.Heading, Description: detail.Schema.Description,
+				Href: catalogDetailHref(documentHref, detail.ID), Kind: "Schema", Section: document.Key,
+			}
+		}
 		if detail.Schema != nil {
 			ordinal := uint64(detail.Schema.SchemaRef)
 			if selectedNode != "" {

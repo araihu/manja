@@ -8,6 +8,7 @@ import (
 	"github.com/araihu/goshtoso/components/appshell"
 	"github.com/araihu/goshtoso/components/badge"
 	"github.com/araihu/goshtoso/components/combobox"
+	"github.com/araihu/goshtoso/components/kbd"
 	"github.com/araihu/goshtoso/components/sidebar"
 	"github.com/araihu/manja/application/catalog"
 	"github.com/araihu/manja/application/projection"
@@ -50,6 +51,22 @@ type CatalogPageData struct {
 	SchemaNode *CatalogSchemaNodeData
 	DownloadHref string
 	SearchHref string
+	SearchChildBase string
+	SearchDirectoryPath string
+	SearchDirectoryLength uint64
+	SearchDirectorySHA256 string
+	CurrentVisit *CatalogSearchItemData
+}
+
+type CatalogSearchItemData struct {
+	ID string `json:"id,omitempty"`
+	Title string `json:"title"`
+	Description string `json:"description,omitempty"`
+	Href string `json:"href"`
+	Kind string `json:"kind,omitempty"`
+	Method string `json:"method,omitempty"`
+	Path string `json:"path,omitempty"`
+	Section string `json:"section,omitempty"`
 }
 
 type CatalogSearchData struct {
@@ -87,6 +104,7 @@ type CatalogSchemaEdgeData struct {
 
 templ CatalogPage(data CatalogPageData) {
 	@LayoutWithBranding(catalogPageTitle(data), catalogBranding(data.Directory.Branding), false, false) {
+		<script src="/manja-assets/catalog-search.js"></script>
 		<div
 			hx-history="false"
 			x-data="{ catalogNavOpen: false }"
@@ -141,32 +159,70 @@ templ CatalogPage(data CatalogPageData) {
 					</footer>
 				</div>
 			}
-			@catalogSearchShortcut()
+			@catalogSearchModal(data)
 			@catalogDocumentSelection()
 		</div>
 	}
 }
 
-templ catalogSearchShortcut() {
-	<script data-catalog-search-shortcut="true">
-		(function () {
-			if (window.__manjaCatalogSearchShortcutBound) return;
-			window.__manjaCatalogSearchShortcutBound = true;
-			document.addEventListener("keydown", function (event) {
-				if (!(event.metaKey || event.ctrlKey) || event.altKey || event.shiftKey || String(event.key).toLowerCase() !== "k") return;
-				event.preventDefault();
-				var input = document.getElementById("catalog-search-query");
-				if (input) {
-					input.focus();
-					input.select();
-					return;
-				}
-				var shell = document.querySelector('[data-manja-catalog-shell="true"]');
-				var href = shell && shell.getAttribute("data-catalog-search-href");
-				if (href) window.location.assign(href);
-			});
-		})();
-	</script>
+templ catalogSearchModal(data CatalogPageData) {
+	@templpkg.JSONScript("catalog-search-current-visit", data.CurrentVisit)
+	<div
+		x-cloak
+		x-data="manjaCatalogSearch($el)"
+		x-init="init()"
+		x-show="open"
+		x-transition.opacity.duration.150ms
+		x-trap.inert.noscroll="open"
+		x-on:keydown.window="handleWindowKey($event)"
+		x-on:click.self="closeSearch()"
+		data-search-child-base={ data.SearchChildBase }
+		data-search-directory-path={ data.SearchDirectoryPath }
+		data-search-directory-length={ fmt.Sprint(data.SearchDirectoryLength) }
+		data-search-directory-sha256={ data.SearchDirectorySHA256 }
+		data-search-fallback-url={ data.SearchHref + ".json" }
+		data-search-mount={ data.Mount }
+		data-search-catalog-id={ data.Directory.CatalogID }
+		class="fixed inset-0 z-[90] flex justify-center bg-surface-dark/55 px-4 backdrop-blur-md dark:bg-black/60"
+		role="dialog"
+		aria-modal="true"
+		aria-labelledby="catalog-search-label"
+		id="catalog-search-dialog"
+	>
+		<div x-show="open" x-transition:enter="transition ease-out duration-150" x-transition:enter-start="opacity-0 translate-y-1" x-transition:enter-end="opacity-100 translate-y-0" class="relative mt-16 flex w-full max-w-2xl flex-col text-on-surface shadow-2xl shadow-black/20 dark:text-on-surface-dark">
+			<div class="relative flex items-center gap-3 rounded-t-radius border border-b-0 border-outline bg-surface px-4 py-3 dark:border-outline-dark dark:bg-surface-dark-alt">
+				<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" stroke="currentColor" fill="none" stroke-width="2" class="size-5 shrink-0 text-on-surface-muted dark:text-on-surface-dark-muted" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z"></path></svg>
+				<label id="catalog-search-label" class="sr-only" for="catalog-search-input">Search operations and schemas</label>
+				<input x-ref="input" x-model="query" x-on:input="queueSearch()" x-on:keydown.down.prevent="move(1)" x-on:keydown.up.prevent="move(-1)" x-on:keydown.enter.prevent="choose()" x-on:keydown.escape.prevent="closeSearch()" id="catalog-search-input" type="search" maxlength="256" class="min-w-0 flex-1 bg-transparent py-1 text-base text-on-surface-strong placeholder:text-on-surface-muted focus:outline-none dark:text-on-surface-dark-strong dark:placeholder:text-on-surface-dark-muted" placeholder="Operation, path, schema, or content" autocomplete="off" spellcheck="false"/>
+				<button type="button" x-cloak x-show="query.length > 0" x-on:click="clearQuery()" aria-label="Clear search" class="inline-flex size-8 items-center justify-center rounded-radius text-on-surface-muted hover:text-on-surface-strong dark:text-on-surface-dark-muted dark:hover:text-on-surface-dark-strong">×</button>
+				@kbd.Kbd("Esc", kbd.WithSize(kbd.SizeSM), kbd.WithRootClass("text-on-surface-muted dark:text-on-surface-dark-muted"))
+			</div>
+			<div class="flex max-h-[min(28rem,calc(100vh-12rem))] flex-col overflow-hidden overflow-y-auto rounded-b-radius border border-outline bg-surface text-sm font-light dark:border-outline-dark dark:bg-surface-dark-alt" role="listbox" aria-label="Catalog search results">
+				<div x-show="query.trim().length === 0" data-catalog-search-recent>
+					<p class="border-b border-outline px-4 py-2 text-xs font-semibold uppercase tracking-wide text-on-surface-muted dark:border-outline-dark dark:text-on-surface-dark-muted">Recently visited</p>
+					<p x-show="recent.length === 0" class="px-4 py-4 text-on-surface-muted dark:text-on-surface-dark-muted">No recently visited items yet.</p>
+				</div>
+				<p x-show="query.trim().length > 0 && loading" class="px-4 py-4 text-on-surface-muted dark:text-on-surface-dark-muted">Searching…</p>
+				<p x-show="query.trim().length > 0 && !loading && error" x-text="error" class="px-4 py-4 text-danger"></p>
+				<p x-show="query.trim().length > 0 && !loading && !error && results.length === 0" class="px-4 py-4 text-on-surface-muted dark:text-on-surface-dark-muted">No matching operations or schemas.</p>
+				<div class="divide-y divide-outline dark:divide-outline-dark">
+					<template x-for="(item, index) in visibleItems()" x-bind:key="item.id || item.href">
+						<button type="button" data-catalog-search-result x-bind:data-catalog-search-recent-result="query.trim().length === 0 ? 'true' : null" x-on:mouseenter="activeIndex = index" x-on:click="select(item)" x-bind:class="activeIndex === index ? 'bg-surface-alt text-on-surface-strong shadow-[inset_2px_0_0_var(--color-outline-strong)] dark:bg-surface-dark dark:text-on-surface-dark-strong' : 'text-on-surface hover:bg-surface-alt dark:text-on-surface-dark dark:hover:bg-surface-dark'" class="flex w-full flex-col gap-2 p-4 text-left transition focus:outline-none" role="option">
+							<div class="flex items-start justify-between gap-3">
+								<div class="min-w-0 space-y-1">
+									<div class="flex min-w-0 flex-wrap items-center gap-2"><span x-show="item.method" x-text="item.method" class="shrink-0 rounded-radius border border-outline px-1.5 py-0.5 font-mono text-[10px] font-bold uppercase dark:border-outline-dark"></span><strong x-text="item.title" class="min-w-0 text-base font-semibold"></strong></div>
+									<div x-show="item.kind || item.path" class="flex min-w-0 flex-wrap items-center gap-1.5 text-xs text-on-surface-muted dark:text-on-surface-dark-muted"><span x-text="item.kind"></span><span x-show="item.kind && item.path" aria-hidden="true">·</span><code x-show="item.path" x-text="item.path" class="min-w-0 font-mono text-[11px]"></code></div>
+								</div>
+								<span x-show="item.section" x-text="item.section" class="shrink-0 rounded-radius border border-outline px-2 py-0.5 text-xs font-medium text-on-surface-muted dark:border-outline-dark dark:text-on-surface-dark-muted"></span>
+							</div>
+							<p x-show="item.description" x-text="item.description" class="line-clamp-2 text-sm leading-6 text-on-surface-muted dark:text-on-surface-dark-muted"></p>
+						</button>
+					</template>
+				</div>
+				<p x-show="query.trim().length > 0 && sourceLabel" data-catalog-search-source x-text="sourceLabel" class="border-t border-outline px-4 py-2 text-xs text-on-surface-muted dark:border-outline-dark dark:text-on-surface-dark-muted"></p>
+			</div>
+		</div>
+	</div>
 }
 
 templ catalogSearch(data CatalogPageData) {

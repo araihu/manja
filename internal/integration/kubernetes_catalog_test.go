@@ -38,13 +38,36 @@ func TestKubernetesCatalog(t *testing.T) {
 	if overview.Code != http.StatusOK || overview.Body.Len() > 512<<10 || strings.Count(overview.Body.String(), "<") > 2500 {
 		t.Fatalf("overview = %d bytes=%d tags=%d", overview.Code, overview.Body.Len(), strings.Count(overview.Body.String(), "<"))
 	}
-	for _, want := range []string{`data-catalog-search-shortcut="true"`, `aria-label="Open API sections"`, `id="darkModeToggleBtn"`} {
+	for _, want := range []string{`id="catalog-search-dialog"`, `data-search-child-base="/snapshots/`, `src="/manja-assets/catalog-search.js"`, `aria-label="Open API sections"`, `id="darkModeToggleBtn"`} {
 		if !strings.Contains(overview.Body.String(), want) {
 			t.Errorf("overview missing %q", want)
 		}
 	}
 	if strings.Contains(overview.Body.String(), `id="manja-theme-trigger"`) {
 		t.Fatal("overview contains removed theme selector")
+	}
+	searchDirectory := catalogRequest(t, handler, http.MethodGet, "/snapshots/"+receipts[0].SnapshotID+"/search-data/search/directory.json")
+	if searchDirectory.Code != http.StatusOK || searchDirectory.Header().Get("Cache-Control") != "public, max-age=31536000, immutable" || searchDirectory.Body.Len() > 4<<20 {
+		t.Fatalf("client search directory = %d bytes=%d headers=%v", searchDirectory.Code, searchDirectory.Body.Len(), searchDirectory.Header())
+	}
+	clientSearchIndex, err := catalogjson.DecodeSearchDirectory(searchDirectory.Body.Bytes())
+	if err != nil {
+		t.Fatalf("client search directory decode: %v", err)
+	}
+	clientSearchBytes := uint64(searchDirectory.Body.Len())
+	for _, reference := range clientSearchIndex.ExactBuckets {
+		clientSearchBytes += reference.Length
+	}
+	for _, references := range [][]catalog.SearchSegmentReferenceV1{clientSearchIndex.PostingSegments, clientSearchIndex.TrigramSegments} {
+		for _, reference := range references {
+			clientSearchBytes += reference.Length
+		}
+	}
+	for _, reference := range clientSearchIndex.RecordSegments {
+		clientSearchBytes += reference.Length
+	}
+	if clientSearchBytes > 4<<20 {
+		t.Fatalf("client search artifacts = %d bytes, want <= 4 MiB", clientSearchBytes)
 	}
 
 	stable := catalogRequest(t, handler, http.MethodGet, "/catalog.json")
@@ -140,7 +163,7 @@ func TestKubernetesCatalog(t *testing.T) {
 			t.Errorf("renderer-only route %q = %d, want 404", route, response.Code)
 		}
 	}
-	t.Logf("Kubernetes catalog receipt: snapshot=%s documents=65 operations=1202 schemas=1826 max-document-html=%d max-exact-search-json=%d", receipts[0].SnapshotID, maxDocumentBytes, maxSearchBytes)
+	t.Logf("Kubernetes catalog receipt: snapshot=%s documents=65 operations=1202 schemas=1826 client-search-directory=%d client-search-total=%d max-document-html=%d max-exact-search-json=%d", receipts[0].SnapshotID, searchDirectory.Body.Len(), clientSearchBytes, maxDocumentBytes, maxSearchBytes)
 }
 
 func assertCatalogDetailDirectory(t *testing.T, documentKey string, detailID domain.DetailID, href string, visible map[domain.DetailID]string) {

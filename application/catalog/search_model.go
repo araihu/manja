@@ -47,7 +47,7 @@ func BuildSearchArtifacts(directory CatalogArtifactV1, bounds Bounds) (SearchArt
 	schemaGroups := make(map[string][]schemaSearchOccurrence)
 	for _, document := range directory.Documents {
 		for _, operation := range document.Operations {
-			values := []string{operation.Title, operation.OperationID, operation.Method, operation.Path, document.Key}
+			values := []string{operation.Title, operation.OperationID, operation.Method, operation.Path, document.Key, searchSnippet(operation.Description)}
 			values = append(values, operation.Tags...)
 			for _, facet := range operation.Facets {
 				values = append(values, facet.Name, facet.Value)
@@ -95,7 +95,7 @@ func BuildSearchArtifacts(directory CatalogArtifactV1, bounds Bounds) (SearchArt
 			{value: canonical.schema.Name, priority: 2},
 			{value: shortSchemaName(canonical.schema.Name), priority: 2},
 		}
-		tokenValues := []string{canonical.schema.Name, shortSchemaName(canonical.schema.Name)}
+		tokenValues := []string{canonical.schema.Name, shortSchemaName(canonical.schema.Name), searchSnippet(canonical.schema.Description)}
 		for _, occurrence := range occurrences {
 			documents = append(documents, occurrence.documentKey)
 			tokenValues = append(tokenValues, occurrence.documentKey)

@@ -49,7 +49,38 @@ func (handler *CatalogHandler) serveSnapshotResource(response http.ResponseWrite
 			}
 		}
 	}
+	if len(parts) >= 5 && parts[0] == "snapshots" && parts[1] == string(snapshot.ID) && parts[2] == "search-data" {
+		childPath := strings.Join(parts[3:], "/")
+		identity, exists := catalogChildIdentity(snapshot.Manifest, childPath)
+		if !exists || !strings.HasPrefix(childPath, "search/") || !strings.HasPrefix(identity.Kind, "search-") {
+			http.NotFound(response, request)
+			return
+		}
+		handler.serveExactSearchChild(response, request, snapshot, childPath)
+		return
+	}
 	http.NotFound(response, request)
+}
+
+func (handler *CatalogHandler) serveExactSearchChild(response http.ResponseWriter, request *http.Request, snapshot catalog.RuntimeSnapshot, childPath string) {
+	data, identity, err := handler.children.ReadChild(request.Context(), snapshot, childPath)
+	if err != nil {
+		http.Error(response, "catalog temporarily unavailable", http.StatusServiceUnavailable)
+		return
+	}
+	etag := `"sha256-` + identity.SHA256 + `"`
+	response.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+	response.Header().Set("Content-Type", "application/json")
+	response.Header().Set("Content-Length", fmt.Sprintf("%d", len(data)))
+	response.Header().Set("ETag", etag)
+	if request.Header.Get("If-None-Match") == etag {
+		response.WriteHeader(http.StatusNotModified)
+		return
+	}
+	response.WriteHeader(http.StatusOK)
+	if request.Method != http.MethodHead {
+		_, _ = response.Write(data)
+	}
 }
 
 func (handler *CatalogHandler) serveExactChild(response http.ResponseWriter, request *http.Request, snapshot catalog.RuntimeSnapshot, childPath, fileName string) {

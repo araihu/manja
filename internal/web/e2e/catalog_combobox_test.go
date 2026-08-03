@@ -11,7 +11,7 @@ import (
 	"github.com/araihu/manja/renderer"
 )
 
-func TestCatalogDocumentComboboxSearchSelectAndGlobalShortcut(t *testing.T) {
+func TestCatalogDocumentComboboxSearchSelectAndClientFirstModal(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping e2e test in short mode")
 	}
@@ -21,13 +21,14 @@ func TestCatalogDocumentComboboxSearchSelectAndGlobalShortcut(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	spec := []byte(`{"openapi":"3.0.3","info":{"title":"Kubernetes","version":"v1"},"paths":{}}`)
+	appsSpec := []byte(`{"openapi":"3.0.3","info":{"title":"Kubernetes Apps","version":"v1"},"paths":{"/apis/apps/v1/deployments":{"get":{"operationId":"listAppsDeployments","summary":"List app deployments","description":"Returns deployments managed by the apps controller.","responses":{"200":{"description":"OK"}}}}}}`)
+	coreSpec := []byte(`{"openapi":"3.0.3","info":{"title":"Kubernetes Core","version":"v1"},"paths":{"/api/v1/pods":{"get":{"operationId":"listCorePods","summary":"List core pods","description":"Returns pods scheduled on cluster nodes.","responses":{"200":{"description":"OK"}}}}}}`)
 	_, err = server.Activate(context.Background(), domain.CatalogCandidate{
 		ID: "kubernetes", Title: "Kubernetes", ProfileID: domain.CompatibilityProfileStrict,
 		Revision: domain.CatalogRevision{Kind: domain.CatalogRevisionFiles, ID: "file-manifest-catalog-combobox", ManifestDigest: strings.Repeat("a", 64)},
 		Documents: []domain.CatalogDocument{
-			{Key: "apps-v1", SourcePath: "apis/apps/v1.json", Format: domain.CatalogFormatJSON, Bytes: spec},
-			{Key: "core-v1", SourcePath: "api/v1.json", Format: domain.CatalogFormatJSON, Bytes: spec},
+			{Key: "apps-v1", SourcePath: "apis/apps/v1.json", Format: domain.CatalogFormatJSON, Bytes: appsSpec},
+			{Key: "core-v1", SourcePath: "api/v1.json", Format: domain.CatalogFormatJSON, Bytes: coreSpec},
 		},
 	})
 	if err != nil {
@@ -84,14 +85,83 @@ func TestCatalogDocumentComboboxSearchSelectAndGlobalShortcut(t *testing.T) {
 	if err := page.WaitForURL(baseURL + "/documents/apps-v1/"); err != nil {
 		t.Fatalf("selection navigation: %v (url=%s)", err, page.URL())
 	}
+	if err := page.Route("**/search.json*", func(route playwright.Route) { _ = route.Abort() }); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := page.Evaluate(`() => { window.__catalogSearchLoadMarker = "unchanged"; return true; }`, nil); err != nil {
+		t.Fatal(err)
+	}
+	beforeSearch := page.URL()
 	if err := page.Keyboard().Press("Control+K"); err != nil {
 		t.Fatal(err)
 	}
-	if err := page.WaitForURL(baseURL + "/search"); err != nil {
-		t.Fatalf("global search shortcut: %v (url=%s)", err, page.URL())
+	modal := page.Locator("#catalog-search-dialog")
+	if err := modal.WaitFor(); err != nil {
+		t.Fatalf("search modal open: %v", err)
 	}
-	focused, err := page.Locator("#catalog-search-query").Evaluate(`element => document.activeElement === element`, nil)
+	if page.URL() != beforeSearch {
+		t.Fatalf("Ctrl+K navigated from %q to %q", beforeSearch, page.URL())
+	}
+	if err := modal.Locator(`[data-catalog-search-recent-result="true"]`).GetByText("apps-v1", playwright.LocatorGetByTextOptions{Exact: playwright.Bool(true)}).WaitFor(); err != nil {
+		t.Fatalf("recently visited apps document: %v", err)
+	}
+	input := page.Locator("#catalog-search-input")
+	focused, err := input.Evaluate(`element => document.activeElement === element`, nil)
 	if err != nil || focused != true {
 		t.Fatalf("search query focused = %v, err=%v", focused, err)
+	}
+	if err := input.Fill("controller"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := input.Evaluate(`element => element.dispatchEvent(new Event('input', { bubbles: true }))`, nil); err != nil {
+		t.Fatal(err)
+	}
+	if err := modal.GetByText("List app deployments", playwright.LocatorGetByTextOptions{Exact: playwright.Bool(true)}).WaitFor(); err != nil {
+		t.Fatalf("client search result with server fallback blocked: %v", err)
+	}
+	if source, err := modal.Locator(`[data-catalog-search-source]`).TextContent(); err != nil || !strings.Contains(source, "Browser index") {
+		t.Fatalf("client search source = %q, err=%v", source, err)
+	}
+	if err := page.Keyboard().Press("Escape"); err != nil {
+		t.Fatal(err)
+	}
+	if err := modal.WaitFor(playwright.LocatorWaitForOptions{State: playwright.WaitForSelectorStateHidden}); err != nil {
+		t.Fatalf("Escape did not close modal: %v", err)
+	}
+	if page.URL() != beforeSearch {
+		t.Fatalf("Escape navigated from %q to %q", beforeSearch, page.URL())
+	}
+	marker, err := page.Evaluate(`() => window.__catalogSearchLoadMarker`, nil)
+	if err != nil || marker != "unchanged" {
+		t.Fatalf("search modal reloaded the page: marker=%v err=%v", marker, err)
+	}
+
+	fallbackPage, err := browser.NewPage()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer fallbackPage.Close()
+	if err := fallbackPage.Route("**/snapshots/**/search-data/**", func(route playwright.Route) { _ = route.Abort() }); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := fallbackPage.Goto(baseURL+"/documents/core-v1/", playwright.PageGotoOptions{WaitUntil: playwright.WaitUntilStateLoad}); err != nil {
+		t.Fatal(err)
+	}
+	if err := fallbackPage.Keyboard().Press("Control+K"); err != nil {
+		t.Fatal(err)
+	}
+	fallbackInput := fallbackPage.Locator("#catalog-search-input")
+	if err := fallbackInput.Fill("listCorePods"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := fallbackInput.Evaluate(`element => element.dispatchEvent(new Event('input', { bubbles: true }))`, nil); err != nil {
+		t.Fatal(err)
+	}
+	fallbackModal := fallbackPage.Locator("#catalog-search-dialog")
+	if err := fallbackModal.GetByText("List core pods", playwright.LocatorGetByTextOptions{Exact: playwright.Bool(true)}).WaitFor(); err != nil {
+		t.Fatalf("server fallback result: %v", err)
+	}
+	if source, err := fallbackModal.Locator(`[data-catalog-search-source]`).TextContent(); err != nil || !strings.Contains(source, "Server fallback") {
+		t.Fatalf("fallback search source = %q, err=%v", source, err)
 	}
 }

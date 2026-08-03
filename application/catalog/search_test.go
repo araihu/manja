@@ -43,6 +43,35 @@ func TestSearchFindsExactKeysBeforeTokenRanking(t *testing.T) {
 	}
 }
 
+func TestSearchIndexesBoundedOperationAndSchemaContent(t *testing.T) {
+	t.Parallel()
+
+	candidate, index := compilerFixture()
+	index.Documents[0].Index.Operations[0].Description = "Returns workloads scheduled by the constellation controller."
+	index.Documents[0].Index.Schemas[0].Description = "Carries the orbital rendezvous policy."
+	compiler, err := NewCompiler(DefaultCompilerOptions())
+	if err != nil {
+		t.Fatal(err)
+	}
+	snapshot, err := compiler.Compile(context.Background(), candidate, index)
+	if err != nil {
+		t.Fatal(err)
+	}
+	service, err := NewSearchService(snapshot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for query, kind := range map[string]string{"constellation": "operation", "rendezvous": "schema"} {
+		result, err := service.Search(context.Background(), snapshot.ID, query)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(result.Results) == 0 || result.Results[0].Kind != kind {
+			t.Fatalf("content query %q = %#v, want %s result", query, result.Results, kind)
+		}
+	}
+}
+
 func TestRuntimeSearchLoadsVerifiedChildrenThroughBoundedCache(t *testing.T) {
 	t.Parallel()
 
