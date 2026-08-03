@@ -38,6 +38,30 @@ func TestCatalogHeaderOmitsThemeSelectorButKeepsDarkMode(t *testing.T) {
 	}
 }
 
+func TestCatalogShellProvidesOneResponsiveSidebarWithMobileDrawerControls(t *testing.T) {
+	t.Parallel()
+
+	body := renderCatalogTemplate(t, catalogTemplateFixture())
+	for _, want := range []string{
+		`x-data="{ catalogNavOpen: false }"`,
+		`aria-label="Open API sections"`,
+		`aria-controls="catalog-navigation"`,
+		`x-bind:aria-expanded="catalogNavOpen.toString()"`,
+		`id="catalog-navigation"`,
+		`x-bind:style="catalogNavOpen ? &#39;display: block&#39; : &#39;&#39;"`,
+		`x-trap.noscroll="catalogNavOpen"`,
+		`aria-label="Close API sections"`,
+		`data-catalog-navigation-backdrop="true"`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("responsive catalog shell missing %q", want)
+		}
+	}
+	if strings.Count(body, `id="catalog-sidebar-groups"`) != 1 {
+		t.Fatal("catalog rendered duplicate sidebar trees")
+	}
+}
+
 func TestCatalogDocumentRendersOnlyExpandedGroupAndSelectedVisibleAnchor(t *testing.T) {
 	t.Parallel()
 
