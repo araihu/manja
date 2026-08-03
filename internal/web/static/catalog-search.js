@@ -63,6 +63,66 @@
     return values.sort();
   }
 
+  function escapeHTML(value) {
+    return asString(value).replace(/[&<>"']/g, function (character) {
+      return {
+        "&": "&amp;",
+        "<": "&lt;",
+        ">": "&gt;",
+        '"': "&quot;",
+        "'": "&#39;",
+      }[character];
+    });
+  }
+
+  function markNeedle(characters, needle, marks) {
+    var matched = false;
+    if (!needle.length || needle.length > characters.length) return matched;
+    for (var start = 0; start <= characters.length - needle.length; start++) {
+      var equal = true;
+      for (var offset = 0; offset < needle.length; offset++) {
+        if (characters[start + offset] !== needle[offset]) {
+          equal = false;
+          break;
+        }
+      }
+      if (!equal) continue;
+      matched = true;
+      for (var index = start; index < start + needle.length; index++) marks[index] = true;
+    }
+    return matched;
+  }
+
+  function highlightHTML(value, query) {
+    var original = Array.from(asString(value));
+    if (!original.length) return "";
+    var folded = original.map(function (character) { return character.normalize("NFKC").toLowerCase(); });
+    var marks = original.map(function () { return false; });
+    var normalizedQuery = asString(query).normalize("NFKC").trim().toLowerCase();
+    if (!normalizedQuery) return escapeHTML(original.join(""));
+    var tokens;
+    try { tokens = tokenize(normalizedQuery); } catch (error) { tokens = [normalizedQuery]; }
+    tokens.forEach(function (token) {
+      var literal = Array.from(token);
+      if (markNeedle(folded, literal, marks)) return;
+      trigrams(token).forEach(function (trigram) {
+        markNeedle(folded, Array.from(trigram), marks);
+      });
+    });
+    var output = "";
+    var marked = false;
+    original.forEach(function (character, index) {
+      if (marks[index] !== marked) {
+        if (marked) output += "</span>";
+        if (marks[index]) output += '<span class="search-highlight">';
+        marked = marks[index];
+      }
+      output += escapeHTML(character);
+    });
+    if (marked) output += "</span>";
+    return output;
+  }
+
   function lowerBound(values, key, keyFor) {
     var low = 0;
     var high = values.length;
@@ -505,6 +565,7 @@
         this.sourceLabel = "";
         this.activeIndex = 0;
         this.readRecent();
+        window.dispatchEvent(new CustomEvent("goshtoso-search-open", { detail: { id: "catalog-search" } }));
         this.$nextTick(function () { if (this.$refs.input) this.$refs.input.focus(); }.bind(this));
       },
       closeSearch: function () {
@@ -517,6 +578,7 @@
         this.loading = false;
         this.error = "";
         this.sourceLabel = "";
+        window.dispatchEvent(new CustomEvent("goshtoso-search-close", { detail: { id: "catalog-search" } }));
         var focus = this.previousFocus;
         this.$nextTick(function () { if (focus && focus.focus) focus.focus(); });
       },
@@ -564,6 +626,7 @@
         }.bind(this));
       },
       visibleItems: function () { return this.query.trim() ? this.results : this.recent; },
+      highlight: function (value) { return highlightHTML(value, this.query); },
       move: function (delta) {
         var values = this.visibleItems();
         if (!values.length) return;

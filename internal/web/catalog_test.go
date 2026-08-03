@@ -261,7 +261,7 @@ func TestCatalogAssetsServeClientSearchRouter(t *testing.T) {
 	if response.Code != http.StatusOK {
 		t.Fatalf("catalog search asset = %d, want 200", response.Code)
 	}
-	for _, contract := range []string{"crypto.subtle.digest", "Browser index", "Server fallback", "manja.catalog.recent.v1"} {
+	for _, contract := range []string{"crypto.subtle.digest", "Browser index", "Server fallback", "manja.catalog.recent.v1", "escapeHTML", "search-highlight", "highlight"} {
 		if !strings.Contains(response.Body.String(), contract) {
 			t.Errorf("catalog search asset missing %q", contract)
 		}

@@ -92,15 +92,19 @@ func TestCatalogDocumentComboboxSearchSelectAndClientFirstModal(t *testing.T) {
 		t.Fatal(err)
 	}
 	beforeSearch := page.URL()
-	if err := page.Keyboard().Press("Control+K"); err != nil {
+	searchField := page.Locator(`[data-search-id="catalog-search"] button`)
+	if err := searchField.Click(); err != nil {
 		t.Fatal(err)
 	}
 	modal := page.Locator("#catalog-search-dialog")
 	if err := modal.WaitFor(); err != nil {
-		t.Fatalf("search modal open: %v", err)
+		t.Fatalf("sidebar search opened modal: %v", err)
+	}
+	if expanded, err := searchField.Evaluate(`element => element.getAttribute('aria-expanded')`, nil); err != nil || expanded != "true" {
+		t.Fatalf("sidebar search expanded state = %v, err=%v", expanded, err)
 	}
 	if page.URL() != beforeSearch {
-		t.Fatalf("Ctrl+K navigated from %q to %q", beforeSearch, page.URL())
+		t.Fatalf("sidebar search navigated from %q to %q", beforeSearch, page.URL())
 	}
 	if err := modal.Locator(`[data-catalog-search-recent-result="true"]`).GetByText("apps-v1", playwright.LocatorGetByTextOptions{Exact: playwright.Bool(true)}).WaitFor(); err != nil {
 		t.Fatalf("recently visited apps document: %v", err)
@@ -116,8 +120,41 @@ func TestCatalogDocumentComboboxSearchSelectAndClientFirstModal(t *testing.T) {
 	if _, err := input.Evaluate(`element => element.dispatchEvent(new Event('input', { bubbles: true }))`, nil); err != nil {
 		t.Fatal(err)
 	}
+	if err := modal.Locator(`[data-catalog-search-source]`).GetByText("Browser index", playwright.LocatorGetByTextOptions{Exact: playwright.Bool(true)}).WaitFor(); err != nil {
+		t.Fatalf("client search source: %v", err)
+	}
 	if err := modal.GetByText("List app deployments", playwright.LocatorGetByTextOptions{Exact: playwright.Bool(true)}).WaitFor(); err != nil {
 		t.Fatalf("client search result with server fallback blocked: %v", err)
+	}
+	if err := modal.Locator(`.search-highlight`).GetByText("controller", playwright.LocatorGetByTextOptions{Exact: playwright.Bool(true)}).WaitFor(); err != nil {
+		t.Fatalf("exact content match was not highlighted: %v", err)
+	}
+	highlighted, err := modal.Evaluate(`element => Alpine.$data(element).highlight('<img data-search-xss="true"> controller')`, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	highlightedHTML, ok := highlighted.(string)
+	if !ok || strings.Contains(highlightedHTML, "<img") || !strings.Contains(highlightedHTML, "&lt;img") || !strings.Contains(highlightedHTML, `class="search-highlight"`) {
+		t.Fatalf("unsafe or missing highlight markup: %#v", highlighted)
+	}
+	if err := input.Fill("deplxoyments"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := input.Evaluate(`element => element.dispatchEvent(new Event('input', { bubbles: true }))`, nil); err != nil {
+		t.Fatal(err)
+	}
+	if err := modal.Locator(`[data-catalog-search-source]`).GetByText("Browser index", playwright.LocatorGetByTextOptions{Exact: playwright.Bool(true)}).WaitFor(); err != nil {
+		t.Fatalf("fuzzy client search source: %v", err)
+	}
+	if err := modal.GetByText("List app deployments", playwright.LocatorGetByTextOptions{Exact: playwright.Bool(true)}).WaitFor(); err != nil {
+		t.Fatalf("fuzzy client search result: %v", err)
+	}
+	if count, err := modal.Locator(`.search-highlight`).Count(); err != nil || count < 1 {
+		t.Fatalf("fuzzy result highlight count = %d, err=%v", count, err)
+	}
+	fuzzyHighlight, err := modal.Locator(`.search-highlight`).First().TextContent()
+	if err != nil || (fuzzyHighlight != "dep" && fuzzyHighlight != "oym" && fuzzyHighlight != "nts") {
+		t.Fatalf("fuzzy result highlight = %q, err=%v", fuzzyHighlight, err)
 	}
 	if source, err := modal.Locator(`[data-catalog-search-source]`).TextContent(); err != nil || !strings.Contains(source, "Browser index") {
 		t.Fatalf("client search source = %q, err=%v", source, err)
@@ -128,8 +165,23 @@ func TestCatalogDocumentComboboxSearchSelectAndClientFirstModal(t *testing.T) {
 	if err := modal.WaitFor(playwright.LocatorWaitForOptions{State: playwright.WaitForSelectorStateHidden}); err != nil {
 		t.Fatalf("Escape did not close modal: %v", err)
 	}
+	if expanded, err := searchField.Evaluate(`element => element.getAttribute('aria-expanded')`, nil); err != nil || expanded != "false" {
+		t.Fatalf("sidebar search collapsed state = %v, err=%v", expanded, err)
+	}
 	if page.URL() != beforeSearch {
 		t.Fatalf("Escape navigated from %q to %q", beforeSearch, page.URL())
+	}
+	if err := page.Keyboard().Press("Control+K"); err != nil {
+		t.Fatal(err)
+	}
+	if err := modal.WaitFor(); err != nil {
+		t.Fatalf("Ctrl+K did not reopen modal: %v", err)
+	}
+	if expanded, err := searchField.Evaluate(`element => element.getAttribute('aria-expanded')`, nil); err != nil || expanded != "true" {
+		t.Fatalf("Ctrl+K sidebar search state = %v, err=%v", expanded, err)
+	}
+	if err := page.Keyboard().Press("Escape"); err != nil {
+		t.Fatal(err)
 	}
 	marker, err := page.Evaluate(`() => window.__catalogSearchLoadMarker`, nil)
 	if err != nil || marker != "unchanged" {
