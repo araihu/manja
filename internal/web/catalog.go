@@ -21,10 +21,18 @@ type catalogChildReader interface {
 }
 
 type CatalogHandler struct {
-	runtime  *catalog.Runtime
-	children catalogChildReader
-	details  *catalog.ByteCache
-	search   *catalog.ByteCache
+	runtime      *catalog.Runtime
+	children     catalogChildReader
+	details      *catalog.ByteCache
+	search       *catalog.ByteCache
+	presentation map[string]CatalogPresentation
+}
+
+type CatalogPresentation struct {
+	Description    string
+	CanonicalBase  string
+	SocialImage    string
+	SocialImageAlt string
 }
 
 const maxCatalogPageBytes = 512 << 10
@@ -51,7 +59,15 @@ func (buffer *catalogPageBuffer) Write(data []byte) (int, error) {
 }
 
 func NewCatalogHandler(runtime *catalog.Runtime, children catalogChildReader) http.Handler {
-	return &CatalogHandler{runtime: runtime, children: children, details: catalog.NewDetailCache(), search: catalog.NewSearchCache()}
+	return NewCatalogHandlerWithPresentation(runtime, children, nil)
+}
+
+func NewCatalogHandlerWithPresentation(runtime *catalog.Runtime, children catalogChildReader, presentation map[string]CatalogPresentation) http.Handler {
+	copyPresentation := make(map[string]CatalogPresentation, len(presentation))
+	for mount, value := range presentation {
+		copyPresentation[mount] = value
+	}
+	return &CatalogHandler{runtime: runtime, children: children, details: catalog.NewDetailCache(), search: catalog.NewSearchCache(), presentation: copyPresentation}
 }
 
 func (handler *CatalogHandler) ServeHTTP(response http.ResponseWriter, request *http.Request) {
@@ -217,6 +233,7 @@ func (handler *CatalogHandler) serveDocument(response http.ResponseWriter, reque
 }
 
 func (handler *CatalogHandler) renderCatalogPage(response http.ResponseWriter, request *http.Request, data templates.CatalogPageData) {
+	data.Metadata = handler.catalogPageMetadata(request, data)
 	var body catalogPageBuffer
 	err := templates.CatalogPage(data).Render(request.Context(), &body)
 	if body.exceeded || errors.Is(err, errCatalogPageTooLarge) {

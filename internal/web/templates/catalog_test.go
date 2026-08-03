@@ -167,6 +167,52 @@ func TestCatalogDocumentRendersOnlyExpandedGroupAndSelectedVisibleAnchor(t *test
 	}
 }
 
+func TestCatalogOperationReusesRichPublicEndpointRenderer(t *testing.T) {
+	t.Parallel()
+
+	data := catalogTemplateFixture()
+	document := data.Directory.Documents[0]
+	data.Document = &document
+	detailID := document.Operations[0].DetailID
+	data.Selected = &catalog.DetailRecordV1{ID: detailID, Kind: "operation", Operation: &projection.OperationDetail{
+		ID: string(detailID), Anchor: string(detailID), HeadingID: string(detailID), Heading: "Create Pod", Method: "POST", Path: "/api/v1/namespaces/{namespace}/pods",
+	}}
+	data.OperationView = &domain.Operation{
+		ID: string(detailID), Anchor: string(detailID), Summary: "Create Pod", Description: "Creates a Pod.", Method: "POST", Path: "/api/v1/namespaces/{namespace}/pods",
+		Parameters: []domain.OperationParameter{
+			{Name: "namespace", In: "path", Required: true, Description: "Namespace name.", Schema: domain.SchemaSummary{Type: "string"}},
+			{Name: "dryRun", In: "query", Description: "Dry-run directive.", Schema: domain.SchemaSummary{Type: "string"}},
+			{Name: "accept", In: "header", Required: true, Description: "Accepted response media type.", Schema: domain.SchemaSummary{Type: "string"}},
+		},
+		RequestBody: &domain.OperationRequestBody{Required: true, MediaTypes: []domain.OperationMediaType{{
+			ContentType: "application/json", Example: "{\n  \"kind\": \"Pod\"\n}", ExampleProvided: true,
+			Schema: domain.SchemaSummary{Name: "Pod", Type: "object", JSON: `{\"type\":\"object\"}`, Properties: []domain.SchemaProperty{{Name: "kind", Required: true, Schema: domain.SchemaSummary{Type: "string"}}}},
+		}}},
+		Responses: []domain.OperationResponse{{Status: "201", Description: "Created", MediaTypes: []domain.OperationMediaType{{ContentType: "application/json", Schema: domain.SchemaSummary{Name: "Pod", Type: "object"}}}}},
+		Security:  []domain.OperationSecurity{{Name: "BearerToken"}},
+		Snippets:  []domain.RequestSnippet{{Label: "cURL", Language: "shell", Code: "curl --request POST /api/v1/namespaces/default/pods"}},
+	}
+
+	body := renderCatalogTemplate(t, data)
+	for _, want := range []string{
+		`class="manja-endpoint-shell-layout"`,
+		`aria-label="Request"`,
+		"Path Parameters",
+		"Query Parameters",
+		"Header Parameters",
+		`aria-label="Request body"`,
+		"application/json",
+		"Request body JSON",
+		`class="manja-endpoint-responses-section grid gap-5"`,
+		"Request Sample: Shell / cURL",
+		"curl --request POST",
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("rich catalog operation missing %q", want)
+		}
+	}
+}
+
 func renderCatalogTemplate(t *testing.T, data CatalogPageData) string {
 	t.Helper()
 	var output bytes.Buffer

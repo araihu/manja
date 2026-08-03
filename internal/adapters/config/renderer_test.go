@@ -21,6 +21,11 @@ catalogs:
     defaultDocument: core-v1
     profile: kubernetes-v3-v1
     compatibilityAllowlist: allowlists/kubernetes.json
+    seo:
+      description: Browse Kubernetes APIs.
+      canonicalBase: https://docs.example.test/kubernetes
+      socialImage: https://docs.example.test/social.png
+      socialImageAlt: Kubernetes API reference
     source:
       kind: files
       root: internal/renderer/testdata/kubernetes/specs
@@ -63,6 +68,9 @@ func TestLoadRendererBuildsRuntimeAndSourceConfiguration(t *testing.T) {
 	}
 	if runtime.Catalogs[0].ID != "kubernetes" || runtime.Catalogs[0].ProfileID != domain.CompatibilityProfileKubernetes {
 		t.Fatalf("Kubernetes runtime catalog = %#v", runtime.Catalogs[0])
+	}
+	if runtime.Catalogs[0].SEO.CanonicalBase != "https://docs.example.test/kubernetes" || runtime.Catalogs[0].SEO.SocialImageAlt != "Kubernetes API reference" {
+		t.Fatalf("Kubernetes SEO config = %#v", runtime.Catalogs[0].SEO)
 	}
 	if string(runtime.Catalogs[0].CompatibilityAllowlist) != `{"schemaVersion":1,"diagnostics":[]}` {
 		t.Fatalf("Kubernetes allowlist = %q", runtime.Catalogs[0].CompatibilityAllowlist)

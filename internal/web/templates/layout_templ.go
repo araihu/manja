@@ -14,6 +14,15 @@ import (
 	core "github.com/araihu/manja/domain"
 )
 
+type PageMetadata struct {
+	Title          string
+	Description    string
+	CanonicalURL   string
+	SocialImageURL string
+	SocialImageAlt string
+	Robots         string
+}
+
 func Layout(title string) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
@@ -64,16 +73,63 @@ func LayoutWithBranding(title string, branding core.DocsBranding, seasonalCampai
 			templ_7745c5c3_Var2 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
+		templ_7745c5c3_Var3 := templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
+			templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
+			templ_7745c5c3_Buffer, templ_7745c5c3_IsBuffer := templruntime.GetBuffer(templ_7745c5c3_W)
+			if !templ_7745c5c3_IsBuffer {
+				defer func() {
+					templ_7745c5c3_BufErr := templruntime.ReleaseBuffer(templ_7745c5c3_Buffer)
+					if templ_7745c5c3_Err == nil {
+						templ_7745c5c3_Err = templ_7745c5c3_BufErr
+					}
+				}()
+			}
+			ctx = templ.InitializeContext(ctx)
+			templ_7745c5c3_Err = templ_7745c5c3_Var2.Render(ctx, templ_7745c5c3_Buffer)
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			return nil
+		})
+		templ_7745c5c3_Err = LayoutWithBrandingMetadata(PageMetadata{Title: title}, branding, seasonalCampaign, manageFavicon).Render(templ.WithChildren(ctx, templ_7745c5c3_Var3), templ_7745c5c3_Buffer)
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		return nil
+	})
+}
+
+func LayoutWithBrandingMetadata(metadata PageMetadata, branding core.DocsBranding, seasonalCampaign bool, manageFavicon bool) templ.Component {
+	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
+		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
+		if templ_7745c5c3_CtxErr := ctx.Err(); templ_7745c5c3_CtxErr != nil {
+			return templ_7745c5c3_CtxErr
+		}
+		templ_7745c5c3_Buffer, templ_7745c5c3_IsBuffer := templruntime.GetBuffer(templ_7745c5c3_W)
+		if !templ_7745c5c3_IsBuffer {
+			defer func() {
+				templ_7745c5c3_BufErr := templruntime.ReleaseBuffer(templ_7745c5c3_Buffer)
+				if templ_7745c5c3_Err == nil {
+					templ_7745c5c3_Err = templ_7745c5c3_BufErr
+				}
+			}()
+		}
+		ctx = templ.InitializeContext(ctx)
+		templ_7745c5c3_Var4 := templ.GetChildren(ctx)
+		if templ_7745c5c3_Var4 == nil {
+			templ_7745c5c3_Var4 = templ.NopComponent
+		}
+		ctx = templ.ClearChildren(ctx)
 		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<!doctype html><html lang=\"en\" data-theme=\"araihu\" data-theme-source=\"default\" x-data=\"{\n\t\t\ttheme: localStorage.getItem('theme') || 'araihu',\n\t\t\tdarkMode: (function() {\n\t\t\t\tconst stored = localStorage.getItem('darkMode');\n\t\t\t\tif (stored !== null) return stored === 'true';\n\t\t\t\treturn window.matchMedia('(prefers-color-scheme: dark)').matches;\n\t\t\t})(),\n\t\t\tsetTheme(name) { this.theme = name; document.documentElement.setAttribute('data-theme', name); document.documentElement.dataset.themeSource = 'preference'; },\n\t\t\tapplyDarkMode(on) { document.documentElement.classList.toggle('dark', on); },\n\t\t\ttoggleDarkMode() { this.darkMode = !this.darkMode; }\n\t\t}\" x-init=\"\n\t\t\tdocument.documentElement.setAttribute('data-theme', theme);\n\t\t\tapplyDarkMode(darkMode);\n\t\t\t$watch('theme', value => {\n\t\t\t\tlocalStorage.setItem('theme', value);\n\t\t\t\tdocument.documentElement.setAttribute('data-theme', value);\n\t\t\t\tdocument.documentElement.dataset.themeSource = 'preference';\n\t\t\t});\n\t\t\t$watch('darkMode', value => {\n\t\t\t\tlocalStorage.setItem('darkMode', value ? 'true' : 'false');\n\t\t\t\tapplyDarkMode(value);\n\t\t\t});\n\t\t\"><head><meta charset=\"UTF-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\"><title>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		var templ_7745c5c3_Var3 string
-		templ_7745c5c3_Var3, templ_7745c5c3_Err = templ.JoinStringErrs(title)
+		var templ_7745c5c3_Var5 string
+		templ_7745c5c3_Var5, templ_7745c5c3_Err = templ.JoinStringErrs(metadata.Title)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/layout.templ`, Line: 47, Col: 17}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/layout.templ`, Line: 62, Col: 26}
 		}
-		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var3))
+		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var5))
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -81,46 +137,244 @@ func LayoutWithBranding(title string, branding core.DocsBranding, seasonalCampai
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		if branding.Favicon != "" {
-			if manageFavicon {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 3, "<link rel=\"icon\" href=\"")
+		if metadata.Description != "" {
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 3, "<meta name=\"description\" content=\"")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			var templ_7745c5c3_Var6 string
+			templ_7745c5c3_Var6, templ_7745c5c3_Err = templ.ResolveAttributeValue(metadata.Description)
+			if templ_7745c5c3_Err != nil {
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/layout.templ`, Line: 64, Col: 59}
+			}
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var6)
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 4, "\">")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+		}
+		if metadata.CanonicalURL != "" {
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 5, "<link rel=\"canonical\" href=\"")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			var templ_7745c5c3_Var7 templ.SafeURL
+			templ_7745c5c3_Var7, templ_7745c5c3_Err = templ.JoinURLErrs(metadata.CanonicalURL)
+			if templ_7745c5c3_Err != nil {
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/layout.templ`, Line: 67, Col: 54}
+			}
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var7))
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 6, "\"><meta property=\"og:url\" content=\"")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			var templ_7745c5c3_Var8 string
+			templ_7745c5c3_Var8, templ_7745c5c3_Err = templ.ResolveAttributeValue(metadata.CanonicalURL)
+			if templ_7745c5c3_Err != nil {
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/layout.templ`, Line: 68, Col: 59}
+			}
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var8)
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 7, "\">")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+		}
+		if metadata.Description != "" || metadata.CanonicalURL != "" || metadata.SocialImageURL != "" {
+			if metadata.Title != "" {
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 8, "<meta property=\"og:title\" content=\"")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				var templ_7745c5c3_Var4 templ.SafeURL
-				templ_7745c5c3_Var4, templ_7745c5c3_Err = templ.JoinURLErrs(templpkg.URL(branding.Favicon))
+				var templ_7745c5c3_Var9 string
+				templ_7745c5c3_Var9, templ_7745c5c3_Err = templ.ResolveAttributeValue(metadata.Title)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/layout.templ`, Line: 50, Col: 59}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/layout.templ`, Line: 72, Col: 55}
 				}
-				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var4))
-				if templ_7745c5c3_Err != nil {
-					return templ_7745c5c3_Err
-				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 4, "\" crossorigin=\"anonymous\" data-asset-brand=\"icon\">")
+				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var9)
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-			} else {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 5, "<link rel=\"icon\" href=\"")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 9, "\"><meta name=\"twitter:title\" content=\"")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				var templ_7745c5c3_Var5 templ.SafeURL
-				templ_7745c5c3_Var5, templ_7745c5c3_Err = templ.JoinURLErrs(templpkg.URL(branding.Favicon))
+				var templ_7745c5c3_Var10 string
+				templ_7745c5c3_Var10, templ_7745c5c3_Err = templ.ResolveAttributeValue(metadata.Title)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/layout.templ`, Line: 52, Col: 59}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/layout.templ`, Line: 73, Col: 56}
 				}
-				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var5))
+				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var10)
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 6, "\">")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 10, "\">")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 11, " ")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			if metadata.Description != "" {
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 12, "<meta property=\"og:description\" content=\"")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				var templ_7745c5c3_Var11 string
+				templ_7745c5c3_Var11, templ_7745c5c3_Err = templ.ResolveAttributeValue(metadata.Description)
+				if templ_7745c5c3_Err != nil {
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/layout.templ`, Line: 76, Col: 67}
+				}
+				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var11)
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 13, "\"><meta name=\"twitter:description\" content=\"")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				var templ_7745c5c3_Var12 string
+				templ_7745c5c3_Var12, templ_7745c5c3_Err = templ.ResolveAttributeValue(metadata.Description)
+				if templ_7745c5c3_Err != nil {
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/layout.templ`, Line: 77, Col: 68}
+				}
+				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var12)
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 14, "\">")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 			}
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 7, "<script>\n\t\t\t\t(function() {\n\t\t\t\t\ttry {\n\t\t\t\t\t\tvar savedTheme = localStorage.getItem('theme');\n\t\t\t\t\t\tdocument.documentElement.setAttribute('data-theme', savedTheme || 'araihu');\n\t\t\t\t\t\tdocument.documentElement.dataset.themeSource = savedTheme ? 'preference' : 'default';\n\t\t\t\t\tvar d = localStorage.getItem('darkMode');\n\t\t\t\t\tvar on = d !== null ? d === 'true' : window.matchMedia('(prefers-color-scheme: dark)').matches;\n\t\t\t\t\tdocument.documentElement.classList.toggle('dark', on);\n\t\t\t\t\tdocument.documentElement.classList.add('boot');\n\t\t\t\t\taddEventListener('DOMContentLoaded', function () {\n\t\t\t\t\t\tsetTimeout(function () {\n\t\t\t\t\t\t\tdocument.documentElement.classList.remove('boot');\n\t\t\t\t\t\t}, 600);\n\t\t\t\t\t});\n\t\t\t\t} catch (e) {}\n\t\t\t\t})();\n\t\t\t</script>")
+		if metadata.SocialImageURL != "" {
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 15, "<meta property=\"og:image\" content=\"")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			var templ_7745c5c3_Var13 string
+			templ_7745c5c3_Var13, templ_7745c5c3_Err = templ.ResolveAttributeValue(metadata.SocialImageURL)
+			if templ_7745c5c3_Err != nil {
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/layout.templ`, Line: 81, Col: 63}
+			}
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var13)
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 16, "\"><meta property=\"og:image:width\" content=\"1280\"><meta property=\"og:image:height\" content=\"640\"><meta property=\"og:image:alt\" content=\"")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			var templ_7745c5c3_Var14 string
+			templ_7745c5c3_Var14, templ_7745c5c3_Err = templ.ResolveAttributeValue(metadata.SocialImageAlt)
+			if templ_7745c5c3_Err != nil {
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/layout.templ`, Line: 84, Col: 67}
+			}
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var14)
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 17, "\"><meta name=\"twitter:card\" content=\"summary_large_image\"><meta name=\"twitter:image\" content=\"")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			var templ_7745c5c3_Var15 string
+			templ_7745c5c3_Var15, templ_7745c5c3_Err = templ.ResolveAttributeValue(metadata.SocialImageURL)
+			if templ_7745c5c3_Err != nil {
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/layout.templ`, Line: 86, Col: 64}
+			}
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var15)
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 18, "\"><meta name=\"twitter:image:alt\" content=\"")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			var templ_7745c5c3_Var16 string
+			templ_7745c5c3_Var16, templ_7745c5c3_Err = templ.ResolveAttributeValue(metadata.SocialImageAlt)
+			if templ_7745c5c3_Err != nil {
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/layout.templ`, Line: 87, Col: 68}
+			}
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var16)
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 19, "\">")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+		}
+		if metadata.Robots != "" {
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 20, "<meta name=\"robots\" content=\"")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			var templ_7745c5c3_Var17 string
+			templ_7745c5c3_Var17, templ_7745c5c3_Err = templ.ResolveAttributeValue(metadata.Robots)
+			if templ_7745c5c3_Err != nil {
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/layout.templ`, Line: 90, Col: 49}
+			}
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var17)
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 21, "\">")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+		}
+		if branding.Favicon != "" {
+			if manageFavicon {
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 22, "<link rel=\"icon\" href=\"")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				var templ_7745c5c3_Var18 templ.SafeURL
+				templ_7745c5c3_Var18, templ_7745c5c3_Err = templ.JoinURLErrs(templpkg.URL(branding.Favicon))
+				if templ_7745c5c3_Err != nil {
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/layout.templ`, Line: 94, Col: 59}
+				}
+				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var18))
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 23, "\" crossorigin=\"anonymous\" data-asset-brand=\"icon\">")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+			} else {
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 24, "<link rel=\"icon\" href=\"")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				var templ_7745c5c3_Var19 templ.SafeURL
+				templ_7745c5c3_Var19, templ_7745c5c3_Err = templ.JoinURLErrs(templpkg.URL(branding.Favicon))
+				if templ_7745c5c3_Err != nil {
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/layout.templ`, Line: 96, Col: 59}
+				}
+				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var19))
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 25, "\">")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+			}
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 26, "<script>\n\t\t\t\t(function() {\n\t\t\t\t\ttry {\n\t\t\t\t\t\tvar savedTheme = localStorage.getItem('theme');\n\t\t\t\t\t\tdocument.documentElement.setAttribute('data-theme', savedTheme || 'araihu');\n\t\t\t\t\t\tdocument.documentElement.dataset.themeSource = savedTheme ? 'preference' : 'default';\n\t\t\t\t\tvar d = localStorage.getItem('darkMode');\n\t\t\t\t\tvar on = d !== null ? d === 'true' : window.matchMedia('(prefers-color-scheme: dark)').matches;\n\t\t\t\t\tdocument.documentElement.classList.toggle('dark', on);\n\t\t\t\t\tdocument.documentElement.classList.add('boot');\n\t\t\t\t\taddEventListener('DOMContentLoaded', function () {\n\t\t\t\t\t\tsetTimeout(function () {\n\t\t\t\t\t\t\tdocument.documentElement.classList.remove('boot');\n\t\t\t\t\t\t}, 600);\n\t\t\t\t\t});\n\t\t\t\t} catch (e) {}\n\t\t\t\t})();\n\t\t\t</script>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -128,25 +382,25 @@ func LayoutWithBranding(title string, branding core.DocsBranding, seasonalCampai
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 8, "<link rel=\"stylesheet\" href=\"/manja-assets/araihu.css\"><script>\n\t\t\t\t(function () {\n\t\t\t\t\tvar pendingSidebarHref = \"\";\n\n\t\t\t\t\tfunction sidebarLinkFromEvent(event) {\n\t\t\t\t\t\tvar detail = event && event.detail;\n\t\t\t\t\t\tvar element = detail && (detail.elt || (detail.requestConfig && detail.requestConfig.elt));\n\t\t\t\t\t\tif (!element || !element.closest) return null;\n\t\t\t\t\t\treturn element.closest('[data-manja-sidebar-nav=\"true\"]');\n\t\t\t\t\t}\n\n\t\t\t\t\tfunction normalizeHref(href) {\n\t\t\t\t\t\ttry {\n\t\t\t\t\t\t\tvar url = new URL(href, window.location.origin);\n\t\t\t\t\t\t\treturn url.pathname + url.search + url.hash;\n\t\t\t\t\t\t} catch (e) {\n\t\t\t\t\t\t\treturn href || \"\";\n\t\t\t\t\t\t}\n\t\t\t\t\t}\n\n\t\t\t\t\tfunction activeMarker(link) {\n\t\t\t\t\t\tfor (var i = 0; i < link.children.length; i++) {\n\t\t\t\t\t\t\tvar child = link.children[i];\n\t\t\t\t\t\t\tif (child.classList && child.classList.contains('sr-only') && child.textContent.trim() === 'active') {\n\t\t\t\t\t\t\t\treturn child;\n\t\t\t\t\t\t\t}\n\t\t\t\t\t\t}\n\t\t\t\t\t\treturn null;\n\t\t\t\t\t}\n\n\t\t\t\t\tfunction setSidebarLinkActive(link, active) {\n\t\t\t\t\t\tif (active) {\n\t\t\t\t\t\t\tlink.setAttribute('aria-current', 'page');\n\t\t\t\t\t\t\tif (!activeMarker(link)) {\n\t\t\t\t\t\t\t\tvar marker = document.createElement('span');\n\t\t\t\t\t\t\t\tmarker.className = 'sr-only';\n\t\t\t\t\t\t\t\tmarker.textContent = 'active';\n\t\t\t\t\t\t\t\tlink.appendChild(marker);\n\t\t\t\t\t\t\t}\n\t\t\t\t\t\t} else {\n\t\t\t\t\t\t\tlink.removeAttribute('aria-current');\n\t\t\t\t\t\t\tvar marker = activeMarker(link);\n\t\t\t\t\t\t\tif (marker) marker.remove();\n\t\t\t\t\t\t}\n\t\t\t\t\t}\n\n\t\t\t\t\tfunction updateSidebarActiveLink(href) {\n\t\t\t\t\t\thref = normalizeHref(href);\n\t\t\t\t\t\tif (!href) return;\n\t\t\t\t\t\tvar links = document.querySelectorAll('[data-manja-sidebar-nav=\"true\"][href]');\n\t\t\t\t\t\tvar matched = false;\n\t\t\t\t\t\tfor (var i = 0; i < links.length; i++) {\n\t\t\t\t\t\t\tvar link = links[i];\n\t\t\t\t\t\t\tvar active = normalizeHref(link.getAttribute('href')) === href;\n\t\t\t\t\t\t\tsetSidebarLinkActive(link, active);\n\t\t\t\t\t\t\tmatched = matched || active;\n\t\t\t\t\t\t}\n\t\t\t\t\t\tif (!matched) {\n\t\t\t\t\t\t\tfor (var j = 0; j < links.length; j++) setSidebarLinkActive(links[j], false);\n\t\t\t\t\t\t}\n\t\t\t\t\t}\n\n\t\t\t\t\tdocument.addEventListener('htmx:beforeRequest', function (e) {\n\t\t\t\t\t\tvar link = sidebarLinkFromEvent(e);\n\t\t\t\t\t\tif (link) pendingSidebarHref = link.getAttribute('href') || \"\";\n\t\t\t\t\t});\n\n\t\t\t\t\tdocument.addEventListener('htmx:afterSwap', function (e) {\n\t\t\t\t\t\tvar target = e && e.detail && e.detail.target;\n\t\t\t\t\t\tif (!target || target.id !== 'main-content') return;\n\t\t\t\t\t\tvar content = target.querySelector('[data-public-docs-content=\"true\"]');\n\t\t\t\t\t\tif (content && content.dataset.selectedDoc) {\n\t\t\t\t\t\t\ttarget.dataset.selectedDoc = content.dataset.selectedDoc;\n\t\t\t\t\t\t}\n\t\t\t\t\t\tif (content && content.dataset.documentTitle) {\n\t\t\t\t\t\t\tdocument.title = content.dataset.documentTitle;\n\t\t\t\t\t\t}\n\t\t\t\t\t\tvar shouldFocus = pendingSidebarHref !== \"\";\n\t\t\t\t\t\tupdateSidebarActiveLink(pendingSidebarHref || (window.location.pathname + window.location.search + window.location.hash));\n\t\t\t\t\t\tpendingSidebarHref = \"\";\n\t\t\t\t\t\ttarget.scrollTo({ top: 0 });\n\t\t\t\t\t\tif (shouldFocus) {\n\t\t\t\t\t\t\tvar focusTarget = target.querySelector('[data-manja-settled-focus=\"true\"]');\n\t\t\t\t\t\t\tif (focusTarget) focusTarget.focus({ preventScroll: true });\n\t\t\t\t\t\t}\n\t\t\t\t\t});\n\t\t\t\t})();\n\t\t\t</script><link rel=\"stylesheet\" href=\"/manja-assets/manja.css\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 27, "<link rel=\"stylesheet\" href=\"/manja-assets/araihu.css\"><script>\n\t\t\t\t(function () {\n\t\t\t\t\tvar pendingSidebarHref = \"\";\n\n\t\t\t\t\tfunction sidebarLinkFromEvent(event) {\n\t\t\t\t\t\tvar detail = event && event.detail;\n\t\t\t\t\t\tvar element = detail && (detail.elt || (detail.requestConfig && detail.requestConfig.elt));\n\t\t\t\t\t\tif (!element || !element.closest) return null;\n\t\t\t\t\t\treturn element.closest('[data-manja-sidebar-nav=\"true\"]');\n\t\t\t\t\t}\n\n\t\t\t\t\tfunction normalizeHref(href) {\n\t\t\t\t\t\ttry {\n\t\t\t\t\t\t\tvar url = new URL(href, window.location.origin);\n\t\t\t\t\t\t\treturn url.pathname + url.search + url.hash;\n\t\t\t\t\t\t} catch (e) {\n\t\t\t\t\t\t\treturn href || \"\";\n\t\t\t\t\t\t}\n\t\t\t\t\t}\n\n\t\t\t\t\tfunction activeMarker(link) {\n\t\t\t\t\t\tfor (var i = 0; i < link.children.length; i++) {\n\t\t\t\t\t\t\tvar child = link.children[i];\n\t\t\t\t\t\t\tif (child.classList && child.classList.contains('sr-only') && child.textContent.trim() === 'active') {\n\t\t\t\t\t\t\t\treturn child;\n\t\t\t\t\t\t\t}\n\t\t\t\t\t\t}\n\t\t\t\t\t\treturn null;\n\t\t\t\t\t}\n\n\t\t\t\t\tfunction setSidebarLinkActive(link, active) {\n\t\t\t\t\t\tif (active) {\n\t\t\t\t\t\t\tlink.setAttribute('aria-current', 'page');\n\t\t\t\t\t\t\tif (!activeMarker(link)) {\n\t\t\t\t\t\t\t\tvar marker = document.createElement('span');\n\t\t\t\t\t\t\t\tmarker.className = 'sr-only';\n\t\t\t\t\t\t\t\tmarker.textContent = 'active';\n\t\t\t\t\t\t\t\tlink.appendChild(marker);\n\t\t\t\t\t\t\t}\n\t\t\t\t\t\t} else {\n\t\t\t\t\t\t\tlink.removeAttribute('aria-current');\n\t\t\t\t\t\t\tvar marker = activeMarker(link);\n\t\t\t\t\t\t\tif (marker) marker.remove();\n\t\t\t\t\t\t}\n\t\t\t\t\t}\n\n\t\t\t\t\tfunction updateSidebarActiveLink(href) {\n\t\t\t\t\t\thref = normalizeHref(href);\n\t\t\t\t\t\tif (!href) return;\n\t\t\t\t\t\tvar links = document.querySelectorAll('[data-manja-sidebar-nav=\"true\"][href]');\n\t\t\t\t\t\tvar matched = false;\n\t\t\t\t\t\tfor (var i = 0; i < links.length; i++) {\n\t\t\t\t\t\t\tvar link = links[i];\n\t\t\t\t\t\t\tvar active = normalizeHref(link.getAttribute('href')) === href;\n\t\t\t\t\t\t\tsetSidebarLinkActive(link, active);\n\t\t\t\t\t\t\tmatched = matched || active;\n\t\t\t\t\t\t}\n\t\t\t\t\t\tif (!matched) {\n\t\t\t\t\t\t\tfor (var j = 0; j < links.length; j++) setSidebarLinkActive(links[j], false);\n\t\t\t\t\t\t}\n\t\t\t\t\t}\n\n\t\t\t\t\tdocument.addEventListener('htmx:beforeRequest', function (e) {\n\t\t\t\t\t\tvar link = sidebarLinkFromEvent(e);\n\t\t\t\t\t\tif (link) pendingSidebarHref = link.getAttribute('href') || \"\";\n\t\t\t\t\t});\n\n\t\t\t\t\tdocument.addEventListener('htmx:afterSwap', function (e) {\n\t\t\t\t\t\tvar target = e && e.detail && e.detail.target;\n\t\t\t\t\t\tif (!target || target.id !== 'main-content') return;\n\t\t\t\t\t\tvar content = target.querySelector('[data-public-docs-content=\"true\"]');\n\t\t\t\t\t\tif (content && content.dataset.selectedDoc) {\n\t\t\t\t\t\t\ttarget.dataset.selectedDoc = content.dataset.selectedDoc;\n\t\t\t\t\t\t}\n\t\t\t\t\t\tif (content && content.dataset.documentTitle) {\n\t\t\t\t\t\t\tdocument.title = content.dataset.documentTitle;\n\t\t\t\t\t\t}\n\t\t\t\t\t\tvar shouldFocus = pendingSidebarHref !== \"\";\n\t\t\t\t\t\tupdateSidebarActiveLink(pendingSidebarHref || (window.location.pathname + window.location.search + window.location.hash));\n\t\t\t\t\t\tpendingSidebarHref = \"\";\n\t\t\t\t\t\ttarget.scrollTo({ top: 0 });\n\t\t\t\t\t\tif (shouldFocus) {\n\t\t\t\t\t\t\tvar focusTarget = target.querySelector('[data-manja-settled-focus=\"true\"]');\n\t\t\t\t\t\t\tif (focusTarget) focusTarget.focus({ preventScroll: true });\n\t\t\t\t\t\t}\n\t\t\t\t\t});\n\t\t\t\t})();\n\t\t\t</script><link rel=\"stylesheet\" href=\"/manja-assets/manja.css\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		if seasonalCampaign {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 9, "<script defer src=\"https://araihu.com/assets/campaign/v1.js\" data-channel=\"https://araihu.com/assets/releases/current\" integrity=\"sha384-oPH7l1vK9vKP1Dn+18sO3yEXlz4ts6KzPEQl0SW4Y/+im05gOaamNNaQAf6bGH/n\" crossorigin=\"anonymous\"></script> <script>\n\t\t\t\t\t(function () {\n\t\t\t\t\t\tfunction syncCampaignToggleLabels() {\n\t\t\t\t\t\t\tdocument.querySelectorAll('[data-campaign-toggle]').forEach(function (button) {\n\t\t\t\t\t\t\t\tvar label = button.getAttribute('aria-pressed') === 'true'\n\t\t\t\t\t\t\t\t\t? button.dataset.useBaselineLabel\n\t\t\t\t\t\t\t\t\t: button.dataset.useCampaignLabel;\n\t\t\t\t\t\t\t\tif (!label) return;\n\t\t\t\t\t\t\t\tbutton.setAttribute('aria-label', label);\n\t\t\t\t\t\t\t\tvar text = button.querySelector('[data-campaign-toggle-label]');\n\t\t\t\t\t\t\t\tif (text) text.textContent = label;\n\t\t\t\t\t\t\t});\n\t\t\t\t\t\t}\n\t\t\t\t\t\tdocument.addEventListener('DOMContentLoaded', syncCampaignToggleLabels);\n\t\t\t\t\t\tdocument.addEventListener('araihu:campaign:applied', syncCampaignToggleLabels);\n\t\t\t\t\t\tdocument.addEventListener('araihu:campaign:restored', syncCampaignToggleLabels);\n\t\t\t\t\t})();\n\t\t\t\t</script>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 28, "<script defer src=\"https://araihu.com/assets/campaign/v1.js\" data-channel=\"https://araihu.com/assets/releases/current\" integrity=\"sha384-oPH7l1vK9vKP1Dn+18sO3yEXlz4ts6KzPEQl0SW4Y/+im05gOaamNNaQAf6bGH/n\" crossorigin=\"anonymous\"></script> <script>\n\t\t\t\t\t(function () {\n\t\t\t\t\t\tfunction syncCampaignToggleLabels() {\n\t\t\t\t\t\t\tdocument.querySelectorAll('[data-campaign-toggle]').forEach(function (button) {\n\t\t\t\t\t\t\t\tvar label = button.getAttribute('aria-pressed') === 'true'\n\t\t\t\t\t\t\t\t\t? button.dataset.useBaselineLabel\n\t\t\t\t\t\t\t\t\t: button.dataset.useCampaignLabel;\n\t\t\t\t\t\t\t\tif (!label) return;\n\t\t\t\t\t\t\t\tbutton.setAttribute('aria-label', label);\n\t\t\t\t\t\t\t\tvar text = button.querySelector('[data-campaign-toggle-label]');\n\t\t\t\t\t\t\t\tif (text) text.textContent = label;\n\t\t\t\t\t\t\t});\n\t\t\t\t\t\t}\n\t\t\t\t\t\tdocument.addEventListener('DOMContentLoaded', syncCampaignToggleLabels);\n\t\t\t\t\t\tdocument.addEventListener('araihu:campaign:applied', syncCampaignToggleLabels);\n\t\t\t\t\t\tdocument.addEventListener('araihu:campaign:restored', syncCampaignToggleLabels);\n\t\t\t\t\t})();\n\t\t\t\t</script>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 10, "<script defer src=\"/manja-assets/schema-example.js\"></script><script defer src=\"/manja-assets/request-composer.js\"></script><style>[x-cloak] { display: none !important; }</style></head><body class=\"min-h-screen bg-surface text-on-surface dark:bg-surface-dark dark:text-on-surface-dark\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 29, "<script defer src=\"/manja-assets/schema-example.js\"></script><script defer src=\"/manja-assets/request-composer.js\"></script><style>[x-cloak] { display: none !important; }</style></head><body class=\"min-h-screen bg-surface text-on-surface dark:bg-surface-dark dark:text-on-surface-dark\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templ_7745c5c3_Var2.Render(ctx, templ_7745c5c3_Buffer)
+		templ_7745c5c3_Err = templ_7745c5c3_Var4.Render(ctx, templ_7745c5c3_Buffer)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 11, "</body></html>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 30, "</body></html>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}

@@ -9,10 +9,10 @@ import (
 	"github.com/araihu/goshtoso/components/badge"
 	"github.com/araihu/goshtoso/components/combobox"
 	"github.com/araihu/goshtoso/components/kbd"
+	"github.com/araihu/goshtoso/components/pageheader"
 	searchcomponent "github.com/araihu/goshtoso/components/search"
 	"github.com/araihu/goshtoso/components/sidebar"
 	"github.com/araihu/manja/application/catalog"
-	"github.com/araihu/manja/application/projection"
 	core "github.com/araihu/manja/domain"
 )
 
@@ -41,6 +41,7 @@ type CatalogSidebarGroupData struct {
 }
 
 type CatalogPageData struct {
+	Metadata PageMetadata
 	Mount string
 	SnapshotID catalog.SnapshotID
 	Directory catalog.CatalogArtifactV1
@@ -48,6 +49,8 @@ type CatalogPageData struct {
 	Documents []CatalogDocumentOption
 	Groups []CatalogSidebarGroupData
 	Selected *catalog.DetailRecordV1
+	OperationView *core.Operation
+	OperationServers []core.SpecServer
 	Search *CatalogSearchData
 	SchemaNode *CatalogSchemaNodeData
 	DownloadHref string
@@ -104,7 +107,11 @@ type CatalogSchemaEdgeData struct {
 }
 
 templ CatalogPage(data CatalogPageData) {
-	@LayoutWithBranding(catalogPageTitle(data), catalogBranding(data.Directory.Branding), false, false) {
+	{{ metadata := data.Metadata }}
+	if metadata.Title == "" {
+		{{ metadata.Title = catalogPageTitle(data) }}
+	}
+	@LayoutWithBrandingMetadata(metadata, catalogBranding(data.Directory.Branding), false, false) {
 		<script src="/manja-assets/catalog-search.js"></script>
 		<div
 			hx-history="false"
@@ -398,14 +405,33 @@ templ catalogDocument(data CatalogPageData) {
 				<p class="mt-2 text-on-surface-muted dark:text-on-surface-dark-muted">Expand one sidebar group to load only its bounded operation or schema links.</p>
 			</section>
 		} else if data.Selected.Operation != nil {
-			@catalogOperationDetail(*data.Selected.Operation)
+			@catalogOperationDetail(data)
 		} else if data.Selected.Schema != nil {
 			@catalogSchemaDetail(data)
 		}
 	</main>
 }
 
-templ catalogOperationDetail(operation projection.OperationDetail) {
+templ catalogOperationDetail(data CatalogPageData) {
+	if data.OperationView != nil {
+		{{ operation := *data.OperationView }}
+		<article data-catalog-detail="operation">
+			@pageheader.PageHeader(pageheader.Config{
+				Title: operationTitle(operation),
+				Description: strings.TrimSpace(strings.ToUpper(operation.Method) + " " + operation.Path),
+				RootClass: "mb-8",
+				TitleClass: "manja-doc-title",
+				TitleAttrs: templpkg.Attributes{
+					"id": operation.Anchor + "-heading",
+					"tabindex": "-1",
+					"data-public-doc-identity": operation.Anchor,
+					"data-manja-settled-focus": "true",
+				},
+			})
+			@endpointSection(operation, data.OperationServers, "", PublicDocsOptions{})
+		</article>
+	} else {
+		{{ operation := *data.Selected.Operation }}
 	<article id={ operation.Anchor } data-catalog-detail="operation" class="space-y-6">
 		<div class="flex flex-wrap items-center gap-3">
 			@badge.Badge(badge.Config{Label: operation.Method, Tone: catalogMethodTone(operation.Method), Appearance: badge.AppearanceSoft, Size: badge.SizeMD})
@@ -439,6 +465,7 @@ templ catalogOperationDetail(operation projection.OperationDetail) {
 			</section>
 		}
 	</article>
+	}
 }
 
 templ catalogSchemaDetail(data CatalogPageData) {
@@ -526,6 +553,9 @@ func catalogBrandName(data CatalogPageData) string {
 }
 
 func catalogPageTitle(data CatalogPageData) string {
+	if data.Selected != nil && data.Selected.Operation != nil { return data.Selected.Operation.Heading + " · " + data.Directory.Title }
+	if data.Selected != nil && data.Selected.Schema != nil { return data.Selected.Schema.Heading + " · " + data.Directory.Title }
+	if data.Search != nil { return "Search · " + data.Directory.Title }
 	if data.Document != nil { return data.Document.Title + " · " + data.Directory.Title }
 	return data.Directory.Title
 }

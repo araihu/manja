@@ -156,7 +156,14 @@ func (server *server) ensureRuntime(ctx context.Context) error {
 	}
 	server.runtime = runtime
 	server.coordinator = coordinator
-	server.handler.install(runtime, web.NewCatalogHandler(runtime, coordinator.Store()))
+	presentation := make(map[string]web.CatalogPresentation, len(server.config.Catalogs))
+	for _, configured := range server.config.Catalogs {
+		presentation[configured.Mount] = web.CatalogPresentation{
+			Description: configured.SEO.Description, CanonicalBase: configured.SEO.CanonicalBase,
+			SocialImage: configured.SEO.SocialImage, SocialImageAlt: configured.SEO.SocialImageAlt,
+		}
+	}
+	server.handler.install(runtime, web.NewCatalogHandlerWithPresentation(runtime, coordinator.Store(), presentation))
 	return nil
 }
 

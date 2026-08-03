@@ -56,6 +56,7 @@ func (handler *CatalogHandler) catalogPageData(
 		return templates.CatalogPageData{}, errCatalogPageNotFound
 	}
 	data.Document = &document
+	data.OperationServers = catalogOperationServers(document.Overview.Servers)
 	extension := path.Ext(document.SourceChild)
 	data.DownloadHref, _ = catalogURL(mount, "openapi", document.Key+extension)
 	documentHref, _ := catalogURL(mount, "documents", document.Key)
@@ -146,6 +147,11 @@ func (handler *CatalogHandler) catalogPageData(
 		}
 		data.Selected = &detail
 		if detail.Operation != nil {
+			operation, err := handler.catalogOperationView(ctx, snapshot, document, *detail.Operation)
+			if err != nil {
+				return templates.CatalogPageData{}, err
+			}
+			data.OperationView = operation
 			data.CurrentVisit = &templates.CatalogSearchItemData{
 				ID: string(detail.ID), Title: detail.Operation.Heading, Description: detail.Operation.Description,
 				Href: catalogDetailHref(documentHref, detail.ID), Kind: "Operation", Method: detail.Operation.Method,
@@ -175,6 +181,20 @@ func (handler *CatalogHandler) catalogPageData(
 		}
 	}
 	return data, nil
+}
+
+func catalogOperationServers(servers []projection.Server) []domain.SpecServer {
+	result := make([]domain.SpecServer, 0, len(servers))
+	for _, server := range servers {
+		converted := domain.SpecServer{URL: server.URL, Description: server.Description, Variables: make([]domain.SpecServerVariable, 0, len(server.Variables))}
+		for _, variable := range server.Variables {
+			converted.Variables = append(converted.Variables, domain.SpecServerVariable{
+				Name: variable.Name, Default: variable.Default, Description: variable.Description, Enum: textRecordValues(variable.Enum),
+			})
+		}
+		result = append(result, converted)
+	}
+	return result
 }
 
 func catalogDocumentLabel(document catalog.DocumentDirectoryV1) string {

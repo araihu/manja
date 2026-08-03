@@ -6,6 +6,11 @@ catalogs:
     defaultDocument: core-v1
     profile: kubernetes-v3-v1
     compatibilityAllowlist: default-allowlist.json
+    seo:
+      description: Explore Kubernetes API operations, request bodies, response schemas, and examples in a fast OpenAPI renderer.
+      canonicalBase: https://manja.araihu.com/kubernetes
+      socialImage: https://manja.araihu.com/manja-assets/kubernetes-social.png
+      socialImageAlt: Kubernetes OpenAPI reference rendered by Manja
     source:
       kind: files
       root: .

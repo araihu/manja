@@ -2,6 +2,7 @@ package renderer
 
 import (
 	"fmt"
+	"net/url"
 	"path"
 	"strings"
 
@@ -23,6 +24,14 @@ type CatalogConfig struct {
 	DefaultDocumentKey     string
 	ProfileID              domain.CompatibilityProfileID
 	CompatibilityAllowlist []byte
+	SEO                    CatalogSEO
+}
+
+type CatalogSEO struct {
+	Description    string
+	CanonicalBase  string
+	SocialImage    string
+	SocialImageAlt string
 }
 
 func validateConfig(config Config) error {
@@ -58,6 +67,9 @@ func validateConfig(config Config) error {
 		if err := validateMount(catalog.Mount); err != nil {
 			return fmt.Errorf("catalog %q mount: %w", catalog.ID, err)
 		}
+		if err := validateCatalogSEO(catalog.ID, catalog.SEO); err != nil {
+			return err
+		}
 	}
 	for left := range config.Catalogs {
 		for right := left + 1; right < len(config.Catalogs); right++ {
@@ -65,6 +77,29 @@ func validateConfig(config Config) error {
 				return fmt.Errorf("catalog mounts %q and %q overlap", config.Catalogs[left].Mount, config.Catalogs[right].Mount)
 			}
 		}
+	}
+	return nil
+}
+
+func validateCatalogSEO(catalogID string, seo CatalogSEO) error {
+	for label, value := range map[string]string{"description": seo.Description, "social image alt": seo.SocialImageAlt} {
+		if value != "" {
+			if err := domain.ValidateCanonicalIdentity(fmt.Sprintf("catalog %q SEO %s", catalogID, label), value, false); err != nil {
+				return err
+			}
+		}
+	}
+	for label, value := range map[string]string{"canonical base": seo.CanonicalBase, "social image": seo.SocialImage} {
+		if value == "" {
+			continue
+		}
+		parsed, err := url.Parse(value)
+		if err != nil || parsed.Scheme != "https" || parsed.Host == "" || parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" {
+			return fmt.Errorf("catalog %q SEO %s must be an absolute HTTPS URL without credentials, query, or fragment", catalogID, label)
+		}
+	}
+	if seo.SocialImage != "" && seo.SocialImageAlt == "" {
+		return fmt.Errorf("catalog %q SEO social image alt is required with social image", catalogID)
 	}
 	return nil
 }

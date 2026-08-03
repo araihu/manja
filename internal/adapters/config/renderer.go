@@ -36,8 +36,16 @@ type RendererCatalogConfig struct {
 	ProfileID              string               `yaml:"profile"`
 	CompatibilityAllowlist string               `yaml:"compatibilityAllowlist"`
 	Source                 RendererSourceConfig `yaml:"source"`
+	SEO                    RendererSEOConfig    `yaml:"seo"`
 
 	compatibilityAllowlist []byte
+}
+
+type RendererSEOConfig struct {
+	Description    string `yaml:"description"`
+	CanonicalBase  string `yaml:"canonicalBase"`
+	SocialImage    string `yaml:"socialImage"`
+	SocialImageAlt string `yaml:"socialImageAlt"`
 }
 
 type RendererSourceConfig struct {
@@ -104,6 +112,10 @@ func (file RendererFile) RuntimeConfig() renderer.Config {
 			DefaultDocumentKey:     catalog.DefaultDocumentKey,
 			ProfileID:              domain.CompatibilityProfileID(catalog.ProfileID),
 			CompatibilityAllowlist: append([]byte(nil), catalog.compatibilityAllowlist...),
+			SEO: renderer.CatalogSEO{
+				Description: catalog.SEO.Description, CanonicalBase: catalog.SEO.CanonicalBase,
+				SocialImage: catalog.SEO.SocialImage, SocialImageAlt: catalog.SEO.SocialImageAlt,
+			},
 		}
 	}
 	return result

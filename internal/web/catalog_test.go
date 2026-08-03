@@ -1,10 +1,12 @@
 package web
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"image/png"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -192,6 +194,62 @@ func TestCatalogSchemaLoadsOneProgressiveNodeWithNoJSFallback(t *testing.T) {
 	}
 }
 
+func TestCatalogOperationRouteReusesRichEndpointProjection(t *testing.T) {
+	t.Parallel()
+
+	handler, _ := catalogHandlerFixture(t, "/kubernetes")
+	detailID := "detail-sha256-" + strings.Repeat("a", 64)
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/kubernetes/documents/core-v1/?selected="+detailID, nil))
+	if response.Code != http.StatusOK {
+		t.Fatalf("operation detail = %d body=%q", response.Code, response.Body.String())
+	}
+	for _, want := range []string{
+		`class="manja-endpoint-shell-layout"`,
+		"Query Parameters",
+		`aria-label="Request body"`,
+		`aria-label="Request body schema for application/json schema tree"`,
+		"metadata",
+		"Request body JSON",
+		"Request Sample: Shell / cURL",
+		`class="manja-endpoint-responses-section grid gap-5"`,
+	} {
+		if !strings.Contains(response.Body.String(), want) {
+			t.Errorf("rich operation response missing %q", want)
+		}
+	}
+}
+
+func TestCatalogOperationInitialHTMLIncludesRouteSocialMetadata(t *testing.T) {
+	t.Parallel()
+
+	presentation := map[string]CatalogPresentation{"/kubernetes": {
+		Description: "Browse Kubernetes APIs.", CanonicalBase: "https://docs.example.test/kubernetes",
+		SocialImage: "https://docs.example.test/manja-assets/kubernetes-social.png", SocialImageAlt: "Kubernetes API reference rendered by Manja",
+	}}
+	handler, _ := catalogHandlerFixtureWithPresentation(t, "/kubernetes", presentation)
+	detailID := "detail-sha256-" + strings.Repeat("a", 64)
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/kubernetes/documents/core-v1/?selected="+detailID+"&group=ignored#ignored", nil))
+	if response.Code != http.StatusOK {
+		t.Fatalf("operation detail = %d body=%q", response.Code, response.Body.String())
+	}
+	body := response.Body.String()
+	for _, want := range []string{
+		`<title>List Pods · Kubernetes</title>`,
+		`<meta name="description" content="Lists Pods.">`,
+		`<link rel="canonical" href="https://docs.example.test/kubernetes/documents/core-v1/?selected=` + detailID + `">`,
+		`<meta property="og:url" content="https://docs.example.test/kubernetes/documents/core-v1/?selected=` + detailID + `">`,
+		`<meta property="og:image" content="https://docs.example.test/manja-assets/kubernetes-social.png">`,
+		`<meta name="twitter:card" content="summary_large_image">`,
+		`<meta name="twitter:image:alt" content="Kubernetes API reference rendered by Manja">`,
+	} {
+		if count := strings.Count(body, want); count != 1 {
+			t.Errorf("metadata %q count = %d, want 1", want, count)
+		}
+	}
+}
+
 func TestCatalogRenderRejectsResponsesOverHardByteLimit(t *testing.T) {
 	t.Parallel()
 
@@ -268,6 +326,26 @@ func TestCatalogAssetsServeClientSearchRouter(t *testing.T) {
 	}
 }
 
+func TestCatalogAssetsServeValidatedSocialPreview(t *testing.T) {
+	t.Parallel()
+
+	response := httptest.NewRecorder()
+	NewCatalogAssetsHandler().ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/manja-assets/kubernetes-social.png", nil))
+	if response.Code != http.StatusOK {
+		t.Fatalf("social preview = %d", response.Code)
+	}
+	if got := response.Header().Get("Content-Type"); got != "image/png" {
+		t.Fatalf("content type = %q", got)
+	}
+	if size := response.Body.Len(); size == 0 || size > 1<<20 {
+		t.Fatalf("social preview size = %d", size)
+	}
+	config, err := png.DecodeConfig(bytes.NewReader(response.Body.Bytes()))
+	if err != nil || config.Width != 1280 || config.Height != 640 {
+		t.Fatalf("social preview dimensions = %dx%d err=%v, want 1280x640", config.Width, config.Height, err)
+	}
+}
+
 func TestCatalogMountAwareURLRejectsEscapes(t *testing.T) {
 	t.Parallel()
 
@@ -306,6 +384,10 @@ func (children memoryCatalogChildren) ReadChild(_ context.Context, snapshot cata
 }
 
 func catalogHandlerFixture(t *testing.T, mount string) (http.Handler, catalog.RuntimeSnapshot) {
+	return catalogHandlerFixtureWithPresentation(t, mount, nil)
+}
+
+func catalogHandlerFixtureWithPresentation(t *testing.T, mount string, presentation map[string]CatalogPresentation) (http.Handler, catalog.RuntimeSnapshot) {
 	t.Helper()
 	detailID := domain.DetailID("detail-sha256-" + strings.Repeat("a", 64))
 	schemaID := domain.DetailID("detail-sha256-" + strings.Repeat("c", 64))
@@ -343,7 +425,15 @@ func catalogHandlerFixture(t *testing.T, mount string) (http.Handler, catalog.Ru
 	}
 	sourceBytes := []byte(`{"openapi":"3.0.3","info":{"title":"Kubernetes Core v1","version":"v1"},"paths":{}}`)
 	detailBytes, err := catalogjson.EncodeDetailShard(catalog.DetailShardV1{SchemaVersion: 1, DocumentKey: "core-v1", Records: []catalog.DetailRecordV1{{
-		ID: detailID, Kind: "operation", Operation: &projection.OperationDetail{ID: string(detailID), Anchor: string(detailID), Href: "?selected=" + string(detailID), HeadingID: string(detailID), Heading: "List Pods", HeadingLevel: 2, Method: "GET", Path: "/api/v1/pods", Summary: "List Pods"},
+		ID: detailID, Kind: "operation", Operation: &projection.OperationDetail{
+			ID: string(detailID), Anchor: string(detailID), Href: "?selected=" + string(detailID), HeadingID: string(detailID), Heading: "List Pods", HeadingLevel: 2, Method: "GET", Path: "/api/v1/pods", Summary: "List Pods", Description: "Lists Pods.",
+			Parameters:     []projection.Parameter{{ID: "query-watch", Name: "watch", In: "query", Description: "Watch for changes.", SchemaRef: 2}},
+			HasRequestBody: true,
+			RequestBody:    projection.RequestBody{Required: true, MediaTypes: []projection.MediaType{{ID: "application/json", ContentType: "application/json", SchemaRef: 0, Examples: []projection.Example{{ID: "primary", Text: `{\"kind\":\"Pod\"}`, Provided: true}}}}},
+			Responses:      []projection.Response{{ID: "200", Status: "200", Description: "OK", MediaTypes: []projection.MediaType{{ID: "application/json", ContentType: "application/json", SchemaRef: 0}}}},
+			Security:       []projection.SecurityRequirement{{ID: "BearerToken", Name: "BearerToken"}},
+			CodeSamples:    []projection.CodeSample{{ID: "curl", Label: "cURL", Language: "shell", Code: "curl --request GET /api/v1/pods"}},
+		},
 	}}})
 	if err != nil {
 		t.Fatal(err)
@@ -387,5 +477,5 @@ func catalogHandlerFixture(t *testing.T, mount string) (http.Handler, catalog.Ru
 	if _, err := runtime.ActivateMount(mount, "", 1, snapshot); err != nil {
 		t.Fatal(err)
 	}
-	return NewCatalogHandler(runtime, children), snapshot
+	return NewCatalogHandlerWithPresentation(runtime, children, presentation), snapshot
 }

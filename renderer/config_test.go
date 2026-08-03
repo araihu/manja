@@ -60,6 +60,9 @@ func TestNewRejectsInvalidCatalogConfiguration(t *testing.T) {
 		{name: "overlap", config: Config{Version: 1, Catalogs: []CatalogConfig{validCatalogConfig("payments", "/docs"), validCatalogConfig("other", "/docs/other")}}},
 		{name: "root overlap", config: Config{Version: 1, Catalogs: []CatalogConfig{validCatalogConfig("payments", "/"), validCatalogConfig("other", "/other")}}},
 		{name: "noncanonical default document", config: Config{Version: 1, Catalogs: []CatalogConfig{{ID: "payments", Mount: "/", Title: "Payments", ProfileID: domain.CompatibilityProfileStrict, DefaultDocumentKey: "Core/V1"}}}},
+		{name: "insecure canonical", config: Config{Version: 1, Catalogs: []CatalogConfig{{ID: "payments", Mount: "/", Title: "Payments", ProfileID: domain.CompatibilityProfileStrict, SEO: CatalogSEO{CanonicalBase: "http://docs.example.test"}}}}},
+		{name: "social image without alt", config: Config{Version: 1, Catalogs: []CatalogConfig{{ID: "payments", Mount: "/", Title: "Payments", ProfileID: domain.CompatibilityProfileStrict, SEO: CatalogSEO{SocialImage: "https://docs.example.test/social.png"}}}}},
+		{name: "social image query", config: Config{Version: 1, Catalogs: []CatalogConfig{{ID: "payments", Mount: "/", Title: "Payments", ProfileID: domain.CompatibilityProfileStrict, SEO: CatalogSEO{SocialImage: "https://docs.example.test/social.png?v=1", SocialImageAlt: "Preview"}}}}},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
