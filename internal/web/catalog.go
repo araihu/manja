@@ -1,17 +1,19 @@
 package web
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
-	"html"
 	"net/http"
 	"net/url"
 	"sort"
 	"strings"
 
 	"github.com/araihu/manja/application/catalog"
+	"github.com/araihu/manja/internal/web/templates"
 )
 
 type catalogChildReader interface {
@@ -21,10 +23,11 @@ type catalogChildReader interface {
 type CatalogHandler struct {
 	runtime  *catalog.Runtime
 	children catalogChildReader
+	details  *catalog.ByteCache
 }
 
 func NewCatalogHandler(runtime *catalog.Runtime, children catalogChildReader) http.Handler {
-	return &CatalogHandler{runtime: runtime, children: children}
+	return &CatalogHandler{runtime: runtime, children: children, details: catalog.NewDetailCache()}
 }
 
 func (handler *CatalogHandler) ServeHTTP(response http.ResponseWriter, request *http.Request) {
@@ -92,6 +95,15 @@ func (handler *CatalogHandler) matchMount(requestPath string) (string, bool) {
 func (handler *CatalogHandler) serveAdmitted(response http.ResponseWriter, request *http.Request, snapshot catalog.RuntimeSnapshot, mount, relative string) {
 	switch {
 	case relative == "":
+		if document := request.URL.Query().Get("document"); document != "" {
+			target, err := catalogURL(mount, document)
+			if err != nil || !catalogDocumentExists(snapshot.Directory, document) {
+				http.NotFound(response, request)
+				return
+			}
+			http.Redirect(response, request, target+"/", http.StatusSeeOther)
+			return
+		}
 		handler.serveOverview(response, request, snapshot, mount)
 	case relative == "catalog.json":
 		handler.redirectStable(response, request, snapshot, mount, "catalog.json")
@@ -114,80 +126,34 @@ func (handler *CatalogHandler) serveAdmitted(response http.ResponseWriter, reque
 }
 
 func (handler *CatalogHandler) serveOverview(response http.ResponseWriter, request *http.Request, snapshot catalog.RuntimeSnapshot, mount string) {
-	var body strings.Builder
-	body.WriteString("<!doctype html><html><head><meta charset=\"utf-8\"><title>")
-	body.WriteString(html.EscapeString(snapshot.Directory.Title))
-	body.WriteString("</title></head><body><main><h1>")
-	body.WriteString(html.EscapeString(snapshot.Directory.Title))
-	body.WriteString("</h1><p>")
-	body.WriteString(fmt.Sprintf("%d OpenAPI documents", len(snapshot.Directory.Documents)))
-	body.WriteString("</p><ul>")
-	for _, document := range snapshot.Directory.Documents {
-		href, _ := catalogURL(mount, document.Key)
-		body.WriteString("<li><a href=\"")
-		body.WriteString(html.EscapeString(href + "/"))
-		body.WriteString("\">")
-		body.WriteString(html.EscapeString(document.Title))
-		body.WriteString("</a></li>")
+	data, err := handler.catalogPageData(request.Context(), snapshot, mount, "", "", "")
+	if err != nil {
+		http.Error(response, "catalog temporarily unavailable", http.StatusServiceUnavailable)
+		return
 	}
-	body.WriteString("</ul></main></body></html>")
-	writeCatalogRepresentation(response, request, []byte(body.String()), "text/html; charset=utf-8")
+	handler.renderCatalogPage(response, request, data)
 }
 
 func (handler *CatalogHandler) serveDocument(response http.ResponseWriter, request *http.Request, snapshot catalog.RuntimeSnapshot, mount, key string) {
-	var selected catalog.OperationDirectoryV1
-	foundDocument := false
-	foundSelected := request.URL.Query().Get("selected") == ""
-	var document catalog.DocumentDirectoryV1
-	for _, candidate := range snapshot.Directory.Documents {
-		if candidate.Key == key {
-			document = candidate
-			foundDocument = true
-			break
+	data, err := handler.catalogPageData(request.Context(), snapshot, mount, key, request.URL.Query().Get("selected"), request.URL.Query().Get("group"))
+	if err != nil {
+		if errors.Is(err, errCatalogPageNotFound) {
+			http.NotFound(response, request)
+			return
 		}
-	}
-	if !foundDocument {
-		http.NotFound(response, request)
+		http.Error(response, "catalog temporarily unavailable", http.StatusServiceUnavailable)
 		return
 	}
-	for _, operation := range document.Operations {
-		if string(operation.DetailID) == request.URL.Query().Get("selected") {
-			selected = operation
-			foundSelected = true
-			break
-		}
-	}
-	if !foundSelected {
-		for _, schema := range document.Schemas {
-			if string(schema.DetailID) == request.URL.Query().Get("selected") {
-				foundSelected = true
-				break
-			}
-		}
-	}
-	if !foundSelected {
-		http.NotFound(response, request)
+	handler.renderCatalogPage(response, request, data)
+}
+
+func (handler *CatalogHandler) renderCatalogPage(response http.ResponseWriter, request *http.Request, data templates.CatalogPageData) {
+	var body bytes.Buffer
+	if err := templates.CatalogPage(data).Render(request.Context(), &body); err != nil {
+		http.Error(response, "render catalog", http.StatusInternalServerError)
 		return
 	}
-	var body strings.Builder
-	body.WriteString("<!doctype html><html><head><meta charset=\"utf-8\"><title>")
-	body.WriteString(html.EscapeString(document.Title))
-	body.WriteString("</title></head><body><main><h1>")
-	body.WriteString(html.EscapeString(document.Title))
-	body.WriteString("</h1><p>")
-	body.WriteString(fmt.Sprintf("%d operations · %d schemas", len(document.Operations), len(document.Schemas)))
-	body.WriteString("</p>")
-	if selected.DetailID != "" {
-		body.WriteString("<section id=\"")
-		body.WriteString(html.EscapeString(string(selected.DetailID)))
-		body.WriteString("\"><h2>")
-		body.WriteString(html.EscapeString(selected.Title))
-		body.WriteString("</h2><code>")
-		body.WriteString(html.EscapeString(selected.Method + " " + selected.Path))
-		body.WriteString("</code></section>")
-	}
-	body.WriteString("</main></body></html>")
-	writeCatalogRepresentation(response, request, []byte(body.String()), "text/html; charset=utf-8")
+	writeCatalogRepresentation(response, request, body.Bytes(), "text/html; charset=utf-8")
 }
 
 func writeCatalogRepresentation(response http.ResponseWriter, request *http.Request, body []byte, contentType string) {
@@ -197,7 +163,7 @@ func writeCatalogRepresentation(response http.ResponseWriter, request *http.Requ
 	response.Header().Set("Content-Type", contentType)
 	response.Header().Set("ETag", etag)
 	response.Header().Set("Vary", "HX-Request, HX-Boosted, Accept-Encoding")
-	response.Header().Set("Content-Security-Policy", "default-src 'self'; object-src 'none'; base-uri 'none'")
+	response.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; object-src 'none'; base-uri 'none'")
 	if request.Header.Get("If-None-Match") == etag {
 		response.WriteHeader(http.StatusNotModified)
 		return

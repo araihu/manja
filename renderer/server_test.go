@@ -75,6 +75,11 @@ func TestActivateCompilesAndPublishesConfiguredCandidate(t *testing.T) {
 	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), "Payments") {
 		t.Fatalf("activated handler = %d %s", response.Code, response.Body.String())
 	}
+	asset := httptest.NewRecorder()
+	server.Handler().ServeHTTP(asset, httptest.NewRequest(http.MethodGet, "/manja-assets/manja.css", nil))
+	if asset.Code != http.StatusOK || !strings.Contains(asset.Header().Get("Content-Type"), "text/css") {
+		t.Fatalf("catalog asset = %d %q", asset.Code, asset.Header().Get("Content-Type"))
+	}
 	canceled, cancel := context.WithCancel(context.Background())
 	cancel()
 	if _, err := server.Activate(canceled, candidate); !errors.Is(err, context.Canceled) {

@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/araihu/manja/application/catalog"
+	"github.com/araihu/manja/application/projection"
 	"github.com/araihu/manja/domain"
 	"github.com/araihu/manja/internal/adapters/catalogjson"
 )
@@ -142,11 +143,23 @@ func catalogHandlerFixture(t *testing.T, mount string) (http.Handler, catalog.Ru
 		t.Fatal(err)
 	}
 	sourceBytes := []byte(`{"openapi":"3.0.3","info":{"title":"Kubernetes Core v1","version":"v1"},"paths":{}}`)
-	children := memoryCatalogChildren{"catalog.json": catalogBytes, "sources/core-v1.json": sourceBytes}
+	detailBytes, err := catalogjson.EncodeDetailShard(catalog.DetailShardV1{SchemaVersion: 1, DocumentKey: "core-v1", Records: []catalog.DetailRecordV1{{
+		ID: detailID, Kind: "operation", Operation: &projection.OperationDetail{ID: string(detailID), Anchor: string(detailID), Href: "?selected=" + string(detailID), HeadingID: string(detailID), Heading: "List Pods", HeadingLevel: 2, Method: "GET", Path: "/api/v1/pods", Summary: "List Pods"},
+	}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	children := memoryCatalogChildren{"catalog.json": catalogBytes, "sources/core-v1.json": sourceBytes, "details/core.json": detailBytes}
 	manifestChildren := make([]catalog.ChildIdentityV1, 0, len(children))
 	for path, data := range children {
 		digest := sha256.Sum256(data)
-		manifestChildren = append(manifestChildren, catalog.ChildIdentityV1{Path: path, Kind: "source", Length: uint64(len(data)), SHA256: hex.EncodeToString(digest[:])})
+		kind := "source"
+		if path == "catalog.json" {
+			kind = "catalog"
+		} else if strings.HasPrefix(path, "details/") {
+			kind = "detail"
+		}
+		manifestChildren = append(manifestChildren, catalog.ChildIdentityV1{Path: path, Kind: kind, Length: uint64(len(data)), SHA256: hex.EncodeToString(digest[:])})
 	}
 	snapshot := catalog.RuntimeSnapshot{
 		ID: "snapshot-sha256-" + catalog.SnapshotID(strings.Repeat("b", 64)), Location: "/memory",

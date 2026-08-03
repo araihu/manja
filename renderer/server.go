@@ -73,7 +73,7 @@ func New(config Config) (Server, error) {
 		compilers[configuredCatalog.ID] = compiler
 	}
 	config.Catalogs = append([]CatalogConfig(nil), config.Catalogs...)
-	gateway := &catalogGateway{mounts: mounts}
+	gateway := &catalogGateway{mounts: mounts, assets: web.NewCatalogAssetsHandler()}
 	return &server{config: config, configByID: configured, parsers: parsers, compilers: compilers, handler: gateway}, nil
 }
 
@@ -165,6 +165,7 @@ type catalogGateway struct {
 	mounts   []string
 	runtime  *catalog.Runtime
 	delegate http.Handler
+	assets   http.Handler
 }
 
 func (gateway *catalogGateway) install(runtime *catalog.Runtime, delegate http.Handler) {
@@ -175,6 +176,10 @@ func (gateway *catalogGateway) install(runtime *catalog.Runtime, delegate http.H
 }
 
 func (gateway *catalogGateway) ServeHTTP(response http.ResponseWriter, request *http.Request) {
+	if strings.HasPrefix(request.URL.Path, "/assets/") || strings.HasPrefix(request.URL.Path, "/manja-assets/") {
+		gateway.assets.ServeHTTP(response, request)
+		return
+	}
 	gateway.mutex.RLock()
 	runtime, delegate := gateway.runtime, gateway.delegate
 	gateway.mutex.RUnlock()

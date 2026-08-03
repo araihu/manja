@@ -1,0 +1,308 @@
+package templates
+
+import (
+	"fmt"
+	"strings"
+
+	templpkg "github.com/a-h/templ"
+	"github.com/araihu/goshtoso/components/appshell"
+	"github.com/araihu/goshtoso/components/badge"
+	selectfield "github.com/araihu/goshtoso/components/select"
+	"github.com/araihu/goshtoso/components/sidebar"
+	"github.com/araihu/manja/application/catalog"
+	"github.com/araihu/manja/application/projection"
+	core "github.com/araihu/manja/domain"
+)
+
+type CatalogDocumentOption struct {
+	Key string
+	Label string
+	Href string
+	Selected bool
+}
+
+type CatalogSidebarItemData struct {
+	ID string
+	Label string
+	Href string
+	Method string
+	Active bool
+}
+
+type CatalogSidebarGroupData struct {
+	ID string
+	Label string
+	Href string
+	Count int
+	Open bool
+	Items []CatalogSidebarItemData
+}
+
+type CatalogPageData struct {
+	Mount string
+	SnapshotID catalog.SnapshotID
+	Directory catalog.CatalogArtifactV1
+	Document *catalog.DocumentDirectoryV1
+	Documents []CatalogDocumentOption
+	Groups []CatalogSidebarGroupData
+	Selected *catalog.DetailRecordV1
+	DownloadHref string
+	SearchHref string
+}
+
+templ CatalogPage(data CatalogPageData) {
+	@LayoutWithBranding(catalogPageTitle(data), catalogBranding(data.Directory.Branding), false, false) {
+		<div hx-history="false" class="fixed inset-0 overflow-clip bg-surface text-on-surface dark:bg-surface-dark dark:text-on-surface-dark">
+			@appshell.AppShell(appshell.Config{
+				Header: catalogHeader(data),
+				Sidebar: catalogSidebar(data),
+				MainID: "main-content",
+				RootClass: "h-full",
+				RootAttrs: templpkg.Attributes{"data-manja-catalog-shell": "true", "data-snapshot-id": string(data.SnapshotID)},
+				HeaderClass: "relative z-50",
+				SidebarClass: "h-full w-80",
+				SidebarAttrs: templpkg.Attributes{"aria-label": "OpenAPI sections"},
+				MainClass: "min-h-0 overflow-y-auto px-5 py-6 lg:px-10 lg:py-8",
+				MainAttrs: templpkg.Attributes{"data-manja-primary-scroll": "true"},
+			}) {
+				<div class="mx-auto flex min-h-full max-w-[100rem] flex-col">
+					if data.Document == nil {
+						@catalogOverview(data)
+					} else {
+						@catalogDocument(data)
+					}
+					<footer class="mt-auto border-t border-outline pt-8 pb-4 text-sm text-on-surface-muted dark:border-outline-dark dark:text-on-surface-dark-muted">
+						<span aria-hidden="true" class="mr-2 text-primary dark:text-primary-dark">ϟ</span>
+						Powered by <strong class="text-on-surface-strong dark:text-on-surface-dark-strong">Manja</strong>
+					</footer>
+				</div>
+			}
+		</div>
+	}
+}
+
+templ catalogHeader(data CatalogPageData) {
+	<div class="flex h-16 items-center justify-between gap-4 px-4 lg:px-8">
+		<div class="flex min-w-0 items-center gap-3">
+			<a href={ templpkg.URL(data.Mount) } class="flex min-w-0 items-center gap-3 font-title text-xl font-bold text-on-surface-strong dark:text-on-surface-dark-strong">
+				if data.Directory.Branding.LogoSrc != "" {
+					<img src={ templpkg.URL(data.Directory.Branding.LogoSrc) } alt={ data.Directory.Branding.LogoAlt } class="size-8 shrink-0 rounded-radius"/>
+				}
+				<span class="truncate">{ catalogBrandName(data) }</span>
+			</a>
+			<span class="hidden text-on-surface-muted sm:inline dark:text-on-surface-dark-muted">/</span>
+			<form method="get" action={ data.Mount } class="hidden items-center gap-2 md:flex">
+				<label for="catalog-document" class="sr-only">OpenAPI document</label>
+				<select id="catalog-document" name="document" class="min-h-10 max-w-72 rounded-radius border border-outline bg-surface px-3 text-sm text-on-surface-strong dark:border-outline-dark dark:bg-surface-dark dark:text-on-surface-dark-strong">
+					<option value="">Catalog overview</option>
+					for _, option := range data.Documents {
+						<option value={ option.Key } selected?={ option.Selected }>{ option.Label }</option>
+					}
+				</select>
+				<button type="submit" class="min-h-10 rounded-radius border border-outline px-3 text-sm font-medium hover:bg-surface-alt dark:border-outline-dark dark:hover:bg-surface-dark-alt">Open</button>
+			</form>
+		</div>
+		<div class="flex shrink-0 items-center gap-2">
+			<a href={ templpkg.URL(data.SearchHref) } class="inline-flex min-h-10 items-center rounded-radius border border-outline px-3 text-sm font-medium hover:bg-surface-alt dark:border-outline-dark dark:hover:bg-surface-dark-alt">Search</a>
+			<div class="hidden lg:block">
+				@selectfield.Select(selectfield.Config{
+					ID: "manja-theme",
+					Name: "theme",
+					Alpine: &selectfield.AlpineConfig{Model: "theme"},
+					TriggerLeading: themeSelectIcon(),
+					TriggerAttrs: templpkg.Attributes{"aria-label": "Theme"},
+					Options: themeOptions(),
+				})
+			</div>
+			@themeToggle()
+			<span class="hidden rounded-radius border border-outline px-2 py-1 font-mono text-xs text-on-surface-muted xl:inline dark:border-outline-dark dark:text-on-surface-dark-muted">{ shortSnapshotID(data.SnapshotID) }</span>
+		</div>
+	</div>
+}
+
+templ catalogSidebar(data CatalogPageData) {
+	<div id="catalog-sidebar-groups" class="h-full">
+		@sidebar.Sidebar(catalogSidebarConfig(data))
+	</div>
+}
+
+templ catalogOverview(data CatalogPageData) {
+	<main data-catalog-overview="true" class="pb-16">
+		<div class="mb-8 flex flex-wrap items-start justify-between gap-5 border-b border-outline pb-8 dark:border-outline-dark">
+			<div>
+				<p class="mb-2 text-sm font-semibold uppercase tracking-wide text-primary dark:text-primary-dark">OpenAPI catalog</p>
+				<h1 class="font-title text-4xl font-bold text-on-surface-strong dark:text-on-surface-dark-strong">{ data.Directory.Title }</h1>
+				<p class="mt-3 max-w-3xl text-on-surface-muted dark:text-on-surface-dark-muted">Browse every captured API group and version from one immutable renderer snapshot.</p>
+			</div>
+			<a href={ templpkg.URL(data.DownloadHref) } class="inline-flex min-h-11 items-center rounded-radius border border-outline px-4 font-semibold hover:bg-surface-alt dark:border-outline-dark dark:hover:bg-surface-dark-alt">Download catalog JSON</a>
+		</div>
+		<div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+			@catalogMetric("Documents", fmt.Sprintf("%d", len(data.Directory.Documents)))
+			@catalogMetric("Operations", fmt.Sprintf("%d", catalogOperationCount(data.Directory)))
+			@catalogMetric("Schemas", fmt.Sprintf("%d", catalogSchemaCount(data.Directory)))
+			@catalogMetric("Profile", string(data.Directory.ProfileID))
+		</div>
+		<section class="mt-10" aria-labelledby="catalog-documents-heading">
+			<div class="mb-4 flex items-center justify-between gap-3">
+				<h2 id="catalog-documents-heading" class="font-title text-2xl font-bold text-on-surface-strong dark:text-on-surface-dark-strong">API groups and versions</h2>
+				<span class="text-sm text-on-surface-muted dark:text-on-surface-dark-muted">{ fmt.Sprintf("%d documents", len(data.Documents)) }</span>
+			</div>
+			<div class="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+				for _, option := range data.Documents {
+					<a href={ templpkg.URL(option.Href) } class="group rounded-radius border border-outline bg-surface p-4 transition hover:border-primary hover:bg-surface-alt dark:border-outline-dark dark:bg-surface-dark dark:hover:border-primary-dark dark:hover:bg-surface-dark-alt">
+						<span class="block font-semibold text-on-surface-strong group-hover:text-primary dark:text-on-surface-dark-strong dark:group-hover:text-primary-dark">{ option.Label }</span>
+						<span class="mt-1 block font-mono text-xs text-on-surface-muted dark:text-on-surface-dark-muted">{ option.Key }</span>
+					</a>
+				}
+			</div>
+		</section>
+	</main>
+}
+
+templ catalogMetric(label string, value string) {
+	<div class="rounded-radius border border-outline bg-surface p-5 dark:border-outline-dark dark:bg-surface-dark">
+		<p class="text-sm font-medium text-on-surface-muted dark:text-on-surface-dark-muted">{ label }</p>
+		<p class="mt-2 break-words font-title text-2xl font-bold text-on-surface-strong dark:text-on-surface-dark-strong">{ value }</p>
+	</div>
+}
+
+templ catalogDocument(data CatalogPageData) {
+	<main data-catalog-document={ data.Document.Key } class="pb-16">
+		<div class="mb-8 flex flex-wrap items-start justify-between gap-5 border-b border-outline pb-8 dark:border-outline-dark">
+			<div>
+				<a href={ templpkg.URL(data.Mount) } class="text-sm font-medium text-primary hover:underline dark:text-primary-dark">{ data.Directory.Title }</a>
+				<h1 class="mt-2 font-title text-4xl font-bold text-on-surface-strong dark:text-on-surface-dark-strong">{ data.Document.Title }</h1>
+				<p class="mt-3 font-mono text-sm text-on-surface-muted dark:text-on-surface-dark-muted">{ data.Document.SourcePath }</p>
+			</div>
+			<a href={ templpkg.URL(data.DownloadHref) } class="inline-flex min-h-11 items-center rounded-radius border border-outline px-4 font-semibold hover:bg-surface-alt dark:border-outline-dark dark:hover:bg-surface-dark-alt">Download source</a>
+		</div>
+		if data.Selected == nil {
+			<div class="grid gap-4 sm:grid-cols-2">
+				@catalogMetric("Operations", fmt.Sprintf("%d", len(data.Document.Operations)))
+				@catalogMetric("Schemas", fmt.Sprintf("%d", len(data.Document.Schemas)))
+			</div>
+			<section class="mt-8 rounded-radius border border-outline p-6 dark:border-outline-dark">
+				<h2 class="font-title text-2xl font-bold text-on-surface-strong dark:text-on-surface-dark-strong">Choose an API section</h2>
+				<p class="mt-2 text-on-surface-muted dark:text-on-surface-dark-muted">Expand one sidebar group to load only its bounded operation or schema links.</p>
+			</section>
+		} else if data.Selected.Operation != nil {
+			@catalogOperationDetail(*data.Selected.Operation)
+		} else if data.Selected.Schema != nil {
+			@catalogSchemaDetail(*data.Selected.Schema)
+		}
+	</main>
+}
+
+templ catalogOperationDetail(operation projection.OperationDetail) {
+	<article id={ operation.Anchor } data-catalog-detail="operation" class="space-y-6">
+		<div class="flex flex-wrap items-center gap-3">
+			@badge.Badge(badge.Config{Label: operation.Method, Tone: catalogMethodTone(operation.Method), Appearance: badge.AppearanceSoft, Size: badge.SizeMD})
+			<code class="break-all text-base text-on-surface-strong dark:text-on-surface-dark-strong">{ operation.Path }</code>
+		</div>
+		<h2 class="font-title text-3xl font-bold text-on-surface-strong dark:text-on-surface-dark-strong">{ operation.Heading }</h2>
+		if operation.Description != "" {
+			<p class="max-w-4xl whitespace-pre-wrap text-on-surface-muted dark:text-on-surface-dark-muted">{ operation.Description }</p>
+		}
+		if len(operation.Parameters) > 0 {
+			<section class="rounded-radius border border-outline p-5 dark:border-outline-dark">
+				<h3 class="font-title text-xl font-bold">Parameters</h3>
+				<div class="mt-4 divide-y divide-outline dark:divide-outline-dark">
+					for _, parameter := range operation.Parameters {
+						<div class="grid gap-2 py-3 sm:grid-cols-[14rem_1fr]">
+							<div><code class="font-semibold">{ parameter.Name }</code> <span class="text-xs uppercase text-on-surface-muted dark:text-on-surface-dark-muted">{ parameter.In }</span></div>
+							<p class="text-sm text-on-surface-muted dark:text-on-surface-dark-muted">{ parameter.Description }</p>
+						</div>
+					}
+				</div>
+			</section>
+		}
+		if len(operation.Responses) > 0 {
+			<section class="rounded-radius border border-outline p-5 dark:border-outline-dark">
+				<h3 class="font-title text-xl font-bold">Responses</h3>
+				<div class="mt-4 space-y-3">
+					for _, item := range operation.Responses {
+						<div class="rounded-radius bg-surface-alt p-4 dark:bg-surface-dark-alt"><code class="font-semibold">{ item.Status }</code><p class="mt-1 text-sm text-on-surface-muted dark:text-on-surface-dark-muted">{ item.Description }</p></div>
+					}
+				</div>
+			</section>
+		}
+	</article>
+}
+
+templ catalogSchemaDetail(schema projection.SchemaDetail) {
+	<article id={ schema.Anchor } data-catalog-detail="schema" class="space-y-6">
+		@badge.Badge(badge.Config{Label: "Schema", Tone: badge.ToneSecondary, Appearance: badge.AppearanceSoft, Size: badge.SizeMD})
+		<h2 class="font-title text-3xl font-bold text-on-surface-strong dark:text-on-surface-dark-strong">{ schema.Heading }</h2>
+		if schema.Description != "" {
+			<p class="max-w-4xl whitespace-pre-wrap text-on-surface-muted dark:text-on-surface-dark-muted">{ schema.Description }</p>
+		}
+		if schema.ExampleSchemaJSON != "" {
+			<section class="rounded-radius border border-outline p-5 dark:border-outline-dark">
+				<h3 class="font-title text-xl font-bold">Schema</h3>
+				<pre class="mt-4 max-h-[32rem] overflow-auto rounded-radius bg-surface-alt p-4 text-sm dark:bg-surface-dark-alt"><code>{ schema.ExampleSchemaJSON }</code></pre>
+			</section>
+		}
+	</article>
+}
+
+func catalogBranding(branding catalog.BrandingV1) core.DocsBranding {
+	return core.DocsBranding{DisplayName: branding.DisplayName, Logo: core.DocsBrandingLogo{Src: branding.LogoSrc, Alt: branding.LogoAlt, HomeURL: branding.LogoHomeHref}, Favicon: branding.FaviconHref}
+}
+
+func catalogBrandName(data CatalogPageData) string {
+	if strings.TrimSpace(data.Directory.Branding.DisplayName) != "" { return data.Directory.Branding.DisplayName }
+	return data.Directory.Title
+}
+
+func catalogPageTitle(data CatalogPageData) string {
+	if data.Document != nil { return data.Document.Title + " · " + data.Directory.Title }
+	return data.Directory.Title
+}
+
+func shortSnapshotID(id catalog.SnapshotID) string {
+	value := strings.TrimPrefix(string(id), "snapshot-sha256-")
+	if len(value) > 12 { value = value[:12] }
+	return value
+}
+
+func catalogOperationCount(directory catalog.CatalogArtifactV1) int {
+	total := 0
+	for _, document := range directory.Documents { total += len(document.Operations) }
+	return total
+}
+
+func catalogSchemaCount(directory catalog.CatalogArtifactV1) int {
+	total := 0
+	for _, document := range directory.Documents { total += len(document.Schemas) }
+	return total
+}
+
+func catalogSidebarConfig(data CatalogPageData) sidebar.Config {
+	config := sidebar.Config{LogoText: data.Directory.Title, LogoHref: data.Mount, DisableSkipLink: true}
+	config.Items = []sidebar.Item{{ID: "catalog-overview", Label: "Catalog overview", Href: data.Mount, Active: data.Document == nil}}
+	if data.Document == nil { return config }
+	items := make([]sidebar.Item, 0, len(data.Groups))
+	for _, group := range data.Groups {
+		children := make([]sidebar.Item, 0, len(group.Items))
+		for _, item := range group.Items {
+			children = append(children, sidebar.Item{ID: item.ID, Label: item.Label, Href: item.Href, Active: item.Active, Badge: item.Method})
+		}
+		items = append(items, sidebar.Item{
+			ID: group.ID, Label: group.Label, Href: group.Href, Badge: fmt.Sprintf("%d", group.Count),
+			Items: children, Collapsible: group.Open, Open: group.Open,
+			LinkAttrs: templpkg.Attributes{"hx-get": group.Href, "hx-target": "#catalog-sidebar-groups", "hx-select": "#catalog-sidebar-groups", "hx-swap": "outerHTML", "hx-push-url": "true"},
+		})
+	}
+	config.Sections = []sidebar.Section{{Title: data.Document.Title, Items: items, Collapsible: true}}
+	return config
+}
+
+func catalogMethodTone(method string) badge.Tone {
+	switch strings.ToUpper(method) {
+	case "GET": return badge.TonePrimary
+	case "POST": return badge.ToneSuccess
+	case "DELETE": return badge.ToneDanger
+	case "PUT", "PATCH": return badge.ToneWarning
+	default: return badge.ToneDefault
+	}
+}
