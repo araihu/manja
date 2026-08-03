@@ -62,6 +62,22 @@ func TestCatalogShellProvidesOneResponsiveSidebarWithMobileDrawerControls(t *tes
 	}
 }
 
+func TestCatalogShellProvidesGlobalServerSearchShortcut(t *testing.T) {
+	t.Parallel()
+
+	body := renderCatalogTemplate(t, catalogTemplateFixture())
+	for _, want := range []string{
+		`data-catalog-search-href="/kubernetes/search"`,
+		`data-catalog-search-shortcut="true"`,
+		`event.metaKey || event.ctrlKey`,
+		`document.getElementById("catalog-search-query")`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("catalog search shortcut missing %q", want)
+		}
+	}
+}
+
 func TestCatalogDocumentRendersOnlyExpandedGroupAndSelectedVisibleAnchor(t *testing.T) {
 	t.Parallel()
 

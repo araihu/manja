@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -39,6 +40,7 @@ func TestCatalogRouteMatrixForRootAndNestedMounts(t *testing.T) {
 				{http.MethodGet, base + "core-v1/?selected=detail-sha256-" + strings.Repeat("a", 64), http.StatusOK},
 				{http.MethodGet, base + "search", http.StatusOK},
 				{http.MethodGet, base + "search?q=listCoreV1Pod", http.StatusOK},
+				{http.MethodGet, base + "search.json?q=listCoreV1Pod", http.StatusOK},
 				{http.MethodGet, base + "missing/", http.StatusNotFound},
 				{http.MethodPost, base, http.StatusMethodNotAllowed},
 			} {
@@ -77,6 +79,57 @@ func TestCatalogSearchRendersMountAwareResultsAndBoundsFailures(t *testing.T) {
 	handler.ServeHTTP(invalid, httptest.NewRequest(http.MethodGet, "/kubernetes/search?q="+strings.Repeat("x", 257), nil))
 	if invalid.Code != http.StatusBadRequest || invalid.Body.Len() > 1024 {
 		t.Fatalf("invalid search = %d bytes=%d", invalid.Code, invalid.Body.Len())
+	}
+}
+
+func TestCatalogSearchJSONReturnsVersionedMountAwareResults(t *testing.T) {
+	t.Parallel()
+
+	handler, snapshot := catalogHandlerFixture(t, "/kubernetes")
+	requestURL := "/kubernetes/search.json?q=listCoreV1Pod"
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, requestURL, nil))
+	if response.Code != http.StatusOK || response.Header().Get("Content-Type") != "application/json; charset=utf-8" {
+		t.Fatalf("search JSON = %d headers=%v body=%q", response.Code, response.Header(), response.Body.String())
+	}
+	if response.Body.Len() > 64<<10 {
+		t.Fatalf("search JSON = %d bytes, want at most 64 KiB", response.Body.Len())
+	}
+	var payload catalogSearchResponse
+	if err := json.Unmarshal(response.Body.Bytes(), &payload); err != nil {
+		t.Fatal(err)
+	}
+	if payload.CatalogID != "kubernetes" || payload.SnapshotID != snapshot.ID || payload.Version != 1 || payload.Query != "listcorev1pod" {
+		t.Fatalf("search JSON identity = %+v", payload)
+	}
+	if len(payload.Results) != 1 || payload.Results[0].Title != "List Pods" || !strings.HasPrefix(payload.Results[0].Href, "/kubernetes/documents/core-v1/?selected=") {
+		t.Fatalf("search JSON results = %+v", payload.Results)
+	}
+
+	head := httptest.NewRecorder()
+	handler.ServeHTTP(head, httptest.NewRequest(http.MethodHead, requestURL, nil))
+	if head.Code != http.StatusOK || head.Body.Len() != 0 || head.Header().Get("ETag") != response.Header().Get("ETag") || head.Header().Get("Content-Length") != response.Header().Get("Content-Length") {
+		t.Fatalf("search JSON HEAD = %d bytes=%d headers=%v", head.Code, head.Body.Len(), head.Header())
+	}
+}
+
+func TestCatalogSearchErrorsHaveStableHTTPClasses(t *testing.T) {
+	t.Parallel()
+
+	for _, test := range []struct {
+		err        error
+		status     int
+		retryAfter string
+	}{
+		{err: catalog.ErrInvalidQuery, status: http.StatusBadRequest},
+		{err: catalog.ErrQueryTooBroad, status: http.StatusUnprocessableEntity},
+		{err: catalog.ErrSearchDeadline, status: http.StatusServiceUnavailable, retryAfter: "1"},
+	} {
+		response := httptest.NewRecorder()
+		writeCatalogSearchError(response, test.err)
+		if response.Code != test.status || response.Header().Get("Retry-After") != test.retryAfter || response.Body.Len() > 1024 {
+			t.Errorf("search error %v = %d retry=%q bytes=%d", test.err, response.Code, response.Header().Get("Retry-After"), response.Body.Len())
+		}
 	}
 }
 

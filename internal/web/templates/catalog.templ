@@ -107,7 +107,11 @@ templ CatalogPage(data CatalogPageData) {
 				Sidebar: catalogSidebar(data),
 				MainID: "main-content",
 				RootClass: "h-full",
-				RootAttrs: templpkg.Attributes{"data-manja-catalog-shell": "true", "data-snapshot-id": string(data.SnapshotID)},
+				RootAttrs: templpkg.Attributes{
+					"data-manja-catalog-shell": "true",
+					"data-snapshot-id": string(data.SnapshotID),
+					"data-catalog-search-href": data.SearchHref,
+				},
 				HeaderClass: "relative z-50",
 				SidebarClass: "h-full w-80",
 				SidebarAttrs: templpkg.Attributes{
@@ -136,8 +140,31 @@ templ CatalogPage(data CatalogPageData) {
 					</footer>
 				</div>
 			}
+			@catalogSearchShortcut()
 		</div>
 	}
+}
+
+templ catalogSearchShortcut() {
+	<script data-catalog-search-shortcut="true">
+		(function () {
+			if (window.__manjaCatalogSearchShortcutBound) return;
+			window.__manjaCatalogSearchShortcutBound = true;
+			document.addEventListener("keydown", function (event) {
+				if (!(event.metaKey || event.ctrlKey) || event.altKey || event.shiftKey || String(event.key).toLowerCase() !== "k") return;
+				event.preventDefault();
+				var input = document.getElementById("catalog-search-query");
+				if (input) {
+					input.focus();
+					input.select();
+					return;
+				}
+				var shell = document.querySelector('[data-manja-catalog-shell="true"]');
+				var href = shell && shell.getAttribute("data-catalog-search-href");
+				if (href) window.location.assign(href);
+			});
+		})();
+	</script>
 }
 
 templ catalogSearch(data CatalogPageData) {
@@ -220,7 +247,7 @@ templ catalogHeader(data CatalogPageData) {
 			</form>
 		</div>
 		<div class="flex shrink-0 items-center gap-2">
-			<a href={ templpkg.URL(data.SearchHref) } class="inline-flex min-h-10 items-center rounded-radius border border-outline px-3 text-sm font-medium hover:bg-surface-alt dark:border-outline-dark dark:hover:bg-surface-dark-alt">Search</a>
+			<a href={ templpkg.URL(data.SearchHref) } aria-keyshortcuts="Control+K Meta+K" class="inline-flex min-h-10 items-center rounded-radius border border-outline px-3 text-sm font-medium hover:bg-surface-alt dark:border-outline-dark dark:hover:bg-surface-dark-alt">Search</a>
 			@themeToggle()
 			<span class="hidden rounded-radius border border-outline px-2 py-1 font-mono text-xs text-on-surface-muted xl:inline dark:border-outline-dark dark:text-on-surface-dark-muted">{ shortSnapshotID(data.SnapshotID) }</span>
 		</div>

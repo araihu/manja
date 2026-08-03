@@ -133,6 +133,8 @@ func (handler *CatalogHandler) serveAdmitted(response http.ResponseWriter, reque
 		handler.redirectStable(response, request, snapshot, mount, "catalog.json")
 	case relative == "search":
 		handler.serveSearch(response, request, snapshot, mount)
+	case relative == "search.json":
+		handler.serveSearchJSON(response, request, snapshot, mount)
 	case strings.HasPrefix(relative, "documents/"):
 		documentPath := strings.TrimPrefix(relative, "documents/")
 		key := strings.TrimSuffix(documentPath, "/")
@@ -168,39 +170,17 @@ func (handler *CatalogHandler) serveSearch(response http.ResponseWriter, request
 	query := request.URL.Query().Get("q")
 	data.Search = &templates.CatalogSearchData{Query: query}
 	if query != "" {
-		service, err := catalog.NewRuntimeSearchService(snapshot, handler.search, func(ctx context.Context, childPath string) ([]byte, catalog.ChildIdentityV1, error) {
-			data, identity, err := handler.children.ReadChild(ctx, snapshot, childPath)
-			return data, identity, err
-		})
-		if err == nil {
-			var result catalog.SearchResult
-			result, err = service.Search(request.Context(), snapshot.ID, query)
-			if err == nil {
-				data.Search.Query = result.Query
-				data.Search.PostingsScanned = result.PostingsScanned
-				data.Search.SegmentsDecoded = result.SegmentsDecoded
-				data.Search.BytesDecoded = result.BytesDecoded
-				for _, record := range result.Results {
-					href, hrefErr := catalogSearchHref(mount, record.Href)
-					if hrefErr != nil {
-						err = hrefErr
-						break
-					}
-					data.Search.Results = append(data.Search.Results, templates.CatalogSearchResultData{Record: record, Href: href})
-				}
-			}
-		}
+		result, err := handler.searchCatalog(request.Context(), snapshot, mount, query)
 		if err != nil {
-			switch {
-			case errors.Is(err, catalog.ErrInvalidQuery), errors.Is(err, catalog.ErrQueryTooBroad):
-				http.Error(response, "invalid or overly broad search query", http.StatusBadRequest)
-			case errors.Is(err, catalog.ErrSearchDeadline):
-				response.Header().Set("Retry-After", "1")
-				http.Error(response, "search temporarily unavailable", http.StatusServiceUnavailable)
-			default:
-				http.Error(response, "search temporarily unavailable", http.StatusServiceUnavailable)
-			}
+			writeCatalogSearchError(response, err)
 			return
+		}
+		data.Search.Query = result.Query
+		data.Search.PostingsScanned = result.PostingsScanned
+		data.Search.SegmentsDecoded = result.SegmentsDecoded
+		data.Search.BytesDecoded = result.BytesDecoded
+		for _, record := range result.Results {
+			data.Search.Results = append(data.Search.Results, templates.CatalogSearchResultData{Record: record, Href: record.Href})
 		}
 	}
 	handler.renderCatalogPage(response, request, data)
