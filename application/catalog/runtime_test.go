@@ -147,6 +147,38 @@ func TestRuntimeDurableActivationDoesNotPublishWhenPersistenceFails(t *testing.T
 	}
 }
 
+func TestRuntimeSameSnapshotActivationPreservesDistinctPrevious(t *testing.T) {
+	t.Parallel()
+
+	runtime := NewRuntime(1)
+	first := runtimeSnapshotFixture("a")
+	second := runtimeSnapshotFixture("b")
+	if _, err := runtime.ActivateMount("/catalog", "", 1, first); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := runtime.ActivateMount("/catalog", first.ID, 1, second); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := runtime.ActivateMount("/catalog", second.ID, 1, second); err != nil {
+		t.Fatal(err)
+	}
+
+	state := runtime.Table().Mounts["/catalog"]
+	if state.Active.ID != second.ID {
+		t.Fatalf("active snapshot = %q, want %q", state.Active.ID, second.ID)
+	}
+	if state.Previous == nil || state.Previous.ID != first.ID {
+		t.Fatalf("previous snapshot = %#v, want %q", state.Previous, first.ID)
+	}
+	if _, err := runtime.FallbackMountDurably("/catalog", second.ID, 1, nil); err != nil {
+		t.Fatal(err)
+	}
+	state = runtime.Table().Mounts["/catalog"]
+	if state.Active.ID != first.ID || state.Previous != nil {
+		t.Fatalf("fallback state = %#v, want active %q with no previous", state, first.ID)
+	}
+}
+
 func TestRuntimeFallbackPromotesOnlyPreviousAndCanDisableMount(t *testing.T) {
 	t.Parallel()
 

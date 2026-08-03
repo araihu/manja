@@ -21,7 +21,6 @@ type Bounds struct {
 	SchemaNodeShardBytes   uint64 `json:"schemaNodeShardBytes"`
 	PostingSegmentBytes    uint64 `json:"postingSegmentBytes"`
 	StartupCatalogBytes    uint64 `json:"startupCatalogBytes"`
-	StartupProcessBytes    uint64 `json:"startupProcessBytes"`
 	StoredBytes            uint64 `json:"storedBytes"`
 	StagingBytes           uint64 `json:"stagingBytes"`
 }
@@ -45,7 +44,6 @@ type BudgetUsage struct {
 	SchemaNodeShardBytes   uint64
 	PostingSegmentBytes    uint64
 	StartupCatalogBytes    uint64
-	StartupProcessBytes    uint64
 	StoredBytes            uint64
 	StagingBytes           uint64
 }
@@ -57,8 +55,8 @@ func DefaultBounds() Bounds {
 		DirectoryBytes: 4 << 20, SearchBytes: 4 << 20, ProjectionBytes: 32 << 20, SnapshotBytes: 64 << 20,
 		Children: 1024, DetailShardRecords: 256, DetailShardBytes: 2 << 20,
 		SchemaNodeShardRecords: 512, SchemaNodeShardBytes: 2 << 20, PostingSegmentBytes: 256 << 10,
-		StartupCatalogBytes: 8 << 20, StartupProcessBytes: 64 << 20,
-		StoredBytes: 512 << 20, StagingBytes: 128 << 20,
+		StartupCatalogBytes: 8 << 20,
+		StoredBytes:         512 << 20, StagingBytes: 128 << 20,
 	}
 }
 
@@ -83,7 +81,6 @@ func (bounds Bounds) Validate(usage BudgetUsage) error {
 		{name: "schema node bytes", used: usage.SchemaNodeShardBytes, limit: bounds.SchemaNodeShardBytes},
 		{name: "posting segment", used: usage.PostingSegmentBytes, limit: bounds.PostingSegmentBytes},
 		{name: "startup catalog", used: usage.StartupCatalogBytes, limit: bounds.StartupCatalogBytes},
-		{name: "startup process", used: usage.StartupProcessBytes, limit: bounds.StartupProcessBytes},
 		{name: "stored", used: usage.StoredBytes, limit: bounds.StoredBytes},
 		{name: "staging", used: usage.StagingBytes, limit: bounds.StagingBytes},
 	}

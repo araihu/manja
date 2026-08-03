@@ -21,17 +21,25 @@ import (
 // facade, but complete renderer builds now install the compiler at first use.
 var ErrActivationUnavailable = errors.New("catalog activation is unavailable")
 
+var ErrStartupProcessBudget = errors.New("renderer startup process budget exceeded")
+
 type CatalogSource = port.CatalogSource
 
 type ActivationReceipt struct {
-	CatalogID  string
-	Mount      string
-	RevisionID string
-	SnapshotID string
+	CatalogID           string
+	Mount               string
+	RevisionID          string
+	SnapshotID          string
+	StartupProcessBytes uint64
+	Degraded            bool
+	Diagnostic          string
 }
 
 type Server interface {
 	Handler() http.Handler
+	Recover(context.Context) error
+	CheckStartupProcess() (uint64, error)
+	Active(string) (ActivationReceipt, bool)
 	Activate(context.Context, domain.CatalogCandidate) (ActivationReceipt, error)
 }
 
@@ -48,6 +56,9 @@ type server struct {
 }
 
 func New(config Config) (Server, error) {
+	if config.StartupProcessBytes == 0 {
+		config.StartupProcessBytes = DefaultStartupProcessBytes
+	}
 	if err := validateConfig(config); err != nil {
 		return nil, err
 	}
@@ -81,6 +92,45 @@ func (server *server) Handler() http.Handler {
 	return server.handler
 }
 
+func (server *server) Recover(ctx context.Context) error {
+	if _, err := server.CheckStartupProcess(); err != nil {
+		return err
+	}
+	if err := server.ensureRuntime(ctx); err != nil {
+		return err
+	}
+	_, err := server.CheckStartupProcess()
+	return err
+}
+
+func (server *server) CheckStartupProcess() (uint64, error) {
+	peak, err := processPeakBytes()
+	if err != nil {
+		return 0, fmt.Errorf("measure renderer startup process: %w", err)
+	}
+	if peak > server.config.StartupProcessBytes {
+		return peak, fmt.Errorf("%w: peak=%d limit=%d", ErrStartupProcessBudget, peak, server.config.StartupProcessBytes)
+	}
+	return peak, nil
+}
+
+func (server *server) Active(catalogID string) (ActivationReceipt, bool) {
+	configured, exists := server.configByID[catalogID]
+	if !exists || server.runtime == nil {
+		return ActivationReceipt{}, false
+	}
+	state, active := server.runtime.Table().Mounts[configured.Mount]
+	if !active {
+		return ActivationReceipt{CatalogID: catalogID, Mount: configured.Mount}, false
+	}
+	peak, _ := processPeakBytes()
+	return ActivationReceipt{
+		CatalogID: catalogID, Mount: configured.Mount,
+		RevisionID: state.Active.Manifest.Identity.RevisionID,
+		SnapshotID: string(state.Active.ID), StartupProcessBytes: peak,
+	}, true
+}
+
 func (server *server) Activate(ctx context.Context, candidate domain.CatalogCandidate) (ActivationReceipt, error) {
 	if err := ctx.Err(); err != nil {
 		return ActivationReceipt{}, err
@@ -110,13 +160,22 @@ func (server *server) Activate(ctx context.Context, candidate domain.CatalogCand
 	if err := server.ensureRuntime(ctx); err != nil {
 		return ActivationReceipt{}, err
 	}
+	if _, err := server.CheckStartupProcess(); err != nil {
+		return ActivationReceipt{}, err
+	}
 	index, err := server.parsers[candidate.ID].Parse(ctx, candidate)
 	if err != nil {
 		return ActivationReceipt{}, fmt.Errorf("parse catalog %q: %w", candidate.ID, err)
 	}
+	if _, err := server.CheckStartupProcess(); err != nil {
+		return ActivationReceipt{}, err
+	}
 	compiled, err := server.compilers[candidate.ID].Compile(ctx, candidate, index)
 	if err != nil {
 		return ActivationReceipt{}, fmt.Errorf("compile catalog %q: %w", candidate.ID, err)
+	}
+	if _, err := server.CheckStartupProcess(); err != nil {
+		return ActivationReceipt{}, err
 	}
 	table := server.runtime.Table()
 	expectedOld := catalog.SnapshotID("")
@@ -127,7 +186,11 @@ func (server *server) Activate(ctx context.Context, candidate domain.CatalogCand
 	if err != nil {
 		return ActivationReceipt{}, fmt.Errorf("activate catalog %q: %w", candidate.ID, err)
 	}
-	return ActivationReceipt{CatalogID: candidate.ID, Mount: configured.Mount, RevisionID: candidate.Revision.ID, SnapshotID: string(receipt.SnapshotID)}, nil
+	peak, err := server.CheckStartupProcess()
+	if err != nil {
+		return ActivationReceipt{}, err
+	}
+	return ActivationReceipt{CatalogID: candidate.ID, Mount: configured.Mount, RevisionID: candidate.Revision.ID, SnapshotID: string(receipt.SnapshotID), StartupProcessBytes: peak}, nil
 }
 
 func (server *server) ensureRuntime(ctx context.Context) error {

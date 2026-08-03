@@ -186,7 +186,7 @@ func (handler *CatalogHandler) serveAdmitted(response http.ResponseWriter, reque
 }
 
 func (handler *CatalogHandler) serveSearch(response http.ResponseWriter, request *http.Request, snapshot catalog.RuntimeSnapshot, mount string) {
-	data, err := handler.catalogPageData(request.Context(), snapshot, mount, "", "", "", "")
+	data, err := handler.catalogPageData(request.Context(), snapshot, mount, "", "", "", "", "")
 	if err != nil {
 		http.Error(response, "catalog temporarily unavailable", http.StatusServiceUnavailable)
 		return
@@ -211,7 +211,7 @@ func (handler *CatalogHandler) serveSearch(response http.ResponseWriter, request
 }
 
 func (handler *CatalogHandler) serveOverview(response http.ResponseWriter, request *http.Request, snapshot catalog.RuntimeSnapshot, mount string) {
-	data, err := handler.catalogPageData(request.Context(), snapshot, mount, "", "", "", "")
+	data, err := handler.catalogPageData(request.Context(), snapshot, mount, "", "", "", "", "")
 	if err != nil {
 		http.Error(response, "catalog temporarily unavailable", http.StatusServiceUnavailable)
 		return
@@ -220,7 +220,7 @@ func (handler *CatalogHandler) serveOverview(response http.ResponseWriter, reque
 }
 
 func (handler *CatalogHandler) serveDocument(response http.ResponseWriter, request *http.Request, snapshot catalog.RuntimeSnapshot, mount, key string) {
-	data, err := handler.catalogPageData(request.Context(), snapshot, mount, key, request.URL.Query().Get("selected"), request.URL.Query().Get("group"), request.URL.Query().Get("node"))
+	data, err := handler.catalogPageData(request.Context(), snapshot, mount, key, request.URL.Query().Get("selected"), request.URL.Query().Get("group"), request.URL.Query().Get("node"), request.URL.Query().Get("page"))
 	if err != nil {
 		if errors.Is(err, errCatalogPageNotFound) {
 			http.NotFound(response, request)

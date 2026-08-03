@@ -31,7 +31,6 @@ func TestBoundsAcceptEveryLimitAndRejectOneOver(t *testing.T) {
 		{name: "schema node bytes", limit: bounds.SchemaNodeShardBytes, set: func(value *BudgetUsage, count uint64) { value.SchemaNodeShardBytes = count }},
 		{name: "posting segment", limit: bounds.PostingSegmentBytes, set: func(value *BudgetUsage, count uint64) { value.PostingSegmentBytes = count }},
 		{name: "startup catalog", limit: bounds.StartupCatalogBytes, set: func(value *BudgetUsage, count uint64) { value.StartupCatalogBytes = count }},
-		{name: "startup process", limit: bounds.StartupProcessBytes, set: func(value *BudgetUsage, count uint64) { value.StartupProcessBytes = count }},
 		{name: "stored", limit: bounds.StoredBytes, set: func(value *BudgetUsage, count uint64) { value.StoredBytes = count }},
 		{name: "staging", limit: bounds.StagingBytes, set: func(value *BudgetUsage, count uint64) { value.StagingBytes = count }},
 	}

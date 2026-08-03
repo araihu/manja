@@ -213,6 +213,29 @@ func TestCatalogOperationReusesRichPublicEndpointRenderer(t *testing.T) {
 	}
 }
 
+func TestCatalogSummarylessOperationUsesSemanticVisibleHeading(t *testing.T) {
+	t.Parallel()
+
+	data := catalogTemplateFixture()
+	document := data.Directory.Documents[0]
+	data.Document = &document
+	detailID := document.Operations[0].DetailID
+	data.Selected = &catalog.DetailRecordV1{ID: detailID, Kind: "operation", Operation: &projection.OperationDetail{
+		ID: string(detailID), Anchor: string(detailID), HeadingID: string(detailID), Heading: "listCoreV1NamespacedPod", Method: "GET", Path: "/api/v1/namespaces/{namespace}/pods",
+	}}
+	data.OperationView = &domain.Operation{
+		ID: string(detailID), Anchor: string(detailID), Title: "listCoreV1NamespacedPod", Method: "GET", Path: "/api/v1/namespaces/{namespace}/pods",
+	}
+
+	body := renderCatalogTemplate(t, data)
+	if !strings.Contains(body, ">listCoreV1NamespacedPod</h1>") {
+		t.Fatalf("summary-less operation semantic heading missing: %s", body)
+	}
+	if strings.Contains(body, ">"+string(detailID)+"</h1>") {
+		t.Fatalf("summary-less operation exposed immutable detail hash as heading: %s", body)
+	}
+}
+
 func renderCatalogTemplate(t *testing.T, data CatalogPageData) string {
 	t.Helper()
 	var output bytes.Buffer

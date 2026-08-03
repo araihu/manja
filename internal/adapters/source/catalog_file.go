@@ -3,6 +3,7 @@ package source
 import (
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"sort"
@@ -19,6 +20,7 @@ type FileCatalogSource struct {
 	StabilityDelay time.Duration
 
 	afterFirstPass func()
+	beforeFileRead func(string)
 }
 
 func (source FileCatalogSource) Load(ctx context.Context) (domain.CatalogCandidate, error) {
@@ -56,7 +58,7 @@ func (source FileCatalogSource) Load(ctx context.Context) (domain.CatalogCandida
 }
 
 func (source FileCatalogSource) loadPass(ctx context.Context, root string) (domain.CatalogCandidate, error) {
-	inventory, err := fileCatalogInventory(root)
+	inventory, err := fileCatalogInventory(ctx, root)
 	if err != nil {
 		return domain.CatalogCandidate{}, err
 	}
@@ -64,7 +66,7 @@ func (source FileCatalogSource) loadPass(ctx context.Context, root string) (doma
 		if err := ctx.Err(); err != nil {
 			return capturedCatalogFile{}, err
 		}
-		return readCatalogFile(root, entry.path)
+		return readCatalogFile(root, entry, source.beforeFileRead)
 	}
 	return captureCatalogCandidate(ctx, source.Manifest, inventory, reader, domain.CatalogRevisionFiles, "")
 }
@@ -91,11 +93,16 @@ func canonicalCatalogRoot(root string) (string, error) {
 	return canonical, nil
 }
 
-func fileCatalogInventory(root string) ([]catalogInventoryEntry, error) {
+func fileCatalogInventory(ctx context.Context, root string) ([]catalogInventoryEntry, error) {
 	var result []catalogInventoryEntry
+	var pathBytes int
+	var sourceBytes int64
 	err := filepath.WalkDir(root, func(filename string, entry os.DirEntry, walkErr error) error {
 		if walkErr != nil {
 			return walkErr
+		}
+		if err := ctx.Err(); err != nil {
+			return err
 		}
 		if filename == root {
 			return nil
@@ -123,8 +130,7 @@ func fileCatalogInventory(root string) ([]catalogInventoryEntry, error) {
 			if !info.Mode().IsRegular() {
 				return fmt.Errorf("catalog path %q is not a regular file", sourcePath)
 			}
-			result = append(result, catalogInventoryEntry{path: sourcePath, mode: fileModeIdentity(info.Mode())})
-			return nil
+			return appendFileCatalogInventoryEntry(&result, &pathBytes, &sourceBytes, sourcePath, info)
 		}
 		if entry.IsDir() {
 			return nil
@@ -136,8 +142,7 @@ func fileCatalogInventory(root string) ([]catalogInventoryEntry, error) {
 		if !info.Mode().IsRegular() {
 			return fmt.Errorf("catalog path %q is not a regular file", sourcePath)
 		}
-		result = append(result, catalogInventoryEntry{path: sourcePath, mode: fileModeIdentity(info.Mode())})
-		return nil
+		return appendFileCatalogInventoryEntry(&result, &pathBytes, &sourceBytes, sourcePath, info)
 	})
 	if err != nil {
 		return nil, fmt.Errorf("walk file catalog: %w", err)
@@ -146,7 +151,27 @@ func fileCatalogInventory(root string) ([]catalogInventoryEntry, error) {
 	return result, nil
 }
 
-func readCatalogFile(root, sourcePath string) (capturedCatalogFile, error) {
+func appendFileCatalogInventoryEntry(result *[]catalogInventoryEntry, pathBytes *int, sourceBytes *int64, sourcePath string, info os.FileInfo) error {
+	if len(*result) >= maxCatalogInventoryEntries {
+		return fmt.Errorf("catalog inventory exceeds %d entries", maxCatalogInventoryEntries)
+	}
+	*pathBytes += len(sourcePath)
+	if *pathBytes > maxCatalogInventoryBytes {
+		return fmt.Errorf("catalog inventory paths exceed %d bytes", maxCatalogInventoryBytes)
+	}
+	if info.Size() < 0 || info.Size() > maxCatalogSourceFileBytes {
+		return fmt.Errorf("catalog inventory file %q exceeds %d bytes", sourcePath, maxCatalogSourceFileBytes)
+	}
+	*sourceBytes += info.Size()
+	if *sourceBytes > maxCatalogSourceBytes {
+		return fmt.Errorf("catalog inventory source bytes exceed %d", maxCatalogSourceBytes)
+	}
+	*result = append(*result, catalogInventoryEntry{path: sourcePath, mode: fileModeIdentity(info.Mode()), size: info.Size()})
+	return nil
+}
+
+func readCatalogFile(root string, entry catalogInventoryEntry, beforeRead func(string)) (capturedCatalogFile, error) {
+	sourcePath := entry.path
 	filename := filepath.Join(root, filepath.FromSlash(sourcePath))
 	canonical, err := filepath.EvalSymlinks(filename)
 	if err != nil {
@@ -155,19 +180,44 @@ func readCatalogFile(root, sourcePath string) (capturedCatalogFile, error) {
 	if !pathInsideCatalogRoot(root, canonical) {
 		return capturedCatalogFile{}, fmt.Errorf("catalog path %q escapes the source root", sourcePath)
 	}
-	info, err := os.Stat(canonical)
+	pathInfo, err := os.Lstat(canonical)
 	if err != nil {
 		return capturedCatalogFile{}, err
 	}
-	if !info.Mode().IsRegular() {
+	if pathInfo.Mode()&os.ModeSymlink != 0 || !pathInfo.Mode().IsRegular() {
 		return capturedCatalogFile{}, fmt.Errorf("catalog path %q is not a regular file", sourcePath)
 	}
-	if info.Size() > maxCatalogSourceFileBytes {
-		return capturedCatalogFile{}, fmt.Errorf("captured file %q exceeds %d bytes", sourcePath, maxCatalogSourceFileBytes)
-	}
-	data, err := os.ReadFile(canonical)
+	file, err := os.Open(canonical)
 	if err != nil {
 		return capturedCatalogFile{}, err
+	}
+	defer file.Close()
+	info, err := file.Stat()
+	if err != nil {
+		return capturedCatalogFile{}, err
+	}
+	if !os.SameFile(pathInfo, info) || info.Size() != entry.size || fileModeIdentity(info.Mode()) != entry.mode {
+		return capturedCatalogFile{}, fmt.Errorf("catalog file %q changed before reading", sourcePath)
+	}
+	if info.Size() < 0 || info.Size() > maxCatalogSourceFileBytes {
+		return capturedCatalogFile{}, fmt.Errorf("captured file %q exceeds %d bytes", sourcePath, maxCatalogSourceFileBytes)
+	}
+	if beforeRead != nil {
+		beforeRead(sourcePath)
+	}
+	data, err := io.ReadAll(io.LimitReader(file, maxCatalogSourceFileBytes+1))
+	if err != nil {
+		return capturedCatalogFile{}, err
+	}
+	after, err := file.Stat()
+	if err != nil {
+		return capturedCatalogFile{}, err
+	}
+	if len(data) > maxCatalogSourceFileBytes {
+		return capturedCatalogFile{}, fmt.Errorf("captured file %q exceeds %d bytes", sourcePath, maxCatalogSourceFileBytes)
+	}
+	if int64(len(data)) != info.Size() || after.Size() != info.Size() || after.ModTime() != info.ModTime() {
+		return capturedCatalogFile{}, fmt.Errorf("catalog file %q changed while reading", sourcePath)
 	}
 	return capturedCatalogFile{path: sourcePath, mode: fileModeIdentity(info.Mode()), data: data}, nil
 }

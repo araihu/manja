@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"path"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/araihu/manja/application/port"
@@ -47,12 +48,12 @@ func (source GitCatalogSource) Load(ctx context.Context) (domain.CatalogCandidat
 	gitSource := Git{
 		Repo: source.Repository, Username: source.Username, Token: source.Token, SSHPrivateKey: source.SSHPrivateKey,
 	}
-	repository, cleanup, err := gitWorktree(ctx, gitSource.cloneURL(), source.SSHPrivateKey)
+	repository, resolvedRef, cleanup, err := gitCatalogRepository(ctx, gitSource.cloneURL(), reference, source.SSHPrivateKey)
 	if err != nil {
 		return domain.CatalogCandidate{}, err
 	}
 	defer cleanup()
-	commit, err := gitOutput(ctx, repository, "rev-parse", "--verify", reference+"^{commit}")
+	commit, err := gitOutputLimit(ctx, repository, 128, "rev-parse", "--verify", resolvedRef+"^{commit}")
 	if err != nil {
 		return domain.CatalogCandidate{}, fmt.Errorf("resolve Git catalog ref %q: %w", reference, err)
 	}
@@ -74,9 +75,26 @@ func (source GitCatalogSource) Load(ctx context.Context) (domain.CatalogCandidat
 		if root != "." {
 			objectPath = path.Join(root, entry.path)
 		}
-		data, err := gitOutputBytes(ctx, repository, "show", commit+":"+objectPath)
+		if entry.objectID == "" {
+			return capturedCatalogFile{}, fmt.Errorf("Git catalog object ID is missing for %q", entry.path)
+		}
+		sizeText, err := gitOutputLimit(ctx, repository, 32, "cat-file", "-s", entry.objectID)
 		if err != nil {
 			return capturedCatalogFile{}, err
+		}
+		size, err := strconv.ParseInt(sizeText, 10, 64)
+		if err != nil || size < 0 {
+			return capturedCatalogFile{}, fmt.Errorf("read Git catalog object size for %q", objectPath)
+		}
+		if size > maxCatalogSourceFileBytes {
+			return capturedCatalogFile{}, fmt.Errorf("captured file %q exceeds %d bytes", entry.path, maxCatalogSourceFileBytes)
+		}
+		data, err := gitOutputBytesLimit(ctx, repository, uint64(size)+1, "cat-file", "blob", entry.objectID)
+		if err != nil {
+			return capturedCatalogFile{}, err
+		}
+		if int64(len(data)) != size {
+			return capturedCatalogFile{}, fmt.Errorf("Git catalog object %q changed length", entry.path)
 		}
 		return capturedCatalogFile{path: entry.path, mode: entry.mode, data: data}, nil
 	}
@@ -88,7 +106,7 @@ func gitCatalogInventory(ctx context.Context, repository, commit, root string) (
 	if root != "." {
 		args = append(args, "--", root)
 	}
-	output, err := gitOutputBytes(ctx, repository, args...)
+	output, err := gitOutputBytesLimit(ctx, repository, maxCatalogInventoryBytes, args...)
 	if err != nil {
 		return nil, fmt.Errorf("list Git catalog tree at %s: %w", commit, err)
 	}
@@ -121,7 +139,10 @@ func gitCatalogInventory(ctx context.Context, repository, commit, root string) (
 		if err := validateSourcePath("Git catalog tree path", sourcePath); err != nil {
 			return nil, err
 		}
-		result = append(result, catalogInventoryEntry{path: sourcePath, mode: fields[0]})
+		if len(result) >= maxCatalogInventoryEntries {
+			return nil, fmt.Errorf("Git catalog inventory exceeds %d entries", maxCatalogInventoryEntries)
+		}
+		result = append(result, catalogInventoryEntry{path: sourcePath, mode: fields[0], objectID: fields[2]})
 	}
 	sort.Slice(result, func(i, j int) bool { return result[i].path < result[j].path })
 	return result, nil

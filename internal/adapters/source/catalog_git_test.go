@@ -2,6 +2,8 @@ package source
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -94,5 +96,45 @@ func TestCatalogGitSourceRejectsSymlinkEntries(t *testing.T) {
 		Repository: repository, Ref: "HEAD", Manifest: testCatalogManifest("strict-v1", "*.json"),
 	}).Load(context.Background()); err == nil {
 		t.Fatal("Git symlink entry was accepted")
+	}
+}
+
+func TestCatalogGitInventoryRejectsTreeOverEntryBound(t *testing.T) {
+	t.Parallel()
+
+	repository := t.TempDir()
+	runGitTestCommand(t, repository, "init", "-q")
+	runGitTestCommand(t, repository, "config", "user.name", "Test")
+	runGitTestCommand(t, repository, "config", "user.email", "test@example.com")
+	writeCatalogFile(t, repository, "openapi.json", `{"openapi":"3.0.3","info":{"title":"Bounded","version":"v1"},"paths":{}}`)
+	for index := 0; index < maxCatalogInventoryEntries; index++ {
+		writeCatalogFile(t, repository, fmt.Sprintf("extra/%04d.txt", index), "x")
+	}
+	runGitTestCommand(t, repository, "add", ".")
+	runGitTestCommand(t, repository, "commit", "-qm", "large tree")
+
+	_, err := (GitCatalogSource{
+		Repository: repository, Ref: "HEAD", Manifest: testCatalogManifest("strict-v1", "*.json"),
+	}).Load(context.Background())
+	if err == nil || !strings.Contains(err.Error(), "inventory") {
+		t.Fatalf("large Git tree error = %v", err)
+	}
+}
+
+func TestGitCommandOutputIsBounded(t *testing.T) {
+	t.Parallel()
+
+	repository := t.TempDir()
+	runGitTestCommand(t, repository, "init", "-q")
+	command := exec.Command("git", "-C", repository, "hash-object", "-w", "--stdin")
+	command.Stdin = strings.NewReader(strings.Repeat("x", 4096))
+	output, err := command.CombinedOutput()
+	if err != nil {
+		t.Fatal(err)
+	}
+	objectID := strings.TrimSpace(string(output))
+	_, err = gitOutputBytesLimit(context.Background(), repository, 1024, "cat-file", "blob", objectID)
+	if !errors.Is(err, errGitOutputLimit) {
+		t.Fatalf("bounded Git output error = %v, want %v", err, errGitOutputLimit)
 	}
 }

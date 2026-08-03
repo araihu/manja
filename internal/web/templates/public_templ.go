@@ -4002,6 +4002,9 @@ func schemaAnchor(schema core.Schema) string {
 }
 
 func operationTitle(op core.Operation) string {
+	if strings.TrimSpace(op.Title) != "" {
+		return op.Title
+	}
 	if strings.TrimSpace(op.Summary) != "" {
 		return op.Summary
 	}

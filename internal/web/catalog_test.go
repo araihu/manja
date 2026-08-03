@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"image/png"
 	"io"
 	"net/http"
@@ -265,6 +266,60 @@ func TestCatalogRenderRejectsResponsesOverHardByteLimit(t *testing.T) {
 	}
 	if response.Body.Len() > 1024 {
 		t.Fatalf("oversized render error body = %d bytes, want bounded", response.Body.Len())
+	}
+}
+
+func TestCatalogMaxOperationGroupRendersSelectedPageWithinByteBound(t *testing.T) {
+	t.Parallel()
+
+	const operationCount = 20_000
+	operations := make([]catalog.OperationDirectoryV1, operationCount)
+	for index := range operations {
+		detailID := domain.DetailID("detail-sha256-" + fmt.Sprintf("%064x", index+1))
+		operations[index] = catalog.OperationDirectoryV1{
+			DetailID: detailID, OperationID: fmt.Sprintf("operation%d", index+1), Method: "GET",
+			Path: fmt.Sprintf("/items/%d", index+1), Title: fmt.Sprintf("Operation %d", index+1),
+			DetailChild: "details/max.json", Tags: []string{"All operations"},
+		}
+	}
+	selected := operations[len(operations)-1]
+	detailBytes, err := catalogjson.EncodeDetailShard(catalog.DetailShardV1{SchemaVersion: 1, DocumentKey: "max", Records: []catalog.DetailRecordV1{{
+		ID: selected.DetailID, Kind: "operation", Operation: &projection.OperationDetail{
+			ID: string(selected.DetailID), Anchor: string(selected.DetailID), Href: "?selected=" + string(selected.DetailID),
+			HeadingID: string(selected.DetailID), Heading: selected.Title, HeadingLevel: 2,
+			Method: selected.Method, Path: selected.Path,
+		},
+	}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	detailDigest := sha256.Sum256(detailBytes)
+	snapshot := catalog.RuntimeSnapshot{
+		ID: "snapshot-sha256-" + catalog.SnapshotID(strings.Repeat("f", 64)), Location: "/memory",
+		Directory: catalog.CatalogArtifactV1{
+			SchemaVersion: 1, CatalogID: "max", Title: "Maximum catalog", SearchChild: "search/directory.json",
+			Documents: []catalog.DocumentDirectoryV1{{Key: "max", Title: "Maximum", SourceChild: "sources/max.json", Operations: operations}},
+		},
+		Manifest: catalog.ManifestV1{SchemaVersion: 1, Children: []catalog.ChildIdentityV1{
+			{Path: "search/directory.json", Kind: "search-directory", Length: 2, SHA256: strings.Repeat("e", 64)},
+			{Path: "details/max.json", Kind: "detail", Length: uint64(len(detailBytes)), SHA256: hex.EncodeToString(detailDigest[:])},
+		}},
+	}
+	handler := &CatalogHandler{children: memoryCatalogChildren{"details/max.json": detailBytes}, details: catalog.NewDetailCache()}
+	data, err := handler.catalogPageData(context.Background(), snapshot, "/", "max", string(selected.DetailID), "", "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	response := httptest.NewRecorder()
+	handler.renderCatalogPage(response, httptest.NewRequest(http.MethodGet, "/documents/max/?selected="+string(selected.DetailID), nil), data)
+	if response.Code != http.StatusOK || response.Body.Len() >= maxCatalogPageBytes {
+		t.Fatalf("max-bound selected operation = %d bytes=%d body=%q", response.Code, response.Body.Len(), response.Body.String())
+	}
+	if !strings.Contains(response.Body.String(), `id="`+string(selected.DetailID)+`"`) || !strings.Contains(response.Body.String(), selected.Title) {
+		t.Fatal("max-bound selected operation target is not visible")
+	}
+	if strings.Count(response.Body.String(), `id="sidebar-detail-sha256-`) > catalogSidebarPageSize {
+		t.Fatalf("max-bound sidebar materialized more than %d operation links", catalogSidebarPageSize)
 	}
 }
 

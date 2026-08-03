@@ -30,7 +30,7 @@ func TestKubernetesCatalog(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(receipts) != 1 || receipts[0].CatalogID != "kubernetes" || receipts[0].Mount != "/" || receipts[0].SnapshotID == "" {
+	if len(receipts) != 1 || receipts[0].CatalogID != "kubernetes" || receipts[0].Mount != "/" || receipts[0].SnapshotID == "" || receipts[0].StartupProcessBytes == 0 || receipts[0].StartupProcessBytes > 512<<20 {
 		t.Fatalf("activation receipts = %#v", receipts)
 	}
 

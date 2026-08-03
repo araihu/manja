@@ -13,6 +13,10 @@ import (
 func (coordinator *ActivationCoordinator) GarbageCollect(ctx context.Context) error {
 	coordinator.commit.Lock()
 	defer coordinator.commit.Unlock()
+	return coordinator.garbageCollectLocked(ctx)
+}
+
+func (coordinator *ActivationCoordinator) garbageCollectLocked(ctx context.Context) error {
 	keep := make(map[catalog.SnapshotID]struct{})
 	for _, state := range coordinator.runtime.Table().Mounts {
 		keep[state.Active.ID] = struct{}{}

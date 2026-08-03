@@ -54,6 +54,20 @@ func TestServerExposesStableHandlerAndBoundedUnavailableRoutes(t *testing.T) {
 	}
 }
 
+func TestServerRejectsStartupWhenProcessPeakExceedsConfiguredBudget(t *testing.T) {
+	t.Parallel()
+
+	server, err := New(Config{Version: 1, StartupProcessBytes: 1, Catalogs: []CatalogConfig{
+		{ID: "payments", Mount: "/", Title: "Payments", ProfileID: domain.CompatibilityProfileStrict},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := server.Recover(context.Background()); !errors.Is(err, ErrStartupProcessBudget) {
+		t.Fatalf("startup process budget error = %v, want %v", err, ErrStartupProcessBudget)
+	}
+}
+
 func TestActivateCompilesAndPublishesConfiguredCandidate(t *testing.T) {
 	t.Parallel()
 
@@ -70,6 +84,9 @@ func TestActivateCompilesAndPublishesConfiguredCandidate(t *testing.T) {
 	}
 	if receipt.CatalogID != "payments" || receipt.Mount != "/" || receipt.RevisionID != candidate.Revision.ID || receipt.SnapshotID == "" {
 		t.Fatalf("activation receipt = %#v", receipt)
+	}
+	if receipt.StartupProcessBytes == 0 || receipt.StartupProcessBytes > DefaultStartupProcessBytes {
+		t.Fatalf("startup process receipt = %d, want 1..%d", receipt.StartupProcessBytes, DefaultStartupProcessBytes)
 	}
 	response := httptest.NewRecorder()
 	server.Handler().ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/", nil))

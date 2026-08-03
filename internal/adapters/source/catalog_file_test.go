@@ -102,6 +102,33 @@ func TestCatalogFileSourceRejectsChangesBetweenStablePasses(t *testing.T) {
 	}
 }
 
+func TestCatalogFileSourceRejectsGrowthDuringBoundedRead(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	writeCatalogFile(t, root, "openapi.json", `{"openapi":"3.0.3","info":{"title":"Stable","version":"v1"},"paths":{}}`)
+	source := FileCatalogSource{Root: root, Manifest: testCatalogManifest("strict-v1", "*.json")}
+	source.beforeFileRead = func(sourcePath string) {
+		if sourcePath != "openapi.json" {
+			return
+		}
+		file, err := os.OpenFile(filepath.Join(root, sourcePath), os.O_APPEND|os.O_WRONLY, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := file.WriteString(" "); err != nil {
+			_ = file.Close()
+			t.Fatal(err)
+		}
+		if err := file.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := source.Load(context.Background()); err == nil || !strings.Contains(err.Error(), "changed while reading") {
+		t.Fatalf("growing file error = %v", err)
+	}
+}
+
 func TestCatalogFileSourceEnforcesDocumentAndKubernetesAggregateLimits(t *testing.T) {
 	t.Parallel()
 

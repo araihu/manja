@@ -35,7 +35,7 @@ func (handler *CatalogHandler) catalogOperationView(
 		active: make(map[projection.SchemaRef]bool),
 	}
 	operation := &domain.Operation{
-		ID: detail.ID, Anchor: detail.Anchor, Method: detail.Method, Path: detail.Path,
+		ID: detail.ID, Anchor: detail.Anchor, Title: detail.Heading, Method: detail.Method, Path: detail.Path,
 		Summary: detail.Summary, Description: detail.Description, Deprecated: detail.Deprecated,
 		Tags: textRecordValues(detail.Tags),
 	}

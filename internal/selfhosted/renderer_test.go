@@ -8,6 +8,11 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/araihu/manja/application/catalog"
+	"github.com/araihu/manja/domain"
+	"github.com/araihu/manja/internal/adapters/catalogstore"
+	openapiadapter "github.com/araihu/manja/internal/adapters/openapi"
 )
 
 func TestNewRendererLoadsAndActivatesConfiguredFileCatalog(t *testing.T) {
@@ -44,5 +49,107 @@ catalogs:
 	handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/", nil))
 	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), "Payments") {
 		t.Fatalf("GET / = %d %q", response.Code, response.Body.String())
+	}
+}
+
+func TestNewRendererServesRecoveredCatalogWhenRefreshSourcesFail(t *testing.T) {
+	root := t.TempDir()
+	dataDir := filepath.Join(root, "data")
+	recovered := rendererCandidate("payments", "Payments")
+	seedRendererSnapshot(t, dataDir, "/payments", recovered)
+
+	configPath := filepath.Join(root, "renderer.yaml")
+	config := `version: 1
+dataDir: data
+catalogs:
+  - id: payments
+    mount: /payments
+    title: Payments
+    defaultDocument: payments-v1
+    profile: strict-v1
+    source:
+      kind: files
+      root: .
+      include: [missing-payments.json]
+  - id: orders
+    mount: /orders
+    title: Orders
+    defaultDocument: orders-v1
+    profile: strict-v1
+    source:
+      kind: files
+      root: .
+      include: [missing-orders.json]
+`
+	if err := os.WriteFile(configPath, []byte(config), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	handler, receipts, err := NewRenderer(context.Background(), RendererOptions{ConfigPath: configPath, DataDir: dataDir})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(receipts) != 2 {
+		t.Fatalf("refresh receipts = %#v", receipts)
+	}
+	if !receipts[0].Degraded || receipts[0].SnapshotID == "" || len(receipts[0].Diagnostic) == 0 || len(receipts[0].Diagnostic) > 256 {
+		t.Fatalf("recovered refresh receipt = %#v", receipts[0])
+	}
+	if !receipts[1].Degraded || receipts[1].SnapshotID != "" || len(receipts[1].Diagnostic) == 0 || len(receipts[1].Diagnostic) > 256 {
+		t.Fatalf("unavailable refresh receipt = %#v", receipts[1])
+	}
+
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/payments/", nil))
+	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), "Payments") {
+		t.Fatalf("recovered GET /payments/ = %d %q", response.Code, response.Body.String())
+	}
+	response = httptest.NewRecorder()
+	handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/orders/", nil))
+	if response.Code != http.StatusServiceUnavailable {
+		t.Fatalf("missing GET /orders/ = %d, want %d", response.Code, http.StatusServiceUnavailable)
+	}
+}
+
+func seedRendererSnapshot(t *testing.T, dataDir, mount string, candidate domain.CatalogCandidate) {
+	t.Helper()
+	parser, err := openapiadapter.NewCatalogParser(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	index, err := parser.Parse(context.Background(), candidate)
+	if err != nil {
+		t.Fatal(err)
+	}
+	compiler, err := catalog.NewCompiler(catalog.DefaultCompilerOptions())
+	if err != nil {
+		t.Fatal(err)
+	}
+	compiled, err := compiler.Compile(context.Background(), candidate, index)
+	if err != nil {
+		t.Fatal(err)
+	}
+	runtime := catalog.NewRuntime(1)
+	coordinator, err := catalogstore.OpenActivationCoordinator(context.Background(), dataDir, runtime)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := coordinator.Activate(context.Background(), mount, "", 1, compiled); err != nil {
+		_ = coordinator.Close()
+		t.Fatal(err)
+	}
+	if err := coordinator.Close(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func rendererCandidate(id, title string) domain.CatalogCandidate {
+	return domain.CatalogCandidate{
+		ID: id, Title: title, ProfileID: domain.CompatibilityProfileStrict, DefaultDocumentKey: id + "-v1",
+		Revision: domain.CatalogRevision{Kind: domain.CatalogRevisionFiles, ID: "files-a", ManifestDigest: strings.Repeat("a", 64)},
+		Documents: []domain.CatalogDocument{{
+			Key: id + "-v1", SourcePath: id + ".json", Format: domain.CatalogFormatJSON,
+			Bytes: []byte(`{"openapi":"3.0.3","info":{"title":"` + title + `","version":"v1"},"paths":{}}`),
+		}},
 	}
 }

@@ -113,6 +113,7 @@ type SpecServerVariable struct {
 type Operation struct {
 	ID          string
 	Anchor      string
+	Title       string
 	Method      string
 	Path        string
 	Summary     string

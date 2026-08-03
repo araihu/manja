@@ -100,7 +100,16 @@ func (coordinator *ActivationCoordinator) Activate(
 	generation uint64,
 	candidate catalog.CompiledSnapshot,
 ) (ActivationReceipt, error) {
+	coordinator.commit.Lock()
+	defer coordinator.commit.Unlock()
+
 	materialization, err := coordinator.store.Publish(ctx, candidate)
+	if errors.Is(err, ErrStorageBudget) {
+		if collectErr := coordinator.garbageCollectLocked(ctx); collectErr != nil {
+			return ActivationReceipt{}, collectErr
+		}
+		materialization, err = coordinator.store.Publish(ctx, candidate)
+	}
 	if err != nil {
 		return ActivationReceipt{}, err
 	}
@@ -114,8 +123,6 @@ func (coordinator *ActivationCoordinator) Activate(
 		}
 	}
 	journal := activationJournalV1{SchemaVersion: 1, Mount: mount, Candidate: candidate.ID, ExpectedOld: expectedOld, Generation: generation}
-	coordinator.commit.Lock()
-	defer coordinator.commit.Unlock()
 	if err := coordinator.runtime.CheckMount(mount, expectedOld, generation); err != nil {
 		return ActivationReceipt{}, err
 	}

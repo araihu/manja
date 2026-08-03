@@ -11,10 +11,13 @@ import (
 
 const maxConfiguredCatalogs = 8
 
+const DefaultStartupProcessBytes = uint64(512 << 20)
+
 type Config struct {
-	Version  uint32
-	DataDir  string
-	Catalogs []CatalogConfig
+	Version             uint32
+	DataDir             string
+	StartupProcessBytes uint64
+	Catalogs            []CatalogConfig
 }
 
 type CatalogConfig struct {

@@ -1,17 +1,32 @@
 package source
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
+	"io/fs"
 	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"time"
 
 	core "github.com/araihu/manja/domain"
+)
+
+const (
+	maxGitCommandOutputBytes = uint64(8 << 20)
+	maxGitDiagnosticBytes    = uint64(64 << 10)
+	maxGitRepositoryBytes    = uint64(128 << 20)
+)
+
+var (
+	errGitOutputLimit     = errors.New("Git command output exceeds limit")
+	errGitRepositoryLimit = errors.New("Git repository exceeds disk limit")
 )
 
 type Git struct {
@@ -228,6 +243,41 @@ func gitWorktree(ctx context.Context, repo, sshPrivateKey string) (string, func(
 	return dir, cleanup, nil
 }
 
+func gitCatalogRepository(ctx context.Context, repo, reference, sshPrivateKey string) (string, string, func(), error) {
+	if info, err := os.Stat(repo); err == nil && info.IsDir() {
+		return repo, reference, func() {}, nil
+	}
+	baseDir, err := os.MkdirTemp("", "manja-git-catalog-*")
+	if err != nil {
+		return "", "", func() {}, fmt.Errorf("create Git catalog checkout: %w", err)
+	}
+	directory := filepath.Join(baseDir, "checkout")
+	cleanup := func() { _ = os.RemoveAll(baseDir) }
+	env, envCleanup, err := gitSSHEnv(sshPrivateKey, baseDir)
+	if err != nil {
+		cleanup()
+		return "", "", func() {}, err
+	}
+	defer envCleanup()
+	if _, err := gitOutputBytesRedactedLimit(ctx, "", env, []string{"init", "-q", directory}, maxGitDiagnosticBytes, "", "init", "-q", directory); err != nil {
+		cleanup()
+		return "", "", func() {}, fmt.Errorf("initialize Git catalog checkout: %w", err)
+	}
+	if _, err := gitOutputBytesRedactedLimit(
+		ctx,
+		directory,
+		env,
+		[]string{"fetch", "--quiet", "--depth=1", "--filter=blob:none", "--no-tags", redactURL(repo), reference},
+		maxGitDiagnosticBytes,
+		directory,
+		"fetch", "--quiet", "--depth=1", "--filter=blob:none", "--no-tags", repo, reference,
+	); err != nil {
+		cleanup()
+		return "", "", func() {}, fmt.Errorf("fetch Git catalog ref %q from %q: %w", reference, redactURL(repo), err)
+	}
+	return directory, "FETCH_HEAD", cleanup, nil
+}
+
 func gitSSHEnv(privateKey, dir string) ([]string, func(), error) {
 	if privateKey == "" {
 		return nil, func() {}, nil
@@ -250,7 +300,11 @@ func specFormat(path string) string {
 }
 
 func gitOutput(ctx context.Context, repo string, args ...string) (string, error) {
-	out, err := gitOutputBytes(ctx, repo, args...)
+	return gitOutputLimit(ctx, repo, maxGitCommandOutputBytes, args...)
+}
+
+func gitOutputLimit(ctx context.Context, repo string, limit uint64, args ...string) (string, error) {
+	out, err := gitOutputBytesLimit(ctx, repo, limit, args...)
 	if err != nil {
 		return "", err
 	}
@@ -258,10 +312,18 @@ func gitOutput(ctx context.Context, repo string, args ...string) (string, error)
 }
 
 func gitOutputBytes(ctx context.Context, repo string, args ...string) ([]byte, error) {
-	return gitOutputBytesRedacted(ctx, repo, nil, args, args...)
+	return gitOutputBytesLimit(ctx, repo, maxGitCommandOutputBytes, args...)
+}
+
+func gitOutputBytesLimit(ctx context.Context, repo string, limit uint64, args ...string) ([]byte, error) {
+	return gitOutputBytesRedactedLimit(ctx, repo, nil, args, limit, "", args...)
 }
 
 func gitOutputBytesRedacted(ctx context.Context, repo string, env []string, displayArgs []string, args ...string) ([]byte, error) {
+	return gitOutputBytesRedactedLimit(ctx, repo, env, displayArgs, maxGitCommandOutputBytes, "", args...)
+}
+
+func gitOutputBytesRedactedLimit(ctx context.Context, repo string, env []string, displayArgs []string, limit uint64, diskRoot string, args ...string) ([]byte, error) {
 	fullArgs := args
 	if repo != "" {
 		fullArgs = append([]string{"-C", repo}, args...)
@@ -271,11 +333,109 @@ func gitOutputBytesRedacted(ctx context.Context, repo string, env []string, disp
 	if len(env) > 0 {
 		cmd.Env = append(os.Environ(), env...)
 	}
-	out, err := cmd.CombinedOutput()
-	if err != nil {
-		return nil, fmt.Errorf("git %s: %w: %s", strings.Join(displayArgs, " "), err, strings.TrimSpace(string(out)))
+	stdout := &boundedGitBuffer{limit: limit}
+	stderr := &boundedGitBuffer{limit: maxGitDiagnosticBytes}
+	cmd.Stdout = stdout
+	cmd.Stderr = stderr
+	err := runGitCommand(ctx, cmd, diskRoot)
+	if errors.Is(stdout.err, errGitOutputLimit) || errors.Is(stderr.err, errGitOutputLimit) {
+		return nil, fmt.Errorf("git %s: %w", strings.Join(displayArgs, " "), errGitOutputLimit)
 	}
-	return out, nil
+	if err != nil {
+		return nil, fmt.Errorf("git %s: %w: %s", strings.Join(displayArgs, " "), err, strings.TrimSpace(stderr.String()))
+	}
+	return stdout.Bytes(), nil
+}
+
+type boundedGitBuffer struct {
+	buffer bytes.Buffer
+	limit  uint64
+	err    error
+}
+
+func (buffer *boundedGitBuffer) Write(data []byte) (int, error) {
+	if buffer.err != nil {
+		return 0, buffer.err
+	}
+	remaining := int64(buffer.limit) - int64(buffer.buffer.Len())
+	if remaining <= 0 || int64(len(data)) > remaining {
+		if remaining > 0 {
+			_, _ = buffer.buffer.Write(data[:int(remaining)])
+		}
+		buffer.err = errGitOutputLimit
+		return len(data), buffer.err
+	}
+	return buffer.buffer.Write(data)
+}
+
+func (buffer *boundedGitBuffer) Bytes() []byte {
+	return append([]byte(nil), buffer.buffer.Bytes()...)
+}
+
+func (buffer *boundedGitBuffer) String() string {
+	return buffer.buffer.String()
+}
+
+func runGitCommand(ctx context.Context, command *exec.Cmd, diskRoot string) error {
+	if diskRoot == "" {
+		return command.Run()
+	}
+	if err := command.Start(); err != nil {
+		return err
+	}
+	done := make(chan error, 1)
+	go func() { done <- command.Wait() }()
+	ticker := time.NewTicker(10 * time.Millisecond)
+	defer ticker.Stop()
+	for {
+		select {
+		case err := <-done:
+			return err
+		case <-ctx.Done():
+			_ = command.Process.Kill()
+			<-done
+			return ctx.Err()
+		case <-ticker.C:
+			exceeded, err := directoryExceeds(diskRoot, maxGitRepositoryBytes)
+			if err != nil {
+				_ = command.Process.Kill()
+				<-done
+				return err
+			}
+			if exceeded {
+				_ = command.Process.Kill()
+				<-done
+				return errGitRepositoryLimit
+			}
+		}
+	}
+}
+
+func directoryExceeds(root string, limit uint64) (bool, error) {
+	var total uint64
+	err := filepath.WalkDir(root, func(_ string, entry fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if !entry.Type().IsRegular() {
+			return nil
+		}
+		info, err := entry.Info()
+		if err != nil {
+			return err
+		}
+		if info.Size() > 0 {
+			total += uint64(info.Size())
+		}
+		if total > limit {
+			return errGitRepositoryLimit
+		}
+		return nil
+	})
+	if errors.Is(err, errGitRepositoryLimit) {
+		return true, nil
+	}
+	return false, err
 }
 
 func redactURL(raw string) string {

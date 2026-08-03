@@ -20,9 +20,11 @@ import (
 )
 
 const (
-	maxCatalogSourceBytes     = 64 << 20
-	maxKubernetesSourceBytes  = 16 << 20
-	maxCatalogSourceFileBytes = 8 << 20
+	maxCatalogSourceBytes      = 64 << 20
+	maxKubernetesSourceBytes   = 16 << 20
+	maxCatalogSourceFileBytes  = 8 << 20
+	maxCatalogInventoryEntries = 1024
+	maxCatalogInventoryBytes   = 2 << 20
 )
 
 type CatalogManifest struct {
@@ -41,8 +43,10 @@ type CatalogDocumentKey struct {
 }
 
 type catalogInventoryEntry struct {
-	path string
-	mode string
+	path     string
+	mode     string
+	size     int64
+	objectID string
 }
 
 type capturedCatalogFile struct {

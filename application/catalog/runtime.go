@@ -107,6 +107,9 @@ func (runtime *Runtime) ActivateMountDurably(
 		if state.Active.ID != expectedOld {
 			return nil, fmt.Errorf("%w: mount %q expected %q, current %q", ErrStaleSnapshot, mount, expectedOld, state.Active.ID)
 		}
+		if candidate.ID == state.Active.ID {
+			return cloneRouteTable(current), nil
+		}
 	} else if expectedOld != "" {
 		return nil, fmt.Errorf("%w: mount %q has no active snapshot", ErrStaleSnapshot, mount)
 	}

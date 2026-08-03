@@ -282,6 +282,45 @@ func TestGarbageCollectionWaitsForAdmissionQuiescence(t *testing.T) {
 	}
 }
 
+func TestActivationReclaimsUnreferencedStorageBeforeAdmissionRetry(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	runtime := catalog.NewRuntime(1)
+	coordinator, err := OpenActivationCoordinator(context.Background(), root, runtime)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer coordinator.Close()
+
+	unreferenced := filepath.Join(root, "snapshots", "unreferenced", "sparse.bin")
+	if err := os.MkdirAll(filepath.Dir(unreferenced), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	file, err := os.Create(unreferenced)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := file.Truncate(int64(MaxStoredBytes)); err != nil {
+		_ = file.Close()
+		t.Fatal(err)
+	}
+	if err := file.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	snapshot := compiledFixture(t)
+	if _, err := coordinator.Activate(context.Background(), "/catalog", "", 1, snapshot); err != nil {
+		t.Fatalf("activation with reclaimable storage: %v", err)
+	}
+	if _, err := os.Stat(filepath.Dir(unreferenced)); !os.IsNotExist(err) {
+		t.Fatalf("unreferenced storage remains after admission: %v", err)
+	}
+	if _, err := coordinator.store.Preflight(context.Background(), snapshot.ID); err != nil {
+		t.Fatalf("admitted snapshot unreadable after reclamation: %v", err)
+	}
+}
+
 func corruptCompiledChild(t *testing.T, store *Store, snapshot catalog.CompiledSnapshot) {
 	t.Helper()
 	location, err := store.snapshotPath(snapshot.ID)
