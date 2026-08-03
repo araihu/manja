@@ -1,0 +1,603 @@
+{
+  "schemaVersion": 1,
+  "commitSha": "a818af18fe29d999d6741234c8cd72709ef2f424",
+  "sourceCatalogSha256": "72948a61e1ec630b6a4622ae15b1e8412466799e011d7dcdc9b325556c1c51f7",
+  "documents": [
+    {
+      "key": "well-known-openid-configuration",
+      "upstreamPath": "api/openapi-spec/v3/.well-known__openid-configuration_openapi.json",
+      "size": 987,
+      "gitBlobSha": "2dd833143a133d2924b8937be0f65014c164de95",
+      "sha256": "d776f5a3b4924075c3105f6576a4167c56a9b31d94219e4eb304af17841f1c0c",
+      "operationCount": 1,
+      "schemaCount": 0
+    },
+    {
+      "key": "core-v1",
+      "upstreamPath": "api/openapi-spec/v3/api__v1_openapi.json",
+      "size": 2135483,
+      "gitBlobSha": "e7f55ca67463e3b3823d3c57415d22ef6b1ee01e",
+      "sha256": "d09ab224a98fb9c0e7fd128b6f395f66b23d43b6635272109dcaaafc4a3dd9c9",
+      "operationCount": 248,
+      "schemaCount": 258
+    },
+    {
+      "key": "core-discovery",
+      "upstreamPath": "api/openapi-spec/v3/api_openapi.json",
+      "size": 4957,
+      "gitBlobSha": "fa73c9eb25ab05323054e24a928cbd130e130ba9",
+      "sha256": "c8b5ff931e265a81bce87df0e27a8d512fa056623b99b7a7d307b6ad9f9c0f8e",
+      "operationCount": 1,
+      "schemaCount": 2
+    },
+    {
+      "key": "admissionregistration-v1",
+      "upstreamPath": "api/openapi-spec/v3/apis__admissionregistration.k8s.io__v1_openapi.json",
+      "size": 607771,
+      "gitBlobSha": "fe005f4a9093ffb4c316f12ded662c7c7dbda828",
+      "sha256": "4a54b50b7562d3b220cd2e7fd9547bac9585982968f692bc96e99fdcca42dbc3",
+      "operationCount": 58,
+      "schemaCount": 55
+    },
+    {
+      "key": "admissionregistration-v1alpha1",
+      "upstreamPath": "api/openapi-spec/v3/apis__admissionregistration.k8s.io__v1alpha1_openapi.json",
+      "size": 231488,
+      "gitBlobSha": "4e376d0568c08f0640f16c6c094cb065a0938ab5",
+      "sha256": "7d41dcbcf2de444ad4d1d0feaee329aaa8d7a6ac53242e996fdab0e376660222",
+      "operationCount": 19,
+      "schemaCount": 34
+    },
+    {
+      "key": "admissionregistration-v1beta1",
+      "upstreamPath": "api/openapi-spec/v3/apis__admissionregistration.k8s.io__v1beta1_openapi.json",
+      "size": 231707,
+      "gitBlobSha": "dcd6d25179095cc9cf51a258a5a4007fbb6bcd10",
+      "sha256": "9109b819da37019a7c83d957029dbacbf8e34b5c2902e2f97c0f5ce80a38e421",
+      "operationCount": 19,
+      "schemaCount": 34
+    },
+    {
+      "key": "admissionregistration-discovery",
+      "upstreamPath": "api/openapi-spec/v3/apis__admissionregistration.k8s.io_openapi.json",
+      "size": 6360,
+      "gitBlobSha": "7a67af573c1c8f454d6318b54a770614478eb086",
+      "sha256": "70cb34b24e86d43a7a92b88581766ff56a5330fafa4a166f2634c545d235b1ce",
+      "operationCount": 1,
+      "schemaCount": 3
+    },
+    {
+      "key": "apiextensions-v1",
+      "upstreamPath": "api/openapi-spec/v3/apis__apiextensions.k8s.io__v1_openapi.json",
+      "size": 182439,
+      "gitBlobSha": "cf892b1eed9cf97dcd0c1949e0449e0b63b8c2c3",
+      "sha256": "41d85b9f6f2757d35b6645086d5bcadf4904a8f0133b00d77e2576b3feb47d56",
+      "operationCount": 13,
+      "schemaCount": 41
+    },
+    {
+      "key": "apiextensions-discovery",
+      "upstreamPath": "api/openapi-spec/v3/apis__apiextensions.k8s.io_openapi.json",
+      "size": 6336,
+      "gitBlobSha": "d0243f26e9d8d088348bfd8a43d4753cf74e51f9",
+      "sha256": "704cf006b3e6f5770b3b0ad6bb5a7e537118460002a362c0fe0fd8e6031181ae",
+      "operationCount": 1,
+      "schemaCount": 3
+    },
+    {
+      "key": "apiregistration-v1",
+      "upstreamPath": "api/openapi-spec/v3/apis__apiregistration.k8s.io__v1_openapi.json",
+      "size": 138365,
+      "gitBlobSha": "fef452993c3d860829aefc09022b28d4495af922",
+      "sha256": "a8e1310237c1b7a484ab98cd594f1d98e46e6d4c6ae7d7c9fd2c86f4cd91a19c",
+      "operationCount": 13,
+      "schemaCount": 23
+    },
+    {
+      "key": "apiregistration-discovery",
+      "upstreamPath": "api/openapi-spec/v3/apis__apiregistration.k8s.io_openapi.json",
+      "size": 6342,
+      "gitBlobSha": "0b2ec7cbf08a18798106176618c5dc4f12a60d0b",
+      "sha256": "165a977dbe9f1b72fe7279bad3c0673233e36f35721b560261cd7d14b2a74ce1",
+      "operationCount": 1,
+      "schemaCount": 3
+    },
+    {
+      "key": "apps-v1",
+      "upstreamPath": "api/openapi-spec/v3/apis__apps__v1_openapi.json",
+      "size": 934942,
+      "gitBlobSha": "83e58bcf673bb8590f2e7a9b906675fd8b21b8c2",
+      "sha256": "e1326db2904fd6356d2f16e6179f8ad8e4800c0112cb74ab3b21da7286df4dbe",
+      "operationCount": 77,
+      "schemaCount": 166
+    },
+    {
+      "key": "apps-discovery",
+      "upstreamPath": "api/openapi-spec/v3/apis__apps_openapi.json",
+      "size": 6302,
+      "gitBlobSha": "3ad42b3521efcbbde2fbf91181e004f8225ce6ed",
+      "sha256": "6779f188ee2c99db2bdd88917239a9c9625a19a6750b320d96f461c540abc50f",
+      "operationCount": 1,
+      "schemaCount": 3
+    },
+    {
+      "key": "authentication-v1",
+      "upstreamPath": "api/openapi-spec/v3/apis__authentication.k8s.io__v1_openapi.json",
+      "size": 43337,
+      "gitBlobSha": "bef40f5c7415ac7272777c9faf206029a883c197",
+      "sha256": "443427d822f77db77202c96df06d453845abc5cc67390180129a67e6c74d421e",
+      "operationCount": 3,
+      "schemaCount": 13
+    },
+    {
+      "key": "authentication-discovery",
+      "upstreamPath": "api/openapi-spec/v3/apis__authentication.k8s.io_openapi.json",
+      "size": 6339,
+      "gitBlobSha": "f6e144c2e719faa2b4e9396a23d3128903bbba85",
+      "sha256": "47ea9f9e3db010ab9aad434d2267bafe7312db3fd86f4894845ec3d1d61325d4",
+      "operationCount": 1,
+      "schemaCount": 3
+    },
+    {
+      "key": "authorization-v1",
+      "upstreamPath": "api/openapi-spec/v3/apis__authorization.k8s.io__v1_openapi.json",
+      "size": 76665,
+      "gitBlobSha": "9580eab80528b234720a113886aea818d4205381",
+      "sha256": "520953628cb42765e372fe5d616421e3743f42bd236bf0b12cfd37781aa37b0f",
+      "operationCount": 5,
+      "schemaCount": 24
+    },
+    {
+      "key": "authorization-discovery",
+      "upstreamPath": "api/openapi-spec/v3/apis__authorization.k8s.io_openapi.json",
+      "size": 6336,
+      "gitBlobSha": "cc465981aa0bb8901971fbdeb6e1fd56e4a69163",
+      "sha256": "c382b090a07e46c830b5473b245e939a07df06a8f272a75eca53e42946a6a9b4",
+      "operationCount": 1,
+      "schemaCount": 3
+    },
+    {
+      "key": "autoscaling-v1",
+      "upstreamPath": "api/openapi-spec/v3/apis__autoscaling__v1_openapi.json",
+      "size": 160978,
+      "gitBlobSha": "bbee76180a7384f8005bfa5349b58d3e5e58904d",
+      "sha256": "424e756aa03460e09e39ead79c767dcb0450d0647dd1a4302598d3961c159898",
+      "operationCount": 15,
+      "schemaCount": 22
+    },
+    {
+      "key": "autoscaling-v2",
+      "upstreamPath": "api/openapi-spec/v3/apis__autoscaling__v2_openapi.json",
+      "size": 196036,
+      "gitBlobSha": "282e7235cd5c8bfc73894dcb43e76d97e960bd6f",
+      "sha256": "9c0e4bd6cb82e135feddc7c36459d6bebcdd166409e1df64782582420d2db062",
+      "operationCount": 15,
+      "schemaCount": 44
+    },
+    {
+      "key": "autoscaling-discovery",
+      "upstreamPath": "api/openapi-spec/v3/apis__autoscaling_openapi.json",
+      "size": 6323,
+      "gitBlobSha": "b2a10b931eb9a27b7352178e746dc119aa89035d",
+      "sha256": "49ad88585dbb6e0d7c1678b64229b0318c0c3c77a43e39ed9e4e1291dc998b67",
+      "operationCount": 1,
+      "schemaCount": 3
+    },
+    {
+      "key": "batch-v1",
+      "upstreamPath": "api/openapi-spec/v3/apis__batch__v1_openapi.json",
+      "size": 551273,
+      "gitBlobSha": "4d84045bf4fde7b809dd3061df0a42e8a3ca8206",
+      "sha256": "39e41a47689d58ed0ba29c7e576fd88a47917b5c00dd2efaab71c9cf90a6b5f7",
+      "operationCount": 29,
+      "schemaCount": 155
+    },
+    {
+      "key": "batch-discovery",
+      "upstreamPath": "api/openapi-spec/v3/apis__batch_openapi.json",
+      "size": 6305,
+      "gitBlobSha": "2e4f4b41f0c00da1961a974df78776a0b1114976",
+      "sha256": "ca1cff400884c89ec9937307bf5df57d76134a6e6398d2b8d702f0d317e4dc27",
+      "operationCount": 1,
+      "schemaCount": 3
+    },
+    {
+      "key": "certificates-v1",
+      "upstreamPath": "api/openapi-spec/v3/apis__certificates.k8s.io__v1_openapi.json",
+      "size": 362653,
+      "gitBlobSha": "37dcbbd5dd01bab215f1ba5b1f9d5e09a724d0c1",
+      "sha256": "ec9984a600f4e8116faa04e64980bfda39ae4ec30333324900c59e0a8b43b4f8",
+      "operationCount": 39,
+      "schemaCount": 30
+    },
+    {
+      "key": "certificates-v1beta1",
+      "upstreamPath": "api/openapi-spec/v3/apis__certificates.k8s.io__v1beta1_openapi.json",
+      "size": 249990,
+      "gitBlobSha": "01d6f864c6fb080ad2675c2d8f9cbca59e533282",
+      "sha256": "862c93b791e05332c611c53d6e5ad9aca897e948f268053d0a92d608160567dd",
+      "operationCount": 24,
+      "schemaCount": 25
+    },
+    {
+      "key": "certificates-discovery",
+      "upstreamPath": "api/openapi-spec/v3/apis__certificates.k8s.io_openapi.json",
+      "size": 6333,
+      "gitBlobSha": "025099951564023b5a44585611efec9fd360410e",
+      "sha256": "0f707ce9c9958b5b3626c413b0321e3c0d9bd19054312d3ecfa6ba9c99e2dc83",
+      "operationCount": 1,
+      "schemaCount": 3
+    },
+    {
+      "key": "coordination-v1",
+      "upstreamPath": "api/openapi-spec/v3/apis__coordination.k8s.io__v1_openapi.json",
+      "size": 143625,
+      "gitBlobSha": "fd7468b0d42ac7939c656ccd5115d68ad3f5cd61",
+      "sha256": "7799819c8dcc9d851cf8ba6150a8e5d4769299391bf7c04b61fe434533b0a2b3",
+      "operationCount": 12,
+      "schemaCount": 21
+    },
+    {
+      "key": "coordination-v1alpha2",
+      "upstreamPath": "api/openapi-spec/v3/apis__coordination.k8s.io__v1alpha2_openapi.json",
+      "size": 145755,
+      "gitBlobSha": "8077dad99cf678358069fc182e40d7a49aa95547",
+      "sha256": "ac7ddea6f340e6b15dc9a64a71b66f9cb8ede1915fc21374425b43fc13d27915",
+      "operationCount": 12,
+      "schemaCount": 21
+    },
+    {
+      "key": "coordination-v1beta1",
+      "upstreamPath": "api/openapi-spec/v3/apis__coordination.k8s.io__v1beta1_openapi.json",
+      "size": 145773,
+      "gitBlobSha": "3359e0c51980a924933034adc47b03f0bc787212",
+      "sha256": "2b24466baffd395c0a88a6e655c2574277c7dc3ffabadbe3ea3480a02f3f8be8",
+      "operationCount": 12,
+      "schemaCount": 21
+    },
+    {
+      "key": "coordination-discovery",
+      "upstreamPath": "api/openapi-spec/v3/apis__coordination.k8s.io_openapi.json",
+      "size": 6333,
+      "gitBlobSha": "5d9736fa6fddc90ae70a44bbbc12d726957820e3",
+      "sha256": "e8b44c0014c66639de9ab49fd2f6b94b4638248fdd12c7e28fd37a65070857c7",
+      "operationCount": 1,
+      "schemaCount": 3
+    },
+    {
+      "key": "discovery-v1",
+      "upstreamPath": "api/openapi-spec/v3/apis__discovery.k8s.io__v1_openapi.json",
+      "size": 154056,
+      "gitBlobSha": "7ed7fcc781c1846f920590397146340887a5fce9",
+      "sha256": "ec495888f7179b410d365dca5491d3d928028330ace1337c507c29e800303155",
+      "operationCount": 12,
+      "schemaCount": 26
+    },
+    {
+      "key": "discovery-discovery",
+      "upstreamPath": "api/openapi-spec/v3/apis__discovery.k8s.io_openapi.json",
+      "size": 6324,
+      "gitBlobSha": "b841d7aaa77e09201e210ce917d5f54215d11eac",
+      "sha256": "d91aba554ae0aa379e9f791e1c8e22946049145563507ee521e032c42c7aa000",
+      "operationCount": 1,
+      "schemaCount": 3
+    },
+    {
+      "key": "events-v1",
+      "upstreamPath": "api/openapi-spec/v3/apis__events.k8s.io__v1_openapi.json",
+      "size": 149012,
+      "gitBlobSha": "63a7f59bf30a40947c31a6c89c5f1ff7fbcea4f0",
+      "sha256": "d987e47b95996c84d6bd05a30e7064e377793641a442d28f884324d6e2e71693",
+      "operationCount": 12,
+      "schemaCount": 23
+    },
+    {
+      "key": "events-discovery",
+      "upstreamPath": "api/openapi-spec/v3/apis__events.k8s.io_openapi.json",
+      "size": 6315,
+      "gitBlobSha": "b4bac1ecc164ac69b66a5dc9c87f2308e1cb1a54",
+      "sha256": "150d18a0678f49742512e8542389a3922f3c97ae726a3d50b94d3764a16ca5d5",
+      "operationCount": 1,
+      "schemaCount": 3
+    },
+    {
+      "key": "flowcontrol-apiserver-v1",
+      "upstreamPath": "api/openapi-spec/v3/apis__flowcontrol.apiserver.k8s.io__v1_openapi.json",
+      "size": 250281,
+      "gitBlobSha": "882b219f803fba7b24f68a184d137fc6c2928874",
+      "sha256": "39016db91b91e617f59cd40e8e8c96b657b583e142c92843f0b603fc99661e27",
+      "operationCount": 25,
+      "schemaCount": 40
+    },
+    {
+      "key": "flowcontrol-apiserver-discovery",
+      "upstreamPath": "api/openapi-spec/v3/apis__flowcontrol.apiserver.k8s.io_openapi.json",
+      "size": 6358,
+      "gitBlobSha": "389967f74f8e26c9fbd70db507d608a851a924c5",
+      "sha256": "76ef41112e6821e5033d753958098ec54a5429326f28cb2ac1db6a186e2614e0",
+      "operationCount": 1,
+      "schemaCount": 3
+    },
+    {
+      "key": "internal-apiserver-v1alpha1",
+      "upstreamPath": "api/openapi-spec/v3/apis__internal.apiserver.k8s.io__v1alpha1_openapi.json",
+      "size": 136592,
+      "gitBlobSha": "4afa48e45c9f7523a4ed5c8693c40d21b4ffa73e",
+      "sha256": "a8cfae049ce35813a609c15a043850af2f38d458d96f45ca3e6749ce8d945fea",
+      "operationCount": 13,
+      "schemaCount": 23
+    },
+    {
+      "key": "internal-apiserver-discovery",
+      "upstreamPath": "api/openapi-spec/v3/apis__internal.apiserver.k8s.io_openapi.json",
+      "size": 6349,
+      "gitBlobSha": "34905948842349472c47bf5569dae7274c5372af",
+      "sha256": "8ad8517418e0d51c124eedf31262ac74aeba40d4e134eff629130ddac955187c",
+      "operationCount": 1,
+      "schemaCount": 3
+    },
+    {
+      "key": "lifecycle-v1alpha1",
+      "upstreamPath": "api/openapi-spec/v3/apis__lifecycle.k8s.io__v1alpha1_openapi.json",
+      "size": 296034,
+      "gitBlobSha": "f2c032cf8b7f66f2dce57443c62d6b1ea67d1d4f",
+      "sha256": "affaa294525704e113d4e059eb298cb328bd6c2c46e518fcc270ff11845b030f",
+      "operationCount": 29,
+      "schemaCount": 33
+    },
+    {
+      "key": "lifecycle-discovery",
+      "upstreamPath": "api/openapi-spec/v3/apis__lifecycle.k8s.io_openapi.json",
+      "size": 6324,
+      "gitBlobSha": "363dea108178916c2723c04f8f0f547e972720eb",
+      "sha256": "3ce58a6ccff5596e528f7a1cadbfcc63d089a507b7655551bff0d6268af35cd0",
+      "operationCount": 1,
+      "schemaCount": 3
+    },
+    {
+      "key": "networking-v1",
+      "upstreamPath": "api/openapi-spec/v3/apis__networking.k8s.io__v1_openapi.json",
+      "size": 536415,
+      "gitBlobSha": "efadc84725aca088f1f73dc86fa7a2ebb5fc4b4c",
+      "sha256": "253b343c3cae24b9c42df30842b55f54d0aed3b30d91c35aa25bf0511f6c7848",
+      "operationCount": 56,
+      "schemaCount": 56
+    },
+    {
+      "key": "networking-discovery",
+      "upstreamPath": "api/openapi-spec/v3/apis__networking.k8s.io_openapi.json",
+      "size": 6327,
+      "gitBlobSha": "a14760578518619ffb25c3311dacfa71e71c5b6c",
+      "sha256": "cae94ff4f36c4ce2466dccbac517b9aa33b51ceca2d730bc77ffff8024ca69ae",
+      "operationCount": 1,
+      "schemaCount": 3
+    },
+    {
+      "key": "node-v1",
+      "upstreamPath": "api/openapi-spec/v3/apis__node.k8s.io__v1_openapi.json",
+      "size": 124463,
+      "gitBlobSha": "1fff560f4f61da3959f328a21126c2015cd73cd2",
+      "sha256": "d36da40a20d350140016227fe371b3b87dcb8493cd0e56ee3b6e5c14680f0d24",
+      "operationCount": 10,
+      "schemaCount": 23
+    },
+    {
+      "key": "node-discovery",
+      "upstreamPath": "api/openapi-spec/v3/apis__node.k8s.io_openapi.json",
+      "size": 6309,
+      "gitBlobSha": "81019d9b347ef0fea81a84e1d30715b211ad9fb6",
+      "sha256": "2c0e84baa43a28671434c1493bcf0923272035d6d023763702e0aca812bcabf4",
+      "operationCount": 1,
+      "schemaCount": 3
+    },
+    {
+      "key": "policy-v1",
+      "upstreamPath": "api/openapi-spec/v3/apis__policy__v1_openapi.json",
+      "size": 167454,
+      "gitBlobSha": "9eb9108fa17655a5e074463073ba292c728d88a1",
+      "sha256": "21d1bc36490cee723d1785f265de69d98228f1c51522b10f5c6e4c7d213ebb0b",
+      "operationCount": 15,
+      "schemaCount": 25
+    },
+    {
+      "key": "policy-discovery",
+      "upstreamPath": "api/openapi-spec/v3/apis__policy_openapi.json",
+      "size": 6308,
+      "gitBlobSha": "5d5acafaf2293b800a1546262b17e71e7484850d",
+      "sha256": "1c16756247e546e403c3f60c23ca09dc5976d6a564613e1fe3e675f838cfc6e4",
+      "operationCount": 1,
+      "schemaCount": 3
+    },
+    {
+      "key": "rbac-authorization-v1",
+      "upstreamPath": "api/openapi-spec/v3/apis__rbac.authorization.k8s.io__v1_openapi.json",
+      "size": 404130,
+      "gitBlobSha": "6621bdfef680f60e475a47f003a19d5189ae232d",
+      "sha256": "58efa60097c0c4bfbde12e27bc14c00bbfd86e927feea109e5e368baee5c6fc0",
+      "operationCount": 41,
+      "schemaCount": 31
+    },
+    {
+      "key": "rbac-authorization-discovery",
+      "upstreamPath": "api/openapi-spec/v3/apis__rbac.authorization.k8s.io_openapi.json",
+      "size": 6349,
+      "gitBlobSha": "f0a38d68f1369eb660a116b3a3e82c800a5b2f35",
+      "sha256": "c5e049cbae7855f68f3ee2f581b519d97088723f0fd92437bc06a035d4de84e6",
+      "operationCount": 1,
+      "schemaCount": 3
+    },
+    {
+      "key": "resource-v1",
+      "upstreamPath": "api/openapi-spec/v3/apis__resource.k8s.io__v1_openapi.json",
+      "size": 600590,
+      "gitBlobSha": "835b2bc366d6d069826f6b74fb78b7264a137550",
+      "sha256": "743996fbedf996cea03b243e83e23b2d254b80d4a0cdcbf8ed8e9874bc449ab6",
+      "operationCount": 56,
+      "schemaCount": 73
+    },
+    {
+      "key": "resource-v1alpha3",
+      "upstreamPath": "api/openapi-spec/v3/apis__resource.k8s.io__v1alpha3_openapi.json",
+      "size": 245700,
+      "gitBlobSha": "d1b85ca6a75f5c6d3de676672e2f1fd331eb9393",
+      "sha256": "9d1665130f5a036c0a2075d89ba08d5500330b23ae27ca3cafda5f0aafeb8fed",
+      "operationCount": 25,
+      "schemaCount": 33
+    },
+    {
+      "key": "resource-v1beta1",
+      "upstreamPath": "api/openapi-spec/v3/apis__resource.k8s.io__v1beta1_openapi.json",
+      "size": 510484,
+      "gitBlobSha": "7ef9cff0f78b72647c9327cbe00f8dd5d354e1b7",
+      "sha256": "c43f1056ca52f2a8d9c7b0c1123315c7863bf4c797ff8461cbdb0963f0080fd0",
+      "operationCount": 44,
+      "schemaCount": 68
+    },
+    {
+      "key": "resource-v1beta2",
+      "upstreamPath": "api/openapi-spec/v3/apis__resource.k8s.io__v1beta2_openapi.json",
+      "size": 604139,
+      "gitBlobSha": "4a30eadd315f8b23d2712270e9e6170f30ba3c99",
+      "sha256": "5b8bbb8c7a14ab015145739dab1486572dc41571c8bd4490dc4f0d9417b7411a",
+      "operationCount": 56,
+      "schemaCount": 73
+    },
+    {
+      "key": "resource-discovery",
+      "upstreamPath": "api/openapi-spec/v3/apis__resource.k8s.io_openapi.json",
+      "size": 6321,
+      "gitBlobSha": "4e4ff1df92154cf0ad46a96b306c11aa6f274bab",
+      "sha256": "37dadaef1dbaa713091f98f68c8f5528aefefa026d372c64a8b456e20013c4c0",
+      "operationCount": 1,
+      "schemaCount": 3
+    },
+    {
+      "key": "scheduling-v1",
+      "upstreamPath": "api/openapi-spec/v3/apis__scheduling.k8s.io__v1_openapi.json",
+      "size": 118047,
+      "gitBlobSha": "60aa6a6c5d2ae52d9dde9d894ec99b9840040212",
+      "sha256": "c95d06aaea2dbf186b67bd7d1854ee7d06b0be37a8441eb264c6d5db05c33259",
+      "operationCount": 10,
+      "schemaCount": 19
+    },
+    {
+      "key": "scheduling-v1alpha3",
+      "upstreamPath": "api/openapi-spec/v3/apis__scheduling.k8s.io__v1alpha3_openapi.json",
+      "size": 414442,
+      "gitBlobSha": "caeb758da42cf4d7e534b75e9eaa731720748c42",
+      "sha256": "f82d942f2614cfd2a5e93f331b2f3bdc84205de7a93dda801aee813f886f39fc",
+      "operationCount": 40,
+      "schemaCount": 50
+    },
+    {
+      "key": "scheduling-v1beta1",
+      "upstreamPath": "api/openapi-spec/v3/apis__scheduling.k8s.io__v1beta1_openapi.json",
+      "size": 291624,
+      "gitBlobSha": "d117110b449ff27afda7ef27c859ca141d6f815f",
+      "sha256": "9a63eba6a0a0bf0bd6111c0d909a5079c663899783a89d4beaff996db5aa544b",
+      "operationCount": 26,
+      "schemaCount": 46
+    },
+    {
+      "key": "scheduling-discovery",
+      "upstreamPath": "api/openapi-spec/v3/apis__scheduling.k8s.io_openapi.json",
+      "size": 6327,
+      "gitBlobSha": "17547ddbc79e6ec05118c7747fec90bb39fca7ac",
+      "sha256": "17c721726736034c2cc3dc4f54362e92f3278f21c18ed68128c7f66622975242",
+      "operationCount": 1,
+      "schemaCount": 3
+    },
+    {
+      "key": "storage-v1",
+      "upstreamPath": "api/openapi-spec/v3/apis__storage.k8s.io__v1_openapi.json",
+      "size": 645367,
+      "gitBlobSha": "17f5f7f352028910d2af005530e174a8722fbdd2",
+      "sha256": "96c4f09112d51adc3d64c73f782927e88956ba6db4fa74b12fff2cf23ea7e5fe",
+      "operationCount": 63,
+      "schemaCount": 75
+    },
+    {
+      "key": "storage-discovery",
+      "upstreamPath": "api/openapi-spec/v3/apis__storage.k8s.io_openapi.json",
+      "size": 6318,
+      "gitBlobSha": "93a3bccca1e88fdf00b07d67600cb3399fc56150",
+      "sha256": "f5c8f45497c04ca9018b161efdecfbe96241fcec1105ba53f7399bc51224373d",
+      "operationCount": 1,
+      "schemaCount": 3
+    },
+    {
+      "key": "storagemigration-v1",
+      "upstreamPath": "api/openapi-spec/v3/apis__storagemigration.k8s.io__v1_openapi.json",
+      "size": 136448,
+      "gitBlobSha": "c2eb2899bec5773ecdab4a9a25a7577b80d9bb34",
+      "sha256": "65b0af315e396248fc1b88ac7b9c852f8e4c60350acb95ca1e2eaec4b04d19c7",
+      "operationCount": 13,
+      "schemaCount": 23
+    },
+    {
+      "key": "storagemigration-v1beta1",
+      "upstreamPath": "api/openapi-spec/v3/apis__storagemigration.k8s.io__v1beta1_openapi.json",
+      "size": 137033,
+      "gitBlobSha": "753d5e999868348ffb6fed755a0e1cf950eb83bb",
+      "sha256": "cdd86caa43e1f1095240ff429bf8cc34bad101155a57ee8f16739ab452703819",
+      "operationCount": 13,
+      "schemaCount": 23
+    },
+    {
+      "key": "storagemigration-discovery",
+      "upstreamPath": "api/openapi-spec/v3/apis__storagemigration.k8s.io_openapi.json",
+      "size": 6345,
+      "gitBlobSha": "db8a6945ab2d2d92c9961e5dab0a444cf0dfa627",
+      "sha256": "05b4951c0c4f1de457513751a16c031f5d2bf38622fe0f32352c6db861ec2556",
+      "operationCount": 1,
+      "schemaCount": 3
+    },
+    {
+      "key": "apis-discovery",
+      "upstreamPath": "api/openapi-spec/v3/apis_openapi.json",
+      "size": 7842,
+      "gitBlobSha": "4fefea7f7f20a701bcda71ab226a9b8b2bc34fc2",
+      "sha256": "b3cc654411b42803e5f8b6f7299ec0f96bf19a0c21133640d4c270be6ee98792",
+      "operationCount": 1,
+      "schemaCount": 4
+    },
+    {
+      "key": "logs",
+      "upstreamPath": "api/openapi-spec/v3/logs_openapi.json",
+      "size": 1099,
+      "gitBlobSha": "0147a6ba5636cd39620401a5c04a3c175e45782e",
+      "sha256": "6b263751854cd33af73aa5d3a753e8e406c9f32d60e8fa67af7c188141134bf7",
+      "operationCount": 2,
+      "schemaCount": 0
+    },
+    {
+      "key": "openid-v1-jwks",
+      "upstreamPath": "api/openapi-spec/v3/openid__v1__jwks_openapi.json",
+      "size": 972,
+      "gitBlobSha": "ca2408f52a2a0c1549b5090e6eebfcfe6118ab00",
+      "sha256": "be0369fabc2dd2e26ddde8ffcc4829f0559c4f76841d96d154f76cb3ad2e95db",
+      "operationCount": 1,
+      "schemaCount": 0
+    },
+    {
+      "key": "version",
+      "upstreamPath": "api/openapi-spec/v3/version_openapi.json",
+      "size": 3124,
+      "gitBlobSha": "f2b33c3dc6ad3976aa3ce80313df4f5cf5748a23",
+      "sha256": "9077133c6af1c993f466a91f9f870daaee779581adc2c3614176c273dd2f52a2",
+      "operationCount": 1,
+      "schemaCount": 1
+    }
+  ],
+  "license": {
+    "upstreamPath": "LICENSE",
+    "size": 11358,
+    "gitBlobSha": "d645695673349e3947e8e5ae42332d0ac3164cd7",
+    "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
+  },
+  "documentCount": 65,
+  "totalBytes": 12625155,
+  "operationCount": 1202,
+  "documentSchemaCount": 1826,
+  "uniqueSchemaCount": 862
+}

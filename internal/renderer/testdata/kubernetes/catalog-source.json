@@ -1,0 +1,402 @@
+{
+  "schemaVersion": 1,
+  "keyAlgorithm": "kubernetes-openapi-v3-key-v1",
+  "commitSha": "a818af18fe29d999d6741234c8cd72709ef2f424",
+  "documents": [
+    {
+      "key": "well-known-openid-configuration",
+      "upstreamPath": "api/openapi-spec/v3/.well-known__openid-configuration_openapi.json",
+      "size": 987,
+      "gitBlobSha": "2dd833143a133d2924b8937be0f65014c164de95"
+    },
+    {
+      "key": "core-v1",
+      "upstreamPath": "api/openapi-spec/v3/api__v1_openapi.json",
+      "size": 2135483,
+      "gitBlobSha": "e7f55ca67463e3b3823d3c57415d22ef6b1ee01e"
+    },
+    {
+      "key": "core-discovery",
+      "upstreamPath": "api/openapi-spec/v3/api_openapi.json",
+      "size": 4957,
+      "gitBlobSha": "fa73c9eb25ab05323054e24a928cbd130e130ba9"
+    },
+    {
+      "key": "admissionregistration-v1",
+      "upstreamPath": "api/openapi-spec/v3/apis__admissionregistration.k8s.io__v1_openapi.json",
+      "size": 607771,
+      "gitBlobSha": "fe005f4a9093ffb4c316f12ded662c7c7dbda828"
+    },
+    {
+      "key": "admissionregistration-v1alpha1",
+      "upstreamPath": "api/openapi-spec/v3/apis__admissionregistration.k8s.io__v1alpha1_openapi.json",
+      "size": 231488,
+      "gitBlobSha": "4e376d0568c08f0640f16c6c094cb065a0938ab5"
+    },
+    {
+      "key": "admissionregistration-v1beta1",
+      "upstreamPath": "api/openapi-spec/v3/apis__admissionregistration.k8s.io__v1beta1_openapi.json",
+      "size": 231707,
+      "gitBlobSha": "dcd6d25179095cc9cf51a258a5a4007fbb6bcd10"
+    },
+    {
+      "key": "admissionregistration-discovery",
+      "upstreamPath": "api/openapi-spec/v3/apis__admissionregistration.k8s.io_openapi.json",
+      "size": 6360,
+      "gitBlobSha": "7a67af573c1c8f454d6318b54a770614478eb086"
+    },
+    {
+      "key": "apiextensions-v1",
+      "upstreamPath": "api/openapi-spec/v3/apis__apiextensions.k8s.io__v1_openapi.json",
+      "size": 182439,
+      "gitBlobSha": "cf892b1eed9cf97dcd0c1949e0449e0b63b8c2c3"
+    },
+    {
+      "key": "apiextensions-discovery",
+      "upstreamPath": "api/openapi-spec/v3/apis__apiextensions.k8s.io_openapi.json",
+      "size": 6336,
+      "gitBlobSha": "d0243f26e9d8d088348bfd8a43d4753cf74e51f9"
+    },
+    {
+      "key": "apiregistration-v1",
+      "upstreamPath": "api/openapi-spec/v3/apis__apiregistration.k8s.io__v1_openapi.json",
+      "size": 138365,
+      "gitBlobSha": "fef452993c3d860829aefc09022b28d4495af922"
+    },
+    {
+      "key": "apiregistration-discovery",
+      "upstreamPath": "api/openapi-spec/v3/apis__apiregistration.k8s.io_openapi.json",
+      "size": 6342,
+      "gitBlobSha": "0b2ec7cbf08a18798106176618c5dc4f12a60d0b"
+    },
+    {
+      "key": "apps-v1",
+      "upstreamPath": "api/openapi-spec/v3/apis__apps__v1_openapi.json",
+      "size": 934942,
+      "gitBlobSha": "83e58bcf673bb8590f2e7a9b906675fd8b21b8c2"
+    },
+    {
+      "key": "apps-discovery",
+      "upstreamPath": "api/openapi-spec/v3/apis__apps_openapi.json",
+      "size": 6302,
+      "gitBlobSha": "3ad42b3521efcbbde2fbf91181e004f8225ce6ed"
+    },
+    {
+      "key": "authentication-v1",
+      "upstreamPath": "api/openapi-spec/v3/apis__authentication.k8s.io__v1_openapi.json",
+      "size": 43337,
+      "gitBlobSha": "bef40f5c7415ac7272777c9faf206029a883c197"
+    },
+    {
+      "key": "authentication-discovery",
+      "upstreamPath": "api/openapi-spec/v3/apis__authentication.k8s.io_openapi.json",
+      "size": 6339,
+      "gitBlobSha": "f6e144c2e719faa2b4e9396a23d3128903bbba85"
+    },
+    {
+      "key": "authorization-v1",
+      "upstreamPath": "api/openapi-spec/v3/apis__authorization.k8s.io__v1_openapi.json",
+      "size": 76665,
+      "gitBlobSha": "9580eab80528b234720a113886aea818d4205381"
+    },
+    {
+      "key": "authorization-discovery",
+      "upstreamPath": "api/openapi-spec/v3/apis__authorization.k8s.io_openapi.json",
+      "size": 6336,
+      "gitBlobSha": "cc465981aa0bb8901971fbdeb6e1fd56e4a69163"
+    },
+    {
+      "key": "autoscaling-v1",
+      "upstreamPath": "api/openapi-spec/v3/apis__autoscaling__v1_openapi.json",
+      "size": 160978,
+      "gitBlobSha": "bbee76180a7384f8005bfa5349b58d3e5e58904d"
+    },
+    {
+      "key": "autoscaling-v2",
+      "upstreamPath": "api/openapi-spec/v3/apis__autoscaling__v2_openapi.json",
+      "size": 196036,
+      "gitBlobSha": "282e7235cd5c8bfc73894dcb43e76d97e960bd6f"
+    },
+    {
+      "key": "autoscaling-discovery",
+      "upstreamPath": "api/openapi-spec/v3/apis__autoscaling_openapi.json",
+      "size": 6323,
+      "gitBlobSha": "b2a10b931eb9a27b7352178e746dc119aa89035d"
+    },
+    {
+      "key": "batch-v1",
+      "upstreamPath": "api/openapi-spec/v3/apis__batch__v1_openapi.json",
+      "size": 551273,
+      "gitBlobSha": "4d84045bf4fde7b809dd3061df0a42e8a3ca8206"
+    },
+    {
+      "key": "batch-discovery",
+      "upstreamPath": "api/openapi-spec/v3/apis__batch_openapi.json",
+      "size": 6305,
+      "gitBlobSha": "2e4f4b41f0c00da1961a974df78776a0b1114976"
+    },
+    {
+      "key": "certificates-v1",
+      "upstreamPath": "api/openapi-spec/v3/apis__certificates.k8s.io__v1_openapi.json",
+      "size": 362653,
+      "gitBlobSha": "37dcbbd5dd01bab215f1ba5b1f9d5e09a724d0c1"
+    },
+    {
+      "key": "certificates-v1beta1",
+      "upstreamPath": "api/openapi-spec/v3/apis__certificates.k8s.io__v1beta1_openapi.json",
+      "size": 249990,
+      "gitBlobSha": "01d6f864c6fb080ad2675c2d8f9cbca59e533282"
+    },
+    {
+      "key": "certificates-discovery",
+      "upstreamPath": "api/openapi-spec/v3/apis__certificates.k8s.io_openapi.json",
+      "size": 6333,
+      "gitBlobSha": "025099951564023b5a44585611efec9fd360410e"
+    },
+    {
+      "key": "coordination-v1",
+      "upstreamPath": "api/openapi-spec/v3/apis__coordination.k8s.io__v1_openapi.json",
+      "size": 143625,
+      "gitBlobSha": "fd7468b0d42ac7939c656ccd5115d68ad3f5cd61"
+    },
+    {
+      "key": "coordination-v1alpha2",
+      "upstreamPath": "api/openapi-spec/v3/apis__coordination.k8s.io__v1alpha2_openapi.json",
+      "size": 145755,
+      "gitBlobSha": "8077dad99cf678358069fc182e40d7a49aa95547"
+    },
+    {
+      "key": "coordination-v1beta1",
+      "upstreamPath": "api/openapi-spec/v3/apis__coordination.k8s.io__v1beta1_openapi.json",
+      "size": 145773,
+      "gitBlobSha": "3359e0c51980a924933034adc47b03f0bc787212"
+    },
+    {
+      "key": "coordination-discovery",
+      "upstreamPath": "api/openapi-spec/v3/apis__coordination.k8s.io_openapi.json",
+      "size": 6333,
+      "gitBlobSha": "5d9736fa6fddc90ae70a44bbbc12d726957820e3"
+    },
+    {
+      "key": "discovery-v1",
+      "upstreamPath": "api/openapi-spec/v3/apis__discovery.k8s.io__v1_openapi.json",
+      "size": 154056,
+      "gitBlobSha": "7ed7fcc781c1846f920590397146340887a5fce9"
+    },
+    {
+      "key": "discovery-discovery",
+      "upstreamPath": "api/openapi-spec/v3/apis__discovery.k8s.io_openapi.json",
+      "size": 6324,
+      "gitBlobSha": "b841d7aaa77e09201e210ce917d5f54215d11eac"
+    },
+    {
+      "key": "events-v1",
+      "upstreamPath": "api/openapi-spec/v3/apis__events.k8s.io__v1_openapi.json",
+      "size": 149012,
+      "gitBlobSha": "63a7f59bf30a40947c31a6c89c5f1ff7fbcea4f0"
+    },
+    {
+      "key": "events-discovery",
+      "upstreamPath": "api/openapi-spec/v3/apis__events.k8s.io_openapi.json",
+      "size": 6315,
+      "gitBlobSha": "b4bac1ecc164ac69b66a5dc9c87f2308e1cb1a54"
+    },
+    {
+      "key": "flowcontrol-apiserver-v1",
+      "upstreamPath": "api/openapi-spec/v3/apis__flowcontrol.apiserver.k8s.io__v1_openapi.json",
+      "size": 250281,
+      "gitBlobSha": "882b219f803fba7b24f68a184d137fc6c2928874"
+    },
+    {
+      "key": "flowcontrol-apiserver-discovery",
+      "upstreamPath": "api/openapi-spec/v3/apis__flowcontrol.apiserver.k8s.io_openapi.json",
+      "size": 6358,
+      "gitBlobSha": "389967f74f8e26c9fbd70db507d608a851a924c5"
+    },
+    {
+      "key": "internal-apiserver-v1alpha1",
+      "upstreamPath": "api/openapi-spec/v3/apis__internal.apiserver.k8s.io__v1alpha1_openapi.json",
+      "size": 136592,
+      "gitBlobSha": "4afa48e45c9f7523a4ed5c8693c40d21b4ffa73e"
+    },
+    {
+      "key": "internal-apiserver-discovery",
+      "upstreamPath": "api/openapi-spec/v3/apis__internal.apiserver.k8s.io_openapi.json",
+      "size": 6349,
+      "gitBlobSha": "34905948842349472c47bf5569dae7274c5372af"
+    },
+    {
+      "key": "lifecycle-v1alpha1",
+      "upstreamPath": "api/openapi-spec/v3/apis__lifecycle.k8s.io__v1alpha1_openapi.json",
+      "size": 296034,
+      "gitBlobSha": "f2c032cf8b7f66f2dce57443c62d6b1ea67d1d4f"
+    },
+    {
+      "key": "lifecycle-discovery",
+      "upstreamPath": "api/openapi-spec/v3/apis__lifecycle.k8s.io_openapi.json",
+      "size": 6324,
+      "gitBlobSha": "363dea108178916c2723c04f8f0f547e972720eb"
+    },
+    {
+      "key": "networking-v1",
+      "upstreamPath": "api/openapi-spec/v3/apis__networking.k8s.io__v1_openapi.json",
+      "size": 536415,
+      "gitBlobSha": "efadc84725aca088f1f73dc86fa7a2ebb5fc4b4c"
+    },
+    {
+      "key": "networking-discovery",
+      "upstreamPath": "api/openapi-spec/v3/apis__networking.k8s.io_openapi.json",
+      "size": 6327,
+      "gitBlobSha": "a14760578518619ffb25c3311dacfa71e71c5b6c"
+    },
+    {
+      "key": "node-v1",
+      "upstreamPath": "api/openapi-spec/v3/apis__node.k8s.io__v1_openapi.json",
+      "size": 124463,
+      "gitBlobSha": "1fff560f4f61da3959f328a21126c2015cd73cd2"
+    },
+    {
+      "key": "node-discovery",
+      "upstreamPath": "api/openapi-spec/v3/apis__node.k8s.io_openapi.json",
+      "size": 6309,
+      "gitBlobSha": "81019d9b347ef0fea81a84e1d30715b211ad9fb6"
+    },
+    {
+      "key": "policy-v1",
+      "upstreamPath": "api/openapi-spec/v3/apis__policy__v1_openapi.json",
+      "size": 167454,
+      "gitBlobSha": "9eb9108fa17655a5e074463073ba292c728d88a1"
+    },
+    {
+      "key": "policy-discovery",
+      "upstreamPath": "api/openapi-spec/v3/apis__policy_openapi.json",
+      "size": 6308,
+      "gitBlobSha": "5d5acafaf2293b800a1546262b17e71e7484850d"
+    },
+    {
+      "key": "rbac-authorization-v1",
+      "upstreamPath": "api/openapi-spec/v3/apis__rbac.authorization.k8s.io__v1_openapi.json",
+      "size": 404130,
+      "gitBlobSha": "6621bdfef680f60e475a47f003a19d5189ae232d"
+    },
+    {
+      "key": "rbac-authorization-discovery",
+      "upstreamPath": "api/openapi-spec/v3/apis__rbac.authorization.k8s.io_openapi.json",
+      "size": 6349,
+      "gitBlobSha": "f0a38d68f1369eb660a116b3a3e82c800a5b2f35"
+    },
+    {
+      "key": "resource-v1",
+      "upstreamPath": "api/openapi-spec/v3/apis__resource.k8s.io__v1_openapi.json",
+      "size": 600590,
+      "gitBlobSha": "835b2bc366d6d069826f6b74fb78b7264a137550"
+    },
+    {
+      "key": "resource-v1alpha3",
+      "upstreamPath": "api/openapi-spec/v3/apis__resource.k8s.io__v1alpha3_openapi.json",
+      "size": 245700,
+      "gitBlobSha": "d1b85ca6a75f5c6d3de676672e2f1fd331eb9393"
+    },
+    {
+      "key": "resource-v1beta1",
+      "upstreamPath": "api/openapi-spec/v3/apis__resource.k8s.io__v1beta1_openapi.json",
+      "size": 510484,
+      "gitBlobSha": "7ef9cff0f78b72647c9327cbe00f8dd5d354e1b7"
+    },
+    {
+      "key": "resource-v1beta2",
+      "upstreamPath": "api/openapi-spec/v3/apis__resource.k8s.io__v1beta2_openapi.json",
+      "size": 604139,
+      "gitBlobSha": "4a30eadd315f8b23d2712270e9e6170f30ba3c99"
+    },
+    {
+      "key": "resource-discovery",
+      "upstreamPath": "api/openapi-spec/v3/apis__resource.k8s.io_openapi.json",
+      "size": 6321,
+      "gitBlobSha": "4e4ff1df92154cf0ad46a96b306c11aa6f274bab"
+    },
+    {
+      "key": "scheduling-v1",
+      "upstreamPath": "api/openapi-spec/v3/apis__scheduling.k8s.io__v1_openapi.json",
+      "size": 118047,
+      "gitBlobSha": "60aa6a6c5d2ae52d9dde9d894ec99b9840040212"
+    },
+    {
+      "key": "scheduling-v1alpha3",
+      "upstreamPath": "api/openapi-spec/v3/apis__scheduling.k8s.io__v1alpha3_openapi.json",
+      "size": 414442,
+      "gitBlobSha": "caeb758da42cf4d7e534b75e9eaa731720748c42"
+    },
+    {
+      "key": "scheduling-v1beta1",
+      "upstreamPath": "api/openapi-spec/v3/apis__scheduling.k8s.io__v1beta1_openapi.json",
+      "size": 291624,
+      "gitBlobSha": "d117110b449ff27afda7ef27c859ca141d6f815f"
+    },
+    {
+      "key": "scheduling-discovery",
+      "upstreamPath": "api/openapi-spec/v3/apis__scheduling.k8s.io_openapi.json",
+      "size": 6327,
+      "gitBlobSha": "17547ddbc79e6ec05118c7747fec90bb39fca7ac"
+    },
+    {
+      "key": "storage-v1",
+      "upstreamPath": "api/openapi-spec/v3/apis__storage.k8s.io__v1_openapi.json",
+      "size": 645367,
+      "gitBlobSha": "17f5f7f352028910d2af005530e174a8722fbdd2"
+    },
+    {
+      "key": "storage-discovery",
+      "upstreamPath": "api/openapi-spec/v3/apis__storage.k8s.io_openapi.json",
+      "size": 6318,
+      "gitBlobSha": "93a3bccca1e88fdf00b07d67600cb3399fc56150"
+    },
+    {
+      "key": "storagemigration-v1",
+      "upstreamPath": "api/openapi-spec/v3/apis__storagemigration.k8s.io__v1_openapi.json",
+      "size": 136448,
+      "gitBlobSha": "c2eb2899bec5773ecdab4a9a25a7577b80d9bb34"
+    },
+    {
+      "key": "storagemigration-v1beta1",
+      "upstreamPath": "api/openapi-spec/v3/apis__storagemigration.k8s.io__v1beta1_openapi.json",
+      "size": 137033,
+      "gitBlobSha": "753d5e999868348ffb6fed755a0e1cf950eb83bb"
+    },
+    {
+      "key": "storagemigration-discovery",
+      "upstreamPath": "api/openapi-spec/v3/apis__storagemigration.k8s.io_openapi.json",
+      "size": 6345,
+      "gitBlobSha": "db8a6945ab2d2d92c9961e5dab0a444cf0dfa627"
+    },
+    {
+      "key": "apis-discovery",
+      "upstreamPath": "api/openapi-spec/v3/apis_openapi.json",
+      "size": 7842,
+      "gitBlobSha": "4fefea7f7f20a701bcda71ab226a9b8b2bc34fc2"
+    },
+    {
+      "key": "logs",
+      "upstreamPath": "api/openapi-spec/v3/logs_openapi.json",
+      "size": 1099,
+      "gitBlobSha": "0147a6ba5636cd39620401a5c04a3c175e45782e"
+    },
+    {
+      "key": "openid-v1-jwks",
+      "upstreamPath": "api/openapi-spec/v3/openid__v1__jwks_openapi.json",
+      "size": 972,
+      "gitBlobSha": "ca2408f52a2a0c1549b5090e6eebfcfe6118ab00"
+    },
+    {
+      "key": "version",
+      "upstreamPath": "api/openapi-spec/v3/version_openapi.json",
+      "size": 3124,
+      "gitBlobSha": "f2b33c3dc6ad3976aa3ce80313df4f5cf5748a23"
+    }
+  ],
+  "license": {
+    "upstreamPath": "LICENSE",
+    "size": 11358,
+    "gitBlobSha": "d645695673349e3947e8e5ae42332d0ac3164cd7"
+  }
+}
