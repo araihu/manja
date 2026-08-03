@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"os"
 	"path"
 	"sort"
 	"strconv"
@@ -48,6 +49,10 @@ func (source GitCatalogSource) Load(ctx context.Context) (domain.CatalogCandidat
 	gitSource := Git{
 		Repo: source.Repository, Username: source.Username, Token: source.Token, SSHPrivateKey: source.SSHPrivateKey,
 	}
+	remoteCatalog := true
+	if info, statErr := os.Stat(gitSource.cloneURL()); statErr == nil && info.IsDir() {
+		remoteCatalog = false
+	}
 	repository, resolvedRef, cleanup, err := gitCatalogRepository(ctx, gitSource.cloneURL(), reference, source.SSHPrivateKey)
 	if err != nil {
 		return domain.CatalogCandidate{}, err
@@ -67,6 +72,13 @@ func (source GitCatalogSource) Load(ctx context.Context) (domain.CatalogCandidat
 	if err != nil {
 		return domain.CatalogCandidate{}, err
 	}
+	missingObjects := map[string]struct{}{}
+	if remoteCatalog {
+		missingObjects, err = gitCatalogMissingObjects(ctx, repository, commit, root)
+		if err != nil {
+			return domain.CatalogCandidate{}, err
+		}
+	}
 	reader := func(ctx context.Context, entry catalogInventoryEntry) (capturedCatalogFile, error) {
 		if err := ctx.Err(); err != nil {
 			return capturedCatalogFile{}, err
@@ -78,10 +90,14 @@ func (source GitCatalogSource) Load(ctx context.Context) (domain.CatalogCandidat
 		if entry.objectID == "" {
 			return capturedCatalogFile{}, fmt.Errorf("Git catalog object ID is missing for %q", entry.path)
 		}
-		sizeText, err := gitOutputLimit(ctx, repository, 32, "cat-file", "-s", entry.objectID)
+		if _, missing := missingObjects[entry.objectID]; missing {
+			return capturedCatalogFile{}, fmt.Errorf("captured file %q exceeds %d bytes", entry.path, maxCatalogSourceFileBytes)
+		}
+		sizeBytes, err := gitOutputBytesEnvLimit(ctx, repository, []string{"GIT_NO_LAZY_FETCH=1"}, 32, "cat-file", "-s", entry.objectID)
 		if err != nil {
 			return capturedCatalogFile{}, err
 		}
+		sizeText := strings.TrimSpace(string(sizeBytes))
 		size, err := strconv.ParseInt(sizeText, 10, 64)
 		if err != nil || size < 0 {
 			return capturedCatalogFile{}, fmt.Errorf("read Git catalog object size for %q", objectPath)
@@ -89,7 +105,7 @@ func (source GitCatalogSource) Load(ctx context.Context) (domain.CatalogCandidat
 		if size > maxCatalogSourceFileBytes {
 			return capturedCatalogFile{}, fmt.Errorf("captured file %q exceeds %d bytes", entry.path, maxCatalogSourceFileBytes)
 		}
-		data, err := gitOutputBytesLimit(ctx, repository, uint64(size)+1, "cat-file", "blob", entry.objectID)
+		data, err := gitOutputBytesEnvLimit(ctx, repository, []string{"GIT_NO_LAZY_FETCH=1"}, uint64(size)+1, "cat-file", "blob", entry.objectID)
 		if err != nil {
 			return capturedCatalogFile{}, err
 		}
@@ -99,6 +115,29 @@ func (source GitCatalogSource) Load(ctx context.Context) (domain.CatalogCandidat
 		return capturedCatalogFile{path: entry.path, mode: entry.mode, data: data}, nil
 	}
 	return captureCatalogCandidate(ctx, source.Manifest, inventory, reader, domain.CatalogRevisionGit, commit)
+}
+
+func gitCatalogMissingObjects(ctx context.Context, repository, commit, root string) (map[string]struct{}, error) {
+	args := []string{"rev-list", "--objects", "--missing=print", commit}
+	if root != "." {
+		args = append(args, "--", root)
+	}
+	output, err := gitOutputBytesEnvLimit(ctx, repository, []string{"GIT_NO_LAZY_FETCH=1"}, maxCatalogInventoryBytes, args...)
+	if err != nil {
+		return nil, fmt.Errorf("inspect missing Git catalog objects at %s: %w", commit, err)
+	}
+	missing := make(map[string]struct{})
+	for _, line := range strings.Split(string(output), "\n") {
+		objectID, exists := strings.CutPrefix(strings.TrimSpace(line), "?")
+		if !exists {
+			continue
+		}
+		if !isFullGitObjectID(objectID) {
+			return nil, fmt.Errorf("invalid missing Git catalog object ID %q", objectID)
+		}
+		missing[objectID] = struct{}{}
+	}
+	return missing, nil
 }
 
 func gitCatalogInventory(ctx context.Context, repository, commit, root string) ([]catalogInventoryEntry, error) {

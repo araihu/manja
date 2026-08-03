@@ -2,6 +2,7 @@ package source
 
 import (
 	"context"
+	"crypto/rand"
 	"errors"
 	"fmt"
 	"net/url"
@@ -225,6 +226,20 @@ func TestGitCatalogRemoteAcquisitionIsShallowAndPartial(t *testing.T) {
 		runGitTestCommand(t, worktree, "add", ".")
 		runGitTestCommand(t, worktree, "commit", "-qm", fmt.Sprintf("revision %d", revision))
 	}
+	oversized := filepath.Join(worktree, "oversized.bin")
+	file, err := os.Create(oversized)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := file.Truncate(maxCatalogSourceFileBytes + 1); err != nil {
+		_ = file.Close()
+		t.Fatal(err)
+	}
+	if err := file.Close(); err != nil {
+		t.Fatal(err)
+	}
+	runGitTestCommand(t, worktree, "add", "oversized.bin")
+	runGitTestCommand(t, worktree, "commit", "-qm", "oversized current blob")
 	bare := filepath.Join(t.TempDir(), "catalog.git")
 	runGitTestCommand(t, worktree, "clone", "--bare", ".", bare)
 	runGitTestCommand(t, bare, "config", "uploadpack.allowFilter", "true")
@@ -251,6 +266,86 @@ func TestGitCatalogRemoteAcquisitionIsShallowAndPartial(t *testing.T) {
 	exceeded, err := directoryExceeds(repository, maxGitRepositoryBytes)
 	if err != nil || exceeded {
 		t.Fatalf("remote acquisition disk budget exceeded=%v error=%v", exceeded, err)
+	}
+}
+
+func TestCatalogGitRemoteRejectsOversizedPromisorBlobWithoutLazyFetch(t *testing.T) {
+	worktree := t.TempDir()
+	runGitTestCommand(t, worktree, "init", "-q", "-b", "main")
+	runGitTestCommand(t, worktree, "config", "user.name", "Test")
+	runGitTestCommand(t, worktree, "config", "user.email", "test@example.com")
+	data := make([]byte, maxCatalogSourceFileBytes+1)
+	if _, err := rand.Read(data); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(worktree, "openapi.json"), data, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	runGitTestCommand(t, worktree, "add", "openapi.json")
+	runGitTestCommand(t, worktree, "commit", "-qm", "oversized remote blob")
+	bare := filepath.Join(t.TempDir(), "catalog.git")
+	runGitTestCommand(t, worktree, "clone", "--bare", ".", bare)
+	runGitTestCommand(t, bare, "config", "uploadpack.allowFilter", "true")
+	remote := (&url.URL{Scheme: "file", Path: bare}).String()
+	objectID := runGitTestCommand(t, worktree, "rev-parse", "HEAD:openapi.json")
+	acquired, _, acquiredCleanup, err := gitCatalogRepository(context.Background(), remote, "main", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	command := exec.Command("git", "-C", acquired, "cat-file", "-e", objectID)
+	command.Env = append(os.Environ(), "GIT_NO_LAZY_FETCH=1")
+	if output, err := command.CombinedOutput(); err == nil {
+		acquiredCleanup()
+		t.Fatalf("oversized promisor blob was materialized: %s", output)
+	}
+	exceeded, err := directoryExceeds(acquired, maxGitRepositoryBytes)
+	if err != nil || exceeded {
+		acquiredCleanup()
+		t.Fatalf("filtered acquisition disk exceeded=%v error=%v", exceeded, err)
+	}
+	acquiredCleanup()
+
+	realGit, err := exec.LookPath("git")
+	if err != nil {
+		t.Fatal(err)
+	}
+	shimDirectory := t.TempDir()
+	logPath := filepath.Join(shimDirectory, "invocations.log")
+	shim := "#!/bin/sh\nprintf 'no-lazy=%s args=%s\\n' \"$GIT_NO_LAZY_FETCH\" \"$*\" >> \"$MANJA_GIT_INVOCATIONS\"\nexec \"$MANJA_REAL_GIT\" \"$@\"\n"
+	if err := os.WriteFile(filepath.Join(shimDirectory, "git"), []byte(shim), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("MANJA_REAL_GIT", realGit)
+	t.Setenv("MANJA_GIT_INVOCATIONS", logPath)
+	t.Setenv("PATH", shimDirectory+string(os.PathListSeparator)+os.Getenv("PATH"))
+	offline := bare + ".offline"
+	source := GitCatalogSource{
+		Repository: remote, Ref: "main", Manifest: testCatalogManifest("strict-v1", "*.json"),
+		afterResolve: func(string) {
+			if err := os.Rename(bare, offline); err != nil {
+				t.Fatal(err)
+			}
+		},
+	}
+	_, err = source.Load(context.Background())
+	if err == nil || !strings.Contains(err.Error(), "exceeds 8388608 bytes") {
+		t.Fatalf("oversized promisor blob error = %v", err)
+	}
+	invocations, readErr := os.ReadFile(logPath)
+	if readErr != nil {
+		t.Fatal(readErr)
+	}
+	foundNoLazyMissingInspection := false
+	for _, invocation := range strings.Split(string(invocations), "\n") {
+		if strings.Contains(invocation, "rev-list --objects --missing=print") && strings.HasPrefix(invocation, "no-lazy=1 ") {
+			foundNoLazyMissingInspection = true
+		}
+		if strings.Contains(invocation, "cat-file") && strings.HasPrefix(invocation, "no-lazy= ") {
+			t.Fatalf("promisor blob inspection allowed lazy fetch: %q", invocations)
+		}
+	}
+	if !foundNoLazyMissingInspection {
+		t.Fatalf("promisor blob inspection was not no-lazy: %q", invocations)
 	}
 }
 

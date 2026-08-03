@@ -267,10 +267,10 @@ func gitCatalogRepository(ctx context.Context, repo, reference, sshPrivateKey st
 		ctx,
 		directory,
 		env,
-		[]string{"fetch", "--quiet", "--depth=1", "--filter=blob:none", "--no-tags", redactURL(repo), reference},
+		[]string{"fetch", "--quiet", "--depth=1", fmt.Sprintf("--filter=blob:limit=%d", maxCatalogSourceFileBytes+1), "--no-tags", redactURL(repo), reference},
 		maxGitDiagnosticBytes,
 		directory,
-		"fetch", "--quiet", "--depth=1", "--filter=blob:none", "--no-tags", repo, reference,
+		"fetch", "--quiet", "--depth=1", fmt.Sprintf("--filter=blob:limit=%d", maxCatalogSourceFileBytes+1), "--no-tags", repo, reference,
 	); err != nil {
 		cleanup()
 		return "", "", func() {}, fmt.Errorf("fetch Git catalog ref %q from %q: %w", reference, redactURL(repo), err)
@@ -317,6 +317,10 @@ func gitOutputBytes(ctx context.Context, repo string, args ...string) ([]byte, e
 
 func gitOutputBytesLimit(ctx context.Context, repo string, limit uint64, args ...string) ([]byte, error) {
 	return gitOutputBytesRedactedLimit(ctx, repo, nil, args, limit, "", args...)
+}
+
+func gitOutputBytesEnvLimit(ctx context.Context, repo string, env []string, limit uint64, args ...string) ([]byte, error) {
+	return gitOutputBytesRedactedLimit(ctx, repo, env, args, limit, "", args...)
 }
 
 func gitOutputBytesRedacted(ctx context.Context, repo string, env []string, displayArgs []string, args ...string) ([]byte, error) {
@@ -377,6 +381,7 @@ func (buffer *boundedGitBuffer) String() string {
 }
 
 func runGitCommand(ctx context.Context, command *exec.Cmd, diskRoot string) error {
+	prepareGitProcess(command)
 	if diskRoot == "" {
 		return command.Run()
 	}
@@ -392,18 +397,18 @@ func runGitCommand(ctx context.Context, command *exec.Cmd, diskRoot string) erro
 		case err := <-done:
 			return err
 		case <-ctx.Done():
-			_ = command.Process.Kill()
+			_ = killGitProcessTree(command)
 			<-done
 			return ctx.Err()
 		case <-ticker.C:
 			exceeded, err := directoryExceeds(diskRoot, maxGitRepositoryBytes)
 			if err != nil {
-				_ = command.Process.Kill()
+				_ = killGitProcessTree(command)
 				<-done
 				return err
 			}
 			if exceeded {
-				_ = command.Process.Kill()
+				_ = killGitProcessTree(command)
 				<-done
 				return errGitRepositoryLimit
 			}
@@ -413,8 +418,11 @@ func runGitCommand(ctx context.Context, command *exec.Cmd, diskRoot string) erro
 
 func directoryExceeds(root string, limit uint64) (bool, error) {
 	var total uint64
-	err := filepath.WalkDir(root, func(_ string, entry fs.DirEntry, walkErr error) error {
+	err := filepath.WalkDir(root, func(path string, entry fs.DirEntry, walkErr error) error {
 		if walkErr != nil {
+			if path != root && errors.Is(walkErr, fs.ErrNotExist) {
+				return nil
+			}
 			return walkErr
 		}
 		if !entry.Type().IsRegular() {
@@ -422,6 +430,9 @@ func directoryExceeds(root string, limit uint64) (bool, error) {
 		}
 		info, err := entry.Info()
 		if err != nil {
+			if errors.Is(err, fs.ErrNotExist) {
+				return nil
+			}
 			return err
 		}
 		if info.Size() > 0 {
