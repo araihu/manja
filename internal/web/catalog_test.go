@@ -14,6 +14,7 @@ import (
 	"github.com/araihu/manja/application/projection"
 	"github.com/araihu/manja/domain"
 	"github.com/araihu/manja/internal/adapters/catalogjson"
+	"github.com/araihu/manja/internal/web/templates"
 )
 
 func TestCatalogRouteMatrixForRootAndNestedMounts(t *testing.T) {
@@ -105,6 +106,24 @@ func TestCatalogSchemaLoadsOneProgressiveNodeWithNoJSFallback(t *testing.T) {
 	handler.ServeHTTP(missing, httptest.NewRequest(http.MethodGet, rootURL+"&node=99", nil))
 	if missing.Code != http.StatusNotFound {
 		t.Fatalf("missing schema node = %d, want 404", missing.Code)
+	}
+}
+
+func TestCatalogRenderRejectsResponsesOverHardByteLimit(t *testing.T) {
+	t.Parallel()
+
+	data := templates.CatalogPageData{
+		Mount:      "/",
+		SnapshotID: catalog.SnapshotID("snapshot-sha256-" + strings.Repeat("a", 64)),
+		Directory:  catalog.CatalogArtifactV1{Title: strings.Repeat("oversized", maxCatalogPageBytes)},
+	}
+	response := httptest.NewRecorder()
+	(&CatalogHandler{}).renderCatalogPage(response, httptest.NewRequest(http.MethodGet, "/", nil), data)
+	if response.Code != http.StatusInternalServerError {
+		t.Fatalf("oversized render status = %d, want 500", response.Code)
+	}
+	if response.Body.Len() > 1024 {
+		t.Fatalf("oversized render error body = %d bytes, want bounded", response.Body.Len())
 	}
 }
 

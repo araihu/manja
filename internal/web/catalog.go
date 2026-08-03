@@ -27,6 +27,29 @@ type CatalogHandler struct {
 	search   *catalog.ByteCache
 }
 
+const maxCatalogPageBytes = 512 << 10
+
+var errCatalogPageTooLarge = errors.New("catalog representation exceeds byte limit")
+
+type catalogPageBuffer struct {
+	bytes.Buffer
+	exceeded bool
+}
+
+func (buffer *catalogPageBuffer) Write(data []byte) (int, error) {
+	remaining := maxCatalogPageBytes - buffer.Len()
+	if remaining <= 0 {
+		buffer.exceeded = true
+		return 0, errCatalogPageTooLarge
+	}
+	if len(data) <= remaining {
+		return buffer.Buffer.Write(data)
+	}
+	written, _ := buffer.Buffer.Write(data[:remaining])
+	buffer.exceeded = true
+	return written, errCatalogPageTooLarge
+}
+
 func NewCatalogHandler(runtime *catalog.Runtime, children catalogChildReader) http.Handler {
 	return &CatalogHandler{runtime: runtime, children: children, details: catalog.NewDetailCache(), search: catalog.NewSearchCache()}
 }
@@ -206,8 +229,13 @@ func (handler *CatalogHandler) serveDocument(response http.ResponseWriter, reque
 }
 
 func (handler *CatalogHandler) renderCatalogPage(response http.ResponseWriter, request *http.Request, data templates.CatalogPageData) {
-	var body bytes.Buffer
-	if err := templates.CatalogPage(data).Render(request.Context(), &body); err != nil {
+	var body catalogPageBuffer
+	err := templates.CatalogPage(data).Render(request.Context(), &body)
+	if body.exceeded || errors.Is(err, errCatalogPageTooLarge) {
+		http.Error(response, "catalog representation exceeds byte limit", http.StatusInternalServerError)
+		return
+	}
+	if err != nil {
 		http.Error(response, "render catalog", http.StatusInternalServerError)
 		return
 	}
