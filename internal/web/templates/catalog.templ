@@ -7,7 +7,6 @@ import (
 	templpkg "github.com/a-h/templ"
 	"github.com/araihu/goshtoso/components/appshell"
 	"github.com/araihu/goshtoso/components/badge"
-	selectfield "github.com/araihu/goshtoso/components/select"
 	"github.com/araihu/goshtoso/components/sidebar"
 	"github.com/araihu/manja/application/catalog"
 	"github.com/araihu/manja/application/projection"
@@ -165,16 +164,6 @@ templ catalogHeader(data CatalogPageData) {
 		</div>
 		<div class="flex shrink-0 items-center gap-2">
 			<a href={ templpkg.URL(data.SearchHref) } class="inline-flex min-h-10 items-center rounded-radius border border-outline px-3 text-sm font-medium hover:bg-surface-alt dark:border-outline-dark dark:hover:bg-surface-dark-alt">Search</a>
-			<div class="hidden lg:block">
-				@selectfield.Select(selectfield.Config{
-					ID: "manja-theme",
-					Name: "theme",
-					Alpine: &selectfield.AlpineConfig{Model: "theme"},
-					TriggerLeading: themeSelectIcon(),
-					TriggerAttrs: templpkg.Attributes{"aria-label": "Theme"},
-					Options: themeOptions(),
-				})
-			</div>
 			@themeToggle()
 			<span class="hidden rounded-radius border border-outline px-2 py-1 font-mono text-xs text-on-surface-muted xl:inline dark:border-outline-dark dark:text-on-surface-dark-muted">{ shortSnapshotID(data.SnapshotID) }</span>
 		</div>

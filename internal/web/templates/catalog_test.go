@@ -26,6 +26,18 @@ func TestCatalogPageRendersOverviewCountsAndMountAwareDocuments(t *testing.T) {
 	}
 }
 
+func TestCatalogHeaderOmitsThemeSelectorButKeepsDarkMode(t *testing.T) {
+	t.Parallel()
+
+	body := renderCatalogTemplate(t, catalogTemplateFixture())
+	if strings.Contains(body, `id="manja-theme-trigger"`) || strings.Contains(body, `aria-label="Theme"`) {
+		t.Fatal("catalog header still renders theme selector")
+	}
+	if !strings.Contains(body, `id="darkModeToggleBtn"`) {
+		t.Fatal("catalog header removed dark mode toggle")
+	}
+}
+
 func TestCatalogDocumentRendersOnlyExpandedGroupAndSelectedVisibleAnchor(t *testing.T) {
 	t.Parallel()
 
