@@ -163,7 +163,7 @@ func TestKubernetesCatalog(t *testing.T) {
 			t.Errorf("renderer-only route %q = %d, want 404", route, response.Code)
 		}
 	}
-	t.Logf("Kubernetes catalog receipt: snapshot=%s documents=65 operations=1202 schemas=1826 client-search-directory=%d client-search-total=%d max-document-html=%d max-exact-search-json=%d", receipts[0].SnapshotID, searchDirectory.Body.Len(), clientSearchBytes, maxDocumentBytes, maxSearchBytes)
+	t.Logf("Kubernetes catalog receipt: snapshot=%s startup-process-bytes=%d documents=65 operations=1202 schemas=1826 client-search-directory=%d client-search-total=%d max-document-html=%d max-exact-search-json=%d", receipts[0].SnapshotID, receipts[0].StartupProcessBytes, searchDirectory.Body.Len(), clientSearchBytes, maxDocumentBytes, maxSearchBytes)
 }
 
 func assertCatalogDetailDirectory(t *testing.T, documentKey string, detailID domain.DetailID, href string, visible map[domain.DetailID]string) {

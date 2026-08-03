@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -65,6 +66,36 @@ func TestServerRejectsStartupWhenProcessPeakExceedsConfiguredBudget(t *testing.T
 	}
 	if err := server.Recover(context.Background()); !errors.Is(err, ErrStartupProcessBudget) {
 		t.Fatalf("startup process budget error = %v, want %v", err, ErrStartupProcessBudget)
+	}
+}
+
+func TestActivateRejectsOverBudgetProcessBeforePublishing(t *testing.T) {
+	start, err := processPeakBytes()
+	if err != nil {
+		t.Fatal(err)
+	}
+	server, err := New(Config{Version: 1, StartupProcessBytes: start + (8 << 20), Catalogs: []CatalogConfig{
+		{ID: "payments", Mount: "/", Title: "Payments", DefaultDocumentKey: "payments-v1", ProfileID: domain.CompatibilityProfileStrict},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	pressure := make([]byte, 64<<20)
+	for index := 0; index < len(pressure); index += 4096 {
+		pressure[index] = 1
+	}
+	_, err = server.Activate(context.Background(), rendererTestCandidate("payments"))
+	runtime.KeepAlive(pressure)
+	if !errors.Is(err, ErrStartupProcessBudget) {
+		t.Fatalf("over-budget activation error = %v, want %v", err, ErrStartupProcessBudget)
+	}
+	if _, active := server.Active("payments"); active {
+		t.Fatal("over-budget activation published a catalog")
+	}
+	response := httptest.NewRecorder()
+	server.Handler().ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/", nil))
+	if response.Code != http.StatusServiceUnavailable {
+		t.Fatalf("over-budget route status = %d, want %d", response.Code, http.StatusServiceUnavailable)
 	}
 }
 
