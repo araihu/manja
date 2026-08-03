@@ -10,10 +10,12 @@ import (
 )
 
 const (
-	maxCatalogBytes    = 4 << 20
-	maxDetailBytes     = 2 << 20
-	maxSchemaNodeBytes = 2 << 20
-	maxManifestBytes   = 4 << 20
+	maxCatalogBytes       = 4 << 20
+	maxDetailBytes        = 2 << 20
+	maxSchemaNodeBytes    = 2 << 20
+	maxManifestBytes      = 4 << 20
+	maxSearchBytes        = 4 << 20
+	maxSearchSegmentBytes = 256 << 10
 )
 
 func EncodeCatalog(value catalog.CatalogArtifactV1) ([]byte, error) {
@@ -38,6 +40,38 @@ func EncodeSchemaNodeShard(value catalog.SchemaNodeShardV1) ([]byte, error) {
 
 func DecodeSchemaNodeShard(data []byte) (catalog.SchemaNodeShardV1, error) {
 	return decodeCanonical(data, maxSchemaNodeBytes, validateSchemaNodeShard)
+}
+
+func EncodeSearchDirectory(value catalog.SearchDirectoryV1) ([]byte, error) {
+	return encodeCanonical(value, maxSearchBytes, validateSearchDirectory)
+}
+
+func DecodeSearchDirectory(data []byte) (catalog.SearchDirectoryV1, error) {
+	return decodeCanonical(data, maxSearchBytes, validateSearchDirectory)
+}
+
+func EncodeSearchExactSegment(value catalog.SearchExactSegmentV1) ([]byte, error) {
+	return encodeCanonical(value, maxSearchSegmentBytes, validateSearchExactSegment)
+}
+
+func DecodeSearchExactSegment(data []byte) (catalog.SearchExactSegmentV1, error) {
+	return decodeCanonical(data, maxSearchSegmentBytes, validateSearchExactSegment)
+}
+
+func EncodeSearchPostingSegment(value catalog.SearchPostingSegmentV1) ([]byte, error) {
+	return encodeCanonical(value, maxSearchSegmentBytes, validateSearchPostingSegment)
+}
+
+func DecodeSearchPostingSegment(data []byte) (catalog.SearchPostingSegmentV1, error) {
+	return decodeCanonical(data, maxSearchSegmentBytes, validateSearchPostingSegment)
+}
+
+func EncodeSearchRecordSegment(value catalog.SearchRecordSegmentV1) ([]byte, error) {
+	return encodeCanonical(value, maxSearchSegmentBytes, validateSearchRecordSegment)
+}
+
+func DecodeSearchRecordSegment(data []byte) (catalog.SearchRecordSegmentV1, error) {
+	return decodeCanonical(data, maxSearchSegmentBytes, validateSearchRecordSegment)
 }
 
 func EncodeManifest(value catalog.ManifestV1) ([]byte, error) {

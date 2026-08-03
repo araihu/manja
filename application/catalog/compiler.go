@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
 	"sort"
 	"strings"
 
@@ -148,6 +149,14 @@ func (compiler *Compiler) Compile(ctx context.Context, candidate domain.CatalogC
 			usage.SourceDocumentBytes = uint64(len(support.Bytes))
 		}
 	}
+	directory.SearchChild = "search/directory.json"
+	searchArtifacts, err := BuildSearchArtifacts(directory, compiler.options.Bounds)
+	if err != nil {
+		return CompiledSnapshot{}, err
+	}
+	children = append(children, searchArtifacts.Children...)
+	usage.SearchBytes = searchArtifacts.Usage.SearchBytes
+	usage.PostingSegmentBytes = searchArtifacts.Usage.PostingSegmentBytes
 	directoryBytes, err := json.Marshal(directory)
 	if err != nil {
 		return CompiledSnapshot{}, fmt.Errorf("encode catalog directory: %w", err)
@@ -159,6 +168,11 @@ func (compiler *Compiler) Compile(ctx context.Context, candidate domain.CatalogC
 	children = append(children, directoryChild)
 	usage.DirectoryBytes = uint64(len(directoryBytes))
 	usage.StartupCatalogBytes = uint64(len(directoryBytes))
+	for _, child := range searchArtifacts.Children {
+		if child.Kind == "search-directory" {
+			usage.StartupCatalogBytes += child.Length
+		}
+	}
 	usage.Children = uint64(len(children) + 1)
 	if err := compiler.options.Bounds.Validate(usage); err != nil {
 		return CompiledSnapshot{}, err
@@ -258,11 +272,53 @@ func buildDocumentDirectory(catalogID string, document domain.CatalogDocument, i
 		if err != nil {
 			return DocumentDirectoryV1{}, err
 		}
+		canonicalDigest, projectionDigest, err := catalogSchemaDigests(schema)
+		if err != nil {
+			return DocumentDirectoryV1{}, err
+		}
 		result.Schemas = append(result.Schemas, SchemaDirectoryV1{
 			DetailID: detailID, Name: schema.Name, Description: schema.Description, Href: catalogDetailHref(document.Key, detailID),
+			CanonicalSHA256: canonicalDigest, ProjectionSHA256: projectionDigest,
 		})
 	}
 	return result, nil
+}
+
+func catalogSchemaDigests(schema domain.Schema) (string, string, error) {
+	canonicalBytes := []byte(nil)
+	if schema.Summary.JSON != "" {
+		var value any
+		decoder := json.NewDecoder(strings.NewReader(schema.Summary.JSON))
+		decoder.UseNumber()
+		if err := decoder.Decode(&value); err != nil {
+			return "", "", fmt.Errorf("decode schema %q canonical JSON: %w", schema.Name, err)
+		}
+		if err := decoder.Decode(&struct{}{}); err != io.EOF {
+			return "", "", fmt.Errorf("decode schema %q canonical JSON: trailing value", schema.Name)
+		}
+		var err error
+		canonicalBytes, err = json.Marshal(value)
+		if err != nil {
+			return "", "", fmt.Errorf("encode schema %q canonical JSON: %w", schema.Name, err)
+		}
+	} else {
+		var err error
+		canonicalBytes, err = json.Marshal(schema.Summary)
+		if err != nil {
+			return "", "", fmt.Errorf("encode schema %q canonical summary: %w", schema.Name, err)
+		}
+	}
+	canonicalDigest := sha256.Sum256(canonicalBytes)
+	semanticBytes, err := json.Marshal(struct {
+		Description string               `json:"description"`
+		Summary     domain.SchemaSummary `json:"summary"`
+		Example     domain.SchemaExample `json:"example"`
+	}{Description: schema.Description, Summary: schema.Summary, Example: schema.Example})
+	if err != nil {
+		return "", "", fmt.Errorf("encode schema %q projection semantics: %w", schema.Name, err)
+	}
+	semanticDigest := sha256.Sum256(semanticBytes)
+	return hex.EncodeToString(canonicalDigest[:]), hex.EncodeToString(semanticDigest[:]), nil
 }
 
 func catalogDetailHref(documentKey string, detailID domain.DetailID) string {

@@ -72,6 +72,7 @@ type CatalogArtifactV1 struct {
 	Branding           BrandingV1                    `json:"branding"`
 	DefaultDocumentKey string                        `json:"defaultDocumentKey"`
 	ProfileID          domain.CompatibilityProfileID `json:"profileId"`
+	SearchChild        string                        `json:"searchChild"`
 	Documents          []DocumentDirectoryV1         `json:"documents"`
 }
 
@@ -115,11 +116,13 @@ type FacetV1 struct {
 }
 
 type SchemaDirectoryV1 struct {
-	DetailID    domain.DetailID `json:"detailId"`
-	Name        string          `json:"name"`
-	Description string          `json:"description"`
-	Href        string          `json:"href"`
-	DetailChild string          `json:"detailChild"`
+	DetailID         domain.DetailID `json:"detailId"`
+	Name             string          `json:"name"`
+	Description      string          `json:"description"`
+	Href             string          `json:"href"`
+	DetailChild      string          `json:"detailChild"`
+	CanonicalSHA256  string          `json:"canonicalSHA256"`
+	ProjectionSHA256 string          `json:"projectionSHA256"`
 }
 
 type ShardReferenceV1 struct {
@@ -153,6 +156,103 @@ type SchemaNodeShardV1 struct {
 
 type DocumentArtifacts struct {
 	Directory DocumentDirectoryV1
+	Children  []ChildArtifact
+	Usage     BudgetUsage
+}
+
+type SearchDirectoryV1 struct {
+	SchemaVersion   uint32                           `json:"schemaVersion"`
+	SearchVersion   uint32                           `json:"searchVersion"`
+	ExactBuckets    []SearchExactBucketReferenceV1   `json:"exactBuckets"`
+	TokenRoutes     []SearchPostingRouteV1           `json:"tokenRoutes"`
+	TrigramRoutes   []SearchPostingRouteV1           `json:"trigramRoutes"`
+	PostingSegments []SearchSegmentReferenceV1       `json:"postingSegments"`
+	TrigramSegments []SearchSegmentReferenceV1       `json:"trigramSegments"`
+	RecordSegments  []SearchRecordSegmentReferenceV1 `json:"recordSegments"`
+	Ranks           []SearchRankRecordV1             `json:"ranks"`
+}
+
+type SearchRankRecordV1 struct {
+	Title string `json:"t"`
+}
+
+type SearchExactEntryV1 struct {
+	Key     string               `json:"key"`
+	Matches []SearchExactMatchV1 `json:"matches"`
+}
+
+type SearchExactMatchV1 struct {
+	Record   uint32 `json:"record"`
+	Priority uint8  `json:"priority"`
+}
+
+type SearchExactBucketReferenceV1 struct {
+	Prefix string `json:"prefix"`
+	SearchSegmentReferenceV1
+}
+
+type SearchPostingRouteV1 struct {
+	Key     string `json:"key"`
+	Segment uint16 `json:"segment"`
+}
+
+type SearchSegmentReferenceV1 struct {
+	Path     string `json:"path"`
+	Entries  uint32 `json:"entries"`
+	Postings uint32 `json:"postings"`
+	Length   uint64 `json:"length"`
+	SHA256   string `json:"sha256"`
+}
+
+type SearchRecordSegmentReferenceV1 struct {
+	Path        string `json:"path"`
+	FirstRecord uint32 `json:"firstRecord"`
+	Records     uint32 `json:"records"`
+	Length      uint64 `json:"length"`
+	SHA256      string `json:"sha256"`
+}
+
+type SearchExactSegmentV1 struct {
+	SchemaVersion uint32               `json:"schemaVersion"`
+	SearchVersion uint32               `json:"searchVersion"`
+	Entries       []SearchExactEntryV1 `json:"entries"`
+}
+
+type SearchPostingSegmentV1 struct {
+	SchemaVersion uint32                 `json:"schemaVersion"`
+	SearchVersion uint32                 `json:"searchVersion"`
+	Entries       []SearchPostingEntryV1 `json:"entries"`
+}
+
+type SearchPostingEntryV1 struct {
+	Key     string   `json:"key"`
+	Records []uint32 `json:"records"`
+}
+
+type SearchRecordSegmentV1 struct {
+	SchemaVersion uint32           `json:"schemaVersion"`
+	SearchVersion uint32           `json:"searchVersion"`
+	FirstRecord   uint32           `json:"firstRecord"`
+	Records       []SearchRecordV1 `json:"records"`
+}
+
+type SearchRecordV1 struct {
+	DetailID    domain.DetailID `json:"detailId"`
+	DocumentKey string          `json:"documentKey"`
+	Kind        string          `json:"kind"`
+	Title       string          `json:"title"`
+	Description string          `json:"description"`
+	Href        string          `json:"href"`
+	OperationID string          `json:"operationId"`
+	Method      string          `json:"method"`
+	Path        string          `json:"path"`
+	SchemaName  string          `json:"schemaName"`
+	Occurrences uint32          `json:"occurrences"`
+	Documents   []string        `json:"documents"`
+}
+
+type SearchArtifacts struct {
+	Directory SearchDirectoryV1
 	Children  []ChildArtifact
 	Usage     BudgetUsage
 }

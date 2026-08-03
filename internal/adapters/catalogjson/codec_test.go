@@ -29,6 +29,22 @@ func TestCodecCanonicalRoundTrips(t *testing.T) {
 			encode: func() ([]byte, error) { return EncodeSchemaNodeShard(codecSchemaNodeShard()) },
 			decode: func(data []byte) error { _, err := DecodeSchemaNodeShard(data); return err },
 		},
+		"search directory": {
+			encode: func() ([]byte, error) { return EncodeSearchDirectory(codecSearchDirectory()) },
+			decode: func(data []byte) error { _, err := DecodeSearchDirectory(data); return err },
+		},
+		"search exact": {
+			encode: func() ([]byte, error) { return EncodeSearchExactSegment(codecSearchExactSegment()) },
+			decode: func(data []byte) error { _, err := DecodeSearchExactSegment(data); return err },
+		},
+		"search posting": {
+			encode: func() ([]byte, error) { return EncodeSearchPostingSegment(codecSearchPostingSegment()) },
+			decode: func(data []byte) error { _, err := DecodeSearchPostingSegment(data); return err },
+		},
+		"search record": {
+			encode: func() ([]byte, error) { return EncodeSearchRecordSegment(codecSearchRecordSegment()) },
+			decode: func(data []byte) error { _, err := DecodeSearchRecordSegment(data); return err },
+		},
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
@@ -89,12 +105,31 @@ func TestCodecRejectsSemanticDanglingAndMalformedRecords(t *testing.T) {
 	if _, err := EncodeSchemaNodeShard(nodes); err == nil {
 		t.Fatal("noncontiguous schema-node ordinal was accepted")
 	}
+
+	searchDirectory := codecSearchDirectory()
+	searchDirectory.TokenRoutes[0].Segment = 1
+	if _, err := EncodeSearchDirectory(searchDirectory); err == nil {
+		t.Fatal("dangling search route segment was accepted")
+	}
+
+	posting := codecSearchPostingSegment()
+	posting.Entries[0].Records = []uint32{1, 1}
+	if _, err := EncodeSearchPostingSegment(posting); err == nil {
+		t.Fatal("duplicate search posting was accepted")
+	}
+
+	records := codecSearchRecordSegment()
+	records.Records[0].Occurrences = 2
+	if _, err := EncodeSearchRecordSegment(records); err == nil {
+		t.Fatal("inconsistent search occurrence count was accepted")
+	}
 }
 
 func codecCatalog() catalog.CatalogArtifactV1 {
 	id := domain.DetailID("detail-sha256-" + strings.Repeat("a", 64))
 	return catalog.CatalogArtifactV1{
 		SchemaVersion: 1, CatalogID: "catalog", Title: "Catalog", DefaultDocumentKey: "doc", ProfileID: domain.CompatibilityProfileStrict,
+		SearchChild: "search/directory.json",
 		Documents: []catalog.DocumentDirectoryV1{{
 			Key: "doc", SourcePath: "openapi.json", Title: "Doc", APIVersion: "v1", SourceChild: "sources/doc.json",
 			SchemaNodeShards: []catalog.ShardReferenceV1{{Path: "schema-nodes/doc/" + strings.Repeat("b", 64) + ".json", FirstOrdinal: 0, LastOrdinal: 0, Records: 1, Length: 1, SHA256: strings.Repeat("b", 64)}},
@@ -113,4 +148,35 @@ func codecDetailShard() catalog.DetailShardV1 {
 
 func codecSchemaNodeShard() catalog.SchemaNodeShardV1 {
 	return catalog.SchemaNodeShardV1{SchemaVersion: 1, DocumentKey: "doc", FirstOrdinal: 0, Nodes: []projection.SchemaNode{{Ordinal: 0, ID: "node", Name: "Pet"}}}
+}
+
+func codecSearchDirectory() catalog.SearchDirectoryV1 {
+	exact := catalog.SearchSegmentReferenceV1{Path: "search/exact/" + strings.Repeat("a", 64) + ".json", Entries: 1, Postings: 1, Length: 1, SHA256: strings.Repeat("a", 64)}
+	posting := catalog.SearchSegmentReferenceV1{Path: "search/postings/" + strings.Repeat("b", 64) + ".json", Entries: 1, Postings: 1, Length: 1, SHA256: strings.Repeat("b", 64)}
+	trigram := catalog.SearchSegmentReferenceV1{Path: "search/trigrams/" + strings.Repeat("c", 64) + ".json", Entries: 1, Postings: 1, Length: 1, SHA256: strings.Repeat("c", 64)}
+	record := catalog.SearchRecordSegmentReferenceV1{Path: "search/records/" + strings.Repeat("d", 64) + ".json", FirstRecord: 0, Records: 1, Length: 1, SHA256: strings.Repeat("d", 64)}
+	return catalog.SearchDirectoryV1{
+		SchemaVersion: 1, SearchVersion: 1,
+		ExactBuckets:    []catalog.SearchExactBucketReferenceV1{{Prefix: "a", SearchSegmentReferenceV1: exact}},
+		TokenRoutes:     []catalog.SearchPostingRouteV1{{Key: "pet", Segment: 0}},
+		TrigramRoutes:   []catalog.SearchPostingRouteV1{{Key: "pet", Segment: 0}},
+		PostingSegments: []catalog.SearchSegmentReferenceV1{posting}, TrigramSegments: []catalog.SearchSegmentReferenceV1{trigram},
+		RecordSegments: []catalog.SearchRecordSegmentReferenceV1{record}, Ranks: []catalog.SearchRankRecordV1{{Title: "Pets"}},
+	}
+}
+
+func codecSearchExactSegment() catalog.SearchExactSegmentV1 {
+	return catalog.SearchExactSegmentV1{SchemaVersion: 1, SearchVersion: 1, Entries: []catalog.SearchExactEntryV1{{Key: "pet", Matches: []catalog.SearchExactMatchV1{{Record: 0, Priority: 2}}}}}
+}
+
+func codecSearchPostingSegment() catalog.SearchPostingSegmentV1 {
+	return catalog.SearchPostingSegmentV1{SchemaVersion: 1, SearchVersion: 1, Entries: []catalog.SearchPostingEntryV1{{Key: "pet", Records: []uint32{0}}}}
+}
+
+func codecSearchRecordSegment() catalog.SearchRecordSegmentV1 {
+	id := domain.DetailID("detail-sha256-" + strings.Repeat("a", 64))
+	return catalog.SearchRecordSegmentV1{SchemaVersion: 1, SearchVersion: 1, FirstRecord: 0, Records: []catalog.SearchRecordV1{{
+		DetailID: id, DocumentKey: "doc", Kind: "operation", Title: "Pets", Href: "documents/doc/?selected=" + string(id) + "#" + string(id),
+		Method: "GET", Path: "/pets", Occurrences: 1, Documents: []string{"doc"},
+	}}}
 }

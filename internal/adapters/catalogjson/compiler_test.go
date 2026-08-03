@@ -39,6 +39,7 @@ func TestCodecAcceptsEveryCompilerArtifact(t *testing.T) {
 		t.Fatal(err)
 	}
 	var directory catalog.CatalogArtifactV1
+	var searchDirectory catalog.SearchDirectoryV1
 	var manifest catalog.ManifestV1
 	for _, child := range snapshot.Children {
 		switch child.Kind {
@@ -48,6 +49,14 @@ func TestCodecAcceptsEveryCompilerArtifact(t *testing.T) {
 			_, err = DecodeDetailShard(child.Bytes)
 		case "schema-node":
 			_, err = DecodeSchemaNodeShard(child.Bytes)
+		case "search-directory":
+			searchDirectory, err = DecodeSearchDirectory(child.Bytes)
+		case "search-exact":
+			_, err = DecodeSearchExactSegment(child.Bytes)
+		case "search-posting", "search-trigram":
+			_, err = DecodeSearchPostingSegment(child.Bytes)
+		case "search-record":
+			_, err = DecodeSearchRecordSegment(child.Bytes)
 		case "manifest":
 			manifest, err = DecodeManifest(child.Bytes)
 		}
@@ -56,6 +65,9 @@ func TestCodecAcceptsEveryCompilerArtifact(t *testing.T) {
 		}
 	}
 	if err := ValidateCatalogManifest(directory, manifest); err != nil {
+		t.Fatal(err)
+	}
+	if err := ValidateSearchManifest(searchDirectory, manifest); err != nil {
 		t.Fatal(err)
 	}
 }
