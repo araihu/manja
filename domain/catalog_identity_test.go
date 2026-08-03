@@ -100,6 +100,22 @@ func TestDetailIdentityRejectsNoncanonicalInputs(t *testing.T) {
 	}
 }
 
+func TestOperationDetailIDAcceptsLiteralKubernetesDiscoveryTrailingSlash(t *testing.T) {
+	t.Parallel()
+
+	withoutSlash, err := NewOperationDetailID("kubernetes", "core-discovery", "GET", "/api")
+	if err != nil {
+		t.Fatal(err)
+	}
+	withSlash, err := NewOperationDetailID("kubernetes", "core-discovery", "GET", "/api/")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if withSlash == withoutSlash {
+		t.Fatal("literal trailing slash was normalized out of operation identity")
+	}
+}
+
 func TestValidateCatalogIndexRejectsInjectedDetailHashCollision(t *testing.T) {
 	t.Parallel()
 

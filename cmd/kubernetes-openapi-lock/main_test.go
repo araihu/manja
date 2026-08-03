@@ -278,6 +278,87 @@ func TestRunRejectsUnknownCommand(t *testing.T) {
 	}
 }
 
+func TestRunBuildsExactKubernetesDefaultAllowlist(t *testing.T) {
+	root := repositoryRoot(t)
+	out := filepath.Join(t.TempDir(), "default-allowlist.json")
+	args := []string{
+		"allowlist",
+		"-catalog", filepath.Join(root, "internal/renderer/testdata/kubernetes/catalog-source.json"),
+		"-spec-root", filepath.Join(root, "internal/renderer/testdata/kubernetes/specs"),
+		"-out", out,
+	}
+	var stdout, stderr bytes.Buffer
+	if code := run(args, &stdout, &stderr); code != 0 {
+		t.Fatalf("run code = %d, stderr = %q", code, stderr.String())
+	}
+	first, err := os.ReadFile(out)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var allowlist struct {
+		SchemaVersion int               `json:"schemaVersion"`
+		Diagnostics   []json.RawMessage `json:"diagnostics"`
+	}
+	if err := json.Unmarshal(first, &allowlist); err != nil {
+		t.Fatal(err)
+	}
+	if allowlist.SchemaVersion != 1 || len(allowlist.Diagnostics) != 115 {
+		t.Fatalf("allowlist version/count = %d/%d, want 1/115", allowlist.SchemaVersion, len(allowlist.Diagnostics))
+	}
+	stdout.Reset()
+	stderr.Reset()
+	if code := run(args, &stdout, &stderr); code != 0 {
+		t.Fatalf("second run code = %d, stderr = %q", code, stderr.String())
+	}
+	second, err := os.ReadFile(out)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(first, second) {
+		t.Fatal("allowlist output changed across identical runs")
+	}
+}
+
+func TestRunCatalogPreservesReviewedDefaultAllowlist(t *testing.T) {
+	t.Parallel()
+
+	directory := t.TempDir()
+	inventoryPath := filepath.Join(directory, "inventory.tsv")
+	var inventory strings.Builder
+	for _, entry := range fakeInventory(65) {
+		fmt.Fprintf(&inventory, "%s\t%s\t%d\t%s\n", entry.Name, entry.Type, entry.Size, entry.GitBlobSHA)
+	}
+	if err := os.WriteFile(inventoryPath, []byte(inventory.String()), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	manifestPath := filepath.Join(directory, "muamba.yaml")
+	if err := os.WriteFile(manifestPath, []byte("schema: 1\nresources: {}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	allowlistPath := filepath.Join(directory, "default-allowlist.json")
+	reviewed := []byte("{\n  \"schemaVersion\": 1,\n  \"diagnostics\": [{\"reviewed\": true}]\n}\n")
+	if err := os.WriteFile(allowlistPath, reviewed, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	args := []string{
+		"catalog", "-commit", pinnedKubernetesCommit, "-inventory", inventoryPath,
+		"-license-size", "11358", "-license-git-blob", "d645695673349e3947e8e5ae42332d0ac3164cd7",
+		"-catalog", filepath.Join(directory, "catalog-source.json"),
+		"-allowlist", allowlistPath, "-muamba", manifestPath,
+	}
+	var stdout, stderr bytes.Buffer
+	if code := run(args, &stdout, &stderr); code != 0 {
+		t.Fatalf("run code = %d, stderr = %q", code, stderr.String())
+	}
+	after, err := os.ReadFile(allowlistPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(after, reviewed) {
+		t.Fatal("catalog regeneration overwrote reviewed default allowlist")
+	}
+}
+
 func fakeInventory(count int) []inventoryEntry {
 	result := make([]inventoryEntry, count)
 	for index := range result {

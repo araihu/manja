@@ -47,7 +47,11 @@ func newOperationDetailIdentity(
 	if err := ValidateCanonicalIdentity("operation path", literalPath, false); err != nil {
 		return "", nil, err
 	}
-	if !strings.HasPrefix(literalPath, "/") || path.Clean(literalPath) != literalPath || strings.ContainsAny(literalPath, " ?#") {
+	cleanInput := literalPath
+	if literalPath != "/" && strings.HasSuffix(literalPath, "/") {
+		cleanInput = strings.TrimSuffix(literalPath, "/")
+	}
+	if !strings.HasPrefix(literalPath, "/") || path.Clean(cleanInput) != cleanInput || strings.ContainsAny(literalPath, " ?#") {
 		return "", nil, fmt.Errorf("operation path is invalid")
 	}
 	preimage := detailPreimage(detailIdentityDomain, catalogID, documentKey, "operation", method, literalPath)

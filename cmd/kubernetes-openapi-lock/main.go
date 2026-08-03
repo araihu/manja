@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"crypto/sha1" // #nosec G505 -- Git object identity is defined as SHA-1.
 	"crypto/sha256"
 	"encoding/hex"
@@ -18,6 +19,9 @@ import (
 	"strings"
 
 	"gopkg.in/yaml.v3"
+
+	"github.com/araihu/manja/domain"
+	openapiadapter "github.com/araihu/manja/internal/adapters/openapi"
 )
 
 const (
@@ -111,6 +115,8 @@ func run(args []string, stdout, stderr io.Writer) int {
 		err = runCatalog(args[1:], stdout, stderr)
 	case "receipt":
 		err = runReceipt(args[1:], stdout, stderr)
+	case "allowlist":
+		err = runAllowlist(args[1:], stdout, stderr)
 	default:
 		writeUsage(stderr)
 		return 2
@@ -123,7 +129,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 }
 
 func writeUsage(writer io.Writer) {
-	fmt.Fprintln(writer, "usage: kubernetes-openapi-lock <catalog|receipt> [flags]")
+	fmt.Fprintln(writer, "usage: kubernetes-openapi-lock <catalog|allowlist|receipt> [flags]")
 }
 
 func runCatalog(args []string, stdout, stderr io.Writer) error {
@@ -135,7 +141,7 @@ func runCatalog(args []string, stdout, stderr io.Writer) error {
 	licenseBlob := flags.String("license-git-blob", "", "upstream LICENSE Git blob SHA")
 	catalogPath := flags.String("catalog", "", "catalog-source.json output")
 	manifestPath := flags.String("muamba", "", "Muamba manifest to update")
-	allowlistPath := flags.String("allowlist", "", "empty default allowlist output")
+	allowlistPath := flags.String("allowlist", "", "default allowlist path to bootstrap when absent")
 	if err := flags.Parse(args); err != nil {
 		return err
 	}
@@ -173,18 +179,24 @@ func runCatalog(args []string, stdout, stderr io.Writer) error {
 	if err != nil {
 		return err
 	}
-	allowlistBytes := []byte("{\n  \"schemaVersion\": 1,\n  \"diagnostics\": []\n}\n")
 	for _, output := range []struct {
 		path string
 		data []byte
 	}{
 		{path: *catalogPath, data: catalogBytes},
 		{path: *manifestPath, data: manifestBytes},
-		{path: *allowlistPath, data: allowlistBytes},
 	} {
 		if err := writeFile(output.path, output.data); err != nil {
 			return err
 		}
+	}
+	if _, err := os.Stat(*allowlistPath); errors.Is(err, os.ErrNotExist) {
+		allowlistBytes := []byte("{\n  \"schemaVersion\": 1,\n  \"diagnostics\": []\n}\n")
+		if err := writeFile(*allowlistPath, allowlistBytes); err != nil {
+			return err
+		}
+	} else if err != nil {
+		return fmt.Errorf("stat default allowlist: %w", err)
 	}
 	fmt.Fprintf(stdout, "catalog: %d documents at %s\n", len(catalog.Documents), catalog.CommitSHA)
 	return nil
@@ -219,6 +231,50 @@ func runReceipt(args []string, stdout, stderr io.Writer) error {
 		return err
 	}
 	fmt.Fprintf(stdout, "receipt: %d documents, %d operations, %d schemas\n", value.DocumentCount, value.OperationCount, value.DocumentSchemaCount)
+	return nil
+}
+
+func runAllowlist(args []string, stdout, stderr io.Writer) error {
+	flags := flag.NewFlagSet("allowlist", flag.ContinueOnError)
+	flags.SetOutput(stderr)
+	catalogPath := flags.String("catalog", "", "catalog-source.json input")
+	specRoot := flags.String("spec-root", "", "locked specification directory")
+	outPath := flags.String("out", "", "default allowlist output")
+	if err := flags.Parse(args); err != nil {
+		return err
+	}
+	if flags.NArg() != 0 || *catalogPath == "" || *specRoot == "" || *outPath == "" {
+		return errors.New("allowlist requires -catalog, -spec-root, and -out")
+	}
+	catalog, _, err := loadSourceCatalog(*catalogPath)
+	if err != nil {
+		return err
+	}
+	documents := make([]domain.CatalogDocument, len(catalog.Documents))
+	for index, document := range catalog.Documents {
+		data, err := os.ReadFile(filepath.Join(*specRoot, filepath.Base(document.UpstreamPath)))
+		if err != nil {
+			return fmt.Errorf("read %s: %w", document.UpstreamPath, err)
+		}
+		if int64(len(data)) != document.Size {
+			return fmt.Errorf("%s size = %d, want %d", document.UpstreamPath, len(data), document.Size)
+		}
+		if err := verifyGitBlob(document.GitBlobSHA, data); err != nil {
+			return fmt.Errorf("%s: %w", document.UpstreamPath, err)
+		}
+		documents[index] = domain.CatalogDocument{
+			Key: document.Key, SourcePath: "specs/" + filepath.Base(document.UpstreamPath),
+			Format: domain.CatalogFormatJSON, Bytes: data,
+		}
+	}
+	data, err := openapiadapter.BuildKubernetesDefaultAllowlist(context.Background(), documents)
+	if err != nil {
+		return err
+	}
+	if err := writeFile(*outPath, data); err != nil {
+		return err
+	}
+	fmt.Fprintf(stdout, "allowlist: %d documents\n", len(documents))
 	return nil
 }
 
