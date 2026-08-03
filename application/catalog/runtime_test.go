@@ -98,6 +98,17 @@ func TestRuntimeAdmissionPinsOldSnapshotUntilRelease(t *testing.T) {
 	if state.Active.ID != second.ID || state.Previous == nil || state.Previous.ID != first.ID {
 		t.Fatalf("active/previous state = %#v", state)
 	}
+	previousAdmission, err := runtime.AdmitSnapshot("/catalog", first.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if previousAdmission.Snapshot.ID != first.ID {
+		t.Fatalf("qualified admission = %#v", previousAdmission)
+	}
+	previousAdmission.Release()
+	if _, err := runtime.AdmitSnapshot("/catalog", runtimeSnapshotFixture("c").ID); !errors.Is(err, ErrMountUnavailable) {
+		t.Fatalf("unretained snapshot admission error = %v", err)
+	}
 	admission.Release()
 	admission.Release()
 	if runtime.ReferenceCount(first.ID) != 0 {

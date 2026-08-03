@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/araihu/manja/domain"
@@ -52,18 +53,27 @@ func TestServerExposesStableHandlerAndBoundedUnavailableRoutes(t *testing.T) {
 	}
 }
 
-func TestActivateValidatesConfiguredCandidateBeforeCompilerExists(t *testing.T) {
+func TestActivateCompilesAndPublishesConfiguredCandidate(t *testing.T) {
 	t.Parallel()
 
-	server, err := New(Config{Version: 1, Catalogs: []CatalogConfig{
+	server, err := New(Config{Version: 1, DataDir: t.TempDir(), Catalogs: []CatalogConfig{
 		{ID: "payments", Mount: "/", Title: "Payments", DefaultDocumentKey: "payments-v1", ProfileID: domain.CompatibilityProfileStrict},
 	}})
 	if err != nil {
 		t.Fatal(err)
 	}
 	candidate := rendererTestCandidate("payments")
-	if _, err := server.Activate(context.Background(), candidate); !errors.Is(err, ErrActivationUnavailable) {
-		t.Fatalf("Activate error = %v, want ErrActivationUnavailable", err)
+	receipt, err := server.Activate(context.Background(), candidate)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if receipt.CatalogID != "payments" || receipt.Mount != "/" || receipt.RevisionID != candidate.Revision.ID || receipt.SnapshotID == "" {
+		t.Fatalf("activation receipt = %#v", receipt)
+	}
+	response := httptest.NewRecorder()
+	server.Handler().ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/", nil))
+	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), "Payments") {
+		t.Fatalf("activated handler = %d %s", response.Code, response.Body.String())
 	}
 	canceled, cancel := context.WithCancel(context.Background())
 	cancel()
@@ -72,26 +82,26 @@ func TestActivateValidatesConfiguredCandidateBeforeCompilerExists(t *testing.T) 
 	}
 
 	candidate.ID = "unknown"
-	if _, err := server.Activate(context.Background(), candidate); err == nil || errors.Is(err, ErrActivationUnavailable) {
+	if _, err := server.Activate(context.Background(), candidate); err == nil {
 		t.Fatalf("unconfigured candidate error = %v, want configuration error", err)
 	}
 
 	candidate = rendererTestCandidate("payments")
 	candidate.ProfileID = domain.CompatibilityProfileKubernetes
-	if _, err := server.Activate(context.Background(), candidate); err == nil || errors.Is(err, ErrActivationUnavailable) {
+	if _, err := server.Activate(context.Background(), candidate); err == nil {
 		t.Fatalf("profile mismatch error = %v, want configuration error", err)
 	}
 
 	candidate = rendererTestCandidate("payments")
 	candidate.Documents[0].Key = "other-v1"
 	candidate.DefaultDocumentKey = "other-v1"
-	if _, err := server.Activate(context.Background(), candidate); err == nil || errors.Is(err, ErrActivationUnavailable) {
+	if _, err := server.Activate(context.Background(), candidate); err == nil {
 		t.Fatalf("missing configured default error = %v, want configuration error", err)
 	}
 
 	candidate = rendererTestCandidate("payments")
 	candidate.Documents[0].Bytes = nil
-	if _, err := server.Activate(context.Background(), candidate); err == nil || errors.Is(err, ErrActivationUnavailable) {
+	if _, err := server.Activate(context.Background(), candidate); err == nil {
 		t.Fatalf("invalid candidate error = %v, want domain validation error", err)
 	}
 }
@@ -105,7 +115,7 @@ func rendererTestCandidate(id string) domain.CatalogCandidate {
 			ManifestDigest: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
 		},
 		Documents: []domain.CatalogDocument{{
-			Key: "payments-v1", SourcePath: "payments.json", Format: domain.CatalogFormatJSON, Bytes: []byte("{}"),
+			Key: "payments-v1", SourcePath: "payments.json", Format: domain.CatalogFormatJSON, Bytes: []byte(`{"openapi":"3.0.3","info":{"title":"Payments","version":"v1"},"paths":{}}`),
 		}},
 	}
 }

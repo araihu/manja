@@ -70,7 +70,38 @@ func (store *Store) Preflight(ctx context.Context, id catalog.SnapshotID) (catal
 	if err := catalogjson.ValidateSearchManifest(search, manifest); err != nil {
 		return catalog.RuntimeSnapshot{}, fmt.Errorf("%w: search references: %v", ErrCorruptSnapshot, err)
 	}
-	return catalog.RuntimeSnapshot{ID: id, Location: location, Directory: directory, Search: search}, nil
+	return catalog.RuntimeSnapshot{ID: id, Location: location, Directory: directory, Search: search, Manifest: manifest}, nil
+}
+
+func (store *Store) ReadChild(ctx context.Context, snapshot catalog.RuntimeSnapshot, childPath string) ([]byte, catalog.ChildIdentityV1, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, catalog.ChildIdentityV1{}, err
+	}
+	var identity catalog.ChildIdentityV1
+	found := false
+	for _, child := range snapshot.Manifest.Children {
+		if child.Path == childPath {
+			identity = child
+			found = true
+			break
+		}
+	}
+	if !found {
+		return nil, catalog.ChildIdentityV1{}, fmt.Errorf("%w: child %q is undeclared", ErrCorruptSnapshot, childPath)
+	}
+	path, err := safeChildPath(snapshot.Location, childPath)
+	if err != nil {
+		return nil, catalog.ChildIdentityV1{}, err
+	}
+	data, err := readBounded(path, int64(identity.Length))
+	if err != nil {
+		return nil, catalog.ChildIdentityV1{}, classifyRead(childPath, err)
+	}
+	digest := sha256.Sum256(data)
+	if uint64(len(data)) != identity.Length || hex.EncodeToString(digest[:]) != identity.SHA256 {
+		return nil, catalog.ChildIdentityV1{}, fmt.Errorf("%w: child %q length or digest changed", ErrCorruptSnapshot, childPath)
+	}
+	return data, identity, nil
 }
 
 func verifyFile(path string, length uint64, digest string) error {

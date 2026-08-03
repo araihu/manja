@@ -26,6 +26,7 @@ type RuntimeSnapshot struct {
 	Location  string
 	Directory CatalogArtifactV1
 	Search    SearchDirectoryV1
+	Manifest  ManifestV1
 }
 
 type MountState struct {
@@ -193,6 +194,20 @@ func (runtime *Runtime) Table() *RouteTable {
 	return cloneRouteTable(runtime.table.Load())
 }
 
+func (runtime *Runtime) MountNames() []string {
+	current := runtime.table.Load()
+	result := make([]string, 0, len(current.Mounts))
+	for mount := range current.Mounts {
+		result = append(result, mount)
+	}
+	return result
+}
+
+func (runtime *Runtime) HasMount(mount string) bool {
+	_, exists := runtime.table.Load().Mounts[mount]
+	return exists
+}
+
 // RestoreTable installs durable startup state before request admission begins.
 func (runtime *Runtime) RestoreTable(table *RouteTable) error {
 	if table == nil {
@@ -228,6 +243,12 @@ type Admission struct {
 }
 
 func (runtime *Runtime) Admit(mount string) (*Admission, error) {
+	return runtime.AdmitSnapshot(mount, "")
+}
+
+// AdmitSnapshot admits the active snapshot when id is empty, or an explicitly
+// retained active/previous snapshot for immutable snapshot-qualified routes.
+func (runtime *Runtime) AdmitSnapshot(mount string, id SnapshotID) (*Admission, error) {
 	if err := validateRuntimeMount(mount); err != nil {
 		return nil, err
 	}
@@ -237,16 +258,25 @@ func (runtime *Runtime) Admit(mount string) (*Admission, error) {
 	if !ok {
 		return nil, fmt.Errorf("%w: %q", ErrMountUnavailable, mount)
 	}
-	runtime.refs[state.Active.ID]++
-	admission := &Admission{Mount: mount, Snapshot: cloneRuntimeSnapshot(state.Active)}
+	selected := state.Active
+	if id != "" && id != state.Active.ID {
+		if state.Previous == nil || state.Previous.ID != id {
+			return nil, fmt.Errorf("%w: snapshot %q at %q", ErrMountUnavailable, id, mount)
+		}
+		selected = *state.Previous
+	}
+	runtime.refs[selected.ID]++
+	// Runtime owns an immutable deep copy from activation. Admissions share its
+	// read-only slices so request cost is independent of catalog size.
+	admission := &Admission{Mount: mount, Snapshot: selected}
 	admission.release = func() {
 		runtime.writes.Lock()
 		defer runtime.writes.Unlock()
-		if runtime.refs[state.Active.ID] <= 1 {
-			delete(runtime.refs, state.Active.ID)
+		if runtime.refs[selected.ID] <= 1 {
+			delete(runtime.refs, selected.ID)
 			return
 		}
-		runtime.refs[state.Active.ID]--
+		runtime.refs[selected.ID]--
 	}
 	return admission, nil
 }
@@ -327,5 +357,8 @@ func cloneRuntimeSnapshot(source RuntimeSnapshot) RuntimeSnapshot {
 	result.Search.TrigramSegments = append([]SearchSegmentReferenceV1(nil), source.Search.TrigramSegments...)
 	result.Search.RecordSegments = append([]SearchRecordSegmentReferenceV1(nil), source.Search.RecordSegments...)
 	result.Search.Ranks = append([]SearchRankRecordV1(nil), source.Search.Ranks...)
+	result.Manifest.Identity.Sources = append([]SourceIdentityV1(nil), source.Manifest.Identity.Sources...)
+	result.Manifest.Identity.Children = append([]ChildIdentityV1(nil), source.Manifest.Identity.Children...)
+	result.Manifest.Children = append([]ChildIdentityV1(nil), source.Manifest.Children...)
 	return result
 }

@@ -12,15 +12,17 @@ const maxConfiguredCatalogs = 8
 
 type Config struct {
 	Version  uint32
+	DataDir  string
 	Catalogs []CatalogConfig
 }
 
 type CatalogConfig struct {
-	ID                 string
-	Mount              string
-	Title              string
-	DefaultDocumentKey string
-	ProfileID          domain.CompatibilityProfileID
+	ID                     string
+	Mount                  string
+	Title                  string
+	DefaultDocumentKey     string
+	ProfileID              domain.CompatibilityProfileID
+	CompatibilityAllowlist []byte
 }
 
 func validateConfig(config Config) error {
