@@ -309,8 +309,7 @@ templ catalogHeader(data CatalogPageData) {
 
 templ catalogSidebar(data CatalogPageData) {
 	<div class="flex h-full min-h-0 flex-col">
-		<div class="flex shrink-0 items-center justify-between border-b border-outline p-3 lg:hidden dark:border-outline-dark">
-			<span class="font-semibold text-on-surface-strong dark:text-on-surface-dark-strong">API sections</span>
+		<div class="flex shrink-0 items-center justify-end p-3 lg:hidden">
 			<button
 				type="button"
 				x-ref="catalogNavClose"
@@ -551,8 +550,6 @@ func catalogSchemaCount(directory catalog.CatalogArtifactV1) int {
 
 func catalogSidebarConfig(data CatalogPageData) sidebar.Config {
 	config := sidebar.Config{
-		LogoText: data.Directory.Title,
-		LogoHref: data.Mount,
 		DisableSkipLink: true,
 		SearchSlot: catalogSidebarSearch(),
 	}

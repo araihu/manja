@@ -41,7 +41,8 @@ func TestCatalogHeaderOmitsThemeSelectorButKeepsDarkMode(t *testing.T) {
 func TestCatalogShellProvidesOneResponsiveSidebarWithMobileDrawerControls(t *testing.T) {
 	t.Parallel()
 
-	body := renderCatalogTemplate(t, catalogTemplateFixture())
+	data := catalogTemplateFixture()
+	body := renderCatalogTemplate(t, data)
 	for _, want := range []string{
 		`x-data="{ catalogNavOpen: false }"`,
 		`aria-label="Open API sections"`,
@@ -59,6 +60,13 @@ func TestCatalogShellProvidesOneResponsiveSidebarWithMobileDrawerControls(t *tes
 	}
 	if strings.Count(body, `id="catalog-sidebar-groups"`) != 1 {
 		t.Fatal("catalog rendered duplicate sidebar trees")
+	}
+	if strings.Contains(body, `>API sections</span>`) {
+		t.Fatal("mobile drawer retains redundant API sections heading")
+	}
+	config := catalogSidebarConfig(data)
+	if config.Logo != nil || config.LogoText != "" || config.LogoHref != "" {
+		t.Fatalf("catalog sidebar retains redundant logo header: logo=%v text=%q href=%q", config.Logo != nil, config.LogoText, config.LogoHref)
 	}
 }
 

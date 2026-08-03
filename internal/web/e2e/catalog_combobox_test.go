@@ -187,6 +187,28 @@ func TestCatalogDocumentComboboxSearchSelectAndClientFirstModal(t *testing.T) {
 	if err != nil || marker != "unchanged" {
 		t.Fatalf("search modal reloaded the page: marker=%v err=%v", marker, err)
 	}
+	if err := page.SetViewportSize(884, 781); err != nil {
+		t.Fatal(err)
+	}
+	if err := page.GetByRole("button", playwright.PageGetByRoleOptions{Name: "Open API sections", Exact: playwright.Bool(true)}).Click(); err != nil {
+		t.Fatal(err)
+	}
+	panel := page.Locator("#catalog-navigation")
+	if err := panel.WaitFor(playwright.LocatorWaitForOptions{State: playwright.WaitForSelectorStateVisible}); err != nil {
+		t.Fatalf("mobile catalog drawer: %v", err)
+	}
+	if count, err := panel.GetByText("API sections", playwright.LocatorGetByTextOptions{Exact: playwright.Bool(true)}).Count(); err != nil || count != 0 {
+		t.Fatalf("mobile drawer API sections headings = %d, err=%v", count, err)
+	}
+	if count, err := panel.Locator(`nav[aria-label="sidebar navigation"] > div.shrink-0.border-b`).Count(); err != nil || count != 0 {
+		t.Fatalf("mobile drawer sidebar logo headers = %d, err=%v", count, err)
+	}
+	if err := panel.Locator(`[data-catalog-sidebar-search]`).WaitFor(playwright.LocatorWaitForOptions{State: playwright.WaitForSelectorStateVisible}); err != nil {
+		t.Fatalf("mobile drawer search field: %v", err)
+	}
+	if err := panel.GetByRole("button", playwright.LocatorGetByRoleOptions{Name: "Close API sections", Exact: playwright.Bool(true)}).Click(); err != nil {
+		t.Fatal(err)
+	}
 
 	fallbackPage, err := browser.NewPage()
 	if err != nil {
