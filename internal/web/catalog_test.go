@@ -323,6 +323,47 @@ func TestCatalogMaxOperationGroupRendersSelectedPageWithinByteBound(t *testing.T
 	}
 }
 
+func TestCatalogSidebarPageWindowRejectsHugePageWithoutOverflow(t *testing.T) {
+	t.Parallel()
+
+	start, end, ok := catalogSidebarPageWindow(1, 92_233_720_368_547_760)
+	if ok || start != 0 || end != 0 {
+		t.Fatalf("huge page window = (%d, %d, %t), want (0, 0, false)", start, end, ok)
+	}
+}
+
+func TestCatalogHugeGroupPagesReturnBoundedClientErrorWithoutPanic(t *testing.T) {
+	t.Parallel()
+
+	handler, _ := catalogHandlerFixture(t, "/kubernetes")
+	for _, test := range []struct {
+		name    string
+		groupID string
+	}{
+		{name: "operations", groupID: catalogGroupID("operations-Untagged")},
+		{name: "schemas", groupID: catalogGroupID("schemas")},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			requestURL := "/kubernetes/documents/core-v1/?group=" + test.groupID + "&page=92233720368547760"
+			response := httptest.NewRecorder()
+			var recovered any
+			func() {
+				defer func() { recovered = recover() }()
+				handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, requestURL, nil))
+			}()
+			if recovered != nil {
+				t.Fatalf("huge %s group page panicked: %v", test.name, recovered)
+			}
+			if response.Code != http.StatusNotFound && response.Code != http.StatusBadRequest {
+				t.Fatalf("huge %s group page = %d, want 404/400", test.name, response.Code)
+			}
+			if response.Body.Len() > 1024 {
+				t.Fatalf("huge %s group page error = %d bytes, want bounded", test.name, response.Body.Len())
+			}
+		})
+	}
+}
+
 func TestCatalogDownloadAndCacheContracts(t *testing.T) {
 	t.Parallel()
 

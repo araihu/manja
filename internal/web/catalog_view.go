@@ -235,13 +235,14 @@ func catalogSidebarPageWindow(total, page int) (int, int, bool) {
 	if total <= 0 || page < 1 {
 		return 0, 0, false
 	}
-	start := (page - 1) * catalogSidebarPageSize
-	if start >= total {
+	maxPage := (total-1)/catalogSidebarPageSize + 1
+	if page > maxPage {
 		return 0, 0, false
 	}
-	end := start + catalogSidebarPageSize
-	if end > total {
-		end = total
+	start := (page - 1) * catalogSidebarPageSize
+	end := total
+	if total-start > catalogSidebarPageSize {
+		end = start + catalogSidebarPageSize
 	}
 	return start, end, true
 }
