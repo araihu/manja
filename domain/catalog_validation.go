@@ -12,6 +12,14 @@ func ValidateCatalogIndex(index CatalogIndex) error {
 	return validateCatalogIndexWithDetailHasher(index, sha256.Sum256)
 }
 
+func ValidateCatalogID(value string) error {
+	return validateCatalogKey("catalog id", value)
+}
+
+func ValidateCatalogDocumentKey(value string) error {
+	return validateCatalogKey("catalog document key", value)
+}
+
 func ValidateCatalogCandidate(candidate CatalogCandidate) error {
 	if err := validateUTF8Strings("catalog candidate", candidate); err != nil {
 		return err
