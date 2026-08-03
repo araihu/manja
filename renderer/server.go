@@ -183,6 +183,14 @@ func (gateway *catalogGateway) ServeHTTP(response http.ResponseWriter, request *
 	gateway.mutex.RLock()
 	runtime, delegate := gateway.runtime, gateway.delegate
 	gateway.mutex.RUnlock()
+	if web.IsCatalogComponentPath(request.URL.Path) {
+		if runtime == nil || delegate == nil {
+			http.Error(response, "catalog unavailable", http.StatusServiceUnavailable)
+			return
+		}
+		delegate.ServeHTTP(response, request)
+		return
+	}
 	for _, mount := range gateway.mounts {
 		if mount != "/" && request.URL.Path != mount && !strings.HasPrefix(request.URL.Path, mount+"/") {
 			continue

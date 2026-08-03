@@ -35,6 +35,7 @@ func TestServerExposesStableHandlerAndBoundedUnavailableRoutes(t *testing.T) {
 	}
 
 	for requestPath, wantStatus := range map[string]int{
+		"/_manja/catalog/document-combobox/options?catalog-mount=%2Fkubernetes": http.StatusServiceUnavailable,
 		"/kubernetes":         http.StatusServiceUnavailable,
 		"/kubernetes/":        http.StatusServiceUnavailable,
 		"/kubernetes/core-v1": http.StatusServiceUnavailable,
@@ -79,6 +80,11 @@ func TestActivateCompilesAndPublishesConfiguredCandidate(t *testing.T) {
 	server.Handler().ServeHTTP(asset, httptest.NewRequest(http.MethodGet, "/manja-assets/manja.css", nil))
 	if asset.Code != http.StatusOK || !strings.Contains(asset.Header().Get("Content-Type"), "text/css") {
 		t.Fatalf("catalog asset = %d %q", asset.Code, asset.Header().Get("Content-Type"))
+	}
+	combo := httptest.NewRecorder()
+	server.Handler().ServeHTTP(combo, httptest.NewRequest(http.MethodGet, "/_manja/catalog/document-combobox/options?catalog-mount=%2F&q=payments", nil))
+	if combo.Code != http.StatusOK || !strings.Contains(combo.Body.String(), ">payments-v1</span>") {
+		t.Fatalf("catalog combobox = %d %q", combo.Code, combo.Body.String())
 	}
 	canceled, cancel := context.WithCancel(context.Background())
 	cancel()

@@ -37,7 +37,7 @@ func (handler *CatalogHandler) catalogPageData(
 		if err != nil {
 			return templates.CatalogPageData{}, err
 		}
-		data.Documents = append(data.Documents, templates.CatalogDocumentOption{Key: document.Key, Label: document.Title, Href: href + "/", Selected: document.Key == documentKey})
+		data.Documents = append(data.Documents, templates.CatalogDocumentOption{Key: document.Key, Label: catalogDocumentLabel(document), Href: href + "/", Selected: document.Key == documentKey})
 	}
 	if documentKey == "" {
 		return data, nil
@@ -150,6 +150,10 @@ func (handler *CatalogHandler) catalogPageData(
 		}
 	}
 	return data, nil
+}
+
+func catalogDocumentLabel(document catalog.DocumentDirectoryV1) string {
+	return document.Key
 }
 
 func (handler *CatalogHandler) loadCatalogSchemaNode(

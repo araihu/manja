@@ -4,8 +4,8 @@ go 1.26.5
 
 require (
 	github.com/a-h/templ v0.3.1020
-	github.com/araihu/assets v0.1.3
-	github.com/araihu/goshtoso v0.1.4
+	github.com/araihu/assets v0.1.4
+	github.com/araihu/goshtoso v0.1.7
 	github.com/evanw/esbuild v0.28.1
 	github.com/getkin/kin-openapi v0.140.0
 	github.com/go-openapi/jsonpointer v0.22.5
@@ -15,6 +15,7 @@ require (
 	github.com/testcontainers/testcontainers-go/modules/forgejo v0.42.0
 	github.com/yuin/goldmark v1.8.2
 	golang.org/x/sys v0.42.0
+	golang.org/x/text v0.34.0
 	gopkg.in/yaml.v3 v3.0.1
 )
 
@@ -94,7 +95,6 @@ require (
 	golang.org/x/mod v0.33.0 // indirect
 	golang.org/x/net v0.51.0 // indirect
 	golang.org/x/sync v0.19.0 // indirect
-	golang.org/x/text v0.34.0 // indirect
 	golang.org/x/tools v0.42.0 // indirect
 )
 

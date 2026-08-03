@@ -134,6 +134,35 @@ func TestCatalogSearchErrorsHaveStableHTTPClasses(t *testing.T) {
 	}
 }
 
+func TestCatalogDocumentComboboxFiltersDistinctKeysAndEmitsCanonicalSelection(t *testing.T) {
+	t.Parallel()
+
+	handler, _ := catalogHandlerFixture(t, "/kubernetes")
+	options := httptest.NewRecorder()
+	handler.ServeHTTP(options, httptest.NewRequest(http.MethodGet, "/_manja/catalog/document-combobox/options?catalog-mount=%2Fkubernetes&q=core", nil))
+	if options.Code != http.StatusOK || options.Header().Get("Content-Type") != "text/html; charset=utf-8" {
+		t.Fatalf("combobox options = %d headers=%v body=%q", options.Code, options.Header(), options.Body.String())
+	}
+	if !strings.Contains(options.Body.String(), ">core-v1</span>") || strings.Contains(options.Body.String(), ">Kubernetes</span>") {
+		t.Fatalf("combobox options do not expose distinct document keys: %q", options.Body.String())
+	}
+
+	toggle := httptest.NewRecorder()
+	body := strings.NewReader("catalog-mount=%2Fkubernetes&value=%2Fkubernetes%2Fdocuments%2Fcore-v1%2F")
+	request := httptest.NewRequest(http.MethodPost, "/_manja/catalog/document-combobox/toggle", body)
+	request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	handler.ServeHTTP(toggle, request)
+	if toggle.Code != http.StatusOK || !strings.Contains(toggle.Header().Get("HX-Trigger"), `"values":["/kubernetes/documents/core-v1/"]`) {
+		t.Fatalf("combobox toggle = %d trigger=%q body=%q", toggle.Code, toggle.Header().Get("HX-Trigger"), toggle.Body.String())
+	}
+
+	overLimit := httptest.NewRecorder()
+	handler.ServeHTTP(overLimit, httptest.NewRequest(http.MethodGet, "/_manja/catalog/document-combobox/options?catalog-mount=%2Fkubernetes&q="+strings.Repeat("x", 257), nil))
+	if overLimit.Code != http.StatusBadRequest || overLimit.Body.Len() > 1024 {
+		t.Fatalf("over-limit combobox query = %d bytes=%d", overLimit.Code, overLimit.Body.Len())
+	}
+}
+
 func TestCatalogSchemaLoadsOneProgressiveNodeWithNoJSFallback(t *testing.T) {
 	t.Parallel()
 
@@ -270,6 +299,8 @@ func catalogHandlerFixture(t *testing.T, mount string) (http.Handler, catalog.Ru
 	directory := catalog.CatalogArtifactV1{
 		SchemaVersion: 1, CatalogID: "kubernetes", Title: "Kubernetes", DefaultDocumentKey: "core-v1", SearchChild: "search/directory.json",
 		Documents: []catalog.DocumentDirectoryV1{{
+			Key: "apps-v1", SourcePath: "api/openapi-spec/v3/apis__apps__v1_openapi.json", Title: "Kubernetes Core v1", APIVersion: "v1", SourceChild: "sources/apps-v1.json",
+		}, {
 			Key: "core-v1", SourcePath: "api/openapi-spec/v3/api__v1_openapi.json", Title: "Kubernetes Core v1", APIVersion: "v1", SourceChild: "sources/core-v1.json",
 			Operations:       []catalog.OperationDirectoryV1{{DetailID: detailID, OperationID: "listCoreV1Pod", Method: "GET", Path: "/api/v1/pods", Title: "List Pods", Href: "core-v1/?selected=" + string(detailID) + "#" + string(detailID), DetailChild: "details/core.json"}},
 			Schemas:          []catalog.SchemaDirectoryV1{{DetailID: schemaID, Name: "Pod", Description: "Pod schema.", Href: "core-v1/?selected=" + string(schemaID) + "#" + string(schemaID), DetailChild: "details/schema.json", CanonicalSHA256: strings.Repeat("d", 64), ProjectionSHA256: strings.Repeat("e", 64)}},

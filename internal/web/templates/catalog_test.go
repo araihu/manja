@@ -16,7 +16,7 @@ func TestCatalogPageRendersOverviewCountsAndMountAwareDocuments(t *testing.T) {
 
 	data := catalogTemplateFixture()
 	body := renderCatalogTemplate(t, data)
-	for _, want := range []string{"Kubernetes", "Documents", "Operations", "Schemas", `/kubernetes/core-v1/`, `/kubernetes/apps-v1/`, "API groups and versions"} {
+	for _, want := range []string{"Kubernetes", "Documents", "Operations", "Schemas", `/kubernetes/documents/core-v1/`, `/kubernetes/documents/apps-v1/`, "API groups and versions"} {
 		if !strings.Contains(body, want) {
 			t.Errorf("overview missing %q", want)
 		}
@@ -76,6 +76,39 @@ func TestCatalogShellProvidesGlobalServerSearchShortcut(t *testing.T) {
 			t.Errorf("catalog search shortcut missing %q", want)
 		}
 	}
+	if strings.Contains(body, `href="/kubernetes/search" aria-keyshortcuts=`) {
+		t.Fatal("catalog header duplicates the global search shortcut with a Search button")
+	}
+}
+
+func TestCatalogHeaderUsesSearchableGoshtosoDocumentCombobox(t *testing.T) {
+	t.Parallel()
+
+	body := renderCatalogTemplate(t, catalogTemplateFixture())
+	for _, want := range []string{
+		`data-combobox`,
+		`id="catalog-document"`,
+		`role="combobox"`,
+		`data-combobox-search`,
+		`hx-get="/_manja/catalog/document-combobox/options"`,
+		`hx-trigger="click once"`,
+		`core-v1`,
+		`apps-v1`,
+		`combobox:change`,
+		`window.location.assign(value)`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("catalog document combobox missing %q", want)
+		}
+	}
+	for _, unwanted := range []string{`<select id="catalog-document"`, `>Open</button>`} {
+		if strings.Contains(body, unwanted) {
+			t.Errorf("catalog document combobox retains obsolete control %q", unwanted)
+		}
+	}
+	if strings.Contains(body, `data-combobox-option`) {
+		t.Fatal("catalog overview eagerly renders document options before the combobox opens")
+	}
 }
 
 func TestCatalogDocumentRendersOnlyExpandedGroupAndSelectedVisibleAnchor(t *testing.T) {
@@ -128,7 +161,7 @@ func catalogTemplateFixture() CatalogPageData {
 	}
 	return CatalogPageData{
 		Mount: "/kubernetes", SnapshotID: catalog.SnapshotID("snapshot-sha256-" + strings.Repeat("b", 64)), Directory: directory,
-		Documents:    []CatalogDocumentOption{{Key: "core-v1", Label: "Kubernetes Core v1", Href: "/kubernetes/core-v1/"}, {Key: "apps-v1", Label: "Kubernetes Apps v1", Href: "/kubernetes/apps-v1/"}},
+		Documents:    []CatalogDocumentOption{{Key: "core-v1", Label: "core-v1", Href: "/kubernetes/documents/core-v1/"}, {Key: "apps-v1", Label: "apps-v1", Href: "/kubernetes/documents/apps-v1/"}},
 		DownloadHref: "/kubernetes/catalog.json", SearchHref: "/kubernetes/search",
 	}
 }

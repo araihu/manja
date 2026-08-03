@@ -7,6 +7,7 @@ import (
 	templpkg "github.com/a-h/templ"
 	"github.com/araihu/goshtoso/components/appshell"
 	"github.com/araihu/goshtoso/components/badge"
+	"github.com/araihu/goshtoso/components/combobox"
 	"github.com/araihu/goshtoso/components/sidebar"
 	"github.com/araihu/manja/application/catalog"
 	"github.com/araihu/manja/application/projection"
@@ -141,6 +142,7 @@ templ CatalogPage(data CatalogPageData) {
 				</div>
 			}
 			@catalogSearchShortcut()
+			@catalogDocumentSelection()
 		</div>
 	}
 }
@@ -235,19 +237,12 @@ templ catalogHeader(data CatalogPageData) {
 				<span class="truncate">{ catalogBrandName(data) }</span>
 			</a>
 			<span class="hidden text-on-surface-muted sm:inline dark:text-on-surface-dark-muted">/</span>
-			<form method="get" action={ data.Mount } class="hidden items-center gap-2 md:flex">
-				<label for="catalog-document" class="sr-only">OpenAPI document</label>
-				<select id="catalog-document" name="document" class="min-h-10 max-w-72 rounded-radius border border-outline bg-surface px-3 text-sm text-on-surface-strong dark:border-outline-dark dark:bg-surface-dark dark:text-on-surface-dark-strong">
-					<option value="">Catalog overview</option>
-					for _, option := range data.Documents {
-						<option value={ option.Key } selected?={ option.Selected }>{ option.Label }</option>
-					}
-				</select>
-				<button type="submit" class="min-h-10 rounded-radius border border-outline px-3 text-sm font-medium hover:bg-surface-alt dark:border-outline-dark dark:hover:bg-surface-dark-alt">Open</button>
-			</form>
+			<div class="hidden items-center md:flex">
+				<input type="hidden" name={ CatalogDocumentComboboxMountFieldName } value={ data.Mount }/>
+				@combobox.Combobox(CatalogDocumentComboboxConfig(), catalogDocumentComboboxState(data.Documents))
+			</div>
 		</div>
 		<div class="flex shrink-0 items-center gap-2">
-			<a href={ templpkg.URL(data.SearchHref) } aria-keyshortcuts="Control+K Meta+K" class="inline-flex min-h-10 items-center rounded-radius border border-outline px-3 text-sm font-medium hover:bg-surface-alt dark:border-outline-dark dark:hover:bg-surface-dark-alt">Search</a>
 			@themeToggle()
 			<span class="hidden rounded-radius border border-outline px-2 py-1 font-mono text-xs text-on-surface-muted xl:inline dark:border-outline-dark dark:text-on-surface-dark-muted">{ shortSnapshotID(data.SnapshotID) }</span>
 		</div>
@@ -301,7 +296,6 @@ templ catalogOverview(data CatalogPageData) {
 				for _, option := range data.Documents {
 					<a href={ templpkg.URL(option.Href) } class="group rounded-radius border border-outline bg-surface p-4 transition hover:border-primary hover:bg-surface-alt dark:border-outline-dark dark:bg-surface-dark dark:hover:border-primary-dark dark:hover:bg-surface-dark-alt">
 						<span class="block font-semibold text-on-surface-strong group-hover:text-primary dark:text-on-surface-dark-strong dark:group-hover:text-primary-dark">{ option.Label }</span>
-						<span class="mt-1 block font-mono text-xs text-on-surface-muted dark:text-on-surface-dark-muted">{ option.Key }</span>
 					</a>
 				}
 			</div>
@@ -514,4 +508,20 @@ func catalogMethodTone(method string) badge.Tone {
 	case "PUT", "PATCH": return badge.ToneWarning
 	default: return badge.ToneDefault
 	}
+}
+
+templ catalogDocumentSelection() {
+	<script data-catalog-document-selection="true">
+		(function () {
+			if (window.__manjaCatalogDocumentSelectionBound) return;
+			window.__manjaCatalogDocumentSelectionBound = true;
+			document.addEventListener("combobox:change", function (event) {
+				var detail = event && event.detail;
+				if (!detail || detail.id !== "catalog-document" || !Array.isArray(detail.values) || detail.values.length !== 1) return;
+				var value = detail.values[0];
+				if (typeof value !== "string" || value.charAt(0) !== "/" || value.indexOf("//") === 0) return;
+				window.location.assign(value);
+			});
+		})();
+	</script>
 }

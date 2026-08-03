@@ -59,6 +59,10 @@ func (handler *CatalogHandler) ServeHTTP(response http.ResponseWriter, request *
 		http.Error(response, "catalog unavailable", http.StatusServiceUnavailable)
 		return
 	}
+	if IsCatalogComponentPath(request.URL.Path) {
+		handler.serveCatalogDocumentCombobox(response, request)
+		return
+	}
 	mount, exactMount := handler.matchMount(request.URL.Path)
 	if mount == "" {
 		http.NotFound(response, request)
