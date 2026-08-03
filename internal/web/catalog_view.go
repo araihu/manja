@@ -9,9 +9,11 @@ import (
 	"net/url"
 	"path"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/araihu/manja/application/catalog"
+	"github.com/araihu/manja/application/projection"
 	"github.com/araihu/manja/domain"
 	"github.com/araihu/manja/internal/adapters/catalogjson"
 	"github.com/araihu/manja/internal/web/templates"
@@ -22,7 +24,7 @@ var errCatalogPageNotFound = errors.New("catalog page not found")
 func (handler *CatalogHandler) catalogPageData(
 	ctx context.Context,
 	snapshot catalog.RuntimeSnapshot,
-	mount, documentKey, selectedID, expandedGroup string,
+	mount, documentKey, selectedID, expandedGroup, selectedNode string,
 ) (templates.CatalogPageData, error) {
 	data := templates.CatalogPageData{
 		Mount: mount, SnapshotID: snapshot.ID, Directory: snapshot.Directory,
@@ -130,8 +132,156 @@ func (handler *CatalogHandler) catalogPageData(
 			return templates.CatalogPageData{}, err
 		}
 		data.Selected = &detail
+		if detail.Schema != nil {
+			ordinal := uint64(detail.Schema.SchemaRef)
+			if selectedNode != "" {
+				ordinal, err = strconv.ParseUint(selectedNode, 10, 32)
+				if err != nil {
+					return templates.CatalogPageData{}, errCatalogPageNotFound
+				}
+			}
+			node, shard, err := handler.loadCatalogSchemaNode(ctx, snapshot, document, uint32(ordinal))
+			if err != nil {
+				return templates.CatalogPageData{}, err
+			}
+			data.SchemaNode = catalogSchemaNodeData(node, shard, documentHref, selectedDetailID)
+		} else if selectedNode != "" {
+			return templates.CatalogPageData{}, errCatalogPageNotFound
+		}
 	}
 	return data, nil
+}
+
+func (handler *CatalogHandler) loadCatalogSchemaNode(
+	ctx context.Context,
+	snapshot catalog.RuntimeSnapshot,
+	document catalog.DocumentDirectoryV1,
+	ordinal uint32,
+) (projection.SchemaNode, catalog.SchemaNodeShardV1, error) {
+	index := sort.Search(len(document.SchemaNodeShards), func(index int) bool {
+		return document.SchemaNodeShards[index].LastOrdinal >= ordinal
+	})
+	if index == len(document.SchemaNodeShards) || ordinal < document.SchemaNodeShards[index].FirstOrdinal {
+		return projection.SchemaNode{}, catalog.SchemaNodeShardV1{}, errCatalogPageNotFound
+	}
+	reference := document.SchemaNodeShards[index]
+	identity, exists := catalogChildIdentity(snapshot.Manifest, reference.Path)
+	if !exists || identity.Kind != "schema-node" || identity.Length != reference.Length || identity.SHA256 != reference.SHA256 {
+		return projection.SchemaNode{}, catalog.SchemaNodeShardV1{}, fmt.Errorf("catalog schema-node child %q metadata differs", reference.Path)
+	}
+	digestBytes, err := hex.DecodeString(reference.SHA256)
+	if err != nil || len(digestBytes) != sha256.Size {
+		return projection.SchemaNode{}, catalog.SchemaNodeShardV1{}, fmt.Errorf("catalog schema-node child %q digest is invalid", reference.Path)
+	}
+	var digest [sha256.Size]byte
+	copy(digest[:], digestBytes)
+	value, err := handler.details.Load(ctx, catalog.CacheKey{SnapshotID: snapshot.ID, Digest: digest}, reference.Length,
+		func(loadContext context.Context) ([]byte, error) {
+			data, loadedIdentity, err := handler.children.ReadChild(loadContext, snapshot, reference.Path)
+			if err != nil {
+				return nil, err
+			}
+			if loadedIdentity != identity {
+				return nil, fmt.Errorf("catalog schema-node child %q identity changed", reference.Path)
+			}
+			return data, nil
+		},
+		func(data []byte) (any, uint64, error) {
+			shard, err := catalogjson.DecodeSchemaNodeShard(data)
+			if err != nil {
+				return nil, 0, err
+			}
+			weight, err := catalog.DecodedWeightV1(uint64(len(data))*2, uint64(cap(shard.Nodes))*256, uint64(len(shard.Nodes))*256)
+			return shard, weight, err
+		},
+	)
+	if err != nil {
+		return projection.SchemaNode{}, catalog.SchemaNodeShardV1{}, err
+	}
+	shard, ok := value.(catalog.SchemaNodeShardV1)
+	if !ok || shard.DocumentKey != document.Key || shard.FirstOrdinal != reference.FirstOrdinal || len(shard.Nodes) != int(reference.Records) {
+		return projection.SchemaNode{}, catalog.SchemaNodeShardV1{}, fmt.Errorf("catalog schema-node shard %q is invalid", reference.Path)
+	}
+	offset := uint64(ordinal) - uint64(shard.FirstOrdinal)
+	if offset >= uint64(len(shard.Nodes)) || shard.Nodes[offset].Ordinal != ordinal {
+		return projection.SchemaNode{}, catalog.SchemaNodeShardV1{}, errCatalogPageNotFound
+	}
+	return shard.Nodes[offset], shard, nil
+}
+
+const maxCatalogSchemaEdges = 100
+
+func catalogSchemaNodeData(node projection.SchemaNode, shard catalog.SchemaNodeShardV1, documentHref string, detailID domain.DetailID) *templates.CatalogSchemaNodeData {
+	known := make(map[projection.SchemaRef]projection.SchemaNode, len(shard.Nodes))
+	for _, candidate := range shard.Nodes {
+		known[projection.SchemaRef(candidate.Ordinal)] = candidate
+	}
+	result := &templates.CatalogSchemaNodeData{
+		Ordinal: node.Ordinal, Name: firstNonEmpty(node.Name, "Schema node "+strconv.FormatUint(uint64(node.Ordinal), 10)),
+		Type: node.Type, Format: node.Format, Description: catalogSchemaText(node.Description),
+		DefaultValue: catalogSchemaText(node.DefaultValue), ExampleText: catalogSchemaText(node.ExampleText),
+	}
+	appendEdge := func(name, description string, required bool, ref projection.SchemaRef) {
+		if len(result.Edges) == maxCatalogSchemaEdges {
+			result.Truncated = true
+			return
+		}
+		target, local := known[ref]
+		typeLabel := "schema #" + strconv.FormatUint(uint64(ref), 10)
+		if local {
+			typeLabel = catalogSchemaNodeType(target)
+		}
+		result.Edges = append(result.Edges, templates.CatalogSchemaEdgeData{
+			Name: name, Description: catalogSchemaText(description), Required: required,
+			Type: typeLabel, Href: catalogSchemaNodeHref(documentHref, detailID, uint32(ref)),
+		})
+	}
+	for _, item := range node.Items {
+		appendEdge("items", "", false, item.SchemaRef)
+	}
+	for _, property := range node.Properties {
+		appendEdge(property.Name, property.Description, property.Required, property.SchemaRef)
+	}
+	return result
+}
+
+func catalogSchemaNodeHref(documentHref string, detailID domain.DetailID, ordinal uint32) string {
+	return documentHref + "?selected=" + url.QueryEscape(string(detailID)) + "&node=" + strconv.FormatUint(uint64(ordinal), 10) + "#schema-node-panel"
+}
+
+func catalogSchemaNodeType(node projection.SchemaNode) string {
+	parts := make([]string, 0, 3)
+	if node.Name != "" {
+		parts = append(parts, node.Name)
+	}
+	if node.Type != "" {
+		parts = append(parts, node.Type)
+	}
+	if node.Format != "" {
+		parts = append(parts, "("+node.Format+")")
+	}
+	if len(parts) == 0 {
+		return "schema #" + strconv.FormatUint(uint64(node.Ordinal), 10)
+	}
+	return strings.Join(parts, " ")
+}
+
+func catalogSchemaText(value string) string {
+	const maxRunes = 512
+	runes := []rune(strings.TrimSpace(value))
+	if len(runes) <= maxRunes {
+		return string(runes)
+	}
+	return string(runes[:maxRunes]) + "…"
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		if strings.TrimSpace(value) != "" {
+			return value
+		}
+	}
+	return ""
 }
 
 func (handler *CatalogHandler) loadCatalogDetail(ctx context.Context, snapshot catalog.RuntimeSnapshot, childPath string, detailID domain.DetailID) (catalog.DetailRecordV1, error) {

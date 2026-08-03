@@ -79,6 +79,35 @@ func TestCatalogSearchRendersMountAwareResultsAndBoundsFailures(t *testing.T) {
 	}
 }
 
+func TestCatalogSchemaLoadsOneProgressiveNodeWithNoJSFallback(t *testing.T) {
+	t.Parallel()
+
+	handler, _ := catalogHandlerFixture(t, "/kubernetes")
+	schemaID := "detail-sha256-" + strings.Repeat("c", 64)
+	rootURL := "/kubernetes/documents/core-v1/?selected=" + schemaID
+	root := httptest.NewRecorder()
+	handler.ServeHTTP(root, httptest.NewRequest(http.MethodGet, rootURL, nil))
+	if root.Code != http.StatusOK || !strings.Contains(root.Body.String(), `id="schema-node-panel"`) || !strings.Contains(root.Body.String(), "metadata") || !strings.Contains(root.Body.String(), "object") {
+		t.Fatalf("schema root = %d %q", root.Code, root.Body.String())
+	}
+	childURL := rootURL + "&node=1#schema-node-panel"
+	child := httptest.NewRecorder()
+	handler.ServeHTTP(child, httptest.NewRequest(http.MethodGet, strings.Split(childURL, "#")[0], nil))
+	if child.Code != http.StatusOK || !strings.Contains(child.Body.String(), "ObjectMeta") || !strings.Contains(child.Body.String(), "resourceVersion") {
+		t.Fatalf("schema child = %d %q", child.Code, child.Body.String())
+	}
+	escapedChildURL := strings.ReplaceAll(childURL, "&", "&amp;")
+	if !strings.Contains(root.Body.String(), `hx-select="#schema-node-panel"`) || !strings.Contains(root.Body.String(), `href="`+escapedChildURL+`"`) {
+		t.Fatal("progressive schema link lacks HTMX enhancement or normal navigation fallback")
+	}
+
+	missing := httptest.NewRecorder()
+	handler.ServeHTTP(missing, httptest.NewRequest(http.MethodGet, rootURL+"&node=99", nil))
+	if missing.Code != http.StatusNotFound {
+		t.Fatalf("missing schema node = %d, want 404", missing.Code)
+	}
+}
+
 func TestCatalogDownloadAndCacheContracts(t *testing.T) {
 	t.Parallel()
 
@@ -151,11 +180,27 @@ func (children memoryCatalogChildren) ReadChild(_ context.Context, snapshot cata
 func catalogHandlerFixture(t *testing.T, mount string) (http.Handler, catalog.RuntimeSnapshot) {
 	t.Helper()
 	detailID := domain.DetailID("detail-sha256-" + strings.Repeat("a", 64))
+	schemaID := domain.DetailID("detail-sha256-" + strings.Repeat("c", 64))
+	nodeBytes, err := catalogjson.EncodeSchemaNodeShard(catalog.SchemaNodeShardV1{
+		SchemaVersion: 1, DocumentKey: "core-v1", FirstOrdinal: 0,
+		Nodes: []projection.SchemaNode{
+			{Ordinal: 0, ID: "node-root", Name: "Pod", Type: "object", Properties: []projection.SchemaNodeProperty{{Ordinal: 0, ID: "property-metadata", Name: "metadata", Required: true, Description: "Object metadata.", SchemaRef: 1}}},
+			{Ordinal: 1, ID: "node-metadata", Name: "ObjectMeta", Type: "object", Properties: []projection.SchemaNodeProperty{{Ordinal: 0, ID: "property-resource-version", Name: "resourceVersion", SchemaRef: 2}}},
+			{Ordinal: 2, ID: "node-string", Name: "string", Type: "string"},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	nodeDigest := sha256.Sum256(nodeBytes)
+	nodePath := "schema-nodes/core-v1/" + hex.EncodeToString(nodeDigest[:]) + ".json"
 	directory := catalog.CatalogArtifactV1{
 		SchemaVersion: 1, CatalogID: "kubernetes", Title: "Kubernetes", DefaultDocumentKey: "core-v1", SearchChild: "search/directory.json",
 		Documents: []catalog.DocumentDirectoryV1{{
 			Key: "core-v1", SourcePath: "api/openapi-spec/v3/api__v1_openapi.json", Title: "Kubernetes Core v1", APIVersion: "v1", SourceChild: "sources/core-v1.json",
-			Operations: []catalog.OperationDirectoryV1{{DetailID: detailID, OperationID: "listCoreV1Pod", Method: "GET", Path: "/api/v1/pods", Title: "List Pods", Href: "core-v1/?selected=" + string(detailID) + "#" + string(detailID), DetailChild: "details/core.json"}},
+			Operations:       []catalog.OperationDirectoryV1{{DetailID: detailID, OperationID: "listCoreV1Pod", Method: "GET", Path: "/api/v1/pods", Title: "List Pods", Href: "core-v1/?selected=" + string(detailID) + "#" + string(detailID), DetailChild: "details/core.json"}},
+			Schemas:          []catalog.SchemaDirectoryV1{{DetailID: schemaID, Name: "Pod", Description: "Pod schema.", Href: "core-v1/?selected=" + string(schemaID) + "#" + string(schemaID), DetailChild: "details/schema.json", CanonicalSHA256: strings.Repeat("d", 64), ProjectionSHA256: strings.Repeat("e", 64)}},
+			SchemaNodeShards: []catalog.ShardReferenceV1{{Path: nodePath, FirstOrdinal: 0, LastOrdinal: 2, Records: 3, Length: uint64(len(nodeBytes)), SHA256: hex.EncodeToString(nodeDigest[:])}},
 		}},
 	}
 	search, err := catalog.BuildSearchArtifacts(directory, catalog.DefaultBounds())
@@ -173,7 +218,13 @@ func catalogHandlerFixture(t *testing.T, mount string) (http.Handler, catalog.Ru
 	if err != nil {
 		t.Fatal(err)
 	}
-	children := memoryCatalogChildren{"catalog.json": catalogBytes, "sources/core-v1.json": sourceBytes, "details/core.json": detailBytes}
+	schemaBytes, err := catalogjson.EncodeDetailShard(catalog.DetailShardV1{SchemaVersion: 1, DocumentKey: "core-v1", Records: []catalog.DetailRecordV1{{
+		ID: schemaID, Kind: "schema", Schema: &projection.SchemaDetail{ID: string(schemaID), Anchor: string(schemaID), Href: "?selected=" + string(schemaID), HeadingID: string(schemaID), Heading: "Pod", HeadingLevel: 2, Description: "Pod schema.", SchemaRef: 0},
+	}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	children := memoryCatalogChildren{"catalog.json": catalogBytes, "sources/core-v1.json": sourceBytes, "details/core.json": detailBytes, "details/schema.json": schemaBytes, nodePath: nodeBytes}
 	for _, child := range search.Children {
 		children[child.Path] = child.Bytes
 	}
@@ -185,6 +236,8 @@ func catalogHandlerFixture(t *testing.T, mount string) (http.Handler, catalog.Ru
 			kind = "catalog"
 		} else if strings.HasPrefix(path, "details/") {
 			kind = "detail"
+		} else if strings.HasPrefix(path, "schema-nodes/") {
+			kind = "schema-node"
 		} else {
 			for _, child := range search.Children {
 				if child.Path == path {
