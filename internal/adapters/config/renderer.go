@@ -5,6 +5,7 @@ import (
 	"io"
 	"net/url"
 	"os"
+	"path"
 	"path/filepath"
 	"strings"
 
@@ -40,11 +41,17 @@ type RendererCatalogConfig struct {
 }
 
 type RendererSourceConfig struct {
-	Kind       string   `yaml:"kind"`
-	Root       string   `yaml:"root"`
-	Include    []string `yaml:"include"`
-	Repository string   `yaml:"repository"`
-	Ref        string   `yaml:"ref"`
+	Kind       string                   `yaml:"kind"`
+	Root       string                   `yaml:"root"`
+	Include    []string                 `yaml:"include"`
+	Documents  []RendererSourceDocument `yaml:"documents"`
+	Repository string                   `yaml:"repository"`
+	Ref        string                   `yaml:"ref"`
+}
+
+type RendererSourceDocument struct {
+	Path string `yaml:"path"`
+	Key  string `yaml:"key"`
 }
 
 func LoadRenderer(filename string) (RendererFile, error) {
@@ -110,6 +117,10 @@ func (file RendererFile) Sources() []renderer.CatalogSource {
 			DefaultDocumentKey: configured.DefaultDocumentKey,
 			ProfileID:          domain.CompatibilityProfileID(configured.ProfileID),
 			Includes:           append([]string(nil), configured.Source.Include...),
+			DocumentKeys:       make([]sourceadapter.CatalogDocumentKey, len(configured.Source.Documents)),
+		}
+		for documentIndex, document := range configured.Source.Documents {
+			manifest.DocumentKeys[documentIndex] = sourceadapter.CatalogDocumentKey{SourcePath: document.Path, Key: document.Key}
 		}
 		switch configured.Source.Kind {
 		case RendererSourceFiles:
@@ -151,6 +162,24 @@ func (file RendererFile) validate() error {
 }
 
 func (source RendererSourceConfig) validate() error {
+	seenPaths := make(map[string]struct{}, len(source.Documents))
+	seenKeys := make(map[string]struct{}, len(source.Documents))
+	for index, document := range source.Documents {
+		if document.Path == "" || strings.HasPrefix(document.Path, "/") || strings.Contains(document.Path, `\`) || path.Clean(document.Path) != document.Path || document.Path == "." || strings.HasPrefix(document.Path, "../") {
+			return fmt.Errorf("document mapping %d path %q is not a clean relative slash path", index, document.Path)
+		}
+		if err := domain.ValidateCatalogDocumentKey(document.Key); err != nil {
+			return err
+		}
+		if _, exists := seenPaths[document.Path]; exists {
+			return fmt.Errorf("document mapping path %q is duplicated", document.Path)
+		}
+		if _, exists := seenKeys[document.Key]; exists {
+			return fmt.Errorf("document mapping key %q is duplicated", document.Key)
+		}
+		seenPaths[document.Path] = struct{}{}
+		seenKeys[document.Key] = struct{}{}
+	}
 	switch source.Kind {
 	case RendererSourceFiles:
 		if strings.TrimSpace(source.Root) == "" {

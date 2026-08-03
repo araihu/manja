@@ -1,12 +1,14 @@
 package config
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/araihu/manja/domain"
+	sourceadapter "github.com/araihu/manja/internal/adapters/source"
 )
 
 const validRendererConfig = `
@@ -24,6 +26,9 @@ catalogs:
       root: internal/renderer/testdata/kubernetes/specs
       include:
         - "*_openapi.json"
+      documents:
+        - path: api__v1_openapi.json
+          key: core-v1
   - id: payments
     mount: /payments
     title: Payments
@@ -65,12 +70,19 @@ func TestLoadRendererBuildsRuntimeAndSourceConfiguration(t *testing.T) {
 	if loaded.Catalogs[0].Source.Root != "internal/renderer/testdata/kubernetes/specs" {
 		t.Fatalf("file source = %#v", loaded.Catalogs[0].Source)
 	}
+	if len(loaded.Catalogs[0].Source.Documents) != 1 || loaded.Catalogs[0].Source.Documents[0].Key != "core-v1" {
+		t.Fatalf("file source document mappings = %#v", loaded.Catalogs[0].Source.Documents)
+	}
 	if loaded.Catalogs[1].Source.Repository != "https://example.invalid/payments.git" || loaded.Catalogs[1].Source.Ref != "refs/heads/main" {
 		t.Fatalf("Git source = %#v", loaded.Catalogs[1].Source)
 	}
 	sources := loaded.Sources()
 	if len(sources) != 2 {
 		t.Fatalf("sources = %d, want 2", len(sources))
+	}
+	fileSource, ok := sources[0].(sourceadapter.FileCatalogSource)
+	if !ok || len(fileSource.Manifest.DocumentKeys) != 1 || fileSource.Manifest.DocumentKeys[0].SourcePath != "api__v1_openapi.json" || fileSource.Manifest.DocumentKeys[0].Key != "core-v1" {
+		t.Fatalf("translated file source = %#v", sources[0])
 	}
 }
 
@@ -106,6 +118,7 @@ func TestLoadRendererRejectsInvalidSourceConfiguration(t *testing.T) {
 		{name: "git credentials", data: strings.Replace(validRendererConfig, "https://example.invalid/payments.git", "https://user:password@example.invalid/payments.git", 1)},
 		{name: "git root", data: strings.Replace(validRendererConfig, "      repository: https://example.invalid/payments.git", "      root: forbidden\n      repository: https://example.invalid/payments.git", 1)},
 		{name: "runtime mount", data: strings.Replace(validRendererConfig, "mount: /payments", "mount: /kubernetes/payments", 1)},
+		{name: "duplicate document path", data: strings.Replace(validRendererConfig, "          key: core-v1", "          key: core-v1\n        - path: api__v1_openapi.json\n          key: core-copy", 1)},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -126,6 +139,32 @@ func TestCommittedRendererConfigLoads(t *testing.T) {
 	}
 	if len(loaded.Catalogs) != 1 || loaded.Catalogs[0].ID != "payments" {
 		t.Fatalf("committed renderer config = %#v", loaded)
+	}
+}
+
+func TestCommittedKubernetesRendererConfigUsesAuthorityDocumentKeys(t *testing.T) {
+	t.Parallel()
+
+	filename := filepath.Join("..", "..", "renderer", "testdata", "kubernetes", "renderer.yaml")
+	loaded, err := LoadRenderer(filename)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(loaded.Catalogs) != 1 || loaded.Catalogs[0].DefaultDocumentKey != "core-v1" || len(loaded.Catalogs[0].Source.Documents) != 65 {
+		t.Fatalf("Kubernetes renderer config = %#v", loaded.Catalogs)
+	}
+	candidate, err := loaded.Sources()[0].Load(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	keys := make(map[string]struct{}, len(candidate.Documents))
+	for _, document := range candidate.Documents {
+		keys[document.Key] = struct{}{}
+	}
+	for _, key := range []string{"core-v1", "apps-v1", "storage-v1", "resource-v1"} {
+		if _, exists := keys[key]; !exists {
+			t.Errorf("Kubernetes renderer source missing authority key %q", key)
+		}
 	}
 }
 
