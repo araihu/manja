@@ -627,6 +627,10 @@
       },
       visibleItems: function () { return this.query.trim() ? this.results : this.recent; },
       highlight: function (value) { return highlightHTML(value, this.query); },
+      optionID: function (index) { return "catalog-search-option-" + index; },
+      activeOptionID: function () {
+        return this.visibleItems().length ? this.optionID(this.activeIndex) : null;
+      },
       move: function (delta) {
         var values = this.visibleItems();
         if (!values.length) return;

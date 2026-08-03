@@ -169,6 +169,7 @@ templ CatalogPage(data CatalogPageData) {
 			}
 			@catalogSearchModal(data)
 			@catalogDocumentSelection()
+			@catalogSidebarFocusRestoration()
 		</div>
 	}
 }
@@ -202,11 +203,11 @@ templ catalogSearchModal(data CatalogPageData) {
 			<div class="relative flex items-center gap-3 rounded-t-radius border border-b-0 border-outline bg-surface px-4 py-3 dark:border-outline-dark dark:bg-surface-dark-alt">
 				<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" stroke="currentColor" fill="none" stroke-width="2" class="size-5 shrink-0 text-on-surface-muted dark:text-on-surface-dark-muted" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z"></path></svg>
 				<label id="catalog-search-label" class="sr-only" for="catalog-search-input">Search operations and schemas</label>
-				<input x-ref="input" x-model="query" x-on:input="queueSearch()" x-on:keydown.down.prevent="move(1)" x-on:keydown.up.prevent="move(-1)" x-on:keydown.enter.prevent="choose()" x-on:keydown.escape.prevent="closeSearch()" id="catalog-search-input" type="search" maxlength="256" class="min-w-0 flex-1 bg-transparent py-1 text-base text-on-surface-strong placeholder:text-on-surface-muted focus:outline-none dark:text-on-surface-dark-strong dark:placeholder:text-on-surface-dark-muted" placeholder="Operation, path, schema, or content" autocomplete="off" spellcheck="false"/>
+				<input x-ref="input" x-model="query" x-on:input="queueSearch()" x-on:keydown.down.prevent="move(1)" x-on:keydown.up.prevent="move(-1)" x-on:keydown.enter.prevent="choose()" x-on:keydown.escape.prevent="closeSearch()" x-bind:aria-expanded="open.toString()" x-bind:aria-activedescendant="activeOptionID()" id="catalog-search-input" type="text" role="combobox" aria-autocomplete="list" aria-controls="catalog-search-results" maxlength="256" class="min-w-0 flex-1 bg-transparent py-1 text-base text-on-surface-strong placeholder:text-on-surface-muted focus:outline-none dark:text-on-surface-dark-strong dark:placeholder:text-on-surface-dark-muted" placeholder="Operation, path, schema, or content" autocomplete="off" spellcheck="false"/>
 				<button type="button" x-cloak x-show="query.length > 0" x-on:click="clearQuery()" aria-label="Clear search" class="inline-flex size-8 items-center justify-center rounded-radius text-on-surface-muted hover:text-on-surface-strong dark:text-on-surface-dark-muted dark:hover:text-on-surface-dark-strong">×</button>
 				@kbd.Kbd("Esc", kbd.WithSize(kbd.SizeSM), kbd.WithRootClass("text-on-surface-muted dark:text-on-surface-dark-muted"))
 			</div>
-			<div class="flex max-h-[min(28rem,calc(100vh-12rem))] flex-col overflow-hidden overflow-y-auto rounded-b-radius border border-outline bg-surface text-sm font-light dark:border-outline-dark dark:bg-surface-dark-alt" role="listbox" aria-label="Catalog search results">
+			<div id="catalog-search-results" class="flex max-h-[min(28rem,calc(100vh-12rem))] flex-col overflow-hidden overflow-y-auto rounded-b-radius border border-outline bg-surface text-sm font-light dark:border-outline-dark dark:bg-surface-dark-alt" role="listbox" aria-label="Catalog search results" x-bind:aria-busy="loading.toString()">
 				<div x-show="query.trim().length === 0" data-catalog-search-recent>
 					<p class="border-b border-outline px-4 py-2 text-xs font-semibold uppercase tracking-wide text-on-surface-muted dark:border-outline-dark dark:text-on-surface-dark-muted">Recently visited</p>
 					<p x-show="recent.length === 0" class="px-4 py-4 text-on-surface-muted dark:text-on-surface-dark-muted">No recently visited items yet.</p>
@@ -216,7 +217,7 @@ templ catalogSearchModal(data CatalogPageData) {
 				<p x-show="query.trim().length > 0 && !loading && !error && results.length === 0" class="px-4 py-4 text-on-surface-muted dark:text-on-surface-dark-muted">No matching operations or schemas.</p>
 				<div class="divide-y divide-outline dark:divide-outline-dark">
 					<template x-for="(item, index) in visibleItems()" x-bind:key="item.id || item.href">
-						<button type="button" data-catalog-search-result x-bind:data-catalog-search-recent-result="query.trim().length === 0 ? 'true' : null" x-on:mouseenter="activeIndex = index" x-on:click="select(item)" x-bind:class="activeIndex === index ? 'bg-surface-alt text-on-surface-strong shadow-[inset_2px_0_0_var(--color-outline-strong)] dark:bg-surface-dark dark:text-on-surface-dark-strong' : 'text-on-surface hover:bg-surface-alt dark:text-on-surface-dark dark:hover:bg-surface-dark'" class="flex w-full flex-col gap-2 p-4 text-left transition focus:outline-none" role="option">
+						<button type="button" tabindex="-1" data-catalog-search-result x-bind:id="optionID(index)" x-bind:aria-selected="(activeIndex === index).toString()" x-bind:data-catalog-search-recent-result="query.trim().length === 0 ? 'true' : null" x-on:mouseenter="activeIndex = index" x-on:click="select(item)" x-bind:class="activeIndex === index ? 'bg-surface-alt text-on-surface-strong shadow-[inset_2px_0_0_var(--color-outline-strong)] dark:bg-surface-dark dark:text-on-surface-dark-strong' : 'text-on-surface hover:bg-surface-alt dark:text-on-surface-dark dark:hover:bg-surface-dark'" class="flex w-full flex-col gap-2 p-4 text-left transition focus:outline-none" role="option">
 							<div class="flex items-start justify-between gap-3">
 								<div class="min-w-0 space-y-1">
 									<div class="flex min-w-0 flex-wrap items-center gap-2"><span x-show="item.method" x-text="item.method" class="shrink-0 rounded-radius border border-outline px-1.5 py-0.5 font-mono text-[10px] font-bold uppercase dark:border-outline-dark"></span><strong x-html="highlight(item.title)" class="min-w-0 text-base font-semibold"></strong></div>
@@ -591,14 +592,52 @@ func catalogSidebarConfig(data CatalogPageData) sidebar.Config {
 		for _, item := range group.Items {
 			children = append(children, sidebar.Item{ID: item.ID, Label: item.Label, Href: item.Href, Active: item.Active, Badge: item.Method})
 		}
+		linkAttrs := templpkg.Attributes{
+			"id":                         "catalog-group-control-" + group.ID,
+			"data-catalog-group-control": "true",
+			"hx-get":                     group.Href,
+			"hx-target":                  "#catalog-sidebar-groups",
+			"hx-select":                  "#catalog-sidebar-groups",
+			"hx-swap":                    "outerHTML",
+			"hx-push-url":                "true",
+		}
+		if !group.Open {
+			linkAttrs["aria-expanded"] = "false"
+			linkAttrs["aria-controls"] = "catalog-sidebar-groups"
+		}
 		items = append(items, sidebar.Item{
 			ID: group.ID, Label: group.Label, Href: group.Href, Badge: fmt.Sprintf("%d", group.Count),
 			Items: children, Collapsible: group.Open, Open: group.Open,
-			LinkAttrs: templpkg.Attributes{"hx-get": group.Href, "hx-target": "#catalog-sidebar-groups", "hx-select": "#catalog-sidebar-groups", "hx-swap": "outerHTML", "hx-push-url": "true"},
+			LinkAttrs: linkAttrs,
 		})
 	}
 	config.Sections = []sidebar.Section{{Title: data.Document.Title, Items: items, Collapsible: true}}
 	return config
+}
+
+templ catalogSidebarFocusRestoration() {
+	<script data-catalog-sidebar-focus-restoration="true">
+		(function () {
+			if (window.__manjaCatalogSidebarFocusBound) return;
+			window.__manjaCatalogSidebarFocusBound = true;
+			var pendingControlID = "";
+			document.body.addEventListener("htmx:beforeRequest", function (event) {
+				var trigger = event.detail && event.detail.elt;
+				var control = trigger && trigger.closest && trigger.closest("[data-catalog-group-control]");
+				pendingControlID = control && document.activeElement === control ? control.id : "";
+			});
+			document.body.addEventListener("htmx:afterSettle", function () {
+				if (!pendingControlID) return;
+				var control = document.getElementById(pendingControlID);
+				pendingControlID = "";
+				if (!control) return;
+				try { control.focus({ preventScroll: true }); } catch (error) { control.focus(); }
+			});
+			["htmx:responseError", "htmx:sendError", "htmx:timeout"].forEach(function (name) {
+				document.body.addEventListener(name, function () { pendingControlID = ""; });
+			});
+		})();
+	</script>
 }
 
 func catalogMethodTone(method string) badge.Tone {

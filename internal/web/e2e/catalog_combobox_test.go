@@ -126,6 +126,29 @@ func TestCatalogDocumentComboboxSearchSelectAndClientFirstModal(t *testing.T) {
 	if err := modal.GetByText("List app deployments", playwright.LocatorGetByTextOptions{Exact: playwright.Bool(true)}).WaitFor(); err != nil {
 		t.Fatalf("client search result with server fallback blocked: %v", err)
 	}
+	if role, err := input.GetAttribute("role"); err != nil || role != "combobox" {
+		t.Fatalf("search input role = %q, err=%v", role, err)
+	}
+	if inputType, err := input.GetAttribute("type"); err != nil || inputType != "text" {
+		t.Fatalf("search input type = %q, err=%v; native and custom clear affordances must not coexist", inputType, err)
+	}
+	if controls, err := input.GetAttribute("aria-controls"); err != nil || controls != "catalog-search-results" {
+		t.Fatalf("search input aria-controls = %q, err=%v", controls, err)
+	}
+	if expanded, err := input.GetAttribute("aria-expanded"); err != nil || expanded != "true" {
+		t.Fatalf("search input aria-expanded = %q, err=%v", expanded, err)
+	}
+	activeOptionID, err := input.GetAttribute("aria-activedescendant")
+	if err != nil || activeOptionID == "" {
+		t.Fatalf("search input aria-activedescendant = %q, err=%v", activeOptionID, err)
+	}
+	activeOption := modal.Locator("#" + activeOptionID)
+	if selected, err := activeOption.GetAttribute("aria-selected"); err != nil || selected != "true" {
+		t.Fatalf("active search option aria-selected = %q, err=%v", selected, err)
+	}
+	if count, err := modal.Locator(`button[aria-label="Clear search"]`).Count(); err != nil || count != 1 {
+		t.Fatalf("custom search clear controls = %d, err=%v", count, err)
+	}
 	if err := modal.Locator(`.search-highlight`).GetByText("controller", playwright.LocatorGetByTextOptions{Exact: playwright.Bool(true)}).WaitFor(); err != nil {
 		t.Fatalf("exact content match was not highlighted: %v", err)
 	}
@@ -136,6 +159,32 @@ func TestCatalogDocumentComboboxSearchSelectAndClientFirstModal(t *testing.T) {
 	highlightedHTML, ok := highlighted.(string)
 	if !ok || strings.Contains(highlightedHTML, "<img") || !strings.Contains(highlightedHTML, "&lt;img") || !strings.Contains(highlightedHTML, `class="search-highlight"`) {
 		t.Fatalf("unsafe or missing highlight markup: %#v", highlighted)
+	}
+	if err := input.Fill("list"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := input.Evaluate(`element => element.dispatchEvent(new Event('input', { bubbles: true }))`, nil); err != nil {
+		t.Fatal(err)
+	}
+	if err := modal.GetByText("List core pods", playwright.LocatorGetByTextOptions{Exact: playwright.Bool(true)}).WaitFor(); err != nil {
+		t.Fatalf("second keyboard search result: %v", err)
+	}
+	firstActiveID, err := input.GetAttribute("aria-activedescendant")
+	if err != nil || firstActiveID == "" {
+		t.Fatalf("initial keyboard option id = %q, err=%v", firstActiveID, err)
+	}
+	if err := input.Press("ArrowDown"); err != nil {
+		t.Fatal(err)
+	}
+	secondActiveID, err := input.GetAttribute("aria-activedescendant")
+	if err != nil || secondActiveID == "" || secondActiveID == firstActiveID {
+		t.Fatalf("ArrowDown active option = %q, initial=%q, err=%v", secondActiveID, firstActiveID, err)
+	}
+	if selected, err := modal.Locator("#" + firstActiveID).GetAttribute("aria-selected"); err != nil || selected != "false" {
+		t.Fatalf("previous option aria-selected = %q, err=%v", selected, err)
+	}
+	if selected, err := modal.Locator("#" + secondActiveID).GetAttribute("aria-selected"); err != nil || selected != "true" {
+		t.Fatalf("ArrowDown option aria-selected = %q, err=%v", selected, err)
 	}
 	if err := input.Fill("deplxoyments"); err != nil {
 		t.Fatal(err)
@@ -167,6 +216,9 @@ func TestCatalogDocumentComboboxSearchSelectAndClientFirstModal(t *testing.T) {
 	}
 	if expanded, err := searchField.Evaluate(`element => element.getAttribute('aria-expanded')`, nil); err != nil || expanded != "false" {
 		t.Fatalf("sidebar search collapsed state = %v, err=%v", expanded, err)
+	}
+	if expanded, err := input.GetAttribute("aria-expanded"); err != nil || expanded != "false" {
+		t.Fatalf("search combobox collapsed state = %q, err=%v", expanded, err)
 	}
 	if page.URL() != beforeSearch {
 		t.Fatalf("Escape navigated from %q to %q", beforeSearch, page.URL())
@@ -237,5 +289,69 @@ func TestCatalogDocumentComboboxSearchSelectAndClientFirstModal(t *testing.T) {
 	}
 	if source, err := fallbackModal.Locator(`[data-catalog-search-source]`).TextContent(); err != nil || !strings.Contains(source, "Server fallback") {
 		t.Fatalf("fallback search source = %q, err=%v", source, err)
+	}
+}
+
+func TestCatalogSidebarExpansionPreservesKeyboardFocus(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping e2e test in short mode")
+	}
+	server, err := renderer.New(renderer.Config{Version: 1, DataDir: t.TempDir(), Catalogs: []renderer.CatalogConfig{{
+		ID: "kubernetes", Mount: "/", Title: "Kubernetes", ProfileID: domain.CompatibilityProfileStrict,
+	}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	spec := []byte(`{"openapi":"3.0.3","info":{"title":"Kubernetes Core","version":"v1"},"paths":{"/api/v1/pods":{"get":{"operationId":"listCorePods","tags":["core_v1"],"summary":"List core pods","responses":{"200":{"description":"OK"}}}}}}`)
+	_, err = server.Activate(context.Background(), domain.CatalogCandidate{
+		ID: "kubernetes", Title: "Kubernetes", ProfileID: domain.CompatibilityProfileStrict,
+		Revision:  domain.CatalogRevision{Kind: domain.CatalogRevisionFiles, ID: "file-manifest-sidebar-focus", ManifestDigest: strings.Repeat("b", 64)},
+		Documents: []domain.CatalogDocument{{Key: "core-v1", SourcePath: "api/v1.json", Format: domain.CatalogFormatJSON, Bytes: spec}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	baseURL := httptestServer(t, server.Handler())
+
+	pw, err := playwright.Run()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pw.Stop()
+	browser, err := pw.Chromium.Launch()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer browser.Close()
+	page, err := browser.NewPage()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := page.Goto(baseURL+"/documents/core-v1/", playwright.PageGotoOptions{WaitUntil: playwright.WaitUntilStateLoad}); err != nil {
+		t.Fatal(err)
+	}
+	control := page.Locator(`#catalog-sidebar-groups a[hx-target="#catalog-sidebar-groups"]`).First()
+	if expanded, err := control.GetAttribute("aria-expanded"); err != nil || expanded != "false" {
+		t.Fatalf("collapsed group aria-expanded = %q, err=%v", expanded, err)
+	}
+	if err := control.Focus(); err != nil {
+		t.Fatal(err)
+	}
+	if err := page.Keyboard().Press("Enter"); err != nil {
+		t.Fatal(err)
+	}
+	replacement := page.Locator(`#catalog-sidebar-groups a[hx-target="#catalog-sidebar-groups"]`).First()
+	if err := replacement.WaitFor(); err != nil {
+		t.Fatalf("expanded group control replacement: %v", err)
+	}
+	if err := replacement.WaitFor(playwright.LocatorWaitForOptions{State: playwright.WaitForSelectorStateVisible}); err != nil {
+		t.Fatalf("expanded group control visible: %v", err)
+	}
+	if expanded, err := replacement.GetAttribute("aria-expanded"); err != nil || expanded != "true" {
+		t.Fatalf("expanded group aria-expanded = %q, err=%v", expanded, err)
+	}
+	focused, err := replacement.Evaluate(`element => document.activeElement === element`, nil)
+	if err != nil || focused != true {
+		t.Fatalf("expanded group retained focus = %v, err=%v", focused, err)
 	}
 }
