@@ -150,6 +150,10 @@ func (handler *CatalogHandler) serveAdmitted(response http.ResponseWriter, reque
 	case strings.HasSuffix(relative, "/") && !strings.Contains(strings.TrimSuffix(relative, "/"), "/"):
 		handler.serveDocument(response, request, snapshot, mount, strings.TrimSuffix(relative, "/"))
 	case !strings.Contains(relative, "/"):
+		if !catalogDocumentExists(snapshot.Directory, relative) {
+			http.NotFound(response, request)
+			return
+		}
 		target, err := catalogURL(mount, relative)
 		if err != nil {
 			http.NotFound(response, request)

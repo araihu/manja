@@ -41,6 +41,7 @@ func TestCatalogRouteMatrixForRootAndNestedMounts(t *testing.T) {
 				{http.MethodGet, base + "search", http.StatusOK},
 				{http.MethodGet, base + "search?q=listCoreV1Pod", http.StatusOK},
 				{http.MethodGet, base + "search.json?q=listCoreV1Pod", http.StatusOK},
+				{http.MethodGet, base + "missing", http.StatusNotFound},
 				{http.MethodGet, base + "missing/", http.StatusNotFound},
 				{http.MethodPost, base, http.StatusMethodNotAllowed},
 			} {
