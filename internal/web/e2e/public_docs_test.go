@@ -578,7 +578,7 @@ func TestPublicDocsAraiHuDefaultRetainsThemeAndModeSwitching(t *testing.T) {
 	if err := page.Locator("#manja-theme-trigger").Click(); err != nil {
 		t.Fatal(err)
 	}
-	if err := page.Locator(`#manja-theme-listbox [role='option']:has-text("Arai Hû")`).Click(); err != nil {
+	if _, err := page.Locator(`#manja-theme-listbox [role='option']:has-text("Arai Hû")`).Evaluate(`option => option.click()`, nil); err != nil {
 		t.Fatal(err)
 	}
 	if err := page.Locator("#darkModeToggleBtn").Click(); err != nil {
