@@ -1545,6 +1545,21 @@ func TestPublicDocsSchemaTitleCSSWrapsLongNames(t *testing.T) {
 	}
 }
 
+func TestPublicDocsSchemaDescriptionCSSWrapsLongReferences(t *testing.T) {
+	css, err := os.ReadFile("static/manja.css")
+	if err != nil {
+		t.Fatal(err)
+	}
+	descriptionRule := regexp.MustCompile(`(?s)\.manja-schema-description\s*\{[^}]*\}`)
+	rule := descriptionRule.FindString(string(css))
+	if rule == "" {
+		t.Fatalf("missing .manja-schema-description rule")
+	}
+	if !strings.Contains(rule, `overflow-wrap: anywhere;`) {
+		t.Fatalf("schema descriptions should wrap long source references:\n%s", rule)
+	}
+}
+
 func TestPublicDocsSchemaInlineExampleCSSWrapsLongValues(t *testing.T) {
 	css, err := os.ReadFile("static/manja.css")
 	if err != nil {
