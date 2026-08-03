@@ -126,6 +126,44 @@ func TestValidateCatalogCandidateBoundsDocumentCount(t *testing.T) {
 	}
 }
 
+func TestValidateCatalogCandidateRejectsInvalidSupportFiles(t *testing.T) {
+	t.Parallel()
+
+	for name, support := range map[string]CatalogSupportFile{
+		"duplicate document path": {SourcePath: "api/v1_openapi.json", Bytes: []byte("shared")},
+		"absolute path":           {SourcePath: "/common.yaml", Bytes: []byte("shared")},
+		"escaping path":           {SourcePath: "../common.yaml", Bytes: []byte("shared")},
+		"empty bytes":             {SourcePath: "common.yaml"},
+		"oversized bytes":         {SourcePath: "common.yaml", Bytes: make([]byte, maxCatalogDocumentBytes+1)},
+	} {
+		t.Run(name, func(t *testing.T) {
+			candidate := validCatalogCandidate()
+			candidate.SupportFiles = []CatalogSupportFile{support}
+			if err := ValidateCatalogCandidate(candidate); err == nil {
+				t.Fatal("invalid catalog support file was accepted")
+			}
+		})
+	}
+}
+
+func TestValidateCatalogCandidateBoundsAggregateSourceBytes(t *testing.T) {
+	t.Parallel()
+
+	candidate := validCatalogCandidate()
+	candidate.ProfileID = CompatibilityProfileKubernetes
+	candidate.Documents[0].Bytes = make([]byte, 8<<20)
+	candidate.SupportFiles = []CatalogSupportFile{
+		{SourcePath: "support-a.json", Bytes: make([]byte, 8<<20)},
+	}
+	if err := ValidateCatalogCandidate(candidate); err != nil {
+		t.Fatalf("Kubernetes aggregate boundary: %v", err)
+	}
+	candidate.SupportFiles = append(candidate.SupportFiles, CatalogSupportFile{SourcePath: "over.json", Bytes: []byte{1}})
+	if err := ValidateCatalogCandidate(candidate); err == nil {
+		t.Fatal("Kubernetes aggregate source limit was exceeded")
+	}
+}
+
 func TestValidateSpecIndexRequiresSortedUniqueFacets(t *testing.T) {
 	t.Parallel()
 

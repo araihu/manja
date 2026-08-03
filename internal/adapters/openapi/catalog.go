@@ -69,6 +69,9 @@ func (parser *CatalogParser) Parse(ctx context.Context, candidate domain.Catalog
 	if candidate.ProfileID == domain.CompatibilityProfileKubernetes && !parser.hasAllowlist {
 		return domain.CatalogIndex{}, fmt.Errorf("Kubernetes profile requires an exact default allowlist")
 	}
+	if candidate.ProfileID == domain.CompatibilityProfileKubernetes && len(candidate.SupportFiles) != 0 {
+		return domain.CatalogIndex{}, fmt.Errorf("Kubernetes profile v1 does not admit support files outside its exact default audit")
+	}
 	if candidate.ProfileID != domain.CompatibilityProfileStrict && candidate.ProfileID != domain.CompatibilityProfileKubernetes {
 		return domain.CatalogIndex{}, fmt.Errorf("compatibility profile %q is unsupported", candidate.ProfileID)
 	}
@@ -79,6 +82,18 @@ func (parser *CatalogParser) Parse(ctx context.Context, candidate domain.Catalog
 		CatalogID: candidate.ID, RevisionID: candidate.Revision.ID, Title: candidate.Title,
 		Branding: candidate.Branding, ProfileID: candidate.ProfileID,
 		Documents: make([]domain.CatalogDocumentIndex, 0, len(documents)),
+	}
+	captured := make(map[string][]byte, len(documents)+len(candidate.SupportFiles))
+	for _, document := range documents {
+		captured[document.SourcePath] = append([]byte(nil), document.Bytes...)
+	}
+	for _, support := range candidate.SupportFiles {
+		if strings.EqualFold(filepath.Ext(support.SourcePath), ".json") {
+			if err := validateNoDuplicateJSONKeys(support.Bytes); err != nil {
+				return domain.CatalogIndex{}, fmt.Errorf("catalog support file %q: %w", support.SourcePath, err)
+			}
+		}
+		captured[support.SourcePath] = append([]byte(nil), support.Bytes...)
 	}
 	var observedDefaults []defaultDiagnostic
 	for _, document := range documents {
@@ -92,25 +107,24 @@ func (parser *CatalogParser) Parse(ctx context.Context, candidate domain.Catalog
 		}
 		file := domain.SpecFile{Path: document.SourcePath, Format: string(document.Format), Bytes: document.Bytes}
 		revision := domain.Revision{ID: candidate.Revision.ID, CommitSHA: candidate.Revision.CommitSHA}
-		var documentIndex domain.SpecIndex
-		var err error
+		doc, loadErr := loadCapturedSpec(ctx, file, captured)
+		if loadErr != nil {
+			return domain.CatalogIndex{}, fmt.Errorf("catalog document %q: %w", document.Key, loadErr)
+		}
+		var validationOptions []openapi3.ValidationOption
 		if candidate.ProfileID == domain.CompatibilityProfileKubernetes {
-			doc, loadErr := loadSpec(file)
-			if loadErr != nil {
-				return domain.CatalogIndex{}, fmt.Errorf("catalog document %q: %w", document.Key, loadErr)
-			}
 			diagnostics, observeErr := observeDefaultDiagnostics(document.SourcePath, document.Bytes, doc)
 			if observeErr != nil {
 				return domain.CatalogIndex{}, fmt.Errorf("catalog document %q defaults: %w", document.Key, observeErr)
 			}
 			observedDefaults = append(observedDefaults, diagnostics...)
-			if validateErr := doc.Validate(ctx, openapi3.DisableExamplesValidation(), openapi3.DisableSchemaDefaultsValidation()); validateErr != nil {
-				return domain.CatalogIndex{}, fmt.Errorf("catalog document %q: %w", document.Key, validateErr)
-			}
-			documentIndex, err = projectSpec(doc, file, revision)
-		} else {
-			documentIndex, err = parseSpec(ctx, file, revision, openapi3.DisableExamplesValidation())
+			validationOptions = append(validationOptions, openapi3.DisableSchemaDefaultsValidation())
 		}
+		validationOptions = append(validationOptions, openapi3.DisableExamplesValidation())
+		if validateErr := doc.Validate(ctx, validationOptions...); validateErr != nil {
+			return domain.CatalogIndex{}, fmt.Errorf("catalog document %q: %w", document.Key, validateErr)
+		}
+		documentIndex, err := projectSpec(doc, file, revision)
 		if err != nil {
 			return domain.CatalogIndex{}, fmt.Errorf("catalog document %q: %w", document.Key, err)
 		}

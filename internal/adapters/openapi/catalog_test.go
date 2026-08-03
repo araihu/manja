@@ -6,6 +6,8 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -128,6 +130,78 @@ func TestCatalogParserProjectsKubernetesOperationFacets(t *testing.T) {
 	}
 	if !reflect.DeepEqual(index.Documents[0].Index.Operations[0].Facets, want) {
 		t.Fatalf("facets = %#v, want %#v", index.Documents[0].Index.Operations[0].Facets, want)
+	}
+}
+
+func TestCatalogParserResolvesOnlyCapturedRelativeReferences(t *testing.T) {
+	t.Parallel()
+
+	candidate := catalogParserCandidate(catalogParserDocument("alpha-v1", "specs/alpha.json", `{
+  "openapi":"3.0.3",
+  "info":{"title":"Alpha","version":"v1"},
+  "paths":{},
+  "components":{"schemas":{"Thing":{"$ref":"./common.yaml#/components/schemas/Thing"}}}
+}`))
+	candidate.SupportFiles = []domain.CatalogSupportFile{{
+		SourcePath: "specs/common.yaml",
+		Bytes:      []byte("components:\n  schemas:\n    Thing:\n      type: string\n"),
+	}}
+	parser, err := NewCatalogParser(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	index, err := parser.Parse(context.Background(), candidate)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := index.Documents[0].Index.Schemas[0].Name; got != "Thing" {
+		t.Fatalf("resolved schema name = %q", got)
+	}
+}
+
+func TestCatalogParserNeverDialsRemoteReference(t *testing.T) {
+	t.Parallel()
+
+	requests := make(chan struct{}, 1)
+	server := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { requests <- struct{}{} }))
+	defer server.Close()
+	candidate := catalogParserCandidate(catalogParserDocument("alpha-v1", "alpha.json", `{
+  "openapi":"3.0.3",
+  "info":{"title":"Alpha","version":"v1"},
+  "paths":{},
+  "components":{"schemas":{"Thing":{"$ref":"`+server.URL+`/common.yaml#/Thing"}}}
+}`))
+	parser, err := NewCatalogParser(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := parser.Parse(context.Background(), candidate); err == nil {
+		t.Fatal("remote catalog reference was accepted")
+	}
+	select {
+	case <-requests:
+		t.Fatal("catalog parser dialed a remote reference")
+	default:
+	}
+}
+
+func TestCatalogParserRejectsKubernetesSupportFilesOutsideExactDefaultAudit(t *testing.T) {
+	t.Parallel()
+
+	document := catalogParserDocument("core-v1", "core.json", `{"openapi":"3.0.3","info":{"title":"Core","version":"v1"},"paths":{}}`)
+	candidate := catalogParserCandidate(document)
+	candidate.ProfileID = domain.CompatibilityProfileKubernetes
+	candidate.SupportFiles = []domain.CatalogSupportFile{{SourcePath: "common.yaml", Bytes: []byte("type: string\n")}}
+	allowlist, err := BuildKubernetesDefaultAllowlist(context.Background(), []domain.CatalogDocument{document})
+	if err != nil {
+		t.Fatal(err)
+	}
+	parser, err := NewCatalogParser(allowlist)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := parser.Parse(context.Background(), candidate); err == nil || !strings.Contains(err.Error(), "support files") {
+		t.Fatalf("Kubernetes support-file audit error = %v", err)
 	}
 }
 

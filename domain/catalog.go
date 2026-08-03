@@ -1,8 +1,11 @@
 package domain
 
 const (
-	maxCatalogDocuments     = 256
-	maxCatalogDocumentBytes = 8 << 20
+	maxCatalogDocuments      = 256
+	maxCatalogSupportFiles   = 1024
+	maxCatalogDocumentBytes  = 8 << 20
+	maxCatalogSourceBytes    = 64 << 20
+	maxKubernetesSourceBytes = 16 << 20
 )
 
 type CompatibilityProfileID string
@@ -41,12 +44,18 @@ type CatalogCandidate struct {
 	ProfileID          CompatibilityProfileID
 	Revision           CatalogRevision
 	Documents          []CatalogDocument
+	SupportFiles       []CatalogSupportFile
 }
 
 type CatalogDocument struct {
 	Key        string
 	SourcePath string
 	Format     CatalogFormat
+	Bytes      []byte
+}
+
+type CatalogSupportFile struct {
+	SourcePath string
 	Bytes      []byte
 }
 

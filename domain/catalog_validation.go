@@ -41,6 +41,7 @@ func ValidateCatalogCandidate(candidate CatalogCandidate) error {
 	}
 	keys := make(map[string]struct{}, len(candidate.Documents))
 	paths := make(map[string]struct{}, len(candidate.Documents))
+	totalBytes := 0
 	for index, document := range candidate.Documents {
 		if err := validateCatalogDocument(index, document); err != nil {
 			return err
@@ -53,6 +54,33 @@ func ValidateCatalogCandidate(candidate CatalogCandidate) error {
 			return fmt.Errorf("catalog document source path %q is duplicated", document.SourcePath)
 		}
 		paths[document.SourcePath] = struct{}{}
+		totalBytes += len(document.Bytes)
+	}
+	if len(candidate.SupportFiles) > maxCatalogSupportFiles {
+		return fmt.Errorf("catalog support files exceed %d", maxCatalogSupportFiles)
+	}
+	for index, support := range candidate.SupportFiles {
+		if err := validateCatalogSourcePath(fmt.Sprintf("catalog support file %d source path", index), support.SourcePath); err != nil {
+			return err
+		}
+		if len(support.Bytes) == 0 {
+			return fmt.Errorf("catalog support file %d bytes are required", index)
+		}
+		if len(support.Bytes) > maxCatalogDocumentBytes {
+			return fmt.Errorf("catalog support file %d exceeds %d bytes", index, maxCatalogDocumentBytes)
+		}
+		if _, exists := paths[support.SourcePath]; exists {
+			return fmt.Errorf("catalog source path %q is duplicated", support.SourcePath)
+		}
+		paths[support.SourcePath] = struct{}{}
+		totalBytes += len(support.Bytes)
+	}
+	limit := maxCatalogSourceBytes
+	if candidate.ProfileID == CompatibilityProfileKubernetes {
+		limit = maxKubernetesSourceBytes
+	}
+	if totalBytes > limit {
+		return fmt.Errorf("catalog source bytes %d exceed %d", totalBytes, limit)
 	}
 	if candidate.DefaultDocumentKey != "" {
 		if err := validateCatalogKey("default document key", candidate.DefaultDocumentKey); err != nil {
