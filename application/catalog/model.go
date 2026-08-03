@@ -1,6 +1,9 @@
 package catalog
 
-import "github.com/araihu/manja/domain"
+import (
+	"github.com/araihu/manja/application/projection"
+	"github.com/araihu/manja/domain"
+)
 
 type SnapshotID string
 
@@ -81,14 +84,15 @@ type BrandingV1 struct {
 }
 
 type DocumentDirectoryV1 struct {
-	Key             string                 `json:"key"`
-	SourcePath      string                 `json:"sourcePath"`
-	Title           string                 `json:"title"`
-	APIVersion      string                 `json:"apiVersion"`
-	SourceChild     string                 `json:"sourceChild"`
-	ProjectionChild string                 `json:"projectionChild"`
-	Operations      []OperationDirectoryV1 `json:"operations"`
-	Schemas         []SchemaDirectoryV1    `json:"schemas"`
+	Key              string                 `json:"key"`
+	SourcePath       string                 `json:"sourcePath"`
+	Title            string                 `json:"title"`
+	APIVersion       string                 `json:"apiVersion"`
+	Overview         projection.Overview    `json:"overview"`
+	SourceChild      string                 `json:"sourceChild"`
+	SchemaNodeShards []ShardReferenceV1     `json:"schemaNodeShards"`
+	Operations       []OperationDirectoryV1 `json:"operations"`
+	Schemas          []SchemaDirectoryV1    `json:"schemas"`
 }
 
 type OperationDirectoryV1 struct {
@@ -99,6 +103,7 @@ type OperationDirectoryV1 struct {
 	Title       string          `json:"title"`
 	Description string          `json:"description"`
 	Href        string          `json:"href"`
+	DetailChild string          `json:"detailChild"`
 	Deprecated  bool            `json:"deprecated"`
 	Tags        []string        `json:"tags"`
 	Facets      []FacetV1       `json:"facets"`
@@ -114,6 +119,42 @@ type SchemaDirectoryV1 struct {
 	Name        string          `json:"name"`
 	Description string          `json:"description"`
 	Href        string          `json:"href"`
+	DetailChild string          `json:"detailChild"`
+}
+
+type ShardReferenceV1 struct {
+	Path         string `json:"path"`
+	FirstOrdinal uint32 `json:"firstOrdinal"`
+	LastOrdinal  uint32 `json:"lastOrdinal"`
+	Records      uint32 `json:"records"`
+	Length       uint64 `json:"length"`
+	SHA256       string `json:"sha256"`
+}
+
+type DetailShardV1 struct {
+	SchemaVersion uint32           `json:"schemaVersion"`
+	DocumentKey   string           `json:"documentKey"`
+	Records       []DetailRecordV1 `json:"records"`
+}
+
+type DetailRecordV1 struct {
+	ID        domain.DetailID             `json:"id"`
+	Kind      string                      `json:"kind"`
+	Operation *projection.OperationDetail `json:"operation,omitempty"`
+	Schema    *projection.SchemaDetail    `json:"schema,omitempty"`
+}
+
+type SchemaNodeShardV1 struct {
+	SchemaVersion uint32                  `json:"schemaVersion"`
+	DocumentKey   string                  `json:"documentKey"`
+	FirstOrdinal  uint32                  `json:"firstOrdinal"`
+	Nodes         []projection.SchemaNode `json:"nodes"`
+}
+
+type DocumentArtifacts struct {
+	Directory DocumentDirectoryV1
+	Children  []ChildArtifact
+	Usage     BudgetUsage
 }
 
 type ManifestV1 struct {

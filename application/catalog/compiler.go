@@ -78,7 +78,7 @@ func (compiler *Compiler) Compile(ctx context.Context, candidate domain.CatalogC
 		DefaultDocumentKey: candidate.DefaultDocumentKey, ProfileID: candidate.ProfileID,
 		Documents: make([]DocumentDirectoryV1, 0, len(documents)),
 	}
-	children := make([]ChildArtifact, 0, 2*len(documents)+len(candidate.SupportFiles)+2)
+	children := make([]ChildArtifact, 0, 4*len(documents)+len(candidate.SupportFiles)+2)
 	sources := make([]SourceIdentityV1, 0, len(documents)+len(candidate.SupportFiles))
 	usage := BudgetUsage{Catalogs: 1, Documents: uint64(len(documents)), Kubernetes: candidate.ProfileID == domain.CompatibilityProfileKubernetes}
 
@@ -106,24 +106,32 @@ func (compiler *Compiler) Compile(ctx context.Context, candidate domain.CatalogC
 		if err != nil {
 			return CompiledSnapshot{}, fmt.Errorf("build projection for %q: %w", document.Key, err)
 		}
-		projectionBytes, err := json.Marshal(projected)
-		if err != nil {
-			return CompiledSnapshot{}, fmt.Errorf("encode projection for %q: %w", document.Key, err)
-		}
-		projectionPath := "projections/" + document.Key + ".json"
-		projectionChild, err := newChild(projectionPath, "projection", projectionBytes)
+		documentDirectory, err := buildDocumentDirectory(candidate.ID, document, indexed.Index, sourcePath)
 		if err != nil {
 			return CompiledSnapshot{}, err
 		}
-		children = append(children, projectionChild)
-		usage.ProjectionBytes += uint64(len(projectionBytes))
+		documentDirectory.Overview = projected.Overview
+		partitioned, err := PartitionDocument(document.Key, projected, documentDirectory, DefaultPartitionLimits(compiler.options.Bounds))
+		if err != nil {
+			return CompiledSnapshot{}, fmt.Errorf("partition projection for %q: %w", document.Key, err)
+		}
+		children = append(children, partitioned.Children...)
+		usage.ProjectionBytes += partitioned.Usage.ProjectionBytes
+		if partitioned.Usage.DetailShardRecords > usage.DetailShardRecords {
+			usage.DetailShardRecords = partitioned.Usage.DetailShardRecords
+		}
+		if partitioned.Usage.DetailShardBytes > usage.DetailShardBytes {
+			usage.DetailShardBytes = partitioned.Usage.DetailShardBytes
+		}
+		if partitioned.Usage.SchemaNodeShardRecords > usage.SchemaNodeShardRecords {
+			usage.SchemaNodeShardRecords = partitioned.Usage.SchemaNodeShardRecords
+		}
+		if partitioned.Usage.SchemaNodeShardBytes > usage.SchemaNodeShardBytes {
+			usage.SchemaNodeShardBytes = partitioned.Usage.SchemaNodeShardBytes
+		}
 		usage.Operations += uint64(len(indexed.Index.Operations))
 		usage.Schemas += uint64(len(indexed.Index.Schemas))
-		documentDirectory, err := buildDocumentDirectory(candidate.ID, document, indexed.Index, sourcePath, projectionPath)
-		if err != nil {
-			return CompiledSnapshot{}, err
-		}
-		directory.Documents = append(directory.Documents, documentDirectory)
+		directory.Documents = append(directory.Documents, partitioned.Directory)
 	}
 
 	supports := append([]domain.CatalogSupportFile(nil), candidate.SupportFiles...)
@@ -218,10 +226,10 @@ func validateCompilerAlignment(candidate domain.CatalogCandidate, index domain.C
 	return nil
 }
 
-func buildDocumentDirectory(catalogID string, document domain.CatalogDocument, index domain.SpecIndex, sourceChild, projectionChild string) (DocumentDirectoryV1, error) {
+func buildDocumentDirectory(catalogID string, document domain.CatalogDocument, index domain.SpecIndex, sourceChild string) (DocumentDirectoryV1, error) {
 	result := DocumentDirectoryV1{
 		Key: document.Key, SourcePath: document.SourcePath, Title: index.Title, APIVersion: index.Version,
-		SourceChild: sourceChild, ProjectionChild: projectionChild,
+		SourceChild: sourceChild, SchemaNodeShards: []ShardReferenceV1{},
 		Operations: make([]OperationDirectoryV1, 0, len(index.Operations)), Schemas: make([]SchemaDirectoryV1, 0, len(index.Schemas)),
 	}
 	operations := append([]domain.Operation(nil), index.Operations...)
