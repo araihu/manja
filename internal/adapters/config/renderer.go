@@ -5,9 +5,11 @@ import (
 	"io"
 	"net/url"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/araihu/manja/domain"
+	sourceadapter "github.com/araihu/manja/internal/adapters/source"
 	"github.com/araihu/manja/renderer"
 	"gopkg.in/yaml.v3"
 )
@@ -19,16 +21,22 @@ const (
 
 type RendererFile struct {
 	Version  uint32                  `yaml:"version"`
+	DataDir  string                  `yaml:"dataDir"`
 	Catalogs []RendererCatalogConfig `yaml:"catalogs"`
+
+	baseDir string
 }
 
 type RendererCatalogConfig struct {
-	ID                 string               `yaml:"id"`
-	Mount              string               `yaml:"mount"`
-	Title              string               `yaml:"title"`
-	DefaultDocumentKey string               `yaml:"defaultDocument"`
-	ProfileID          string               `yaml:"profile"`
-	Source             RendererSourceConfig `yaml:"source"`
+	ID                     string               `yaml:"id"`
+	Mount                  string               `yaml:"mount"`
+	Title                  string               `yaml:"title"`
+	DefaultDocumentKey     string               `yaml:"defaultDocument"`
+	ProfileID              string               `yaml:"profile"`
+	CompatibilityAllowlist string               `yaml:"compatibilityAllowlist"`
+	Source                 RendererSourceConfig `yaml:"source"`
+
+	compatibilityAllowlist []byte
 }
 
 type RendererSourceConfig struct {
@@ -59,6 +67,22 @@ func LoadRenderer(filename string) (RendererFile, error) {
 		}
 		return RendererFile{}, fmt.Errorf("decode renderer config: %w", err)
 	}
+	absolute, err := filepath.Abs(filename)
+	if err != nil {
+		return RendererFile{}, fmt.Errorf("resolve renderer config: %w", err)
+	}
+	file.baseDir = filepath.Dir(absolute)
+	for index := range file.Catalogs {
+		path := strings.TrimSpace(file.Catalogs[index].CompatibilityAllowlist)
+		if path == "" {
+			continue
+		}
+		contents, err := os.ReadFile(file.resolve(path))
+		if err != nil {
+			return RendererFile{}, fmt.Errorf("catalog %q compatibility allowlist: %w", file.Catalogs[index].ID, err)
+		}
+		file.Catalogs[index].compatibilityAllowlist = contents
+	}
 	if err := file.validate(); err != nil {
 		return RendererFile{}, err
 	}
@@ -66,15 +90,44 @@ func LoadRenderer(filename string) (RendererFile, error) {
 }
 
 func (file RendererFile) RuntimeConfig() renderer.Config {
-	result := renderer.Config{Version: file.Version, Catalogs: make([]renderer.CatalogConfig, len(file.Catalogs))}
+	result := renderer.Config{Version: file.Version, DataDir: file.resolve(file.DataDir), Catalogs: make([]renderer.CatalogConfig, len(file.Catalogs))}
 	for index, catalog := range file.Catalogs {
 		result.Catalogs[index] = renderer.CatalogConfig{
 			ID: catalog.ID, Mount: catalog.Mount, Title: catalog.Title,
-			DefaultDocumentKey: catalog.DefaultDocumentKey,
-			ProfileID:          domain.CompatibilityProfileID(catalog.ProfileID),
+			DefaultDocumentKey:     catalog.DefaultDocumentKey,
+			ProfileID:              domain.CompatibilityProfileID(catalog.ProfileID),
+			CompatibilityAllowlist: append([]byte(nil), catalog.compatibilityAllowlist...),
 		}
 	}
 	return result
+}
+
+func (file RendererFile) Sources() []renderer.CatalogSource {
+	result := make([]renderer.CatalogSource, len(file.Catalogs))
+	for index, configured := range file.Catalogs {
+		manifest := sourceadapter.CatalogManifest{
+			ID: configured.ID, Title: configured.Title,
+			DefaultDocumentKey: configured.DefaultDocumentKey,
+			ProfileID:          domain.CompatibilityProfileID(configured.ProfileID),
+			Includes:           append([]string(nil), configured.Source.Include...),
+		}
+		switch configured.Source.Kind {
+		case RendererSourceFiles:
+			result[index] = sourceadapter.FileCatalogSource{Root: file.resolve(configured.Source.Root), Manifest: manifest}
+		case RendererSourceGit:
+			result[index] = sourceadapter.GitCatalogSource{
+				Repository: configured.Source.Repository, Ref: configured.Source.Ref, Manifest: manifest,
+			}
+		}
+	}
+	return result
+}
+
+func (file RendererFile) resolve(path string) string {
+	if strings.TrimSpace(path) == "" || filepath.IsAbs(path) || file.baseDir == "" {
+		return path
+	}
+	return filepath.Clean(filepath.Join(file.baseDir, path))
 }
 
 func (file RendererFile) validate() error {

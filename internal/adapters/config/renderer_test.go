@@ -11,12 +11,14 @@ import (
 
 const validRendererConfig = `
 version: 1
+dataDir: .manja/renderer
 catalogs:
   - id: kubernetes
     mount: /kubernetes
     title: Kubernetes
     defaultDocument: core-v1
     profile: kubernetes-v3-v1
+    compatibilityAllowlist: allowlists/kubernetes.json
     source:
       kind: files
       root: internal/renderer/testdata/kubernetes/specs
@@ -35,24 +37,40 @@ catalogs:
 `
 
 func TestLoadRendererBuildsRuntimeAndSourceConfiguration(t *testing.T) {
-	t.Parallel()
-
-	loaded, err := LoadRenderer(writeRendererConfig(t, validRendererConfig))
+	root := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(root, "allowlists"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "allowlists", "kubernetes.json"), []byte(`{"schemaVersion":1,"diagnostics":[]}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	filename := filepath.Join(root, "renderer.yaml")
+	if err := os.WriteFile(filename, []byte(validRendererConfig), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	loaded, err := LoadRenderer(filename)
 	if err != nil {
 		t.Fatal(err)
 	}
 	runtime := loaded.RuntimeConfig()
-	if runtime.Version != 1 || len(runtime.Catalogs) != 2 {
+	if runtime.Version != 1 || runtime.DataDir != filepath.Join(root, ".manja/renderer") || len(runtime.Catalogs) != 2 {
 		t.Fatalf("runtime config = %#v", runtime)
 	}
 	if runtime.Catalogs[0].ID != "kubernetes" || runtime.Catalogs[0].ProfileID != domain.CompatibilityProfileKubernetes {
 		t.Fatalf("Kubernetes runtime catalog = %#v", runtime.Catalogs[0])
+	}
+	if string(runtime.Catalogs[0].CompatibilityAllowlist) != `{"schemaVersion":1,"diagnostics":[]}` {
+		t.Fatalf("Kubernetes allowlist = %q", runtime.Catalogs[0].CompatibilityAllowlist)
 	}
 	if loaded.Catalogs[0].Source.Root != "internal/renderer/testdata/kubernetes/specs" {
 		t.Fatalf("file source = %#v", loaded.Catalogs[0].Source)
 	}
 	if loaded.Catalogs[1].Source.Repository != "https://example.invalid/payments.git" || loaded.Catalogs[1].Source.Ref != "refs/heads/main" {
 		t.Fatalf("Git source = %#v", loaded.Catalogs[1].Source)
+	}
+	sources := loaded.Sources()
+	if len(sources) != 2 {
+		t.Fatalf("sources = %d, want 2", len(sources))
 	}
 }
 

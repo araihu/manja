@@ -1,0 +1,13 @@
+version: 1
+catalogs:
+  - id: kubernetes
+    mount: /
+    title: Kubernetes
+    defaultDocument: specs-api-v1-openapi
+    profile: kubernetes-v3-v1
+    compatibilityAllowlist: default-allowlist.json
+    source:
+      kind: files
+      root: .
+      include:
+        - specs/*_openapi.json
