@@ -36,6 +36,7 @@ type SearchService struct {
 	snapshotID SnapshotID
 	directory  SearchDirectoryV1
 	children   map[string]ChildArtifact
+	child      func(context.Context, string, string, uint64, string) (ChildArtifact, error)
 	deadline   time.Duration
 }
 
@@ -64,7 +65,61 @@ func NewSearchService(snapshot CompiledSnapshot) (*SearchService, error) {
 	if err := validateSearchDirectory(directory); err != nil {
 		return nil, err
 	}
-	return &SearchService{catalogID: snapshot.Directory.CatalogID, snapshotID: snapshot.ID, directory: directory, children: children, deadline: 100 * time.Millisecond}, nil
+	service, err := newSearchService(snapshot.Directory.CatalogID, snapshot.ID, directory, nil)
+	if err != nil {
+		return nil, err
+	}
+	service.children = children
+	return service, nil
+}
+
+type RuntimeSearchChildLoader func(context.Context, string) ([]byte, ChildIdentityV1, error)
+
+func NewRuntimeSearchService(snapshot RuntimeSnapshot, cache *ByteCache, loader RuntimeSearchChildLoader) (*SearchService, error) {
+	if cache == nil || loader == nil {
+		return nil, fmt.Errorf("runtime search cache and child loader are required")
+	}
+	return newSearchService(snapshot.Directory.CatalogID, snapshot.ID, snapshot.Search, func(ctx context.Context, pathValue, kind string, length uint64, digest string) (ChildArtifact, error) {
+		digestBytes, err := hex.DecodeString(digest)
+		if err != nil || len(digestBytes) != sha256.Size {
+			return ChildArtifact{}, fmt.Errorf("search child %q digest is invalid", pathValue)
+		}
+		var digestKey [sha256.Size]byte
+		copy(digestKey[:], digestBytes)
+		value, err := cache.Load(ctx, CacheKey{SnapshotID: snapshot.ID, Digest: digestKey}, length,
+			func(loadContext context.Context) ([]byte, error) {
+				data, identity, err := loader(loadContext, pathValue)
+				if err != nil {
+					return nil, err
+				}
+				if identity.Path != pathValue || identity.Kind != kind || identity.Length != length || identity.SHA256 != digest {
+					return nil, fmt.Errorf("search child %q metadata differs", pathValue)
+				}
+				return data, nil
+			},
+			func(data []byte) (any, uint64, error) {
+				return ChildArtifact{Path: pathValue, Kind: kind, Length: length, SHA256: digest, Bytes: data}, 128, nil
+			},
+		)
+		if err != nil {
+			return ChildArtifact{}, err
+		}
+		child, ok := value.(ChildArtifact)
+		if !ok {
+			return ChildArtifact{}, fmt.Errorf("search child %q cache type is invalid", pathValue)
+		}
+		return child, nil
+	})
+}
+
+func newSearchService(catalogID string, snapshotID SnapshotID, directory SearchDirectoryV1, child func(context.Context, string, string, uint64, string) (ChildArtifact, error)) (*SearchService, error) {
+	if directory.SchemaVersion != 1 || directory.SearchVersion != searchVersion {
+		return nil, fmt.Errorf("search directory version is unsupported")
+	}
+	if err := validateSearchDirectory(directory); err != nil {
+		return nil, err
+	}
+	return &SearchService{catalogID: catalogID, snapshotID: snapshotID, directory: directory, child: child, deadline: 100 * time.Millisecond}, nil
 }
 
 func (service *SearchService) Search(ctx context.Context, snapshot SnapshotID, query string) (SearchResult, error) {
@@ -186,7 +241,7 @@ func (service *SearchService) loadExactMatches(ctx context.Context, key string, 
 	if err := reserveSearchReference(receipt, reference.SearchSegmentReferenceV1, maxSearchSegments); err != nil {
 		return nil, err
 	}
-	child, err := service.searchChild(reference.Path, "search-exact", reference.Length, reference.SHA256)
+	child, err := service.searchChild(ctx, reference.Path, "search-exact", reference.Length, reference.SHA256)
 	if err != nil {
 		return nil, err
 	}
@@ -306,7 +361,7 @@ func (service *SearchService) loadPostingEntries(ctx context.Context, references
 			return nil, err
 		}
 		reference := references[ordinal]
-		child, err := service.searchChild(reference.Path, kind, reference.Length, reference.SHA256)
+		child, err := service.searchChild(ctx, reference.Path, kind, reference.Length, reference.SHA256)
 		if err != nil {
 			return nil, err
 		}
@@ -356,7 +411,7 @@ func (service *SearchService) loadSearchRecords(ctx context.Context, recordIDs [
 			return nil, err
 		}
 		reference := service.directory.RecordSegments[index]
-		child, err := service.searchChild(reference.Path, "search-record", reference.Length, reference.SHA256)
+		child, err := service.searchChild(ctx, reference.Path, "search-record", reference.Length, reference.SHA256)
 		if err != nil {
 			return nil, err
 		}
@@ -418,15 +473,21 @@ func reserveSearchRecordReference(receipt *searchLoadReceipt, reference SearchRe
 	return nil
 }
 
-func (service *SearchService) searchChild(pathValue, kind string, length uint64, digest string) (ChildArtifact, error) {
-	child, exists := service.children[pathValue]
-	if !exists || child.Kind != kind {
-		return ChildArtifact{}, fmt.Errorf("search child %q is missing", pathValue)
+func (service *SearchService) searchChild(ctx context.Context, pathValue, kind string, length uint64, digest string) (ChildArtifact, error) {
+	if service.children != nil {
+		child, exists := service.children[pathValue]
+		if !exists || child.Kind != kind {
+			return ChildArtifact{}, fmt.Errorf("search child %q is missing", pathValue)
+		}
+		if err := verifySearchChild(child, length, digest); err != nil {
+			return ChildArtifact{}, err
+		}
+		return child, nil
 	}
-	if err := verifySearchChild(child, length, digest); err != nil {
-		return ChildArtifact{}, err
+	if service.child == nil {
+		return ChildArtifact{}, fmt.Errorf("search child loader is unavailable")
 	}
-	return child, nil
+	return service.child(ctx, pathValue, kind, length, digest)
 }
 
 func postingRoutes(routes []SearchPostingRouteV1, key string, allowPrefix bool) []SearchPostingRouteV1 {

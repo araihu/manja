@@ -31,7 +31,7 @@ func (handler *CatalogHandler) catalogPageData(
 	data.SearchHref, _ = catalogURL(mount, "search")
 	data.DownloadHref, _ = catalogURL(mount, "catalog.json")
 	for _, document := range snapshot.Directory.Documents {
-		href, err := catalogURL(mount, document.Key)
+		href, err := catalogURL(mount, "documents", document.Key)
 		if err != nil {
 			return templates.CatalogPageData{}, err
 		}
@@ -47,7 +47,7 @@ func (handler *CatalogHandler) catalogPageData(
 	data.Document = &document
 	extension := path.Ext(document.SourceChild)
 	data.DownloadHref, _ = catalogURL(mount, "openapi", document.Key+extension)
-	documentHref, _ := catalogURL(mount, document.Key)
+	documentHref, _ := catalogURL(mount, "documents", document.Key)
 	documentHref += "/"
 
 	type operationGroup struct {
@@ -204,4 +204,27 @@ func catalogGroupID(value string) string {
 
 func catalogDetailHref(documentHref string, detailID domain.DetailID) string {
 	return documentHref + "?selected=" + url.QueryEscape(string(detailID)) + "#" + url.PathEscape(string(detailID))
+}
+
+func catalogSearchHref(mount, raw string) (string, error) {
+	parsed, err := url.Parse(raw)
+	if err != nil || parsed.IsAbs() || parsed.Host != "" || parsed.Path == "" || strings.HasPrefix(parsed.Path, "/") || strings.Contains(parsed.Path, `\`) {
+		return "", fmt.Errorf("catalog search href %q is invalid", raw)
+	}
+	cleaned := path.Clean(parsed.Path)
+	if cleaned == "." || cleaned == ".." || strings.HasPrefix(cleaned, "../") {
+		return "", fmt.Errorf("catalog search href %q escapes the mount", raw)
+	}
+	if strings.HasSuffix(parsed.Path, "/") {
+		cleaned += "/"
+	}
+	if !strings.HasPrefix(cleaned, "documents/") {
+		cleaned = "documents/" + cleaned
+	}
+	base, err := catalogURL(mount)
+	if err != nil {
+		return "", err
+	}
+	parsed.Path = strings.TrimSuffix(base, "/") + "/" + cleaned
+	return parsed.String(), nil
 }

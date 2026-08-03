@@ -46,8 +46,22 @@ type CatalogPageData struct {
 	Documents []CatalogDocumentOption
 	Groups []CatalogSidebarGroupData
 	Selected *catalog.DetailRecordV1
+	Search *CatalogSearchData
 	DownloadHref string
 	SearchHref string
+}
+
+type CatalogSearchData struct {
+	Query string
+	Results []CatalogSearchResultData
+	PostingsScanned uint64
+	SegmentsDecoded uint64
+	BytesDecoded uint64
+}
+
+type CatalogSearchResultData struct {
+	Record catalog.SearchRecordV1
+	Href string
 }
 
 templ CatalogPage(data CatalogPageData) {
@@ -66,7 +80,9 @@ templ CatalogPage(data CatalogPageData) {
 				MainAttrs: templpkg.Attributes{"data-manja-primary-scroll": "true"},
 			}) {
 				<div class="mx-auto flex min-h-full max-w-[100rem] flex-col">
-					if data.Document == nil {
+					if data.Search != nil {
+						@catalogSearch(data)
+					} else if data.Document == nil {
 						@catalogOverview(data)
 					} else {
 						@catalogDocument(data)
@@ -79,6 +95,51 @@ templ CatalogPage(data CatalogPageData) {
 			}
 		</div>
 	}
+}
+
+templ catalogSearch(data CatalogPageData) {
+	<main data-catalog-search="true" class="pb-16">
+		<div class="mb-8 border-b border-outline pb-8 dark:border-outline-dark">
+			<p class="mb-2 text-sm font-semibold uppercase tracking-wide text-primary dark:text-primary-dark">Global catalog search</p>
+			<h1 class="font-title text-4xl font-bold text-on-surface-strong dark:text-on-surface-dark-strong">Search { data.Directory.Title }</h1>
+			<form method="get" action={ data.SearchHref } class="mt-6 flex max-w-3xl gap-3">
+				<label for="catalog-search-query" class="sr-only">Search operations and schemas</label>
+				<input id="catalog-search-query" name="q" value={ data.Search.Query } maxlength="256" autofocus placeholder="Operation, path, schema, or canonical detail ID" class="min-h-12 min-w-0 flex-1 rounded-radius border border-outline bg-surface px-4 text-on-surface-strong dark:border-outline-dark dark:bg-surface-dark dark:text-on-surface-dark-strong"/>
+				<button type="submit" class="min-h-12 rounded-radius bg-primary px-5 font-semibold text-on-primary dark:bg-primary-dark dark:text-on-primary-dark">Search</button>
+			</form>
+		</div>
+		if data.Search.Query == "" {
+			<p class="text-on-surface-muted dark:text-on-surface-dark-muted">Search across every operation and semantically deduplicated schema without loading the full catalog into the page.</p>
+		} else {
+			<div class="mb-4 flex flex-wrap items-center justify-between gap-3">
+				<h2 class="font-title text-2xl font-bold text-on-surface-strong dark:text-on-surface-dark-strong">{ fmt.Sprintf("%d results", len(data.Search.Results)) }</h2>
+				<span class="font-mono text-xs text-on-surface-muted dark:text-on-surface-dark-muted">{ fmt.Sprintf("%d segments · %d postings · %d bytes", data.Search.SegmentsDecoded, data.Search.PostingsScanned, data.Search.BytesDecoded) }</span>
+			</div>
+			if len(data.Search.Results) == 0 {
+				<p class="rounded-radius border border-outline p-5 text-on-surface-muted dark:border-outline-dark dark:text-on-surface-dark-muted">No matching operations or schemas.</p>
+			} else {
+				<div class="space-y-3" id="catalog-search-results">
+					for _, result := range data.Search.Results {
+						<a href={ templpkg.URL(result.Href) } class="block rounded-radius border border-outline bg-surface p-5 transition hover:border-primary hover:bg-surface-alt dark:border-outline-dark dark:bg-surface-dark dark:hover:border-primary-dark dark:hover:bg-surface-dark-alt">
+							<div class="flex flex-wrap items-center gap-2">
+								if result.Record.Method != "" {
+									@badge.Badge(badge.Config{Label: result.Record.Method, Tone: catalogMethodTone(result.Record.Method), Appearance: badge.AppearanceSoft, Size: badge.SizeSM})
+								}
+								<span class="text-xs font-semibold uppercase tracking-wide text-on-surface-muted dark:text-on-surface-dark-muted">{ result.Record.Kind } · { result.Record.DocumentKey }</span>
+							</div>
+							<h3 class="mt-2 font-title text-xl font-bold text-on-surface-strong dark:text-on-surface-dark-strong">{ result.Record.Title }</h3>
+							if result.Record.Path != "" {
+								<code class="mt-2 block break-all text-sm text-on-surface-muted dark:text-on-surface-dark-muted">{ result.Record.Path }</code>
+							}
+							if result.Record.Description != "" {
+								<p class="mt-2 text-sm text-on-surface-muted dark:text-on-surface-dark-muted">{ result.Record.Description }</p>
+							}
+						</a>
+					}
+				</div>
+			}
+		}
+	</main>
 }
 
 templ catalogHeader(data CatalogPageData) {

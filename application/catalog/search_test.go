@@ -43,6 +43,50 @@ func TestSearchFindsExactKeysBeforeTokenRanking(t *testing.T) {
 	}
 }
 
+func TestRuntimeSearchLoadsVerifiedChildrenThroughBoundedCache(t *testing.T) {
+	t.Parallel()
+
+	_, snapshot := compiledSearchFixture(t)
+	children := make(map[string]ChildArtifact, len(snapshot.Children))
+	manifest := ManifestV1{SchemaVersion: 1, SnapshotID: snapshot.ID}
+	var directory SearchDirectoryV1
+	for _, child := range snapshot.Children {
+		children[child.Path] = child
+		manifest.Children = append(manifest.Children, ChildIdentityV1{Path: child.Path, Kind: child.Kind, Length: child.Length, SHA256: child.SHA256})
+		if child.Path == snapshot.Directory.SearchChild {
+			if err := json.Unmarshal(child.Bytes, &directory); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	runtimeSnapshot := RuntimeSnapshot{ID: snapshot.ID, Directory: snapshot.Directory, Search: directory, Manifest: manifest}
+	cache := NewSearchCache()
+	loads := 0
+	service, err := NewRuntimeSearchService(runtimeSnapshot, cache, func(_ context.Context, path string) ([]byte, ChildIdentityV1, error) {
+		loads++
+		child, ok := children[path]
+		if !ok {
+			return nil, ChildIdentityV1{}, fmt.Errorf("missing %s", path)
+		}
+		return append([]byte(nil), child.Bytes...), ChildIdentityV1{Path: child.Path, Kind: child.Kind, Length: child.Length, SHA256: child.SHA256}, nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	query := snapshot.Directory.Documents[0].Operations[0].OperationID
+	first, err := service.Search(context.Background(), snapshot.ID, query)
+	if err != nil || len(first.Results) == 0 || loads == 0 {
+		t.Fatalf("runtime search = %#v loads=%d err=%v", first, loads, err)
+	}
+	firstLoads := loads
+	if _, err := service.Search(context.Background(), snapshot.ID, query); err != nil {
+		t.Fatal(err)
+	}
+	if loads != firstLoads || cache.Stats().Hits == 0 {
+		t.Fatalf("cache reuse loads=%d/%d stats=%#v", firstLoads, loads, cache.Stats())
+	}
+}
+
 func TestSearchExactLookupRunsBeforeTokenCountLimit(t *testing.T) {
 	t.Parallel()
 

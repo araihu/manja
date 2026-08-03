@@ -34,7 +34,10 @@ func TestCatalogRouteMatrixForRootAndNestedMounts(t *testing.T) {
 				{http.MethodGet, base, http.StatusOK},
 				{http.MethodHead, base, http.StatusOK},
 				{http.MethodGet, base + "core-v1/", http.StatusOK},
+				{http.MethodGet, base + "documents/core-v1/", http.StatusOK},
 				{http.MethodGet, base + "core-v1/?selected=detail-sha256-" + strings.Repeat("a", 64), http.StatusOK},
+				{http.MethodGet, base + "search", http.StatusOK},
+				{http.MethodGet, base + "search?q=listCoreV1Pod", http.StatusOK},
 				{http.MethodGet, base + "missing/", http.StatusNotFound},
 				{http.MethodPost, base, http.StatusMethodNotAllowed},
 			} {
@@ -56,6 +59,23 @@ func TestCatalogRouteMatrixForRootAndNestedMounts(t *testing.T) {
 			}
 			_ = snapshot
 		})
+	}
+}
+
+func TestCatalogSearchRendersMountAwareResultsAndBoundsFailures(t *testing.T) {
+	t.Parallel()
+
+	handler, _ := catalogHandlerFixture(t, "/kubernetes")
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/kubernetes/search?q=listCoreV1Pod", nil))
+	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), "List Pods") || !strings.Contains(response.Body.String(), `/kubernetes/documents/core-v1/?selected=`) {
+		t.Fatalf("search response = %d %q", response.Code, response.Body.String())
+	}
+
+	invalid := httptest.NewRecorder()
+	handler.ServeHTTP(invalid, httptest.NewRequest(http.MethodGet, "/kubernetes/search?q="+strings.Repeat("x", 257), nil))
+	if invalid.Code != http.StatusBadRequest || invalid.Body.Len() > 1024 {
+		t.Fatalf("invalid search = %d bytes=%d", invalid.Code, invalid.Body.Len())
 	}
 }
 
@@ -138,6 +158,10 @@ func catalogHandlerFixture(t *testing.T, mount string) (http.Handler, catalog.Ru
 			Operations: []catalog.OperationDirectoryV1{{DetailID: detailID, OperationID: "listCoreV1Pod", Method: "GET", Path: "/api/v1/pods", Title: "List Pods", Href: "core-v1/?selected=" + string(detailID) + "#" + string(detailID), DetailChild: "details/core.json"}},
 		}},
 	}
+	search, err := catalog.BuildSearchArtifacts(directory, catalog.DefaultBounds())
+	if err != nil {
+		t.Fatal(err)
+	}
 	catalogBytes, err := catalogjson.EncodeCatalog(directory)
 	if err != nil {
 		t.Fatal(err)
@@ -150,6 +174,9 @@ func catalogHandlerFixture(t *testing.T, mount string) (http.Handler, catalog.Ru
 		t.Fatal(err)
 	}
 	children := memoryCatalogChildren{"catalog.json": catalogBytes, "sources/core-v1.json": sourceBytes, "details/core.json": detailBytes}
+	for _, child := range search.Children {
+		children[child.Path] = child.Bytes
+	}
 	manifestChildren := make([]catalog.ChildIdentityV1, 0, len(children))
 	for path, data := range children {
 		digest := sha256.Sum256(data)
@@ -158,12 +185,19 @@ func catalogHandlerFixture(t *testing.T, mount string) (http.Handler, catalog.Ru
 			kind = "catalog"
 		} else if strings.HasPrefix(path, "details/") {
 			kind = "detail"
+		} else {
+			for _, child := range search.Children {
+				if child.Path == path {
+					kind = child.Kind
+					break
+				}
+			}
 		}
 		manifestChildren = append(manifestChildren, catalog.ChildIdentityV1{Path: path, Kind: kind, Length: uint64(len(data)), SHA256: hex.EncodeToString(digest[:])})
 	}
 	snapshot := catalog.RuntimeSnapshot{
 		ID: "snapshot-sha256-" + catalog.SnapshotID(strings.Repeat("b", 64)), Location: "/memory",
-		Directory: directory, Search: catalog.SearchDirectoryV1{SchemaVersion: 1, SearchVersion: 1},
+		Directory: directory, Search: search.Directory,
 		Manifest: catalog.ManifestV1{SchemaVersion: 1, Children: manifestChildren},
 	}
 	runtime := catalog.NewRuntime(1)

@@ -24,10 +24,11 @@ type CatalogHandler struct {
 	runtime  *catalog.Runtime
 	children catalogChildReader
 	details  *catalog.ByteCache
+	search   *catalog.ByteCache
 }
 
 func NewCatalogHandler(runtime *catalog.Runtime, children catalogChildReader) http.Handler {
-	return &CatalogHandler{runtime: runtime, children: children, details: catalog.NewDetailCache()}
+	return &CatalogHandler{runtime: runtime, children: children, details: catalog.NewDetailCache(), search: catalog.NewSearchCache()}
 }
 
 func (handler *CatalogHandler) ServeHTTP(response http.ResponseWriter, request *http.Request) {
@@ -96,7 +97,7 @@ func (handler *CatalogHandler) serveAdmitted(response http.ResponseWriter, reque
 	switch {
 	case relative == "":
 		if document := request.URL.Query().Get("document"); document != "" {
-			target, err := catalogURL(mount, document)
+			target, err := catalogURL(mount, "documents", document)
 			if err != nil || !catalogDocumentExists(snapshot.Directory, document) {
 				http.NotFound(response, request)
 				return
@@ -107,6 +108,16 @@ func (handler *CatalogHandler) serveAdmitted(response http.ResponseWriter, reque
 		handler.serveOverview(response, request, snapshot, mount)
 	case relative == "catalog.json":
 		handler.redirectStable(response, request, snapshot, mount, "catalog.json")
+	case relative == "search":
+		handler.serveSearch(response, request, snapshot, mount)
+	case strings.HasPrefix(relative, "documents/"):
+		documentPath := strings.TrimPrefix(relative, "documents/")
+		key := strings.TrimSuffix(documentPath, "/")
+		if key == "" || strings.Contains(key, "/") {
+			http.NotFound(response, request)
+			return
+		}
+		handler.serveDocument(response, request, snapshot, mount, key)
 	case strings.HasPrefix(relative, "openapi/"):
 		handler.serveStableSource(response, request, snapshot, mount, strings.TrimPrefix(relative, "openapi/"))
 	case strings.HasPrefix(relative, "snapshots/"):
@@ -123,6 +134,53 @@ func (handler *CatalogHandler) serveAdmitted(response http.ResponseWriter, reque
 	default:
 		http.NotFound(response, request)
 	}
+}
+
+func (handler *CatalogHandler) serveSearch(response http.ResponseWriter, request *http.Request, snapshot catalog.RuntimeSnapshot, mount string) {
+	data, err := handler.catalogPageData(request.Context(), snapshot, mount, "", "", "")
+	if err != nil {
+		http.Error(response, "catalog temporarily unavailable", http.StatusServiceUnavailable)
+		return
+	}
+	query := request.URL.Query().Get("q")
+	data.Search = &templates.CatalogSearchData{Query: query}
+	if query != "" {
+		service, err := catalog.NewRuntimeSearchService(snapshot, handler.search, func(ctx context.Context, childPath string) ([]byte, catalog.ChildIdentityV1, error) {
+			data, identity, err := handler.children.ReadChild(ctx, snapshot, childPath)
+			return data, identity, err
+		})
+		if err == nil {
+			var result catalog.SearchResult
+			result, err = service.Search(request.Context(), snapshot.ID, query)
+			if err == nil {
+				data.Search.Query = result.Query
+				data.Search.PostingsScanned = result.PostingsScanned
+				data.Search.SegmentsDecoded = result.SegmentsDecoded
+				data.Search.BytesDecoded = result.BytesDecoded
+				for _, record := range result.Results {
+					href, hrefErr := catalogSearchHref(mount, record.Href)
+					if hrefErr != nil {
+						err = hrefErr
+						break
+					}
+					data.Search.Results = append(data.Search.Results, templates.CatalogSearchResultData{Record: record, Href: href})
+				}
+			}
+		}
+		if err != nil {
+			switch {
+			case errors.Is(err, catalog.ErrInvalidQuery), errors.Is(err, catalog.ErrQueryTooBroad):
+				http.Error(response, "invalid or overly broad search query", http.StatusBadRequest)
+			case errors.Is(err, catalog.ErrSearchDeadline):
+				response.Header().Set("Retry-After", "1")
+				http.Error(response, "search temporarily unavailable", http.StatusServiceUnavailable)
+			default:
+				http.Error(response, "search temporarily unavailable", http.StatusServiceUnavailable)
+			}
+			return
+		}
+	}
+	handler.renderCatalogPage(response, request, data)
 }
 
 func (handler *CatalogHandler) serveOverview(response http.ResponseWriter, request *http.Request, snapshot catalog.RuntimeSnapshot, mount string) {
