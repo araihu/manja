@@ -11,8 +11,11 @@ import (
 )
 
 var (
-	ErrChildLengthMismatch = errors.New("catalog: child length mismatch")
-	ErrChildDigestMismatch = errors.New("catalog: child digest mismatch")
+	ErrChildLengthMismatch        = errors.New("catalog: child length mismatch")
+	ErrChildDigestMismatch        = errors.New("catalog: child digest mismatch")
+	ErrChildDecodedWeightExceeded = errors.New("catalog: child decoded weight exceeds reservation")
+	ErrCacheFlightTooLarge        = errors.New("catalog: cache flight reservation exceeds limit")
+	ErrCacheFlightPanic           = errors.New("catalog: cache flight panicked")
 )
 
 type CacheKey struct {
@@ -23,14 +26,18 @@ type CacheKey struct {
 type CacheLimits struct {
 	Entries uint64
 	Bytes   uint64
+	// FlightEntries and FlightBytes bound work admitted before loaders run.
+	// Zero values inherit Entries and Bytes respectively.
+	FlightEntries uint64
+	FlightBytes   uint64
 }
 
 func NewDetailCache() *ByteCache {
-	return NewByteCache(CacheLimits{Entries: 128, Bytes: 64 << 20})
+	return NewByteCache(CacheLimits{Entries: 128, Bytes: 64 << 20, FlightEntries: 8, FlightBytes: 64 << 20})
 }
 
 func NewSearchCache() *ByteCache {
-	return NewByteCache(CacheLimits{Entries: 64, Bytes: 8 << 20})
+	return NewByteCache(CacheLimits{Entries: 64, Bytes: 8 << 20, FlightEntries: 8, FlightBytes: 8 << 20})
 }
 
 // DecodedWeightV1 conservatively counts retained string payloads, slice
@@ -43,28 +50,37 @@ func DecodedWeightV1(stringBytes, sliceCapacityBytes, fixedDTOBytes uint64) (uin
 }
 
 type CacheStats struct {
-	Entries  uint64
-	Bytes    uint64
-	Hits     uint64
-	Misses   uint64
-	Bypassed uint64
-	Waiters  uint64
+	Entries             uint64
+	Bytes               uint64
+	Hits                uint64
+	Misses              uint64
+	Bypassed            uint64
+	Waiters             uint64
+	InFlightEntries     uint64
+	InFlightBytes       uint64
+	PeakInFlightEntries uint64
+	PeakInFlightBytes   uint64
 }
 
 type ChildLoader func(context.Context) ([]byte, error)
 type ChildDecoder func([]byte) (value any, decodedWeight uint64, err error)
 
 type ByteCache struct {
-	mutex   sync.Mutex
-	limits  CacheLimits
-	entries map[CacheKey]*list.Element
-	lru     list.List
-	flights map[CacheKey]*cacheFlight
-	bytes   uint64
-	hits    uint64
-	misses  uint64
-	bypass  uint64
-	waiters uint64
+	mutex             sync.Mutex
+	limits            CacheLimits
+	entries           map[CacheKey]*list.Element
+	lru               list.List
+	flights           map[CacheKey]*cacheFlight
+	bytes             uint64
+	hits              uint64
+	misses            uint64
+	bypass            uint64
+	waiters           uint64
+	flightEntries     uint64
+	flightBytes       uint64
+	peakFlightEntries uint64
+	peakFlightBytes   uint64
+	capacityChanged   chan struct{}
 }
 
 type cacheEntry struct {
@@ -74,51 +90,99 @@ type cacheEntry struct {
 }
 
 type cacheFlight struct {
-	done    chan struct{}
-	cancel  context.CancelFunc
-	waiters uint64
-	value   any
-	err     error
+	done        chan struct{}
+	cancel      context.CancelFunc
+	waiters     uint64
+	reservation uint64
+	value       any
+	err         error
 }
 
 func NewByteCache(limits CacheLimits) *ByteCache {
-	return &ByteCache{limits: limits, entries: make(map[CacheKey]*list.Element), flights: make(map[CacheKey]*cacheFlight)}
+	if limits.FlightEntries == 0 {
+		limits.FlightEntries = limits.Entries
+	}
+	if limits.FlightBytes == 0 {
+		limits.FlightBytes = limits.Bytes
+	}
+	return &ByteCache{
+		limits: limits, entries: make(map[CacheKey]*list.Element), flights: make(map[CacheKey]*cacheFlight),
+		capacityChanged: make(chan struct{}),
+	}
 }
 
-func (cache *ByteCache) Load(ctx context.Context, key CacheKey, expectedLength uint64, loader ChildLoader, decoder ChildDecoder) (any, error) {
+// Load reserves expectedLength plus maximumDecodedWeight before starting a
+// distinct-key flight. maximumDecodedWeight must conservatively bound the
+// decoder's returned retained weight; exceeding it fails the flight.
+func (cache *ByteCache) Load(ctx context.Context, key CacheKey, expectedLength, maximumDecodedWeight uint64, loader ChildLoader, decoder ChildDecoder) (any, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
 	if key.SnapshotID == "" || expectedLength == 0 || loader == nil || decoder == nil {
 		return nil, fmt.Errorf("catalog: cache load contract is incomplete")
 	}
-	cache.mutex.Lock()
-	if element, exists := cache.entries[key]; exists {
-		cache.hits++
-		cache.lru.MoveToFront(element)
-		value := element.Value.(*cacheEntry).value
+	if maximumDecodedWeight > math.MaxUint64-expectedLength {
+		return nil, fmt.Errorf("catalog: cache flight reservation overflow")
+	}
+	reservation := expectedLength + maximumDecodedWeight
+	missRecorded := false
+	for {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		cache.mutex.Lock()
+		if element, exists := cache.entries[key]; exists {
+			cache.hits++
+			cache.lru.MoveToFront(element)
+			value := element.Value.(*cacheEntry).value
+			cache.mutex.Unlock()
+			return value, nil
+		}
+		if !missRecorded {
+			cache.misses++
+			missRecorded = true
+		}
+		flight, exists := cache.flights[key]
+		if !exists {
+			if reservation > cache.limits.FlightBytes || cache.limits.FlightEntries == 0 || cache.limits.FlightBytes == 0 {
+				cache.mutex.Unlock()
+				return nil, fmt.Errorf("%w: %d bytes, limits %d entries and %d bytes", ErrCacheFlightTooLarge, reservation, cache.limits.FlightEntries, cache.limits.FlightBytes)
+			}
+			if cache.flightEntries >= cache.limits.FlightEntries || cache.flightBytes > cache.limits.FlightBytes-reservation {
+				changed := cache.capacityChanged
+				cache.mutex.Unlock()
+				select {
+				case <-ctx.Done():
+					return nil, ctx.Err()
+				case <-changed:
+					continue
+				}
+			}
+			flightContext, cancel := context.WithCancel(context.Background())
+			flight = &cacheFlight{done: make(chan struct{}), cancel: cancel, reservation: reservation}
+			cache.flights[key] = flight
+			cache.flightEntries++
+			cache.flightBytes += reservation
+			if cache.flightEntries > cache.peakFlightEntries {
+				cache.peakFlightEntries = cache.flightEntries
+			}
+			if cache.flightBytes > cache.peakFlightBytes {
+				cache.peakFlightBytes = cache.flightBytes
+			}
+			go cache.execute(flightContext, key, expectedLength, maximumDecodedWeight, loader, decoder, flight)
+		}
+		flight.waiters++
+		cache.waiters++
 		cache.mutex.Unlock()
-		return value, nil
-	}
-	cache.misses++
-	flight, exists := cache.flights[key]
-	if !exists {
-		flightContext, cancel := context.WithCancel(context.Background())
-		flight = &cacheFlight{done: make(chan struct{}), cancel: cancel}
-		cache.flights[key] = flight
-		go cache.execute(flightContext, key, expectedLength, loader, decoder, flight)
-	}
-	flight.waiters++
-	cache.waiters++
-	cache.mutex.Unlock()
 
-	select {
-	case <-ctx.Done():
-		cache.releaseWaiter(key, flight)
-		return nil, ctx.Err()
-	case <-flight.done:
-		cache.releaseWaiter(key, flight)
-		return flight.value, flight.err
+		select {
+		case <-ctx.Done():
+			cache.releaseWaiter(key, flight)
+			return nil, ctx.Err()
+		case <-flight.done:
+			cache.releaseWaiter(key, flight)
+			return flight.value, flight.err
+		}
 	}
 }
 
@@ -126,13 +190,23 @@ func (cache *ByteCache) execute(
 	ctx context.Context,
 	key CacheKey,
 	expectedLength uint64,
+	maximumDecodedWeight uint64,
 	loader ChildLoader,
 	decoder ChildDecoder,
 	flight *cacheFlight,
 ) {
-	data, err := loader(ctx)
 	var value any
 	var weight uint64
+	var err error
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			value = nil
+			err = fmt.Errorf("%w: %v", ErrCacheFlightPanic, recovered)
+		}
+		cache.complete(key, flight, value, weight, err)
+	}()
+
+	data, err := loader(ctx)
 	if err == nil && uint64(len(data)) != expectedLength {
 		err = fmt.Errorf("%w: got %d, want %d", ErrChildLengthMismatch, len(data), expectedLength)
 	}
@@ -146,20 +220,31 @@ func (cache *ByteCache) execute(
 		var decodedWeight uint64
 		value, decodedWeight, err = decoder(data)
 		if err == nil {
-			if decodedWeight > math.MaxUint64-uint64(len(data)) {
+			if decodedWeight > maximumDecodedWeight {
+				err = fmt.Errorf("%w: got %d, reserved %d", ErrChildDecodedWeightExceeded, decodedWeight, maximumDecodedWeight)
+			} else if decodedWeight > math.MaxUint64-uint64(len(data)) {
 				err = fmt.Errorf("catalog: decoded cache weight overflow")
 			} else {
 				weight = uint64(len(data)) + decodedWeight
 			}
 		}
 	}
+}
 
+func (cache *ByteCache) complete(key CacheKey, flight *cacheFlight, value any, weight uint64, err error) {
+	if err != nil {
+		value = nil
+		weight = 0
+	}
 	cache.mutex.Lock()
 	current, ownsFlight := cache.flights[key]
 	ownsFlight = ownsFlight && current == flight
 	if ownsFlight {
 		delete(cache.flights, key)
 	}
+	cache.flightEntries--
+	cache.flightBytes -= flight.reservation
+	cache.signalCapacityChanged()
 	if err == nil && ownsFlight {
 		if weight > cache.limits.Bytes || cache.limits.Entries == 0 || cache.limits.Bytes == 0 {
 			cache.bypass++
@@ -172,6 +257,11 @@ func (cache *ByteCache) execute(
 	flight.cancel()
 	close(flight.done)
 	cache.mutex.Unlock()
+}
+
+func (cache *ByteCache) signalCapacityChanged() {
+	close(cache.capacityChanged)
+	cache.capacityChanged = make(chan struct{})
 }
 
 func (cache *ByteCache) admit(entry *cacheEntry) {
@@ -241,5 +331,7 @@ func (cache *ByteCache) Stats() CacheStats {
 	return CacheStats{
 		Entries: uint64(len(cache.entries)), Bytes: cache.bytes, Hits: cache.hits,
 		Misses: cache.misses, Bypassed: cache.bypass, Waiters: cache.waiters,
+		InFlightEntries: cache.flightEntries, InFlightBytes: cache.flightBytes,
+		PeakInFlightEntries: cache.peakFlightEntries, PeakInFlightBytes: cache.peakFlightBytes,
 	}
 }

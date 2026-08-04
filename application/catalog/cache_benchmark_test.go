@@ -22,7 +22,7 @@ func BenchmarkCatalogCache(b *testing.B) {
 	b.ResetTimer()
 	for index := 0; index < b.N; index++ {
 		selected := index % len(values)
-		_, err := cache.Load(context.Background(), keys[selected], uint64(len(values[selected])), func(context.Context) ([]byte, error) {
+		_, err := cache.Load(context.Background(), keys[selected], uint64(len(values[selected])), uint64(len(values[selected])), func(context.Context) ([]byte, error) {
 			return values[selected], nil
 		}, decoder)
 		if err != nil {

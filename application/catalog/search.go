@@ -86,7 +86,7 @@ func NewRuntimeSearchService(snapshot RuntimeSnapshot, cache *ByteCache, loader 
 		}
 		var digestKey [sha256.Size]byte
 		copy(digestKey[:], digestBytes)
-		value, err := cache.Load(ctx, CacheKey{SnapshotID: snapshot.ID, Digest: digestKey}, length,
+		value, err := cache.Load(ctx, CacheKey{SnapshotID: snapshot.ID, Digest: digestKey}, length, 128,
 			func(loadContext context.Context) ([]byte, error) {
 				data, identity, err := loader(loadContext, pathValue)
 				if err != nil {

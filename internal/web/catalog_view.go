@@ -292,7 +292,11 @@ func (handler *CatalogHandler) loadCatalogSchemaNode(
 	}
 	var digest [sha256.Size]byte
 	copy(digest[:], digestBytes)
-	value, err := handler.details.Load(ctx, catalog.CacheKey{SnapshotID: snapshot.ID, Digest: digest}, reference.Length,
+	maximumDecodedWeight, err := catalog.DecodedWeightV1(reference.Length*2, uint64(reference.Records)*2*256, uint64(reference.Records)*256)
+	if err != nil {
+		return projection.SchemaNode{}, catalog.SchemaNodeShardV1{}, err
+	}
+	value, err := handler.details.Load(ctx, catalog.CacheKey{SnapshotID: snapshot.ID, Digest: digest}, reference.Length, maximumDecodedWeight,
 		func(loadContext context.Context) ([]byte, error) {
 			data, loadedIdentity, err := handler.children.ReadChild(loadContext, snapshot, reference.Path)
 			if err != nil {
@@ -412,7 +416,12 @@ func (handler *CatalogHandler) loadCatalogDetail(ctx context.Context, snapshot c
 	}
 	var digest [sha256.Size]byte
 	copy(digest[:], digestBytes)
-	value, err := handler.details.Load(ctx, catalog.CacheKey{SnapshotID: snapshot.ID, Digest: digest}, identity.Length,
+	bounds := catalog.DefaultBounds()
+	maximumDecodedWeight, err := catalog.DecodedWeightV1(identity.Length*2, bounds.DetailShardRecords*2*64, bounds.DetailShardRecords*128)
+	if err != nil {
+		return catalog.DetailRecordV1{}, err
+	}
+	value, err := handler.details.Load(ctx, catalog.CacheKey{SnapshotID: snapshot.ID, Digest: digest}, identity.Length, maximumDecodedWeight,
 		func(ctx context.Context) ([]byte, error) {
 			data, _, err := handler.children.ReadChild(ctx, snapshot, childPath)
 			return data, err
@@ -421,6 +430,9 @@ func (handler *CatalogHandler) loadCatalogDetail(ctx context.Context, snapshot c
 			shard, err := catalogjson.DecodeDetailShard(data)
 			if err != nil {
 				return nil, 0, err
+			}
+			if uint64(len(shard.Records)) > bounds.DetailShardRecords {
+				return nil, 0, fmt.Errorf("catalog detail shard %q has %d records, limit %d", childPath, len(shard.Records), bounds.DetailShardRecords)
 			}
 			weight, err := catalog.DecodedWeightV1(uint64(len(data))*2, uint64(cap(shard.Records))*64, uint64(len(shard.Records))*128)
 			return shard, weight, err
