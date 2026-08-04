@@ -7,7 +7,7 @@ require github.com/araihu/manja v0.0.0
 require (
 	github.com/a-h/templ v0.3.1020 // indirect
 	github.com/alecthomas/chroma/v2 v2.24.1 // indirect
-	github.com/araihu/goshtoso v0.1.4 // indirect
+	github.com/araihu/goshtoso v0.1.7 // indirect
 	github.com/dlclark/regexp2 v1.12.0 // indirect
 	github.com/getkin/kin-openapi v0.140.0 // indirect
 	github.com/go-openapi/jsonpointer v0.22.5 // indirect
@@ -19,6 +19,7 @@ require (
 	github.com/yuin/goldmark v1.8.2 // indirect
 	golang.org/x/sys v0.42.0 // indirect
 	golang.org/x/text v0.34.0 // indirect
+	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
 
 replace github.com/araihu/manja => ..

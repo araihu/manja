@@ -109,3 +109,16 @@ func TestOptionsFromArgsBuildsGitSourceOptions(t *testing.T) {
 		t.Fatalf("path opts = %#v", opts)
 	}
 }
+
+func TestConfigFromArgsSelectsRendererOnlyConfig(t *testing.T) {
+	cfg, err := configFromArgs([]string{
+		"-renderer-config", "configs/renderer.yaml",
+		"-data-dir", "/tmp/manja-renderer",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.RendererConfig != "configs/renderer.yaml" || cfg.Options.DataDir != "/tmp/manja-renderer" {
+		t.Fatalf("renderer config = %#v", cfg)
+	}
+}

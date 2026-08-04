@@ -2,8 +2,12 @@ package source
 
 import (
 	"context"
+	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
+	"io"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -163,6 +167,178 @@ func TestGitSourceFetchesSpecFromLocalBareRepositoryRefs(t *testing.T) {
 			}
 			if rev.Ref != tt.ref || rev.CommitSHA != tt.wantCommit || rev.ID == "" {
 				t.Fatalf("revision = %#v, want commit %q", rev, tt.wantCommit)
+			}
+		})
+	}
+}
+
+func TestGitSourceRemoteFetchUsesBoundedExactRefAcquisition(t *testing.T) {
+	worktree := initGitRepo(t)
+	writeGitFile(t, worktree, "docs/openapi.yaml", "openapi: 3.1.0\ninfo:\n  title: Remote API\n  version: v1\npaths: {}\n")
+	writeGitFile(t, worktree, "unrelated.txt", strings.Repeat("x", 9<<20))
+	bare := filepath.Join(t.TempDir(), "repo.git")
+	git(t, worktree, "clone", "--bare", ".", bare)
+	git(t, bare, "config", "uploadpack.allowFilter", "true")
+
+	realGit, err := exec.LookPath("git")
+	if err != nil {
+		t.Fatal(err)
+	}
+	shimDirectory := t.TempDir()
+	logPath := filepath.Join(shimDirectory, "invocations.log")
+	shim := "#!/bin/sh\nprintf 'no-lazy=%s args=%s\\n' \"$GIT_NO_LAZY_FETCH\" \"$*\" >> \"$MANJA_GIT_INVOCATIONS\"\nexec \"$MANJA_REAL_GIT\" \"$@\"\n"
+	if err := os.WriteFile(filepath.Join(shimDirectory, "git"), []byte(shim), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("MANJA_REAL_GIT", realGit)
+	t.Setenv("MANJA_GIT_INVOCATIONS", logPath)
+	t.Setenv("PATH", shimDirectory+string(os.PathListSeparator)+os.Getenv("PATH"))
+
+	spec, _, err := (Git{
+		Repo: (&url.URL{Scheme: "file", Path: bare}).String(), Ref: "main", Path: "docs/openapi.yaml",
+	}).Fetch(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(spec.Bytes), "Remote API") {
+		t.Fatalf("remote spec = %q", spec.Bytes)
+	}
+	invocations, err := os.ReadFile(logPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	log := string(invocations)
+	if strings.Contains(log, " clone ") || !strings.Contains(log, "fetch --quiet --depth=1 --filter=blob:limit=8388609 --no-tags") {
+		t.Fatalf("remote fetch acquisition was not shallow, filtered, and exact-ref:\n%s", log)
+	}
+	for _, invocation := range strings.Split(log, "\n") {
+		if strings.Contains(invocation, "cat-file") && !strings.HasPrefix(invocation, "no-lazy=1 ") {
+			t.Fatalf("remote spec object access allowed lazy fetch: %q", invocation)
+		}
+	}
+}
+
+func TestGitSourceRemoteFetchRejectsOversizedSelectedBlobBeforeRead(t *testing.T) {
+	worktree := initGitRepo(t)
+	writeGitFile(t, worktree, "docs/openapi.yaml", strings.Repeat("x", (8<<20)+1))
+	bare := filepath.Join(t.TempDir(), "repo.git")
+	git(t, worktree, "clone", "--bare", ".", bare)
+	git(t, bare, "config", "uploadpack.allowFilter", "true")
+
+	realGit, err := exec.LookPath("git")
+	if err != nil {
+		t.Fatal(err)
+	}
+	shimDirectory := t.TempDir()
+	logPath := filepath.Join(shimDirectory, "invocations.log")
+	shim := "#!/bin/sh\nprintf 'no-lazy=%s args=%s\\n' \"$GIT_NO_LAZY_FETCH\" \"$*\" >> \"$MANJA_GIT_INVOCATIONS\"\nexec \"$MANJA_REAL_GIT\" \"$@\"\n"
+	if err := os.WriteFile(filepath.Join(shimDirectory, "git"), []byte(shim), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("MANJA_REAL_GIT", realGit)
+	t.Setenv("MANJA_GIT_INVOCATIONS", logPath)
+	t.Setenv("PATH", shimDirectory+string(os.PathListSeparator)+os.Getenv("PATH"))
+
+	remote := (&url.URL{Scheme: "file", Path: bare}).String()
+	_, _, err = (Git{Repo: remote, Ref: "main", Path: "docs/openapi.yaml"}).Fetch(context.Background())
+	if err == nil || !strings.Contains(err.Error(), "exceeds 8388608 bytes") {
+		t.Fatalf("oversized remote spec error = %v", err)
+	}
+	invocations, readErr := os.ReadFile(logPath)
+	if readErr != nil {
+		t.Fatal(readErr)
+	}
+	log := string(invocations)
+	if !strings.Contains(log, "no-lazy=1 args=-C") || !strings.Contains(log, "cat-file -s") || strings.Contains(log, "cat-file blob") {
+		t.Fatalf("oversized selected blob access was not bounded and no-lazy:\n%s", log)
+	}
+}
+
+func TestGitSourceRemoteDiscoveryUsesBoundedMetadataAcquisition(t *testing.T) {
+	worktree := initGitRepo(t)
+	writeGitFile(t, worktree, "docs/openapi.yaml", "openapi: 3.1.0\ninfo:\n  title: Main API\n  version: v1\npaths: {}\n")
+	git(t, worktree, "checkout", "-b", "feature/discovery")
+	writeGitFile(t, worktree, "docs/openapi.yaml", "openapi: 3.1.0\ninfo:\n  title: Feature API\n  version: v2\npaths: {}\n")
+	bare := filepath.Join(t.TempDir(), "repo.git")
+	git(t, worktree, "clone", "--bare", ".", bare)
+	git(t, bare, "config", "uploadpack.allowFilter", "true")
+
+	realGit, err := exec.LookPath("git")
+	if err != nil {
+		t.Fatal(err)
+	}
+	shimDirectory := t.TempDir()
+	logPath := filepath.Join(shimDirectory, "invocations.log")
+	shim := "#!/bin/sh\nprintf '%s\\n' \"$*\" >> \"$MANJA_GIT_INVOCATIONS\"\nexec \"$MANJA_REAL_GIT\" \"$@\"\n"
+	if err := os.WriteFile(filepath.Join(shimDirectory, "git"), []byte(shim), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("MANJA_REAL_GIT", realGit)
+	t.Setenv("MANJA_GIT_INVOCATIONS", logPath)
+	t.Setenv("PATH", shimDirectory+string(os.PathListSeparator)+os.Getenv("PATH"))
+
+	candidates, err := (Git{Repo: (&url.URL{Scheme: "file", Path: bare}).String(), Path: "docs/openapi.yaml"}).Discover(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(candidates) != 2 {
+		t.Fatalf("remote candidates = %#v", candidates)
+	}
+	invocations, err := os.ReadFile(logPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	log := string(invocations)
+	if strings.Contains(log, " clone ") || !strings.Contains(log, "fetch --quiet --depth=1 --filter=blob:none --no-tags") {
+		t.Fatalf("remote discovery acquisition was not shallow and metadata-only:\n%s", log)
+	}
+}
+
+func TestGitSourceRemoteAcquisitionRejectsRepositoryPastDiskLimit(t *testing.T) {
+	worktree := initGitRepo(t)
+	writeGitFile(t, worktree, "docs/openapi.yaml", "openapi: 3.1.0\ninfo:\n  title: Bounded API\n  version: v1\npaths: {}\n")
+	oversizedPath := filepath.Join(worktree, "incompressible.bin")
+	file, err := os.OpenFile(oversizedPath, os.O_CREATE|os.O_WRONLY|os.O_EXCL, 0o600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := io.CopyN(file, rand.Reader, int64(maxGitRepositoryBytes+(8<<20))); err != nil {
+		_ = file.Close()
+		t.Fatal(err)
+	}
+	if err := file.Close(); err != nil {
+		t.Fatal(err)
+	}
+	git(t, worktree, "add", "incompressible.bin")
+	git(t, worktree, "commit", "-m", "oversized repository")
+	bare := filepath.Join(t.TempDir(), "repo.git")
+	git(t, worktree, "clone", "--bare", ".", bare)
+	git(t, bare, "config", "uploadpack.allowFilter", "false")
+	remote := (&url.URL{Scheme: "file", Path: bare}).String()
+
+	for name, run := range map[string]func() error{
+		"fetch": func() error {
+			_, _, err := (Git{Repo: remote, Ref: "main", Path: "docs/openapi.yaml"}).Fetch(context.Background())
+			return err
+		},
+		"discover": func() error {
+			_, err := (Git{Repo: remote, Path: "docs/openapi.yaml"}).Discover(context.Background())
+			return err
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			checkoutRoot := t.TempDir()
+			t.Setenv("TMPDIR", checkoutRoot)
+			err := run()
+			if !errors.Is(err, errGitRepositoryLimit) {
+				t.Fatalf("over-limit remote acquisition error = %v, want %v", err, errGitRepositoryLimit)
+			}
+			entries, readErr := os.ReadDir(checkoutRoot)
+			if readErr != nil {
+				t.Fatal(readErr)
+			}
+			if len(entries) != 0 {
+				t.Fatalf("failed acquisition retained checkout entries: %v", entries)
 			}
 		})
 	}

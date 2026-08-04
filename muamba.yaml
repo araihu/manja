@@ -372,3 +372,338 @@ resources:
         url: https://unpkg.com/openapi-sampler@${version}/LICENSE
         path: internal/webassets/vendor/openapi-sampler/${version}/LICENSE
         integrity: sha384-b6ApeabhkpX6p0J5u9mOPpfJ4oMQZIcW8aVvc4Hk+eV3YglpBx5ibQ1XvFV4o0x2
+  # BEGIN generated Kubernetes OpenAPI v3
+  kubernetes-openapi-v3:
+    version: "a818af18fe29d999d6741234c8cd72709ef2f424"
+    downloads:
+      well-known-openid-configuration:
+        url: https://raw.githubusercontent.com/kubernetes/kubernetes/a818af18fe29d999d6741234c8cd72709ef2f424/api/openapi-spec/v3/.well-known__openid-configuration_openapi.json
+        path: internal/renderer/testdata/kubernetes/specs/.well-known__openid-configuration_openapi.json
+        max_size: 4KiB
+        integrity: sha384-DpljXWFvpNMfeT1qn+/pIp4dyErfQUXfWqTKLbs333JAa61QMLg2vuhNRFfo5jsA
+      core-v1:
+        url: https://raw.githubusercontent.com/kubernetes/kubernetes/a818af18fe29d999d6741234c8cd72709ef2f424/api/openapi-spec/v3/api__v1_openapi.json
+        path: internal/renderer/testdata/kubernetes/specs/api__v1_openapi.json
+        max_size: 4MiB
+        integrity: sha384-iIhWkmiR+bS0reqI6CafyGG9AWGpRu7rvTSHblJ/IQ3LO6lkuRkh4NMeli9GLBIO
+      core-discovery:
+        url: https://raw.githubusercontent.com/kubernetes/kubernetes/a818af18fe29d999d6741234c8cd72709ef2f424/api/openapi-spec/v3/api_openapi.json
+        path: internal/renderer/testdata/kubernetes/specs/api_openapi.json
+        max_size: 16KiB
+        integrity: sha384-fypCHnB2Uk2TnKaWnB/pRb8fbFn0sgKqoPSpYxDR9stp4yUHnC7jh1sKFHfIEclD
+      admissionregistration-v1:
+        url: https://raw.githubusercontent.com/kubernetes/kubernetes/a818af18fe29d999d6741234c8cd72709ef2f424/api/openapi-spec/v3/apis__admissionregistration.k8s.io__v1_openapi.json
+        path: internal/renderer/testdata/kubernetes/specs/apis__admissionregistration.k8s.io__v1_openapi.json
+        max_size: 1MiB
+        integrity: sha384-ZQYBvAOCh13xh1eGw7GDiuAdkqECVfscgkRT9MR/2jlAA+Y7/W45pRWIxG9RlL3/
+      admissionregistration-v1alpha1:
+        url: https://raw.githubusercontent.com/kubernetes/kubernetes/a818af18fe29d999d6741234c8cd72709ef2f424/api/openapi-spec/v3/apis__admissionregistration.k8s.io__v1alpha1_openapi.json
+        path: internal/renderer/testdata/kubernetes/specs/apis__admissionregistration.k8s.io__v1alpha1_openapi.json
+        max_size: 256KiB
+        integrity: sha384-da0BdlePw6SX2VIUTw3SI7Iwk53s6FUpdv36a4OrY9GSc0npnTwsE5OFXwr4xb4J
+      admissionregistration-v1beta1:
+        url: https://raw.githubusercontent.com/kubernetes/kubernetes/a818af18fe29d999d6741234c8cd72709ef2f424/api/openapi-spec/v3/apis__admissionregistration.k8s.io__v1beta1_openapi.json
+        path: internal/renderer/testdata/kubernetes/specs/apis__admissionregistration.k8s.io__v1beta1_openapi.json
+        max_size: 256KiB
+        integrity: sha384-r4Nn8muwZ6aSqPohAqgtoNxSrNAjUU8v3uAer+KSW+lgkVoP3YfXEyc3bYfJn9TE
+      admissionregistration-discovery:
+        url: https://raw.githubusercontent.com/kubernetes/kubernetes/a818af18fe29d999d6741234c8cd72709ef2f424/api/openapi-spec/v3/apis__admissionregistration.k8s.io_openapi.json
+        path: internal/renderer/testdata/kubernetes/specs/apis__admissionregistration.k8s.io_openapi.json
+        max_size: 16KiB
+        integrity: sha384-bfntuddF2MgU4s1u3LbQR1BFtGVZuanfJY97jasOxNZF5vxwW89Z8Y1AE0F4o5Ql
+      apiextensions-v1:
+        url: https://raw.githubusercontent.com/kubernetes/kubernetes/a818af18fe29d999d6741234c8cd72709ef2f424/api/openapi-spec/v3/apis__apiextensions.k8s.io__v1_openapi.json
+        path: internal/renderer/testdata/kubernetes/specs/apis__apiextensions.k8s.io__v1_openapi.json
+        max_size: 256KiB
+        integrity: sha384-3yGOsdycqXcQKSOR0atkr0aJ7CeJ8mEvNbQ1YPjpLIQBO3pe8W2TtrWHK3lHmaIv
+      apiextensions-discovery:
+        url: https://raw.githubusercontent.com/kubernetes/kubernetes/a818af18fe29d999d6741234c8cd72709ef2f424/api/openapi-spec/v3/apis__apiextensions.k8s.io_openapi.json
+        path: internal/renderer/testdata/kubernetes/specs/apis__apiextensions.k8s.io_openapi.json
+        max_size: 16KiB
+        integrity: sha384-G/QFBxP1vau5dz3IUE016PrujWlm3S0+eFP6/9bhpY2Tq10yH9m8OuyRMV/Deu7G
+      apiregistration-v1:
+        url: https://raw.githubusercontent.com/kubernetes/kubernetes/a818af18fe29d999d6741234c8cd72709ef2f424/api/openapi-spec/v3/apis__apiregistration.k8s.io__v1_openapi.json
+        path: internal/renderer/testdata/kubernetes/specs/apis__apiregistration.k8s.io__v1_openapi.json
+        max_size: 256KiB
+        integrity: sha384-nUwtzbq80MVav9d9PyL8Bnw/sNW6RbFPzLQQGgwFm+8r3zp3FK2pS2lWEgRnisyv
+      apiregistration-discovery:
+        url: https://raw.githubusercontent.com/kubernetes/kubernetes/a818af18fe29d999d6741234c8cd72709ef2f424/api/openapi-spec/v3/apis__apiregistration.k8s.io_openapi.json
+        path: internal/renderer/testdata/kubernetes/specs/apis__apiregistration.k8s.io_openapi.json
+        max_size: 16KiB
+        integrity: sha384-791VTq7Oj95T9WsbXE+vBIik7zAlnZX5AX6dKZsLpTKPNEWka05OxuCpuHA/9eVl
+      apps-v1:
+        url: https://raw.githubusercontent.com/kubernetes/kubernetes/a818af18fe29d999d6741234c8cd72709ef2f424/api/openapi-spec/v3/apis__apps__v1_openapi.json
+        path: internal/renderer/testdata/kubernetes/specs/apis__apps__v1_openapi.json
+        max_size: 1MiB
+        integrity: sha384-uF4Gh4pR2Cv3z/xdvxVpRLU4TKbb/6UrtDyT+2fHrW15ocv4Flb9Es6pumIhIL5V
+      apps-discovery:
+        url: https://raw.githubusercontent.com/kubernetes/kubernetes/a818af18fe29d999d6741234c8cd72709ef2f424/api/openapi-spec/v3/apis__apps_openapi.json
+        path: internal/renderer/testdata/kubernetes/specs/apis__apps_openapi.json
+        max_size: 16KiB
+        integrity: sha384-3J15MwSq6fCj8ONT3MQx2moj0NVTU5Y36L2cS35/oVgJkd4L/Vr3axqOqDCga7E4
+      authentication-v1:
+        url: https://raw.githubusercontent.com/kubernetes/kubernetes/a818af18fe29d999d6741234c8cd72709ef2f424/api/openapi-spec/v3/apis__authentication.k8s.io__v1_openapi.json
+        path: internal/renderer/testdata/kubernetes/specs/apis__authentication.k8s.io__v1_openapi.json
+        max_size: 64KiB
+        integrity: sha384-uGTFjFiAe2l41l+LQdTxWufugodCewPQFH+ieySa3MoQKbvaQcrUKV0ssmL9dz7W
+      authentication-discovery:
+        url: https://raw.githubusercontent.com/kubernetes/kubernetes/a818af18fe29d999d6741234c8cd72709ef2f424/api/openapi-spec/v3/apis__authentication.k8s.io_openapi.json
+        path: internal/renderer/testdata/kubernetes/specs/apis__authentication.k8s.io_openapi.json
+        max_size: 16KiB
+        integrity: sha384-kksalbm4pCwIfKCql01ToxZzR9rLUaccOXs4X5GTO62niS/YroJalwE83+afMlXf
+      authorization-v1:
+        url: https://raw.githubusercontent.com/kubernetes/kubernetes/a818af18fe29d999d6741234c8cd72709ef2f424/api/openapi-spec/v3/apis__authorization.k8s.io__v1_openapi.json
+        path: internal/renderer/testdata/kubernetes/specs/apis__authorization.k8s.io__v1_openapi.json
+        max_size: 256KiB
+        integrity: sha384-a9gAF6iLMdiw9G+0jRRzi5Qibbw6zcW8r0ttglft9mJOKssx2LWbE6Bq8ibvawBX
+      authorization-discovery:
+        url: https://raw.githubusercontent.com/kubernetes/kubernetes/a818af18fe29d999d6741234c8cd72709ef2f424/api/openapi-spec/v3/apis__authorization.k8s.io_openapi.json
+        path: internal/renderer/testdata/kubernetes/specs/apis__authorization.k8s.io_openapi.json
+        max_size: 16KiB
+        integrity: sha384-LY1Qh0Ia0Ku9aDozWLBV8c3SvcNQpuWR58ULagL2idwySE24ckYUb8bJo1HjfEDJ
+      autoscaling-v1:
+        url: https://raw.githubusercontent.com/kubernetes/kubernetes/a818af18fe29d999d6741234c8cd72709ef2f424/api/openapi-spec/v3/apis__autoscaling__v1_openapi.json
+        path: internal/renderer/testdata/kubernetes/specs/apis__autoscaling__v1_openapi.json
+        max_size: 256KiB
+        integrity: sha384-O7rBTMUMcoLEF27qIN9yZfCTeIAnkWD1wE/9Jfsdy18vE4S83mnzA9G5i8ts9zsr
+      autoscaling-v2:
+        url: https://raw.githubusercontent.com/kubernetes/kubernetes/a818af18fe29d999d6741234c8cd72709ef2f424/api/openapi-spec/v3/apis__autoscaling__v2_openapi.json
+        path: internal/renderer/testdata/kubernetes/specs/apis__autoscaling__v2_openapi.json
+        max_size: 256KiB
+        integrity: sha384-huUArhOrvNY3lBKCQrvgr7ZC2sPkdpw36eaYRusVClTiyUtahnrD5+kIM7hJbcAu
+      autoscaling-discovery:
+        url: https://raw.githubusercontent.com/kubernetes/kubernetes/a818af18fe29d999d6741234c8cd72709ef2f424/api/openapi-spec/v3/apis__autoscaling_openapi.json
+        path: internal/renderer/testdata/kubernetes/specs/apis__autoscaling_openapi.json
+        max_size: 16KiB
+        integrity: sha384-EEsPGVNyhNjt4oDEoMMx/HPR4Lk8NbxtO33WQgkK0aQiuBJNlRt94kCFtLTnZ0p1
+      batch-v1:
+        url: https://raw.githubusercontent.com/kubernetes/kubernetes/a818af18fe29d999d6741234c8cd72709ef2f424/api/openapi-spec/v3/apis__batch__v1_openapi.json
+        path: internal/renderer/testdata/kubernetes/specs/apis__batch__v1_openapi.json
+        max_size: 1MiB
+        integrity: sha384-sAtlBK/ERdp3DwsUGFGvazPB5B2tKbLRgsQf2yJGEiOr47hoD9M4XNFU+nSIy9qi
+      batch-discovery:
+        url: https://raw.githubusercontent.com/kubernetes/kubernetes/a818af18fe29d999d6741234c8cd72709ef2f424/api/openapi-spec/v3/apis__batch_openapi.json
+        path: internal/renderer/testdata/kubernetes/specs/apis__batch_openapi.json
+        max_size: 16KiB
+        integrity: sha384-OB06NGoqgGX3kK4X/DKIjSnFmGV7NwZ1Y1kzcvxg1dGu87gGNGr8oQdHlLtA9YZx
+      certificates-v1:
+        url: https://raw.githubusercontent.com/kubernetes/kubernetes/a818af18fe29d999d6741234c8cd72709ef2f424/api/openapi-spec/v3/apis__certificates.k8s.io__v1_openapi.json
+        path: internal/renderer/testdata/kubernetes/specs/apis__certificates.k8s.io__v1_openapi.json
+        max_size: 1MiB
+        integrity: sha384-V5f3xOgHrAhp5NNGnmo1xbe7TNVRFsTSpVvAzp5Twq2I146Qi6r5TqesdIOR38Vx
+      certificates-v1beta1:
+        url: https://raw.githubusercontent.com/kubernetes/kubernetes/a818af18fe29d999d6741234c8cd72709ef2f424/api/openapi-spec/v3/apis__certificates.k8s.io__v1beta1_openapi.json
+        path: internal/renderer/testdata/kubernetes/specs/apis__certificates.k8s.io__v1beta1_openapi.json
+        max_size: 256KiB
+        integrity: sha384-049W3NJ1Llm2d3Qzge+KyRQBhMJ1CS3qC5FaSc/3zN5Vw6z4+FEs5wbcgZgs62eC
+      certificates-discovery:
+        url: https://raw.githubusercontent.com/kubernetes/kubernetes/a818af18fe29d999d6741234c8cd72709ef2f424/api/openapi-spec/v3/apis__certificates.k8s.io_openapi.json
+        path: internal/renderer/testdata/kubernetes/specs/apis__certificates.k8s.io_openapi.json
+        max_size: 16KiB
+        integrity: sha384-x5hjRel2sqjoU6TVWZjeUKzDXnlDVPzkMZ4R66fqGkQ+rE710CuSYDQsRp1A6EDF
+      coordination-v1:
+        url: https://raw.githubusercontent.com/kubernetes/kubernetes/a818af18fe29d999d6741234c8cd72709ef2f424/api/openapi-spec/v3/apis__coordination.k8s.io__v1_openapi.json
+        path: internal/renderer/testdata/kubernetes/specs/apis__coordination.k8s.io__v1_openapi.json
+        max_size: 256KiB
+        integrity: sha384-dH2NslpUMQkJjngEoa6b72ZoxKJL30FYd5+erZ9h7Szsh05vKYTK+XKYpBq7cy79
+      coordination-v1alpha2:
+        url: https://raw.githubusercontent.com/kubernetes/kubernetes/a818af18fe29d999d6741234c8cd72709ef2f424/api/openapi-spec/v3/apis__coordination.k8s.io__v1alpha2_openapi.json
+        path: internal/renderer/testdata/kubernetes/specs/apis__coordination.k8s.io__v1alpha2_openapi.json
+        max_size: 256KiB
+        integrity: sha384-Ef99NPgGu9iVOMSrMnXsvXbT3zlH4qoDSDmM8u3QhiBPyaIrDB/s5tlKZ1VZysFD
+      coordination-v1beta1:
+        url: https://raw.githubusercontent.com/kubernetes/kubernetes/a818af18fe29d999d6741234c8cd72709ef2f424/api/openapi-spec/v3/apis__coordination.k8s.io__v1beta1_openapi.json
+        path: internal/renderer/testdata/kubernetes/specs/apis__coordination.k8s.io__v1beta1_openapi.json
+        max_size: 256KiB
+        integrity: sha384-ClsH7YWPbt8DxkOL0E5wRZlEVN1Bt7szrRiK0VLS+ZPZVz6JYjeGxG7QSsfE5f85
+      coordination-discovery:
+        url: https://raw.githubusercontent.com/kubernetes/kubernetes/a818af18fe29d999d6741234c8cd72709ef2f424/api/openapi-spec/v3/apis__coordination.k8s.io_openapi.json
+        path: internal/renderer/testdata/kubernetes/specs/apis__coordination.k8s.io_openapi.json
+        max_size: 16KiB
+        integrity: sha384-GGZ2R/ZAJnfonneRH9MQp1yhRhyRtgH5QsQciN93IypNkqMMvMmCf70WvoyzcaFI
+      discovery-v1:
+        url: https://raw.githubusercontent.com/kubernetes/kubernetes/a818af18fe29d999d6741234c8cd72709ef2f424/api/openapi-spec/v3/apis__discovery.k8s.io__v1_openapi.json
+        path: internal/renderer/testdata/kubernetes/specs/apis__discovery.k8s.io__v1_openapi.json
+        max_size: 256KiB
+        integrity: sha384-drKh3rkvJ4nOf0cI5Cze8kRuiJim3IZJ621QucdAfHSM7a+fj/0yGZOOn/e2I+/x
+      discovery-discovery:
+        url: https://raw.githubusercontent.com/kubernetes/kubernetes/a818af18fe29d999d6741234c8cd72709ef2f424/api/openapi-spec/v3/apis__discovery.k8s.io_openapi.json
+        path: internal/renderer/testdata/kubernetes/specs/apis__discovery.k8s.io_openapi.json
+        max_size: 16KiB
+        integrity: sha384-XrbJQRooKBtTqCNXkJ4YsEmksWtLKiUlvsBiE5Cg1y7cQs6INfu+0Xxa3qIW3ZgM
+      events-v1:
+        url: https://raw.githubusercontent.com/kubernetes/kubernetes/a818af18fe29d999d6741234c8cd72709ef2f424/api/openapi-spec/v3/apis__events.k8s.io__v1_openapi.json
+        path: internal/renderer/testdata/kubernetes/specs/apis__events.k8s.io__v1_openapi.json
+        max_size: 256KiB
+        integrity: sha384-XbYbUNPPto26/2e26THkW5hFBrhT0RSlJGs6cgGdWzdPH045S1oakltdbxmEMO/4
+      events-discovery:
+        url: https://raw.githubusercontent.com/kubernetes/kubernetes/a818af18fe29d999d6741234c8cd72709ef2f424/api/openapi-spec/v3/apis__events.k8s.io_openapi.json
+        path: internal/renderer/testdata/kubernetes/specs/apis__events.k8s.io_openapi.json
+        max_size: 16KiB
+        integrity: sha384-t2lm6WVjWIdFg7pAL3o+6/AihPzeTblVkss3Br0056hxCwPYci/iB49WMRRERi6o
+      flowcontrol-apiserver-v1:
+        url: https://raw.githubusercontent.com/kubernetes/kubernetes/a818af18fe29d999d6741234c8cd72709ef2f424/api/openapi-spec/v3/apis__flowcontrol.apiserver.k8s.io__v1_openapi.json
+        path: internal/renderer/testdata/kubernetes/specs/apis__flowcontrol.apiserver.k8s.io__v1_openapi.json
+        max_size: 256KiB
+        integrity: sha384-8P2N5W3ktfkt7fS2DKu5N/hjlle+MTfX/F/vQ/+Wl5ISr4D2xHm88/jmuWGuRmot
+      flowcontrol-apiserver-discovery:
+        url: https://raw.githubusercontent.com/kubernetes/kubernetes/a818af18fe29d999d6741234c8cd72709ef2f424/api/openapi-spec/v3/apis__flowcontrol.apiserver.k8s.io_openapi.json
+        path: internal/renderer/testdata/kubernetes/specs/apis__flowcontrol.apiserver.k8s.io_openapi.json
+        max_size: 16KiB
+        integrity: sha384-n/nMBUH1iLoHTVf1CcmU8F3OOY6KZtDcXUbrmxQsJbApDP8dANsqsIR9EC7T5Q0y
+      internal-apiserver-v1alpha1:
+        url: https://raw.githubusercontent.com/kubernetes/kubernetes/a818af18fe29d999d6741234c8cd72709ef2f424/api/openapi-spec/v3/apis__internal.apiserver.k8s.io__v1alpha1_openapi.json
+        path: internal/renderer/testdata/kubernetes/specs/apis__internal.apiserver.k8s.io__v1alpha1_openapi.json
+        max_size: 256KiB
+        integrity: sha384-pgmItBChf0/oKg/LW4SUBNhdBq2WJ0AO8z1/NG2hR4V82FK2A7tHy+1SMgLbZLvb
+      internal-apiserver-discovery:
+        url: https://raw.githubusercontent.com/kubernetes/kubernetes/a818af18fe29d999d6741234c8cd72709ef2f424/api/openapi-spec/v3/apis__internal.apiserver.k8s.io_openapi.json
+        path: internal/renderer/testdata/kubernetes/specs/apis__internal.apiserver.k8s.io_openapi.json
+        max_size: 16KiB
+        integrity: sha384-6CfLgrVHAkdePiMf/nHW3BeCeEkWsEN2KP5KRUB997H4bU3dmaEAjETGaXB9Z82E
+      lifecycle-v1alpha1:
+        url: https://raw.githubusercontent.com/kubernetes/kubernetes/a818af18fe29d999d6741234c8cd72709ef2f424/api/openapi-spec/v3/apis__lifecycle.k8s.io__v1alpha1_openapi.json
+        path: internal/renderer/testdata/kubernetes/specs/apis__lifecycle.k8s.io__v1alpha1_openapi.json
+        max_size: 1MiB
+        integrity: sha384-ep3TltZcvpx7HcfNBR8Pm5Jkd0Ifd1rbOEfGZ79uBraWxZmGG1VZgM1j2nTn4OaR
+      lifecycle-discovery:
+        url: https://raw.githubusercontent.com/kubernetes/kubernetes/a818af18fe29d999d6741234c8cd72709ef2f424/api/openapi-spec/v3/apis__lifecycle.k8s.io_openapi.json
+        path: internal/renderer/testdata/kubernetes/specs/apis__lifecycle.k8s.io_openapi.json
+        max_size: 16KiB
+        integrity: sha384-jOXzAwP/c9VLQPNmLxAr8JU3rYL4T6fVDFrxmWYlrmyW4sGFi/LYCbRBOqs5fE4T
+      networking-v1:
+        url: https://raw.githubusercontent.com/kubernetes/kubernetes/a818af18fe29d999d6741234c8cd72709ef2f424/api/openapi-spec/v3/apis__networking.k8s.io__v1_openapi.json
+        path: internal/renderer/testdata/kubernetes/specs/apis__networking.k8s.io__v1_openapi.json
+        max_size: 1MiB
+        integrity: sha384-u7dvOcGqyR287kghhKOB267gqVKYvbPxaHySRLrXJftNfUGWY3/9aKzxT1MeeoLw
+      networking-discovery:
+        url: https://raw.githubusercontent.com/kubernetes/kubernetes/a818af18fe29d999d6741234c8cd72709ef2f424/api/openapi-spec/v3/apis__networking.k8s.io_openapi.json
+        path: internal/renderer/testdata/kubernetes/specs/apis__networking.k8s.io_openapi.json
+        max_size: 16KiB
+        integrity: sha384-/nRbV58qtMo2alJM/iGmGWy4ONsuN6U+dU/CYJMH8WToXoN64oBZsrE8Da7YVuEF
+      node-v1:
+        url: https://raw.githubusercontent.com/kubernetes/kubernetes/a818af18fe29d999d6741234c8cd72709ef2f424/api/openapi-spec/v3/apis__node.k8s.io__v1_openapi.json
+        path: internal/renderer/testdata/kubernetes/specs/apis__node.k8s.io__v1_openapi.json
+        max_size: 256KiB
+        integrity: sha384-7mt+ynpkGwonXBrhCdDV5+at0cMj3Nz4wHuJWBk/LFnvQC9o8ncm1e2DQkWA8GgE
+      node-discovery:
+        url: https://raw.githubusercontent.com/kubernetes/kubernetes/a818af18fe29d999d6741234c8cd72709ef2f424/api/openapi-spec/v3/apis__node.k8s.io_openapi.json
+        path: internal/renderer/testdata/kubernetes/specs/apis__node.k8s.io_openapi.json
+        max_size: 16KiB
+        integrity: sha384-vHeNSiX/tbUSIBKyNHZ2ltze1i/D9uv+u5WgDjDB9t+N+m51JR9jzEI0AfZw7607
+      policy-v1:
+        url: https://raw.githubusercontent.com/kubernetes/kubernetes/a818af18fe29d999d6741234c8cd72709ef2f424/api/openapi-spec/v3/apis__policy__v1_openapi.json
+        path: internal/renderer/testdata/kubernetes/specs/apis__policy__v1_openapi.json
+        max_size: 256KiB
+        integrity: sha384-TzIcRsLSOk1DzKsPtNz46jB4RsZS1TOucCQ7JuI8T9ZE/VTVBc5Rk5FojIO5VhNl
+      policy-discovery:
+        url: https://raw.githubusercontent.com/kubernetes/kubernetes/a818af18fe29d999d6741234c8cd72709ef2f424/api/openapi-spec/v3/apis__policy_openapi.json
+        path: internal/renderer/testdata/kubernetes/specs/apis__policy_openapi.json
+        max_size: 16KiB
+        integrity: sha384-OTTdPz0EDBD7IRgOraK3KRif13jEn2LTMtwrf/BCE3Qj/LlFXFRByO+9dU0VDlQu
+      rbac-authorization-v1:
+        url: https://raw.githubusercontent.com/kubernetes/kubernetes/a818af18fe29d999d6741234c8cd72709ef2f424/api/openapi-spec/v3/apis__rbac.authorization.k8s.io__v1_openapi.json
+        path: internal/renderer/testdata/kubernetes/specs/apis__rbac.authorization.k8s.io__v1_openapi.json
+        max_size: 1MiB
+        integrity: sha384-6P5ZWC1FPlMqgC+Yx8HRhx4LcWZAZ5BrunjmNeJc20ZcPgz7Yicm9kcjtVZVdLaD
+      rbac-authorization-discovery:
+        url: https://raw.githubusercontent.com/kubernetes/kubernetes/a818af18fe29d999d6741234c8cd72709ef2f424/api/openapi-spec/v3/apis__rbac.authorization.k8s.io_openapi.json
+        path: internal/renderer/testdata/kubernetes/specs/apis__rbac.authorization.k8s.io_openapi.json
+        max_size: 16KiB
+        integrity: sha384-me4VsNIGH2okExxjXc9CTeroYHotXTpURUEa3EMSYo54GkJ8AINkfubgKjY6deIw
+      resource-v1:
+        url: https://raw.githubusercontent.com/kubernetes/kubernetes/a818af18fe29d999d6741234c8cd72709ef2f424/api/openapi-spec/v3/apis__resource.k8s.io__v1_openapi.json
+        path: internal/renderer/testdata/kubernetes/specs/apis__resource.k8s.io__v1_openapi.json
+        max_size: 1MiB
+        integrity: sha384-ReL2/UHu3tIrkscXjvLc0V1EzwPJ6g8BEnKcqxh1+6G1JCtYiAwEfECzX9VWKb5v
+      resource-v1alpha3:
+        url: https://raw.githubusercontent.com/kubernetes/kubernetes/a818af18fe29d999d6741234c8cd72709ef2f424/api/openapi-spec/v3/apis__resource.k8s.io__v1alpha3_openapi.json
+        path: internal/renderer/testdata/kubernetes/specs/apis__resource.k8s.io__v1alpha3_openapi.json
+        max_size: 256KiB
+        integrity: sha384-97VTNGqi9r5zzQpMRva1Ev7HtMgLkS4vZ4wm3rKaVEpSCRXhl+s5nx/t+V1L3m8X
+      resource-v1beta1:
+        url: https://raw.githubusercontent.com/kubernetes/kubernetes/a818af18fe29d999d6741234c8cd72709ef2f424/api/openapi-spec/v3/apis__resource.k8s.io__v1beta1_openapi.json
+        path: internal/renderer/testdata/kubernetes/specs/apis__resource.k8s.io__v1beta1_openapi.json
+        max_size: 1MiB
+        integrity: sha384-TSNW99dRJnA2NtOWzni58kb51yABH8SLzyMO7JLn/hbGpDRFp59qKCBqhJhCYreQ
+      resource-v1beta2:
+        url: https://raw.githubusercontent.com/kubernetes/kubernetes/a818af18fe29d999d6741234c8cd72709ef2f424/api/openapi-spec/v3/apis__resource.k8s.io__v1beta2_openapi.json
+        path: internal/renderer/testdata/kubernetes/specs/apis__resource.k8s.io__v1beta2_openapi.json
+        max_size: 1MiB
+        integrity: sha384-51rydq01sRoVD9SW29DYE34YznE09KQqjtXKtJQGS02uo6P9aRs93Sk0y8VdT4Pd
+      resource-discovery:
+        url: https://raw.githubusercontent.com/kubernetes/kubernetes/a818af18fe29d999d6741234c8cd72709ef2f424/api/openapi-spec/v3/apis__resource.k8s.io_openapi.json
+        path: internal/renderer/testdata/kubernetes/specs/apis__resource.k8s.io_openapi.json
+        max_size: 16KiB
+        integrity: sha384-ZChh+JpytHJcVuECRQ/Nbo1u6ofrwaL5uH/CIHuJD4Ln9XpR0xb11Dshn2WbisRP
+      scheduling-v1:
+        url: https://raw.githubusercontent.com/kubernetes/kubernetes/a818af18fe29d999d6741234c8cd72709ef2f424/api/openapi-spec/v3/apis__scheduling.k8s.io__v1_openapi.json
+        path: internal/renderer/testdata/kubernetes/specs/apis__scheduling.k8s.io__v1_openapi.json
+        max_size: 256KiB
+        integrity: sha384-C0HQkZEvRPkFYcl1Uexpp46PovD6tWYHdwrPLrfZZ5qJUObEtZEUKn73XxwDr0LC
+      scheduling-v1alpha3:
+        url: https://raw.githubusercontent.com/kubernetes/kubernetes/a818af18fe29d999d6741234c8cd72709ef2f424/api/openapi-spec/v3/apis__scheduling.k8s.io__v1alpha3_openapi.json
+        path: internal/renderer/testdata/kubernetes/specs/apis__scheduling.k8s.io__v1alpha3_openapi.json
+        max_size: 1MiB
+        integrity: sha384-j8coDVtKkYUQq7ZlVbCDLyKCCMPbOQKK2jNYVThMUTTv/unSTG3dya5/lT/DpXpB
+      scheduling-v1beta1:
+        url: https://raw.githubusercontent.com/kubernetes/kubernetes/a818af18fe29d999d6741234c8cd72709ef2f424/api/openapi-spec/v3/apis__scheduling.k8s.io__v1beta1_openapi.json
+        path: internal/renderer/testdata/kubernetes/specs/apis__scheduling.k8s.io__v1beta1_openapi.json
+        max_size: 1MiB
+        integrity: sha384-eBcDE+KL/ntHDFueGjP/cI9r1Vkup/iUB+6jcFu+MqMEJ8Mzq5pcjrZ65Xhhn/gY
+      scheduling-discovery:
+        url: https://raw.githubusercontent.com/kubernetes/kubernetes/a818af18fe29d999d6741234c8cd72709ef2f424/api/openapi-spec/v3/apis__scheduling.k8s.io_openapi.json
+        path: internal/renderer/testdata/kubernetes/specs/apis__scheduling.k8s.io_openapi.json
+        max_size: 16KiB
+        integrity: sha384-bp78Fr8SselnxUuptiQgwVjgsJufAxW4g0Hg28E6CjS7bmfbvzGRw3eKsbxWtuxt
+      storage-v1:
+        url: https://raw.githubusercontent.com/kubernetes/kubernetes/a818af18fe29d999d6741234c8cd72709ef2f424/api/openapi-spec/v3/apis__storage.k8s.io__v1_openapi.json
+        path: internal/renderer/testdata/kubernetes/specs/apis__storage.k8s.io__v1_openapi.json
+        max_size: 1MiB
+        integrity: sha384-MgC5DnRJceBOAvbaTKOxrnfMuCRqfuRQdUGh9A6GmN8UPorywBQhlu2RE4pyWX1M
+      storage-discovery:
+        url: https://raw.githubusercontent.com/kubernetes/kubernetes/a818af18fe29d999d6741234c8cd72709ef2f424/api/openapi-spec/v3/apis__storage.k8s.io_openapi.json
+        path: internal/renderer/testdata/kubernetes/specs/apis__storage.k8s.io_openapi.json
+        max_size: 16KiB
+        integrity: sha384-Elt55J6by4FFJj9sP09kEVof1vgbH34noX86uf1nLGgTOEqgYwyY2/a92fb1BEqy
+      storagemigration-v1:
+        url: https://raw.githubusercontent.com/kubernetes/kubernetes/a818af18fe29d999d6741234c8cd72709ef2f424/api/openapi-spec/v3/apis__storagemigration.k8s.io__v1_openapi.json
+        path: internal/renderer/testdata/kubernetes/specs/apis__storagemigration.k8s.io__v1_openapi.json
+        max_size: 256KiB
+        integrity: sha384-ja9D5U5IS6tRq4ajuGpmIMmbUAJQ9kSVnRC6OdbF6OzfD2DCBTHRM1rrCSODZRzP
+      storagemigration-v1beta1:
+        url: https://raw.githubusercontent.com/kubernetes/kubernetes/a818af18fe29d999d6741234c8cd72709ef2f424/api/openapi-spec/v3/apis__storagemigration.k8s.io__v1beta1_openapi.json
+        path: internal/renderer/testdata/kubernetes/specs/apis__storagemigration.k8s.io__v1beta1_openapi.json
+        max_size: 256KiB
+        integrity: sha384-GUQpYgS1518QhNAal9fHvZ9nq3cFby+ViARW88t2ydR+q2WMOhqSG6Q4PSvDdCx9
+      storagemigration-discovery:
+        url: https://raw.githubusercontent.com/kubernetes/kubernetes/a818af18fe29d999d6741234c8cd72709ef2f424/api/openapi-spec/v3/apis__storagemigration.k8s.io_openapi.json
+        path: internal/renderer/testdata/kubernetes/specs/apis__storagemigration.k8s.io_openapi.json
+        max_size: 16KiB
+        integrity: sha384-n7fipj8c89Kya/FxRpoZOeRfTVk7OO61QqysEVaYO018X5GGeT7SNZjfe8NcAY32
+      apis-discovery:
+        url: https://raw.githubusercontent.com/kubernetes/kubernetes/a818af18fe29d999d6741234c8cd72709ef2f424/api/openapi-spec/v3/apis_openapi.json
+        path: internal/renderer/testdata/kubernetes/specs/apis_openapi.json
+        max_size: 16KiB
+        integrity: sha384-uTvb7IZiHA7B5WQZDAr6fQWERJQkhC9yccT7H6vu4yuRBxymkwKQlJvIG4BuJg7a
+      logs:
+        url: https://raw.githubusercontent.com/kubernetes/kubernetes/a818af18fe29d999d6741234c8cd72709ef2f424/api/openapi-spec/v3/logs_openapi.json
+        path: internal/renderer/testdata/kubernetes/specs/logs_openapi.json
+        max_size: 4KiB
+        integrity: sha384-EdYg63+pSRntOdMabMJhodBrGEKkeFhHmsLGtXcpz8yC5keYKDmuYJawqRqf6q0c
+      openid-v1-jwks:
+        url: https://raw.githubusercontent.com/kubernetes/kubernetes/a818af18fe29d999d6741234c8cd72709ef2f424/api/openapi-spec/v3/openid__v1__jwks_openapi.json
+        path: internal/renderer/testdata/kubernetes/specs/openid__v1__jwks_openapi.json
+        max_size: 4KiB
+        integrity: sha384-8Ns0WI3HKmiThkZ6G/eE6bifnRktWmOB/ygnlCtEq39MxtZY33Ey4oT5oYXpv3WV
+      version:
+        url: https://raw.githubusercontent.com/kubernetes/kubernetes/a818af18fe29d999d6741234c8cd72709ef2f424/api/openapi-spec/v3/version_openapi.json
+        path: internal/renderer/testdata/kubernetes/specs/version_openapi.json
+        max_size: 4KiB
+        integrity: sha384-/ri6FFNjJORDgSRCwi0K7TNBrCzXnQvEBDSP8fNc9z4VXsWp54WRClsRHRBYnNFy
+      license:
+        url: https://raw.githubusercontent.com/kubernetes/kubernetes/a818af18fe29d999d6741234c8cd72709ef2f424/LICENSE
+        path: internal/renderer/testdata/kubernetes/LICENSE
+        max_size: 16KiB
+        integrity: sha384-II9e1ieUDl5AxyiVq3/FflTua1Sr0kMJ25e6imG7rXg7SiAsA2VemsvEqVsLqM7/
+  # END generated Kubernetes OpenAPI v3

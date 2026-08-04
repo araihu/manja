@@ -1,0 +1,12 @@
+version: 1
+catalogs:
+  - id: payments
+    mount: /
+    title: Payments
+    defaultDocument: payments-v1
+    profile: strict-v1
+    source:
+      kind: files
+      root: internal/adapters/openapi/testdata
+      include:
+        - petstore.yaml

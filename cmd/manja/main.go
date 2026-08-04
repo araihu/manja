@@ -14,14 +14,26 @@ import (
 )
 
 type cliConfig struct {
-	Addr    string
-	Options app.Options
+	Addr           string
+	RendererConfig string
+	Options        app.Options
 }
 
 var serve = func(ctx context.Context, cfg cliConfig) error {
-	handler, err := app.NewWithOptions(ctx, cfg.Options)
-	if err != nil {
-		return err
+	var handler http.Handler
+	if cfg.RendererConfig != "" {
+		catalogHandler, receipts, err := app.NewRenderer(ctx, app.RendererOptions{ConfigPath: cfg.RendererConfig, DataDir: cfg.Options.DataDir})
+		if err != nil {
+			return err
+		}
+		handler = catalogHandler
+		log.Printf("manja renderer activated: %v", receipts)
+	} else {
+		var err error
+		handler, err = app.NewWithOptions(ctx, cfg.Options)
+		if err != nil {
+			return err
+		}
 	}
 	log.Printf("manja listening on %s", cfg.Addr)
 	return http.ListenAndServe(cfg.Addr, handler)
@@ -63,6 +75,7 @@ func configFromArgs(args []string) (cliConfig, error) {
 	gitRepo := fs.String("git-repo", "", "Git repository URL or local path")
 	gitRef := fs.String("git-ref", "", "Git ref to publish")
 	dataDir := fs.String("data-dir", ".manja/data", "local Manja data directory")
+	rendererConfig := fs.String("renderer-config", "", "renderer-only catalog YAML config")
 	endpointSidebarLabel := fs.String("endpoint-sidebar-label", string(app.EndpointSidebarLabelAuto), "endpoint sidebar label mode: auto or path")
 	brandName := fs.String("brand-name", "", "public docs brand name")
 	brandLogo := fs.String("brand-logo", "", "public docs brand logo URL")
@@ -74,7 +87,7 @@ func configFromArgs(args []string) (cliConfig, error) {
 	}
 
 	return cliConfig{
-		Addr: *addr,
+		Addr: *addr, RendererConfig: *rendererConfig,
 		Options: app.Options{
 			SourceKind:           *sourceKind,
 			SpecPath:             *spec,

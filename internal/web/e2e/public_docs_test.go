@@ -438,6 +438,136 @@ func TestRequestComposerAccordionContentStaysInsideRail(t *testing.T) {
 	}
 }
 
+func TestRichOperationDetailsKeepHorizontalOverflowLocal(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping e2e test in short mode")
+	}
+	chdirRepoRoot(t)
+
+	const operationAnchor = "operation-create-namespaced-deployment"
+	idx := core.SpecIndex{
+		Title: "Kubernetes",
+		Operations: []core.Operation{{
+			ID:      "createNamespacedDeployment",
+			Anchor:  operationAnchor,
+			Method:  "POST",
+			Path:    "/apis/apps/v1/namespaces/{namespace}/deployments",
+			Summary: "Create a namespaced Deployment",
+			Tags:    []string{"apps_v1"},
+			Parameters: []core.OperationParameter{{
+				Name:        "namespace",
+				In:          "path",
+				Required:    true,
+				Description: "Object name and auth scope, such as for teams and projects.",
+				Schema:      core.SchemaSummary{Type: "string"},
+			}, {
+				Name:        "fieldManager",
+				In:          "query",
+				Description: "Name associated with the actor or entity making these changes.",
+				Schema:      core.SchemaSummary{Type: "io.k8s.apimachinery.pkg.apis.meta.v1.FieldManagerIdentifier"},
+			}, {
+				Name:        "pretty",
+				In:          "query",
+				Description: "If true, the output is pretty printed.",
+				Schema:      core.SchemaSummary{Type: "string"},
+			}},
+			RequestBody: &core.OperationRequestBody{
+				Required: true,
+				MediaTypes: []core.OperationMediaType{{
+					ContentType:     "application/json",
+					Schema:          core.SchemaSummary{Type: "object", JSON: `{"type":"object","properties":{"apiVersion":{"type":"string"},"kind":{"type":"string"},"metadata":{"type":"object"},"spec":{"type":"object"}}}`},
+					Example:         "{\n  \"apiVersion\": \"apps/v1\",\n  \"kind\": \"Deployment\"\n}",
+					ExampleProvided: true,
+				}},
+			},
+			Responses: []core.OperationResponse{{
+				Status:      "200",
+				Description: "OK",
+				MediaTypes: []core.OperationMediaType{{
+					ContentType: "application/json",
+					Schema:      core.SchemaSummary{Type: "object", JSON: `{"type":"object","properties":{"apiVersion":{"type":"string"},"kind":{"type":"string"},"metadata":{"type":"object"}}}`},
+				}},
+			}},
+			Snippets: []core.RequestSnippet{{
+				Label:    "cURL",
+				Language: "shell",
+				Code:     "curl --request POST --url https://kubernetes.example.test/apis/apps/v1/namespaces/default/deployments",
+			}},
+		}},
+		Search: []core.SearchDocument{{
+			ID:      operationAnchor,
+			Title:   "POST /apis/apps/v1/namespaces/{namespace}/deployments",
+			Href:    "#" + operationAnchor,
+			Kind:    "Operation",
+			Section: "apps_v1",
+		}},
+	}
+	server := httptestServer(t, web.NewPublicServer(idx))
+
+	pw, err := playwright.Run()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pw.Stop()
+	browser, err := pw.Chromium.Launch()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer browser.Close()
+	page, err := browser.NewPage()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := page.Goto(server + "/?selected=" + operationAnchor + "#" + operationAnchor); err != nil {
+		t.Fatal(err)
+	}
+	parameterTableID := operationAnchor + "-query-parameters"
+	if err := page.Locator("#" + parameterTableID).WaitFor(); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, width := range []int{390, 768} {
+		t.Run(fmt.Sprintf("%dpx", width), func(t *testing.T) {
+			if err := page.SetViewportSize(width, 900); err != nil {
+				t.Fatal(err)
+			}
+			result, err := page.Evaluate(`(parameterTableID) => {
+			const main = document.querySelector('#main-content');
+			const table = document.getElementById(parameterTableID);
+			const scroller = table?.parentElement;
+			return {
+				mainClientWidth: main?.clientWidth || 0,
+				mainScrollWidth: main?.scrollWidth || 0,
+				tableClientWidth: scroller?.clientWidth || 0,
+				tableScrollWidth: scroller?.scrollWidth || 0,
+				hasRequestBody: Boolean(document.querySelector('[aria-label="Request body"]')),
+				hasRequestSample: Boolean(document.querySelector('[data-manja-request-sample]')),
+			};
+		}`, parameterTableID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			metrics, ok := result.(map[string]any)
+			if !ok {
+				t.Fatalf("%dpx operation layout metrics should be a map, got %#v", width, result)
+			}
+			t.Logf("%dpx rich operation layout: main=%v/%v table=%v/%v", width, metrics["mainScrollWidth"], metrics["mainClientWidth"], metrics["tableScrollWidth"], metrics["tableClientWidth"])
+			if metrics["hasRequestBody"] != true || metrics["hasRequestSample"] != true {
+				t.Fatalf("%dpx operation must preserve rich request content, got %#v", width, metrics)
+			}
+			if got, want := metricNumber(t, metrics, "mainScrollWidth"), metricNumber(t, metrics, "mainClientWidth"); got != want {
+				t.Fatalf("%dpx main must not own horizontal overflow: scrollWidth=%v clientWidth=%v, metrics %#v", width, got, want, metrics)
+			}
+			if got, max := metricNumber(t, metrics, "tableClientWidth"), metricNumber(t, metrics, "mainClientWidth"); got > max {
+				t.Fatalf("%dpx parameter table container must stay inside main, metrics %#v", width, metrics)
+			}
+			if got, want := metricNumber(t, metrics, "tableScrollWidth"), metricNumber(t, metrics, "tableClientWidth"); got <= want {
+				t.Fatalf("%dpx parameter table should remain fully available through its local scroller, metrics %#v", width, metrics)
+			}
+		})
+	}
+}
+
 func TestPublicDocsThemeSelectDropdownOverlaysContent(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping e2e test in short mode")

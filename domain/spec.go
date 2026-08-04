@@ -113,11 +113,13 @@ type SpecServerVariable struct {
 type Operation struct {
 	ID          string
 	Anchor      string
+	Title       string
 	Method      string
 	Path        string
 	Summary     string
 	Description string
 	Tags        []string
+	Facets      []Facet
 	Deprecated  bool
 	Parameters  []OperationParameter
 	RequestBody *OperationRequestBody
