@@ -161,6 +161,9 @@ func TestCommittedKubernetesRendererConfigUsesAuthorityDocumentKeys(t *testing.T
 	if len(loaded.Catalogs) != 1 || loaded.Catalogs[0].DefaultDocumentKey != "core-v1" || len(loaded.Catalogs[0].Source.Documents) != 65 {
 		t.Fatalf("Kubernetes renderer config = %#v", loaded.Catalogs)
 	}
+	if loaded.RuntimeConfig().Catalogs[0].SEO.CanonicalBase != "https://manja.araihu.com" {
+		t.Fatalf("Kubernetes canonical base = %q", loaded.RuntimeConfig().Catalogs[0].SEO.CanonicalBase)
+	}
 	candidate, err := loaded.Sources()[0].Load(context.Background())
 	if err != nil {
 		t.Fatal(err)

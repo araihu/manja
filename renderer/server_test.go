@@ -81,6 +81,24 @@ func TestServerExposesStableHandlerAndBoundedUnavailableRoutes(t *testing.T) {
 	}
 }
 
+func TestRecoveryOnlyServerConstructsNoCompilerAndRejectsActivation(t *testing.T) {
+	t.Parallel()
+
+	serverAPI, err := NewRecoveryOnly(Config{Version: 1, DataDir: t.TempDir(), Catalogs: []CatalogConfig{
+		{ID: "payments", Mount: "/", Title: "Payments", DefaultDocumentKey: "payments-v1", ProfileID: domain.CompatibilityProfileStrict},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	implementation := serverAPI.(*server)
+	if len(implementation.parsers) != 0 || len(implementation.compilers) != 0 {
+		t.Fatalf("recovery-only parser/compiler construction = %d/%d, want 0/0", len(implementation.parsers), len(implementation.compilers))
+	}
+	if _, err := serverAPI.Activate(context.Background(), rendererTestCandidate("payments")); !errors.Is(err, ErrActivationUnavailable) {
+		t.Fatalf("recovery-only Activate error = %v, want %v", err, ErrActivationUnavailable)
+	}
+}
+
 func TestServerRejectsStartupWhenProcessPeakExceedsConfiguredBudget(t *testing.T) {
 	t.Parallel()
 

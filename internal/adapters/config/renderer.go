@@ -10,7 +10,6 @@ import (
 	"strings"
 
 	"github.com/araihu/manja/domain"
-	sourceadapter "github.com/araihu/manja/internal/adapters/source"
 	"github.com/araihu/manja/renderer"
 	"gopkg.in/yaml.v3"
 )
@@ -121,31 +120,6 @@ func (file RendererFile) RuntimeConfig() renderer.Config {
 	return result
 }
 
-func (file RendererFile) Sources() []renderer.CatalogSource {
-	result := make([]renderer.CatalogSource, len(file.Catalogs))
-	for index, configured := range file.Catalogs {
-		manifest := sourceadapter.CatalogManifest{
-			ID: configured.ID, Title: configured.Title,
-			DefaultDocumentKey: configured.DefaultDocumentKey,
-			ProfileID:          domain.CompatibilityProfileID(configured.ProfileID),
-			Includes:           append([]string(nil), configured.Source.Include...),
-			DocumentKeys:       make([]sourceadapter.CatalogDocumentKey, len(configured.Source.Documents)),
-		}
-		for documentIndex, document := range configured.Source.Documents {
-			manifest.DocumentKeys[documentIndex] = sourceadapter.CatalogDocumentKey{SourcePath: document.Path, Key: document.Key}
-		}
-		switch configured.Source.Kind {
-		case RendererSourceFiles:
-			result[index] = sourceadapter.FileCatalogSource{Root: file.resolve(configured.Source.Root), Manifest: manifest}
-		case RendererSourceGit:
-			result[index] = sourceadapter.GitCatalogSource{
-				Repository: configured.Source.Repository, Ref: configured.Source.Ref, Manifest: manifest,
-			}
-		}
-	}
-	return result
-}
-
 func (file RendererFile) resolve(path string) string {
 	if strings.TrimSpace(path) == "" || filepath.IsAbs(path) || file.baseDir == "" {
 		return path
@@ -154,7 +128,7 @@ func (file RendererFile) resolve(path string) string {
 }
 
 func (file RendererFile) validate() error {
-	if _, err := renderer.New(file.RuntimeConfig()); err != nil {
+	if err := renderer.ValidateConfig(file.RuntimeConfig()); err != nil {
 		return err
 	}
 	for _, catalog := range file.Catalogs {

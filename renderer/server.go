@@ -13,12 +13,12 @@ import (
 	"github.com/araihu/manja/application/port"
 	"github.com/araihu/manja/domain"
 	"github.com/araihu/manja/internal/adapters/catalogstore"
-	openapiadapter "github.com/araihu/manja/internal/adapters/openapi"
 	"github.com/araihu/manja/internal/web"
 )
 
-// ErrActivationUnavailable remains for source compatibility with the early
-// facade, but complete renderer builds now install the compiler at first use.
+// ErrActivationUnavailable is returned by recovery-only servers. Those
+// servers deliberately contain no parser or compiler and can only serve a
+// previously published durable snapshot.
 var ErrActivationUnavailable = errors.New("catalog activation is unavailable")
 
 var ErrStartupProcessBudget = errors.New("renderer startup process budget exceeded")
@@ -43,11 +43,19 @@ type Server interface {
 	Activate(context.Context, domain.CatalogCandidate) (ActivationReceipt, error)
 }
 
+type catalogParser interface {
+	Parse(context.Context, domain.CatalogCandidate) (domain.CatalogIndex, error)
+}
+
+type catalogCompiler interface {
+	Compile(context.Context, domain.CatalogCandidate, domain.CatalogIndex) (catalog.CompiledSnapshot, error)
+}
+
 type server struct {
 	config             Config
 	configByID         map[string]CatalogConfig
-	parsers            map[string]*openapiadapter.CatalogParser
-	compilers          map[string]*catalog.Compiler
+	parsers            map[string]catalogParser
+	compilers          map[string]catalogCompiler
 	handler            *catalogGateway
 	initialize         sync.Mutex
 	activation         chan struct{}
@@ -57,7 +65,13 @@ type server struct {
 	measureProcessPeak func() (uint64, error)
 }
 
-func New(config Config) (Server, error) {
+// NewRecoveryOnly constructs a serving runtime without parsers or compilers.
+// Recover must restore every required active snapshot before traffic starts.
+func NewRecoveryOnly(config Config) (Server, error) {
+	return newServer(config)
+}
+
+func newServer(config Config) (*server, error) {
 	if config.StartupProcessBytes == 0 {
 		config.StartupProcessBytes = DefaultStartupProcessBytes
 	}
@@ -65,25 +79,13 @@ func New(config Config) (Server, error) {
 		return nil, err
 	}
 	configured := make(map[string]CatalogConfig, len(config.Catalogs))
-	parsers := make(map[string]*openapiadapter.CatalogParser, len(config.Catalogs))
-	compilers := make(map[string]*catalog.Compiler, len(config.Catalogs))
+	parsers := make(map[string]catalogParser, len(config.Catalogs))
+	compilers := make(map[string]catalogCompiler, len(config.Catalogs))
 	mounts := make([]string, len(config.Catalogs))
 	for index, configuredCatalog := range config.Catalogs {
 		configuredCatalog.CompatibilityAllowlist = append([]byte(nil), configuredCatalog.CompatibilityAllowlist...)
 		configured[configuredCatalog.ID] = configuredCatalog
 		mounts[index] = configuredCatalog.Mount
-		parser, err := openapiadapter.NewCatalogParser(configuredCatalog.CompatibilityAllowlist)
-		if err != nil {
-			return nil, fmt.Errorf("catalog %q compatibility allowlist: %w", configuredCatalog.ID, err)
-		}
-		options := catalog.DefaultCompilerOptions()
-		options.ProfileAllowlist = configuredCatalog.CompatibilityAllowlist
-		compiler, err := catalog.NewCompiler(options)
-		if err != nil {
-			return nil, fmt.Errorf("catalog %q compiler: %w", configuredCatalog.ID, err)
-		}
-		parsers[configuredCatalog.ID] = parser
-		compilers[configuredCatalog.ID] = compiler
 	}
 	config.Catalogs = append([]CatalogConfig(nil), config.Catalogs...)
 	gateway := &catalogGateway{mounts: mounts, assets: web.NewCatalogAssetsHandler(), admissions: newCatalogAdmissionGate()}
@@ -141,6 +143,9 @@ func (server *server) Active(catalogID string) (ActivationReceipt, bool) {
 func (server *server) Activate(ctx context.Context, candidate domain.CatalogCandidate) (ActivationReceipt, error) {
 	if err := ctx.Err(); err != nil {
 		return ActivationReceipt{}, err
+	}
+	if len(server.parsers) == 0 || len(server.compilers) == 0 {
+		return ActivationReceipt{}, ErrActivationUnavailable
 	}
 	if err := domain.ValidateCatalogCandidate(candidate); err != nil {
 		return ActivationReceipt{}, err

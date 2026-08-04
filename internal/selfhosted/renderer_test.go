@@ -111,6 +111,137 @@ catalogs:
 	}
 }
 
+func TestNewRecoveredRendererRequiresCompletePrecompiledStateWithoutLoadingSources(t *testing.T) {
+	root := t.TempDir()
+	dataDir := filepath.Join(root, "data")
+	seedRendererSnapshot(t, dataDir, "/", rendererCandidate("payments", "Payments"))
+
+	configPath := filepath.Join(root, "renderer.yaml")
+	config := `version: 1
+catalogs:
+  - id: payments
+    mount: /
+    title: Payments
+    defaultDocument: payments-v1
+    profile: strict-v1
+    source:
+      kind: files
+      root: sources-that-are-not-in-the-runtime-image
+      include: [payments.json]
+`
+	if err := os.WriteFile(configPath, []byte(config), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	handler, receipts, err := NewRecoveredRenderer(context.Background(), RendererOptions{ConfigPath: configPath, DataDir: dataDir})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(receipts) != 1 || receipts[0].CatalogID != "payments" || receipts[0].SnapshotID == "" || receipts[0].Degraded {
+		t.Fatalf("recovery receipts = %#v", receipts)
+	}
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/", nil))
+	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), "Payments") {
+		t.Fatalf("recovered GET / = %d %q", response.Code, response.Body.String())
+	}
+}
+
+func TestNewRecoveredRendererFailsClosedWhenConfiguredCatalogHasNoActiveSnapshot(t *testing.T) {
+	root := t.TempDir()
+	configPath := filepath.Join(root, "renderer.yaml")
+	config := `version: 1
+catalogs:
+  - id: payments
+    mount: /
+    title: Payments
+    defaultDocument: payments-v1
+    profile: strict-v1
+    source:
+      kind: files
+      root: missing
+      include: [payments.json]
+`
+	if err := os.WriteFile(configPath, []byte(config), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, _, err := NewRecoveredRenderer(context.Background(), RendererOptions{ConfigPath: configPath, DataDir: filepath.Join(root, "empty-data")}); err == nil || !strings.Contains(err.Error(), `catalog "payments" has no active snapshot`) {
+		t.Fatalf("empty recovery error = %v", err)
+	}
+}
+
+func TestBuildRendererProducesStateConsumedWithoutSourceFiles(t *testing.T) {
+	root := t.TempDir()
+	sourceDir := filepath.Join(root, "sources")
+	if err := os.MkdirAll(sourceDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(sourceDir, "payments.json"), []byte(`{"openapi":"3.0.3","info":{"title":"Payments","version":"v1"},"paths":{}}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	configPath := filepath.Join(root, "renderer.yaml")
+	config := `version: 1
+catalogs:
+  - id: payments
+    mount: /
+    title: Payments
+    defaultDocument: payments
+    profile: strict-v1
+    source:
+      kind: files
+      root: sources
+      include: [payments.json]
+`
+	if err := os.WriteFile(configPath, []byte(config), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	dataDir := filepath.Join(root, "compiled")
+	built, err := BuildRenderer(context.Background(), RendererOptions{ConfigPath: configPath, DataDir: dataDir})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.RemoveAll(sourceDir); err != nil {
+		t.Fatal(err)
+	}
+
+	handler, recovered, err := NewRecoveredRenderer(context.Background(), RendererOptions{ConfigPath: configPath, DataDir: dataDir})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(built) != 1 || len(recovered) != 1 || built[0].SnapshotID != recovered[0].SnapshotID || built[0].RevisionID != recovered[0].RevisionID {
+		t.Fatalf("built=%#v recovered=%#v", built, recovered)
+	}
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/", nil))
+	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), "Payments") {
+		t.Fatalf("recovered GET / = %d %q", response.Code, response.Body.String())
+	}
+}
+
+func TestBuildRendererRejectsDegradedSourceState(t *testing.T) {
+	root := t.TempDir()
+	configPath := filepath.Join(root, "renderer.yaml")
+	config := `version: 1
+catalogs:
+  - id: payments
+    mount: /
+    title: Payments
+    defaultDocument: payments
+    profile: strict-v1
+    source:
+      kind: files
+      root: missing
+      include: [payments.json]
+`
+	if err := os.WriteFile(configPath, []byte(config), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := BuildRenderer(context.Background(), RendererOptions{ConfigPath: configPath, DataDir: filepath.Join(root, "compiled")}); err == nil || !strings.Contains(err.Error(), `build catalog "payments"`) {
+		t.Fatalf("degraded build error = %v", err)
+	}
+}
+
 func seedRendererSnapshot(t *testing.T, dataDir, mount string, candidate domain.CatalogCandidate) {
 	t.Helper()
 	parser, err := openapiadapter.NewCatalogParser(nil)

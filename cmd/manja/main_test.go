@@ -10,7 +10,35 @@ import (
 
 	core "github.com/araihu/manja/domain"
 	app "github.com/araihu/manja/internal/selfhosted"
+	"github.com/araihu/manja/renderer"
 )
+
+func TestBuildCommandWritesDeterministicSnapshotReceipt(t *testing.T) {
+	originalBuild := buildRenderer
+	t.Cleanup(func() { buildRenderer = originalBuild })
+	buildRenderer = func(context.Context, app.RendererOptions) ([]renderer.ActivationReceipt, error) {
+		return []renderer.ActivationReceipt{{CatalogID: "kubernetes", Mount: "/", RevisionID: "files-sha256-a", SnapshotID: "snapshot-sha256-b"}}, nil
+	}
+
+	var stdout, stderr bytes.Buffer
+	code := run(context.Background(), []string{"build", "-renderer-config", "renderer.yaml", "-data-dir", "/out/catalog"}, &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("build code = %d stderr=%q", code, stderr.String())
+	}
+	want := "{\"schemaVersion\":1,\"catalogs\":[{\"catalogId\":\"kubernetes\",\"mount\":\"/\",\"revisionId\":\"files-sha256-a\",\"snapshotId\":\"snapshot-sha256-b\"}]}\n"
+	if stdout.String() != want || stderr.Len() != 0 {
+		t.Fatalf("stdout=%q stderr=%q, want %q and empty", stdout.String(), stderr.String(), want)
+	}
+}
+
+func TestBuildCommandRequiresExplicitRendererInputs(t *testing.T) {
+	for _, args := range [][]string{{"build"}, {"build", "-renderer-config", "renderer.yaml"}, {"build", "-data-dir", "/out/catalog"}} {
+		var stdout, stderr bytes.Buffer
+		if code := run(context.Background(), args, &stdout, &stderr); code != 2 {
+			t.Errorf("run(%v) code = %d, want 2; stderr=%q", args, code, stderr.String())
+		}
+	}
+}
 
 func TestRunServerPreservesExistingFlagsAndStartsServer(t *testing.T) {
 	originalServe := serve

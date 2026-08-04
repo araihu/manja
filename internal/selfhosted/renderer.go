@@ -1,3 +1,5 @@
+//go:build !manja_runtime
+
 package selfhosted
 
 import (
@@ -6,26 +8,32 @@ import (
 	"net/http"
 	"strings"
 
-	configadapter "github.com/araihu/manja/internal/adapters/config"
 	"github.com/araihu/manja/renderer"
 )
 
-type RendererOptions struct {
-	ConfigPath string
-	DataDir    string
+// BuildRenderer compiles every configured source and durably activates the
+// resulting snapshots. Any degraded catalog fails the build: a published
+// image must never silently reuse stale or incomplete state.
+func BuildRenderer(ctx context.Context, options RendererOptions) ([]renderer.ActivationReceipt, error) {
+	_, receipts, err := NewRenderer(ctx, options)
+	if err != nil {
+		return nil, err
+	}
+	for _, receipt := range receipts {
+		if receipt.Degraded {
+			return nil, fmt.Errorf("build catalog %q: %s", receipt.CatalogID, receipt.Diagnostic)
+		}
+		if receipt.SnapshotID == "" {
+			return nil, fmt.Errorf("build catalog %q produced no active snapshot", receipt.CatalogID)
+		}
+	}
+	return receipts, nil
 }
 
 func NewRenderer(ctx context.Context, options RendererOptions) (http.Handler, []renderer.ActivationReceipt, error) {
-	if strings.TrimSpace(options.ConfigPath) == "" {
-		return nil, nil, fmt.Errorf("renderer config path is required")
-	}
-	configured, err := configadapter.LoadRenderer(options.ConfigPath)
+	configured, runtimeConfig, err := rendererConfiguration(options)
 	if err != nil {
 		return nil, nil, err
-	}
-	runtimeConfig := configured.RuntimeConfig()
-	if strings.TrimSpace(options.DataDir) != "" {
-		runtimeConfig.DataDir = options.DataDir
 	}
 	server, err := renderer.New(runtimeConfig)
 	if err != nil {

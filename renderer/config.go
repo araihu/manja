@@ -84,6 +84,15 @@ func validateConfig(config Config) error {
 	return nil
 }
 
+// ValidateConfig checks renderer routing and presentation configuration without
+// constructing parsers, compilers, storage, or source adapters.
+func ValidateConfig(config Config) error {
+	if config.StartupProcessBytes == 0 {
+		config.StartupProcessBytes = DefaultStartupProcessBytes
+	}
+	return validateConfig(config)
+}
+
 func validateCatalogSEO(catalogID string, seo CatalogSEO) error {
 	for label, value := range map[string]string{"description": seo.Description, "social image alt": seo.SocialImageAlt} {
 		if value != "" {

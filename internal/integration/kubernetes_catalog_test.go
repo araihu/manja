@@ -43,6 +43,14 @@ func TestKubernetesCatalog(t *testing.T) {
 			t.Errorf("overview missing %q", want)
 		}
 	}
+	for _, want := range []string{`<link rel="canonical" href="https://manja.araihu.com/">`, `<meta property="og:url" content="https://manja.araihu.com/">`} {
+		if !strings.Contains(overview.Body.String(), want) {
+			t.Errorf("overview missing production root metadata %q", want)
+		}
+	}
+	if strings.Contains(overview.Body.String(), `https://manja.araihu.com/kubernetes/`) {
+		t.Fatal("root-mounted catalog emitted stale /kubernetes canonical URL")
+	}
 	if strings.Contains(overview.Body.String(), `id="manja-theme-trigger"`) {
 		t.Fatal("overview contains removed theme selector")
 	}
