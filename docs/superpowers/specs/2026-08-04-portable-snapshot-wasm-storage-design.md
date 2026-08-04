@@ -120,8 +120,11 @@ with Kubernetes already compiled in the image build. Fly runtime machines recove
 and serve the baked snapshot; they do not parse or compile Kubernetes sources.
 That narrow deployment change may introduce the native build/recovery commands
 earlier, but it does not silently establish the final storage ports or browser
-format. This spec must be updated to the merged `origin/main` base before an
-implementation plan is approved.
+format. This design branch is based directly on that accepted renderer commit.
+The live-demo publication slice may merge it to `origin/main` first, but
+implementation planning must re-check that the accepted commit remains an
+ancestor of the then-current integration base and rerun the locked fixture
+before code is assigned.
 
 The existing local live-demo snapshot contains 65 documents, 1,202 operations,
 1,826 schemas, and 3,028 exact-searchable visible targets. It is the required
@@ -168,7 +171,11 @@ That identity binds:
 - parser module identity and checksum;
 - compiler, projection, search, and partition format identities;
 - effective compilation bounds;
-- every logical child path, kind, uncompressed length, and SHA-256 digest.
+- every logical child path, kind, media type, uncompressed length, and SHA-256
+  digest;
+- every child activation, search, rendering, source-download, and full-offline
+  readiness role;
+- every child decoder/format version and required compatibility identity.
 
 Wall-clock time, machine paths, HTTP origin, storage bucket, object metadata,
 compression, presentation runtime build, and activation state are excluded.
@@ -185,8 +192,9 @@ by a later renderer build is byte-identical.
 
 ### Manifest
 
-The canonical manifest is itself an immutable artifact. For each child it
-declares:
+The canonical manifest is itself an immutable artifact. Every behavior-bearing
+field below is copied into `SnapshotIdentityV1` in the same canonical order; it
+is never mutable metadata outside the identity. For each child it declares:
 
 - logical path within the snapshot;
 - semantic kind and media type;
@@ -199,9 +207,72 @@ Logical paths are presentation and routing names only. Storage adapters key
 physical objects by content digest. A manifest may reference one object from
 multiple logical paths without duplicating bytes.
 
+The manifest is the sole authority for logical kind, media type, readiness role,
+and decoder version. Physical object metadata contains only key, byte length,
+and digest. Therefore the same object bytes may be referenced as more than one
+logical kind without depending on first-writer metadata. Snapshot decoding
+recomputes identity from the complete manifest and rejects a mutation of any
+behavior-bearing field even when child bytes did not change.
+
 Canonical JSON follows the existing strict codec rules: sorted slices, fixed
 struct field order, valid UTF-8, no duplicate keys, no unknown fields, no trailing
 values, compact encoding, no timestamps, and no map iteration in identity bytes.
+
+### Portable source-set envelope
+
+Native and browser compilers receive the same canonical `SourceSetEnvelopeV1`,
+not an ad hoc bag of files:
+
+```go
+type SourceSetEnvelope struct {
+    FormatVersion   string
+    CatalogID       string
+    Title           string
+    Profile         string
+    DefaultDocument string
+    Revision        string
+    Sources         []SourceDescriptor // sorted by LogicalPath
+    ResolutionEdges []ResolutionEdge   // sorted canonical graph
+}
+
+type SourceDescriptor struct {
+    LogicalPath string // normalized relative slash path, never an acquisition URL
+    Role        SourceRole
+    Length      uint64
+    SHA256      [32]byte
+}
+```
+
+Envelope construction rules are shared portable code:
+
+- paths are NFC UTF-8, slash-separated, relative, dot-segment free, and unique
+  under exact and Unicode-case-fold comparison;
+- a directory upload preserves normalized relative paths; a group of loose files
+  must have unique normalized names or is rejected rather than renamed;
+- one root/default document is explicit when several documents are possible;
+- if the user does not enter a catalog ID, it is the validated slug of root
+  `info.title`, or `local-preview-` plus the first 12 hex characters of the root
+  content digest when the title has no slug; collisions are rejected;
+- title defaults to root `info.title`; profile defaults to the named portable v1
+  profile; every explicit/defaulted value is stored in the envelope;
+- revision is `source-set-sha256-<digest>` over the sorted descriptors and
+  resolution graph. It never contains a filesystem path or URL;
+- acquisition URL, redirect chain, authorization data, browser object URL, and
+  local machine path are ephemeral adapter state and are never persisted in the
+  envelope, manifest, cache key, diagnostic, or receipt;
+- relative `$ref` bases use the referrer's logical path. Network acquisition may
+  use a final URL privately, but a fetched external resource receives canonical
+  logical path `external/<content-sha256>.<json|yaml>`. Resolution edges bind the
+  referrer, JSON Pointer, and resolved content identity, so different dependency
+  graphs cannot alias even when acquisition locations differ;
+- cycles and repeated resources deduplicate by canonical resolution edge and
+  content identity; ordering never follows fetch completion order.
+
+The UI may collect the explicit root, catalog ID, title, or profile, but it must
+call this constructor. Shuffling input order cannot change candidate bytes.
+Token-bearing pasted URLs are allowed only as ephemeral acquisition addresses;
+their query and fragment never enter persisted identity or user-visible
+diagnostics.
 
 ### Streaming compiler output
 
@@ -240,8 +311,6 @@ type ArtifactDescriptor struct {
     Key         ArtifactKey // sha256:<lowercase hex>
     Length      uint64
     SHA256      [32]byte
-    Kind        ArtifactKind
-    MediaType   string
 }
 
 type ArtifactStore interface {
@@ -281,48 +350,84 @@ type SnapshotRegistry interface {
 The manifest write is the candidate-complete marker. Existing manifests are
 immutable. A conflicting manifest for the same ID is corruption.
 
-### Activation repository
+### Route-set activation repository
 
-Mutable route authority is separate from artifact bytes:
+Mutable route authority is separate from artifact bytes and is atomic for the
+whole namespace, never one mount at a time:
 
 ```go
-type ActivationKey struct {
+type NamespaceKey struct {
     Namespace string // opaque composition-owned scope
-    Mount     string
+}
+
+type RouteSetDescriptor struct {
+    ID            RouteSetID // digest of canonical mounts + runtime bundle
+    Mounts        []MountActivation // sorted, unique mount -> SnapshotID
+    RuntimeBundle RuntimeBundleID   // empty only for native in-process rendering
 }
 
 type ActivationState struct {
     Generation uint64
-    Active     SnapshotID
-    Previous   SnapshotID
+    Active     RouteSetID
+    Previous   RouteSetID
+}
+
+type ActivationMutation struct {
+    ID                 MutationID // globally unique, stable across retries
+    ExpectedGeneration uint64
+    Desired            RouteSetDescriptor
 }
 
 type ActivationRepository interface {
-    Get(context.Context, ActivationKey) (ActivationState, error)
-    CompareAndSwap(
-        context.Context,
-        ActivationKey,
-        ActivationState, // exact expected state
-        ActivationState, // desired state
-    ) error
+    Get(context.Context, NamespaceKey) (ActivationState, error)
+    ReplaceRouteSet(context.Context, NamespaceKey, ActivationMutation) (
+        MutationOutcome, error,
+    )
+    Outcome(context.Context, NamespaceKey, MutationID) (MutationOutcome, error)
 }
 ```
 
+The repository durably records `(namespace, mutation ID, expected generation,
+desired route-set digest, outcome)` in the same transaction that advances the
+pointer. Replaying the exact mutation returns the exact recorded outcome. Reuse
+of a mutation ID with different inputs is corruption. A caller receiving an
+unknown commit result calls `Outcome`; it never invents a new mutation to retry.
+Committed and conflicted outcomes remain queryable through the configured
+reconciliation/receipt retention window, which must exceed every retry window.
+
 Rules:
 
-- only fully preflighted snapshots may become active;
-- same-snapshot activation is an idempotent no-op preserving distinct previous;
-- a changed activation shifts active to previous exactly once;
-- CAS mismatch never overwrites newer authority;
+- every snapshot and runtime bundle in the desired route set is preflighted;
+- all mounts change as one generation or none do; a failure after staging the
+  first mount cannot expose a mixed route set;
+- an identical route-set activation is an idempotent no-op preserving distinct
+  previous;
+- a changed route set shifts active to previous exactly once;
+- generation mismatch never overwrites newer authority;
 - deterministic corruption does not erase active/previous state;
-- transient failures remain retryable and do not permanently disable a snapshot;
-- a successful call is durable according to adapter contract;
+- transient failures remain retryable and do not permanently disable a route set;
 - namespace is opaque to open core. Manja Cloud may derive it from tenant and
   environment identity without adding tenant types to `domain`.
 
-Filesystem uses the existing journal and atomic replace behind this interface.
-Browser uses one IndexedDB transaction. Future cloud uses a relational transaction
-or conditional database update. S3 object metadata is not activation authority.
+Filesystem uses the existing journal and atomic route-table replace behind this
+interface. Browser uses one IndexedDB transaction. Future cloud uses a database
+transaction/conditional update plus a mutation-outcome table. S3 object metadata
+is not activation authority.
+
+### Runtime bundle descriptor
+
+`RuntimeBundleID` is the digest of canonical `RuntimeBundleDescriptorV1`, which
+binds exact renderer/search Wasm bytes, Go Wasm runtime, shell, Goshtoso/assets,
+Service Worker, compatibility matrix, and route-protocol identity. Native
+in-process rendering records the native presentation identity in receipts but
+may use an empty route-set runtime field because deployment authority already
+pins one executable.
+
+Browser activation, rollback, recovery, and garbage collection always operate on
+the complete `(route set, runtime bundle)` generation. A Service Worker update
+may download a new bundle but cannot pair it with active snapshots until smoke
+validation and one route-set CAS succeed. Previous activation retains its exact
+previous runtime bundle and remains a coherent fallback.
 
 ### References and garbage collection
 
@@ -330,14 +435,15 @@ Serving correctness cannot depend on immediate deletion. Artifact objects are
 immutable and may be shared across snapshots.
 
 Garbage collection is a separate application service over a repository-specific
-enumeration capability. It computes roots from active, previous, admitted
-candidate, retained static-export, and explicit lease records. It deletes only
-objects unreachable for a configured grace period. Failure leaks bounded storage;
-it cannot break active snapshots.
+enumeration capability. It computes roots from every active/previous route set,
+admitted candidate, retained static export, runtime bundle, and explicit lease.
+It deletes only objects unreachable for a configured grace period. Failure may
+consume remaining configured capacity; admission then fails before exceeding the
+hard store cap. It cannot break active snapshots.
 
-The next slice retains current filesystem budgets and browser LRU budgets. Cloud
-retention, legal hold, billing, and cross-tenant deduplication policy remain
-Manja Cloud concerns.
+The next slice retains current filesystem budgets and the numeric browser budgets
+below. Cloud retention, legal hold, billing, and cross-tenant deduplication policy
+remain Manja Cloud concerns.
 
 ## Adapter Mapping
 
@@ -352,6 +458,49 @@ Manja Cloud concerns.
 for streaming verified writes, conditional activation, multipart transfer,
 garbage collection, or browser transactions.
 
+## Versioned Route Protocol
+
+Route ownership is composition-supplied and source data can never choose an
+arbitrary HTTP mount. `RouteProtocolV1` defines path-based canonical routes:
+
+```text
+<base>/catalogs/<mount>/
+<base>/catalogs/<mount>/documents/<document>/
+<base>/catalogs/<mount>/documents/<document>/details/<detail-id>/
+<base>/catalogs/<mount>/search/
+<base>/catalogs/<mount>/artifacts/<logical-path>
+```
+
+Published native composition supplies a normalized public base such as `/` or
+`/docs/`. Static export maps each trailing-slash route to a distinct
+`index.html`, so a plain directory server returns route-specific initial HTML
+with JavaScript disabled. The current `?selected=<id>#<id>` form remains a
+temporary native compatibility alias that redirects to the path canonical; it is
+not a static canonical or immutable representation key.
+
+Local preview owns only this disjoint, reserved scope:
+
+```text
+/__manja/local/v1/<local-activation-id>/catalogs/<mount>/...
+```
+
+`local-activation-id` is a random, browser-local opaque ID allocated by the
+shell, not a catalog/source value. Local mounts are validated slugs within that
+scope. The Service Worker allowlist is the exact local activation prefix plus
+content-addressed Manja asset prefixes. It can never intercept `/api`, `/manage`,
+published `/catalogs`, another activation ID, or an upstream request. Local
+canonical metadata is `noindex` and uses the scoped route; published/static
+canonical metadata uses the configured public origin and base.
+
+History entries contain the full path canonical. Reload, back/forward, and an
+unvisited complete-offline deep link resolve the route-set generation named by
+the local activation ID. Removing a local activation first revokes its route-set
+pointer, then its scope returns bounded 404; cleanup never reassigns that ID.
+
+`RouteRepresentationID` binds route protocol, route, data snapshot, runtime
+bundle/presentation identity, and normalized export configuration where
+applicable. Mutable aliases and redirects are never immutable cache keys.
+
 ## Native Commands
 
 ### `manja build`
@@ -363,8 +512,9 @@ manja build \
 ```
 
 Loads configured file/Git sources, compiles all catalogs, writes complete
-snapshots, preflights them, and atomically updates the local activation repository.
-No HTTP listener starts. Output includes bounded machine-readable receipts.
+snapshots, preflights them, constructs one complete route set, and atomically
+updates the namespace activation repository. No HTTP listener starts. Output
+includes bounded machine-readable receipts and its idempotent mutation ID.
 
 ### `manja serve`
 
@@ -375,7 +525,7 @@ manja serve \
   --refresh=never
 ```
 
-Recovers active/previous snapshots and serves them without loading source bytes
+Recovers active/previous route sets and serves them without loading source bytes
 or constructing compiler/parser instances. `--refresh=never` is the live-demo
 and static runtime contract. Other deployments may use `--refresh=startup` or an
 explicit future sync command.
@@ -392,9 +542,19 @@ manja export \
   --output ./public
 ```
 
-Materializes canonical index/detail URLs, source downloads, search artifacts,
-assets, metadata, and an offline manifest. Output contains no mutable activation
-state. Two exports of the same snapshot and presentation runtime are byte-identical.
+Materializes canonical path-based index/detail URLs, source downloads, search
+artifacts, assets, metadata, and an offline manifest. Output contains no mutable
+activation state.
+
+Export consumes canonical `ExportConfigurationV1`: normalized public origin,
+base path, route protocol, canonical/social URL policy, social image identity,
+offline mode, shell/runtime/asset identity, header policy, CSP, Service Worker
+scope, and content-coding policy. Every byte-affecting option is present in that
+configuration and in `RouteRepresentationID`; environment variables not copied
+into it cannot affect output. Two clean exports of the same route set, runtime
+bundle, and exact normalized configuration are byte-identical. Changing any
+byte-affecting option changes representation identity and cannot reuse immutable
+aliases.
 
 ## Browser Local Preview
 
@@ -410,8 +570,8 @@ state. Two exports of the same snapshot and presentation runtime are byte-identi
 6. The worker terminates, releasing compiler/parser memory.
 7. Normal Manja navigation opens the local catalog. `search.wasm` and
    `renderer.wasm` run in dedicated workers.
-8. The application reports whether visited-only or complete offline readiness is
-   available.
+8. The application reports complete-offline readiness or rejects activation with
+   an actionable storage estimate.
 
 There is no manual “compile then upload” step.
 
@@ -428,6 +588,52 @@ There is no manual “compile then upload” step.
   authenticated, audited import service under its own policy.
 - Cancellation terminates the compiler worker and discards its candidate
   activation. Previously active local snapshots remain available.
+
+### Source resolution protocol
+
+OpenAPI parsing discovers references; adapters acquire bytes. The portable
+compiler calls this context-first contract through a native adapter or a
+JavaScript/Wasm bridge:
+
+```go
+type ResolveRequest struct {
+    RequestID       uint64
+    ReferrerPath    string
+    ReferrerPointer string
+    Reference       string
+    Remaining       ResolutionBudget
+}
+
+type ResolveResponse struct {
+    RequestID   uint64
+    LogicalPath string
+    Length      uint64
+    SHA256      [32]byte
+    MediaType   string
+    Bytes       ByteStream
+}
+
+type SourceResolver interface {
+    Resolve(context.Context, ResolveRequest) (ResolveResponse, error)
+}
+```
+
+The compiler owns reference discovery, canonical edge construction, cycle and
+depth detection, deduplication, and budget reservation. The adapter owns only
+bounded byte acquisition. The browser bridge resolves relative network requests
+against private acquisition state, follows at most five redirects, requires a
+final `https:` URL outside localhost, uses `credentials: omit`, rejects opaque
+responses, streams at most the reserved decoded bytes, and returns typed CORS,
+scheme, redirect, size, media, cancellation, and transient errors. It never
+returns the final URL to portable code or diagnostics.
+
+Each request reserves aggregate decoded bytes, document count, and depth before
+fetch. A response is hashed and length-checked while streaming; unused reservation
+is released, but a crossing is rejected before another body is read. Concurrent
+requests share one cancellation scope and are bounded to four acquisitions.
+Cycles terminate deterministically from the logical resolution graph. Native and
+browser adapters receive shared vectors and must produce the identical envelope,
+snapshot, and typed deterministic error for the same admitted resolved graph.
 
 ### Browser compilation profiles
 
@@ -452,14 +658,24 @@ limits. Unknown capability uses conservative defaults.
 The Kubernetes catalog is not required to compile in the browser milestone. The
 native published demo remains available and can export an installable snapshot.
 
+Local preview activation is complete-offline only in v1. Every admitted snapshot,
+including a 32-64 MiB snapshot, must have every `fullOfflineRequired` child and
+its compatible runtime bundle verified locally before pointer mutation. There is
+no visited-only local activation because the terminated compiler is not an
+artifact origin. If storage reservation cannot retain the complete generation,
+the candidate is rejected before activation with the required/available byte
+estimate. Visited-only readiness remains an opt-in cache state for published
+server-backed catalogs.
+
 ## Wasm Module Boundaries
 
 ### `compiler.wasm`
 
-Contains parser, compatibility validation, compiler, partitioner, and search-
-index builder. It imports no DOM, Service Worker, filesystem, Git, management,
-or HTTP server package. JavaScript supplies source bytes and a browser artifact
-writer bridge.
+Contains parser, compatibility validation, compiler, partitioner, search-index
+builder, and the portable side of `SourceResolver`. It imports no DOM, Service
+Worker, filesystem, Git, management, or HTTP client/server package. JavaScript
+supplies the bounded resolver and browser artifact-writer bridges; it does not
+rediscover or interpret OpenAPI references.
 
 It runs once per candidate, reports bounded progress, and terminates after
 success, cancellation, or failure. It is never retained as the search runtime.
@@ -475,7 +691,7 @@ It returns typed data:
 ```json
 {
   "id": "operation-createNamespacedPod",
-  "href": "/documents/core-v1/?selected=...#...",
+  "href": "/catalogs/kubernetes/documents/core-v1/details/detail-sha256-.../",
   "score": 0.94,
   "matches": {
     "title": [[0, 6]],
@@ -487,11 +703,17 @@ It returns typed data:
 Ranges use UTF-8 byte offsets into exact returned strings. JavaScript validates
 boundaries, escapes text, and inserts `<mark>` elements; Wasm never returns
 trusted HTML. Result count, decoded bytes, postings scanned, query bytes, tokens,
-time, and cancellation remain bounded.
+and candidate comparisons are bounded by deterministic counters in the search
+contract.
 
 Native server fallback calls the same Go query package. Given the same snapshot,
 query, and search-contract identity, browser and server return identical ordered
-IDs, scores, and match ranges.
+IDs, scores, and match ranges. Crossing a deterministic work budget returns the
+same typed `search_work_budget` error on both targets and no partial results.
+Wall-clock deadline and user cancellation are external availability controls:
+they return typed all-or-nothing `canceled` or `temporarily_unavailable`, never a
+ranked prefix, and are excluded from result parity. Server fallback may differ
+only in availability; every successful result remains identical.
 
 ### `renderer.wasm`
 
@@ -536,6 +758,34 @@ compatible snapshot or uses server fallback.
   readiness, and corruption tombstones.
 - `localStorage` owns none of the snapshot or activation state.
 
+Browser v1 has one local activation namespace and these origin-wide hard caps:
+
+- 256 MiB total Manja persistent bytes across CacheStorage and IndexedDB;
+- 192 MiB unique immutable snapshot/source-object bytes;
+- 48 MiB runtime bundles, shell, Service Worker, and presentation assets;
+- 16 MiB metadata, receipts, tombstones, and reserved headroom;
+- 16,384 physical entries;
+- at most two committed complete generations (active and distinct previous) and
+  one candidate generation;
+- one candidate lease, renewed by its worker, with a 15-minute maximum lifetime.
+
+Accounting uses verified encoded length for stored objects and charges shared
+digests once. Before the first candidate write, IndexedDB atomically reserves its
+manifest-declared maximum plus runtime bundle and metadata headroom. Writes debit
+that reservation; they cannot depend on browser quota failure as admission.
+Active, previous, controlled runtime bundle, and an unexpired candidate lease are
+protected roots. Deterministic eviction removes expired candidates first, then
+unreferenced runtimes, optional original sources, and least-recently-used
+published visited caches. It never evicts a protected root. If sufficient space
+cannot be reserved after eviction, compilation does not start.
+
+Startup and Service Worker activation reconcile both stores: expire abandoned
+leases, delete unreferenced candidate caches after grace, recompute bounded
+accounting, and fail closed on missing/extra protected bytes. Browser quota
+revocation rejects new work while active/previous remain readable when the
+platform permits. Runtime upgrades reserve the new bundle before download and
+retain the old bundle until the route-set CAS and grace period complete.
+
 ### Readiness levels
 
 - **Online only:** no validated local snapshot.
@@ -545,27 +795,34 @@ compatible snapshot or uses server fallback.
   verified locally. Every operation/schema route and search result can open with
   network blocked.
 
-Complete offline is explicit for published large catalogs. Local preview may
-default to complete readiness when its admitted snapshot is below 32 MiB.
+Complete offline is explicit for published large catalogs. Local preview is
+always complete offline before activation in v1.
 
 ### Atomic browser activation
 
-1. write immutable candidate artifacts into a versioned cache;
-2. write and validate candidate manifest metadata;
-3. instantiate matching renderer/search modules and perform a smoke query/render;
-4. one IndexedDB transaction rotates active to previous and candidate to active;
-5. notify controlled pages of the new active snapshot;
-6. delete unreachable cache generations only after commit and grace period.
+1. reserve aggregate storage and write immutable candidate artifacts into a
+   versioned cache;
+2. write and validate candidate manifests and the complete route-set descriptor;
+3. reserve and verify the exact runtime-bundle descriptor;
+4. instantiate matching renderer/search modules and perform a smoke query/render;
+5. verify every `fullOfflineRequired` child for local preview;
+6. one IndexedDB transaction records the mutation outcome and rotates the whole
+   route-set/runtime generation from active to previous and candidate to active;
+7. notify controlled pages of the new active generation;
+8. delete unreachable cache generations only after commit and grace period.
 
-Crash before step 4 leaves active unchanged. Crash after step 4 recovers the new
-active pointer. Active corruption falls back to previous once and records a
-tombstone. A transient timeout does not permanently poison valid bytes.
+Crash before step 6 leaves active unchanged. Crash after step 6 recovers the new
+coherent generation and exact mutation outcome. Active corruption falls back to
+the complete previous generation once and records a tombstone. A transient
+timeout does not permanently poison valid bytes.
 
 ### Service Worker boundary
 
-The Service Worker intercepts only exact same-origin Manja reader routes and
-asset prefixes declared by a validated descriptor. Management, APIs, arbitrary
-fetches, cross-origin requests, and upstream API traffic always pass through.
+The Service Worker intercepts only exact local-preview paths and content-addressed
+asset prefixes declared by the validated route/runtime descriptor. Published
+reader routes remain server/CDN-owned unless a separate published-offline package
+is explicitly installed. Management, APIs, arbitrary fetches, cross-origin
+requests, and upstream API traffic always pass through.
 
 Unknown local routes receive a bounded offline 404. The worker never invents a
 success response for an artifact absent from the active manifest.
@@ -610,11 +867,14 @@ renderer nodes + CDN
 Publication transaction:
 
 1. upload immutable artifact objects;
-2. upload immutable manifest;
-3. preflight candidate through cloud reader;
-4. database transaction/CAS publishes active snapshot;
-5. renderer nodes observe the new generation;
-6. asynchronous GC handles unreachable objects after grace.
+2. upload immutable manifests;
+3. preflight candidates through the cloud reader;
+4. construct and preflight one complete route set;
+5. a database transaction records the idempotent mutation outcome and publishes
+   the complete route set;
+6. if the commit reply is unknown, reconcile by mutation ID before any retry;
+7. renderer nodes observe the new generation;
+8. asynchronous GC handles unreachable objects after grace.
 
 No S3 directory rename or multi-object transaction is assumed. A failed database
 commit leaves unreachable immutable objects, not a partially active release.
@@ -629,25 +889,27 @@ Cloud adapter requirements carried by conformance tests now:
 - typed transient, missing, corrupt, canceled, and CAS errors;
 - independent artifact and activation failure injection;
 - concurrent writers from separate processes;
-- active/previous preservation;
+- atomic multi-catalog route replacement, exact mutation replay, unknown-outcome
+  reconciliation, and active/previous preservation;
 - no reliance on filesystem path, rename, lock file, or process-local mutex.
 
 ## Failure and Recovery Matrix
 
 | Failure | Required outcome |
 |---|---|
-| Compiler worker crashes or is canceled | Candidate abandoned; active snapshot unchanged; compiler memory released |
+| Compiler worker crashes or is canceled | Candidate abandoned; active route set unchanged; compiler memory released |
 | Artifact write is short, long, or wrong digest | Candidate rejected before manifest commit |
 | Manifest write fails | Objects remain unreachable; no activation |
-| Preflight finds missing/corrupt required child | Candidate rejected; active/previous remain serveable |
-| Activation CAS loses race | Newer authority preserved; candidate may remain reusable |
+| Preflight finds missing/corrupt required child | Candidate rejected; active/previous route sets remain serveable |
+| Activation CAS loses race | Newer route-set authority preserved; candidate may remain reusable |
+| Activation commits but reply is lost | Same mutation ID reconciles exact committed outcome; no duplicate rotation |
 | Browser quota exceeded | Candidate rejected with actionable estimate; active cache preserved |
-| IndexedDB transaction aborts | Active pointer unchanged |
-| Active local snapshot corrupt | Promote verified previous once; tombstone corrupt active |
+| IndexedDB transaction aborts | Active route-set/runtime pointer unchanged |
+| Active local generation corrupt | Promote verified previous route set and runtime once; tombstone corrupt active |
 | Search Wasm unavailable | Server fallback online; bounded unavailable state offline |
 | Renderer Wasm unavailable offline | Cached full page if present, otherwise explicit offline unavailable response |
-| Service Worker update fails | Existing active worker/snapshot continues |
-| Native source unavailable on restart | Recovered active snapshot serves; refresh diagnostic observable |
+| Service Worker update fails | Existing active worker/route-set/runtime generation continues |
+| Native source unavailable on restart | Recovered active route set serves; refresh diagnostic observable |
 | Cloud artifact store transient failure | No pointer mutation; retry policy owned by caller |
 
 ## Security and Privacy Boundary
@@ -677,6 +939,7 @@ Hard safety gates:
 - Wasm execution occurs off main thread;
 - one compiler worker and bounded search/render workers;
 - query cancellation and latest-query-wins behavior;
+- deterministic search work budgets; wall-clock expiry returns no partial result;
 - selected rendering loads no unrelated detail shards;
 - browser page DOM and response ceilings remain current Kubernetes gates;
 - CacheStorage and IndexedDB writes are streamed or chunked without a second
@@ -702,10 +965,17 @@ record, concurrency, and cancellation gates without a spec amendment.
 
 For identical canonical candidate bytes and compiler options:
 
+- native and browser envelope construction produces identical canonical source
+  sets for shuffled inputs, nested refs, redirects, and equivalent acquisition
+  locations without persisting acquisition secrets;
 - native and Wasm compilers emit the same snapshot ID, manifest bytes, child
   logical identities, search artifacts, and projection bytes;
+- mutating any child kind, media type, readiness role, decoder version, or
+  compatibility field without changing object bytes changes identity and causes
+  old-ID validation to fail;
 - native and Wasm search return identical ordered results, scores, and highlight
-  ranges for exact, token, fuzzy, typo, Unicode, empty, and maximum-bound queries;
+  ranges for exact, token, fuzzy, typo, Unicode, empty, and maximum-bound queries,
+  or the identical deterministic work-budget error;
 - native and Wasm renderers expose equivalent semantic selected content, anchors,
   links, headings, response/request structures, and accessible names. HTML bytes
   need not match when presentation runtime identity differs.
@@ -715,12 +985,16 @@ For identical canonical candidate bytes and compiler options:
 Every adapter must pass reusable tests for:
 
 - idempotent immutable writes and conflicting-byte rejection;
+- one physical digest referenced by multiple logical paths, kinds, and media
+  types round-trips without physical-metadata conflict;
 - short/long/digest-corrupt stream rejection;
 - cancellation during read/write;
 - bounded concurrent distinct writes;
 - manifest-last visibility;
-- active/previous CAS transitions including `v1, v2, v2`;
+- whole-route-set active/previous transitions including `v1, v2, v2`;
 - concurrent writers and stale expected state;
+- failure after staging one mount, commit-before-reply, exact mutation replay,
+  mutation-ID conflict, and restart outcome reconciliation;
 - restart recovery;
 - deterministic corruption versus transient failure;
 - GC roots and grace behavior where enumeration is supported.
@@ -734,6 +1008,9 @@ proof of cloud portability.
 Automated Chromium tests must prove:
 
 - upload and CORS URL compilation without server upload;
+- shared source-envelope/resolver vectors for shuffled directories, duplicate and
+  case-colliding names, nested relative and cross-origin refs, redirects, cycles,
+  CORS, token-bearing root URLs, budget crossing, and cancellation;
 - compiler worker cancellation and memory release;
 - exact native/Wasm snapshot and search parity fixtures;
 - Ctrl/Cmd+K, sidebar click, recent visits, highlights, keyboard, focus, and
@@ -741,8 +1018,12 @@ Automated Chromium tests must prove:
 - online SSR fallback before local readiness;
 - visited and complete offline modes with all network blocked;
 - offline reload into an unvisited operation/schema in complete mode;
-- crash/reload at each browser activation transition;
-- quota denial, storage denial, corruption, stale module, and version mismatch;
+- a deliberate local/published mount collision cannot shadow the published URL;
+  scoped local reload, history, and cleanup remain correct;
+- crash/reload at each browser activation and old/new runtime-bundle transition;
+- repeated compiles, worker crashes, candidate expiry, runtime upgrades, quota
+  denial, storage denial, corruption, stale module, and version mismatch stay
+  within aggregate storage caps while active/previous remain recoverable;
 - 390 px, 768 px, and desktop responsive rendering without primary overflow;
 - no management/API/upstream route interception;
 - no browser console or page errors.
@@ -755,7 +1036,10 @@ Automated Chromium tests must prove:
   command, OpenAPI parse, or compiler call;
 - source files may be absent from runtime image;
 - static export works from the precompiled snapshot only;
-- two clean exports are byte-identical;
+- two clean exports with identical normalized configuration are byte-identical;
+  changing each byte-affecting option changes representation identity;
+- a plain directory server with JavaScript disabled returns distinct correct
+  initial HTML for two selected detail canonical paths;
 - representative root, operation, schema, search, source, asset, metadata, and
   offline routes return correct content and cache policy;
 - social preview image returns HTTPS 200, correct MIME, 1280×640 dimensions, and
