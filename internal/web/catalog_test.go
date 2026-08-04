@@ -226,7 +226,7 @@ func TestCatalogInitialHTMLIncludesCompleteRouteSocialMetadata(t *testing.T) {
 
 	presentation := map[string]CatalogPresentation{"/kubernetes": {
 		Description: "Browse Kubernetes APIs.", CanonicalBase: "https://docs.example.test/kubernetes",
-		SocialImage: "https://docs.example.test/manja-assets/kubernetes-social.png", SocialImageAlt: "Kubernetes API reference rendered by Manja",
+		SocialImage: "https://docs.example.test/manja-assets/kubernetes-social.png", SocialImageMIMEType: "image/png", SocialImageAlt: "Kubernetes API reference rendered by Manja",
 	}}
 	handler, _ := catalogHandlerFixtureWithPresentation(t, "/kubernetes", presentation)
 	detailID := "detail-sha256-" + strings.Repeat("a", 64)
@@ -308,7 +308,7 @@ func TestLayoutMetadataModeEmitsSiteAndTypeWithoutImageMetadata(t *testing.T) {
 	}
 }
 
-func TestCatalogSocialImageMIMETypeMatchesConfiguredURLPath(t *testing.T) {
+func TestCatalogSocialImageMIMETypeUsesPresentationValue(t *testing.T) {
 	t.Parallel()
 
 	for _, test := range []struct {
@@ -325,7 +325,7 @@ func TestCatalogSocialImageMIMETypeMatchesConfiguredURLPath(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			presentation := map[string]CatalogPresentation{"/kubernetes": {
 				Description: "Browse Kubernetes APIs.", CanonicalBase: "https://docs.example.test/kubernetes",
-				SocialImage: test.imageURL, SocialImageAlt: "Preview",
+				SocialImage: test.imageURL, SocialImageMIMEType: test.mimeType, SocialImageAlt: "Preview",
 			}}
 			handler, _ := catalogHandlerFixtureWithPresentation(t, "/kubernetes", presentation)
 			response := httptest.NewRecorder()

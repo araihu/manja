@@ -249,6 +249,36 @@ func TestActivateCompilesAndPublishesConfiguredCandidate(t *testing.T) {
 	}
 }
 
+func TestRendererWiresValidatedSocialImageMIMETypeIntoPresentation(t *testing.T) {
+	t.Parallel()
+
+	server, err := New(Config{Version: 1, DataDir: t.TempDir(), Catalogs: []CatalogConfig{{
+		ID: "payments", Mount: "/", Title: "Payments", DefaultDocumentKey: "payments-v1", ProfileID: domain.CompatibilityProfileStrict,
+		SEO: CatalogSEO{
+			CanonicalBase: "https://docs.example.test", SocialImage: "https://docs.example.test/social.jpeg", SocialImageAlt: "Payments API reference",
+		},
+	}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := server.Activate(context.Background(), rendererTestCandidate("payments")); err != nil {
+		t.Fatal(err)
+	}
+	response := httptest.NewRecorder()
+	server.Handler().ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/", nil))
+	if response.Code != http.StatusOK {
+		t.Fatalf("catalog route = %d body=%q", response.Code, response.Body.String())
+	}
+	for _, want := range []string{
+		`<meta property="og:image" content="https://docs.example.test/social.jpeg">`,
+		`<meta property="og:image:type" content="image/jpeg">`,
+	} {
+		if count := strings.Count(response.Body.String(), want); count != 1 {
+			t.Errorf("presentation metadata %q count = %d, want 1", want, count)
+		}
+	}
+}
+
 func rendererTestCandidate(id string) domain.CatalogCandidate {
 	return domain.CatalogCandidate{
 		ID: id, Title: "Payments", ProfileID: domain.CompatibilityProfileStrict,

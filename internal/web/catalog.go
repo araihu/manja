@@ -29,10 +29,11 @@ type CatalogHandler struct {
 }
 
 type CatalogPresentation struct {
-	Description    string
-	CanonicalBase  string
-	SocialImage    string
-	SocialImageAlt string
+	Description         string
+	CanonicalBase       string
+	SocialImage         string
+	SocialImageMIMEType string
+	SocialImageAlt      string
 }
 
 const maxCatalogPageBytes = 512 << 10

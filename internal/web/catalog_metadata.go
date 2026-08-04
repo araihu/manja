@@ -3,7 +3,6 @@ package web
 import (
 	"net/http"
 	"net/url"
-	"path"
 	"strings"
 
 	"github.com/araihu/manja/internal/web/templates"
@@ -26,7 +25,7 @@ func (handler *CatalogHandler) catalogPageMetadata(request *http.Request, data t
 	}
 	metadata := templates.PageMetadata{
 		Title: catalogPageTitleForMetadata(data), Description: description,
-		SocialImageURL: presentation.SocialImage, SocialImageMIMEType: CatalogSocialImageMIMEType(presentation.SocialImage), SocialImageAlt: presentation.SocialImageAlt,
+		SocialImageURL: presentation.SocialImage, SocialImageMIMEType: presentation.SocialImageMIMEType, SocialImageAlt: presentation.SocialImageAlt,
 		Robots: "index,follow",
 	}
 	if data.Search != nil {
@@ -34,23 +33,6 @@ func (handler *CatalogHandler) catalogPageMetadata(request *http.Request, data t
 	}
 	metadata.CanonicalURL = catalogCanonicalURL(request, data.Mount, presentation.CanonicalBase)
 	return metadata
-}
-
-func CatalogSocialImageMIMEType(rawURL string) string {
-	parsed, err := url.Parse(rawURL)
-	if err != nil {
-		return ""
-	}
-	switch strings.ToLower(path.Ext(parsed.Path)) {
-	case ".png":
-		return "image/png"
-	case ".jpg", ".jpeg":
-		return "image/jpeg"
-	case ".webp":
-		return "image/webp"
-	default:
-		return ""
-	}
 }
 
 func catalogPageTitleForMetadata(data templates.CatalogPageData) string {

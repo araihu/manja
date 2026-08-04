@@ -7,7 +7,6 @@ import (
 	"strings"
 
 	"github.com/araihu/manja/domain"
-	"github.com/araihu/manja/internal/web"
 )
 
 const maxConfiguredCatalogs = 8
@@ -105,10 +104,27 @@ func validateCatalogSEO(catalogID string, seo CatalogSEO) error {
 	if seo.SocialImage != "" && seo.SocialImageAlt == "" {
 		return fmt.Errorf("catalog %q SEO social image alt is required with social image", catalogID)
 	}
-	if seo.SocialImage != "" && web.CatalogSocialImageMIMEType(seo.SocialImage) == "" {
+	if seo.SocialImage != "" && socialImageMIMEType(seo.SocialImage) == "" {
 		return fmt.Errorf("catalog %q SEO social image must use a supported .png, .jpg, .jpeg, or .webp extension", catalogID)
 	}
 	return nil
+}
+
+func socialImageMIMEType(rawURL string) string {
+	parsed, err := url.Parse(rawURL)
+	if err != nil {
+		return ""
+	}
+	switch strings.ToLower(path.Ext(parsed.Path)) {
+	case ".png":
+		return "image/png"
+	case ".jpg", ".jpeg":
+		return "image/jpeg"
+	case ".webp":
+		return "image/webp"
+	default:
+		return ""
+	}
 }
 
 func validateMount(mount string) error {
