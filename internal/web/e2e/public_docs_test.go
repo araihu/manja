@@ -521,6 +521,13 @@ func TestRichOperationDetailsKeepHorizontalOverflowLocal(t *testing.T) {
 	if _, err := page.Goto(server + "/?selected=" + operationAnchor + "#" + operationAnchor); err != nil {
 		t.Fatal(err)
 	}
+	if _, err := page.Evaluate(`() => {
+		const description = document.querySelector('[data-public-page-header="true"] .manja-doc-title + p');
+		description.style.fontFamily = 'monospace';
+		description.style.fontSize = '18px';
+	}`); err != nil {
+		t.Fatal(err)
+	}
 	parameterTableID := operationAnchor + "-query-parameters"
 	if err := page.Locator("#" + parameterTableID).WaitFor(); err != nil {
 		t.Fatal(err)
