@@ -1158,12 +1158,22 @@ Browser v1 has one local activation namespace and these origin-wide hard caps:
   snapshot bounded by the portable profile. Starting another local preview
   first revokes the old activation pointer; multi-catalog local composition is
   deferred to a later profile with separately proven aggregate headroom;
-- 416 MiB total Manja persistent bytes across CacheStorage and IndexedDB;
+- 432 MiB total Manja persistent bytes across CacheStorage and IndexedDB;
 - 256 MiB unique immutable snapshot/source-object bytes;
-- 128 MiB runtime bundles, shell, supervisor worker, and presentation assets, with
-  at most 32 MiB per complete runtime bundle;
+- 128 MiB rotating runtime-bundle bytes, with at most 32 MiB and 256 physical
+  entries per complete runtime bundle. That complete-bundle bound includes its
+  renderer/search Wasm, Go Wasm runtime, shell, Goshtoso assets, and presentation
+  assets, but excludes the stable supervisor;
+- 16 MiB and 512 physical entries for the stable supervisor worker and its
+  non-rotating bootstrap assets. These fixed bytes are installed and accounted
+  before any candidate reservation;
 - 32 MiB metadata, receipts, tombstones, and candidate metadata;
-- 16,384 physical entries;
+- 2,048 physical entries per complete snapshot generation and 8,192 entries for
+  the four-generation snapshot pool;
+- 1,024 physical entries for rotating runtime bundles, 1,024 for all metadata
+  and candidate descriptors, and 16,384 physical entries origin-wide. The
+  remaining 5,632 entries are available only to evictable visited caches and
+  optional source downloads; candidate admission may reclaim all of them;
 - at most two committed structural route descriptors (current and distinct
   pointer fallback), their bounded per-mount/runtime active and previous
   components, and one candidate descriptor;
@@ -1172,9 +1182,11 @@ Browser v1 has one local activation namespace and these origin-wide hard caps:
 Accounting uses verified encoded length for stored objects and charges shared
 digests once. The manifest does not exist before streamed child writes, so
 reservation cannot depend on it. Before compiler start, IndexedDB atomically
-reserves the portable profile's full 64 MiB snapshot maximum, exact already-known
-missing runtime-bundle bytes (bounded by 32 MiB), one MiB candidate metadata, and
-required entry count. Writes debit that reservation; the final manifest's actual
+reserves simultaneously the portable profile's full 64 MiB and 2,048-entry
+snapshot maximum, exact already-known missing runtime-bundle bytes and entries
+(bounded by 32 MiB and 256 entries), one MiB candidate metadata, its bounded
+metadata-entry count, and the already charged fixed supervisor allowance. Writes
+debit that reservation; the final manifest's actual
 lengths must fit it before commit, and unused capacity is released only after
 commit/abort reconciliation. Admission never depends on browser quota failure.
 The snapshot and runtime subcaps each hold three complete maximum-size committed
@@ -1185,7 +1197,11 @@ pointer-fallback active/previous after digest deduplication. Therefore a legal c
 state always leaves one full candidate reservation inside each hard subcap; a
 fourth committed generation cannot become protected before the same atomic CAS
 makes the oldest generation unreachable. Metadata has its independent 32 MiB
-cap, so candidate metadata never borrows artifact headroom.
+cap, so candidate metadata never borrows artifact headroom. The simultaneous
+byte proof is `256 + 128 + 16 + 32 = 432 MiB`. The simultaneous required-entry
+proof is `4 * 2,048 + 4 * 256 + 512 + 1,024 = 10,752`, below the 16,384
+origin-wide cap; optional entries are evicted before admission. A candidate is
+not admitted when any byte or entry pool cannot reserve its complete maximum.
 Current/fallback descriptors, their reachable per-mount/runtime active/previous
 components, and an unexpired candidate lease are protected roots. Deterministic
 eviction removes expired candidates first, then unreferenced runtimes, optional
@@ -1515,12 +1531,15 @@ Automated Chromium tests must prove:
   denial, storage denial, corruption, stale module, and version mismatch stay
   within aggregate storage caps while current/fallback descriptors and healthy
   per-component histories remain recoverable;
-- four successive publications of maximum-size snapshots and four successive
-  maximum-size runtime upgrades each prove the preflight reservation, every
-  write/crash boundary, winning and losing CAS outcomes, post-commit roots, and
-  GC set. Each fourth candidate reserves in full while generations 1-3 remain
-  protected; its successful CAS roots only generations 2-4, and no active
-  generation is deleted or exceeds the 416/256/128/32 MiB caps;
+- one combined worst-case sequence publishes three maximum-byte/maximum-entry
+  snapshots and three maximum-byte/maximum-entry runtime bundles, installs the
+  maximum fixed supervisor/bootstrap set, and fills the allowed metadata set.
+  It then reserves one simultaneous maximum snapshot plus runtime candidate.
+  Every write/crash boundary and winning/losing CAS outcome proves exact
+  post-state roots and GC sets. The fourth candidate reserves in full while
+  generations 1-3 remain protected; its successful CAS roots only generations
+  2-4, and no active generation is deleted or exceeds the
+  432/256/128/16/32 MiB or 16,384-entry caps;
 - a maximum-bound candidate reserves from profile/runtime limits before its first
   write, streams once without a manifest, reconciles final actual bytes, and
   releases unused capacity; insufficient capacity causes zero candidate writes;
