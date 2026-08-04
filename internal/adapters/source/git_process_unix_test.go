@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 	"strconv"
@@ -15,16 +16,21 @@ import (
 	"time"
 )
 
+var errMalformedChildPID = errors.New("malformed child PID")
+
 func TestRunGitCommandCancellationKillsInheritedPipeDescendant(t *testing.T) {
 	pidFile := t.TempDir() + "/child.pid"
 	ctx, cancel := context.WithCancel(context.Background())
-	command := exec.CommandContext(ctx, "sh", "-c", `sleep 30 & child=$!; printf '%s' "$child" > "$MANJA_CHILD_PID_FILE"; wait "$child"`)
+	command := exec.CommandContext(ctx, "sh", "-c", `sleep 30 & child=$!; printf '%s\n' "$child" > "$MANJA_CHILD_PID_FILE"; wait "$child"`)
 	command.Env = append(os.Environ(), "MANJA_CHILD_PID_FILE="+pidFile)
 	command.Stdout = &bytes.Buffer{}
 	result := make(chan error, 1)
 	go func() { result <- runGitCommand(ctx, command, "") }()
 
-	childPID := waitForChildPID(t, pidFile)
+	childPID, err := waitForChildPID(pidFile, 2*time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
 	t.Cleanup(func() { _ = syscall.Kill(childPID, syscall.SIGKILL) })
 	cancel()
 	select {
@@ -42,25 +48,82 @@ func TestRunGitCommandCancellationKillsInheritedPipeDescendant(t *testing.T) {
 	}
 }
 
-func waitForChildPID(t *testing.T, path string) int {
-	t.Helper()
-	deadline := time.Now().Add(2 * time.Second)
+func TestWaitForChildPIDRetriesEmptyFileUntilPIDIsWritten(t *testing.T) {
+	pidFile := t.TempDir() + "/child.pid"
+	if err := os.WriteFile(pidFile, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	writeResult := make(chan error, 1)
+	go func() {
+		time.Sleep(25 * time.Millisecond)
+		if err := os.WriteFile(pidFile, []byte("42"), 0o600); err != nil {
+			writeResult <- err
+			return
+		}
+		time.Sleep(25 * time.Millisecond)
+		writeResult <- os.WriteFile(pidFile, []byte("4242\n"), 0o600)
+	}()
+
+	pid, err := waitForChildPID(pidFile, 500*time.Millisecond)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if pid != 4242 {
+		t.Fatalf("child PID = %d, want 4242", pid)
+	}
+	if err := <-writeResult; err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestWaitForChildPIDRejectsNonemptyMalformedContent(t *testing.T) {
+	pidFile := t.TempDir() + "/child.pid"
+	if err := os.WriteFile(pidFile, []byte("not-a-pid"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := waitForChildPID(pidFile, 500*time.Millisecond); !errors.Is(err, errMalformedChildPID) {
+		t.Fatalf("malformed PID error = %v, want %v", err, errMalformedChildPID)
+	}
+}
+
+func waitForChildPID(path string, timeout time.Duration) (int, error) {
+	deadline := time.Now().Add(timeout)
 	for time.Now().Before(deadline) {
 		data, err := os.ReadFile(path)
 		if err == nil {
-			pid, parseErr := strconv.Atoi(string(data))
-			if parseErr != nil {
-				t.Fatalf("parse child PID %q: %v", data, parseErr)
+			if len(data) == 0 {
+				time.Sleep(5 * time.Millisecond)
+				continue
 			}
-			return pid
+			complete := data[len(data)-1] == '\n'
+			value := data
+			if complete {
+				value = data[:len(data)-1]
+			}
+			for _, character := range value {
+				if character < '0' || character > '9' {
+					return 0, fmt.Errorf("%w: %q", errMalformedChildPID, data)
+				}
+			}
+			if !complete || len(value) == 0 {
+				time.Sleep(5 * time.Millisecond)
+				continue
+			}
+			pid, parseErr := strconv.Atoi(string(value))
+			if parseErr != nil {
+				return 0, fmt.Errorf("%w: %q: %v", errMalformedChildPID, data, parseErr)
+			}
+			if pid <= 0 {
+				return 0, fmt.Errorf("%w: %q", errMalformedChildPID, data)
+			}
+			return pid, nil
 		}
 		if !errors.Is(err, os.ErrNotExist) {
-			t.Fatal(err)
+			return 0, err
 		}
 		time.Sleep(5 * time.Millisecond)
 	}
-	t.Fatal("descendant PID was not written")
-	return 0
+	return 0, fmt.Errorf("descendant PID was not written within %s", timeout)
 }
 
 func processExists(pid int) bool {
