@@ -1170,7 +1170,9 @@ Browser v1 has one local activation namespace and these origin-wide hard caps:
 - 32 MiB and 1,024 physical entries for all metadata: at most 31 MiB and 960
   entries for protected non-candidate manifests, descriptors, receipts, and
   tombstones, plus an exclusively reserved one MiB and 64 entries for the one
-  admitted candidate's metadata;
+  admitted candidate's metadata. Candidate metadata is further bounded to
+  768 KiB/48 entries persistent after activation and 256 KiB/16 entries
+  ephemeral to compilation/activation;
 - 2,048 physical entries per complete snapshot generation and 8,192 entries for
   the four-generation snapshot pool;
 - 1,024 physical entries for rotating runtime bundles and 16,384 physical
@@ -1207,6 +1209,30 @@ byte proof is `256 + 128 + 16 + 32 = 432 MiB`. The simultaneous required-entry
 proof is `4 * 2,048 + 4 * 256 + 512 + 1,024 = 10,752`, below the 16,384
 origin-wide cap; optional entries are evicted before admission. A candidate is
 not admitted when any byte or entry pool cannot reserve its complete maximum.
+After candidate bytes are finalized but before CAS, the application computes
+canonical metadata promotion accounting:
+
+```text
+postProtected = preProtected
+              + candidatePersistent
+              - displacedFallbackPersistent
+```
+
+`candidatePersistent` includes the new manifests/descriptors, exact mutation
+outcome, and any tombstones that survive the transaction. `displacedFallbackPersistent`
+includes only metadata attached exclusively to the old pointer fallback that the
+same winning CAS makes unreachable; shared descriptors and receipts/tombstones
+still inside their retention windows are not displacement credit. Both byte and
+entry forms of `postProtected` must fit 31 MiB/960. Otherwise activation returns
+typed `metadata_promotion_budget`, leaves authority unchanged, and lets the
+candidate lease expire or abort-reconcile; it never partially promotes metadata.
+The winning IndexedDB transaction reclassifies candidate-persistent records,
+marks exact displaced records unprotected, deletes all candidate-ephemeral
+records, and advances route authority atomically. Displaced physical records may
+remain through read grace but occupy the candidate partition until reclaimed;
+another candidate cannot reserve that partition early. Thus post-commit
+protected metadata stays within 31 MiB/960 and physical metadata stays within
+32 MiB/1,024 at every crash point.
 Current/fallback descriptors, their reachable per-mount/runtime active/previous
 components, and an unexpired candidate lease are protected roots. Deterministic
 eviction removes expired candidates first, then unreferenced runtimes, optional
@@ -1250,9 +1276,12 @@ always complete offline before activation in v1.
    protocol;
 5. instantiate matching renderer/search modules and perform a smoke query/render;
 6. verify every `fullOfflineRequired` child for local preview;
-7. one IndexedDB transaction records the publish mutation outcome and selects
-   the candidate current descriptor plus its exact pointer fallback; per-mount
-   and runtime history was already validated in the candidate descriptor;
+7. verify the canonical metadata-promotion equation, then in one IndexedDB
+   transaction record the publish mutation outcome, reclassify persistent and
+   delete ephemeral candidate metadata, mark displaced fallback metadata
+   unprotected, and select the candidate current descriptor plus its exact
+   pointer fallback; per-mount and runtime history was already validated in the
+   candidate descriptor;
 8. notify controlled pages of the new current generation;
 9. delete unreachable cache generations only after commit and grace period.
 
@@ -1539,18 +1568,30 @@ Automated Chromium tests must prove:
 - one combined worst-case sequence publishes three maximum-byte/maximum-entry
   snapshots and three maximum-byte/maximum-entry runtime bundles, installs the
   maximum fixed supervisor/bootstrap set, and fills protected non-candidate
-  metadata to exactly 31 MiB and 960 entries.
+  metadata to exactly 31 MiB and 960 entries. Exactly 768 KiB/48 entries of that
+  prestate belong exclusively to the oldest pointer fallback and become
+  unprotected only if the fourth publication wins CAS.
   It then reserves one simultaneous maximum snapshot plus runtime candidate.
   The reservation includes exactly one MiB and 64 candidate-metadata entries,
-  bringing the metadata pool to its exact 32 MiB/1,024-entry maximum.
+  split into 768 KiB/48 persistent and 256 KiB/16 ephemeral, bringing the
+  metadata pool to its exact 32 MiB/1,024-entry maximum.
   Every write/crash boundary and winning/losing CAS outcome proves exact
-  post-state roots and GC sets. The fourth candidate reserves in full while
+  post-state roots and GC sets. A winning CAS deletes the ephemeral partition,
+  reclassifies 768 KiB/48 candidate records, and displaces the equal oldest
+  fallback records, leaving protected metadata exactly 31 MiB/960 and physical
+  metadata at most 31.75 MiB/1,008 until grace-period GC frees the next complete
+  candidate slot. A losing CAS preserves authority and abort-reconciles the
+  candidate slot. The fourth candidate reserves in full while
   generations 1-3 remain protected; its successful CAS roots only generations
   2-4, and no active generation is deleted or exceeds the
   432/256/128/16/32 MiB or 16,384-entry caps;
 - companion vectors add one byte or one entry to the protected non-candidate
   metadata ceiling and prove deterministic admission denial with zero candidate
   writes, unchanged roots, and no borrowing from another byte/entry pool;
+- a promotion vector provides less displacement/free protected capacity than
+  the finalized persistent candidate metadata and proves
+  `metadata_promotion_budget`, unchanged authority, no partial reclassification,
+  and bounded candidate cleanup;
 - a maximum-bound candidate reserves from profile/runtime limits before its first
   write, streams once without a manifest, reconciles final actual bytes, and
   releases unused capacity; insufficient capacity causes zero candidate writes;
