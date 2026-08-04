@@ -77,8 +77,8 @@ storage, or browser compilation is unavailable.
   with a bounded streaming snapshot writer;
 - introduce provider-neutral immutable-artifact and activation-repository ports;
 - refactor the current filesystem store and journal coordinator to implement the
-  new ports without weakening crash recovery, active/previous fallback, CAS, or
-  garbage-collection protections;
+  new ports without weakening crash recovery, structural current/fallback,
+  per-component history, CAS, or garbage-collection protections;
 - add native `manja build` and `manja serve` commands for precompiled snapshots;
 - add `manja export` for complete static output;
 - compile the portable compiler to `compiler.wasm` and run it only inside a
@@ -268,6 +268,8 @@ type ResolvedResource struct {
     InstanceID  SourceInstanceID
     LogicalPath string
     Role        SourceRole
+    Format      SourceFormat // json or yaml
+    MediaType   string       // canonical value derived only from Format
     Length      uint64
     SHA256      [32]byte
 }
@@ -279,9 +281,44 @@ type ResolutionEdge struct {
 }
 ```
 
-Root instance identity binds normalized root logical path, role, and digest.
-New child instance identity binds parent instance, reference JSON Pointer,
-resolved digest, media type, and format. Therefore byte-identical resources
+`SourceFormat` is a closed portable enum with values `json` and `yaml`.
+Portable code detects it from admitted bytes, never from an extension or HTTP
+header: strict JSON decoding is attempted first; only a strict JSON failure may
+fall through to the named portable YAML decoder. Both reject duplicate keys,
+unknown document encodings, trailing values/documents, and unsupported YAML
+features. Detection derives the only canonical media values:
+`application/json` for `json` and `application/yaml` for `yaml`. Acquisition
+content type is only an ephemeral hint and cannot override byte detection or
+enter identity.
+
+Root and child IDs are SHA-256 over canonical JSON of these disjoint tagged
+preimages; every field shown is serialized and identity-bearing:
+
+```go
+type RootSourceInstanceV1 struct {
+    Kind        string // "root-v1"
+    LogicalPath string
+    Role        SourceRole
+    Format      SourceFormat
+    MediaType   string
+    Length      uint64
+    SHA256      [32]byte
+}
+
+type ChildSourceInstanceV1 struct {
+    Kind           string // "child-v1"
+    Parent         SourceInstanceID
+    ParentPointer  string
+    LogicalPath    string
+    Role           SourceRole
+    Format         SourceFormat
+    MediaType      string
+    Length         uint64
+    SHA256         [32]byte
+}
+```
+
+Therefore byte-identical resources
 loaded under `a/` and `b/` remain distinct semantic instances and can resolve
 different relative children, while their physical bytes still deduplicate by
 digest. An opaque `ResolutionContext` is threaded to the adapter for descendant
@@ -309,6 +346,13 @@ Seed/finalization rules are shared portable code:
   are ephemeral adapter state and never enter the envelope, manifest, cache key,
   diagnostic, or receipt;
 - ordering follows canonical instance/edge keys, never fetch completion order.
+- finalized-envelope decoding recomputes every root and child instance ID from
+  its complete preimage, rejects unknown format/media values or a noncanonical
+  format/media pair, verifies that every edge endpoint exists, and rejects an
+  edge whose parent/pointer/child binding does not reconstruct the child ID;
+- canonical codec vectors cover JSON and YAML roots/children, the complete
+  `SourceInstanceID` preimage, shuffled occurrences/edges, malformed media/format
+  pairs, dangling edges, and legal cycle edges.
 
 The UI may collect the explicit root, catalog ID, title, or profile, but it calls
 the shared seed constructor. Shuffling inputs cannot change finalized bytes.
@@ -407,13 +451,14 @@ type RuntimeBundleRegistry interface {
 }
 ```
 
-`PutIfAbsent` recomputes the canonical ID and preflights every referenced
-snapshot/runtime artifact before making a descriptor visible. Reads recompute the
-ID, reject unknown fields and missing/corrupt references, and never repair
-activation authority implicitly. Descriptor lifetime is at least the lifetime of
-any active, previous, candidate, static-export, or lease reference; mutation-
-outcome expiry cannot delete it. Recovery policy below decides whether a damaged
-component is quarantined, repaired from previous, or fails closed.
+`PutIfAbsent` and `Descriptor` recompute canonical ID, reject unknown fields, and
+validate descriptor structure without requiring referenced objects to be healthy.
+Reference preflight is a separate application operation returning a bounded
+per-mount/runtime health map; this lets recovery inspect a trusted mapping even
+when one referenced snapshot is corrupt. Descriptor lifetime is at least the
+lifetime of any current, pointer fallback, per-mount previous, candidate,
+static-export, or lease reference; mutation-outcome expiry cannot delete it. Structural descriptor
+corruption remains distinct from referenced-component corruption.
 
 ### Route-set activation repository
 
@@ -426,28 +471,47 @@ type NamespaceKey struct {
 }
 
 type RouteSetDescriptor struct {
-    ID            RouteSetID // digest of canonical mounts + runtime bundle
-    Mounts        []MountActivation // sorted, unique mount -> SnapshotID
-    RuntimeBundle RuntimeBundleID   // empty only for native in-process rendering
+    ID      RouteSetID
+    Mounts  []MountState // sorted, unique mount
+    Runtime RuntimeState
+}
+
+type MountState struct {
+    Mount        string
+    Status       MountStatus // ready or unavailable
+    Active       SnapshotID
+    Previous     SnapshotID
+    FailureCode  FailureCode // required only when unavailable
+}
+
+type RuntimeState struct {
+    Active   RuntimeBundleID // empty only for native in-process rendering
+    Previous RuntimeBundleID
 }
 
 type ActivationState struct {
     Generation uint64
-    Active     RouteSetID
-    Previous   RouteSetID
+    Current    RouteSetID
+    Fallback   RouteSetID // structural fallback if Current cannot be decoded
+}
+
+type ActivationPointers struct {
+    Current  RouteSetID
+    Fallback RouteSetID
 }
 
 type ActivationMutation struct {
     ID                 MutationID // globally unique, stable across retries
+    Kind               MutationKind // publish or recovery
     ExpectedGeneration uint64
-    Desired            RouteSetID // already committed to RouteSetRegistry
+    Desired            ActivationPointers // descriptors already registered
 }
 
 type MutationOutcome struct {
     MutationID MutationID
     Status     MutationStatus // committed or conflicted
     State      ActivationState
-    Desired    RouteSetID
+    Desired    ActivationPointers
 }
 
 type ActivationRepository interface {
@@ -459,9 +523,9 @@ type ActivationRepository interface {
 }
 ```
 
-The repository durably records `(namespace, mutation ID, expected generation,
-desired route-set digest, outcome)` in the same transaction that advances the
-pointer. Replaying the exact mutation returns the exact recorded outcome. Reuse
+The repository durably records `(namespace, mutation ID, kind, expected
+generation, desired current/fallback IDs, outcome)` in the same transaction that
+advances the pointers. Replaying the exact mutation returns the exact recorded outcome. Reuse
 of a mutation ID with different inputs is corruption. A caller receiving an
 unknown commit result calls `Outcome`; it never invents a new mutation to retry.
 Committed and conflicted outcomes remain queryable through the configured
@@ -469,15 +533,25 @@ reconciliation/receipt retention window, which must exceed every retry window.
 
 Rules:
 
-- the desired descriptor is loaded from `RouteSetRegistry`; every snapshot and
-  runtime bundle in it is preflighted again before CAS;
+- desired current/fallback descriptors are loaded structurally from
+  `RouteSetRegistry`; the current descriptor's referenced health map is evaluated
+  before CAS;
 - all mounts change as one generation or none do; a failure after staging the
   first mount cannot expose a mixed route set;
-- an identical route-set activation is an idempotent no-op preserving distinct
-  previous;
-- a changed route set shifts active to previous exactly once;
+- a normal `publish` transition validates every ready active component. For each
+  unchanged mount/runtime it preserves history; for each changed active value it
+  shifts only that component's old active into its previous field exactly once.
+  A changed current descriptor sets pointer fallback to the exact old current;
+  an unchanged publish preserves the existing fallback;
+- a `recovery` transition validates the exact desired per-component state but
+  performs no implicit rotation. It may clear previous, promote previous while
+  clearing corrupt active, substitute one mount/runtime, or mark only one mount
+  unavailable. It may also promote/clear pointer fallback without retaining a
+  corrupt current descriptor. It must reference tombstones/health evidence for
+  every removed corrupt component;
+- identical desired pointers are an idempotent no-op for either kind;
 - generation mismatch never overwrites newer authority;
-- deterministic corruption does not erase active/previous state;
+- no corrupt component retained by a recovery transition remains a GC root;
 - transient failures remain retryable and do not permanently disable a route set;
 - namespace is opaque to open core. Manja Cloud may derive it from tenant and
   environment identity without adding tenant types to `domain`.
@@ -492,15 +566,15 @@ outcome table. S3 object metadata is not activation authority.
 
 `RuntimeBundleID` is the digest of canonical `RuntimeBundleDescriptorV1`, which
 binds exact renderer/search Wasm bytes, Go Wasm runtime, shell, Goshtoso/assets,
-compatibility matrix, required supervisor protocol, and route-protocol identity. Native
-in-process rendering records the native presentation identity in receipts but
-may use an empty route-set runtime field because deployment authority already
-pins one executable.
+compatibility matrix, required supervisor protocol, and route-protocol identity.
+Native in-process rendering records the native presentation identity in receipts
+but may use empty runtime-state fields because deployment authority already pins
+one executable.
 
 Browser activation, rollback, recovery, and garbage collection always operate on
-the complete `(route set, runtime bundle)` generation loaded through both
-registries. Previous activation retains its exact previous runtime bundle and
-remains a coherent fallback.
+the current route-set descriptor and its per-mount/runtime active/previous fields
+loaded through both registries. Each component keeps its exact fallback across
+unrelated mount publication.
 
 The executing Service Worker is a stable supervisor outside rotating runtime
 bundles because browser install/controller state cannot join an IndexedDB
@@ -515,32 +589,47 @@ treated as atomically rotated or rollbackable by that transaction.
 
 ### Component-scoped corruption recovery
 
-The activation record is authority, but active and previous contents are
-verified independently and recovery preserves every healthy mount:
+The activation record is authority. `Current` and `Fallback` protect structural
+descriptor recovery; each structurally valid current descriptor independently
+protects every mount and runtime through its `Active` and `Previous` fields.
+Recovery computes one exact desired descriptor plus exact current/fallback
+pointers; it never relies on publish rotation:
 
-- trusted active descriptor + corrupt/missing previous descriptor: keep serving
-  active, quarantine previous, and CAS a state with no previous fallback;
-- corrupt/missing active descriptor + healthy previous descriptor: promote the
-  complete previous route set once through a recovery mutation;
-- healthy active descriptor + one corrupt active snapshot: construct and register
-  one repaired route set that retains every healthy active mount and substitutes
-  only that mount's healthy snapshot from previous;
-- corrupt active runtime bundle: retain active snapshot mappings but substitute a
-  compatible healthy previous runtime bundle; otherwise promote the complete
-  previous generation;
-- corruption reachable only from previous: active continues; previous is
-  quarantined/cleared because it is no longer a complete fallback;
-- an affected active mount with no verified previous snapshot becomes explicitly
-  unavailable while a repaired route set continues unaffected mounts; namespace
-  readiness is degraded and that mount fails closed;
+- healthy current descriptor + corrupt/missing pointer fallback: preserve the
+  current descriptor byte-for-byte and recovery-CAS `{Current: current,
+  Fallback: empty}`;
+- corrupt/missing current descriptor + healthy pointer fallback: recovery-CAS
+  `{Current: fallback, Fallback: empty}`. The corrupt current never becomes a
+  fallback or GC root;
+- healthy current descriptor + one corrupt active snapshot for mount B:
+  register a repaired descriptor preserving every other mount/runtime field.
+  Set B active to its verified B previous and clear B previous, or set only B to
+  unavailable when no verified B previous exists. A previous snapshot from mount
+  A is never substituted for B;
+- corrupt active runtime: register a repaired descriptor preserving every mount.
+  Set runtime active to its verified compatible runtime previous and clear
+  runtime previous, or fail rendering closed if none is compatible;
+- corruption reachable only from one component's previous field: register a
+  repaired descriptor preserving its active and every unrelated history while
+  clearing only that corrupt previous;
+- after repairing a component within a healthy current descriptor, preserve a
+  healthy pointer fallback only when it does not retain the same corrupt
+  component; otherwise clear it;
 - corrupt/unverifiable activation authority, or no reconstructable trusted route
   mapping, fails the namespace closed without deleting evidence.
 
-Recovery uses a deterministic mutation ID derived from damaged authority plus the
-repaired descriptor. It registers the descriptor, performs at most one durable
-CAS, records tombstones, and never loops between generations. Native, browser,
-and cloud adapters implement the same state machine; transient read/time failures
-do not trigger corruption recovery.
+Example: current mounts are `A(active=A2, previous=A1)` and
+`B(active=B1, previous=B0)`. Corrupt B1 yields A2/A1 unchanged and either
+B0/empty or B unavailable. It never rolls A back and never retains B1 in any
+current/fallback descriptor.
+
+Recovery uses a deterministic mutation ID derived from the damaged generation,
+health evidence, and exact desired descriptor/pointers. It registers the repaired
+descriptor, performs at most one durable recovery CAS, records tombstones, and
+never loops between generations. Concurrent publication winning the generation
+CAS supersedes recovery; recovery reloads authority and does not apply stale
+state. Native, browser, and cloud adapters implement the same state machine;
+transient read/time failures do not trigger corruption recovery.
 
 ### References and garbage collection
 
@@ -548,9 +637,11 @@ Serving correctness cannot depend on immediate deletion. Artifact objects are
 immutable and may be shared across snapshots.
 
 Garbage collection is a separate application service over a repository-specific
-enumeration capability. It computes roots from every active/previous route set,
-admitted candidate, retained static export, runtime bundle, and explicit lease.
-It deletes only objects unreachable for a configured grace period. Failure may
+enumeration capability. It computes roots from current/fallback descriptors,
+every per-mount and runtime active/previous reference reachable from those
+descriptors, admitted candidates, retained static exports, and explicit leases.
+Quarantined descriptors/components removed by a committed recovery mutation are
+not roots. It deletes only objects unreachable for a configured grace period. Failure may
 consume remaining configured capacity; admission then fails before exceeding the
 hard store cap. It cannot break active snapshots.
 
@@ -649,18 +740,18 @@ snapshots, preflights them, constructs one complete route set, and atomically
 updates the namespace activation repository. No HTTP listener starts. Output
 includes bounded machine-readable receipts and its idempotent mutation ID.
 
-Route-set construction begins from the recovered active descriptor and produces
+Route-set construction begins from the recovered current descriptor and produces
 one per-configured-mount outcome:
 
 - a successful refresh advances that mount to the new snapshot;
 - source, parse, compile, or candidate-preflight failure carries forward the
-  exact healthy active snapshot for that mount and emits a bounded degraded
+  exact healthy active snapshot and its history for that mount and emits a bounded degraded
   receipt;
 - a configured mount with neither a healthy recovered snapshot nor a valid new
-  candidate aborts the whole mutation and leaves active unchanged;
+  candidate aborts the whole mutation and leaves current/fallback unchanged;
 - explicit config removal omits the old mount only after every remaining mount
   is admissible and emits a removal receipt;
-- cancellation, namespace/global budget failure, corrupt active route-set
+- cancellation, namespace/global budget failure, corrupt current route-set
   authority, or failure to load any carried snapshot aborts the whole mutation;
 - all per-mount receipts and the desired descriptor are deterministic inputs to
   one registry write and one namespace CAS.
@@ -677,10 +768,10 @@ manja serve \
   --refresh=never
 ```
 
-Recovers active/previous route sets and serves them without loading source bytes
-or constructing compiler/parser instances. `--refresh=never` is the live-demo
-and static runtime contract. Other deployments may use `--refresh=startup` or an
-explicit future sync command.
+Recovers current/fallback route descriptors and every per-mount/runtime history,
+then serves without loading source bytes or constructing compiler/parser
+instances. `--refresh=never` is the live-demo and static runtime contract. Other
+deployments may use `--refresh=startup` or an explicit future sync command.
 
 If no recoverable active snapshot exists, startup fails readiness. It never
 silently compiles when refresh is disabled.
@@ -759,12 +850,12 @@ type ResolveRequest struct {
 }
 
 type ResolveResponse struct {
-    RequestID uint64
-    Context   ResolutionContext // opaque; equality is valid only in this compile
-    Length    uint64
-    SHA256    [32]byte
-    MediaType string
-    Bytes     ByteStream
+    RequestID     uint64
+    Context       ResolutionContext // opaque; equality is valid only in this compile
+    Length        uint64
+    SHA256        [32]byte
+    MediaTypeHint string // ephemeral acquisition hint; never canonical or identity
+    Bytes         ByteStream
 }
 
 type SourceResolver interface {
@@ -788,7 +879,7 @@ CORS denial, DNS/TLS failure, or other pre-response network rejection. Portable
 profile v1 maps all of those browser-unobservable causes to the single bounded
 `fetch_unavailable` class; the native portable adapter maps equivalent cases to
 the same class. Only locally observable pre-fetch scheme/admission errors,
-post-response size/media/digest errors, and cancellation remain distinct. Richer
+post-response size/format/digest errors, and cancellation remain distinct. Richer
 native acquisition may expose a separately named non-portable taxonomy. The
 adapter never returns or guesses acquisition URLs/causes in portable diagnostics.
 
@@ -928,8 +1019,9 @@ compatible snapshot or uses server fallback.
 
 - CacheStorage owns immutable artifact responses, product assets, offline shell,
   Wasm modules, and optional original source downloads.
-- IndexedDB owns snapshot manifests, active/previous/candidate pointers, LRU,
-  readiness, and corruption tombstones.
+- IndexedDB owns snapshot manifests, current/fallback route pointers,
+  per-component history, candidate state, LRU, readiness, and corruption
+  tombstones.
 - `localStorage` owns none of the snapshot or activation state.
 
 Browser v1 has one local activation namespace and these origin-wide hard caps:
@@ -940,8 +1032,9 @@ Browser v1 has one local activation namespace and these origin-wide hard caps:
   at most 32 MiB per complete runtime bundle;
 - 32 MiB metadata, receipts, tombstones, and reserved headroom;
 - 16,384 physical entries;
-- at most two committed complete generations (active and distinct previous) and
-  one candidate generation;
+- at most two committed structural route descriptors (current and distinct
+  pointer fallback), their bounded per-mount/runtime active and previous
+  components, and one candidate descriptor;
 - one candidate lease, renewed by its worker, with a 15-minute maximum lifetime.
 
 Accounting uses verified encoded length for stored objects and charges shared
@@ -952,18 +1045,20 @@ missing runtime-bundle bytes (bounded by 32 MiB), one MiB candidate metadata, an
 required entry count. Writes debit that reservation; the final manifest's actual
 lengths must fit it before commit, and unused capacity is released only after
 commit/abort reconciliation. Admission never depends on browser quota failure.
-Active, previous, controlled runtime bundle, and an unexpired candidate lease are
-protected roots. Deterministic eviction removes expired candidates first, then
-unreferenced runtimes, optional original sources, and least-recently-used
-published visited caches. It never evicts a protected root. If sufficient space
+Current/fallback descriptors, their reachable per-mount/runtime active/previous
+components, and an unexpired candidate lease are protected roots. Deterministic
+eviction removes expired candidates first, then unreferenced runtimes, optional
+original sources, and least-recently-used published visited caches. It never
+evicts a protected root. If sufficient space
 cannot be reserved after eviction, compilation does not start.
 
 Startup and Service Worker activation reconcile both stores: expire abandoned
 leases, delete unreferenced candidate caches after grace, recompute bounded
 accounting, and fail closed on missing/extra protected bytes. Browser quota
-revocation rejects new work while active/previous remain readable when the
-platform permits. Runtime upgrades reserve the new bundle before download and
-retain the old bundle until the route-set CAS and grace period complete.
+revocation rejects new work while current/fallback and healthy component history
+remain readable when the platform permits. Runtime upgrades reserve the new
+bundle before download and retain the old bundle until the route-set CAS and
+grace period complete.
 
 ### Readiness levels
 
@@ -987,15 +1082,16 @@ always complete offline before activation in v1.
    protocol;
 5. instantiate matching renderer/search modules and perform a smoke query/render;
 6. verify every `fullOfflineRequired` child for local preview;
-7. one IndexedDB transaction records the mutation outcome and rotates the whole
-   route-set/runtime generation from active to previous and candidate to active;
-8. notify controlled pages of the new active generation;
+7. one IndexedDB transaction records the publish mutation outcome and selects
+   the candidate current descriptor plus its exact pointer fallback; per-mount
+   and runtime history was already validated in the candidate descriptor;
+8. notify controlled pages of the new current generation;
 9. delete unreachable cache generations only after commit and grace period.
 
-Crash before step 7 leaves active unchanged. Crash after step 7 recovers the new
-coherent generation and exact mutation outcome. Active corruption falls back to
-the complete previous generation once and records a tombstone. A transient
-timeout does not permanently poison valid bytes.
+Crash before step 7 leaves current unchanged. Crash after step 7 recovers the
+new coherent descriptor and exact mutation outcome. Corruption applies the
+component-scoped recovery matrix once and records tombstones; unrelated mounts
+never roll back. A transient timeout does not permanently poison valid bytes.
 
 ### Service Worker boundary
 
@@ -1071,30 +1167,32 @@ Cloud adapter requirements carried by conformance tests now:
 - independent artifact and activation failure injection;
 - concurrent writers from separate processes;
 - atomic multi-catalog route replacement, exact mutation replay, unknown-outcome
-  reconciliation, and active/previous preservation;
+  reconciliation, structural current/fallback preservation, and per-mount/runtime
+  active/previous preservation;
 - no reliance on filesystem path, rename, lock file, or process-local mutex.
 
 ## Failure and Recovery Matrix
 
 | Failure | Required outcome |
 |---|---|
-| Compiler worker crashes or is canceled | Candidate abandoned; active route set unchanged; compiler memory released |
+| Compiler worker crashes or is canceled | Candidate abandoned; current/fallback unchanged; compiler memory released |
 | Artifact write is short, long, or wrong digest | Candidate rejected before manifest commit |
 | Manifest write fails | Objects remain unreachable; no activation |
-| Previous descriptor/reference missing or corrupt while active is healthy | Active continues; previous quarantined/cleared once |
-| Active descriptor/reference corrupt with verified fallback | One recovery CAS promotes/substitutes only affected components; healthy mounts continue |
-| Active component corrupt with no verified fallback | Affected mount fails closed; repaired route set continues unaffected mounts with degraded readiness |
+| Pointer fallback descriptor missing or corrupt while current is healthy | Current continues; one recovery CAS clears only pointer fallback |
+| Current descriptor corrupt with verified pointer fallback | One recovery CAS promotes fallback to current and clears corrupt authority |
+| Active component corrupt with verified same-component previous | One recovery CAS substitutes only affected mount/runtime, clears damaged history, preserves unrelated mounts |
+| Active component corrupt with no verified same-component previous | Affected mount/runtime fails closed; repaired descriptor continues unaffected mounts with degraded readiness |
 | Activation authority corrupt/unverifiable | Namespace fails closed; evidence and objects remain untouched |
-| Preflight finds missing/corrupt required child | Candidate rejected; active/previous route sets remain serveable |
+| Preflight finds missing/corrupt required child | Candidate rejected; current descriptor and all component histories remain serveable |
 | Activation CAS loses race | Newer route-set authority preserved; candidate may remain reusable |
 | Activation commits but reply is lost | Same mutation ID reconciles exact committed outcome; no duplicate rotation |
-| Browser quota exceeded | Candidate rejected with actionable estimate; active cache preserved |
-| IndexedDB transaction aborts | Active route-set/runtime pointer unchanged |
-| Active local generation corrupt | Apply component-scoped recovery once; tombstone corrupt components |
+| Browser quota exceeded | Candidate rejected with actionable estimate; current cache preserved |
+| IndexedDB transaction aborts | Current/fallback pointers unchanged |
+| Current local component corrupt | Apply component-scoped recovery once; tombstone corrupt components |
 | Search Wasm unavailable | Server fallback online; bounded unavailable state offline |
 | Renderer Wasm unavailable offline | Cached full page if present, otherwise explicit offline unavailable response |
-| Service Worker update fails | Existing active worker/route-set/runtime generation continues |
-| Native source unavailable on restart | Recovered active route set serves; refresh diagnostic observable |
+| Service Worker update fails | Existing controlling worker and current descriptor continue |
+| Native source unavailable on restart | Recovered current descriptor serves; refresh diagnostic observable |
 | Cloud artifact store transient failure | No pointer mutation; retry policy owned by caller |
 
 ## Security and Privacy Boundary
@@ -1153,6 +1251,8 @@ For identical canonical candidate bytes and compiler options:
 - native and browser envelope construction produces identical canonical source
   sets for shuffled inputs, nested refs, redirects, and equivalent acquisition
   locations without persisting acquisition secrets;
+- JSON/YAML format detection and canonical media derivation are byte-based and
+  identical across targets; acquisition media hints cannot change identity;
 - native and Wasm compilers emit the same snapshot ID, manifest bytes, child
   logical identities, search artifacts, and projection bytes;
 - mutating any child kind, media type, readiness role, decoder version, or
@@ -1178,16 +1278,19 @@ Every adapter must pass reusable tests for:
 - cancellation during read/write;
 - bounded concurrent distinct writes;
 - manifest-last visibility;
-- whole-route-set active/previous transitions including `v1, v2, v2`;
+- publish transitions including `v1, v2, v2` preserve distinct per-component
+  previous values and pointer fallback;
 - concurrent writers and stale expected state;
 - failure after staging one mount, commit-before-reply, exact mutation replay,
   mutation-ID conflict, and restart outcome reconciliation;
-- restart after mutation outcomes are pruned recovers active and distinct previous
-  descriptors, serves every mount, and enumerates exact GC roots using only ports;
-- multi-catalog restart matrices cover corrupt active descriptor, corrupt previous
-  descriptor, one corrupt active snapshot, corrupt previous snapshot, corrupt
-  runtime, and both generations corrupt; unaffected mounts persist and at most one
-  durable recovery mutation occurs;
+- restart after mutation outcomes are pruned recovers current/fallback
+  descriptors, all per-component histories, serves every healthy mount, and
+  enumerates exact GC roots using only ports;
+- recovery matrices assert exact post-state for healthy current/corrupt pointer
+  fallback; corrupt current/healthy pointer fallback; corrupt active or previous
+  snapshot; corrupt runtime; and no healthy same-component fallback. The
+  `A2/A1 + B1/B0` fixture must repair B to B0 or unavailable while preserving
+  A2/A1, removing B1 from every GC root, and committing at most one recovery;
 - restart recovery;
 - deterministic corruption versus transient failure;
 - GC roots and grace behavior where enumeration is supported.
@@ -1213,7 +1316,7 @@ Automated Chromium tests must prove:
 - portable browser acquisition accepts zero-hop CORS and maps redirect rejection,
   CORS denial, and network/TLS failure to `fetch_unavailable` without guessing;
   equivalent native portable fixtures map the same cases to that class while
-  observable scheme/size/media failures stay distinct;
+  observable scheme/size/format failures stay distinct;
 - compiler worker cancellation and memory release;
 - exact native/Wasm snapshot and search parity fixtures;
 - Ctrl/Cmd+K, sidebar click, recent visits, highlights, keyboard, focus, and
@@ -1230,7 +1333,8 @@ Automated Chromium tests must prove:
   compatible generation or deterministic previous fallback;
 - repeated compiles, worker crashes, candidate expiry, runtime upgrades, quota
   denial, storage denial, corruption, stale module, and version mismatch stay
-  within aggregate storage caps while active/previous remain recoverable;
+  within aggregate storage caps while current/fallback descriptors and healthy
+  per-component histories remain recoverable;
 - a maximum-bound candidate reserves from profile/runtime limits before its first
   write, streams once without a manifest, reconciles final actual bytes, and
   releases unused capacity; insufficient capacity causes zero candidate writes;
