@@ -218,32 +218,64 @@ Canonical JSON follows the existing strict codec rules: sorted slices, fixed
 struct field order, valid UTF-8, no duplicate keys, no unknown fields, no trailing
 values, compact encoding, no timestamps, and no map iteration in identity bytes.
 
-### Portable source-set envelope
+### Portable source seed and finalized envelope
 
-Native and browser compilers receive the same canonical `SourceSetEnvelopeV1`,
-not an ad hoc bag of files:
+The compiler input and output are intentionally different. Native and browser
+adapters first construct `SourceSeedSetV1`, containing requested/defaultable
+catalog fields plus bounded root bytes and logical paths. It contains no resolved
+reference graph:
 
 ```go
-type SourceSetEnvelope struct {
+type SourceSeedSet struct {
     FormatVersion   string
-    CatalogID       string
-    Title           string
+    CatalogID       string // optional until portable defaulting
+    Title           string // optional until portable defaulting
     Profile         string
     DefaultDocument string
-    Revision        string
-    Sources         []SourceDescriptor // sorted by LogicalPath
-    ResolutionEdges []ResolutionEdge   // sorted canonical graph
+    Roots           []SeedSource // sorted by LogicalPath
 }
 
-type SourceDescriptor struct {
-    LogicalPath string // normalized relative slash path, never an acquisition URL
+type SeedSource struct {
+    LogicalPath string
+    Role        SourceRole
+    Length      uint64
+    SHA256      [32]byte
+    Context     ResolutionContext // opaque and ephemeral
+}
+```
+
+After parsing and resolution, the compiler emits canonical
+`FinalizedSourceSetEnvelopeV1` with sorted resource occurrences and edges. Each
+occurrence separates semantic reference-base context from physical byte identity:
+
+```go
+type ResolvedResource struct {
+    InstanceID  SourceInstanceID
+    LogicalPath string
     Role        SourceRole
     Length      uint64
     SHA256      [32]byte
 }
+
+type ResolutionEdge struct {
+    FromInstance SourceInstanceID
+    FromPointer  string
+    ToInstance   SourceInstanceID
+}
 ```
 
-Envelope construction rules are shared portable code:
+Root instance identity binds normalized root logical path, role, and digest.
+New child instance identity binds parent instance, reference JSON Pointer,
+resolved digest, media type, and format. Therefore byte-identical resources
+loaded under `a/` and `b/` remain distinct semantic instances and can resolve
+different relative children, while their physical bytes still deduplicate by
+digest. An opaque `ResolutionContext` is threaded to the adapter for descendant
+fetches and equality/cycle recognition during one compilation; it is never
+serialized, hashed, logged, or reused across runs. A cycle edge may target an
+already assigned instance only when the adapter returns the same opaque context
+and bytes verify against that instance.
+
+Seed/finalization rules are shared portable code:
 
 - paths are NFC UTF-8, slash-separated, relative, dot-segment free, and unique
   under exact and Unicode-case-fold comparison;
@@ -254,25 +286,19 @@ Envelope construction rules are shared portable code:
   `info.title`, or `local-preview-` plus the first 12 hex characters of the root
   content digest when the title has no slug; collisions are rejected;
 - title defaults to root `info.title`; profile defaults to the named portable v1
-  profile; every explicit/defaulted value is stored in the envelope;
-- revision is `source-set-sha256-<digest>` over the sorted descriptors and
-  resolution graph. It never contains a filesystem path or URL;
-- acquisition URL, redirect chain, authorization data, browser object URL, and
-  local machine path are ephemeral adapter state and are never persisted in the
-  envelope, manifest, cache key, diagnostic, or receipt;
-- relative `$ref` bases use the referrer's logical path. Network acquisition may
-  use a final URL privately, but a fetched external resource receives canonical
-  logical path `external/<content-sha256>.<json|yaml>`. Resolution edges bind the
-  referrer, JSON Pointer, and resolved content identity, so different dependency
-  graphs cannot alias even when acquisition locations differ;
-- cycles and repeated resources deduplicate by canonical resolution edge and
-  content identity; ordering never follows fetch completion order.
+  profile; every explicit/defaulted value is stored in the finalized envelope;
+- revision is `source-set-sha256-<digest>` over finalized metadata, occurrences,
+  and resolution edges. It is computed only after graph completion and never
+  contains a filesystem path, context handle, or URL;
+- acquisition URL, authorization data, browser object URL, and local machine path
+  are ephemeral adapter state and never enter the envelope, manifest, cache key,
+  diagnostic, or receipt;
+- ordering follows canonical instance/edge keys, never fetch completion order.
 
-The UI may collect the explicit root, catalog ID, title, or profile, but it must
-call this constructor. Shuffling input order cannot change candidate bytes.
-Token-bearing pasted URLs are allowed only as ephemeral acquisition addresses;
-their query and fragment never enter persisted identity or user-visible
-diagnostics.
+The UI may collect the explicit root, catalog ID, title, or profile, but it calls
+the shared seed constructor. Shuffling inputs cannot change finalized bytes.
+Token-bearing pasted URLs are ephemeral acquisition addresses; their query and
+fragment never enter persisted identity or user-visible diagnostics.
 
 ### Streaming compiler output
 
@@ -350,6 +376,30 @@ type SnapshotRegistry interface {
 The manifest write is the candidate-complete marker. Existing manifests are
 immutable. A conflicting manifest for the same ID is corruption.
 
+### Route-set and runtime registries
+
+Activation IDs are always dereferenceable through immutable registries:
+
+```go
+type RouteSetRegistry interface {
+    PutIfAbsent(context.Context, RouteSetDescriptor) error
+    Descriptor(context.Context, RouteSetID) (RouteSetDescriptor, error)
+}
+
+type RuntimeBundleRegistry interface {
+    PutIfAbsent(context.Context, RuntimeBundleDescriptor) error
+    Descriptor(context.Context, RuntimeBundleID) (RuntimeBundleDescriptor, error)
+}
+```
+
+`PutIfAbsent` recomputes the canonical ID and preflights every referenced
+snapshot/runtime artifact before making a descriptor visible. Reads recompute the
+ID, reject unknown fields and missing/corrupt references, and never repair
+activation authority implicitly. Descriptor lifetime is at least the lifetime of
+any active, previous, candidate, static-export, or lease reference; mutation-
+outcome expiry cannot delete it. Missing/corrupt active or previous descriptors
+fail serving closed while preserving authority for explicit recovery.
+
 ### Route-set activation repository
 
 Mutable route authority is separate from artifact bytes and is atomic for the
@@ -375,7 +425,14 @@ type ActivationState struct {
 type ActivationMutation struct {
     ID                 MutationID // globally unique, stable across retries
     ExpectedGeneration uint64
-    Desired            RouteSetDescriptor
+    Desired            RouteSetID // already committed to RouteSetRegistry
+}
+
+type MutationOutcome struct {
+    MutationID MutationID
+    Status     MutationStatus // committed or conflicted
+    State      ActivationState
+    Desired    RouteSetID
 }
 
 type ActivationRepository interface {
@@ -397,7 +454,8 @@ reconciliation/receipt retention window, which must exceed every retry window.
 
 Rules:
 
-- every snapshot and runtime bundle in the desired route set is preflighted;
+- the desired descriptor is loaded from `RouteSetRegistry`; every snapshot and
+  runtime bundle in it is preflighted again before CAS;
 - all mounts change as one generation or none do; a failure after staging the
   first mount cannot expose a mixed route set;
 - an identical route-set activation is an idempotent no-op preserving distinct
@@ -409,25 +467,36 @@ Rules:
 - namespace is opaque to open core. Manja Cloud may derive it from tenant and
   environment identity without adding tenant types to `domain`.
 
-Filesystem uses the existing journal and atomic route-table replace behind this
-interface. Browser uses one IndexedDB transaction. Future cloud uses a database
-transaction/conditional update plus a mutation-outcome table. S3 object metadata
-is not activation authority.
+Filesystem uses the existing journal, immutable descriptor files, and atomic
+route-table replace behind these interfaces. Browser uses CacheStorage/IndexedDB
+registries plus one IndexedDB activation transaction. Future cloud uses immutable
+descriptor objects/rows plus a database conditional transaction and mutation-
+outcome table. S3 object metadata is not activation authority.
 
 ### Runtime bundle descriptor
 
 `RuntimeBundleID` is the digest of canonical `RuntimeBundleDescriptorV1`, which
 binds exact renderer/search Wasm bytes, Go Wasm runtime, shell, Goshtoso/assets,
-Service Worker, compatibility matrix, and route-protocol identity. Native
+compatibility matrix, required supervisor protocol, and route-protocol identity. Native
 in-process rendering records the native presentation identity in receipts but
 may use an empty route-set runtime field because deployment authority already
 pins one executable.
 
 Browser activation, rollback, recovery, and garbage collection always operate on
-the complete `(route set, runtime bundle)` generation. A Service Worker update
-may download a new bundle but cannot pair it with active snapshots until smoke
-validation and one route-set CAS succeed. Previous activation retains its exact
-previous runtime bundle and remains a coherent fallback.
+the complete `(route set, runtime bundle)` generation loaded through both
+registries. Previous activation retains its exact previous runtime bundle and
+remains a coherent fallback.
+
+The executing Service Worker is a stable supervisor outside rotating runtime
+bundles because browser install/controller state cannot join an IndexedDB
+transaction. Supervisor protocol v1 can serve both active and previous
+descriptors and a pending compatible candidate. A supervisor update uses the
+browser's normal install/waiting/activate lifecycle and may claim clients only
+after it proves compatibility with the currently active and previous protocol
+requirements. Route-set CAS may select a candidate only when both the current
+controller and any waiting successor declare compatibility. Thus old or new
+supervisor bytes can route to the generation named in IndexedDB; neither is
+treated as atomically rotated or rollbackable by that transaction.
 
 ### References and garbage collection
 
@@ -447,12 +516,12 @@ remain Manja Cloud concerns.
 
 ## Adapter Mapping
 
-| Mode | Artifact store | Snapshot registry | Activation repository |
+| Mode | Artifact store | Snapshot/route-set/runtime registries | Activation repository |
 |---|---|---|---|
-| Local native | filesystem objects | filesystem manifests | durable journal and route table |
-| Static export | output directory | exported manifest | none |
-| Browser preview | CacheStorage | IndexedDB manifest metadata | IndexedDB transaction |
-| Future Manja Cloud | S3-compatible objects | database row plus manifest object | PostgreSQL/DynamoDB CAS |
+| Local native | filesystem objects | immutable filesystem descriptors | durable journal and route table |
+| Static export | output directory | exported descriptors | none |
+| Browser preview | CacheStorage | verified CacheStorage objects + IndexedDB descriptor index | IndexedDB transaction |
+| Future Manja Cloud | S3-compatible objects | immutable objects plus database descriptor index | PostgreSQL/DynamoDB CAS |
 
 `io/fs` may remain a read-only adapter for embedded assets. It is insufficient
 for streaming verified writes, conditional activation, multipart transfer,
@@ -501,6 +570,26 @@ pointer, then its scope returns bounded 404; cleanup never reassigns that ID.
 bundle/presentation identity, and normalized export configuration where
 applicable. Mutable aliases and redirects are never immutable cache keys.
 
+Snapshot directories and search records are route-neutral. The accepted v1
+fields that currently persist `Href` migrate to this canonical token:
+
+```go
+type RouteTarget struct {
+    DocumentKey string
+    Kind        DetailKind
+    DetailID    string
+}
+```
+
+`RouteTarget` participates in snapshot/search identity; HTTP origin, base path,
+mount, local activation ID, query strings, and absolute/relative href do not. A
+shared `RouteComposer` validates the target and combines it with
+`RouteProtocolV1` plus the composition-owned scope after ranking. Native SSR,
+static export, browser presentation, and Service Worker all use that composer.
+Search parity covers ordered targets, scores, and match ranges; href composition
+has its own native/browser vector suite. One unchanged snapshot can therefore be
+mounted at two published bases and one local scope without recompilation.
+
 ## Native Commands
 
 ### `manja build`
@@ -515,6 +604,25 @@ Loads configured file/Git sources, compiles all catalogs, writes complete
 snapshots, preflights them, constructs one complete route set, and atomically
 updates the namespace activation repository. No HTTP listener starts. Output
 includes bounded machine-readable receipts and its idempotent mutation ID.
+
+Route-set construction begins from the recovered active descriptor and produces
+one per-configured-mount outcome:
+
+- a successful refresh advances that mount to the new snapshot;
+- source, parse, compile, or candidate-preflight failure carries forward the
+  exact healthy active snapshot for that mount and emits a bounded degraded
+  receipt;
+- a configured mount with neither a healthy recovered snapshot nor a valid new
+  candidate aborts the whole mutation and leaves active unchanged;
+- explicit config removal omits the old mount only after every remaining mount
+  is admissible and emits a removal receipt;
+- cancellation, namespace/global budget failure, corrupt active route-set
+  authority, or failure to load any carried snapshot aborts the whole mutation;
+- all per-mount receipts and the desired descriptor are deterministic inputs to
+  one registry write and one namespace CAS.
+
+Thus successful catalogs may advance while a failed catalog preserves its
+last-known-good snapshot, but no request can observe a half-written route set.
 
 ### `manja serve`
 
@@ -580,8 +688,9 @@ There is no manual “compile then upload” step.
 - File upload is always local and never sent to Manja servers.
 - URL import uses browser Fetch with `credentials: omit` and requires a
   CORS-readable response.
-- Redirect count, final scheme, bytes, decompression, documents, references,
-  depth, diagnostics, and compile time are bounded.
+- Redirects are rejected in portable browser profile v1; scheme, bytes,
+  decompression, documents, references, depth, diagnostics, and compile time are
+  bounded.
 - Only `https:` URLs are accepted outside localhost development.
 - Cross-origin references obey the same CORS and credential policy.
 - The open-core demo does not proxy blocked URLs. Manja Cloud may later offer an
@@ -598,19 +707,20 @@ JavaScript/Wasm bridge:
 ```go
 type ResolveRequest struct {
     RequestID       uint64
-    ReferrerPath    string
+    ReferrerInstance SourceInstanceID
+    ReferrerContext ResolutionContext // opaque adapter handle
     ReferrerPointer string
     Reference       string
     Remaining       ResolutionBudget
 }
 
 type ResolveResponse struct {
-    RequestID   uint64
-    LogicalPath string
-    Length      uint64
-    SHA256      [32]byte
-    MediaType   string
-    Bytes       ByteStream
+    RequestID uint64
+    Context   ResolutionContext // opaque; equality is valid only in this compile
+    Length    uint64
+    SHA256    [32]byte
+    MediaType string
+    Bytes     ByteStream
 }
 
 type SourceResolver interface {
@@ -621,19 +731,28 @@ type SourceResolver interface {
 The compiler owns reference discovery, canonical edge construction, cycle and
 depth detection, deduplication, and budget reservation. The adapter owns only
 bounded byte acquisition. The browser bridge resolves relative network requests
-against private acquisition state, follows at most five redirects, requires a
-final `https:` URL outside localhost, uses `credentials: omit`, rejects opaque
-responses, streams at most the reserved decoded bytes, and returns typed CORS,
-scheme, redirect, size, media, cancellation, and transient errors. It never
-returns the final URL to portable code or diagnostics.
+against the private acquisition context. Portable browser profile v1 uses Fetch
+with `redirect: "error"`: zero redirects are followed. This is deliberately
+narrow because automatic Fetch hides hop count and manual cross-origin redirects
+hide `Location`. The initial URL must be `https:` outside localhost, credentials
+are omitted, opaque/redirected responses are rejected, and at most the reserved
+decoded bytes are streamed. Native cross-target parity fixtures use the same
+zero-redirect portable profile; a native publisher may expose a separately named
+non-portable acquisition profile without claiming identical browser availability.
+Errors remain typed for CORS, scheme, redirect, size, media, cancellation, and
+transient failure. The adapter never returns acquisition URLs to portable code or
+diagnostics.
 
 Each request reserves aggregate decoded bytes, document count, and depth before
 fetch. A response is hashed and length-checked while streaming; unused reservation
 is released, but a crossing is rejected before another body is read. Concurrent
 requests share one cancellation scope and are bounded to four acquisitions.
 Cycles terminate deterministically from the logical resolution graph. Native and
-browser adapters receive shared vectors and must produce the identical envelope,
-snapshot, and typed deterministic error for the same admitted resolved graph.
+browser adapters receive shared vectors and must produce the identical finalized
+envelope, snapshot, and typed deterministic error for the same admitted resolved
+graph. A fixture with byte-identical `a/common.yaml` and `b/common.yaml` whose
+relative `child.yaml` bytes differ must retain both occurrence graphs regardless
+of shuffled or concurrent acquisition.
 
 ### Browser compilation profiles
 
@@ -691,7 +810,11 @@ It returns typed data:
 ```json
 {
   "id": "operation-createNamespacedPod",
-  "href": "/catalogs/kubernetes/documents/core-v1/details/detail-sha256-.../",
+  "target": {
+    "documentKey": "core-v1",
+    "kind": "operation",
+    "detailId": "detail-sha256-..."
+  },
   "score": 0.94,
   "matches": {
     "title": [[0, 6]],
@@ -708,8 +831,10 @@ contract.
 
 Native server fallback calls the same Go query package. Given the same snapshot,
 query, and search-contract identity, browser and server return identical ordered
-IDs, scores, and match ranges. Crossing a deterministic work budget returns the
-same typed `search_work_budget` error on both targets and no partial results.
+IDs, route targets, scores, and match ranges. Presentation composes the owning
+scope's href only after the query completes. Crossing a deterministic work budget
+returns the same typed `search_work_budget` error on both targets and no partial
+results.
 Wall-clock deadline and user cancellation are external availability controls:
 they return typed all-or-nothing `canceled` or `temporarily_unavailable`, never a
 ranked prefix, and are excluded from result parity. Server fallback may differ
@@ -760,19 +885,24 @@ compatible snapshot or uses server fallback.
 
 Browser v1 has one local activation namespace and these origin-wide hard caps:
 
-- 256 MiB total Manja persistent bytes across CacheStorage and IndexedDB;
+- 320 MiB total Manja persistent bytes across CacheStorage and IndexedDB;
 - 192 MiB unique immutable snapshot/source-object bytes;
-- 48 MiB runtime bundles, shell, Service Worker, and presentation assets;
-- 16 MiB metadata, receipts, tombstones, and reserved headroom;
+- 96 MiB runtime bundles, shell, supervisor worker, and presentation assets, with
+  at most 32 MiB per complete runtime bundle;
+- 32 MiB metadata, receipts, tombstones, and reserved headroom;
 - 16,384 physical entries;
 - at most two committed complete generations (active and distinct previous) and
   one candidate generation;
 - one candidate lease, renewed by its worker, with a 15-minute maximum lifetime.
 
 Accounting uses verified encoded length for stored objects and charges shared
-digests once. Before the first candidate write, IndexedDB atomically reserves its
-manifest-declared maximum plus runtime bundle and metadata headroom. Writes debit
-that reservation; they cannot depend on browser quota failure as admission.
+digests once. The manifest does not exist before streamed child writes, so
+reservation cannot depend on it. Before compiler start, IndexedDB atomically
+reserves the portable profile's full 64 MiB snapshot maximum, exact already-known
+missing runtime-bundle bytes (bounded by 32 MiB), one MiB candidate metadata, and
+required entry count. Writes debit that reservation; the final manifest's actual
+lengths must fit it before commit, and unused capacity is released only after
+commit/abort reconciliation. Admission never depends on browser quota failure.
 Active, previous, controlled runtime bundle, and an unexpired candidate lease are
 protected roots. Deterministic eviction removes expired candidates first, then
 unreferenced runtimes, optional original sources, and least-recently-used
@@ -804,14 +934,16 @@ always complete offline before activation in v1.
    versioned cache;
 2. write and validate candidate manifests and the complete route-set descriptor;
 3. reserve and verify the exact runtime-bundle descriptor;
-4. instantiate matching renderer/search modules and perform a smoke query/render;
-5. verify every `fullOfflineRequired` child for local preview;
-6. one IndexedDB transaction records the mutation outcome and rotates the whole
+4. prove the current and any waiting supervisor support the bundle's required
+   protocol;
+5. instantiate matching renderer/search modules and perform a smoke query/render;
+6. verify every `fullOfflineRequired` child for local preview;
+7. one IndexedDB transaction records the mutation outcome and rotates the whole
    route-set/runtime generation from active to previous and candidate to active;
-7. notify controlled pages of the new active generation;
-8. delete unreachable cache generations only after commit and grace period.
+8. notify controlled pages of the new active generation;
+9. delete unreachable cache generations only after commit and grace period.
 
-Crash before step 6 leaves active unchanged. Crash after step 6 recovers the new
+Crash before step 7 leaves active unchanged. Crash after step 7 recovers the new
 coherent generation and exact mutation outcome. Active corruption falls back to
 the complete previous generation once and records a tombstone. A transient
 timeout does not permanently poison valid bytes.
@@ -867,9 +999,9 @@ renderer nodes + CDN
 Publication transaction:
 
 1. upload immutable artifact objects;
-2. upload immutable manifests;
+2. upload immutable snapshot and runtime-bundle descriptors;
 3. preflight candidates through the cloud reader;
-4. construct and preflight one complete route set;
+4. construct, register, and preflight one complete route-set descriptor;
 5. a database transaction records the idempotent mutation outcome and publishes
    the complete route set;
 6. if the commit reply is unknown, reconcile by mutation ID before any retry;
@@ -900,6 +1032,7 @@ Cloud adapter requirements carried by conformance tests now:
 | Compiler worker crashes or is canceled | Candidate abandoned; active route set unchanged; compiler memory released |
 | Artifact write is short, long, or wrong digest | Candidate rejected before manifest commit |
 | Manifest write fails | Objects remain unreachable; no activation |
+| Active route-set/runtime descriptor missing or corrupt | Serving fails closed; authority is preserved for explicit recovery |
 | Preflight finds missing/corrupt required child | Candidate rejected; active/previous route sets remain serveable |
 | Activation CAS loses race | Newer route-set authority preserved; candidate may remain reusable |
 | Activation commits but reply is lost | Same mutation ID reconciles exact committed outcome; no duplicate rotation |
@@ -987,6 +1120,8 @@ Every adapter must pass reusable tests for:
 - idempotent immutable writes and conflicting-byte rejection;
 - one physical digest referenced by multiple logical paths, kinds, and media
   types round-trips without physical-metadata conflict;
+- route-set/runtime descriptors round-trip by recomputed ID; missing, corrupt,
+  conflicting, and wrong-ID descriptors fail closed;
 - short/long/digest-corrupt stream rejection;
 - cancellation during read/write;
 - bounded concurrent distinct writes;
@@ -995,6 +1130,8 @@ Every adapter must pass reusable tests for:
 - concurrent writers and stale expected state;
 - failure after staging one mount, commit-before-reply, exact mutation replay,
   mutation-ID conflict, and restart outcome reconciliation;
+- restart after mutation outcomes are pruned recovers active and distinct previous
+  descriptors, serves every mount, and enumerates exact GC roots using only ports;
 - restart recovery;
 - deterministic corruption versus transient failure;
 - GC roots and grace behavior where enumeration is supported.
@@ -1011,6 +1148,12 @@ Automated Chromium tests must prove:
 - shared source-envelope/resolver vectors for shuffled directories, duplicate and
   case-colliding names, nested relative and cross-origin refs, redirects, cycles,
   CORS, token-bearing root URLs, budget crossing, and cancellation;
+- byte-identical external parents under two acquisition contexts with different
+  relative children remain distinct source instances under shuffled/concurrent
+  native and browser acquisition, with no context/URL persisted;
+- portable browser acquisition accepts zero-hop CORS and rejects every redirect
+  without following it; equivalent native portable fixtures return the same
+  typed result;
 - compiler worker cancellation and memory release;
 - exact native/Wasm snapshot and search parity fixtures;
 - Ctrl/Cmd+K, sidebar click, recent visits, highlights, keyboard, focus, and
@@ -1020,10 +1163,17 @@ Automated Chromium tests must prove:
 - offline reload into an unvisited operation/schema in complete mode;
 - a deliberate local/published mount collision cannot shadow the published URL;
   scoped local reload, history, and cleanup remain correct;
-- crash/reload at each browser activation and old/new runtime-bundle transition;
+- one unchanged snapshot mounted at two published bases and one local activation
+  keeps identical bytes/ID while every composed target resolves in its scope;
+- crash/reload at Service Worker install, waiting, activation, IndexedDB commit,
+  and controller change plus each old/new runtime-bundle transition serves a
+  compatible generation or deterministic previous fallback;
 - repeated compiles, worker crashes, candidate expiry, runtime upgrades, quota
   denial, storage denial, corruption, stale module, and version mismatch stay
   within aggregate storage caps while active/previous remain recoverable;
+- a maximum-bound candidate reserves from profile/runtime limits before its first
+  write, streams once without a manifest, reconciles final actual bytes, and
+  releases unused capacity; insufficient capacity causes zero candidate writes;
 - 390 px, 768 px, and desktop responsive rendering without primary overflow;
 - no management/API/upstream route interception;
 - no browser console or page errors.
@@ -1032,6 +1182,9 @@ Automated Chromium tests must prove:
 
 - locked Kubernetes native build remains 65 documents, 1,202 operations, 1,826
   schemas, and 3,028 exact-searchable targets;
+- mixed multi-catalog build advances successful mounts, carries a failed mount's
+  healthy last-known-good snapshot with degraded receipt, and aborts when a
+  failed configured mount has no healthy prior state;
 - runtime recovery from a precompiled snapshot performs no source read, Git
   command, OpenAPI parse, or compiler call;
 - source files may be absent from runtime image;
