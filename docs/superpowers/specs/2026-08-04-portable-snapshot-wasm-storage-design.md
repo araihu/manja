@@ -1167,11 +1167,14 @@ Browser v1 has one local activation namespace and these origin-wide hard caps:
 - 16 MiB and 512 physical entries for the stable supervisor worker and its
   non-rotating bootstrap assets. These fixed bytes are installed and accounted
   before any candidate reservation;
-- 32 MiB metadata, receipts, tombstones, and candidate metadata;
+- 32 MiB and 1,024 physical entries for all metadata: at most 31 MiB and 960
+  entries for protected non-candidate manifests, descriptors, receipts, and
+  tombstones, plus an exclusively reserved one MiB and 64 entries for the one
+  admitted candidate's metadata;
 - 2,048 physical entries per complete snapshot generation and 8,192 entries for
   the four-generation snapshot pool;
-- 1,024 physical entries for rotating runtime bundles, 1,024 for all metadata
-  and candidate descriptors, and 16,384 physical entries origin-wide. The
+- 1,024 physical entries for rotating runtime bundles and 16,384 physical
+  entries origin-wide. The
   remaining 5,632 entries are available only to evictable visited caches and
   optional source downloads; candidate admission may reclaim all of them;
 - at most two committed structural route descriptors (current and distinct
@@ -1184,8 +1187,10 @@ digests once. The manifest does not exist before streamed child writes, so
 reservation cannot depend on it. Before compiler start, IndexedDB atomically
 reserves simultaneously the portable profile's full 64 MiB and 2,048-entry
 snapshot maximum, exact already-known missing runtime-bundle bytes and entries
-(bounded by 32 MiB and 256 entries), one MiB candidate metadata, its bounded
-metadata-entry count, and the already charged fixed supervisor allowance. Writes
+(bounded by 32 MiB and 256 entries), exactly one MiB and 64 entries for candidate
+metadata, and the already charged fixed supervisor allowance. Protected
+non-candidate metadata above 31 MiB or 960 entries is itself inadmissible; it
+cannot consume the candidate partition. Writes
 debit that reservation; the final manifest's actual
 lengths must fit it before commit, and unused capacity is released only after
 commit/abort reconciliation. Admission never depends on browser quota failure.
@@ -1533,13 +1538,19 @@ Automated Chromium tests must prove:
   per-component histories remain recoverable;
 - one combined worst-case sequence publishes three maximum-byte/maximum-entry
   snapshots and three maximum-byte/maximum-entry runtime bundles, installs the
-  maximum fixed supervisor/bootstrap set, and fills the allowed metadata set.
+  maximum fixed supervisor/bootstrap set, and fills protected non-candidate
+  metadata to exactly 31 MiB and 960 entries.
   It then reserves one simultaneous maximum snapshot plus runtime candidate.
+  The reservation includes exactly one MiB and 64 candidate-metadata entries,
+  bringing the metadata pool to its exact 32 MiB/1,024-entry maximum.
   Every write/crash boundary and winning/losing CAS outcome proves exact
   post-state roots and GC sets. The fourth candidate reserves in full while
   generations 1-3 remain protected; its successful CAS roots only generations
   2-4, and no active generation is deleted or exceeds the
   432/256/128/16/32 MiB or 16,384-entry caps;
+- companion vectors add one byte or one entry to the protected non-candidate
+  metadata ceiling and prove deterministic admission denial with zero candidate
+  writes, unchanged roots, and no borrowing from another byte/entry pool;
 - a maximum-bound candidate reserves from profile/runtime limits before its first
   write, streams once without a manifest, reconciles final actual bytes, and
   releases unused capacity; insufficient capacity causes zero candidate writes;
