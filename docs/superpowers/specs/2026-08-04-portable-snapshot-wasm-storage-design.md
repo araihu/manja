@@ -1153,11 +1153,16 @@ compatible snapshot or uses server fallback.
 
 Browser v1 has one local activation namespace and these origin-wide hard caps:
 
-- 320 MiB total Manja persistent bytes across CacheStorage and IndexedDB;
-- 192 MiB unique immutable snapshot/source-object bytes;
-- 96 MiB runtime bundles, shell, supervisor worker, and presentation assets, with
+- exactly one locally activated mount. Its source graph may contain many root,
+  referenced, and support documents, but compilation produces one logical
+  snapshot bounded by the portable profile. Starting another local preview
+  first revokes the old activation pointer; multi-catalog local composition is
+  deferred to a later profile with separately proven aggregate headroom;
+- 416 MiB total Manja persistent bytes across CacheStorage and IndexedDB;
+- 256 MiB unique immutable snapshot/source-object bytes;
+- 128 MiB runtime bundles, shell, supervisor worker, and presentation assets, with
   at most 32 MiB per complete runtime bundle;
-- 32 MiB metadata, receipts, tombstones, and reserved headroom;
+- 32 MiB metadata, receipts, tombstones, and candidate metadata;
 - 16,384 physical entries;
 - at most two committed structural route descriptors (current and distinct
   pointer fallback), their bounded per-mount/runtime active and previous
@@ -1172,6 +1177,15 @@ missing runtime-bundle bytes (bounded by 32 MiB), one MiB candidate metadata, an
 required entry count. Writes debit that reservation; the final manifest's actual
 lengths must fit it before commit, and unused capacity is released only after
 commit/abort reconciliation. Admission never depends on browser quota failure.
+The snapshot and runtime subcaps each hold three complete maximum-size committed
+generations plus one complete candidate: `3 * 64 MiB + 64 MiB = 256 MiB` and
+`3 * 32 MiB + 32 MiB = 128 MiB`. Three committed generations are the maximum
+unique set reachable for that one mount from current active/previous plus
+pointer-fallback active/previous after digest deduplication. Therefore a legal current/fallback
+state always leaves one full candidate reservation inside each hard subcap; a
+fourth committed generation cannot become protected before the same atomic CAS
+makes the oldest generation unreachable. Metadata has its independent 32 MiB
+cap, so candidate metadata never borrows artifact headroom.
 Current/fallback descriptors, their reachable per-mount/runtime active/previous
 components, and an unexpired candidate lease are protected roots. Deterministic
 eviction removes expired candidates first, then unreferenced runtimes, optional
@@ -1501,6 +1515,12 @@ Automated Chromium tests must prove:
   denial, storage denial, corruption, stale module, and version mismatch stay
   within aggregate storage caps while current/fallback descriptors and healthy
   per-component histories remain recoverable;
+- four successive publications of maximum-size snapshots and four successive
+  maximum-size runtime upgrades each prove the preflight reservation, every
+  write/crash boundary, winning and losing CAS outcomes, post-commit roots, and
+  GC set. Each fourth candidate reserves in full while generations 1-3 remain
+  protected; its successful CAS roots only generations 2-4, and no active
+  generation is deleted or exceeds the 416/256/128/32 MiB caps;
 - a maximum-bound candidate reserves from profile/runtime limits before its first
   write, streams once without a manifest, reconciles final actual bytes, and
   releases unused capacity; insufficient capacity causes zero candidate writes;
