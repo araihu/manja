@@ -6,11 +6,27 @@ import (
 	core "github.com/araihu/manja/domain"
 )
 
+type PageMetadata struct {
+	Title string
+	Description string
+	CanonicalURL string
+	SocialImageURL string
+	SocialImageMIMEType string
+	SocialImageAlt string
+	Robots string
+}
+
 templ Layout(title string) {
 	@LayoutWithBranding(title, core.DocsBranding{}, false, false)
 }
 
 templ LayoutWithBranding(title string, branding core.DocsBranding, seasonalCampaign bool, manageFavicon bool) {
+	@LayoutWithBrandingMetadata(PageMetadata{Title: title}, branding, seasonalCampaign, manageFavicon) {
+		{ children... }
+	}
+}
+
+templ LayoutWithBrandingMetadata(metadata PageMetadata, branding core.DocsBranding, seasonalCampaign bool, manageFavicon bool) {
 	<!DOCTYPE html>
 	<html
 		lang="en"
@@ -44,7 +60,41 @@ templ LayoutWithBranding(title string, branding core.DocsBranding, seasonalCampa
 		<head>
 			<meta charset="UTF-8"/>
 			<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-			<title>{ title }</title>
+			<title>{ metadata.Title }</title>
+			if metadata.Description != "" {
+				<meta name="description" content={ metadata.Description }/>
+			}
+			if metadata.CanonicalURL != "" {
+				<link rel="canonical" href={ metadata.CanonicalURL }/>
+				<meta property="og:url" content={ metadata.CanonicalURL }/>
+			}
+			if metadata.Description != "" || metadata.CanonicalURL != "" || metadata.SocialImageURL != "" {
+				<meta property="og:type" content="website"/>
+				<meta property="og:site_name" content="Manja"/>
+				if metadata.Title != "" {
+					<meta property="og:title" content={ metadata.Title }/>
+					<meta name="twitter:title" content={ metadata.Title }/>
+				}
+				if metadata.Description != "" {
+					<meta property="og:description" content={ metadata.Description }/>
+					<meta name="twitter:description" content={ metadata.Description }/>
+				}
+			}
+			if metadata.SocialImageURL != "" {
+				<meta property="og:image" content={ metadata.SocialImageURL }/>
+				if metadata.SocialImageMIMEType != "" {
+					<meta property="og:image:type" content={ metadata.SocialImageMIMEType }/>
+				}
+				<meta property="og:image:width" content="1280"/>
+				<meta property="og:image:height" content="640"/>
+				<meta property="og:image:alt" content={ metadata.SocialImageAlt }/>
+				<meta name="twitter:card" content="summary_large_image"/>
+				<meta name="twitter:image" content={ metadata.SocialImageURL }/>
+				<meta name="twitter:image:alt" content={ metadata.SocialImageAlt }/>
+			}
+			if metadata.Robots != "" {
+				<meta name="robots" content={ metadata.Robots }/>
+			}
 			if branding.Favicon != "" {
 				if manageFavicon {
 					<link rel="icon" href={ templpkg.URL(branding.Favicon) } crossorigin="anonymous" data-asset-brand="icon"/>

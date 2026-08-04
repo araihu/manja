@@ -620,13 +620,23 @@ if [ "${1:-}" = "-C" ]; then
 	shift 2
 fi
 case "${1:-}" in
-	clone)
-		mkdir -p "$5"
+	init)
+		mkdir -p "$3"
+		;;
+	fetch)
+		:
 		;;
 	rev-parse)
-		printf '%s\n' "abc123abc123abc123abc123abc123abc123abcd"
+		case "$*" in
+			*:*) printf '%s\n' "def456def456def456def456def456def456def4" ;;
+			*) printf '%s\n' "abc123abc123abc123abc123abc123abc123abcd" ;;
+		esac
 		;;
-	show)
+	cat-file)
+		if [ "${2:-}" = "-s" ]; then
+			printf '%s\n' "77"
+			exit 0
+		fi
 		cat <<'EOF'
 openapi: 3.1.0
 info:
@@ -634,6 +644,9 @@ info:
   version: v1
 paths: {}
 EOF
+		;;
+	show)
+		printf 'Manja Test\000manja@example.test\000fixture\n'
 		;;
 	for-each-ref)
 		printf '%s\n' "discover refs failed" >&2

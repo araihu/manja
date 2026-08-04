@@ -1,0 +1,925 @@
+{
+  "schemaVersion": 1,
+  "diagnostics": [
+    {
+      "documentPath": "specs/api__v1_openapi.json",
+      "jsonPointer": "/components/schemas/io.k8s.api.autoscaling.v1.Scale/properties/status/default",
+      "class": "schema_validation",
+      "offendingValueSha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "schemaSha256": "e79af8bb36aead1f21f74a1ff51d4a4754679f8e2a1c99f6aef103298ed3e2a2",
+      "reference": ""
+    },
+    {
+      "documentPath": "specs/api__v1_openapi.json",
+      "jsonPointer": "/components/schemas/io.k8s.api.core.v1.LimitRange/properties/spec/default",
+      "class": "schema_validation",
+      "offendingValueSha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "schemaSha256": "272904679e8d1276d87a6e5a0de17e7e20cc5a6276a598908da61f3cfc7af8f3",
+      "reference": ""
+    },
+    {
+      "documentPath": "specs/api__v1_openapi.json",
+      "jsonPointer": "/components/schemas/io.k8s.api.core.v1.NodeDaemonEndpoints/properties/kubeletEndpoint/default",
+      "class": "schema_validation",
+      "offendingValueSha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "schemaSha256": "0c66fa15ff38dfd61f0f44e6260115cf3cdd53a531a9ac7163379c5bcd94e595",
+      "reference": ""
+    },
+    {
+      "documentPath": "specs/api__v1_openapi.json",
+      "jsonPointer": "/components/schemas/io.k8s.api.core.v1.NodeStatus/properties/nodeInfo/default",
+      "class": "schema_validation",
+      "offendingValueSha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "schemaSha256": "6e734d3951ff94af0d5317821fe7862fe761167c50dfd6fe6c2ce70bd6fe66cb",
+      "reference": ""
+    },
+    {
+      "documentPath": "specs/api__v1_openapi.json",
+      "jsonPointer": "/components/schemas/io.k8s.api.core.v1.Pod/properties/spec/default",
+      "class": "schema_validation",
+      "offendingValueSha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "schemaSha256": "88a0dedb9359719d6afee3d7d2e3e03a30dd8b93c125e58101d01f56fa9bb88b",
+      "reference": ""
+    },
+    {
+      "documentPath": "specs/api__v1_openapi.json",
+      "jsonPointer": "/components/schemas/io.k8s.api.core.v1.PodTemplateSpec/properties/spec/default",
+      "class": "schema_validation",
+      "offendingValueSha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "schemaSha256": "88a0dedb9359719d6afee3d7d2e3e03a30dd8b93c125e58101d01f56fa9bb88b",
+      "reference": ""
+    },
+    {
+      "documentPath": "specs/api__v1_openapi.json",
+      "jsonPointer": "/components/schemas/io.k8s.api.core.v1.ReplicationController/properties/status/default",
+      "class": "schema_validation",
+      "offendingValueSha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "schemaSha256": "094eab08ff0a3ecb0e6844c4483f6d896bf263b64a3b13e9b66bbe8241f78134",
+      "reference": ""
+    },
+    {
+      "documentPath": "specs/api__v1_openapi.json",
+      "jsonPointer": "/components/schemas/io.k8s.api.core.v1.WeightedPodAffinityTerm/properties/podAffinityTerm/default",
+      "class": "schema_validation",
+      "offendingValueSha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "schemaSha256": "fc32046752a55e2c0b7b0527fb12d2a915cadbdd593f2ceb9da6240a26e2f9bf",
+      "reference": ""
+    },
+    {
+      "documentPath": "specs/apis__admissionregistration.k8s.io__v1_openapi.json",
+      "jsonPointer": "/components/schemas/io.k8s.api.admissionregistration.v1.ValidatingAdmissionPolicyBinding/properties/spec/default",
+      "class": "schema_validation",
+      "offendingValueSha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "schemaSha256": "fbc22bb79e5c209fe6f58ea57779b41f1953cf9c3349a28ca0eaeb2656cd3ae3",
+      "reference": ""
+    },
+    {
+      "documentPath": "specs/apis__admissionregistration.k8s.io_openapi.json",
+      "jsonPointer": "/components/schemas/io.k8s.apimachinery.pkg.apis.meta.v1.APIGroup/properties/preferredVersion/default",
+      "class": "schema_validation",
+      "offendingValueSha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "schemaSha256": "65d24c26fe045aeb8a94df308d0e8a9311db12e5c0580f32133a4d4406e7cd93",
+      "reference": ""
+    },
+    {
+      "documentPath": "specs/apis__apiextensions.k8s.io__v1_openapi.json",
+      "jsonPointer": "/components/schemas/io.k8s.apiextensions-apiserver.pkg.apis.apiextensions.v1.CustomResourceDefinition/properties/spec/default",
+      "class": "schema_validation",
+      "offendingValueSha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "schemaSha256": "8df9db115244c54c021e5a53e7a9e5b32778acaf76d5d8dc8b9cde0f063b4e14",
+      "reference": ""
+    },
+    {
+      "documentPath": "specs/apis__apiextensions.k8s.io__v1_openapi.json",
+      "jsonPointer": "/components/schemas/io.k8s.apiextensions-apiserver.pkg.apis.apiextensions.v1.CustomResourceDefinitionSpec/properties/names/default",
+      "class": "schema_validation",
+      "offendingValueSha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "schemaSha256": "d7ac0e25f9c36a6201d038b3da5338ec262efb476a735a4eba14e5c8c15b430d",
+      "reference": ""
+    },
+    {
+      "documentPath": "specs/apis__apiextensions.k8s.io__v1_openapi.json",
+      "jsonPointer": "/components/schemas/io.k8s.apiextensions-apiserver.pkg.apis.apiextensions.v1.CustomResourceDefinitionStatus/properties/acceptedNames/default",
+      "class": "schema_validation",
+      "offendingValueSha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "schemaSha256": "e71b11efea36b04d4bf31bc476d43fbb76547a8baa31ced2320ab1b1d6258b49",
+      "reference": ""
+    },
+    {
+      "documentPath": "specs/apis__apiextensions.k8s.io_openapi.json",
+      "jsonPointer": "/components/schemas/io.k8s.apimachinery.pkg.apis.meta.v1.APIGroup/properties/preferredVersion/default",
+      "class": "schema_validation",
+      "offendingValueSha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "schemaSha256": "65d24c26fe045aeb8a94df308d0e8a9311db12e5c0580f32133a4d4406e7cd93",
+      "reference": ""
+    },
+    {
+      "documentPath": "specs/apis__apiregistration.k8s.io__v1_openapi.json",
+      "jsonPointer": "/components/schemas/io.k8s.kube-aggregator.pkg.apis.apiregistration.v1.APIService/properties/spec/default",
+      "class": "schema_validation",
+      "offendingValueSha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "schemaSha256": "1ff37e68142f3f853b3c05dbdbb0dad6f7206beb47b29fe2dc2156b7aa4fa3be",
+      "reference": ""
+    },
+    {
+      "documentPath": "specs/apis__apiregistration.k8s.io_openapi.json",
+      "jsonPointer": "/components/schemas/io.k8s.apimachinery.pkg.apis.meta.v1.APIGroup/properties/preferredVersion/default",
+      "class": "schema_validation",
+      "offendingValueSha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "schemaSha256": "65d24c26fe045aeb8a94df308d0e8a9311db12e5c0580f32133a4d4406e7cd93",
+      "reference": ""
+    },
+    {
+      "documentPath": "specs/apis__apps__v1_openapi.json",
+      "jsonPointer": "/components/schemas/io.k8s.api.apps.v1.DaemonSet/properties/spec/default",
+      "class": "schema_validation",
+      "offendingValueSha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "schemaSha256": "782025bb8766cc36f73681dafd407e81e24c4f56630850af744a5d94e9295320",
+      "reference": ""
+    },
+    {
+      "documentPath": "specs/apis__apps__v1_openapi.json",
+      "jsonPointer": "/components/schemas/io.k8s.api.apps.v1.DaemonSet/properties/status/default",
+      "class": "schema_validation",
+      "offendingValueSha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "schemaSha256": "2e125bdc52a1d2077585ab3678bce44e88e6dd223e17730c63136e0936876cba",
+      "reference": ""
+    },
+    {
+      "documentPath": "specs/apis__apps__v1_openapi.json",
+      "jsonPointer": "/components/schemas/io.k8s.api.apps.v1.Deployment/properties/spec/default",
+      "class": "schema_validation",
+      "offendingValueSha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "schemaSha256": "a59caeb40326bd32bb4f00092b51c16a9961dc611cb1e994fb7cb16302e772cd",
+      "reference": ""
+    },
+    {
+      "documentPath": "specs/apis__apps__v1_openapi.json",
+      "jsonPointer": "/components/schemas/io.k8s.api.apps.v1.ReplicaSet/properties/spec/default",
+      "class": "schema_validation",
+      "offendingValueSha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "schemaSha256": "272e0e7cdbd7ea3d12b5a0a39a478c230f8d7063ca5b492476b0e0fe0436a953",
+      "reference": ""
+    },
+    {
+      "documentPath": "specs/apis__apps__v1_openapi.json",
+      "jsonPointer": "/components/schemas/io.k8s.api.apps.v1.ReplicaSet/properties/status/default",
+      "class": "schema_validation",
+      "offendingValueSha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "schemaSha256": "eaf0f7ea80b8ee598eb9dbeca07aca76ab615db1e7726466fb07b8bf17ff5d1f",
+      "reference": ""
+    },
+    {
+      "documentPath": "specs/apis__apps__v1_openapi.json",
+      "jsonPointer": "/components/schemas/io.k8s.api.apps.v1.StatefulSet/properties/spec/default",
+      "class": "schema_validation",
+      "offendingValueSha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "schemaSha256": "75afffe6080f94478121255114fd985ba063651a81c9f92c885d74c6befd88cd",
+      "reference": ""
+    },
+    {
+      "documentPath": "specs/apis__apps__v1_openapi.json",
+      "jsonPointer": "/components/schemas/io.k8s.api.apps.v1.StatefulSet/properties/status/default",
+      "class": "schema_validation",
+      "offendingValueSha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "schemaSha256": "b1ff6c20ae695f91c7cfb1a9c75a2d76604fe4d69d5e0e395af6a262fc9d5dc0",
+      "reference": ""
+    },
+    {
+      "documentPath": "specs/apis__apps__v1_openapi.json",
+      "jsonPointer": "/components/schemas/io.k8s.api.autoscaling.v1.Scale/properties/status/default",
+      "class": "schema_validation",
+      "offendingValueSha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "schemaSha256": "e79af8bb36aead1f21f74a1ff51d4a4754679f8e2a1c99f6aef103298ed3e2a2",
+      "reference": ""
+    },
+    {
+      "documentPath": "specs/apis__apps__v1_openapi.json",
+      "jsonPointer": "/components/schemas/io.k8s.api.core.v1.PodTemplateSpec/properties/spec/default",
+      "class": "schema_validation",
+      "offendingValueSha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "schemaSha256": "88a0dedb9359719d6afee3d7d2e3e03a30dd8b93c125e58101d01f56fa9bb88b",
+      "reference": ""
+    },
+    {
+      "documentPath": "specs/apis__apps__v1_openapi.json",
+      "jsonPointer": "/components/schemas/io.k8s.api.core.v1.WeightedPodAffinityTerm/properties/podAffinityTerm/default",
+      "class": "schema_validation",
+      "offendingValueSha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "schemaSha256": "fc32046752a55e2c0b7b0527fb12d2a915cadbdd593f2ceb9da6240a26e2f9bf",
+      "reference": ""
+    },
+    {
+      "documentPath": "specs/apis__apps_openapi.json",
+      "jsonPointer": "/components/schemas/io.k8s.apimachinery.pkg.apis.meta.v1.APIGroup/properties/preferredVersion/default",
+      "class": "schema_validation",
+      "offendingValueSha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "schemaSha256": "65d24c26fe045aeb8a94df308d0e8a9311db12e5c0580f32133a4d4406e7cd93",
+      "reference": ""
+    },
+    {
+      "documentPath": "specs/apis__authentication.k8s.io__v1_openapi.json",
+      "jsonPointer": "/components/schemas/io.k8s.api.authentication.v1.TokenReview/properties/spec/default",
+      "class": "schema_validation",
+      "offendingValueSha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "schemaSha256": "57b85ba8254fd6e1dfb1b50254520c46e9e160b793426290f229a91a48aaa41e",
+      "reference": ""
+    },
+    {
+      "documentPath": "specs/apis__authentication.k8s.io_openapi.json",
+      "jsonPointer": "/components/schemas/io.k8s.apimachinery.pkg.apis.meta.v1.APIGroup/properties/preferredVersion/default",
+      "class": "schema_validation",
+      "offendingValueSha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "schemaSha256": "65d24c26fe045aeb8a94df308d0e8a9311db12e5c0580f32133a4d4406e7cd93",
+      "reference": ""
+    },
+    {
+      "documentPath": "specs/apis__authorization.k8s.io__v1_openapi.json",
+      "jsonPointer": "/components/schemas/io.k8s.api.authorization.v1.LocalSubjectAccessReview/properties/status/default",
+      "class": "schema_validation",
+      "offendingValueSha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "schemaSha256": "42d733b6ae209744843444e75e4792cc23471f1749edfa743a9d18626f322309",
+      "reference": ""
+    },
+    {
+      "documentPath": "specs/apis__authorization.k8s.io__v1_openapi.json",
+      "jsonPointer": "/components/schemas/io.k8s.api.authorization.v1.SelfSubjectAccessReview/properties/status/default",
+      "class": "schema_validation",
+      "offendingValueSha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "schemaSha256": "42d733b6ae209744843444e75e4792cc23471f1749edfa743a9d18626f322309",
+      "reference": ""
+    },
+    {
+      "documentPath": "specs/apis__authorization.k8s.io__v1_openapi.json",
+      "jsonPointer": "/components/schemas/io.k8s.api.authorization.v1.SelfSubjectRulesReview/properties/status/default",
+      "class": "schema_validation",
+      "offendingValueSha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "schemaSha256": "e7d311b2ee9c4ea4a0055fabdc787a2192d1ce2c9192bc611bd2bd2415a58fc4",
+      "reference": ""
+    },
+    {
+      "documentPath": "specs/apis__authorization.k8s.io__v1_openapi.json",
+      "jsonPointer": "/components/schemas/io.k8s.api.authorization.v1.SubjectAccessReview/properties/status/default",
+      "class": "schema_validation",
+      "offendingValueSha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "schemaSha256": "42d733b6ae209744843444e75e4792cc23471f1749edfa743a9d18626f322309",
+      "reference": ""
+    },
+    {
+      "documentPath": "specs/apis__authorization.k8s.io_openapi.json",
+      "jsonPointer": "/components/schemas/io.k8s.apimachinery.pkg.apis.meta.v1.APIGroup/properties/preferredVersion/default",
+      "class": "schema_validation",
+      "offendingValueSha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "schemaSha256": "65d24c26fe045aeb8a94df308d0e8a9311db12e5c0580f32133a4d4406e7cd93",
+      "reference": ""
+    },
+    {
+      "documentPath": "specs/apis__autoscaling__v1_openapi.json",
+      "jsonPointer": "/components/schemas/io.k8s.api.autoscaling.v1.HorizontalPodAutoscaler/properties/spec/default",
+      "class": "schema_validation",
+      "offendingValueSha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "schemaSha256": "662976c1d035e94f0a8b2189d02926e35a66db64182046c824c43ee088e29e46",
+      "reference": ""
+    },
+    {
+      "documentPath": "specs/apis__autoscaling__v1_openapi.json",
+      "jsonPointer": "/components/schemas/io.k8s.api.autoscaling.v1.HorizontalPodAutoscaler/properties/status/default",
+      "class": "schema_validation",
+      "offendingValueSha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "schemaSha256": "f4b692e6c2028187154ea9133a3355bff4056f6701fd9a143fdd9ce98d153e3c",
+      "reference": ""
+    },
+    {
+      "documentPath": "specs/apis__autoscaling__v1_openapi.json",
+      "jsonPointer": "/components/schemas/io.k8s.api.autoscaling.v1.HorizontalPodAutoscalerSpec/properties/scaleTargetRef/default",
+      "class": "schema_validation",
+      "offendingValueSha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "schemaSha256": "edfa2fc1a15717b6aed5f20a64f6891459cc118f8eaeba89eec9ba5cabc11065",
+      "reference": ""
+    },
+    {
+      "documentPath": "specs/apis__autoscaling__v2_openapi.json",
+      "jsonPointer": "/components/schemas/io.k8s.api.autoscaling.v2.ContainerResourceMetricSource/properties/target/default",
+      "class": "schema_validation",
+      "offendingValueSha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "schemaSha256": "cd013e14fd1a309c2672d613cae29de0ad8448bd7bb2f3b0c4fdbcc7dd628363",
+      "reference": ""
+    },
+    {
+      "documentPath": "specs/apis__autoscaling__v2_openapi.json",
+      "jsonPointer": "/components/schemas/io.k8s.api.autoscaling.v2.ExternalMetricSource/properties/metric/default",
+      "class": "schema_validation",
+      "offendingValueSha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "schemaSha256": "10993543b91b2ccacfcbbb31579ae12b8016c6bc1268f69069494cd5ff31fe85",
+      "reference": ""
+    },
+    {
+      "documentPath": "specs/apis__autoscaling__v2_openapi.json",
+      "jsonPointer": "/components/schemas/io.k8s.api.autoscaling.v2.ExternalMetricSource/properties/target/default",
+      "class": "schema_validation",
+      "offendingValueSha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "schemaSha256": "cd013e14fd1a309c2672d613cae29de0ad8448bd7bb2f3b0c4fdbcc7dd628363",
+      "reference": ""
+    },
+    {
+      "documentPath": "specs/apis__autoscaling__v2_openapi.json",
+      "jsonPointer": "/components/schemas/io.k8s.api.autoscaling.v2.ExternalMetricStatus/properties/metric/default",
+      "class": "schema_validation",
+      "offendingValueSha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "schemaSha256": "10993543b91b2ccacfcbbb31579ae12b8016c6bc1268f69069494cd5ff31fe85",
+      "reference": ""
+    },
+    {
+      "documentPath": "specs/apis__autoscaling__v2_openapi.json",
+      "jsonPointer": "/components/schemas/io.k8s.api.autoscaling.v2.HorizontalPodAutoscaler/properties/spec/default",
+      "class": "schema_validation",
+      "offendingValueSha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "schemaSha256": "9bac14335077b265bca5114fb09ac2d03d0cac938d55ebf81133b3a9b5512901",
+      "reference": ""
+    },
+    {
+      "documentPath": "specs/apis__autoscaling__v2_openapi.json",
+      "jsonPointer": "/components/schemas/io.k8s.api.autoscaling.v2.HorizontalPodAutoscaler/properties/status/default",
+      "class": "schema_validation",
+      "offendingValueSha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "schemaSha256": "c92887bc0a7506112e49193cc44229574a4f6e30b03d28cb01a2d253342ecc0a",
+      "reference": ""
+    },
+    {
+      "documentPath": "specs/apis__autoscaling__v2_openapi.json",
+      "jsonPointer": "/components/schemas/io.k8s.api.autoscaling.v2.HorizontalPodAutoscalerSpec/properties/scaleTargetRef/default",
+      "class": "schema_validation",
+      "offendingValueSha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "schemaSha256": "60aa2f0cfd98ff7a0d65e270fbf3ee3569665debb5239836e7c57e20e088d5b2",
+      "reference": ""
+    },
+    {
+      "documentPath": "specs/apis__autoscaling__v2_openapi.json",
+      "jsonPointer": "/components/schemas/io.k8s.api.autoscaling.v2.ObjectMetricSource/properties/describedObject/default",
+      "class": "schema_validation",
+      "offendingValueSha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "schemaSha256": "479c685a74201307d6bccc1a408112c5f02d8de4605a6b0ed9274234662030ed",
+      "reference": ""
+    },
+    {
+      "documentPath": "specs/apis__autoscaling__v2_openapi.json",
+      "jsonPointer": "/components/schemas/io.k8s.api.autoscaling.v2.ObjectMetricSource/properties/metric/default",
+      "class": "schema_validation",
+      "offendingValueSha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "schemaSha256": "10993543b91b2ccacfcbbb31579ae12b8016c6bc1268f69069494cd5ff31fe85",
+      "reference": ""
+    },
+    {
+      "documentPath": "specs/apis__autoscaling__v2_openapi.json",
+      "jsonPointer": "/components/schemas/io.k8s.api.autoscaling.v2.ObjectMetricSource/properties/target/default",
+      "class": "schema_validation",
+      "offendingValueSha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "schemaSha256": "cd013e14fd1a309c2672d613cae29de0ad8448bd7bb2f3b0c4fdbcc7dd628363",
+      "reference": ""
+    },
+    {
+      "documentPath": "specs/apis__autoscaling__v2_openapi.json",
+      "jsonPointer": "/components/schemas/io.k8s.api.autoscaling.v2.ObjectMetricStatus/properties/describedObject/default",
+      "class": "schema_validation",
+      "offendingValueSha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "schemaSha256": "479c685a74201307d6bccc1a408112c5f02d8de4605a6b0ed9274234662030ed",
+      "reference": ""
+    },
+    {
+      "documentPath": "specs/apis__autoscaling__v2_openapi.json",
+      "jsonPointer": "/components/schemas/io.k8s.api.autoscaling.v2.ObjectMetricStatus/properties/metric/default",
+      "class": "schema_validation",
+      "offendingValueSha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "schemaSha256": "10993543b91b2ccacfcbbb31579ae12b8016c6bc1268f69069494cd5ff31fe85",
+      "reference": ""
+    },
+    {
+      "documentPath": "specs/apis__autoscaling__v2_openapi.json",
+      "jsonPointer": "/components/schemas/io.k8s.api.autoscaling.v2.PodsMetricSource/properties/metric/default",
+      "class": "schema_validation",
+      "offendingValueSha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "schemaSha256": "10993543b91b2ccacfcbbb31579ae12b8016c6bc1268f69069494cd5ff31fe85",
+      "reference": ""
+    },
+    {
+      "documentPath": "specs/apis__autoscaling__v2_openapi.json",
+      "jsonPointer": "/components/schemas/io.k8s.api.autoscaling.v2.PodsMetricSource/properties/target/default",
+      "class": "schema_validation",
+      "offendingValueSha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "schemaSha256": "cd013e14fd1a309c2672d613cae29de0ad8448bd7bb2f3b0c4fdbcc7dd628363",
+      "reference": ""
+    },
+    {
+      "documentPath": "specs/apis__autoscaling__v2_openapi.json",
+      "jsonPointer": "/components/schemas/io.k8s.api.autoscaling.v2.PodsMetricStatus/properties/metric/default",
+      "class": "schema_validation",
+      "offendingValueSha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "schemaSha256": "10993543b91b2ccacfcbbb31579ae12b8016c6bc1268f69069494cd5ff31fe85",
+      "reference": ""
+    },
+    {
+      "documentPath": "specs/apis__autoscaling__v2_openapi.json",
+      "jsonPointer": "/components/schemas/io.k8s.api.autoscaling.v2.ResourceMetricSource/properties/target/default",
+      "class": "schema_validation",
+      "offendingValueSha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "schemaSha256": "cd013e14fd1a309c2672d613cae29de0ad8448bd7bb2f3b0c4fdbcc7dd628363",
+      "reference": ""
+    },
+    {
+      "documentPath": "specs/apis__autoscaling_openapi.json",
+      "jsonPointer": "/components/schemas/io.k8s.apimachinery.pkg.apis.meta.v1.APIGroup/properties/preferredVersion/default",
+      "class": "schema_validation",
+      "offendingValueSha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "schemaSha256": "65d24c26fe045aeb8a94df308d0e8a9311db12e5c0580f32133a4d4406e7cd93",
+      "reference": ""
+    },
+    {
+      "documentPath": "specs/apis__batch__v1_openapi.json",
+      "jsonPointer": "/components/schemas/io.k8s.api.batch.v1.CronJob/properties/spec/default",
+      "class": "schema_validation",
+      "offendingValueSha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "schemaSha256": "0062e8c854feb24f17e4705c0123a9b7644703648e2017f9f638064cf95d4053",
+      "reference": ""
+    },
+    {
+      "documentPath": "specs/apis__batch__v1_openapi.json",
+      "jsonPointer": "/components/schemas/io.k8s.api.batch.v1.Job/properties/spec/default",
+      "class": "schema_validation",
+      "offendingValueSha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "schemaSha256": "f87f37dd738ffe8a501db30a2415a8d030582af6bd2e74df29db47b4e950c52c",
+      "reference": ""
+    },
+    {
+      "documentPath": "specs/apis__batch__v1_openapi.json",
+      "jsonPointer": "/components/schemas/io.k8s.api.batch.v1.JobTemplateSpec/properties/spec/default",
+      "class": "schema_validation",
+      "offendingValueSha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "schemaSha256": "5244a979de2921f2c75722e467caa13db29f4f23b82eb15b643f80d0c6bf4ac5",
+      "reference": ""
+    },
+    {
+      "documentPath": "specs/apis__batch__v1_openapi.json",
+      "jsonPointer": "/components/schemas/io.k8s.api.core.v1.PodTemplateSpec/properties/spec/default",
+      "class": "schema_validation",
+      "offendingValueSha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "schemaSha256": "88a0dedb9359719d6afee3d7d2e3e03a30dd8b93c125e58101d01f56fa9bb88b",
+      "reference": ""
+    },
+    {
+      "documentPath": "specs/apis__batch__v1_openapi.json",
+      "jsonPointer": "/components/schemas/io.k8s.api.core.v1.WeightedPodAffinityTerm/properties/podAffinityTerm/default",
+      "class": "schema_validation",
+      "offendingValueSha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "schemaSha256": "fc32046752a55e2c0b7b0527fb12d2a915cadbdd593f2ceb9da6240a26e2f9bf",
+      "reference": ""
+    },
+    {
+      "documentPath": "specs/apis__batch_openapi.json",
+      "jsonPointer": "/components/schemas/io.k8s.apimachinery.pkg.apis.meta.v1.APIGroup/properties/preferredVersion/default",
+      "class": "schema_validation",
+      "offendingValueSha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "schemaSha256": "65d24c26fe045aeb8a94df308d0e8a9311db12e5c0580f32133a4d4406e7cd93",
+      "reference": ""
+    },
+    {
+      "documentPath": "specs/apis__certificates.k8s.io__v1_openapi.json",
+      "jsonPointer": "/components/schemas/io.k8s.api.certificates.v1.CertificateSigningRequest/properties/spec/default",
+      "class": "schema_validation",
+      "offendingValueSha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "schemaSha256": "3b8d665e22358ceabb830121e210f626e482804afab69610047ffbca5ceddc67",
+      "reference": ""
+    },
+    {
+      "documentPath": "specs/apis__certificates.k8s.io__v1_openapi.json",
+      "jsonPointer": "/components/schemas/io.k8s.api.certificates.v1.ClusterTrustBundle/properties/spec/default",
+      "class": "schema_validation",
+      "offendingValueSha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "schemaSha256": "ba346b229507ba0b2066aa45c9a4d8fa1f718b57fe25293ab51b39d4e660156f",
+      "reference": ""
+    },
+    {
+      "documentPath": "specs/apis__certificates.k8s.io__v1_openapi.json",
+      "jsonPointer": "/components/schemas/io.k8s.api.certificates.v1.PodCertificateRequest/properties/spec/default",
+      "class": "schema_validation",
+      "offendingValueSha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "schemaSha256": "e94232474c792c343555f840dbef75745d9caddcf44b96c924634555f1173d53",
+      "reference": ""
+    },
+    {
+      "documentPath": "specs/apis__certificates.k8s.io__v1beta1_openapi.json",
+      "jsonPointer": "/components/schemas/io.k8s.api.certificates.v1beta1.ClusterTrustBundle/properties/spec/default",
+      "class": "schema_validation",
+      "offendingValueSha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "schemaSha256": "389086d907c10392ab832f89dee96cc08325eacad7976a31b5d9e8b7686c6dea",
+      "reference": ""
+    },
+    {
+      "documentPath": "specs/apis__certificates.k8s.io__v1beta1_openapi.json",
+      "jsonPointer": "/components/schemas/io.k8s.api.certificates.v1beta1.PodCertificateRequest/properties/spec/default",
+      "class": "schema_validation",
+      "offendingValueSha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "schemaSha256": "386f5d5148f49a89809e37f023ca10e23e192b0a34f7d3b68f945ce248817e03",
+      "reference": ""
+    },
+    {
+      "documentPath": "specs/apis__certificates.k8s.io_openapi.json",
+      "jsonPointer": "/components/schemas/io.k8s.apimachinery.pkg.apis.meta.v1.APIGroup/properties/preferredVersion/default",
+      "class": "schema_validation",
+      "offendingValueSha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "schemaSha256": "65d24c26fe045aeb8a94df308d0e8a9311db12e5c0580f32133a4d4406e7cd93",
+      "reference": ""
+    },
+    {
+      "documentPath": "specs/apis__coordination.k8s.io__v1alpha2_openapi.json",
+      "jsonPointer": "/components/schemas/io.k8s.api.coordination.v1alpha2.LeaseCandidate/properties/spec/default",
+      "class": "schema_validation",
+      "offendingValueSha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "schemaSha256": "edde0c546b7227e7d794ce974f3767a3653aeff6e7e8508730ecd140fdbc40d6",
+      "reference": ""
+    },
+    {
+      "documentPath": "specs/apis__coordination.k8s.io__v1beta1_openapi.json",
+      "jsonPointer": "/components/schemas/io.k8s.api.coordination.v1beta1.LeaseCandidate/properties/spec/default",
+      "class": "schema_validation",
+      "offendingValueSha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "schemaSha256": "a736a051bca724aa06ede9a9d5aee0479fbd710eb699325164348af3e48fbb08",
+      "reference": ""
+    },
+    {
+      "documentPath": "specs/apis__coordination.k8s.io_openapi.json",
+      "jsonPointer": "/components/schemas/io.k8s.apimachinery.pkg.apis.meta.v1.APIGroup/properties/preferredVersion/default",
+      "class": "schema_validation",
+      "offendingValueSha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "schemaSha256": "65d24c26fe045aeb8a94df308d0e8a9311db12e5c0580f32133a4d4406e7cd93",
+      "reference": ""
+    },
+    {
+      "documentPath": "specs/apis__discovery.k8s.io_openapi.json",
+      "jsonPointer": "/components/schemas/io.k8s.apimachinery.pkg.apis.meta.v1.APIGroup/properties/preferredVersion/default",
+      "class": "schema_validation",
+      "offendingValueSha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "schemaSha256": "65d24c26fe045aeb8a94df308d0e8a9311db12e5c0580f32133a4d4406e7cd93",
+      "reference": ""
+    },
+    {
+      "documentPath": "specs/apis__events.k8s.io_openapi.json",
+      "jsonPointer": "/components/schemas/io.k8s.apimachinery.pkg.apis.meta.v1.APIGroup/properties/preferredVersion/default",
+      "class": "schema_validation",
+      "offendingValueSha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "schemaSha256": "65d24c26fe045aeb8a94df308d0e8a9311db12e5c0580f32133a4d4406e7cd93",
+      "reference": ""
+    },
+    {
+      "documentPath": "specs/apis__flowcontrol.apiserver.k8s.io__v1_openapi.json",
+      "jsonPointer": "/components/schemas/io.k8s.api.flowcontrol.v1.FlowSchema/properties/spec/default",
+      "class": "schema_validation",
+      "offendingValueSha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "schemaSha256": "f2471600154da00c3c12199b1349620f7f969c49842123f5cc7c55c5c3552975",
+      "reference": ""
+    },
+    {
+      "documentPath": "specs/apis__flowcontrol.apiserver.k8s.io__v1_openapi.json",
+      "jsonPointer": "/components/schemas/io.k8s.api.flowcontrol.v1.FlowSchemaSpec/properties/priorityLevelConfiguration/default",
+      "class": "schema_validation",
+      "offendingValueSha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "schemaSha256": "4294188aae2083450ba68dc2a2f553fa7299dfb30219e00505f62a69ae02337c",
+      "reference": ""
+    },
+    {
+      "documentPath": "specs/apis__flowcontrol.apiserver.k8s.io__v1_openapi.json",
+      "jsonPointer": "/components/schemas/io.k8s.api.flowcontrol.v1.LimitedPriorityLevelConfiguration/properties/limitResponse/default",
+      "class": "schema_validation",
+      "offendingValueSha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "schemaSha256": "5a6906d4b5c4a497fe243e4ed7156fbcbf10f1121730b46316f947620dfda318",
+      "reference": ""
+    },
+    {
+      "documentPath": "specs/apis__flowcontrol.apiserver.k8s.io__v1_openapi.json",
+      "jsonPointer": "/components/schemas/io.k8s.api.flowcontrol.v1.PriorityLevelConfiguration/properties/spec/default",
+      "class": "schema_validation",
+      "offendingValueSha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "schemaSha256": "cf57e35f0b5ff51533d341f2e4612f1348557b3b348065c7dfa4e83260819b02",
+      "reference": ""
+    },
+    {
+      "documentPath": "specs/apis__flowcontrol.apiserver.k8s.io_openapi.json",
+      "jsonPointer": "/components/schemas/io.k8s.apimachinery.pkg.apis.meta.v1.APIGroup/properties/preferredVersion/default",
+      "class": "schema_validation",
+      "offendingValueSha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "schemaSha256": "65d24c26fe045aeb8a94df308d0e8a9311db12e5c0580f32133a4d4406e7cd93",
+      "reference": ""
+    },
+    {
+      "documentPath": "specs/apis__internal.apiserver.k8s.io_openapi.json",
+      "jsonPointer": "/components/schemas/io.k8s.apimachinery.pkg.apis.meta.v1.APIGroup/properties/preferredVersion/default",
+      "class": "schema_validation",
+      "offendingValueSha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "schemaSha256": "65d24c26fe045aeb8a94df308d0e8a9311db12e5c0580f32133a4d4406e7cd93",
+      "reference": ""
+    },
+    {
+      "documentPath": "specs/apis__lifecycle.k8s.io__v1alpha1_openapi.json",
+      "jsonPointer": "/components/schemas/io.k8s.api.lifecycle.v1alpha1.Eviction/properties/spec/default",
+      "class": "schema_validation",
+      "offendingValueSha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "schemaSha256": "1bbac39eca58bfb44c1f67ab691b9de5e7f38b13b26d5fa18ee0d2e4fcec6e26",
+      "reference": ""
+    },
+    {
+      "documentPath": "specs/apis__lifecycle.k8s.io__v1alpha1_openapi.json",
+      "jsonPointer": "/components/schemas/io.k8s.api.lifecycle.v1alpha1.EvictionRequest/properties/spec/default",
+      "class": "schema_validation",
+      "offendingValueSha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "schemaSha256": "823b0faef04376eaaa191363e6366387ed3a05a0be388f0d7e2da6ef9ad48d11",
+      "reference": ""
+    },
+    {
+      "documentPath": "specs/apis__lifecycle.k8s.io_openapi.json",
+      "jsonPointer": "/components/schemas/io.k8s.apimachinery.pkg.apis.meta.v1.APIGroup/properties/preferredVersion/default",
+      "class": "schema_validation",
+      "offendingValueSha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "schemaSha256": "65d24c26fe045aeb8a94df308d0e8a9311db12e5c0580f32133a4d4406e7cd93",
+      "reference": ""
+    },
+    {
+      "documentPath": "specs/apis__networking.k8s.io__v1_openapi.json",
+      "jsonPointer": "/components/schemas/io.k8s.api.networking.v1.IPAddress/properties/spec/default",
+      "class": "schema_validation",
+      "offendingValueSha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "schemaSha256": "dfac39cc61adaaa8c96ce579dae82c21e5770291326c81070f97f59e21f770bb",
+      "reference": ""
+    },
+    {
+      "documentPath": "specs/apis__networking.k8s.io_openapi.json",
+      "jsonPointer": "/components/schemas/io.k8s.apimachinery.pkg.apis.meta.v1.APIGroup/properties/preferredVersion/default",
+      "class": "schema_validation",
+      "offendingValueSha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "schemaSha256": "65d24c26fe045aeb8a94df308d0e8a9311db12e5c0580f32133a4d4406e7cd93",
+      "reference": ""
+    },
+    {
+      "documentPath": "specs/apis__node.k8s.io_openapi.json",
+      "jsonPointer": "/components/schemas/io.k8s.apimachinery.pkg.apis.meta.v1.APIGroup/properties/preferredVersion/default",
+      "class": "schema_validation",
+      "offendingValueSha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "schemaSha256": "65d24c26fe045aeb8a94df308d0e8a9311db12e5c0580f32133a4d4406e7cd93",
+      "reference": ""
+    },
+    {
+      "documentPath": "specs/apis__policy_openapi.json",
+      "jsonPointer": "/components/schemas/io.k8s.apimachinery.pkg.apis.meta.v1.APIGroup/properties/preferredVersion/default",
+      "class": "schema_validation",
+      "offendingValueSha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "schemaSha256": "65d24c26fe045aeb8a94df308d0e8a9311db12e5c0580f32133a4d4406e7cd93",
+      "reference": ""
+    },
+    {
+      "documentPath": "specs/apis__rbac.authorization.k8s.io__v1_openapi.json",
+      "jsonPointer": "/components/schemas/io.k8s.api.rbac.v1.ClusterRoleBinding/properties/roleRef/default",
+      "class": "schema_validation",
+      "offendingValueSha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "schemaSha256": "24cacb2e6ebd818429084bd86c4eed47bdee098a806890e8c18c1b5aa60c8102",
+      "reference": ""
+    },
+    {
+      "documentPath": "specs/apis__rbac.authorization.k8s.io__v1_openapi.json",
+      "jsonPointer": "/components/schemas/io.k8s.api.rbac.v1.RoleBinding/properties/roleRef/default",
+      "class": "schema_validation",
+      "offendingValueSha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "schemaSha256": "c07bdce35e6e7579f92a9d1f62d8e4b5a87c4b7e2d4bdfff1685c5893124b6b5",
+      "reference": ""
+    },
+    {
+      "documentPath": "specs/apis__rbac.authorization.k8s.io_openapi.json",
+      "jsonPointer": "/components/schemas/io.k8s.apimachinery.pkg.apis.meta.v1.APIGroup/properties/preferredVersion/default",
+      "class": "schema_validation",
+      "offendingValueSha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "schemaSha256": "65d24c26fe045aeb8a94df308d0e8a9311db12e5c0580f32133a4d4406e7cd93",
+      "reference": ""
+    },
+    {
+      "documentPath": "specs/apis__resource.k8s.io__v1_openapi.json",
+      "jsonPointer": "/components/schemas/io.k8s.api.resource.v1.DeviceTaintRule/properties/spec/default",
+      "class": "schema_validation",
+      "offendingValueSha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "schemaSha256": "2c8da359900561496e516db331a8c0e2ef4842ac4ad113b709a6a0db665e04ae",
+      "reference": ""
+    },
+    {
+      "documentPath": "specs/apis__resource.k8s.io__v1_openapi.json",
+      "jsonPointer": "/components/schemas/io.k8s.api.resource.v1.DeviceTaintRuleSpec/properties/taint/default",
+      "class": "schema_validation",
+      "offendingValueSha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "schemaSha256": "d19d3461ce0fb21dccbc9d845f2a62860ea5474da905871c7e2ee786f50f06ed",
+      "reference": ""
+    },
+    {
+      "documentPath": "specs/apis__resource.k8s.io__v1_openapi.json",
+      "jsonPointer": "/components/schemas/io.k8s.api.resource.v1.ResourceSlice/properties/spec/default",
+      "class": "schema_validation",
+      "offendingValueSha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "schemaSha256": "5f74ffc7265005ad801afd35b276205045661052fea138b1fe3e681ce809c0ce",
+      "reference": ""
+    },
+    {
+      "documentPath": "specs/apis__resource.k8s.io__v1_openapi.json",
+      "jsonPointer": "/components/schemas/io.k8s.api.resource.v1.ResourceSliceSpec/properties/pool/default",
+      "class": "schema_validation",
+      "offendingValueSha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "schemaSha256": "ea4723db9b41ba826eee435cd0d26d32e7158853834fa189953820ae30a29d8b",
+      "reference": ""
+    },
+    {
+      "documentPath": "specs/apis__resource.k8s.io__v1alpha3_openapi.json",
+      "jsonPointer": "/components/schemas/io.k8s.api.resource.v1alpha3.DeviceTaintRule/properties/spec/default",
+      "class": "schema_validation",
+      "offendingValueSha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "schemaSha256": "e4ae23f38ac7f7cf9169c7da8afe4c0bca048db2c9dd5cda7920d59e7f554f84",
+      "reference": ""
+    },
+    {
+      "documentPath": "specs/apis__resource.k8s.io__v1alpha3_openapi.json",
+      "jsonPointer": "/components/schemas/io.k8s.api.resource.v1alpha3.DeviceTaintRuleSpec/properties/taint/default",
+      "class": "schema_validation",
+      "offendingValueSha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "schemaSha256": "82b5b4148b5e9551963da22eb1540ad83ceae4672a35e487b411ada135ad40ab",
+      "reference": ""
+    },
+    {
+      "documentPath": "specs/apis__resource.k8s.io__v1alpha3_openapi.json",
+      "jsonPointer": "/components/schemas/io.k8s.api.resource.v1alpha3.ResourcePoolStatusRequest/properties/spec/default",
+      "class": "schema_validation",
+      "offendingValueSha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "schemaSha256": "300e024a80fdacfd61665018ffae53860cab7d3bf3b3260405caf4c2b182937c",
+      "reference": ""
+    },
+    {
+      "documentPath": "specs/apis__resource.k8s.io__v1beta1_openapi.json",
+      "jsonPointer": "/components/schemas/io.k8s.api.resource.v1beta1.ResourceSlice/properties/spec/default",
+      "class": "schema_validation",
+      "offendingValueSha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "schemaSha256": "dcf02bb551c077ab80ab75382d3bfab5be319477312944ba304932eeec02fb9a",
+      "reference": ""
+    },
+    {
+      "documentPath": "specs/apis__resource.k8s.io__v1beta1_openapi.json",
+      "jsonPointer": "/components/schemas/io.k8s.api.resource.v1beta1.ResourceSliceSpec/properties/pool/default",
+      "class": "schema_validation",
+      "offendingValueSha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "schemaSha256": "e4638e2f89e5dbbb871bda15dafdcc9ad9e8c9cb98218412f6b7211d56cc8067",
+      "reference": ""
+    },
+    {
+      "documentPath": "specs/apis__resource.k8s.io__v1beta2_openapi.json",
+      "jsonPointer": "/components/schemas/io.k8s.api.resource.v1beta2.DeviceTaintRule/properties/spec/default",
+      "class": "schema_validation",
+      "offendingValueSha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "schemaSha256": "8f36e932ec9a6e0a715e9c9dddb2f9d80e4b182433085f0db36273750dffd663",
+      "reference": ""
+    },
+    {
+      "documentPath": "specs/apis__resource.k8s.io__v1beta2_openapi.json",
+      "jsonPointer": "/components/schemas/io.k8s.api.resource.v1beta2.DeviceTaintRuleSpec/properties/taint/default",
+      "class": "schema_validation",
+      "offendingValueSha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "schemaSha256": "464bdd6837b931a420d5fa62ba17df32b209d16616e78a194464d6cfdb9d0ff6",
+      "reference": ""
+    },
+    {
+      "documentPath": "specs/apis__resource.k8s.io__v1beta2_openapi.json",
+      "jsonPointer": "/components/schemas/io.k8s.api.resource.v1beta2.ResourceSlice/properties/spec/default",
+      "class": "schema_validation",
+      "offendingValueSha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "schemaSha256": "d3587679e512afe62728d96a3a3d3459f1eb38dfcccfe2876db2962949da1413",
+      "reference": ""
+    },
+    {
+      "documentPath": "specs/apis__resource.k8s.io__v1beta2_openapi.json",
+      "jsonPointer": "/components/schemas/io.k8s.api.resource.v1beta2.ResourceSliceSpec/properties/pool/default",
+      "class": "schema_validation",
+      "offendingValueSha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "schemaSha256": "77bc997c0ae43493f6316c238777f5459926600513cb95bf8f09d6dea88c1008",
+      "reference": ""
+    },
+    {
+      "documentPath": "specs/apis__resource.k8s.io_openapi.json",
+      "jsonPointer": "/components/schemas/io.k8s.apimachinery.pkg.apis.meta.v1.APIGroup/properties/preferredVersion/default",
+      "class": "schema_validation",
+      "offendingValueSha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "schemaSha256": "65d24c26fe045aeb8a94df308d0e8a9311db12e5c0580f32133a4d4406e7cd93",
+      "reference": ""
+    },
+    {
+      "documentPath": "specs/apis__scheduling.k8s.io__v1alpha3_openapi.json",
+      "jsonPointer": "/components/schemas/io.k8s.api.scheduling.v1alpha3.CompositePodGroup/properties/spec/default",
+      "class": "schema_validation",
+      "offendingValueSha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "schemaSha256": "cc76bd9bc37649a3e338fdecfaac36b8024e76bb07cb1612de26a40def739489",
+      "reference": ""
+    },
+    {
+      "documentPath": "specs/apis__scheduling.k8s.io__v1alpha3_openapi.json",
+      "jsonPointer": "/components/schemas/io.k8s.api.scheduling.v1alpha3.PodGroup/properties/spec/default",
+      "class": "schema_validation",
+      "offendingValueSha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "schemaSha256": "f5313a5103e0f49d02951e62fb1b925857d75bb15b0d4c210010507849737494",
+      "reference": ""
+    },
+    {
+      "documentPath": "specs/apis__scheduling.k8s.io__v1beta1_openapi.json",
+      "jsonPointer": "/components/schemas/io.k8s.api.scheduling.v1beta1.PodGroup/properties/spec/default",
+      "class": "schema_validation",
+      "offendingValueSha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "schemaSha256": "b9a1f671716ca40e65e37c05b7e7f0a88ffe3cf154f09f49a9dfdfbe6f65092b",
+      "reference": ""
+    },
+    {
+      "documentPath": "specs/apis__scheduling.k8s.io_openapi.json",
+      "jsonPointer": "/components/schemas/io.k8s.apimachinery.pkg.apis.meta.v1.APIGroup/properties/preferredVersion/default",
+      "class": "schema_validation",
+      "offendingValueSha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "schemaSha256": "65d24c26fe045aeb8a94df308d0e8a9311db12e5c0580f32133a4d4406e7cd93",
+      "reference": ""
+    },
+    {
+      "documentPath": "specs/apis__storage.k8s.io__v1_openapi.json",
+      "jsonPointer": "/components/schemas/io.k8s.api.storage.v1.CSINode/properties/spec/default",
+      "class": "schema_validation",
+      "offendingValueSha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "schemaSha256": "4b33ab90798672c803f366a10ca27c5311b9ff6dc0322e2d8adf046f41fc17a6",
+      "reference": ""
+    },
+    {
+      "documentPath": "specs/apis__storage.k8s.io__v1_openapi.json",
+      "jsonPointer": "/components/schemas/io.k8s.api.storage.v1.VolumeAttachment/properties/spec/default",
+      "class": "schema_validation",
+      "offendingValueSha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "schemaSha256": "84eb60f1412e311a64facf42d092936b50e5a211aa597bfabf35e7e999cef4da",
+      "reference": ""
+    },
+    {
+      "documentPath": "specs/apis__storage.k8s.io__v1_openapi.json",
+      "jsonPointer": "/components/schemas/io.k8s.api.storage.v1.VolumeAttachment/properties/status/default",
+      "class": "schema_validation",
+      "offendingValueSha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "schemaSha256": "1d8908b486df56af927adfefb5783b22882e4cf5a568d4b4a231adb7c638c2e4",
+      "reference": ""
+    },
+    {
+      "documentPath": "specs/apis__storage.k8s.io_openapi.json",
+      "jsonPointer": "/components/schemas/io.k8s.apimachinery.pkg.apis.meta.v1.APIGroup/properties/preferredVersion/default",
+      "class": "schema_validation",
+      "offendingValueSha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "schemaSha256": "65d24c26fe045aeb8a94df308d0e8a9311db12e5c0580f32133a4d4406e7cd93",
+      "reference": ""
+    },
+    {
+      "documentPath": "specs/apis__storagemigration.k8s.io__v1_openapi.json",
+      "jsonPointer": "/components/schemas/io.k8s.api.storagemigration.v1.StorageVersionMigration/properties/spec/default",
+      "class": "schema_validation",
+      "offendingValueSha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "schemaSha256": "cc652a075dc4620f592f9e000ef41ae4293818610e03de7e064b00d584ac1b82",
+      "reference": ""
+    },
+    {
+      "documentPath": "specs/apis__storagemigration.k8s.io__v1_openapi.json",
+      "jsonPointer": "/components/schemas/io.k8s.api.storagemigration.v1.StorageVersionMigrationSpec/properties/resource/default",
+      "class": "schema_validation",
+      "offendingValueSha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "schemaSha256": "786158444ba3ffa4a437bd02b6e97bbc9f1e4f4b0663c4c9241c2b1db158d56b",
+      "reference": ""
+    },
+    {
+      "documentPath": "specs/apis__storagemigration.k8s.io__v1beta1_openapi.json",
+      "jsonPointer": "/components/schemas/io.k8s.api.storagemigration.v1beta1.StorageVersionMigration/properties/spec/default",
+      "class": "schema_validation",
+      "offendingValueSha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "schemaSha256": "ba95e1bdf867092ba25f3f2914662472cc5fcaa3ad0bb2ba6ca7196e4d085286",
+      "reference": ""
+    },
+    {
+      "documentPath": "specs/apis__storagemigration.k8s.io__v1beta1_openapi.json",
+      "jsonPointer": "/components/schemas/io.k8s.api.storagemigration.v1beta1.StorageVersionMigrationSpec/properties/resource/default",
+      "class": "schema_validation",
+      "offendingValueSha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "schemaSha256": "786158444ba3ffa4a437bd02b6e97bbc9f1e4f4b0663c4c9241c2b1db158d56b",
+      "reference": ""
+    },
+    {
+      "documentPath": "specs/apis__storagemigration.k8s.io_openapi.json",
+      "jsonPointer": "/components/schemas/io.k8s.apimachinery.pkg.apis.meta.v1.APIGroup/properties/preferredVersion/default",
+      "class": "schema_validation",
+      "offendingValueSha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "schemaSha256": "65d24c26fe045aeb8a94df308d0e8a9311db12e5c0580f32133a4d4406e7cd93",
+      "reference": ""
+    },
+    {
+      "documentPath": "specs/apis_openapi.json",
+      "jsonPointer": "/components/schemas/io.k8s.apimachinery.pkg.apis.meta.v1.APIGroup/properties/preferredVersion/default",
+      "class": "schema_validation",
+      "offendingValueSha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "schemaSha256": "65d24c26fe045aeb8a94df308d0e8a9311db12e5c0580f32133a4d4406e7cd93",
+      "reference": ""
+    }
+  ]
+}

@@ -933,9 +933,9 @@ templ responseMediaTypeList(opID string, response core.OperationResponse, exampl
 
 templ paramGroup(idPrefix string, title string, parameters []core.OperationParameter, opts PublicDocsOptions) {
 	if len(parameters) > 0 {
-		<section class="grid gap-4">
+		<section class="grid min-w-0 gap-4">
 			<h5 class="font-title text-lg font-bold text-on-surface-strong dark:text-on-surface-dark-strong">{ title }</h5>
-			<div>
+			<div class="min-w-0">
 				@table.Table(parameterTableConfig(idPrefix, title, parameters, opts.MarkdownRenderer))
 			</div>
 		</section>
@@ -1623,6 +1623,9 @@ func schemaAnchor(schema core.Schema) string {
 }
 
 func operationTitle(op core.Operation) string {
+	if strings.TrimSpace(op.Title) != "" {
+		return op.Title
+	}
 	if strings.TrimSpace(op.Summary) != "" {
 		return op.Summary
 	}

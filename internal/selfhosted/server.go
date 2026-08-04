@@ -1,3 +1,5 @@
+//go:build !manja_runtime
+
 package selfhosted
 
 import (

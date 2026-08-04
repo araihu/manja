@@ -1,0 +1,149 @@
+version: 1
+catalogs:
+  - id: kubernetes
+    mount: /
+    title: Kubernetes
+    defaultDocument: core-v1
+    profile: kubernetes-v3-v1
+    compatibilityAllowlist: default-allowlist.json
+    seo:
+      description: Explore Kubernetes API operations, request bodies, response schemas, and examples in a fast OpenAPI renderer.
+      canonicalBase: https://manja.araihu.com
+      socialImage: https://manja.araihu.com/manja-assets/kubernetes-social.png
+      socialImageAlt: Kubernetes OpenAPI reference rendered by Manja
+    source:
+      kind: files
+      root: .
+      include:
+        - specs/*_openapi.json
+      documents:
+        - path: specs/.well-known__openid-configuration_openapi.json
+          key: well-known-openid-configuration
+        - path: specs/api__v1_openapi.json
+          key: core-v1
+        - path: specs/api_openapi.json
+          key: core-discovery
+        - path: specs/apis__admissionregistration.k8s.io__v1_openapi.json
+          key: admissionregistration-v1
+        - path: specs/apis__admissionregistration.k8s.io__v1alpha1_openapi.json
+          key: admissionregistration-v1alpha1
+        - path: specs/apis__admissionregistration.k8s.io__v1beta1_openapi.json
+          key: admissionregistration-v1beta1
+        - path: specs/apis__admissionregistration.k8s.io_openapi.json
+          key: admissionregistration-discovery
+        - path: specs/apis__apiextensions.k8s.io__v1_openapi.json
+          key: apiextensions-v1
+        - path: specs/apis__apiextensions.k8s.io_openapi.json
+          key: apiextensions-discovery
+        - path: specs/apis__apiregistration.k8s.io__v1_openapi.json
+          key: apiregistration-v1
+        - path: specs/apis__apiregistration.k8s.io_openapi.json
+          key: apiregistration-discovery
+        - path: specs/apis__apps__v1_openapi.json
+          key: apps-v1
+        - path: specs/apis__apps_openapi.json
+          key: apps-discovery
+        - path: specs/apis__authentication.k8s.io__v1_openapi.json
+          key: authentication-v1
+        - path: specs/apis__authentication.k8s.io_openapi.json
+          key: authentication-discovery
+        - path: specs/apis__authorization.k8s.io__v1_openapi.json
+          key: authorization-v1
+        - path: specs/apis__authorization.k8s.io_openapi.json
+          key: authorization-discovery
+        - path: specs/apis__autoscaling__v1_openapi.json
+          key: autoscaling-v1
+        - path: specs/apis__autoscaling__v2_openapi.json
+          key: autoscaling-v2
+        - path: specs/apis__autoscaling_openapi.json
+          key: autoscaling-discovery
+        - path: specs/apis__batch__v1_openapi.json
+          key: batch-v1
+        - path: specs/apis__batch_openapi.json
+          key: batch-discovery
+        - path: specs/apis__certificates.k8s.io__v1_openapi.json
+          key: certificates-v1
+        - path: specs/apis__certificates.k8s.io__v1beta1_openapi.json
+          key: certificates-v1beta1
+        - path: specs/apis__certificates.k8s.io_openapi.json
+          key: certificates-discovery
+        - path: specs/apis__coordination.k8s.io__v1_openapi.json
+          key: coordination-v1
+        - path: specs/apis__coordination.k8s.io__v1alpha2_openapi.json
+          key: coordination-v1alpha2
+        - path: specs/apis__coordination.k8s.io__v1beta1_openapi.json
+          key: coordination-v1beta1
+        - path: specs/apis__coordination.k8s.io_openapi.json
+          key: coordination-discovery
+        - path: specs/apis__discovery.k8s.io__v1_openapi.json
+          key: discovery-v1
+        - path: specs/apis__discovery.k8s.io_openapi.json
+          key: discovery-discovery
+        - path: specs/apis__events.k8s.io__v1_openapi.json
+          key: events-v1
+        - path: specs/apis__events.k8s.io_openapi.json
+          key: events-discovery
+        - path: specs/apis__flowcontrol.apiserver.k8s.io__v1_openapi.json
+          key: flowcontrol-apiserver-v1
+        - path: specs/apis__flowcontrol.apiserver.k8s.io_openapi.json
+          key: flowcontrol-apiserver-discovery
+        - path: specs/apis__internal.apiserver.k8s.io__v1alpha1_openapi.json
+          key: internal-apiserver-v1alpha1
+        - path: specs/apis__internal.apiserver.k8s.io_openapi.json
+          key: internal-apiserver-discovery
+        - path: specs/apis__lifecycle.k8s.io__v1alpha1_openapi.json
+          key: lifecycle-v1alpha1
+        - path: specs/apis__lifecycle.k8s.io_openapi.json
+          key: lifecycle-discovery
+        - path: specs/apis__networking.k8s.io__v1_openapi.json
+          key: networking-v1
+        - path: specs/apis__networking.k8s.io_openapi.json
+          key: networking-discovery
+        - path: specs/apis__node.k8s.io__v1_openapi.json
+          key: node-v1
+        - path: specs/apis__node.k8s.io_openapi.json
+          key: node-discovery
+        - path: specs/apis__policy__v1_openapi.json
+          key: policy-v1
+        - path: specs/apis__policy_openapi.json
+          key: policy-discovery
+        - path: specs/apis__rbac.authorization.k8s.io__v1_openapi.json
+          key: rbac-authorization-v1
+        - path: specs/apis__rbac.authorization.k8s.io_openapi.json
+          key: rbac-authorization-discovery
+        - path: specs/apis__resource.k8s.io__v1_openapi.json
+          key: resource-v1
+        - path: specs/apis__resource.k8s.io__v1alpha3_openapi.json
+          key: resource-v1alpha3
+        - path: specs/apis__resource.k8s.io__v1beta1_openapi.json
+          key: resource-v1beta1
+        - path: specs/apis__resource.k8s.io__v1beta2_openapi.json
+          key: resource-v1beta2
+        - path: specs/apis__resource.k8s.io_openapi.json
+          key: resource-discovery
+        - path: specs/apis__scheduling.k8s.io__v1_openapi.json
+          key: scheduling-v1
+        - path: specs/apis__scheduling.k8s.io__v1alpha3_openapi.json
+          key: scheduling-v1alpha3
+        - path: specs/apis__scheduling.k8s.io__v1beta1_openapi.json
+          key: scheduling-v1beta1
+        - path: specs/apis__scheduling.k8s.io_openapi.json
+          key: scheduling-discovery
+        - path: specs/apis__storage.k8s.io__v1_openapi.json
+          key: storage-v1
+        - path: specs/apis__storage.k8s.io_openapi.json
+          key: storage-discovery
+        - path: specs/apis__storagemigration.k8s.io__v1_openapi.json
+          key: storagemigration-v1
+        - path: specs/apis__storagemigration.k8s.io__v1beta1_openapi.json
+          key: storagemigration-v1beta1
+        - path: specs/apis__storagemigration.k8s.io_openapi.json
+          key: storagemigration-discovery
+        - path: specs/apis_openapi.json
+          key: apis-discovery
+        - path: specs/logs_openapi.json
+          key: logs
+        - path: specs/openid__v1__jwks_openapi.json
+          key: openid-v1-jwks
+        - path: specs/version_openapi.json
+          key: version

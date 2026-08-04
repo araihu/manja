@@ -20,14 +20,35 @@ import (
 type Parser struct{}
 
 func (Parser) Parse(ctx context.Context, file core.SpecFile, rev core.Revision) (core.SpecIndex, error) {
-	loader := openapi3.NewLoader()
-	doc, err := loader.LoadFromDataWithPath(file.Bytes, &url.URL{Path: file.Path})
+	return parseSpec(ctx, file, rev, openapi3.DisableExamplesValidation())
+}
+
+func parseSpec(
+	ctx context.Context,
+	file core.SpecFile,
+	rev core.Revision,
+	validationOptions ...openapi3.ValidationOption,
+) (core.SpecIndex, error) {
+	doc, err := loadSpec(file)
 	if err != nil {
 		return core.SpecIndex{}, err
 	}
-	if err := doc.Validate(ctx, openapi3.DisableExamplesValidation()); err != nil {
+	if err := doc.Validate(ctx, validationOptions...); err != nil {
 		return core.SpecIndex{}, err
 	}
+	return projectSpec(doc, file, rev)
+}
+
+func loadSpec(file core.SpecFile) (*openapi3.T, error) {
+	loader := openapi3.NewLoader()
+	doc, err := loader.LoadFromDataWithPath(file.Bytes, &url.URL{Path: file.Path})
+	if err != nil {
+		return nil, err
+	}
+	return doc, nil
+}
+
+func projectSpec(doc *openapi3.T, file core.SpecFile, rev core.Revision) (core.SpecIndex, error) {
 	download, err := specDownload(doc, file.Path)
 	if err != nil {
 		return core.SpecIndex{}, err
@@ -54,6 +75,7 @@ func (Parser) Parse(ctx context.Context, file core.SpecFile, rev core.Revision) 
 				Summary:     op.Summary,
 				Description: op.Description,
 				Tags:        append([]string(nil), op.Tags...),
+				Facets:      operationFacets(op),
 				Deprecated:  op.Deprecated,
 			}
 			operation.Anchor = operationAnchor(operation)
@@ -99,6 +121,46 @@ func (Parser) Parse(ctx context.Context, file core.SpecFile, rev core.Revision) 
 	idx.Search = buildSearch(idx)
 	idx.PublicRoutes = buildPublicRoutes(idx)
 	return idx, nil
+}
+
+func operationFacets(operation *openapi3.Operation) []core.Facet {
+	if operation == nil {
+		return nil
+	}
+	var facets []core.Facet
+	if action, ok := operation.Extensions["x-kubernetes-action"].(string); ok && action != "" {
+		facets = append(facets, core.Facet{Name: "action", Value: action})
+	}
+	appendGVK := func(value map[string]any) {
+		for _, name := range []string{"group", "kind", "version"} {
+			if text, ok := value[name].(string); ok && text != "" {
+				facets = append(facets, core.Facet{Name: name, Value: text})
+			}
+		}
+	}
+	switch value := operation.Extensions["x-kubernetes-group-version-kind"].(type) {
+	case map[string]any:
+		appendGVK(value)
+	case []any:
+		for _, item := range value {
+			if object, ok := item.(map[string]any); ok {
+				appendGVK(object)
+			}
+		}
+	}
+	sort.Slice(facets, func(i, j int) bool {
+		if facets[i].Name == facets[j].Name {
+			return facets[i].Value < facets[j].Value
+		}
+		return facets[i].Name < facets[j].Name
+	})
+	result := facets[:0]
+	for _, facet := range facets {
+		if len(result) == 0 || result[len(result)-1] != facet {
+			result = append(result, facet)
+		}
+	}
+	return result
 }
 
 func operationCount(doc *openapi3.T) int {

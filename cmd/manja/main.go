@@ -2,30 +2,46 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"io"
 	"log"
 	"net/http"
 	"os"
+	"strings"
 
 	core "github.com/araihu/manja/domain"
 	app "github.com/araihu/manja/internal/selfhosted"
 )
 
 type cliConfig struct {
-	Addr    string
-	Options app.Options
+	Addr           string
+	RendererConfig string
+	Options        app.Options
 }
 
 var serve = func(ctx context.Context, cfg cliConfig) error {
-	handler, err := app.NewWithOptions(ctx, cfg.Options)
-	if err != nil {
-		return err
+	var handler http.Handler
+	if cfg.RendererConfig != "" {
+		catalogHandler, receipts, err := app.NewRenderer(ctx, app.RendererOptions{ConfigPath: cfg.RendererConfig, DataDir: cfg.Options.DataDir})
+		if err != nil {
+			return err
+		}
+		handler = catalogHandler
+		log.Printf("manja renderer activated: %v", receipts)
+	} else {
+		var err error
+		handler, err = app.NewWithOptions(ctx, cfg.Options)
+		if err != nil {
+			return err
+		}
 	}
 	log.Printf("manja listening on %s", cfg.Addr)
 	return http.ListenAndServe(cfg.Addr, handler)
 }
+
+var buildRenderer = app.BuildRenderer
 
 func main() {
 	os.Exit(run(context.Background(), os.Args[1:], os.Stdout, os.Stderr))
@@ -35,8 +51,52 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 	if len(args) > 0 && args[0] == "check" {
 		return runCheck(ctx, args[1:], stdout, stderr)
 	}
+	if len(args) > 0 && args[0] == "build" {
+		return runBuild(ctx, args[1:], stdout, stderr)
+	}
 	if err := runServer(ctx, args); err != nil {
 		fmt.Fprintf(stderr, "manja: %v\n", err)
+		return 1
+	}
+	return 0
+}
+
+type buildReceipt struct {
+	SchemaVersion uint32                `json:"schemaVersion"`
+	Catalogs      []buildCatalogReceipt `json:"catalogs"`
+}
+
+type buildCatalogReceipt struct {
+	CatalogID  string `json:"catalogId"`
+	Mount      string `json:"mount"`
+	RevisionID string `json:"revisionId"`
+	SnapshotID string `json:"snapshotId"`
+}
+
+func runBuild(ctx context.Context, args []string, stdout, stderr io.Writer) int {
+	fs := flag.NewFlagSet("manja build", flag.ContinueOnError)
+	fs.SetOutput(io.Discard)
+	rendererConfig := fs.String("renderer-config", "", "renderer catalog YAML config")
+	dataDir := fs.String("data-dir", "", "snapshot output directory")
+	if err := fs.Parse(args); err != nil {
+		fmt.Fprintf(stderr, "manja build: %v\n", err)
+		return 2
+	}
+	if fs.NArg() != 0 || strings.TrimSpace(*rendererConfig) == "" || strings.TrimSpace(*dataDir) == "" {
+		fmt.Fprintln(stderr, "manja build: --renderer-config and --data-dir are required; positional arguments are not accepted")
+		return 2
+	}
+	receipts, err := buildRenderer(ctx, app.RendererOptions{ConfigPath: *rendererConfig, DataDir: *dataDir})
+	if err != nil {
+		fmt.Fprintf(stderr, "manja build: %v\n", err)
+		return 1
+	}
+	result := buildReceipt{SchemaVersion: 1, Catalogs: make([]buildCatalogReceipt, len(receipts))}
+	for index, receipt := range receipts {
+		result.Catalogs[index] = buildCatalogReceipt{CatalogID: receipt.CatalogID, Mount: receipt.Mount, RevisionID: receipt.RevisionID, SnapshotID: receipt.SnapshotID}
+	}
+	if err := json.NewEncoder(stdout).Encode(result); err != nil {
+		fmt.Fprintf(stderr, "manja build: write receipt: %v\n", err)
 		return 1
 	}
 	return 0
@@ -63,6 +123,7 @@ func configFromArgs(args []string) (cliConfig, error) {
 	gitRepo := fs.String("git-repo", "", "Git repository URL or local path")
 	gitRef := fs.String("git-ref", "", "Git ref to publish")
 	dataDir := fs.String("data-dir", ".manja/data", "local Manja data directory")
+	rendererConfig := fs.String("renderer-config", "", "renderer-only catalog YAML config")
 	endpointSidebarLabel := fs.String("endpoint-sidebar-label", string(app.EndpointSidebarLabelAuto), "endpoint sidebar label mode: auto or path")
 	brandName := fs.String("brand-name", "", "public docs brand name")
 	brandLogo := fs.String("brand-logo", "", "public docs brand logo URL")
@@ -74,7 +135,7 @@ func configFromArgs(args []string) (cliConfig, error) {
 	}
 
 	return cliConfig{
-		Addr: *addr,
+		Addr: *addr, RendererConfig: *rendererConfig,
 		Options: app.Options{
 			SourceKind:           *sourceKind,
 			SpecPath:             *spec,
