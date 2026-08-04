@@ -68,6 +68,8 @@ templ LayoutWithBrandingMetadata(metadata PageMetadata, branding core.DocsBrandi
 				<meta property="og:url" content={ metadata.CanonicalURL }/>
 			}
 			if metadata.Description != "" || metadata.CanonicalURL != "" || metadata.SocialImageURL != "" {
+				<meta property="og:type" content="website"/>
+				<meta property="og:site_name" content="Manja"/>
 				if metadata.Title != "" {
 					<meta property="og:title" content={ metadata.Title }/>
 					<meta name="twitter:title" content={ metadata.Title }/>
@@ -79,6 +81,7 @@ templ LayoutWithBrandingMetadata(metadata PageMetadata, branding core.DocsBrandi
 			}
 			if metadata.SocialImageURL != "" {
 				<meta property="og:image" content={ metadata.SocialImageURL }/>
+				<meta property="og:image:type" content="image/png"/>
 				<meta property="og:image:width" content="1280"/>
 				<meta property="og:image:height" content="640"/>
 				<meta property="og:image:alt" content={ metadata.SocialImageAlt }/>

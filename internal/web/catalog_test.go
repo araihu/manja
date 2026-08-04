@@ -221,7 +221,7 @@ func TestCatalogOperationRouteReusesRichEndpointProjection(t *testing.T) {
 	}
 }
 
-func TestCatalogOperationInitialHTMLIncludesRouteSocialMetadata(t *testing.T) {
+func TestCatalogInitialHTMLIncludesCompleteRouteSocialMetadata(t *testing.T) {
 	t.Parallel()
 
 	presentation := map[string]CatalogPresentation{"/kubernetes": {
@@ -230,24 +230,81 @@ func TestCatalogOperationInitialHTMLIncludesRouteSocialMetadata(t *testing.T) {
 	}}
 	handler, _ := catalogHandlerFixtureWithPresentation(t, "/kubernetes", presentation)
 	detailID := "detail-sha256-" + strings.Repeat("a", 64)
-	response := httptest.NewRecorder()
-	handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/kubernetes/documents/core-v1/?selected="+detailID+"&group=ignored#ignored", nil))
-	if response.Code != http.StatusOK {
-		t.Fatalf("operation detail = %d body=%q", response.Code, response.Body.String())
-	}
-	body := response.Body.String()
-	for _, want := range []string{
-		`<title>List Pods · Kubernetes</title>`,
-		`<meta name="description" content="Lists Pods.">`,
-		`<link rel="canonical" href="https://docs.example.test/kubernetes/documents/core-v1/?selected=` + detailID + `">`,
-		`<meta property="og:url" content="https://docs.example.test/kubernetes/documents/core-v1/?selected=` + detailID + `">`,
-		`<meta property="og:image" content="https://docs.example.test/manja-assets/kubernetes-social.png">`,
-		`<meta name="twitter:card" content="summary_large_image">`,
-		`<meta name="twitter:image:alt" content="Kubernetes API reference rendered by Manja">`,
+	for _, test := range []struct {
+		name        string
+		requestURL  string
+		title       string
+		description string
+		canonical   string
+	}{
+		{
+			name: "catalog root", requestURL: "/kubernetes/", title: "Kubernetes",
+			description: "Browse Kubernetes APIs.", canonical: "https://docs.example.test/kubernetes/",
+		},
+		{
+			name: "document", requestURL: "/kubernetes/documents/core-v1/", title: "Kubernetes Core v1 · Kubernetes",
+			description: "OpenAPI operations and schemas for Kubernetes Core v1.", canonical: "https://docs.example.test/kubernetes/documents/core-v1/",
+		},
+		{
+			name: "operation", requestURL: "/kubernetes/documents/core-v1/?selected=" + detailID + "&group=ignored#ignored", title: "List Pods · Kubernetes",
+			description: "Lists Pods.", canonical: "https://docs.example.test/kubernetes/documents/core-v1/?selected=" + detailID,
+		},
 	} {
-		if count := strings.Count(body, want); count != 1 {
+		t.Run(test.name, func(t *testing.T) {
+			response := httptest.NewRecorder()
+			handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, test.requestURL, nil))
+			if response.Code != http.StatusOK {
+				t.Fatalf("route = %d body=%q", response.Code, response.Body.String())
+			}
+			body := response.Body.String()
+			for _, want := range []string{
+				`<title>` + test.title + `</title>`,
+				`<meta name="description" content="` + test.description + `">`,
+				`<link rel="canonical" href="` + test.canonical + `">`,
+				`<meta property="og:url" content="` + test.canonical + `">`,
+				`<meta property="og:type" content="website">`,
+				`<meta property="og:title" content="` + test.title + `">`,
+				`<meta property="og:description" content="` + test.description + `">`,
+				`<meta property="og:site_name" content="Manja">`,
+				`<meta property="og:image" content="https://docs.example.test/manja-assets/kubernetes-social.png">`,
+				`<meta property="og:image:type" content="image/png">`,
+				`<meta property="og:image:width" content="1280">`,
+				`<meta property="og:image:height" content="640">`,
+				`<meta property="og:image:alt" content="Kubernetes API reference rendered by Manja">`,
+				`<meta name="twitter:card" content="summary_large_image">`,
+				`<meta name="twitter:title" content="` + test.title + `">`,
+				`<meta name="twitter:description" content="` + test.description + `">`,
+				`<meta name="twitter:image" content="https://docs.example.test/manja-assets/kubernetes-social.png">`,
+				`<meta name="twitter:image:alt" content="Kubernetes API reference rendered by Manja">`,
+			} {
+				if count := strings.Count(body, want); count != 1 {
+					t.Errorf("metadata %q count = %d, want 1", want, count)
+				}
+			}
+		})
+	}
+}
+
+func TestLayoutMetadataModeEmitsSiteAndTypeWithoutImageMetadata(t *testing.T) {
+	t.Parallel()
+
+	var rendered bytes.Buffer
+	err := templates.LayoutWithBrandingMetadata(templates.PageMetadata{
+		Title: "Plain docs", Description: "No social image.", CanonicalURL: "https://docs.example.test/plain",
+	}, domain.DocsBranding{}, false, false).Render(context.Background(), &rendered)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{
+		`<meta property="og:type" content="website">`,
+		`<meta property="og:site_name" content="Manja">`,
+	} {
+		if count := strings.Count(rendered.String(), want); count != 1 {
 			t.Errorf("metadata %q count = %d, want 1", want, count)
 		}
+	}
+	if strings.Contains(rendered.String(), `property="og:image:type"`) {
+		t.Error("image MIME metadata emitted without an image")
 	}
 }
 
@@ -433,8 +490,8 @@ func TestCatalogAssetsServeValidatedSocialPreview(t *testing.T) {
 	if got := response.Header().Get("Content-Type"); got != "image/png" {
 		t.Fatalf("content type = %q", got)
 	}
-	if size := response.Body.Len(); size == 0 || size > 1<<20 {
-		t.Fatalf("social preview size = %d", size)
+	if size := response.Body.Len(); size != 48_705 {
+		t.Fatalf("social preview size = %d, want 48705", size)
 	}
 	config, err := png.DecodeConfig(bytes.NewReader(response.Body.Bytes()))
 	if err != nil || config.Width != 1280 || config.Height != 640 {
