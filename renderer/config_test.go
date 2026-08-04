@@ -63,12 +63,28 @@ func TestNewRejectsInvalidCatalogConfiguration(t *testing.T) {
 		{name: "insecure canonical", config: Config{Version: 1, Catalogs: []CatalogConfig{{ID: "payments", Mount: "/", Title: "Payments", ProfileID: domain.CompatibilityProfileStrict, SEO: CatalogSEO{CanonicalBase: "http://docs.example.test"}}}}},
 		{name: "social image without alt", config: Config{Version: 1, Catalogs: []CatalogConfig{{ID: "payments", Mount: "/", Title: "Payments", ProfileID: domain.CompatibilityProfileStrict, SEO: CatalogSEO{SocialImage: "https://docs.example.test/social.png"}}}}},
 		{name: "social image query", config: Config{Version: 1, Catalogs: []CatalogConfig{{ID: "payments", Mount: "/", Title: "Payments", ProfileID: domain.CompatibilityProfileStrict, SEO: CatalogSEO{SocialImage: "https://docs.example.test/social.png?v=1", SocialImageAlt: "Preview"}}}}},
+		{name: "unsupported social image type", config: Config{Version: 1, Catalogs: []CatalogConfig{{ID: "payments", Mount: "/", Title: "Payments", ProfileID: domain.CompatibilityProfileStrict, SEO: CatalogSEO{SocialImage: "https://docs.example.test/social.svg", SocialImageAlt: "Preview"}}}}},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
 			if _, err := New(test.config); err == nil {
 				t.Fatal("invalid renderer configuration was accepted")
+			}
+		})
+	}
+}
+
+func TestNewAcceptsSupportedSocialImageTypes(t *testing.T) {
+	t.Parallel()
+
+	for _, extension := range []string{"png", "jpg", "jpeg", "webp"} {
+		t.Run(extension, func(t *testing.T) {
+			t.Parallel()
+			catalog := validCatalogConfig("payments", "/")
+			catalog.SEO = CatalogSEO{SocialImage: "https://docs.example.test/social." + extension, SocialImageAlt: "Preview"}
+			if _, err := New(Config{Version: 1, Catalogs: []CatalogConfig{catalog}}); err != nil {
+				t.Fatalf("New: %v", err)
 			}
 		})
 	}

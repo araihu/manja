@@ -290,7 +290,7 @@ func TestLayoutMetadataModeEmitsSiteAndTypeWithoutImageMetadata(t *testing.T) {
 
 	var rendered bytes.Buffer
 	err := templates.LayoutWithBrandingMetadata(templates.PageMetadata{
-		Title: "Plain docs", Description: "No social image.", CanonicalURL: "https://docs.example.test/plain",
+		Title: "Plain docs", Description: "No social image.", CanonicalURL: "https://docs.example.test/plain", SocialImageMIMEType: "image/jpeg",
 	}, domain.DocsBranding{}, false, false).Render(context.Background(), &rendered)
 	if err != nil {
 		t.Fatal(err)
@@ -305,6 +305,42 @@ func TestLayoutMetadataModeEmitsSiteAndTypeWithoutImageMetadata(t *testing.T) {
 	}
 	if strings.Contains(rendered.String(), `property="og:image:type"`) {
 		t.Error("image MIME metadata emitted without an image")
+	}
+}
+
+func TestCatalogSocialImageMIMETypeMatchesConfiguredURLPath(t *testing.T) {
+	t.Parallel()
+
+	for _, test := range []struct {
+		name     string
+		imageURL string
+		mimeType string
+	}{
+		{name: "PNG", imageURL: "https://docs.example.test/social.PNG", mimeType: "image/png"},
+		{name: "JPEG short", imageURL: "https://docs.example.test/social.jpg", mimeType: "image/jpeg"},
+		{name: "JPEG long", imageURL: "https://docs.example.test/social.jpeg", mimeType: "image/jpeg"},
+		{name: "WebP", imageURL: "https://docs.example.test/social.webp", mimeType: "image/webp"},
+		{name: "unsupported", imageURL: "https://docs.example.test/social.svg"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			presentation := map[string]CatalogPresentation{"/kubernetes": {
+				Description: "Browse Kubernetes APIs.", CanonicalBase: "https://docs.example.test/kubernetes",
+				SocialImage: test.imageURL, SocialImageAlt: "Preview",
+			}}
+			handler, _ := catalogHandlerFixtureWithPresentation(t, "/kubernetes", presentation)
+			response := httptest.NewRecorder()
+			handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/kubernetes/", nil))
+			if response.Code != http.StatusOK {
+				t.Fatalf("route = %d body=%q", response.Code, response.Body.String())
+			}
+			if test.mimeType == "" {
+				if strings.Contains(response.Body.String(), `property="og:image:type"`) {
+					t.Error("unsupported image URL emitted MIME metadata")
+				}
+			} else if count := strings.Count(response.Body.String(), `<meta property="og:image:type" content="`+test.mimeType+`">`); count != 1 {
+				t.Errorf("image MIME %q count = %d, want 1", test.mimeType, count)
+			}
+		})
 	}
 }
 
