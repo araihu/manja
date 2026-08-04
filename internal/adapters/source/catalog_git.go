@@ -79,42 +79,48 @@ func (source GitCatalogSource) Load(ctx context.Context) (domain.CatalogCandidat
 			return domain.CatalogCandidate{}, err
 		}
 	}
-	reader := func(ctx context.Context, entry catalogInventoryEntry) (capturedCatalogFile, error) {
+	sizer := func(ctx context.Context, entry catalogInventoryEntry) (int64, error) {
 		if err := ctx.Err(); err != nil {
-			return capturedCatalogFile{}, err
+			return 0, err
 		}
 		objectPath := entry.path
 		if root != "." {
 			objectPath = path.Join(root, entry.path)
 		}
 		if entry.objectID == "" {
-			return capturedCatalogFile{}, fmt.Errorf("Git catalog object ID is missing for %q", entry.path)
+			return 0, fmt.Errorf("Git catalog object ID is missing for %q", entry.path)
 		}
 		if _, missing := missingObjects[entry.objectID]; missing {
-			return capturedCatalogFile{}, fmt.Errorf("captured file %q exceeds %d bytes", entry.path, maxCatalogSourceFileBytes)
+			return 0, fmt.Errorf("captured file %q exceeds %d bytes", entry.path, maxCatalogSourceFileBytes)
 		}
 		sizeBytes, err := gitOutputBytesEnvLimit(ctx, repository, []string{"GIT_NO_LAZY_FETCH=1"}, 32, "cat-file", "-s", entry.objectID)
 		if err != nil {
-			return capturedCatalogFile{}, err
+			return 0, err
 		}
 		sizeText := strings.TrimSpace(string(sizeBytes))
 		size, err := strconv.ParseInt(sizeText, 10, 64)
 		if err != nil || size < 0 {
-			return capturedCatalogFile{}, fmt.Errorf("read Git catalog object size for %q", objectPath)
+			return 0, fmt.Errorf("read Git catalog object size for %q", objectPath)
 		}
 		if size > maxCatalogSourceFileBytes {
-			return capturedCatalogFile{}, fmt.Errorf("captured file %q exceeds %d bytes", entry.path, maxCatalogSourceFileBytes)
+			return 0, fmt.Errorf("captured file %q exceeds %d bytes", entry.path, maxCatalogSourceFileBytes)
 		}
-		data, err := gitOutputBytesEnvLimit(ctx, repository, []string{"GIT_NO_LAZY_FETCH=1"}, uint64(size)+1, "cat-file", "blob", entry.objectID)
+		return size, nil
+	}
+	reader := func(ctx context.Context, entry catalogInventoryEntry) (capturedCatalogFile, error) {
+		if err := ctx.Err(); err != nil {
+			return capturedCatalogFile{}, err
+		}
+		data, err := gitOutputBytesEnvLimit(ctx, repository, []string{"GIT_NO_LAZY_FETCH=1"}, uint64(entry.size)+1, "cat-file", "blob", entry.objectID)
 		if err != nil {
 			return capturedCatalogFile{}, err
 		}
-		if int64(len(data)) != size {
+		if int64(len(data)) != entry.size {
 			return capturedCatalogFile{}, fmt.Errorf("Git catalog object %q changed length", entry.path)
 		}
 		return capturedCatalogFile{path: entry.path, mode: entry.mode, data: data}, nil
 	}
-	return captureCatalogCandidate(ctx, source.Manifest, inventory, reader, domain.CatalogRevisionGit, commit)
+	return captureCatalogCandidate(ctx, source.Manifest, inventory, sizer, reader, domain.CatalogRevisionGit, commit)
 }
 
 func gitCatalogMissingObjects(ctx context.Context, repository, commit, root string) (map[string]struct{}, error) {

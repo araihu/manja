@@ -12,6 +12,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -49,24 +50,45 @@ func (g Git) Fetch(ctx context.Context) (core.SpecFile, core.Revision, error) {
 	if g.Path == "" {
 		return core.SpecFile{}, core.Revision{}, fmt.Errorf("git source spec path is required")
 	}
-	repo, cleanup, err := gitWorktree(ctx, g.cloneURL(), g.SSHPrivateKey)
+	ref := g.Ref
+	if ref == "" {
+		ref = "HEAD"
+	}
+	repo, resolvedRef, cleanup, err := gitSourceRepository(ctx, g.cloneURL(), ref, g.SSHPrivateKey)
 	if err != nil {
 		return core.SpecFile{}, core.Revision{}, err
 	}
 	defer cleanup()
 
-	ref := g.Ref
-	if ref == "" {
-		ref = "HEAD"
-	}
-
-	commit, err := gitOutput(ctx, repo, "rev-parse", ref)
+	commit, err := gitOutputLimit(ctx, repo, 128, "rev-parse", "--verify", resolvedRef+"^{commit}")
 	if err != nil {
 		return core.SpecFile{}, core.Revision{}, fmt.Errorf("resolve git ref %q: %w", ref, err)
 	}
-	data, err := gitOutputBytes(ctx, repo, "show", commit+":"+g.Path)
+	objectID, err := gitOutputBytesEnvLimit(ctx, repo, []string{"GIT_NO_LAZY_FETCH=1"}, 128, "rev-parse", "--verify", commit+":"+g.Path)
 	if err != nil {
 		return core.SpecFile{}, core.Revision{}, fmt.Errorf("read git spec %q at %q: %w", g.Path, ref, err)
+	}
+	object := strings.TrimSpace(string(objectID))
+	if !isFullGitObjectID(object) {
+		return core.SpecFile{}, core.Revision{}, fmt.Errorf("read git spec %q at %q: invalid object ID", g.Path, ref)
+	}
+	sizeBytes, err := gitOutputBytesEnvLimit(ctx, repo, []string{"GIT_NO_LAZY_FETCH=1"}, 32, "cat-file", "-s", object)
+	if err != nil {
+		return core.SpecFile{}, core.Revision{}, fmt.Errorf("read git spec %q at %q: object is unavailable or exceeds %d bytes: %w", g.Path, ref, maxGitCommandOutputBytes, err)
+	}
+	size, err := parseGitObjectSize(sizeBytes)
+	if err != nil {
+		return core.SpecFile{}, core.Revision{}, fmt.Errorf("read git spec %q at %q: %w", g.Path, ref, err)
+	}
+	if size > maxGitCommandOutputBytes {
+		return core.SpecFile{}, core.Revision{}, fmt.Errorf("read git spec %q at %q: exceeds %d bytes", g.Path, ref, maxGitCommandOutputBytes)
+	}
+	data, err := gitOutputBytesEnvLimit(ctx, repo, []string{"GIT_NO_LAZY_FETCH=1"}, size+1, "cat-file", "blob", object)
+	if err != nil {
+		return core.SpecFile{}, core.Revision{}, fmt.Errorf("read git spec %q at %q: %w", g.Path, ref, err)
+	}
+	if uint64(len(data)) != size {
+		return core.SpecFile{}, core.Revision{}, fmt.Errorf("read git spec %q at %q: object changed length", g.Path, ref)
 	}
 	info, err := gitCommitInfo(ctx, repo, commit)
 	if err != nil {
@@ -98,7 +120,7 @@ func (g Git) Discover(ctx context.Context) ([]core.RevisionCandidate, error) {
 	if g.Repo == "" {
 		return nil, fmt.Errorf("git source repo is required")
 	}
-	repo, cleanup, err := gitWorktree(ctx, g.cloneURL(), g.SSHPrivateKey)
+	repo, cleanup, err := gitDiscoveryRepository(ctx, g.cloneURL(), g.SSHPrivateKey)
 	if err != nil {
 		return nil, err
 	}
@@ -219,12 +241,44 @@ func (g Git) cloneURL() string {
 	return parsed.String()
 }
 
-func gitWorktree(ctx context.Context, repo, sshPrivateKey string) (string, func(), error) {
+func gitSourceRepository(ctx context.Context, repo, reference, sshPrivateKey string) (string, string, func(), error) {
+	if info, err := os.Stat(repo); err == nil && info.IsDir() {
+		return repo, reference, func() {}, nil
+	}
+	repository, cleanup, err := gitRemoteRepository(
+		ctx,
+		"manja-git-source-*",
+		repo,
+		sshPrivateKey,
+		fmt.Sprintf("blob:limit=%d", maxGitCommandOutputBytes+1),
+		[]string{reference},
+	)
+	if err != nil {
+		return "", "", func() {}, fmt.Errorf("fetch git source ref %q from %q: %w", reference, redactURL(repo), err)
+	}
+	return repository, "FETCH_HEAD", cleanup, nil
+}
+
+func gitDiscoveryRepository(ctx context.Context, repo, sshPrivateKey string) (string, func(), error) {
 	if info, err := os.Stat(repo); err == nil && info.IsDir() {
 		return repo, func() {}, nil
 	}
+	repository, cleanup, err := gitRemoteRepository(
+		ctx,
+		"manja-git-discovery-*",
+		repo,
+		sshPrivateKey,
+		"blob:none",
+		[]string{"+refs/heads/*:refs/remotes/origin/*", "+refs/tags/*:refs/tags/*"},
+	)
+	if err != nil {
+		return "", func() {}, fmt.Errorf("fetch git source refs from %q: %w", redactURL(repo), err)
+	}
+	return repository, cleanup, nil
+}
 
-	baseDir, err := os.MkdirTemp("", "manja-git-source-*")
+func gitRemoteRepository(ctx context.Context, prefix, repo, sshPrivateKey, filter string, refspecs []string) (string, func(), error) {
+	baseDir, err := os.MkdirTemp("", prefix)
 	if err != nil {
 		return "", func() {}, fmt.Errorf("create git source checkout: %w", err)
 	}
@@ -236,11 +290,28 @@ func gitWorktree(ctx context.Context, repo, sshPrivateKey string) (string, func(
 		return "", func() {}, err
 	}
 	defer envCleanup()
-	if _, err := gitOutputBytesRedacted(ctx, "", env, []string{"clone", "--no-checkout", "--quiet", redactURL(repo), dir}, "clone", "--no-checkout", "--quiet", repo, dir); err != nil {
+	if _, err := gitOutputBytesRedactedLimit(ctx, "", env, []string{"init", "-q", dir}, maxGitDiagnosticBytes, baseDir, "init", "-q", dir); err != nil {
 		cleanup()
-		return "", func() {}, fmt.Errorf("clone git source %q: %w", redactURL(repo), err)
+		return "", func() {}, fmt.Errorf("initialize git source checkout: %w", err)
+	}
+	displayArgs := []string{"fetch", "--quiet", "--depth=1", "--filter=" + filter, "--no-tags", redactURL(repo)}
+	args := []string{"fetch", "--quiet", "--depth=1", "--filter=" + filter, "--no-tags", repo}
+	displayArgs = append(displayArgs, refspecs...)
+	args = append(args, refspecs...)
+	if _, err := gitOutputBytesRedactedLimit(ctx, dir, env, displayArgs, maxGitDiagnosticBytes, dir, args...); err != nil {
+		cleanup()
+		return "", func() {}, err
 	}
 	return dir, cleanup, nil
+}
+
+func parseGitObjectSize(output []byte) (uint64, error) {
+	value := strings.TrimSpace(string(output))
+	size, err := strconv.ParseUint(value, 10, 64)
+	if err != nil {
+		return 0, fmt.Errorf("invalid Git object size %q", value)
+	}
+	return size, nil
 }
 
 func gitCatalogRepository(ctx context.Context, repo, reference, sshPrivateKey string) (string, string, func(), error) {
@@ -323,10 +394,6 @@ func gitOutputBytesEnvLimit(ctx context.Context, repo string, env []string, limi
 	return gitOutputBytesRedactedLimit(ctx, repo, env, args, limit, "", args...)
 }
 
-func gitOutputBytesRedacted(ctx context.Context, repo string, env []string, displayArgs []string, args ...string) ([]byte, error) {
-	return gitOutputBytesRedactedLimit(ctx, repo, env, displayArgs, maxGitCommandOutputBytes, "", args...)
-}
-
 func gitOutputBytesRedactedLimit(ctx context.Context, repo string, env []string, displayArgs []string, limit uint64, diskRoot string, args ...string) ([]byte, error) {
 	fullArgs := args
 	if repo != "" {
@@ -395,6 +462,13 @@ func runGitCommand(ctx context.Context, command *exec.Cmd, diskRoot string) erro
 	for {
 		select {
 		case err := <-done:
+			exceeded, checkErr := directoryExceeds(diskRoot, maxGitRepositoryBytes)
+			if checkErr != nil {
+				return checkErr
+			}
+			if exceeded {
+				return errGitRepositoryLimit
+			}
 			return err
 		case <-ctx.Done():
 			_ = killGitProcessTree(command)

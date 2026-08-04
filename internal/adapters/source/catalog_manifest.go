@@ -56,11 +56,32 @@ type capturedCatalogFile struct {
 }
 
 type catalogFileReader func(context.Context, catalogInventoryEntry) (capturedCatalogFile, error)
+type catalogFileSizer func(context.Context, catalogInventoryEntry) (int64, error)
+
+type catalogSourceBudget struct {
+	limit int64
+	used  int64
+}
+
+func (budget *catalogSourceBudget) reserve(size int64) error {
+	if size <= 0 {
+		return fmt.Errorf("catalog source file is empty")
+	}
+	if size > maxCatalogSourceFileBytes {
+		return fmt.Errorf("catalog source file exceeds %d bytes", maxCatalogSourceFileBytes)
+	}
+	if size > budget.limit-budget.used {
+		return fmt.Errorf("catalog source bytes %d exceed %d", budget.used+size, budget.limit)
+	}
+	budget.used += size
+	return nil
+}
 
 func captureCatalogCandidate(
 	ctx context.Context,
 	manifest CatalogManifest,
 	inventory []catalogInventoryEntry,
+	size catalogFileSizer,
 	read catalogFileReader,
 	revisionKind domain.CatalogRevisionKind,
 	commit string,
@@ -97,7 +118,20 @@ func captureCatalogCandidate(
 	}
 	documents := make([]domain.CatalogDocument, 0, len(selected))
 	captured := make(map[string]capturedCatalogFile, len(selected))
+	limit := int64(maxCatalogSourceBytes)
+	if manifest.ProfileID == domain.CompatibilityProfileKubernetes {
+		limit = maxKubernetesSourceBytes
+	}
+	budget := &catalogSourceBudget{limit: limit}
 	for _, entry := range selected {
+		verifiedSize, err := size(ctx, entry)
+		if err != nil {
+			return domain.CatalogCandidate{}, fmt.Errorf("size catalog document %q: %w", entry.path, err)
+		}
+		if err := budget.reserve(verifiedSize); err != nil {
+			return domain.CatalogCandidate{}, fmt.Errorf("admit catalog document %q: %w", entry.path, err)
+		}
+		entry.size = verifiedSize
 		file, err := read(ctx, entry)
 		if err != nil {
 			return domain.CatalogCandidate{}, fmt.Errorf("read catalog document %q: %w", entry.path, err)
@@ -113,7 +147,7 @@ func captureCatalogCandidate(
 			}
 		}
 		documents = append(documents, domain.CatalogDocument{
-			Key: key, SourcePath: entry.path, Format: catalogFormat(entry.path), Bytes: append([]byte(nil), file.data...),
+			Key: key, SourcePath: entry.path, Format: catalogFormat(entry.path), Bytes: file.data,
 		})
 		captured[entry.path] = file
 	}
@@ -123,23 +157,9 @@ func captureCatalogCandidate(
 		}
 	}
 
-	supportFiles, err := captureSupportFiles(ctx, documents, byPath, captured, read)
+	supportFiles, err := captureSupportFiles(ctx, documents, byPath, captured, size, read, budget)
 	if err != nil {
 		return domain.CatalogCandidate{}, err
-	}
-	total := 0
-	for _, document := range documents {
-		total += len(document.Bytes)
-	}
-	for _, support := range supportFiles {
-		total += len(support.Bytes)
-	}
-	limit := maxCatalogSourceBytes
-	if manifest.ProfileID == domain.CompatibilityProfileKubernetes {
-		limit = maxKubernetesSourceBytes
-	}
-	if total > limit {
-		return domain.CatalogCandidate{}, fmt.Errorf("catalog source bytes %d exceed %d", total, limit)
 	}
 	digest := catalogManifestDigest(documents, supportFiles, captured)
 	revisionID := string(revisionKind) + "-sha256-" + digest
@@ -236,6 +256,9 @@ func validateCapturedFile(file capturedCatalogFile, expected catalogInventoryEnt
 	if len(file.data) > maxCatalogSourceFileBytes {
 		return fmt.Errorf("captured file %q exceeds %d bytes", expected.path, maxCatalogSourceFileBytes)
 	}
+	if int64(len(file.data)) != expected.size {
+		return fmt.Errorf("captured file %q changed length", expected.path)
+	}
 	return nil
 }
 
@@ -244,7 +267,9 @@ func captureSupportFiles(
 	documents []domain.CatalogDocument,
 	inventory map[string]catalogInventoryEntry,
 	captured map[string]capturedCatalogFile,
+	size catalogFileSizer,
 	read catalogFileReader,
+	budget *catalogSourceBudget,
 ) ([]domain.CatalogSupportFile, error) {
 	queue := make([]string, 0, len(documents))
 	for _, document := range documents {
@@ -268,6 +293,14 @@ func captureSupportFiles(
 			if !exists {
 				return nil, fmt.Errorf("captured reference %q from %q is undeclared or missing", ref, owner)
 			}
+			verifiedSize, err := size(ctx, entry)
+			if err != nil {
+				return nil, fmt.Errorf("size captured reference %q: %w", ref, err)
+			}
+			if err := budget.reserve(verifiedSize); err != nil {
+				return nil, fmt.Errorf("admit captured reference %q: %w", ref, err)
+			}
+			entry.size = verifiedSize
 			file, err := read(ctx, entry)
 			if err != nil {
 				return nil, fmt.Errorf("read captured reference %q: %w", ref, err)
@@ -292,7 +325,7 @@ func captureSupportFiles(
 	sort.Strings(paths)
 	result := make([]domain.CatalogSupportFile, len(paths))
 	for index, sourcePath := range paths {
-		result[index] = domain.CatalogSupportFile{SourcePath: sourcePath, Bytes: append([]byte(nil), captured[sourcePath].data...)}
+		result[index] = domain.CatalogSupportFile{SourcePath: sourcePath, Bytes: captured[sourcePath].data}
 	}
 	return result, nil
 }

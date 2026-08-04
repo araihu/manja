@@ -68,7 +68,13 @@ func (source FileCatalogSource) loadPass(ctx context.Context, root string) (doma
 		}
 		return readCatalogFile(root, entry, source.beforeFileRead)
 	}
-	return captureCatalogCandidate(ctx, source.Manifest, inventory, reader, domain.CatalogRevisionFiles, "")
+	sizer := func(ctx context.Context, entry catalogInventoryEntry) (int64, error) {
+		if err := ctx.Err(); err != nil {
+			return 0, err
+		}
+		return entry.size, nil
+	}
+	return captureCatalogCandidate(ctx, source.Manifest, inventory, sizer, reader, domain.CatalogRevisionFiles, "")
 }
 
 func canonicalCatalogRoot(root string) (string, error) {

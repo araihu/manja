@@ -213,6 +213,63 @@ func TestCatalogGitSourceRejectsOversizedBlobBeforeReadingIt(t *testing.T) {
 	}
 }
 
+func TestCatalogGitSourceRejectsAggregateLimitBeforeCrossingBlobRead(t *testing.T) {
+	worktree := t.TempDir()
+	runGitTestCommand(t, worktree, "init", "-q", "-b", "main")
+	runGitTestCommand(t, worktree, "config", "user.name", "Test")
+	runGitTestCommand(t, worktree, "config", "user.email", "test@example.com")
+
+	base := `{"openapi":"3.0.3","info":{"title":"Aggregate","version":"v1"},"paths":{}}`
+	blobSize := maxCatalogSourceFileBytes - 1024
+	data := append([]byte(base), []byte(strings.Repeat(" ", blobSize-len(base)))...)
+	for index := 0; index < 9; index++ {
+		name := filepath.Join(worktree, fmt.Sprintf("spec-%02d.json", index))
+		if err := os.WriteFile(name, data, 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	runGitTestCommand(t, worktree, "add", ".")
+	runGitTestCommand(t, worktree, "commit", "-qm", "aggregate fixture")
+	bare := filepath.Join(t.TempDir(), "catalog.git")
+	runGitTestCommand(t, worktree, "clone", "--bare", ".", bare)
+	runGitTestCommand(t, bare, "config", "uploadpack.allowFilter", "true")
+
+	realGit, err := exec.LookPath("git")
+	if err != nil {
+		t.Fatal(err)
+	}
+	shimDirectory := t.TempDir()
+	logPath := filepath.Join(shimDirectory, "invocations.log")
+	shim := "#!/bin/sh\nprintf '%s\\n' \"$*\" >> \"$MANJA_GIT_INVOCATIONS\"\nexec \"$MANJA_REAL_GIT\" \"$@\"\n"
+	if err := os.WriteFile(filepath.Join(shimDirectory, "git"), []byte(shim), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("MANJA_REAL_GIT", realGit)
+	t.Setenv("MANJA_GIT_INVOCATIONS", logPath)
+	t.Setenv("PATH", shimDirectory+string(os.PathListSeparator)+os.Getenv("PATH"))
+
+	remote := (&url.URL{Scheme: "file", Path: bare}).String()
+	_, err = (GitCatalogSource{
+		Repository: remote, Ref: "main", Manifest: testCatalogManifest("strict-v1", "*.json"),
+	}).Load(context.Background())
+	if err == nil || !strings.Contains(err.Error(), "catalog source bytes") {
+		t.Fatalf("aggregate Git catalog error = %v", err)
+	}
+	invocations, readErr := os.ReadFile(logPath)
+	if readErr != nil {
+		t.Fatal(readErr)
+	}
+	blobReads := 0
+	for _, invocation := range strings.Split(string(invocations), "\n") {
+		if strings.Contains(invocation, "cat-file blob") {
+			blobReads++
+		}
+	}
+	if blobReads != 8 {
+		t.Fatalf("aggregate Git catalog blob reads = %d, want 8 before rejecting crossing blob\n%s", blobReads, invocations)
+	}
+}
+
 func TestGitCatalogRemoteAcquisitionIsShallowAndPartial(t *testing.T) {
 	t.Parallel()
 
