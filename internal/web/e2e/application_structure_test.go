@@ -303,11 +303,34 @@ func TestManagementMutationBackForwardAndReloadRemainAuthoritative(t *testing.T)
 	if _, err := page.Goto(server + "/manage/specs"); err != nil {
 		t.Fatal(err)
 	}
+	if _, err := page.Evaluate(`async () => await window.goshtosoDependencies.ready`, nil); err != nil {
+		t.Fatalf("await Goshtoso dependency readiness: %v", err)
+	}
+	if _, err := page.Evaluate(`() => {
+		window.__managementNavigationHistoryPushed = false;
+		window.__managementNavigationSettled = false;
+		document.addEventListener('htmx:pushedIntoHistory', () => {
+			window.__managementNavigationHistoryPushed = true;
+		}, { once: true });
+		document.addEventListener('htmx:afterSettle', () => {
+			window.__managementNavigationSettled = true;
+		}, { once: true });
+	}`, nil); err != nil {
+		t.Fatal(err)
+	}
 	if err := page.Locator(`aside[aria-label="Management sections"] a[href="/manage/spec/payments-api"]`).Click(); err != nil {
 		t.Fatal(err)
 	}
 	if err := page.Locator(`[data-management-contract-identity="payments-api"]`).WaitFor(); err != nil {
 		t.Fatal(err)
+	}
+	if _, err := page.WaitForFunction(`() =>
+		window.__managementNavigationHistoryPushed === true &&
+		window.__managementNavigationSettled === true &&
+		location.pathname === '/manage/spec/payments-api' &&
+		document.querySelector('#management-main-content')?.dataset.selectedContract === 'payments-api' &&
+		document.title === 'Payments API · Management'`, nil, playwright.PageWaitForFunctionOptions{Timeout: playwright.Float(5000)}); err != nil {
+		t.Fatalf("management navigation did not settle before measuring history: %v", err)
 	}
 	before, err := page.Evaluate(`() => history.length`, nil)
 	if err != nil {
@@ -320,10 +343,25 @@ func TestManagementMutationBackForwardAndReloadRemainAuthoritative(t *testing.T)
 	if err := pathInput.Fill("/payments/fresh"); err != nil {
 		t.Fatal(err)
 	}
+	if _, err := page.Evaluate(`() => {
+		window.__managementMutationSettled = false;
+		document.addEventListener('htmx:afterSettle', () => {
+			window.__managementMutationSettled = true;
+		}, { once: true });
+	}`, nil); err != nil {
+		t.Fatal(err)
+	}
 	if _, err := page.ExpectResponse("**/manage/publication", func() error {
 		return page.Locator(`#management-main-content [role="tabpanel"][aria-label="Route"] button:has-text("Save route settings")`).Click()
 	}, playwright.PageExpectResponseOptions{Timeout: playwright.Float(5000)}); err != nil {
 		t.Fatal(err)
+	}
+	if _, err := page.WaitForFunction(`() =>
+		window.__managementMutationSettled === true &&
+		location.pathname === '/manage/spec/payments-api' &&
+		document.querySelector('#management-main-content')?.dataset.selectedContract === 'payments-api' &&
+		document.querySelector('#management-main-content [role="tabpanel"][aria-label="Route"] input[name="path"]')?.value === '/payments/fresh'`, nil, playwright.PageWaitForFunctionOptions{Timeout: playwright.Float(5000)}); err != nil {
+		t.Fatalf("same-URL mutation did not settle before measuring history: %v", err)
 	}
 	after, err := page.Evaluate(`() => history.length`, nil)
 	if err != nil {
