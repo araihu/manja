@@ -2198,6 +2198,10 @@ func TestPublicDocsEndpointShellCSSUsesResponsiveExamplesRail(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	mainRule := regexp.MustCompile(`(?s)\.manja-endpoint-main\s*\{[^}]*\}`).FindString(string(css))
+	if mainRule == "" || !strings.Contains(mainRule, `overflow-x: clip;`) {
+		t.Fatalf("endpoint main should contain horizontal overflow from rich operation details:\n%s", mainRule)
+	}
 	layoutRule := regexp.MustCompile(`(?s)\.manja-endpoint-shell-layout\s*\{[^}]*\}`)
 	rule := layoutRule.FindString(string(css))
 	if rule == "" {
