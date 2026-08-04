@@ -278,6 +278,7 @@ type ResolutionEdge struct {
     FromInstance SourceInstanceID
     FromPointer  string
     ToInstance   SourceInstanceID
+    Kind         ResolutionEdgeKind // creation or reference
 }
 ```
 
@@ -318,6 +319,7 @@ type ChildSourceInstanceV1 struct {
 }
 ```
 
+Each child preimage records its one identity-forming creation parent/pointer.
 Therefore byte-identical resources
 loaded under `a/` and `b/` remain distinct semantic instances and can resolve
 different relative children, while their physical bytes still deduplicate by
@@ -325,7 +327,8 @@ digest. An opaque `ResolutionContext` is threaded to the adapter for descendant
 fetches and equality/cycle recognition during one compilation; it is never
 serialized, hashed, logged, or reused across runs. A cycle edge may target an
 already assigned instance only when the adapter returns the same opaque context
-and bytes verify against that instance.
+and bytes verify against that instance. This is acquisition-time evidence; the
+finalized decoder cannot reconstruct opaque context equality.
 
 Seed/finalization rules are shared portable code:
 
@@ -346,13 +349,26 @@ Seed/finalization rules are shared portable code:
   are ephemeral adapter state and never enter the envelope, manifest, cache key,
   diagnostic, or receipt;
 - ordering follows canonical instance/edge keys, never fetch completion order.
+- `ResolutionEdgeKind` is a closed enum. Each non-root occurrence has exactly
+  one `creation` edge whose parent/pointer equals the serialized child preimage
+  and reconstructs that child ID. Roots have no creation edge. Every later
+  incoming, alias, self, back, or cycle edge is `reference`; decoding verifies
+  normalized pointer syntax, existing endpoints, canonical order, and no exact
+  duplicate `(from, pointer, to)` triple, but does not recompute its existing
+  target ID from that edge. The child preimage is reconstructed from its
+  `ResolvedResource` fields plus its sole creation edge;
 - finalized-envelope decoding recomputes every root and child instance ID from
-  its complete preimage, rejects unknown format/media values or a noncanonical
-  format/media pair, verifies that every edge endpoint exists, and rejects an
-  edge whose parent/pointer/child binding does not reconstruct the child ID;
+  its complete preimage, rejects unknown format/media/edge-kind values or a
+  noncanonical format/media pair, verifies every edge endpoint, and rejects
+  missing, duplicate, or forged creation bindings;
+- envelope decoding proves canonical structure and identity integrity, not the
+  semantic truth of later reference targets. Re-proving those targets requires
+  source reacquisition and compilation; content-addressed snapshot consumers do
+  neither during normal load;
 - canonical codec vectors cover JSON and YAML roots/children, the complete
   `SourceInstanceID` preimage, shuffled occurrences/edges, malformed media/format
-  pairs, dangling edges, and legal cycle edges.
+  pairs, dangling edges, root self-reference, two-node cycles, non-root back
+  edges, repeated DAG references, and missing/duplicate/forged creation edges.
 
 The UI may collect the explicit root, catalog ID, title, or profile, but it calls
 the shared seed constructor. Shuffling inputs cannot change finalized bytes.
@@ -485,8 +501,11 @@ type MountState struct {
 }
 
 type RuntimeState struct {
-    Active   RuntimeBundleID // empty only for native in-process rendering
-    Previous RuntimeBundleID
+    Mode        RuntimeMode   // native or wasm
+    Status      RuntimeStatus // ready or unavailable
+    Active      RuntimeBundleID
+    Previous    RuntimeBundleID
+    FailureCode FailureCode // required only when unavailable
 }
 
 type ActivationState struct {
@@ -556,6 +575,17 @@ Rules:
 - namespace is opaque to open core. Manja Cloud may derive it from tenant and
   environment identity without adding tenant types to `domain`.
 
+Canonical runtime-state invariants:
+
+- `native + ready` has empty active/previous/failure fields and means the
+  composition-pinned in-process renderer/search implementation;
+- `wasm + ready` requires a nonempty compatible active bundle, permits one
+  distinct compatible previous bundle, and has no failure code;
+- `wasm + unavailable` requires empty active/previous and one bounded typed
+  failure code. It is never interpreted as native rendering;
+- `native + unavailable`, unknown enum values, equal active/previous IDs, or any
+  field combination outside these cases is invalid.
+
 Filesystem uses the existing journal, immutable descriptor files, and atomic
 route-table replace behind these interfaces. Browser uses CacheStorage/IndexedDB
 registries plus one IndexedDB activation transaction. Future cloud uses immutable
@@ -568,8 +598,8 @@ outcome table. S3 object metadata is not activation authority.
 binds exact renderer/search Wasm bytes, Go Wasm runtime, shell, Goshtoso/assets,
 compatibility matrix, required supervisor protocol, and route-protocol identity.
 Native in-process rendering records the native presentation identity in receipts
-but may use empty runtime-state fields because deployment authority already pins
-one executable.
+and uses canonical `native + ready` runtime state because deployment authority
+already pins one executable.
 
 Browser activation, rollback, recovery, and garbage collection always operate on
 the current route-set descriptor and its per-mount/runtime active/previous fields
@@ -608,7 +638,9 @@ pointers; it never relies on publish rotation:
   A is never substituted for B;
 - corrupt active runtime: register a repaired descriptor preserving every mount.
   Set runtime active to its verified compatible runtime previous and clear
-  runtime previous, or fail rendering closed if none is compatible;
+  runtime previous. If none is compatible, set runtime to canonical
+  `wasm + unavailable`, preserve every healthy mount/history, and fail local
+  render/search closed with bounded degraded readiness;
 - corruption reachable only from one component's previous field: register a
   repaired descriptor preserving its active and every unrelated history while
   clearing only that corrupt previous;
@@ -622,6 +654,11 @@ Example: current mounts are `A(active=A2, previous=A1)` and
 `B(active=B1, previous=B0)`. Corrupt B1 yields A2/A1 unchanged and either
 B0/empty or B unavailable. It never rolls A back and never retains B1 in any
 current/fallback descriptor.
+
+Runtime example: `wasm + ready(active=R1, previous=R0)` with corrupt R1 becomes
+`wasm + ready(active=R0, previous=empty)`. Without R0 it becomes
+`wasm + unavailable(active=empty, previous=empty,
+failure=runtime_corrupt)`. Neither state is confused with `native + ready`.
 
 Recovery uses a deterministic mutation ID derived from the damaged generation,
 health evidence, and exact desired descriptor/pointers. It registers the repaired
@@ -1069,6 +1106,12 @@ grace period complete.
   verified locally. Every operation/schema route and search result can open with
   network blocked.
 
+`wasm + unavailable` makes local readiness degraded and presentation unavailable
+even while snapshots remain healthy. Online published pages may use native SSR
+and server-search fallback; a local-only offline scope returns the bounded
+runtime-unavailable response until an explicit compatible runtime publication
+wins CAS. Recovery never silently downloads or selects a new bundle.
+
 Complete offline is explicit for published large catalogs. Local preview is
 always complete offline before activation in v1.
 
@@ -1181,7 +1224,8 @@ Cloud adapter requirements carried by conformance tests now:
 | Pointer fallback descriptor missing or corrupt while current is healthy | Current continues; one recovery CAS clears only pointer fallback |
 | Current descriptor corrupt with verified pointer fallback | One recovery CAS promotes fallback to current and clears corrupt authority |
 | Active component corrupt with verified same-component previous | One recovery CAS substitutes only affected mount/runtime, clears damaged history, preserves unrelated mounts |
-| Active component corrupt with no verified same-component previous | Affected mount/runtime fails closed; repaired descriptor continues unaffected mounts with degraded readiness |
+| Active mount corrupt with no verified same-mount previous | Affected mount becomes unavailable; repaired descriptor continues unaffected mounts with degraded readiness |
+| Active Wasm runtime corrupt with no compatible previous | Repaired descriptor retains healthy mounts, encodes `wasm + unavailable`, and render/search fail closed without retaining corrupt runtime as a root |
 | Activation authority corrupt/unverifiable | Namespace fails closed; evidence and objects remain untouched |
 | Preflight finds missing/corrupt required child | Candidate rejected; current descriptor and all component histories remain serveable |
 | Activation CAS loses race | Newer route-set authority preserved; candidate may remain reusable |
@@ -1274,6 +1318,8 @@ Every adapter must pass reusable tests for:
   types round-trips without physical-metadata conflict;
 - route-set/runtime descriptors round-trip by recomputed ID; missing, corrupt,
   conflicting, and wrong-ID descriptors enter the component recovery matrix;
+- runtime codec vectors distinguish native ready, Wasm ready with/without
+  previous, and Wasm unavailable; every other field combination fails decoding;
 - short/long/digest-corrupt stream rejection;
 - cancellation during read/write;
 - bounded concurrent distinct writes;
@@ -1291,6 +1337,10 @@ Every adapter must pass reusable tests for:
   snapshot; corrupt runtime; and no healthy same-component fallback. The
   `A2/A1 + B1/B0` fixture must repair B to B0 or unavailable while preserving
   A2/A1, removing B1 from every GC root, and committing at most one recovery;
+- runtime recovery matrices assert exact state, readiness, route/search outcome,
+  tombstones, GC roots, restart, and CAS-race behavior for native ready, Wasm
+  ready, corrupt Wasm with compatible previous, and corrupt Wasm without
+  previous;
 - restart recovery;
 - deterministic corruption versus transient failure;
 - GC roots and grace behavior where enumeration is supported.
@@ -1308,7 +1358,8 @@ Automated Chromium tests must prove:
   long, digest mismatch, cancellation, read-after-close, and new-stream-for-retry
   behavior is identical across native and Wasm;
 - shared source-envelope/resolver vectors for shuffled directories, duplicate and
-  case-colliding names, nested relative and cross-origin refs, redirects, cycles,
+  case-colliding names, nested relative and cross-origin refs, redirects, root
+  self-reference, two-node cycles, non-root back edges, repeated DAG references,
   CORS, token-bearing root URLs, budget crossing, and cancellation;
 - byte-identical external parents under two acquisition contexts with different
   relative children remain distinct source instances under shuffled/concurrent
@@ -1331,6 +1382,10 @@ Automated Chromium tests must prove:
 - crash/reload at Service Worker install, waiting, activation, IndexedDB commit,
   and controller change plus each old/new runtime-bundle transition serves a
   compatible generation or deterministic previous fallback;
+- browser runtime corruption with a compatible previous bundle promotes that
+  bundle exactly once; without one, restart preserves healthy snapshots,
+  exposes `wasm + unavailable`, and returns bounded render/search unavailable
+  behavior without retaining the corrupt bundle as a GC root;
 - repeated compiles, worker crashes, candidate expiry, runtime upgrades, quota
   denial, storage denial, corruption, stale module, and version mismatch stay
   within aggregate storage caps while current/fallback descriptors and healthy
