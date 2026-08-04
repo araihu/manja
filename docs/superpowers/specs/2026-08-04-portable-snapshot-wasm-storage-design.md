@@ -617,6 +617,24 @@ Rules:
 - namespace is opaque to open core. Manja Cloud may derive it from tenant and
   environment identity without adding tenant types to `domain`.
 
+Canonical mount-state invariants:
+
+- `ready` requires a nonempty active snapshot, permits either no previous
+  snapshot or one nonempty previous snapshot distinct from active, and requires
+  an empty failure code;
+- `unavailable` requires empty active and previous snapshot IDs and exactly one
+  bounded typed failure code. It never retains the rejected snapshot as route
+  authority or as a GC root;
+- unknown status values, equal active/previous IDs, a failure code on `ready`,
+  a missing failure code on `unavailable`, or any other field combination is
+  invalid and cannot produce a `RouteSetID`;
+- `FailureCode` is a closed RouteSetDescriptorV1 enum encoded as a lowercase
+  ASCII snake-case token of at most 64 bytes. Mount states permit
+  `snapshot_missing`, `snapshot_corrupt`, or `snapshot_incompatible`; Wasm
+  runtime states permit `runtime_missing`, `runtime_corrupt`, or
+  `runtime_incompatible`. A descriptor using the wrong component's code is
+  invalid.
+
 Canonical runtime-state invariants:
 
 - `native + ready` has empty active/previous/failure fields and means the
@@ -696,6 +714,15 @@ Example: current mounts are `A(active=A2, previous=A1)` and
 `B(active=B1, previous=B0)`. Corrupt B1 yields A2/A1 unchanged and either
 B0/empty or B unavailable. It never rolls A back and never retains B1 in any
 current/fallback descriptor.
+
+When B has no verified B0, the only canonical repaired mount is
+`B(status=unavailable, active=empty, previous=empty,
+failure=snapshot_corrupt)`. The recovery fixture fixes the descriptor's exact
+canonical bytes and recomputed `RouteSetID`; records a tombstone for B1; and
+asserts that B1 is absent from current, pointer fallback, admitted-candidate,
+lease, and enumerated GC roots. An encoding that retains B1 in either ID field
+or uses a different failure/status combination is corruption, not an alternate
+adapter policy.
 
 Runtime example: `wasm + ready(active=R1, previous=R0)` with corrupt R1 becomes
 `wasm + ready(active=R0, previous=empty)`. Without R0 it becomes
@@ -1381,6 +1408,11 @@ Every adapter must pass reusable tests for:
   types round-trips without physical-metadata conflict;
 - route-set/runtime descriptors round-trip by recomputed ID; missing, corrupt,
   conflicting, and wrong-ID descriptors enter the component recovery matrix;
+- mount codec vectors distinguish ready with/without a distinct previous and
+  unavailable with empty IDs plus one allowed failure code. Empty active on
+  ready, equal active/previous, any retained ID on unavailable, missing or
+  extraneous failure codes, cross-component failure codes, unknown status, and
+  unknown fields all fail before a `RouteSetID` is admitted;
 - runtime codec vectors distinguish native ready, Wasm ready with/without
   previous, and Wasm unavailable; every other field combination fails decoding;
 - short/long/digest-corrupt stream rejection;
@@ -1400,6 +1432,10 @@ Every adapter must pass reusable tests for:
   snapshot; corrupt runtime; and no healthy same-component fallback. The
   `A2/A1 + B1/B0` fixture must repair B to B0 or unavailable while preserving
   A2/A1, removing B1 from every GC root, and committing at most one recovery;
+- the `A2/A1 + B1/no-B0` fixture must produce the one canonical unavailable B
+  state above and the same exact descriptor bytes, `RouteSetID`, tombstone set,
+  and GC-root set in filesystem, browser, and cloud test adapters, including
+  after restart and mutation-outcome reconciliation;
 - runtime recovery matrices assert exact state, readiness, route/search outcome,
   tombstones, GC roots, restart, and CAS-race behavior for native ready, Wasm
   ready, corrupt Wasm with compatible previous, and corrupt Wasm without
