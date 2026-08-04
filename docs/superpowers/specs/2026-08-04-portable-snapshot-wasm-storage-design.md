@@ -241,6 +241,8 @@ type SeedSource struct {
     Bytes      ByteStream        // one-pass root bytes
 }
 
+type ResolutionContext uint32 // nonzero per-compilation intern handle
+
 type SeedDescriptor struct {
     LogicalPath string
     Role        SourceRole
@@ -258,6 +260,18 @@ mismatched input. It is never rewound. Reads after close return the shared typed
 closed-stream error; a second compilation must request a new seed/stream from the
 adapter. Root URL acquisition applies the same portable browser acquisition
 policy before supplying this stream.
+
+`ResolutionContext` has one permitted operation outside its adapter: exact
+equality. For one compilation, an adapter must intern semantic acquisition
+targets and assign one stable nonzero handle to each distinct `(target,
+reference-base)` context. Repeated resolution of the same target/base returns
+the same handle; different target/base contexts return different handles even
+when bytes match. Handles are never recycled during that compilation, need not
+have equal numeric values across adapters, and are never serialized, hashed,
+logged, or exposed in diagnostics. An adapter unable to preserve this
+equivalence returns `resolver_context_unavailable`. Duplicate root handles are
+rejected as `duplicate_root_context`; equal handles with conflicting supplied
+root descriptors are `source_changed`.
 
 After parsing and resolution, the compiler emits canonical
 `FinalizedSourceSetEnvelopeV1` with sorted resource occurrences and edges. Each
@@ -320,11 +334,13 @@ type ChildSourceInstanceV1 struct {
 ```
 
 Each child preimage records its one identity-forming creation parent/pointer.
-Portable v1 deliberately does not globally coalesce equal resolver contexts:
-every non-cycle incoming edge creates a distinct semantic occurrence. Thus two
-parents referencing the same external resource get two deterministic child
-occurrences while physical bytes still deduplicate by digest. This avoids any
-first-completion choice of a creation edge.
+Portable v1 coalesces equal `ResolutionContext` handles within one compilation.
+The first target committed in deterministic request order creates the semantic
+occurrence; later equal-context targets emit `reference` edges to it without
+opening, parsing, or charging its bytes/documents again. Unequal contexts always
+create distinct semantic occurrences even when bytes match, so different
+reference bases cannot collapse. Physical bytes additionally deduplicate by
+digest.
 
 Child logical path is compiler-derived, never adapter-derived:
 
@@ -339,22 +355,14 @@ collision with a different locator is corruption, never suffix-renamed. No
 acquisition URL, reference string, credential, context handle, or response order
 enters the path.
 
-An opaque `ResolutionContext` is threaded to the adapter for descendant fetches
-and cycle recognition during one compilation; it is never serialized, hashed,
-logged, or reused across runs. Only when a resolved context equals a context on
-that occurrence's current ancestor stack and bytes verify may the compiler emit
-a `reference` edge to that existing ancestor instead of creating another
-occurrence. Sibling/completed occurrences are never coalesced. This
-acquisition-time evidence proves a self/back/cycle edge; the finalized decoder
-cannot reconstruct opaque context equality.
-
-Traversal is deterministic. Roots are admitted in finalized logical-path order.
-Within each occurrence, external references are admitted by normalized JSON
-Pointer order and assigned monotonic request IDs. At most four acquisitions may
-run concurrently, but responses are reserved, verified, and committed to the
-graph strictly in request-ID order; later completions remain bounded pending
-responses. Depth-first expansion follows that same order. Adapter latency cannot
-change occurrences, paths, edge kinds, or IDs.
+Traversal is deterministic. Distinct roots are registered in finalized
+logical-path order, then occurrences are processed through a FIFO queue. Within
+each occurrence, external references are identified by normalized JSON Pointer
+order and assigned global monotonic request IDs. At most four identifications may
+run concurrently, but results are committed strictly in request-ID order; later
+completions remain bounded pending results. A new context is opened exactly once,
+then its created occurrence is appended to the FIFO queue. Adapter latency cannot
+change the creator, logical path, edge kind, occurrence order, or ID.
 
 Seed/finalization rules are shared portable code:
 
@@ -377,12 +385,14 @@ Seed/finalization rules are shared portable code:
 - ordering follows canonical instance/edge keys, never fetch completion order.
 - `ResolutionEdgeKind` is a closed enum. Each non-root occurrence has exactly
   one `creation` edge whose parent/pointer equals the serialized child preimage
-  and reconstructs that child ID. Roots have no creation edge. Every later
-  self, back, or cycle edge to an existing ancestor is `reference`; decoding verifies
-  normalized pointer syntax, existing endpoints, canonical order, and no exact
-  duplicate `(from, pointer, to)` triple, but does not recompute its existing
-  target ID from that edge. The child preimage is reconstructed from its
-  `ResolvedResource` fields plus its sole creation edge;
+  and reconstructs that child ID. Roots have no creation edge. Every later equal-
+  context target is `reference`. Decoding reconstructs the canonical root/FIFO/
+  pointer traversal from the creation forest; a reference target must be the
+  source itself or an occurrence already registered before that edge. Across
+  both kinds, at most one edge may exist for each `(from, pointer)`. Decoder also
+  verifies normalized pointer syntax, endpoints, canonical order, and no exact
+  duplicate edge. It does not re-prove context equality. The child preimage is
+  reconstructed from its `ResolvedResource` fields plus its sole creation edge;
 - finalized-envelope decoding recomputes every root and child instance ID from
   its complete preimage, rejects unknown format/media/edge-kind values or a
   noncanonical format/media pair, verifies every edge endpoint, and rejects
@@ -391,14 +401,16 @@ Seed/finalization rules are shared portable code:
   semantic truth of later reference targets. Re-proving those targets requires
   source reacquisition and compilation; content-addressed snapshot consumers do
   neither during normal load;
-- every created occurrence charges document count, aggregate decoded-source
-  bytes, depth, diagnostics, and compiler work even when its physical digest was
-  already acquired. Physical-store deduplication never weakens semantic work
-  admission;
+- every unique context creator charges document count, aggregate decoded-source
+  bytes, depth, diagnostics, and parse/compiler work once. Every resolution edge
+  separately charges bounded fan-out work. Physical-store deduplication never
+  weakens either admission class;
 - canonical codec vectors cover JSON and YAML roots/children, the complete
   `SourceInstanceID` preimage, shuffled occurrences/edges, malformed media/format
   pairs, dangling edges, root self-reference, two-node cycles, non-root back
-  edges, repeated DAG occurrences, and missing/duplicate/forged creation edges.
+  edges, repeated DAG references, duplicate-pointer/different-target edges,
+  reference edges to not-yet-created targets, and missing/duplicate/forged
+  creation edges.
 
 The UI may collect the explicit root, catalog ID, title, or profile, but it calls
 the shared seed constructor. Shuffling inputs cannot change finalized bytes.
@@ -913,12 +925,20 @@ type ResolveRequest struct {
     ReferrerContext ResolutionContext // opaque adapter handle
     ReferrerPointer string
     Reference       string
-    Remaining       ResolutionBudget
 }
 
-type ResolveResponse struct {
-    RequestID     uint64
-    Context       ResolutionContext // opaque; equality is valid only in this compile
+type ResolutionTarget struct {
+    RequestID uint64
+    Context   ResolutionContext
+}
+
+type OpenRequest struct {
+    Context   ResolutionContext
+    Remaining ResolutionBudget
+}
+
+type OpenResponse struct {
+    Context       ResolutionContext
     Length        uint64
     SHA256        [32]byte
     MediaTypeHint string // ephemeral acquisition hint; never canonical or identity
@@ -926,14 +946,21 @@ type ResolveResponse struct {
 }
 
 type SourceResolver interface {
-    Resolve(context.Context, ResolveRequest) (ResolveResponse, error)
+    Identify(context.Context, ResolveRequest) (ResolutionTarget, error)
+    Open(context.Context, OpenRequest) (OpenResponse, error)
 }
 ```
 
 The compiler owns reference discovery, canonical edge construction, cycle and
-depth detection, deduplication, and budget reservation. The adapter owns only
-bounded byte acquisition. The browser bridge resolves relative network requests
-against the private acquisition context. Portable browser profile v1 uses Fetch
+depth detection, context-group deduplication, and budget reservation. The adapter
+owns target interning and bounded byte acquisition. `Identify` resolves the
+reference against private adapter context without network/body acquisition and
+returns its stable per-compilation token. In deterministic commit order, the
+compiler calls `Open` only for a token absent from its creator table. `Open` must
+return the requested token, and its stream is consumed once; a repeated `Open`
+for that token is a compiler error. Later equal tokens reuse the verified creator
+occurrence. The browser bridge resolves relative network requests against the
+private acquisition context. Portable browser profile v1 uses Fetch
 with `redirect: "error"`: zero redirects are followed. This is deliberately
 narrow because automatic Fetch hides hop count and manual cross-origin redirects
 hide `Location`. The initial URL must be `https:` outside localhost, credentials
@@ -950,16 +977,21 @@ post-response size/format/digest errors, and cancellation remain distinct. Riche
 native acquisition may expose a separately named non-portable taxonomy. The
 adapter never returns or guesses acquisition URLs/causes in portable diagnostics.
 
-Each request reserves aggregate decoded bytes, document count, and depth before
-fetch. A response is hashed and length-checked while streaming; unused reservation
-is released, but a crossing is rejected before another body is read. Concurrent
-requests share one cancellation scope and are bounded to four acquisitions.
-Cycles terminate deterministically from the logical resolution graph. Native and
-browser adapters receive shared vectors and must produce the identical finalized
-envelope, snapshot, and typed deterministic error for the same admitted resolved
-graph. A fixture with byte-identical `a/common.yaml` and `b/common.yaml` whose
-relative `child.yaml` bytes differ must retain both occurrence graphs regardless
-of shuffled or concurrent acquisition.
+Each new context reserves aggregate decoded bytes, document count, and depth
+before `Open`. A body is hashed and length-checked while streaming; unused
+reservation is released, but a crossing is rejected before another body is read.
+Identification shares one cancellation scope and is bounded to four concurrent
+requests; body opening/commit is serialized by request order. Total resolution
+edges and edges per occurrence have separate hard limits. Native and browser
+adapters receive shared token-equivalence conformance vectors and must produce
+the identical finalized envelope, snapshot, and typed deterministic error for
+the same admitted resolved graph. Fresh-token-for-same-target,
+recycled/colliding-token, zero-token, or unavailable-interning adapters fail
+conformance; an equal token with conflicting root/open descriptors fails
+`source_changed`. A fixture with byte-identical `a/common.yaml` and
+`b/common.yaml` under unequal contexts, whose relative `child.yaml` bytes differ,
+must retain both occurrence graphs regardless of shuffled or concurrent
+identification.
 
 ### Browser compilation profiles
 
@@ -969,6 +1001,7 @@ v1 gates:
 - 16 MiB aggregate decoded source bytes;
 - 8 MiB per document;
 - 64 documents;
+- 16,384 resolution edges total and 1,024 per document;
 - 5,000 operations;
 - 5,000 schemas;
 - 64 MiB committed snapshot bytes;
@@ -1396,6 +1429,13 @@ Automated Chromium tests must prove:
   and unequal contexts, and DAG-plus-cycle graphs. Native and Wasm must emit the
   same occurrence count, logical paths, edge kinds, instance IDs, canonical
   envelope bytes, snapshot ID, and typed budget errors;
+- a two-file fan-out fixture with 1,024 references and a diamond-with-descendants
+  fixture open and parse each equal context once, charge bytes/documents once,
+  stay within edge-work limits, and choose the same creator under reversed
+  identification latency;
+- fresh-token-for-same-target, token collision/reuse, zero token, unavailable
+  interning, equal-token/conflicting-root-descriptor, and unequal-context/equal-
+  bytes adapters produce the specified deterministic result or typed failure;
 - byte-identical external parents under two acquisition contexts with different
   relative children remain distinct source instances under shuffled/concurrent
   native and browser acquisition, with no context/URL persisted;
