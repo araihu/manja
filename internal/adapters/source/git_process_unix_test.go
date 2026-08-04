@@ -17,6 +17,7 @@ import (
 )
 
 var errMalformedChildPID = errors.New("malformed child PID")
+var errProcessStillRunning = errors.New("process is still running")
 
 func TestRunGitCommandCancellationKillsInheritedPipeDescendant(t *testing.T) {
 	pidFile := t.TempDir() + "/child.pid"
@@ -43,8 +44,59 @@ func TestRunGitCommandCancellationKillsInheritedPipeDescendant(t *testing.T) {
 		<-result
 		t.Fatal("canceled command remained blocked on descendant-owned pipe")
 	}
-	if processExists(childPID) {
-		t.Fatalf("descendant process %d survived cancellation", childPID)
+	if err := waitForProcessNotRunning(childPID, 250*time.Millisecond); err != nil {
+		t.Fatalf("descendant process %d survived cancellation: %v", childPID, err)
+	}
+}
+
+func TestWaitForProcessNotRunningAllowsDelayedExit(t *testing.T) {
+	command := exec.Command("sh", "-c", "sleep 0.05")
+	if err := command.Start(); err != nil {
+		t.Fatal(err)
+	}
+	done := make(chan error, 1)
+	go func() { done <- command.Wait() }()
+
+	if err := waitForProcessNotRunning(command.Process.Pid, 500*time.Millisecond); err != nil {
+		t.Fatal(err)
+	}
+	if err := <-done; err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestWaitForProcessNotRunningAcceptsZombie(t *testing.T) {
+	command := exec.Command("sh", "-c", "exit 0")
+	if err := command.Start(); err != nil {
+		t.Fatal(err)
+	}
+	if err := waitForProcessNotRunning(command.Process.Pid, 500*time.Millisecond); err != nil {
+		_ = command.Process.Kill()
+		_, _ = command.Process.Wait()
+		t.Fatal(err)
+	}
+	if _, err := command.Process.Wait(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestWaitForProcessNotRunningRejectsLiveSurvivor(t *testing.T) {
+	command := exec.Command("sleep", "30")
+	if err := command.Start(); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		_ = command.Process.Kill()
+		_, _ = command.Process.Wait()
+	})
+
+	started := time.Now()
+	err := waitForProcessNotRunning(command.Process.Pid, 50*time.Millisecond)
+	if !errors.Is(err, errProcessStillRunning) {
+		t.Fatalf("live survivor error = %v, want %v", err, errProcessStillRunning)
+	}
+	if elapsed := time.Since(started); elapsed < 50*time.Millisecond || elapsed > 500*time.Millisecond {
+		t.Fatalf("live survivor check elapsed = %s, want bounded timeout near 50ms", elapsed)
 	}
 }
 
@@ -126,7 +178,53 @@ func waitForChildPID(path string, timeout time.Duration) (int, error) {
 	return 0, fmt.Errorf("descendant PID was not written within %s", timeout)
 }
 
-func processExists(pid int) bool {
+func waitForProcessNotRunning(pid int, timeout time.Duration) error {
+	deadline := time.Now().Add(timeout)
+	for {
+		running, err := processIsRunning(pid)
+		if err != nil {
+			return err
+		}
+		if !running {
+			return nil
+		}
+		if !time.Now().Before(deadline) {
+			return fmt.Errorf("%w after %s", errProcessStillRunning, timeout)
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+}
+
+func processIsRunning(pid int) (bool, error) {
 	err := syscall.Kill(pid, 0)
-	return err == nil || errors.Is(err, syscall.EPERM)
+	if errors.Is(err, syscall.ESRCH) {
+		return false, nil
+	}
+	if err != nil && !errors.Is(err, syscall.EPERM) {
+		return false, err
+	}
+
+	output, psErr := exec.Command("ps", "-o", "stat=", "-p", strconv.Itoa(pid)).Output()
+	if psErr != nil {
+		// The process can disappear between kill(2) and ps(1).
+		err = syscall.Kill(pid, 0)
+		if errors.Is(err, syscall.ESRCH) {
+			return false, nil
+		}
+		if err == nil || errors.Is(err, syscall.EPERM) {
+			return true, nil
+		}
+		return false, err
+	}
+	state := strings.TrimSpace(string(output))
+	if state == "" {
+		return false, nil
+	}
+	for _, marker := range state {
+		switch marker {
+		case 'E', 'X', 'Z':
+			return false, nil
+		}
+	}
+	return true, nil
 }
