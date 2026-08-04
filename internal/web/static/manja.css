@@ -61,6 +61,10 @@
   overflow-wrap: anywhere;
 }
 
+[data-public-page-header="true"] .manja-doc-title + p {
+  overflow-wrap: anywhere;
+}
+
 #sidebar-nav-content a[data-manja-sidebar-tag="true"] {
   border-left-width: 0;
   padding-left: 0;

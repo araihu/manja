@@ -1545,6 +1545,21 @@ func TestPublicDocsSchemaTitleCSSWrapsLongNames(t *testing.T) {
 	}
 }
 
+func TestPublicDocsPageDescriptionCSSWrapsLongPaths(t *testing.T) {
+	css, err := os.ReadFile("static/manja.css")
+	if err != nil {
+		t.Fatal(err)
+	}
+	descriptionRule := regexp.MustCompile(`(?s)\[data-public-page-header="true"\]\s+\.manja-doc-title\s*\+\s*p\s*\{[^}]*\}`)
+	rule := descriptionRule.FindString(string(css))
+	if rule == "" {
+		t.Fatalf("missing public page-header description rule")
+	}
+	if !strings.Contains(rule, `overflow-wrap: anywhere;`) {
+		t.Fatalf("public page-header descriptions should wrap long API paths:\n%s", rule)
+	}
+}
+
 func TestPublicDocsSchemaDescriptionCSSWrapsLongReferences(t *testing.T) {
 	css, err := os.ReadFile("static/manja.css")
 	if err != nil {
