@@ -480,6 +480,10 @@ html.boot [data-boot-anim="main"] {
   padding-top: 1.5rem;
 }
 
+.manja-endpoint-main {
+  overflow-x: clip;
+}
+
 .manja-endpoint-detail-layout > section {
   min-width: 0;
 }
