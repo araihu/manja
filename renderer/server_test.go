@@ -1,10 +1,13 @@
 package renderer
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"runtime"
 	"strings"
 	"testing"
@@ -99,6 +102,87 @@ func TestActivateRejectsOverBudgetProcessBeforePublishing(t *testing.T) {
 	}
 }
 
+func TestActivateBudgetFailureLeavesPublishedRoutesExactlyUnchanged(t *testing.T) {
+	dataDir := t.TempDir()
+	serverAPI, err := New(Config{Version: 1, DataDir: dataDir, Catalogs: []CatalogConfig{
+		{ID: "payments", Mount: "/payments", Title: "Payments", DefaultDocumentKey: "payments-v1", ProfileID: domain.CompatibilityProfileStrict},
+		{ID: "inventory", Mount: "/inventory", Title: "Inventory", DefaultDocumentKey: "payments-v1", ProfileID: domain.CompatibilityProfileStrict},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	implementation := serverAPI.(*server)
+
+	inventory := rendererTestCandidateVersion("inventory", "Inventory v1", "file-manifest-inventory-v1", "d")
+	paymentsV0 := rendererTestCandidateVersion("payments", "Payments v0", "file-manifest-payments-v0", "b")
+	paymentsV1 := rendererTestCandidateVersion("payments", "Payments v1", "file-manifest-payments-v1", "c")
+	for _, candidate := range []domain.CatalogCandidate{inventory, paymentsV0, paymentsV1} {
+		if _, err := serverAPI.Activate(context.Background(), candidate); err != nil {
+			t.Fatalf("seed %s %s: %v", candidate.ID, candidate.Revision.ID, err)
+		}
+	}
+
+	beforeTable := implementation.runtime.Table()
+	beforePayments := beforeTable.Mounts["/payments"]
+	if beforePayments.Previous == nil || beforePayments.Previous.Manifest.Identity.RevisionID != paymentsV0.Revision.ID {
+		t.Fatalf("seed previous route = %#v, want %s", beforePayments.Previous, paymentsV0.Revision.ID)
+	}
+	beforeRoutes, err := os.ReadFile(filepath.Join(dataDir, "state", "routes.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	paymentsV2 := rendererTestCandidateVersion("payments", "Payments v2", "file-manifest-payments-v2", "e")
+	measurements := 0
+	transientStatus := 0
+	transientBody := ""
+	implementation.measureProcessPeak = func() (uint64, error) {
+		measurements++
+		if measurements < 4 {
+			return 1, nil
+		}
+		response := httptest.NewRecorder()
+		serverAPI.Handler().ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/payments/", nil))
+		transientStatus = response.Code
+		transientBody = response.Body.String()
+		return DefaultStartupProcessBytes + 1, nil
+	}
+
+	_, err = serverAPI.Activate(context.Background(), paymentsV2)
+	if !errors.Is(err, ErrStartupProcessBudget) {
+		t.Fatalf("activation error = %v, want %v", err, ErrStartupProcessBudget)
+	}
+	if measurements != 4 {
+		t.Fatalf("startup measurements = %d, want 4", measurements)
+	}
+	if transientStatus != http.StatusOK || !strings.Contains(transientBody, "Payments v1") || strings.Contains(transientBody, "Payments v2") {
+		t.Errorf("route observed during rejecting measurement = %d %q, want Payments v1 only", transientStatus, transientBody)
+	}
+
+	afterTable := implementation.runtime.Table()
+	afterPayments := afterTable.Mounts["/payments"]
+	if afterTable.Generation != beforeTable.Generation || afterPayments.Active.ID != beforePayments.Active.ID || afterPayments.Previous == nil || afterPayments.Previous.ID != beforePayments.Previous.ID {
+		t.Errorf("payments route changed: before=%#v after=%#v", beforePayments, afterPayments)
+	}
+	beforeInventory := beforeTable.Mounts["/inventory"]
+	afterInventory := afterTable.Mounts["/inventory"]
+	if afterInventory.Active.ID != beforeInventory.Active.ID || afterInventory.Previous != beforeInventory.Previous {
+		t.Errorf("inventory route changed: before=%#v after=%#v", beforeInventory, afterInventory)
+	}
+	afterRoutes, readErr := os.ReadFile(filepath.Join(dataDir, "state", "routes.json"))
+	if readErr != nil {
+		t.Fatal(readErr)
+	}
+	if !bytes.Equal(afterRoutes, beforeRoutes) {
+		t.Errorf("durable route table changed:\nbefore=%s\nafter=%s", beforeRoutes, afterRoutes)
+	}
+	response := httptest.NewRecorder()
+	serverAPI.Handler().ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/payments/", nil))
+	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), "Payments v1") || strings.Contains(response.Body.String(), "Payments v2") {
+		t.Errorf("route after rejected activation = %d %q, want Payments v1 only", response.Code, response.Body.String())
+	}
+}
+
 func TestActivateCompilesAndPublishesConfiguredCandidate(t *testing.T) {
 	t.Parallel()
 
@@ -177,4 +261,13 @@ func rendererTestCandidate(id string) domain.CatalogCandidate {
 			Key: "payments-v1", SourcePath: "payments.json", Format: domain.CatalogFormatJSON, Bytes: []byte(`{"openapi":"3.0.3","info":{"title":"Payments","version":"v1"},"paths":{}}`),
 		}},
 	}
+}
+
+func rendererTestCandidateVersion(id, title, revisionID, digestCharacter string) domain.CatalogCandidate {
+	candidate := rendererTestCandidate(id)
+	candidate.Title = title
+	candidate.Revision.ID = revisionID
+	candidate.Revision.ManifestDigest = strings.Repeat(digestCharacter, 64)
+	candidate.Documents[0].Bytes = []byte(strings.Replace(string(candidate.Documents[0].Bytes), "Payments", title, 1))
+	return candidate
 }

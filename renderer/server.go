@@ -44,15 +44,16 @@ type Server interface {
 }
 
 type server struct {
-	config       Config
-	configByID   map[string]CatalogConfig
-	parsers      map[string]*openapiadapter.CatalogParser
-	compilers    map[string]*catalog.Compiler
-	handler      *catalogGateway
-	initialize   sync.Mutex
-	runtime      *catalog.Runtime
-	coordinator  *catalogstore.ActivationCoordinator
-	generatedDir string
+	config             Config
+	configByID         map[string]CatalogConfig
+	parsers            map[string]*openapiadapter.CatalogParser
+	compilers          map[string]*catalog.Compiler
+	handler            *catalogGateway
+	initialize         sync.Mutex
+	runtime            *catalog.Runtime
+	coordinator        *catalogstore.ActivationCoordinator
+	generatedDir       string
+	measureProcessPeak func() (uint64, error)
 }
 
 func New(config Config) (Server, error) {
@@ -85,7 +86,7 @@ func New(config Config) (Server, error) {
 	}
 	config.Catalogs = append([]CatalogConfig(nil), config.Catalogs...)
 	gateway := &catalogGateway{mounts: mounts, assets: web.NewCatalogAssetsHandler()}
-	return &server{config: config, configByID: configured, parsers: parsers, compilers: compilers, handler: gateway}, nil
+	return &server{config: config, configByID: configured, parsers: parsers, compilers: compilers, handler: gateway, measureProcessPeak: processPeakBytes}, nil
 }
 
 func (server *server) Handler() http.Handler {
@@ -104,7 +105,7 @@ func (server *server) Recover(ctx context.Context) error {
 }
 
 func (server *server) CheckStartupProcess() (uint64, error) {
-	peak, err := processPeakBytes()
+	peak, err := server.measureProcessPeak()
 	if err != nil {
 		return 0, fmt.Errorf("measure renderer startup process: %w", err)
 	}
@@ -182,13 +183,13 @@ func (server *server) Activate(ctx context.Context, candidate domain.CatalogCand
 	if state, active := table.Mounts[configured.Mount]; active {
 		expectedOld = state.Active.ID
 	}
-	receipt, err := server.coordinator.Activate(ctx, configured.Mount, expectedOld, table.Generation, compiled)
-	if err != nil {
-		return ActivationReceipt{}, fmt.Errorf("activate catalog %q: %w", candidate.ID, err)
-	}
 	peak, err := server.CheckStartupProcess()
 	if err != nil {
 		return ActivationReceipt{}, err
+	}
+	receipt, err := server.coordinator.Activate(ctx, configured.Mount, expectedOld, table.Generation, compiled)
+	if err != nil {
+		return ActivationReceipt{}, fmt.Errorf("activate catalog %q: %w", candidate.ID, err)
 	}
 	return ActivationReceipt{CatalogID: candidate.ID, Mount: configured.Mount, RevisionID: candidate.Revision.ID, SnapshotID: string(receipt.SnapshotID), StartupProcessBytes: peak}, nil
 }
