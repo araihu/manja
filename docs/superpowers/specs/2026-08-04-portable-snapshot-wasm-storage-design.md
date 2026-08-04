@@ -320,15 +320,41 @@ type ChildSourceInstanceV1 struct {
 ```
 
 Each child preimage records its one identity-forming creation parent/pointer.
-Therefore byte-identical resources
-loaded under `a/` and `b/` remain distinct semantic instances and can resolve
-different relative children, while their physical bytes still deduplicate by
-digest. An opaque `ResolutionContext` is threaded to the adapter for descendant
-fetches and equality/cycle recognition during one compilation; it is never
-serialized, hashed, logged, or reused across runs. A cycle edge may target an
-already assigned instance only when the adapter returns the same opaque context
-and bytes verify against that instance. This is acquisition-time evidence; the
-finalized decoder cannot reconstruct opaque context equality.
+Portable v1 deliberately does not globally coalesce equal resolver contexts:
+every non-cycle incoming edge creates a distinct semantic occurrence. Thus two
+parents referencing the same external resource get two deterministic child
+occurrences while physical bytes still deduplicate by digest. This avoids any
+first-completion choice of a creation edge.
+
+Child logical path is compiler-derived, never adapter-derived:
+
+```text
+refs/<full-parent-instance-hex>/<full-sha256(canonical ChildLocatorV1)>
+ChildLocatorV1 = { parentPointer, format }
+```
+
+`parentPointer` is normalized before hashing. The full digests keep the mapping
+collision-free under the format's SHA-256 identity assumption; an exact path
+collision with a different locator is corruption, never suffix-renamed. No
+acquisition URL, reference string, credential, context handle, or response order
+enters the path.
+
+An opaque `ResolutionContext` is threaded to the adapter for descendant fetches
+and cycle recognition during one compilation; it is never serialized, hashed,
+logged, or reused across runs. Only when a resolved context equals a context on
+that occurrence's current ancestor stack and bytes verify may the compiler emit
+a `reference` edge to that existing ancestor instead of creating another
+occurrence. Sibling/completed occurrences are never coalesced. This
+acquisition-time evidence proves a self/back/cycle edge; the finalized decoder
+cannot reconstruct opaque context equality.
+
+Traversal is deterministic. Roots are admitted in finalized logical-path order.
+Within each occurrence, external references are admitted by normalized JSON
+Pointer order and assigned monotonic request IDs. At most four acquisitions may
+run concurrently, but responses are reserved, verified, and committed to the
+graph strictly in request-ID order; later completions remain bounded pending
+responses. Depth-first expansion follows that same order. Adapter latency cannot
+change occurrences, paths, edge kinds, or IDs.
 
 Seed/finalization rules are shared portable code:
 
@@ -352,7 +378,7 @@ Seed/finalization rules are shared portable code:
 - `ResolutionEdgeKind` is a closed enum. Each non-root occurrence has exactly
   one `creation` edge whose parent/pointer equals the serialized child preimage
   and reconstructs that child ID. Roots have no creation edge. Every later
-  incoming, alias, self, back, or cycle edge is `reference`; decoding verifies
+  self, back, or cycle edge to an existing ancestor is `reference`; decoding verifies
   normalized pointer syntax, existing endpoints, canonical order, and no exact
   duplicate `(from, pointer, to)` triple, but does not recompute its existing
   target ID from that edge. The child preimage is reconstructed from its
@@ -365,10 +391,14 @@ Seed/finalization rules are shared portable code:
   semantic truth of later reference targets. Re-proving those targets requires
   source reacquisition and compilation; content-addressed snapshot consumers do
   neither during normal load;
+- every created occurrence charges document count, aggregate decoded-source
+  bytes, depth, diagnostics, and compiler work even when its physical digest was
+  already acquired. Physical-store deduplication never weakens semantic work
+  admission;
 - canonical codec vectors cover JSON and YAML roots/children, the complete
   `SourceInstanceID` preimage, shuffled occurrences/edges, malformed media/format
   pairs, dangling edges, root self-reference, two-node cycles, non-root back
-  edges, repeated DAG references, and missing/duplicate/forged creation edges.
+  edges, repeated DAG occurrences, and missing/duplicate/forged creation edges.
 
 The UI may collect the explicit root, catalog ID, title, or profile, but it calls
 the shared seed constructor. Shuffling inputs cannot change finalized bytes.
@@ -1361,6 +1391,11 @@ Automated Chromium tests must prove:
   case-colliding names, nested relative and cross-origin refs, redirects, root
   self-reference, two-node cycles, non-root back edges, repeated DAG references,
   CORS, token-bearing root URLs, budget crossing, and cancellation;
+- shared vectors reverse completion latency and shuffle roots for two references
+  to one context, a diamond DAG with descendants, identical bytes under equal
+  and unequal contexts, and DAG-plus-cycle graphs. Native and Wasm must emit the
+  same occurrence count, logical paths, edge kinds, instance IDs, canonical
+  envelope bytes, snapshot ID, and typed budget errors;
 - byte-identical external parents under two acquisition contexts with different
   relative children remain distinct source instances under shuffled/concurrent
   native and browser acquisition, with no context/URL persisted;
