@@ -236,13 +236,28 @@ type SourceSeedSet struct {
 }
 
 type SeedSource struct {
+    Descriptor SeedDescriptor
+    Context    ResolutionContext // opaque and ephemeral
+    Bytes      ByteStream        // one-pass root bytes
+}
+
+type SeedDescriptor struct {
     LogicalPath string
     Role        SourceRole
     Length      uint64
     SHA256      [32]byte
-    Context     ResolutionContext // opaque and ephemeral
 }
 ```
+
+Only `SeedDescriptor` fields are canonical. `Context` and `Bytes` are runtime
+capabilities excluded from serialization and identity. `ByteStream` is a
+context-bound single-use read/close stream: the compiler reserves its declared
+root bytes before the first read, reads at most `Length + 1`, hashes while
+reading, closes on success/error/cancellation, and rejects short, long, or digest-
+mismatched input. It is never rewound. Reads after close return the shared typed
+closed-stream error; a second compilation must request a new seed/stream from the
+adapter. Root URL acquisition applies the same portable browser acquisition
+policy before supplying this stream.
 
 After parsing and resolution, the compiler emits canonical
 `FinalizedSourceSetEnvelopeV1` with sorted resource occurrences and edges. Each
@@ -397,8 +412,8 @@ snapshot/runtime artifact before making a descriptor visible. Reads recompute th
 ID, reject unknown fields and missing/corrupt references, and never repair
 activation authority implicitly. Descriptor lifetime is at least the lifetime of
 any active, previous, candidate, static-export, or lease reference; mutation-
-outcome expiry cannot delete it. Missing/corrupt active or previous descriptors
-fail serving closed while preserving authority for explicit recovery.
+outcome expiry cannot delete it. Recovery policy below decides whether a damaged
+component is quarantined, repaired from previous, or fails closed.
 
 ### Route-set activation repository
 
@@ -497,6 +512,35 @@ requirements. Route-set CAS may select a candidate only when both the current
 controller and any waiting successor declare compatibility. Thus old or new
 supervisor bytes can route to the generation named in IndexedDB; neither is
 treated as atomically rotated or rollbackable by that transaction.
+
+### Component-scoped corruption recovery
+
+The activation record is authority, but active and previous contents are
+verified independently and recovery preserves every healthy mount:
+
+- trusted active descriptor + corrupt/missing previous descriptor: keep serving
+  active, quarantine previous, and CAS a state with no previous fallback;
+- corrupt/missing active descriptor + healthy previous descriptor: promote the
+  complete previous route set once through a recovery mutation;
+- healthy active descriptor + one corrupt active snapshot: construct and register
+  one repaired route set that retains every healthy active mount and substitutes
+  only that mount's healthy snapshot from previous;
+- corrupt active runtime bundle: retain active snapshot mappings but substitute a
+  compatible healthy previous runtime bundle; otherwise promote the complete
+  previous generation;
+- corruption reachable only from previous: active continues; previous is
+  quarantined/cleared because it is no longer a complete fallback;
+- an affected active mount with no verified previous snapshot becomes explicitly
+  unavailable while a repaired route set continues unaffected mounts; namespace
+  readiness is degraded and that mount fails closed;
+- corrupt/unverifiable activation authority, or no reconstructable trusted route
+  mapping, fails the namespace closed without deleting evidence.
+
+Recovery uses a deterministic mutation ID derived from damaged authority plus the
+repaired descriptor. It registers the descriptor, performs at most one durable
+CAS, records tombstones, and never loops between generations. Native, browser,
+and cloud adapters implement the same state machine; transient read/time failures
+do not trigger corruption recovery.
 
 ### References and garbage collection
 
@@ -739,9 +783,14 @@ are omitted, opaque/redirected responses are rejected, and at most the reserved
 decoded bytes are streamed. Native cross-target parity fixtures use the same
 zero-redirect portable profile; a native publisher may expose a separately named
 non-portable acquisition profile without claiming identical browser availability.
-Errors remain typed for CORS, scheme, redirect, size, media, cancellation, and
-transient failure. The adapter never returns acquisition URLs to portable code or
-diagnostics.
+Browser Fetch cannot distinguish redirect rejection,
+CORS denial, DNS/TLS failure, or other pre-response network rejection. Portable
+profile v1 maps all of those browser-unobservable causes to the single bounded
+`fetch_unavailable` class; the native portable adapter maps equivalent cases to
+the same class. Only locally observable pre-fetch scheme/admission errors,
+post-response size/media/digest errors, and cancellation remain distinct. Richer
+native acquisition may expose a separately named non-portable taxonomy. The
+adapter never returns or guesses acquisition URLs/causes in portable diagnostics.
 
 Each request reserves aggregate decoded bytes, document count, and depth before
 fetch. A response is hashed and length-checked while streaming; unused reservation
@@ -1032,13 +1081,16 @@ Cloud adapter requirements carried by conformance tests now:
 | Compiler worker crashes or is canceled | Candidate abandoned; active route set unchanged; compiler memory released |
 | Artifact write is short, long, or wrong digest | Candidate rejected before manifest commit |
 | Manifest write fails | Objects remain unreachable; no activation |
-| Active route-set/runtime descriptor missing or corrupt | Serving fails closed; authority is preserved for explicit recovery |
+| Previous descriptor/reference missing or corrupt while active is healthy | Active continues; previous quarantined/cleared once |
+| Active descriptor/reference corrupt with verified fallback | One recovery CAS promotes/substitutes only affected components; healthy mounts continue |
+| Active component corrupt with no verified fallback | Affected mount fails closed; repaired route set continues unaffected mounts with degraded readiness |
+| Activation authority corrupt/unverifiable | Namespace fails closed; evidence and objects remain untouched |
 | Preflight finds missing/corrupt required child | Candidate rejected; active/previous route sets remain serveable |
 | Activation CAS loses race | Newer route-set authority preserved; candidate may remain reusable |
 | Activation commits but reply is lost | Same mutation ID reconciles exact committed outcome; no duplicate rotation |
 | Browser quota exceeded | Candidate rejected with actionable estimate; active cache preserved |
 | IndexedDB transaction aborts | Active route-set/runtime pointer unchanged |
-| Active local generation corrupt | Promote verified previous route set and runtime once; tombstone corrupt active |
+| Active local generation corrupt | Apply component-scoped recovery once; tombstone corrupt components |
 | Search Wasm unavailable | Server fallback online; bounded unavailable state offline |
 | Renderer Wasm unavailable offline | Cached full page if present, otherwise explicit offline unavailable response |
 | Service Worker update fails | Existing active worker/route-set/runtime generation continues |
@@ -1121,7 +1173,7 @@ Every adapter must pass reusable tests for:
 - one physical digest referenced by multiple logical paths, kinds, and media
   types round-trips without physical-metadata conflict;
 - route-set/runtime descriptors round-trip by recomputed ID; missing, corrupt,
-  conflicting, and wrong-ID descriptors fail closed;
+  conflicting, and wrong-ID descriptors enter the component recovery matrix;
 - short/long/digest-corrupt stream rejection;
 - cancellation during read/write;
 - bounded concurrent distinct writes;
@@ -1132,6 +1184,10 @@ Every adapter must pass reusable tests for:
   mutation-ID conflict, and restart outcome reconciliation;
 - restart after mutation outcomes are pruned recovers active and distinct previous
   descriptors, serves every mount, and enumerates exact GC roots using only ports;
+- multi-catalog restart matrices cover corrupt active descriptor, corrupt previous
+  descriptor, one corrupt active snapshot, corrupt previous snapshot, corrupt
+  runtime, and both generations corrupt; unaffected mounts persist and at most one
+  durable recovery mutation occurs;
 - restart recovery;
 - deterministic corruption versus transient failure;
 - GC roots and grace behavior where enumeration is supported.
@@ -1145,15 +1201,19 @@ proof of cloud portability.
 Automated Chromium tests must prove:
 
 - upload and CORS URL compilation without server upload;
+- uploaded and CORS root streams compile solely through seed/resolver ports; short,
+  long, digest mismatch, cancellation, read-after-close, and new-stream-for-retry
+  behavior is identical across native and Wasm;
 - shared source-envelope/resolver vectors for shuffled directories, duplicate and
   case-colliding names, nested relative and cross-origin refs, redirects, cycles,
   CORS, token-bearing root URLs, budget crossing, and cancellation;
 - byte-identical external parents under two acquisition contexts with different
   relative children remain distinct source instances under shuffled/concurrent
   native and browser acquisition, with no context/URL persisted;
-- portable browser acquisition accepts zero-hop CORS and rejects every redirect
-  without following it; equivalent native portable fixtures return the same
-  typed result;
+- portable browser acquisition accepts zero-hop CORS and maps redirect rejection,
+  CORS denial, and network/TLS failure to `fetch_unavailable` without guessing;
+  equivalent native portable fixtures map the same cases to that class while
+  observable scheme/size/media failures stay distinct;
 - compiler worker cancellation and memory release;
 - exact native/Wasm snapshot and search parity fixtures;
 - Ctrl/Cmd+K, sidebar click, recent visits, highlights, keyboard, focus, and
