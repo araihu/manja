@@ -39,6 +39,16 @@ type RouteTable struct {
 	Mounts     map[string]MountState
 }
 
+// MountActivation is the bounded result of one durable route transition. It
+// lets persistence coordinators avoid cloning the complete route table again
+// after the durable pointer and in-process table have been published.
+type MountActivation struct {
+	Generation uint64
+	ActiveID   SnapshotID
+	PreviousID SnapshotID
+	Changed    bool
+}
+
 // Runtime publishes immutable route-table replacements. The mutex serializes
 // writers and request reference counts; readers load the current table once.
 type Runtime struct {
@@ -89,29 +99,64 @@ func (runtime *Runtime) ActivateMountDurably(
 	candidate RuntimeSnapshot,
 	persist func(*RouteTable) error,
 ) (*RouteTable, error) {
+	_, table, err := runtime.activateMountDurably(mount, expectedOld, generation, candidate, persist, true)
+	return table, err
+}
+
+// ActivateMountDurablyBounded has the same durable ordering as
+// ActivateMountDurably, but returns only transition identity. All full-table
+// cloning happens before persist returns, which lets a caller place a final
+// resource admission inside persist without a later full-table allocation.
+func (runtime *Runtime) ActivateMountDurablyBounded(
+	mount string,
+	expectedOld SnapshotID,
+	generation uint64,
+	candidate RuntimeSnapshot,
+	persist func(*RouteTable) error,
+) (MountActivation, error) {
+	activation, _, err := runtime.activateMountDurably(mount, expectedOld, generation, candidate, persist, false)
+	return activation, err
+}
+
+func (runtime *Runtime) activateMountDurably(
+	mount string,
+	expectedOld SnapshotID,
+	generation uint64,
+	candidate RuntimeSnapshot,
+	persist func(*RouteTable) error,
+	cloneResult bool,
+) (MountActivation, *RouteTable, error) {
 	if err := validateRuntimeMount(mount); err != nil {
-		return nil, err
+		return MountActivation{}, nil, err
 	}
 	if err := validateRuntimeSnapshot(candidate); err != nil {
-		return nil, err
+		return MountActivation{}, nil, err
 	}
 
 	runtime.writes.Lock()
 	defer runtime.writes.Unlock()
 	current := runtime.table.Load()
 	if current.Generation != generation {
-		return nil, fmt.Errorf("%w: expected %d, current %d", ErrStaleGeneration, generation, current.Generation)
+		return MountActivation{}, nil, fmt.Errorf("%w: expected %d, current %d", ErrStaleGeneration, generation, current.Generation)
 	}
 	state, exists := current.Mounts[mount]
 	if exists {
 		if state.Active.ID != expectedOld {
-			return nil, fmt.Errorf("%w: mount %q expected %q, current %q", ErrStaleSnapshot, mount, expectedOld, state.Active.ID)
+			return MountActivation{}, nil, fmt.Errorf("%w: mount %q expected %q, current %q", ErrStaleSnapshot, mount, expectedOld, state.Active.ID)
 		}
 		if candidate.ID == state.Active.ID {
-			return cloneRouteTable(current), nil
+			previousID := SnapshotID("")
+			if state.Previous != nil {
+				previousID = state.Previous.ID
+			}
+			activation := MountActivation{Generation: current.Generation, ActiveID: state.Active.ID, PreviousID: previousID}
+			if cloneResult {
+				return activation, cloneRouteTable(current), nil
+			}
+			return activation, nil, nil
 		}
 	} else if expectedOld != "" {
-		return nil, fmt.Errorf("%w: mount %q has no active snapshot", ErrStaleSnapshot, mount)
+		return MountActivation{}, nil, fmt.Errorf("%w: mount %q has no active snapshot", ErrStaleSnapshot, mount)
 	}
 
 	next := cloneRouteTable(current)
@@ -123,11 +168,19 @@ func (runtime *Runtime) ActivateMountDurably(
 	next.Mounts[mount] = nextState
 	if persist != nil {
 		if err := persist(cloneRouteTable(next)); err != nil {
-			return nil, err
+			return MountActivation{}, nil, err
 		}
 	}
 	runtime.table.Store(next)
-	return cloneRouteTable(next), nil
+	previousID := SnapshotID("")
+	if nextState.Previous != nil {
+		previousID = nextState.Previous.ID
+	}
+	activation := MountActivation{Generation: next.Generation, ActiveID: nextState.Active.ID, PreviousID: previousID, Changed: true}
+	if cloneResult {
+		return activation, cloneRouteTable(next), nil
+	}
+	return activation, nil, nil
 }
 
 // ReplaceRoutes installs the complete result of a configuration compilation.

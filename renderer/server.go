@@ -50,6 +50,7 @@ type server struct {
 	compilers          map[string]*catalog.Compiler
 	handler            *catalogGateway
 	initialize         sync.Mutex
+	activation         chan struct{}
 	runtime            *catalog.Runtime
 	coordinator        *catalogstore.ActivationCoordinator
 	generatedDir       string
@@ -85,8 +86,8 @@ func New(config Config) (Server, error) {
 		compilers[configuredCatalog.ID] = compiler
 	}
 	config.Catalogs = append([]CatalogConfig(nil), config.Catalogs...)
-	gateway := &catalogGateway{mounts: mounts, assets: web.NewCatalogAssetsHandler()}
-	return &server{config: config, configByID: configured, parsers: parsers, compilers: compilers, handler: gateway, measureProcessPeak: processPeakBytes}, nil
+	gateway := &catalogGateway{mounts: mounts, assets: web.NewCatalogAssetsHandler(), admissions: newCatalogAdmissionGate()}
+	return &server{config: config, configByID: configured, parsers: parsers, compilers: compilers, handler: gateway, activation: make(chan struct{}, 1), measureProcessPeak: processPeakBytes}, nil
 }
 
 func (server *server) Handler() http.Handler {
@@ -105,12 +106,17 @@ func (server *server) Recover(ctx context.Context) error {
 }
 
 func (server *server) CheckStartupProcess() (uint64, error) {
+	return server.checkStartupProcessWithReservation(0)
+}
+
+func (server *server) checkStartupProcessWithReservation(reserved uint64) (uint64, error) {
 	peak, err := server.measureProcessPeak()
 	if err != nil {
 		return 0, fmt.Errorf("measure renderer startup process: %w", err)
 	}
-	if peak > server.config.StartupProcessBytes {
-		return peak, fmt.Errorf("%w: peak=%d limit=%d", ErrStartupProcessBudget, peak, server.config.StartupProcessBytes)
+	limit := server.config.StartupProcessBytes
+	if peak > limit || reserved > limit-peak {
+		return peak, fmt.Errorf("%w: peak=%d reserved=%d limit=%d", ErrStartupProcessBudget, peak, reserved, limit)
 	}
 	return peak, nil
 }
@@ -158,6 +164,15 @@ func (server *server) Activate(ctx context.Context, candidate domain.CatalogCand
 			return ActivationReceipt{}, fmt.Errorf("catalog %q does not contain configured default document %q", candidate.ID, configured.DefaultDocumentKey)
 		}
 	}
+	select {
+	case server.activation <- struct{}{}:
+		defer func() { <-server.activation }()
+	case <-ctx.Done():
+		return ActivationReceipt{}, ctx.Err()
+	}
+	if err := ctx.Err(); err != nil {
+		return ActivationReceipt{}, err
+	}
 	if err := server.ensureRuntime(ctx); err != nil {
 		return ActivationReceipt{}, err
 	}
@@ -187,7 +202,30 @@ func (server *server) Activate(ctx context.Context, candidate domain.CatalogCand
 	if err != nil {
 		return ActivationReceipt{}, err
 	}
-	receipt, err := server.coordinator.Activate(ctx, configured.Mount, expectedOld, table.Generation, compiled)
+	promotionHeld := false
+	defer func() {
+		if promotionHeld {
+			server.handler.endPromotion()
+		}
+	}()
+	receipt, err := server.coordinator.ActivateAdmitted(ctx, configured.Mount, expectedOld, table.Generation, compiled, func() error {
+		// Immutable candidate bytes are staged and preflighted. Drain existing
+		// request/cache work before Runtime takes its writer lock, then exclude
+		// new work through final admission and route publication.
+		if err := server.handler.beginPromotion(ctx); err != nil {
+			return err
+		}
+		promotionHeld = true
+		return nil
+	}, func() error {
+		// Runtime has cloned the complete next table and catalogstore has encoded
+		// its durable representation. This is the last allocation-heavy boundary.
+		measured, admissionErr := server.checkStartupProcessWithReservation(server.handler.flightReservationBytes())
+		if admissionErr == nil {
+			peak = measured
+		}
+		return admissionErr
+	})
 	if err != nil {
 		return ActivationReceipt{}, fmt.Errorf("activate catalog %q: %w", candidate.ID, err)
 	}
@@ -232,11 +270,121 @@ func (server *server) ensureRuntime(ctx context.Context) error {
 }
 
 type catalogGateway struct {
-	mutex    sync.RWMutex
-	mounts   []string
-	runtime  *catalog.Runtime
-	delegate http.Handler
-	assets   http.Handler
+	mutex      sync.RWMutex
+	admissions *catalogAdmissionGate
+	mounts     []string
+	runtime    *catalog.Runtime
+	delegate   http.Handler
+	assets     http.Handler
+}
+
+type catalogFlightReservationReporter interface {
+	CatalogFlightReservationBytes() uint64
+}
+
+type catalogAdmissionGate struct {
+	mutex     sync.Mutex
+	readers   uint64
+	promoting bool
+	changed   chan struct{}
+}
+
+func newCatalogAdmissionGate() *catalogAdmissionGate {
+	return &catalogAdmissionGate{changed: make(chan struct{})}
+}
+
+func (gate *catalogAdmissionGate) notifyLocked() {
+	close(gate.changed)
+	gate.changed = make(chan struct{})
+}
+
+func (gate *catalogAdmissionGate) enter(ctx context.Context) error {
+	for {
+		gate.mutex.Lock()
+		if err := ctx.Err(); err != nil {
+			gate.mutex.Unlock()
+			return err
+		}
+		if !gate.promoting {
+			gate.readers++
+			gate.mutex.Unlock()
+			return nil
+		}
+		changed := gate.changed
+		gate.mutex.Unlock()
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-changed:
+		}
+	}
+}
+
+func (gate *catalogAdmissionGate) leave() {
+	gate.mutex.Lock()
+	defer gate.mutex.Unlock()
+	if gate.readers == 0 {
+		panic("renderer: catalog admission gate reader underflow")
+	}
+	gate.readers--
+	if gate.readers == 0 {
+		gate.notifyLocked()
+	}
+}
+
+func (gateway *catalogGateway) beginPromotion(ctx context.Context) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	gate := gateway.admissions
+	gate.mutex.Lock()
+	if gate.promoting {
+		gate.mutex.Unlock()
+		return fmt.Errorf("renderer: concurrent catalog promotion")
+	}
+	gate.promoting = true
+	gate.notifyLocked()
+	for {
+		if err := ctx.Err(); err != nil {
+			gate.promoting = false
+			gate.notifyLocked()
+			gate.mutex.Unlock()
+			return err
+		}
+		if gate.readers == 0 {
+			gate.mutex.Unlock()
+			return nil
+		}
+		changed := gate.changed
+		gate.mutex.Unlock()
+		select {
+		case <-ctx.Done():
+			gate.mutex.Lock()
+		case <-changed:
+			gate.mutex.Lock()
+		}
+	}
+}
+
+func (gateway *catalogGateway) endPromotion() {
+	gate := gateway.admissions
+	gate.mutex.Lock()
+	defer gate.mutex.Unlock()
+	if !gate.promoting {
+		panic("renderer: catalog promotion gate is not held")
+	}
+	gate.promoting = false
+	gate.notifyLocked()
+}
+
+func (gateway *catalogGateway) flightReservationBytes() uint64 {
+	gateway.mutex.RLock()
+	defer gateway.mutex.RUnlock()
+	reporter, ok := gateway.delegate.(catalogFlightReservationReporter)
+	if !ok {
+		return 0
+	}
+	return reporter.CatalogFlightReservationBytes()
 }
 
 func (gateway *catalogGateway) install(runtime *catalog.Runtime, delegate http.Handler) {
@@ -247,6 +395,11 @@ func (gateway *catalogGateway) install(runtime *catalog.Runtime, delegate http.H
 }
 
 func (gateway *catalogGateway) ServeHTTP(response http.ResponseWriter, request *http.Request) {
+	if err := gateway.admissions.enter(request.Context()); err != nil {
+		http.Error(response, "request canceled", http.StatusRequestTimeout)
+		return
+	}
+	defer gateway.admissions.leave()
 	if strings.HasPrefix(request.URL.Path, "/assets/") || strings.HasPrefix(request.URL.Path, "/manja-assets/") {
 		gateway.assets.ServeHTTP(response, request)
 		return

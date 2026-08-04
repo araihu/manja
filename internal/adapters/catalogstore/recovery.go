@@ -46,7 +46,7 @@ func (coordinator *ActivationCoordinator) recover(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	if _, err := coordinator.runtime.ActivateMountDurably(journal.Mount, journal.ExpectedOld, journal.Generation, verified, coordinator.writeRouteTable); err != nil {
+	if _, err := coordinator.runtime.ActivateMountDurablyBounded(journal.Mount, journal.ExpectedOld, journal.Generation, verified, coordinator.writeRouteTable); err != nil {
 		return fmt.Errorf("catalogstore: recover activation: %w", err)
 	}
 	return coordinator.removeJournal()

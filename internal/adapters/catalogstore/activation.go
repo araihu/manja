@@ -24,6 +24,12 @@ type ActivationReceipt struct {
 	Location   string
 }
 
+// ActivationAdmission is a context-capturing boundary hook. ActivateAdmitted
+// first uses one to quiesce callers after immutable preflight, then another
+// after the complete next route table has been built and encoded. Either may
+// abort before the durable route pointer or runtime table changes.
+type ActivationAdmission func() error
+
 type ActivationCoordinator struct {
 	store   *Store
 	runtime *catalog.Runtime
@@ -100,6 +106,18 @@ func (coordinator *ActivationCoordinator) Activate(
 	generation uint64,
 	candidate catalog.CompiledSnapshot,
 ) (ActivationReceipt, error) {
+	return coordinator.ActivateAdmitted(ctx, mount, expectedOld, generation, candidate, nil, nil)
+}
+
+func (coordinator *ActivationCoordinator) ActivateAdmitted(
+	ctx context.Context,
+	mount string,
+	expectedOld catalog.SnapshotID,
+	generation uint64,
+	candidate catalog.CompiledSnapshot,
+	quiesce ActivationAdmission,
+	admit ActivationAdmission,
+) (ActivationReceipt, error) {
 	coordinator.commit.Lock()
 	defer coordinator.commit.Unlock()
 
@@ -122,20 +140,44 @@ func (coordinator *ActivationCoordinator) Activate(
 			return ActivationReceipt{}, err
 		}
 	}
-	journal := activationJournalV1{SchemaVersion: 1, Mount: mount, Candidate: candidate.ID, ExpectedOld: expectedOld, Generation: generation}
 	if err := coordinator.runtime.CheckMount(mount, expectedOld, generation); err != nil {
 		return ActivationReceipt{}, err
 	}
-	if err := coordinator.writeJournal(journal); err != nil {
-		return ActivationReceipt{}, err
-	}
-	if coordinator.hooks.afterJournal != nil {
-		if err := coordinator.hooks.afterJournal(); err != nil {
+	// Quiesce before taking Runtime's writer lock. In-flight renderers may need
+	// that lock while draining their existing admissions.
+	if quiesce != nil {
+		if err := quiesce(); err != nil {
 			return ActivationReceipt{}, err
 		}
 	}
+	// An unchanged activation has no route-table transition, so its persist
+	// callback is intentionally skipped by Runtime. It still needs an admitted
+	// post-staging sample before reporting success.
+	if candidate.ID == expectedOld && admit != nil {
+		if err := admit(); err != nil {
+			return ActivationReceipt{}, err
+		}
+	}
+	journal := activationJournalV1{SchemaVersion: 1, Mount: mount, Candidate: candidate.ID, ExpectedOld: expectedOld, Generation: generation}
 	persist := func(table *catalog.RouteTable) error {
-		if err := coordinator.writeRouteTable(table); err != nil {
+		data, err := encodeRouteTable(table)
+		if err != nil {
+			return err
+		}
+		if admit != nil {
+			if err := admit(); err != nil {
+				return err
+			}
+		}
+		if err := coordinator.writeJournal(journal); err != nil {
+			return err
+		}
+		if coordinator.hooks.afterJournal != nil {
+			if err := coordinator.hooks.afterJournal(); err != nil {
+				return err
+			}
+		}
+		if err := coordinator.writeRouteTableBytes(data); err != nil {
 			return err
 		}
 		if coordinator.hooks.afterPointer != nil {
@@ -143,7 +185,7 @@ func (coordinator *ActivationCoordinator) Activate(
 		}
 		return nil
 	}
-	next, err := coordinator.runtime.ActivateMountDurably(mount, expectedOld, generation, verified, persist)
+	activation, err := coordinator.runtime.ActivateMountDurablyBounded(mount, expectedOld, generation, verified, persist)
 	if err != nil {
 		return ActivationReceipt{}, err
 	}
@@ -155,15 +197,18 @@ func (coordinator *ActivationCoordinator) Activate(
 	if err := coordinator.removeJournal(); err != nil {
 		return ActivationReceipt{}, err
 	}
-	state := next.Mounts[mount]
-	previousID := catalog.SnapshotID("")
-	if state.Previous != nil {
-		previousID = state.Previous.ID
-	}
-	return ActivationReceipt{Mount: mount, SnapshotID: candidate.ID, PreviousID: previousID, Generation: next.Generation, Location: materialization.Location}, nil
+	return ActivationReceipt{Mount: mount, SnapshotID: candidate.ID, PreviousID: activation.PreviousID, Generation: activation.Generation, Location: materialization.Location}, nil
 }
 
 func (coordinator *ActivationCoordinator) writeRouteTable(table *catalog.RouteTable) error {
+	data, err := encodeRouteTable(table)
+	if err != nil {
+		return err
+	}
+	return coordinator.writeRouteTableBytes(data)
+}
+
+func encodeRouteTable(table *catalog.RouteTable) ([]byte, error) {
 	persisted := durableRouteTableV1{SchemaVersion: 1, Generation: table.Generation, Mounts: make(map[string]durableMountV1, len(table.Mounts))}
 	for mount, state := range table.Mounts {
 		entry := durableMountV1{Active: state.Active.ID}
@@ -174,8 +219,12 @@ func (coordinator *ActivationCoordinator) writeRouteTable(table *catalog.RouteTa
 	}
 	data, err := json.Marshal(persisted)
 	if err != nil {
-		return fmt.Errorf("catalogstore: encode route table: %w", err)
+		return nil, fmt.Errorf("catalogstore: encode route table: %w", err)
 	}
+	return data, nil
+}
+
+func (coordinator *ActivationCoordinator) writeRouteTableBytes(data []byte) error {
 	if err := storeprimitives.DurableAtomicWrite(coordinator.routeTablePath(), data, 0o600); err != nil {
 		return fmt.Errorf("catalogstore: persist route table: %w", err)
 	}

@@ -71,6 +71,18 @@ func NewCatalogHandlerWithPresentation(runtime *catalog.Runtime, children catalo
 	return &CatalogHandler{runtime: runtime, children: children, details: catalog.NewDetailCache(), search: catalog.NewSearchCache(), presentation: copyPresentation}
 }
 
+// CatalogFlightReservationBytes reports the maximum encoded-plus-decoded
+// weight already reserved by loaders that may briefly outlive a canceled HTTP
+// waiter. Once request admission is quiesced, this value cannot increase.
+func (handler *CatalogHandler) CatalogFlightReservationBytes() uint64 {
+	detail := handler.details.Stats().InFlightBytes
+	search := handler.search.Stats().InFlightBytes
+	if detail > ^uint64(0)-search {
+		return ^uint64(0)
+	}
+	return detail + search
+}
+
 func (handler *CatalogHandler) ServeHTTP(response http.ResponseWriter, request *http.Request) {
 	if handler.runtime == nil || handler.children == nil {
 		http.Error(response, "catalog unavailable", http.StatusServiceUnavailable)

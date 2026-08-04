@@ -10,9 +10,12 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/araihu/manja/domain"
+	"github.com/araihu/manja/internal/web"
 )
 
 type staticCatalogSource struct {
@@ -24,6 +27,26 @@ func (source staticCatalogSource) Load(context.Context) (domain.CatalogCandidate
 }
 
 var _ CatalogSource = staticCatalogSource{}
+
+type observedDoneContext struct {
+	context.Context
+	observed chan struct{}
+	once     sync.Once
+}
+
+type reservedFlightHandler struct {
+	http.Handler
+	reserved uint64
+}
+
+func (handler reservedFlightHandler) CatalogFlightReservationBytes() uint64 {
+	return handler.reserved
+}
+
+func (ctx *observedDoneContext) Done() <-chan struct{} {
+	ctx.once.Do(func() { close(ctx.observed) })
+	return ctx.Context.Done()
+}
 
 func TestServerExposesStableHandlerAndBoundedUnavailableRoutes(t *testing.T) {
 	t.Parallel()
@@ -180,6 +203,259 @@ func TestActivateBudgetFailureLeavesPublishedRoutesExactlyUnchanged(t *testing.T
 	serverAPI.Handler().ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/payments/", nil))
 	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), "Payments v1") || strings.Contains(response.Body.String(), "Payments v2") {
 		t.Errorf("route after rejected activation = %d %q, want Payments v1 only", response.Code, response.Body.String())
+	}
+}
+
+func TestActivateRejectsPressureObservedAfterStagingWithoutChangingRoutes(t *testing.T) {
+	dataDir := t.TempDir()
+	serverAPI, err := New(Config{Version: 1, DataDir: dataDir, Catalogs: []CatalogConfig{
+		{ID: "payments", Mount: "/payments", Title: "Payments", DefaultDocumentKey: "payments-v1", ProfileID: domain.CompatibilityProfileStrict},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	implementation := serverAPI.(*server)
+
+	paymentsV1 := rendererTestCandidateVersion("payments", "Payments v1", "file-manifest-payments-v1", "c")
+	if _, err := serverAPI.Activate(context.Background(), paymentsV1); err != nil {
+		t.Fatalf("seed %s: %v", paymentsV1.Revision.ID, err)
+	}
+	beforeTable := implementation.runtime.Table()
+	beforeRoutes, err := os.ReadFile(filepath.Join(dataDir, "state", "routes.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	measurements := 0
+	promotionExclusive := false
+	implementation.measureProcessPeak = func() (uint64, error) {
+		measurements++
+		if measurements < 5 {
+			return 1, nil
+		}
+		implementation.handler.admissions.mutex.Lock()
+		promotionExclusive = implementation.handler.admissions.promoting && implementation.handler.admissions.readers == 0
+		implementation.handler.admissions.mutex.Unlock()
+		return DefaultStartupProcessBytes + 1, nil
+	}
+	paymentsV2 := rendererTestCandidateVersion("payments", "Payments v2", "file-manifest-payments-v2", "e")
+	_, err = serverAPI.Activate(context.Background(), paymentsV2)
+	if !errors.Is(err, ErrStartupProcessBudget) {
+		t.Fatalf("activation error = %v, want %v", err, ErrStartupProcessBudget)
+	}
+	if measurements != 5 {
+		t.Fatalf("startup measurements = %d, want 5", measurements)
+	}
+	if !promotionExclusive {
+		t.Fatal("final process admission did not own the exclusive request/cache boundary")
+	}
+
+	afterTable := implementation.runtime.Table()
+	beforePayments := beforeTable.Mounts["/payments"]
+	afterPayments := afterTable.Mounts["/payments"]
+	if afterTable.Generation != beforeTable.Generation || afterPayments.Active.ID != beforePayments.Active.ID || afterPayments.Previous != beforePayments.Previous {
+		t.Errorf("runtime route changed: before=%#v after=%#v", beforePayments, afterPayments)
+	}
+	afterRoutes, readErr := os.ReadFile(filepath.Join(dataDir, "state", "routes.json"))
+	if readErr != nil {
+		t.Fatal(readErr)
+	}
+	if !bytes.Equal(afterRoutes, beforeRoutes) {
+		t.Errorf("durable route table changed:\nbefore=%s\nafter=%s", beforeRoutes, afterRoutes)
+	}
+	if _, statErr := os.Stat(filepath.Join(dataDir, "state", "activation-journal.json")); !os.IsNotExist(statErr) {
+		t.Errorf("activation journal after rejected promotion = %v, want absent", statErr)
+	}
+	response := httptest.NewRecorder()
+	serverAPI.Handler().ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/payments/", nil))
+	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), "Payments v1") || strings.Contains(response.Body.String(), "Payments v2") {
+		t.Errorf("route after rejected activation = %d %q, want Payments v1 only", response.Code, response.Body.String())
+	}
+}
+
+func TestActivateReservesInFlightCacheCapacityBeforePublishing(t *testing.T) {
+	const processLimit = 64 << 20
+	serverAPI, err := New(Config{Version: 1, DataDir: t.TempDir(), StartupProcessBytes: processLimit, Catalogs: []CatalogConfig{
+		{ID: "payments", Mount: "/payments", Title: "Payments", DefaultDocumentKey: "payments-v1", ProfileID: domain.CompatibilityProfileStrict},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	implementation := serverAPI.(*server)
+	implementation.measureProcessPeak = func() (uint64, error) { return 1, nil }
+	paymentsV1 := rendererTestCandidateVersion("payments", "Payments v1", "file-manifest-payments-v1", "c")
+	if _, err := serverAPI.Activate(context.Background(), paymentsV1); err != nil {
+		t.Fatal(err)
+	}
+	before := implementation.runtime.Table()
+
+	implementation.handler.mutex.Lock()
+	implementation.handler.delegate = reservedFlightHandler{Handler: implementation.handler.delegate, reserved: processLimit}
+	implementation.handler.mutex.Unlock()
+	measurements := 0
+	implementation.measureProcessPeak = func() (uint64, error) {
+		measurements++
+		return 1, nil
+	}
+	paymentsV2 := rendererTestCandidateVersion("payments", "Payments v2", "file-manifest-payments-v2", "e")
+	_, err = serverAPI.Activate(context.Background(), paymentsV2)
+	if !errors.Is(err, ErrStartupProcessBudget) {
+		t.Fatalf("activation error = %v, want %v", err, ErrStartupProcessBudget)
+	}
+	if measurements != 5 {
+		t.Fatalf("startup measurements = %d, want 5", measurements)
+	}
+	after := implementation.runtime.Table()
+	if after.Generation != before.Generation || after.Mounts["/payments"].Active.ID != before.Mounts["/payments"].Active.ID {
+		t.Fatalf("cache-reservation rejection changed runtime: before=%#v after=%#v", before, after)
+	}
+}
+
+func TestActivateWaitsForInFlightCatalogRequestBeforeFinalAdmission(t *testing.T) {
+	serverAPI, err := New(Config{Version: 1, DataDir: t.TempDir(), Catalogs: []CatalogConfig{
+		{ID: "payments", Mount: "/payments", Title: "Payments", DefaultDocumentKey: "payments-v1", ProfileID: domain.CompatibilityProfileStrict},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	implementation := serverAPI.(*server)
+	paymentsV1 := rendererTestCandidateVersion("payments", "Payments v1", "file-manifest-payments-v1", "c")
+	if _, err := serverAPI.Activate(context.Background(), paymentsV1); err != nil {
+		t.Fatal(err)
+	}
+
+	requestStarted := make(chan struct{})
+	releaseRequest := make(chan struct{})
+	var releaseOnce sync.Once
+	t.Cleanup(func() { releaseOnce.Do(func() { close(releaseRequest) }) })
+	implementation.handler.mutex.Lock()
+	original := implementation.handler.delegate
+	implementation.handler.delegate = http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		close(requestStarted)
+		<-releaseRequest
+		original.ServeHTTP(response, request)
+	})
+	implementation.handler.mutex.Unlock()
+
+	requestDone := make(chan struct{})
+	go func() {
+		defer close(requestDone)
+		response := httptest.NewRecorder()
+		serverAPI.Handler().ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/payments/", nil))
+	}()
+	<-requestStarted
+
+	prePromotion := make(chan struct{})
+	finalAdmission := make(chan struct{})
+	measurements := 0
+	implementation.measureProcessPeak = func() (uint64, error) {
+		measurements++
+		switch measurements {
+		case 4:
+			close(prePromotion)
+		case 5:
+			close(finalAdmission)
+		}
+		return 1, nil
+	}
+	paymentsV2 := rendererTestCandidateVersion("payments", "Payments v2", "file-manifest-payments-v2", "e")
+	activationDone := make(chan error, 1)
+	go func() {
+		_, err := serverAPI.Activate(context.Background(), paymentsV2)
+		activationDone <- err
+	}()
+	<-prePromotion
+
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		implementation.handler.admissions.mutex.Lock()
+		promoting := implementation.handler.admissions.promoting
+		readers := implementation.handler.admissions.readers
+		implementation.handler.admissions.mutex.Unlock()
+		if promoting && readers == 1 {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("activation did not wait behind the in-flight catalog request")
+		}
+		runtime.Gosched()
+	}
+	select {
+	case <-finalAdmission:
+		t.Fatal("final process admission ran before the in-flight request drained")
+	default:
+	}
+
+	releaseOnce.Do(func() { close(releaseRequest) })
+	<-requestDone
+	if err := <-activationDone; err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-finalAdmission:
+	default:
+		t.Fatal("final process admission did not run after the request drained")
+	}
+	if active, ok := serverAPI.Active("payments"); !ok || active.RevisionID != paymentsV2.Revision.ID {
+		t.Fatalf("active catalog after drained promotion = %#v, %t", active, ok)
+	}
+}
+
+func TestActivationSerializationHonorsContextCancellation(t *testing.T) {
+	serverAPI, err := New(Config{Version: 1, DataDir: t.TempDir(), Catalogs: []CatalogConfig{
+		{ID: "payments", Mount: "/payments", Title: "Payments", DefaultDocumentKey: "payments-v1", ProfileID: domain.CompatibilityProfileStrict},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	implementation := serverAPI.(*server)
+	implementation.activation <- struct{}{}
+	defer func() { <-implementation.activation }()
+	base, cancel := context.WithCancel(context.Background())
+	ctx := &observedDoneContext{Context: base, observed: make(chan struct{})}
+	activationDone := make(chan error, 1)
+	go func() {
+		_, activationErr := serverAPI.Activate(ctx, rendererTestCandidate("payments"))
+		activationDone <- activationErr
+	}()
+	<-ctx.observed
+	cancel()
+	err = <-activationDone
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("activation serialization error = %v, want %v", err, context.Canceled)
+	}
+	if _, active := serverAPI.Active("payments"); active {
+		t.Fatal("canceled activation changed runtime state")
+	}
+}
+
+func TestCatalogRequestWaitingForPromotionReportsCancellation(t *testing.T) {
+	gateway := &catalogGateway{admissions: newCatalogAdmissionGate(), assets: web.NewCatalogAssetsHandler()}
+	if err := gateway.beginPromotion(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	defer gateway.endPromotion()
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	response := httptest.NewRecorder()
+	gateway.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/", nil).WithContext(ctx))
+	if response.Code != http.StatusRequestTimeout {
+		t.Fatalf("canceled request status = %d, want %d", response.Code, http.StatusRequestTimeout)
+	}
+}
+
+func TestPromotionGateRejectsCanceledContextWithoutBlockingRequests(t *testing.T) {
+	gateway := &catalogGateway{admissions: newCatalogAdmissionGate(), assets: web.NewCatalogAssetsHandler()}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if err := gateway.beginPromotion(ctx); !errors.Is(err, context.Canceled) {
+		t.Fatalf("promotion error = %v, want %v", err, context.Canceled)
+	}
+	gateway.admissions.mutex.Lock()
+	promoting := gateway.admissions.promoting
+	gateway.admissions.mutex.Unlock()
+	if promoting {
+		t.Fatal("canceled promotion left request admissions blocked")
 	}
 }
 

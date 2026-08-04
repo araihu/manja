@@ -75,6 +75,94 @@ func TestActivationStaleExpectedOldLeavesDurablePointerUnchanged(t *testing.T) {
 	}
 }
 
+func TestActivationAdmissionRunsAfterStagingAndBeforeRoutePublication(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	runtime := catalog.NewRuntime(2)
+	coordinator, err := OpenActivationCoordinator(context.Background(), root, runtime)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer coordinator.Close()
+	first := compiledFixtureVersion(t, "first")
+	second := compiledFixtureVersion(t, "second")
+	if _, err := coordinator.Activate(context.Background(), "/catalog", "", 2, first); err != nil {
+		t.Fatal(err)
+	}
+	pointerBefore, err := os.ReadFile(coordinator.routeTablePath())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	staged := false
+	coordinator.hooks.afterPreflight = func() error {
+		staged = true
+		return nil
+	}
+	errAdmission := errors.New("process budget admission rejected")
+	_, err = coordinator.ActivateAdmitted(context.Background(), "/catalog", first.ID, 2, second, nil, func() error {
+		if !staged {
+			t.Fatal("activation admission ran before immutable staging and preflight")
+		}
+		return errAdmission
+	})
+	if !errors.Is(err, errAdmission) {
+		t.Fatalf("activation error = %v, want %v", err, errAdmission)
+	}
+	if runtime.Table().Mounts["/catalog"].Active.ID != first.ID {
+		t.Fatalf("runtime route changed after rejected admission: %#v", runtime.Table())
+	}
+	pointerAfter, err := os.ReadFile(coordinator.routeTablePath())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(pointerAfter) != string(pointerBefore) {
+		t.Fatalf("durable route changed after rejected admission:\nbefore=%s\nafter=%s", pointerBefore, pointerAfter)
+	}
+	if _, err := os.Stat(coordinator.journalPath()); !os.IsNotExist(err) {
+		t.Fatalf("rejected activation journal = %v, want absent", err)
+	}
+	if _, err := coordinator.store.Preflight(context.Background(), second.ID); err != nil {
+		t.Fatalf("staged immutable candidate is not available for bounded reclamation: %v", err)
+	}
+}
+
+func TestUnchangedActivationStillRunsPostStagingAdmission(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	runtime := catalog.NewRuntime(2)
+	coordinator, err := OpenActivationCoordinator(context.Background(), root, runtime)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer coordinator.Close()
+	snapshot := compiledFixtureVersion(t, "same")
+	if _, err := coordinator.Activate(context.Background(), "/catalog", "", 2, snapshot); err != nil {
+		t.Fatal(err)
+	}
+
+	staged := false
+	coordinator.hooks.afterPreflight = func() error {
+		staged = true
+		return nil
+	}
+	errAdmission := errors.New("process budget admission rejected")
+	_, err = coordinator.ActivateAdmitted(context.Background(), "/catalog", snapshot.ID, 2, snapshot, nil, func() error {
+		if !staged {
+			t.Fatal("unchanged activation admission ran before preflight")
+		}
+		return errAdmission
+	})
+	if !errors.Is(err, errAdmission) {
+		t.Fatalf("unchanged activation error = %v, want %v", err, errAdmission)
+	}
+	if _, err := os.Stat(coordinator.journalPath()); !os.IsNotExist(err) {
+		t.Fatalf("unchanged rejected activation journal = %v, want absent", err)
+	}
+}
+
 func TestConcurrentDifferentMountActivationsBothSurviveDurably(t *testing.T) {
 	t.Parallel()
 
