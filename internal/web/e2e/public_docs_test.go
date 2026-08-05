@@ -229,11 +229,11 @@ func TestRequestComposerUpdatesRequestSample(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	sample := page.Locator("[data-manja-request-sample] .codeblock")
+	sample := page.Locator(".manja-endpoint-examples-rail [data-manja-request-sample] .codeblock")
 	if err := sample.WaitFor(); err != nil {
 		t.Fatal(err)
 	}
-	if err := page.Locator("[data-manja-request-config-panel]").WaitFor(); err != nil {
+	if err := page.Locator(".manja-endpoint-examples-rail [data-manja-request-config-panel]").WaitFor(); err != nil {
 		t.Fatal(err)
 	}
 	themeResult, err := page.Evaluate(`() => {
@@ -286,20 +286,20 @@ func TestRequestComposerUpdatesRequestSample(t *testing.T) {
 	if themeStyles["bodyHighlighted"] != true || bodyTokenCount == 0 {
 		t.Fatalf("request config body should be syntax highlighted, got %#v", themeStyles)
 	}
-	if _, err := page.WaitForFunction(`() => document.querySelector('[data-manja-request-sample] .codeblock')?.textContent.includes("HOSTNAME/api/v3/admin/hooks?page=1")`, nil); err != nil {
+	if _, err := page.WaitForFunction(`() => document.querySelector('.manja-endpoint-examples-rail [data-manja-request-sample] .codeblock')?.textContent.includes("HOSTNAME/api/v3/admin/hooks?page=1")`, nil); err != nil {
 		t.Fatal(err)
 	}
-	if err := page.Locator(`[name="server.hostname"]`).Fill("github.example.test"); err != nil {
+	if err := page.Locator(`.manja-endpoint-examples-rail [name="server.hostname"]`).Fill("github.example.test"); err != nil {
 		t.Fatal(err)
 	}
-	if err := page.Locator(`[name="parameters.page"]`).Fill("2"); err != nil {
+	if err := page.Locator(`.manja-endpoint-examples-rail [name="parameters.page"]`).Fill("2"); err != nil {
 		t.Fatal(err)
 	}
-	if err := page.Locator(`[data-manja-request-body-input]`).Fill("{\n  \"name\": \"changed\"\n}"); err != nil {
+	if err := page.Locator(`.manja-endpoint-examples-rail [data-manja-request-body-input]`).Fill("{\n  \"name\": \"changed\"\n}"); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := page.WaitForFunction(`() => {
-		const text = document.querySelector('[data-manja-request-sample] .codeblock')?.textContent || '';
+		const text = document.querySelector('.manja-endpoint-examples-rail [data-manja-request-sample] .codeblock')?.textContent || '';
 		return text.includes("github.example.test/api/v3/admin/hooks?page=2") &&
 			text.includes("accept: application/vnd.github.superpro-preview+json") &&
 			text.includes("content-type: application/json") &&
@@ -391,7 +391,7 @@ func TestRequestComposerAccordionContentStaysInsideRail(t *testing.T) {
 	if _, err := page.Goto(server + "/?selected=" + operationAnchor + "#" + operationAnchor); err != nil {
 		t.Fatal(err)
 	}
-	if err := page.Locator("[data-manja-request-config-panel]").WaitFor(); err != nil {
+	if err := page.Locator(".manja-endpoint-examples-rail [data-manja-request-config-panel]").WaitFor(); err != nil {
 		t.Fatal(err)
 	}
 
