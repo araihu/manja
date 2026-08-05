@@ -532,6 +532,35 @@ func TestRichOperationDetailsKeepHorizontalOverflowLocal(t *testing.T) {
 	if err := page.Locator("#" + parameterTableID).WaitFor(); err != nil {
 		t.Fatal(err)
 	}
+	parameterPresentation, err := page.Evaluate(`(operationAnchor) => {
+		const read = (location) => {
+			const table = document.getElementById(operationAnchor + '-' + location + '-parameters');
+			return {
+				headers: [...table.querySelectorAll('thead th')].map((cell) => cell.textContent.trim()).join('|'),
+				required: [...table.querySelectorAll('tbody tr')].map((row) => row.children[2]?.textContent.trim() || '').join('|'),
+			};
+		};
+		return { path: read('path'), query: read('query') };
+	}`, operationAnchor)
+	if err != nil {
+		t.Fatal(err)
+	}
+	presentation, ok := parameterPresentation.(map[string]any)
+	if !ok {
+		t.Fatalf("parameter presentation should be a map, got %#v", parameterPresentation)
+	}
+	for location, wantRequired := range map[string]string{"path": "Yes", "query": "No|No"} {
+		group, ok := presentation[location].(map[string]any)
+		if !ok {
+			t.Fatalf("%s parameter presentation should be a map, got %#v", location, presentation[location])
+		}
+		if got, want := group["headers"], "Name|Type|Required|Description"; got != want {
+			t.Fatalf("%s parameter headers = %q, want %q", location, got, want)
+		}
+		if got := group["required"]; got != wantRequired {
+			t.Fatalf("%s required values = %q, want %q", location, got, wantRequired)
+		}
+	}
 
 	for _, width := range []int{390, 768} {
 		t.Run(fmt.Sprintf("%dpx", width), func(t *testing.T) {

@@ -3488,11 +3488,9 @@ func parameterDescriptionCell(renderer port.MarkdownRenderer, description string
 func parameterTableConfig(idPrefix string, title string, parameters []core.OperationParameter, renderer port.MarkdownRenderer) table.Config {
 	rows := make([]table.Row, 0, len(parameters))
 	for _, param := range parameters {
-		required := "optional"
-		requiredColor := "neutral"
+		required := "No"
 		if param.Required {
-			required = "required"
-			requiredColor = "danger"
+			required = "Yes"
 		}
 		description := param.Description
 		if param.Example != "" {
@@ -3509,9 +3507,8 @@ func parameterTableConfig(idPrefix string, title string, parameters []core.Opera
 			ID: idPrefix + "-" + anchorFragment(title) + "-" + anchorFragment(param.In+"-"+param.Name),
 			Cells: map[string]table.Cell{
 				"name":        {Text: param.Name, Code: true},
-				"in":          {Text: param.In, Code: true},
 				"type":        {Text: firstNonEmpty(schemaInline(param.Schema), param.In), Code: true},
-				"requirement": {Text: required, BadgeColor: requiredColor},
+				"requirement": {Text: required},
 				"description": descriptionCell,
 			},
 		})
@@ -3521,9 +3518,8 @@ func parameterTableConfig(idPrefix string, title string, parameters []core.Opera
 		Caption: title,
 		Columns: []table.Column{
 			{Key: "name", Label: "Name", Width: "min-w-[8rem]"},
-			{Key: "in", Label: "In", Width: "w-24"},
 			{Key: "type", Label: "Type", Width: "min-w-[8rem]"},
-			{Key: "requirement", Label: "Required", Width: "w-28"},
+			{Key: "requirement", Label: "Required", Width: "w-20"},
 			{Key: "description", Label: "Description"},
 		},
 		Rows:      rows,

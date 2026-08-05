@@ -213,6 +213,43 @@ func TestCatalogOperationReusesRichPublicEndpointRenderer(t *testing.T) {
 	}
 }
 
+func TestParameterTableOmitsRedundantLocationAndUsesYesNoRequiredness(t *testing.T) {
+	t.Parallel()
+
+	config := parameterTableConfig("operation-test", "Path Parameters", []domain.OperationParameter{
+		{Name: "namespace", In: "path", Required: true, Schema: domain.SchemaSummary{Type: "string"}},
+		{Name: "dryRun", In: "query", Required: false, Schema: domain.SchemaSummary{Type: "string"}},
+	}, nil)
+
+	keys := make([]string, 0, len(config.Columns))
+	for _, column := range config.Columns {
+		keys = append(keys, column.Key)
+	}
+	if got, want := strings.Join(keys, ","), "name,type,requirement,description"; got != want {
+		t.Fatalf("parameter columns = %q, want %q", got, want)
+	}
+
+	for _, test := range []struct {
+		name     string
+		required string
+	}{
+		{name: "namespace", required: "Yes"},
+		{name: "dryRun", required: "No"},
+	} {
+		row := config.Rows[0]
+		if test.name == "dryRun" {
+			row = config.Rows[1]
+		}
+		if _, exists := row.Cells["in"]; exists {
+			t.Fatalf("%s retained redundant location cell", test.name)
+		}
+		cell := row.Cells["requirement"]
+		if cell.Text != test.required || cell.BadgeColor != "" {
+			t.Fatalf("%s required cell = %#v, want plain %q", test.name, cell, test.required)
+		}
+	}
+}
+
 func TestCatalogSummarylessOperationUsesSemanticVisibleHeading(t *testing.T) {
 	t.Parallel()
 
