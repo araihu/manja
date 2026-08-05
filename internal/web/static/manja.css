@@ -423,6 +423,7 @@ html.boot [data-boot-anim="main"] {
 
 .manja-endpoint-examples-rail {
   align-self: stretch;
+  display: none;
   min-width: 0;
 }
 
@@ -437,6 +438,37 @@ html.boot [data-boot-anim="main"] {
 .manja-endpoint-examples-rail .codeblock {
   max-width: 100%;
   min-width: 0;
+}
+
+.manja-request-drawer-trigger {
+  display: block;
+  margin-bottom: 1.5rem;
+}
+
+[data-manja-method="GET"] > sup,
+[data-manja-method="GET"] > span:not(.min-w-0):not(.sr-only) {
+  background-color: var(--color-success);
+  color: var(--color-on-success);
+}
+
+[data-manja-method="POST"] > sup,
+[data-manja-method="POST"] > span:not(.min-w-0):not(.sr-only) {
+  background-color: var(--color-primary);
+  color: var(--color-on-primary);
+}
+
+[data-manja-method="PUT"] > sup,
+[data-manja-method="PUT"] > span:not(.min-w-0):not(.sr-only),
+[data-manja-method="PATCH"] > sup,
+[data-manja-method="PATCH"] > span:not(.min-w-0):not(.sr-only) {
+  background-color: var(--color-warning);
+  color: var(--color-on-warning);
+}
+
+[data-manja-method="DELETE"] > sup,
+[data-manja-method="DELETE"] > span:not(.min-w-0):not(.sr-only) {
+  background-color: var(--color-danger);
+  color: var(--color-on-danger);
 }
 
 .codeblock [class^="hljs-"],
@@ -862,6 +894,14 @@ summary.manja-schema-row::marker {
 @media (min-width: 1280px) {
   .manja-endpoint-shell-layout {
     grid-template-columns: minmax(0, 1fr) minmax(20rem, 28rem);
+  }
+
+  .manja-endpoint-examples-rail {
+    display: block;
+  }
+
+  .manja-request-drawer-trigger {
+    display: none;
   }
 
   .manja-endpoint-examples-rail-content {

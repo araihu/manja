@@ -2122,10 +2122,11 @@ func TestPublicDocsMethodBadgesAssociateMethodsWithOperations(t *testing.T) {
 
 	body := renderPublicDocs(t, NewPublicServer(idx), "/")
 	for _, want := range []string{
-		`catalog-method-get`,
-		`catalog-method-post`,
-		`catalog-method-warning`,
-		`catalog-method-delete`,
+		`data-manja-method="GET"`,
+		`data-manja-method="POST"`,
+		`data-manja-method="PUT"`,
+		`data-manja-method="PATCH"`,
+		`data-manja-method="DELETE"`,
 	} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("method hierarchy missing %q:\n%s", want, body)
@@ -2197,8 +2198,6 @@ func TestPublicDocsEndpointResponseExamplesRenderInsideMatchingTabPanel(t *testi
 						Type: "object",
 						JSON: `{"type":"object","required":["message"],"properties":{"message":{"type":"string"}}}`,
 					},
-					Example:         "{\n  \"message\": \"not found\"\n}",
-					ExampleProvided: true,
 				}},
 			}},
 		}},
@@ -2225,6 +2224,14 @@ func TestPublicDocsEndpointResponseExamplesRenderInsideMatchingTabPanel(t *testi
 	}
 	if strings.Contains(response200Panel, `<section class="manja-response-panel-layout">`) {
 		t.Fatalf("response example grid should live inside the media block under its divider:\n%s", response200Panel)
+	}
+	response404Start := strings.Index(body, `id="tabpaneloperation-gettodo-responsesresponse-404"`)
+	if response404Start < 0 {
+		t.Fatalf("404 response tab panel missing:\n%s", body)
+	}
+	response404Panel := body[response404Start:]
+	if strings.Contains(response404Panel, `Response Example: 404 application/json`) || strings.Contains(response404Panel, `Example unavailable`) {
+		t.Fatalf("schema-only responses should not render an unavailable example card:\n%s", response404Panel)
 	}
 }
 
@@ -2263,6 +2270,19 @@ func TestPublicDocsEndpointShellCSSUsesResponsiveExamplesRail(t *testing.T) {
 	}
 	if !strings.Contains(railRule, `align-self: stretch;`) {
 		t.Fatalf("endpoint examples rail should stretch to the endpoint row so sticky examples keep working:\n%s", railRule)
+	}
+	if !strings.Contains(railRule, `display: none;`) {
+		t.Fatalf("endpoint examples rail should stay hidden below the desktop breakpoint:\n%s", railRule)
+	}
+	if !regexp.MustCompile(`(?s)@media\s*\(min-width:\s*1280px\).*?\.manja-endpoint-examples-rail\s*\{[^}]*display:\s*block;`).Match(css) {
+		t.Fatalf("endpoint examples rail should become visible at the desktop breakpoint")
+	}
+	triggerRule := regexp.MustCompile(`(?s)\.manja-request-drawer-trigger\s*\{[^}]*\}`).FindString(string(css))
+	if triggerRule == "" || !strings.Contains(triggerRule, `display: block;`) {
+		t.Fatalf("mobile request drawer trigger should be visible by default:\n%s", triggerRule)
+	}
+	if !regexp.MustCompile(`(?s)@media\s*\(min-width:\s*1280px\).*?\.manja-request-drawer-trigger\s*\{[^}]*display:\s*none;`).Match(css) {
+		t.Fatalf("request drawer trigger should hide at the desktop breakpoint")
 	}
 	railContentRule := regexp.MustCompile(`(?s)\.manja-endpoint-examples-rail-content\s*>\s*\*[^}]*\}`).FindString(string(css))
 	if railContentRule == "" {

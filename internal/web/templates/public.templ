@@ -14,6 +14,7 @@ import (
 	"github.com/araihu/goshtoso/components/badge"
 	"github.com/araihu/goshtoso/components/breadcrumbs"
 	"github.com/araihu/goshtoso/components/codeblock"
+	"github.com/araihu/goshtoso/components/drawer"
 	"github.com/araihu/goshtoso/components/emptystate"
 	"github.com/araihu/goshtoso/components/pageheader"
 	"github.com/araihu/goshtoso/components/panel"
@@ -622,6 +623,7 @@ func renderedMarkdown(renderer port.MarkdownRenderer, input string) templpkg.Com
 
 templ endpointSection(op core.Operation, servers []core.SpecServer, exampleSpecJSON string, opts PublicDocsOptions) {
 	{{ opID := operationAnchor(op) }}
+	{{ requestDrawerID := opID + "-request-drawer" }}
 	<section id={ opID } class="scroll-mt-24">
 		<div class="manja-endpoint-shell-layout">
 			<div class="manja-endpoint-main min-w-0">
@@ -642,10 +644,26 @@ templ endpointSection(op core.Operation, servers []core.SpecServer, exampleSpecJ
 					} else if op.Description != "" {
 						<p class="mt-4 max-w-[70ch] text-base leading-6 text-on-surface dark:text-on-surface-dark">{ op.Description }</p>
 					}
-				</div>
-				if operationHasRequest(op) || len(op.Responses) > 0 {
-					<div class={ endpointDetailLayoutClass(op) }>
-						if operationHasRequest(op) {
+					</div>
+					if operationHasRequest(op) || len(op.Responses) > 0 {
+						<div class={ endpointDetailLayoutClass(op) }>
+							if operationHasRail(op, servers) {
+								<div class="manja-request-drawer-trigger" data-manja-request-drawer-trigger>
+									<button
+										type="button"
+										aria-haspopup="dialog"
+										aria-controls={ requestDrawerID }
+										x-on:click={ "$dispatch('drawer:open', { id: '" + requestDrawerID + "' })" }
+										class="inline-flex min-h-10 w-full items-center justify-between gap-3 rounded-radius border border-outline bg-surface-alt px-4 py-2 text-sm font-semibold text-on-surface-strong transition hover:border-primary hover:text-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary dark:border-outline-dark dark:bg-surface-dark-alt dark:text-on-surface-dark-strong dark:hover:border-primary-dark dark:hover:text-primary-dark dark:focus-visible:outline-primary-dark"
+									>
+										<span>Request configuration</span>
+										<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" class="size-5" aria-hidden="true">
+											<path stroke-linecap="round" stroke-linejoin="round" d="M8 4h8m-8 4h8m-8 4h5m-5 4h8M5 4h.01M5 8h.01M5 12h.01M5 16h.01"/>
+										</svg>
+									</button>
+								</div>
+							}
+							if operationHasRequest(op) {
 							<section class="grid gap-8" aria-label="Request">
 								<h4 class="font-title text-2xl font-bold text-on-surface-strong dark:text-on-surface-dark-strong">Request</h4>
 								@paramGroup(opID, "Path Parameters", parametersIn(op.Parameters, "path"), opts)
@@ -687,27 +705,44 @@ templ endpointSection(op core.Operation, servers []core.SpecServer, exampleSpecJ
 			if operationHasRail(op, servers) {
 				<aside class="manja-endpoint-examples-rail" aria-label="Endpoint examples">
 					<div class="manja-endpoint-examples-rail-content">
-						if requestConfigHasContent(op, servers) {
-							@requestComposer(opID, op, servers, exampleSpecJSON)
-						}
-						for _, snippet := range op.Snippets {
-							if !requestComposerOwnsSnippet(op, servers, snippet) {
-								@codeExample("Request Sample: "+snippet.Label, snippet.Language, snippet.Code)
-							}
-						}
-						if op.RequestBody != nil && !requestConfigHasBody(op, exampleSpecJSON) {
-							for _, media := range op.RequestBody.MediaTypes {
-								{{ cfg := mediaSchemaExampleConfig(opID+"-request-body-"+anchorFragment(media.ContentType)+"-example", "Request Example: "+media.ContentType, media, exampleSpecJSON) }}
-								if hasSchemaExample(cfg) {
-									@schemaExample(cfg)
-								}
-							}
-						}
+						@endpointExamplesContent(opID, op, servers, exampleSpecJSON)
 					</div>
 				</aside>
 			}
 		</div>
+		if operationHasRail(op, servers) {
+			@drawer.Drawer(drawer.Config{
+				ID:    requestDrawerID,
+				Title: "Request configuration",
+				Side:  drawer.SideRight,
+				Width: drawer.WidthFull,
+				BodyID: requestDrawerID + "-body",
+			}) {
+				<div class="p-4">
+					@endpointExamplesContent(opID+"-drawer", op, servers, exampleSpecJSON)
+				</div>
+			}
+		}
 	</section>
+}
+
+templ endpointExamplesContent(opID string, op core.Operation, servers []core.SpecServer, exampleSpecJSON string) {
+	if requestConfigHasContent(op, servers) {
+		@requestComposer(opID, op, servers, exampleSpecJSON)
+	}
+	for _, snippet := range op.Snippets {
+		if !requestComposerOwnsSnippet(op, servers, snippet) {
+			@codeExample("Request Sample: "+snippet.Label, snippet.Language, snippet.Code)
+		}
+	}
+	if op.RequestBody != nil && !requestConfigHasBody(op, exampleSpecJSON) {
+		for _, media := range op.RequestBody.MediaTypes {
+			{{ cfg := mediaSchemaExampleConfig(opID+"-request-body-"+anchorFragment(media.ContentType)+"-example", "Request Example: "+media.ContentType, media, exampleSpecJSON) }}
+			if hasSchemaExample(cfg) {
+				@schemaExample(cfg)
+			}
+		}
+	}
 }
 
 templ requestComposer(opID string, op core.Operation, servers []core.SpecServer, exampleSpecJSON string) {
@@ -919,7 +954,7 @@ templ responseMediaTypeList(opID string, response core.OperationResponse, exampl
 						</div>
 						@schemaProperties(mediaTypeTableID(idPrefix, media), "Response "+response.Status+" schema for "+media.ContentType, media.Schema, opts)
 					</div>
-						if hasSchemaExample(cfg) {
+						if hasResponseExample(media) {
 							<aside class="manja-response-panel-example" aria-label={ "Response " + response.Status + " " + media.ContentType + " example" }>
 								@schemaExample(cfg)
 							</aside>
@@ -1164,13 +1199,18 @@ templ parameterDescriptionCell(renderer port.MarkdownRenderer, description strin
 	}
 }
 
+templ parameterNameCell(param core.OperationParameter) {
+	<span class="inline-flex items-center gap-1">
+		<code>{ param.Name }</code>
+		if param.Required {
+			<span role="img" aria-label="Required parameter" title="Required parameter" class="font-bold text-danger dark:text-danger-dark">*</span>
+		}
+	</span>
+}
+
 func parameterTableConfig(idPrefix string, title string, parameters []core.OperationParameter, renderer port.MarkdownRenderer) table.Config {
 	rows := make([]table.Row, 0, len(parameters))
 	for _, param := range parameters {
-		required := "No"
-		if param.Required {
-			required = "Yes"
-		}
 		description := param.Description
 		if param.Example != "" {
 			if description != "" {
@@ -1185,9 +1225,8 @@ func parameterTableConfig(idPrefix string, title string, parameters []core.Opera
 		rows = append(rows, table.Row{
 			ID: idPrefix + "-" + anchorFragment(title) + "-" + anchorFragment(param.In+"-"+param.Name),
 			Cells: map[string]table.Cell{
-				"name":        {Text: param.Name, Code: true},
+				"name":        {Component: parameterNameCell(param)},
 				"type":        {Text: firstNonEmpty(schemaInline(param.Schema), param.In), Code: true},
-				"requirement": {Text: required},
 				"description": descriptionCell,
 			},
 		})
@@ -1198,7 +1237,6 @@ func parameterTableConfig(idPrefix string, title string, parameters []core.Opera
 		Columns: []table.Column{
 			{Key: "name", Label: "Name", Width: "min-w-[8rem]"},
 			{Key: "type", Label: "Type", Width: "min-w-[8rem]"},
-			{Key: "requirement", Label: "Required", Width: "w-20"},
 			{Key: "description", Label: "Description"},
 		},
 		Rows:      rows,
@@ -1254,6 +1292,10 @@ func defaultExampleOptions() ExampleOptions {
 
 func hasSchemaExample(cfg ExampleConfig) bool {
 	return strings.TrimSpace(cfg.SchemaJSON) != "" || strings.TrimSpace(cfg.ExampleJSON) != ""
+}
+
+func hasResponseExample(media core.OperationMediaType) bool {
+	return strings.TrimSpace(media.Example) != ""
 }
 
 func exampleLanguage(cfg ExampleConfig) string {
@@ -1319,15 +1361,14 @@ func sidebarSections(idx core.SpecIndex, selectedAnchor string, labelMode Endpoi
 				}
 				label := operationSidebarLabel(op, labelMode)
 				href := selectedDocsHref(anchor)
-				tagItems[tag] = append(tagItems[tag], sidebar.Item{
-					ID:         sidebarItemID(idPrefix, anchor),
-					Label:      label,
-					Href:       href,
-					Active:     active,
-					Badge:      op.Method,
-					BadgeClass: catalogMethodBadgeClass(op.Method),
-					LinkAttrs:  sidebarNavigationAttrs(label, href),
-				})
+					tagItems[tag] = append(tagItems[tag], sidebar.Item{
+						ID:         sidebarItemID(idPrefix, anchor),
+						Label:      label,
+						Href:       href,
+						Active:     active,
+						Badge:      op.Method,
+						LinkAttrs:  sidebarOperationNavigationAttrs(label, href, op.Method),
+					})
 			}
 		}
 		items := make([]sidebar.Item, 0, len(tagOrder))
@@ -1516,6 +1557,15 @@ func sidebarNavigationAttrs(label string, href string) templpkg.Attributes {
 	attrs["hx-push-url"] = "true"
 	attrs["hx-indicator"] = "#public-docs-loading"
 	attrs["data-manja-sidebar-nav"] = "true"
+	return attrs
+}
+
+func sidebarOperationNavigationAttrs(label string, href string, method string) templpkg.Attributes {
+	attrs := sidebarNavigationAttrs(label, href)
+	if attrs == nil {
+		attrs = templpkg.Attributes{}
+	}
+	attrs["data-manja-method"] = strings.ToUpper(strings.TrimSpace(method))
 	return attrs
 }
 

@@ -537,7 +537,7 @@ func TestRichOperationDetailsKeepHorizontalOverflowLocal(t *testing.T) {
 			const table = document.getElementById(operationAnchor + '-' + location + '-parameters');
 			return {
 				headers: [...table.querySelectorAll('thead th')].map((cell) => cell.textContent.trim()).join('|'),
-				required: [...table.querySelectorAll('tbody tr')].map((row) => row.children[2]?.textContent.trim() || '').join('|'),
+				required: [...table.querySelectorAll('tbody tr')].map((row) => Boolean(row.querySelector('[aria-label="Required parameter"]'))).join('|'),
 			};
 		};
 		return { path: read('path'), query: read('query') };
@@ -549,23 +549,46 @@ func TestRichOperationDetailsKeepHorizontalOverflowLocal(t *testing.T) {
 	if !ok {
 		t.Fatalf("parameter presentation should be a map, got %#v", parameterPresentation)
 	}
-	for location, wantRequired := range map[string]string{"path": "Yes", "query": "No|No"} {
+	for location, wantRequired := range map[string]string{"path": "true", "query": "false|false"} {
 		group, ok := presentation[location].(map[string]any)
 		if !ok {
 			t.Fatalf("%s parameter presentation should be a map, got %#v", location, presentation[location])
 		}
-		if got, want := group["headers"], "Name|Type|Required|Description"; got != want {
+		if got, want := group["headers"], "Name|Type|Description"; got != want {
 			t.Fatalf("%s parameter headers = %q, want %q", location, got, want)
 		}
 		if got := group["required"]; got != wantRequired {
 			t.Fatalf("%s required values = %q, want %q", location, got, wantRequired)
 		}
 	}
+	if err := page.SetViewportSize(1280, 900); err != nil {
+		t.Fatal(err)
+	}
+	desktopVisibility, err := page.Evaluate(`() => ({
+		rail: getComputedStyle(document.querySelector('.manja-endpoint-examples-rail')).display,
+		trigger: getComputedStyle(document.querySelector('.manja-request-drawer-trigger')).display,
+	})`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, ok := desktopVisibility.(map[string]any); !ok || got["rail"] != "block" || got["trigger"] != "none" {
+		t.Fatalf("desktop request configuration should remain in the examples rail, got %#v", desktopVisibility)
+	}
 
 	for _, width := range []int{390, 768} {
 		t.Run(fmt.Sprintf("%dpx", width), func(t *testing.T) {
 			if err := page.SetViewportSize(width, 900); err != nil {
 				t.Fatal(err)
+			}
+			trigger := page.Locator("[data-manja-request-drawer-trigger] button")
+			if err := trigger.WaitFor(); err != nil {
+				t.Fatal(err)
+			}
+			if hidden, err := trigger.IsHidden(); err != nil || hidden {
+				if err != nil {
+					t.Fatal(err)
+				}
+				t.Fatalf("%dpx request configuration trigger should be visible", width)
 			}
 			result, err := page.Evaluate(`(parameterTableID) => {
 			const main = document.querySelector('#main-content');
@@ -597,8 +620,39 @@ func TestRichOperationDetailsKeepHorizontalOverflowLocal(t *testing.T) {
 			if got, max := metricNumber(t, metrics, "tableClientWidth"), metricNumber(t, metrics, "mainClientWidth"); got > max {
 				t.Fatalf("%dpx parameter table container must stay inside main, metrics %#v", width, metrics)
 			}
-			if got, want := metricNumber(t, metrics, "tableScrollWidth"), metricNumber(t, metrics, "tableClientWidth"); got <= want {
-				t.Fatalf("%dpx parameter table should remain fully available through its local scroller, metrics %#v", width, metrics)
+			if width == 390 {
+				if got, want := metricNumber(t, metrics, "tableScrollWidth"), metricNumber(t, metrics, "tableClientWidth"); got <= want {
+					t.Fatalf("%dpx parameter table should remain fully available through its local scroller, metrics %#v", width, metrics)
+				}
+			}
+
+			if width == 390 {
+				if err := trigger.Click(); err != nil {
+					t.Fatal(err)
+				}
+				drawerID := operationAnchor + "-request-drawer"
+				drawer := page.Locator(`[role="dialog"][aria-labelledby="` + drawerID + `Title"]`)
+				if err := drawer.WaitFor(playwright.LocatorWaitForOptions{State: playwright.WaitForSelectorStateVisible}); err != nil {
+					t.Fatal(err)
+				}
+				if got, err := drawer.Locator(`[data-manja-request-composer]`).Count(); err != nil {
+					t.Fatal(err)
+				} else if got == 0 {
+					t.Fatalf("mobile request drawer should contain request configuration")
+				}
+				railDisplay, err := page.Evaluate(`() => getComputedStyle(document.querySelector('.manja-endpoint-examples-rail')).display`)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if got, ok := railDisplay.(string); !ok || got != "none" {
+					t.Fatalf("mobile endpoint examples rail display = %#v, want none", railDisplay)
+				}
+				if err := drawer.Locator(`[aria-label="Close"]`).Click(); err != nil {
+					t.Fatal(err)
+				}
+				if err := drawer.WaitFor(playwright.LocatorWaitForOptions{State: playwright.WaitForSelectorStateHidden}); err != nil {
+					t.Fatal(err)
+				}
 			}
 		})
 	}

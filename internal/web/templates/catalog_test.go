@@ -250,7 +250,7 @@ func TestCatalogOperationReusesRichPublicEndpointRenderer(t *testing.T) {
 	}
 }
 
-func TestParameterTableOmitsRedundantLocationAndUsesYesNoRequiredness(t *testing.T) {
+func TestParameterTableOmitsRedundantLocationAndUsesRequiredMarkers(t *testing.T) {
 	t.Parallel()
 
 	config := parameterTableConfig("operation-test", "Path Parameters", []domain.OperationParameter{
@@ -262,16 +262,16 @@ func TestParameterTableOmitsRedundantLocationAndUsesYesNoRequiredness(t *testing
 	for _, column := range config.Columns {
 		keys = append(keys, column.Key)
 	}
-	if got, want := strings.Join(keys, ","), "name,type,requirement,description"; got != want {
+	if got, want := strings.Join(keys, ","), "name,type,description"; got != want {
 		t.Fatalf("parameter columns = %q, want %q", got, want)
 	}
 
 	for _, test := range []struct {
 		name     string
-		required string
+		required bool
 	}{
-		{name: "namespace", required: "Yes"},
-		{name: "dryRun", required: "No"},
+		{name: "namespace", required: true},
+		{name: "dryRun", required: false},
 	} {
 		row := config.Rows[0]
 		if test.name == "dryRun" {
@@ -280,9 +280,20 @@ func TestParameterTableOmitsRedundantLocationAndUsesYesNoRequiredness(t *testing
 		if _, exists := row.Cells["in"]; exists {
 			t.Fatalf("%s retained redundant location cell", test.name)
 		}
-		cell := row.Cells["requirement"]
-		if cell.Text != test.required || cell.BadgeColor != "" {
-			t.Fatalf("%s required cell = %#v, want plain %q", test.name, cell, test.required)
+		cell := row.Cells["name"]
+		if cell.Component == nil {
+			t.Fatalf("%s name cell should render the accessible required marker component", test.name)
+		}
+		if cell.Text != "" {
+			t.Fatalf("%s name cell text = %q, want component-only required marker rendering", test.name, cell.Text)
+		}
+		var rendered bytes.Buffer
+		if err := cell.Component.Render(context.Background(), &rendered); err != nil {
+			t.Fatalf("render %s name cell: %v", test.name, err)
+		}
+		marker := rendered.String()
+		if got := strings.Contains(marker, `aria-label="Required parameter"`); got != test.required {
+			t.Fatalf("%s required marker = %v, want %v: %s", test.name, got, test.required, marker)
 		}
 	}
 }
