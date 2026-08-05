@@ -100,6 +100,24 @@ func TestCatalogDocumentComboboxSearchSelectAndClientFirstModal(t *testing.T) {
 	if err := modal.WaitFor(); err != nil {
 		t.Fatalf("sidebar search opened modal: %v", err)
 	}
+	if err := page.SetViewportSize(884, 790); err != nil {
+		t.Fatal(err)
+	}
+	page.WaitForTimeout(250)
+	searchPanelBox, err := modal.Locator(":scope > div").BoundingBox()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if searchPanelBox == nil {
+		t.Fatal("catalog search panel has no bounding box")
+	}
+	panelCenter := searchPanelBox.Y + searchPanelBox.Height/2
+	if delta := panelCenter - 395; delta < -2 || delta > 2 {
+		t.Fatalf("catalog search panel vertical center = %.1f, want 395±2; box=%#v", panelCenter, searchPanelBox)
+	}
+	if searchPanelBox.Y < 16 || searchPanelBox.Y+searchPanelBox.Height > 774 {
+		t.Fatalf("catalog search panel must retain 16px viewport margins, box=%#v", searchPanelBox)
+	}
 	if expanded, err := searchField.Evaluate(`element => element.getAttribute('aria-expanded')`, nil); err != nil || expanded != "true" {
 		t.Fatalf("sidebar search expanded state = %v, err=%v", expanded, err)
 	}
