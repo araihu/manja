@@ -167,6 +167,43 @@ func TestCatalogDocumentRendersOnlyExpandedGroupAndSelectedVisibleAnchor(t *test
 	}
 }
 
+func TestCatalogSidebarUsesMethodHierarchyAndOverflowHooks(t *testing.T) {
+	t.Parallel()
+
+	data := catalogTemplateFixture()
+	document := data.Directory.Documents[0]
+	data.Document = &document
+	data.Groups = []CatalogSidebarGroupData{{
+		ID: "group-core", Label: "core/v1", Href: "/kubernetes/documents/core-v1/?group=group-core", Count: 6,
+		Items: []CatalogSidebarItemData{
+			{ID: "get", Label: "Get resources", Method: "GET", Href: "#get"},
+			{ID: "post", Label: "Create resource", Method: "POST", Href: "#post"},
+			{ID: "delete", Label: "Delete resource", Method: "DELETE", Href: "#delete"},
+			{ID: "put", Label: "Replace resource", Method: "PUT", Href: "#put"},
+			{ID: "patch", Label: "Update resource", Method: "PATCH", Href: "#patch"},
+			{ID: "options", Label: "List a very long operation name that must be discoverable in a tooltip", Method: "OPTIONS", Href: "#options"},
+		},
+	}}
+	body := renderCatalogTemplate(t, data)
+	for _, want := range []string{
+		`data-catalog-group-control="true"`,
+		`data-catalog-sidebar-operation="true"`,
+		`catalog-method-get`,
+		`catalog-method-post`,
+		`catalog-method-delete`,
+		`catalog-method-warning`,
+		`catalog-method-neutral`,
+		`data-catalog-sidebar-overflow-tooltip="true"`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("catalog sidebar hierarchy missing %q", want)
+		}
+	}
+	if got := strings.Count(body, `data-catalog-sidebar-operation="true"`); got != 6 {
+		t.Fatalf("catalog sidebar operation hooks = %d, want 6", got)
+	}
+}
+
 func TestCatalogOperationReusesRichPublicEndpointRenderer(t *testing.T) {
 	t.Parallel()
 

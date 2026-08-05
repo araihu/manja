@@ -320,7 +320,7 @@ func TestCatalogSidebarExpansionPreservesKeyboardFocus(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	spec := []byte(`{"openapi":"3.0.3","info":{"title":"Kubernetes Core","version":"v1"},"paths":{"/api/v1/pods":{"get":{"operationId":"listCorePods","tags":["core_v1"],"summary":"List core pods","responses":{"200":{"description":"OK"}}}}}}`)
+	spec := []byte(`{"openapi":"3.0.3","info":{"title":"Kubernetes Core","version":"v1"},"paths":{"/api/v1/pods":{"get":{"operationId":"listCorePods","tags":["core_v1"],"summary":"List core pods in every namespace with a deliberately long title for overflow verification","responses":{"200":{"description":"OK"}}}},"/api/v1/widgets":{"post":{"operationId":"createCoreWidget","tags":["core_v1"],"summary":"Create widget","responses":{"201":{"description":"Created"}}}},"/api/v1/widgets/replace":{"put":{"operationId":"replaceCoreWidget","tags":["core_v1"],"summary":"Replace widget","responses":{"200":{"description":"OK"}}}},"/api/v1/widgets/status":{"patch":{"operationId":"patchCoreWidget","tags":["core_v1"],"summary":"Patch widget","responses":{"200":{"description":"OK"}}}},"/api/v1/widgets/archive":{"delete":{"operationId":"deleteCoreWidget","tags":["core_v1"],"summary":"Delete widget","responses":{"204":{"description":"Deleted"}}}},"/api/v1/widgets/options":{"options":{"operationId":"optionsCoreWidget","tags":["core_v1"],"summary":"Inspect widget options","responses":{"200":{"description":"OK"}}}}}}`)
 	_, err = server.Activate(context.Background(), domain.CatalogCandidate{
 		ID: "kubernetes", Title: "Kubernetes", ProfileID: domain.CompatibilityProfileStrict,
 		Revision:  domain.CatalogRevision{Kind: domain.CatalogRevisionFiles, ID: "file-manifest-sidebar-focus", ManifestDigest: strings.Repeat("b", 64)},
@@ -367,6 +367,55 @@ func TestCatalogSidebarExpansionPreservesKeyboardFocus(t *testing.T) {
 	}
 	if expanded, err := replacement.GetAttribute("aria-expanded"); err != nil || expanded != "true" {
 		t.Fatalf("expanded group aria-expanded = %q, err=%v", expanded, err)
+	}
+	groupStyle, err := replacement.Evaluate(`element => { const style = getComputedStyle(element); return { borderLeftWidth: style.borderLeftWidth, fontWeight: style.fontWeight, fontSize: style.fontSize }; }`, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	style, ok := groupStyle.(map[string]interface{})
+	if !ok || style["borderLeftWidth"] != "0px" || style["fontWeight"] != "700" || style["fontSize"] != "16px" {
+		t.Fatalf("group hierarchy style = %#v, want no rail, 700 weight, 16px text", groupStyle)
+	}
+	for _, test := range []struct {
+		title string
+		class string
+	}{
+		{title: "List core pods in every namespace with a deliberately long title for overflow verification", class: "catalog-method-get"},
+		{title: "Create widget", class: "catalog-method-post"},
+		{title: "Replace widget", class: "catalog-method-warning"},
+		{title: "Patch widget", class: "catalog-method-warning"},
+		{title: "Delete widget", class: "catalog-method-delete"},
+		{title: "Inspect widget options", class: "catalog-method-neutral"},
+	} {
+		link := page.Locator(`[data-catalog-sidebar-operation][title="` + test.title + `"]`)
+		if err := link.WaitFor(); err != nil {
+			t.Fatalf("sidebar operation %q: %v", test.title, err)
+		}
+		badgeClass, err := link.Locator("sup").GetAttribute("class")
+		if err != nil || !strings.Contains(badgeClass, test.class) {
+			t.Fatalf("sidebar operation %q badge class = %q, want %q; err=%v", test.title, badgeClass, test.class, err)
+		}
+	}
+	longLink := page.Locator(`[data-catalog-sidebar-operation][title="List core pods in every namespace with a deliberately long title for overflow verification"]`)
+	overflow, err := longLink.Locator(".truncate").Evaluate(`element => element.scrollWidth > element.clientWidth`, nil)
+	if err != nil || overflow != true {
+		t.Fatalf("long sidebar label overflow = %v, err=%v", overflow, err)
+	}
+	if err := longLink.Hover(); err != nil {
+		t.Fatal(err)
+	}
+	tooltip := page.Locator(`#catalog-sidebar-overflow-tooltip`)
+	if err := tooltip.WaitFor(); err != nil {
+		t.Fatalf("overflow tooltip: %v", err)
+	}
+	if hidden, err := tooltip.IsHidden(); err != nil || hidden {
+		t.Fatalf("overflow tooltip hidden = %v, err=%v", hidden, err)
+	}
+	if text, err := tooltip.TextContent(); err != nil || text != "List core pods in every namespace with a deliberately long title for overflow verification" {
+		t.Fatalf("overflow tooltip text = %q, err=%v", text, err)
+	}
+	if describedBy, err := longLink.GetAttribute("aria-describedby"); err != nil || describedBy != "catalog-sidebar-overflow-tooltip" {
+		t.Fatalf("overflow tooltip aria-describedby = %q, err=%v", describedBy, err)
 	}
 	focused, err := replacement.Evaluate(`element => document.activeElement === element`, nil)
 	if err != nil || focused != true {

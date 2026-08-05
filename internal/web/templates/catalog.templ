@@ -170,6 +170,7 @@ templ CatalogPage(data CatalogPageData) {
 			@catalogSearchModal(data)
 			@catalogDocumentSelection()
 			@catalogSidebarFocusRestoration()
+			@catalogSidebarOverflowTooltip()
 		</div>
 	}
 }
@@ -590,7 +591,15 @@ func catalogSidebarConfig(data CatalogPageData) sidebar.Config {
 	for _, group := range data.Groups {
 		children := make([]sidebar.Item, 0, len(group.Items))
 		for _, item := range group.Items {
-			children = append(children, sidebar.Item{ID: item.ID, Label: item.Label, Href: item.Href, Active: item.Active, Badge: item.Method})
+			children = append(children, sidebar.Item{
+				ID:         item.ID,
+				Label:      item.Label,
+				Href:       item.Href,
+				Active:     item.Active,
+				Badge:      item.Method,
+				BadgeClass: catalogMethodBadgeClass(item.Method),
+				LinkAttrs:  templpkg.Attributes{"data-catalog-sidebar-operation": "true"},
+			})
 		}
 		linkAttrs := templpkg.Attributes{
 			"id":                         "catalog-group-control-" + group.ID,
@@ -642,12 +651,95 @@ templ catalogSidebarFocusRestoration() {
 
 func catalogMethodTone(method string) badge.Tone {
 	switch strings.ToUpper(method) {
-	case "GET": return badge.TonePrimary
-	case "POST": return badge.ToneSuccess
+	case "GET": return badge.ToneSuccess
+	case "POST": return badge.TonePrimary
 	case "DELETE": return badge.ToneDanger
 	case "PUT", "PATCH": return badge.ToneWarning
 	default: return badge.ToneDefault
 	}
+}
+
+func catalogMethodBadgeClass(method string) string {
+	switch strings.ToUpper(strings.TrimSpace(method)) {
+	case "GET":
+		return "catalog-method-get"
+	case "POST":
+		return "catalog-method-post"
+	case "DELETE":
+		return "catalog-method-delete"
+	case "PUT", "PATCH":
+		return "catalog-method-warning"
+	default:
+		return "catalog-method-neutral"
+	}
+}
+
+templ catalogSidebarOverflowTooltip() {
+	<script data-catalog-sidebar-overflow-tooltip="true">
+		(function () {
+			if (window.__manjaCatalogSidebarOverflowTooltipBound) return;
+			window.__manjaCatalogSidebarOverflowTooltipBound = true;
+			var tooltip;
+			var activeLink;
+
+			function labelFor(link) {
+				return link && link.querySelector && link.querySelector(".truncate");
+			}
+
+			function hide() {
+				if (activeLink && activeLink.getAttribute("aria-describedby") === "catalog-sidebar-overflow-tooltip") {
+					activeLink.removeAttribute("aria-describedby");
+				}
+				activeLink = null;
+				if (tooltip) tooltip.hidden = true;
+			}
+
+			function show(link) {
+				var label = labelFor(link);
+				if (!label || label.scrollWidth <= label.clientWidth + 1 || !label.textContent.trim()) {
+					hide();
+					return;
+				}
+				if (!tooltip) {
+					tooltip = document.createElement("div");
+					tooltip.id = "catalog-sidebar-overflow-tooltip";
+					tooltip.setAttribute("role", "tooltip");
+					tooltip.hidden = true;
+					document.body.appendChild(tooltip);
+				}
+				tooltip.textContent = label.textContent.trim();
+				tooltip.hidden = false;
+				activeLink = link;
+				link.setAttribute("aria-describedby", tooltip.id);
+				var rect = link.getBoundingClientRect();
+				var left = rect.right + 8;
+				var top = rect.top + (rect.height - tooltip.offsetHeight) / 2;
+				if (left + tooltip.offsetWidth > window.innerWidth - 8) left = rect.left - tooltip.offsetWidth - 8;
+				tooltip.style.left = Math.max(8, left) + "px";
+				tooltip.style.top = Math.min(Math.max(8, top), Math.max(8, window.innerHeight - tooltip.offsetHeight - 8)) + "px";
+			}
+
+			document.addEventListener("pointerover", function (event) {
+				var link = event.target && event.target.closest && event.target.closest("[data-catalog-sidebar-operation]");
+				if (link) show(link);
+			});
+			document.addEventListener("pointerout", function (event) {
+				var link = event.target && event.target.closest && event.target.closest("[data-catalog-sidebar-operation]");
+				if (link && (!event.relatedTarget || !link.contains(event.relatedTarget))) hide();
+			});
+			document.addEventListener("focusin", function (event) {
+				var link = event.target && event.target.closest && event.target.closest("[data-catalog-sidebar-operation]");
+				if (link) show(link);
+			});
+			document.addEventListener("focusout", function (event) {
+				var link = event.target && event.target.closest && event.target.closest("[data-catalog-sidebar-operation]");
+				if (link && (!event.relatedTarget || !link.contains(event.relatedTarget))) hide();
+			});
+			window.addEventListener("resize", hide);
+			window.addEventListener("scroll", hide, true);
+			document.body.addEventListener("htmx:beforeSwap", hide);
+		})();
+	</script>
 }
 
 templ catalogDocumentSelection() {

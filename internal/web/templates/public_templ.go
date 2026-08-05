@@ -3641,12 +3641,13 @@ func sidebarSections(idx core.SpecIndex, selectedAnchor string, labelMode Endpoi
 				label := operationSidebarLabel(op, labelMode)
 				href := selectedDocsHref(anchor)
 				tagItems[tag] = append(tagItems[tag], sidebar.Item{
-					ID:        sidebarItemID(idPrefix, anchor),
-					Label:     label,
-					Href:      href,
-					Active:    active,
-					Badge:     op.Method,
-					LinkAttrs: sidebarNavigationAttrs(label, href),
+					ID:         sidebarItemID(idPrefix, anchor),
+					Label:      label,
+					Href:       href,
+					Active:     active,
+					Badge:      op.Method,
+					BadgeClass: catalogMethodBadgeClass(op.Method),
+					LinkAttrs:  sidebarNavigationAttrs(label, href),
 				})
 			}
 		}
@@ -3885,9 +3886,9 @@ func methodBadge(method string) templ.Component {
 func methodBadgeTone(method string) badge.Tone {
 	switch strings.ToUpper(strings.TrimSpace(method)) {
 	case "GET":
-		return badge.TonePrimary
-	case "POST":
 		return badge.ToneSuccess
+	case "POST":
+		return badge.TonePrimary
 	case "PUT":
 		return badge.ToneWarning
 	case "PATCH":

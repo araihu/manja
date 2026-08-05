@@ -70,6 +70,91 @@
   padding-left: 0;
 }
 
+#catalog-sidebar-groups a[data-catalog-group-control] {
+  border-left-width: 0;
+  color: var(--color-on-surface-strong);
+  font-size: 1rem;
+  font-weight: 700;
+  padding-left: 0;
+}
+
+#catalog-sidebar-groups a[data-catalog-group-control][aria-expanded="true"] {
+  color: var(--color-primary);
+}
+
+.dark #catalog-sidebar-groups a[data-catalog-group-control] {
+  color: var(--color-on-surface-dark-strong);
+}
+
+.dark #catalog-sidebar-groups a[data-catalog-group-control][aria-expanded="true"] {
+  color: var(--color-primary-dark);
+}
+
+#catalog-sidebar-groups sup.catalog-method-get,
+#sidebar-nav-content sup.catalog-method-get {
+  background: var(--color-success);
+  color: var(--color-on-success);
+}
+
+#catalog-sidebar-groups sup.catalog-method-post,
+#sidebar-nav-content sup.catalog-method-post {
+  background: var(--color-primary);
+  color: var(--color-on-primary);
+}
+
+#catalog-sidebar-groups sup.catalog-method-delete,
+#sidebar-nav-content sup.catalog-method-delete {
+  background: var(--color-danger);
+  color: var(--color-on-danger);
+}
+
+#catalog-sidebar-groups sup.catalog-method-warning,
+#sidebar-nav-content sup.catalog-method-warning {
+  background: var(--color-warning);
+  color: var(--color-on-warning);
+}
+
+#catalog-sidebar-groups sup.catalog-method-neutral,
+#sidebar-nav-content sup.catalog-method-neutral {
+  border: 1px solid var(--color-outline);
+  background: var(--color-surface-alt);
+  color: var(--color-on-surface-muted);
+}
+
+.dark #catalog-sidebar-groups sup.catalog-method-post,
+.dark #sidebar-nav-content sup.catalog-method-post {
+  background: var(--color-primary-dark);
+  color: var(--color-on-primary-dark);
+}
+
+.dark #catalog-sidebar-groups sup.catalog-method-neutral,
+.dark #sidebar-nav-content sup.catalog-method-neutral {
+  border-color: var(--color-outline-dark);
+  background: var(--color-surface-dark-alt);
+  color: var(--color-on-surface-dark-muted);
+}
+
+#catalog-sidebar-overflow-tooltip {
+  position: fixed;
+  z-index: 100;
+  max-width: min(28rem, calc(100vw - 1rem));
+  overflow-wrap: anywhere;
+  border: 1px solid var(--color-outline-strong);
+  border-radius: var(--radius-radius);
+  background: var(--color-surface-dark);
+  color: var(--color-on-surface-dark-strong);
+  padding: 0.5rem 0.75rem;
+  box-shadow: 0 0.5rem 1.5rem rgb(0 0 0 / 24%);
+  font-size: var(--text-xs);
+  line-height: 1.4;
+  pointer-events: none;
+}
+
+.dark #catalog-sidebar-overflow-tooltip {
+  border-color: var(--color-outline-dark-strong);
+  background: var(--color-surface-dark-alt);
+}
+
 @keyframes manjaFadeIn {
   from {
     opacity: 0;

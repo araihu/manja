@@ -2121,6 +2121,16 @@ func TestPublicDocsMethodBadgesAssociateMethodsWithOperations(t *testing.T) {
 	}
 
 	body := renderPublicDocs(t, NewPublicServer(idx), "/")
+	for _, want := range []string{
+		`catalog-method-get`,
+		`catalog-method-post`,
+		`catalog-method-warning`,
+		`catalog-method-delete`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("method hierarchy missing %q:\n%s", want, body)
+		}
+	}
 	for _, item := range []struct {
 		anchor  string
 		method  string
@@ -2137,6 +2147,16 @@ func TestPublicDocsMethodBadgesAssociateMethodsWithOperations(t *testing.T) {
 			t.Fatalf("sidebar operation %s should associate %q with method %s:\n%s", item.anchor, item.summary, item.method, body)
 		}
 		endpointBody := renderPublicDocs(t, NewPublicServer(idx), "/?selected="+item.anchor)
+		methodTone := map[string]string{
+			"GET":    `border border-success bg-success text-on-success`,
+			"POST":   `border border-primary bg-primary text-on-primary`,
+			"PUT":    `border border-warning bg-warning text-on-warning`,
+			"PATCH":  `border border-warning bg-warning text-on-warning`,
+			"DELETE": `border border-danger bg-danger text-on-danger`,
+		}[item.method]
+		if !strings.Contains(endpointBody, methodTone) {
+			t.Fatalf("endpoint %s missing method tone %q:\n%s", item.anchor, methodTone, endpointBody)
+		}
 		endpointPattern := regexp.MustCompile(`(?s)<section id="` + regexp.QuoteMeta(item.anchor) + `"[^>]*>.*?<div aria-label="Endpoint route"[^>]*>\s*<span[^>]*>` + regexp.QuoteMeta(item.method) + `</span>\s*<p[^>]*>/resource</p>`)
 		if !endpointPattern.MatchString(endpointBody) {
 			t.Fatalf("endpoint %s should expose method %s and its path in the labelled route group:\n%s", item.anchor, item.method, endpointBody)
