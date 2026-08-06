@@ -3,6 +3,7 @@ package templates
 import (
 	"bytes"
 	"context"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -35,6 +36,103 @@ func TestCatalogHeaderOmitsThemeSelectorButKeepsDarkMode(t *testing.T) {
 	}
 	if !strings.Contains(body, `id="darkModeToggleBtn"`) {
 		t.Fatal("catalog header removed dark mode toggle")
+	}
+}
+
+func TestCatalogOrganizationNavigationRendersCatalogAndSpecSections(t *testing.T) {
+	t.Parallel()
+
+	data := catalogTemplateFixture()
+	data.Mount = "/"
+	data.OrganizationNav = CatalogOrganizationNavData{
+		Visible: true,
+		Catalogs: []CatalogOrganizationItem{{
+			ID: "catalog-kubernetes", Label: "Kubernetes", Description: "2 specs", Href: "/", Count: 2, Active: true,
+		}},
+		Specs: []CatalogOrganizationItem{{
+			ID: "spec-kubernetes-core-v1", Label: "core-v1", Description: "Kubernetes", Href: "/documents/core-v1/",
+		}},
+	}
+	body := renderCatalogTemplate(t, data)
+	for _, want := range []string{
+		`id="catalog-organization-navigation"`,
+		`aria-label="Catalogs and specs"`,
+		`id="catalog-organization-section-catalogs"`,
+		`id="catalog-organization-section-specs"`,
+		`data-catalog-organization-item="catalog-kubernetes"`,
+		`data-catalog-organization-item="spec-kubernetes-core-v1"`,
+		`aria-current="page"`,
+		`Search API...`,
+		`heroicons.svg#hi-16-solid-rectangle-group`,
+		`heroicons.svg#hi-16-solid-document-text`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("organization navigation missing %q", want)
+		}
+	}
+	if strings.Count(body, `data-search-field`) != 1 {
+		t.Fatalf("organization navigation rendered %d search fields, want 1", strings.Count(body, `data-search-field`))
+	}
+}
+
+func TestCatalogShellUsesRouteSpecificNavigationLabels(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name       string
+		data       CatalogPageData
+		label      string
+		otherLabel string
+	}{
+		{
+			name: "catalog root",
+			data: func() CatalogPageData {
+				data := catalogTemplateFixture()
+				data.Mount = "/"
+				data.OrganizationNav = CatalogOrganizationNavData{Visible: true}
+				return data
+			}(),
+			label:      "Catalogs and specs",
+			otherLabel: "API sections",
+		},
+		{
+			name: "document",
+			data: func() CatalogPageData {
+				data := catalogTemplateFixture()
+				document := data.Directory.Documents[0]
+				data.Document = &document
+				return data
+			}(),
+			label:      "API sections",
+			otherLabel: "Catalogs and specs",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			body := renderCatalogTemplate(t, test.data)
+			for _, want := range []string{
+				`aria-label="Open ` + test.label + `"`,
+				`aria-label="Close ` + test.label + `"`,
+			} {
+				if !strings.Contains(body, want) {
+					t.Errorf("%s shell missing %q", test.name, want)
+				}
+			}
+			panel := regexp.MustCompile(`<aside[^>]*id="catalog-navigation"[^>]*>`).FindString(body)
+			if panel == "" || !strings.Contains(panel, `aria-label="`+test.label+`"`) {
+				t.Errorf("%s panel accessible label = %q, want %q", test.name, panel, test.label)
+			}
+			for _, reject := range []string{
+				`aria-label="Open ` + test.otherLabel + `"`,
+				`aria-label="Close ` + test.otherLabel + `"`,
+			} {
+				if strings.Contains(body, reject) {
+					t.Errorf("%s shell retained wrong route label %q", test.name, reject)
+				}
+			}
+		})
 	}
 }
 

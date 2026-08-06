@@ -2,6 +2,7 @@ package e2e
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -10,6 +11,139 @@ import (
 	"github.com/araihu/manja/domain"
 	"github.com/araihu/manja/renderer"
 )
+
+func TestCatalogNavigationKeepsLastSpecReachableAndLabelsEachRoute(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping e2e test in short mode")
+	}
+	documents := make([]domain.CatalogDocument, 0, 18)
+	for index := 1; index <= 18; index++ {
+		key := fmt.Sprintf("spec-%02d", index)
+		documents = append(documents, domain.CatalogDocument{
+			Key: key, SourcePath: key + ".json", Format: domain.CatalogFormatJSON,
+			Bytes: []byte(fmt.Sprintf(`{"openapi":"3.0.3","info":{"title":"Spec %02d","version":"v1"},"paths":{}}`, index)),
+		})
+	}
+	server, err := renderer.New(renderer.Config{Version: 1, DataDir: t.TempDir(), Catalogs: []renderer.CatalogConfig{{
+		ID: "kubernetes", Mount: "/", Title: "Kubernetes", ProfileID: domain.CompatibilityProfileStrict,
+	}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = server.Activate(context.Background(), domain.CatalogCandidate{
+		ID: "kubernetes", Title: "Kubernetes", ProfileID: domain.CompatibilityProfileStrict,
+		Revision:  domain.CatalogRevision{Kind: domain.CatalogRevisionFiles, ID: "file-manifest-root-navigation", ManifestDigest: strings.Repeat("d", 64)},
+		Documents: documents,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	baseURL := httptestServer(t, server.Handler())
+
+	pw, err := playwright.Run()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pw.Stop()
+	browser, err := pw.Chromium.Launch()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer browser.Close()
+	page, err := browser.NewPage()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for _, viewport := range []struct {
+		name          string
+		width, height int
+	}{
+		{name: "mobile", width: 390, height: 844},
+		{name: "desktop", width: 1440, height: 900},
+	} {
+		t.Run(viewport.name, func(t *testing.T) {
+			if err := page.SetViewportSize(viewport.width, viewport.height); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := page.Goto(baseURL+"/", playwright.PageGotoOptions{WaitUntil: playwright.WaitUntilStateLoad}); err != nil {
+				t.Fatal(err)
+			}
+			trigger := page.Locator(`[x-ref="catalogNavTrigger"]`)
+			if label, err := trigger.GetAttribute("aria-label"); err != nil || label != "Open Catalogs and specs" {
+				t.Errorf("%s root trigger label = %q, err=%v", viewport.name, label, err)
+			}
+			panel := page.Locator("#catalog-navigation")
+			if label, err := panel.GetAttribute("aria-label"); err != nil || label != "Catalogs and specs" {
+				t.Errorf("%s root panel label = %q, err=%v", viewport.name, label, err)
+			}
+			if viewport.width < 1024 {
+				if err := trigger.Click(); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if err := panel.WaitFor(playwright.LocatorWaitForOptions{State: playwright.WaitForSelectorStateVisible}); err != nil {
+				t.Fatalf("%s root navigation panel: %v", viewport.name, err)
+			}
+			if label, err := panel.Locator(`[x-ref="catalogNavClose"]`).GetAttribute("aria-label"); err != nil || label != "Close Catalogs and specs" {
+				t.Errorf("%s root close label = %q, err=%v", viewport.name, label, err)
+			}
+			if label, err := page.Locator(`[data-catalog-navigation-backdrop]`).GetAttribute("aria-label"); err != nil || label != "Close Catalogs and specs" {
+				t.Errorf("%s root backdrop label = %q, err=%v", viewport.name, label, err)
+			}
+			metricsValue, err := page.Evaluate(`() => {
+				const panel = document.querySelector('#catalog-navigation');
+				const nav = document.querySelector('#catalog-organization-navigation');
+				const last = document.querySelector('[data-catalog-organization-item="spec-kubernetes-spec-18"]');
+				nav.scrollTop = nav.scrollHeight;
+				const panelRect = panel.getBoundingClientRect();
+				const navRect = nav.getBoundingClientRect();
+				const lastRect = last.getBoundingClientRect();
+				return {
+					panelBottom: panelRect.bottom,
+					navBottom: navRect.bottom,
+					navTop: navRect.top,
+					lastBottom: lastRect.bottom,
+					lastTop: lastRect.top,
+					viewportBottom: window.innerHeight,
+				};
+			}`)
+			if err != nil {
+				t.Fatal(err)
+			}
+			metrics, ok := metricsValue.(map[string]any)
+			if !ok {
+				t.Fatalf("%s root navigation metrics = %#v", viewport.name, metricsValue)
+			}
+			visibleBottom := min(metricNumber(t, metrics, "panelBottom"), metricNumber(t, metrics, "viewportBottom"))
+			navBottom := metricNumber(t, metrics, "navBottom")
+			lastBottom := metricNumber(t, metrics, "lastBottom")
+			lastTop := metricNumber(t, metrics, "lastTop")
+			navTop := metricNumber(t, metrics, "navTop")
+			t.Logf("%dx%d root labels=%q/%q/%q nav=%.1f..%.1f last=%.1f..%.1f visible-bottom=%.1f", viewport.width, viewport.height, "Open Catalogs and specs", "Catalogs and specs", "Close Catalogs and specs", navTop, navBottom, lastTop, lastBottom, visibleBottom)
+			if navBottom > visibleBottom+1 {
+				t.Errorf("%s organization navigation bottom %.1f exceeds visible drawer bottom %.1f: %#v", viewport.name, navBottom, visibleBottom, metrics)
+			}
+			if lastBottom > visibleBottom+1 || lastTop < navTop-1 {
+				t.Errorf("%s last spec remains clipped after maximum navigation scroll: %#v", viewport.name, metrics)
+			}
+
+			if _, err := page.Goto(baseURL+"/documents/spec-01/", playwright.PageGotoOptions{WaitUntil: playwright.WaitUntilStateLoad}); err != nil {
+				t.Fatal(err)
+			}
+			if label, err := page.Locator(`[x-ref="catalogNavTrigger"]`).GetAttribute("aria-label"); err != nil || label != "Open API sections" {
+				t.Errorf("%s document trigger label = %q, err=%v", viewport.name, label, err)
+			}
+			if label, err := page.Locator("#catalog-navigation").GetAttribute("aria-label"); err != nil || label != "API sections" {
+				t.Errorf("%s document panel label = %q, err=%v", viewport.name, label, err)
+			}
+			if label, err := page.Locator(`[x-ref="catalogNavClose"]`).GetAttribute("aria-label"); err != nil || label != "Close API sections" {
+				t.Errorf("%s document close label = %q, err=%v", viewport.name, label, err)
+			}
+			t.Logf("%dx%d document labels=%q/%q/%q", viewport.width, viewport.height, "Open API sections", "API sections", "Close API sections")
+		})
+	}
+}
 
 func TestCatalogDocumentComboboxSearchSelectAndClientFirstModal(t *testing.T) {
 	if testing.Short() {

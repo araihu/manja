@@ -32,6 +32,7 @@ func (handler *CatalogHandler) catalogPageData(
 		Mount: mount, SnapshotID: snapshot.ID, Directory: snapshot.Directory,
 		Documents: make([]templates.CatalogDocumentOption, 0, len(snapshot.Directory.Documents)),
 	}
+	data.OrganizationNav = handler.catalogOrganizationNav(mount, documentKey == "")
 	data.SearchHref, _ = catalogURL(mount, "search")
 	data.DownloadHref, _ = catalogURL(mount, "catalog.json")
 	searchIdentity, exists := catalogChildIdentity(snapshot.Manifest, snapshot.Directory.SearchChild)
@@ -229,6 +230,61 @@ func (handler *CatalogHandler) catalogPageData(
 		}
 	}
 	return data, nil
+}
+
+// catalogOrganizationNav builds the small root navigation from immutable
+// directory metadata only. It never reads source blobs or detail shards, so a
+// root view can advertise every mounted catalog/spec without loading a whole
+// collection into the browser.
+func (handler *CatalogHandler) catalogOrganizationNav(activeMount string, rootView bool) templates.CatalogOrganizationNavData {
+	if handler == nil || handler.runtime == nil || activeMount != "/" || !rootView {
+		return templates.CatalogOrganizationNavData{}
+	}
+	mounts := handler.runtime.MountNames()
+	sort.Strings(mounts)
+	data := templates.CatalogOrganizationNavData{Visible: true}
+	for _, mount := range mounts {
+		admission, err := handler.runtime.Admit(mount)
+		if err != nil {
+			continue
+		}
+		directory := admission.Snapshot.Directory
+		href, err := catalogURL(mount)
+		if err != nil {
+			admission.Release()
+			continue
+		}
+		if href != "/" {
+			href += "/"
+		}
+		catalogLabel := strings.TrimSpace(directory.Branding.DisplayName)
+		if catalogLabel == "" {
+			catalogLabel = strings.TrimSpace(directory.Title)
+		}
+		if catalogLabel == "" {
+			catalogLabel = mount
+		}
+		data.Catalogs = append(data.Catalogs, templates.CatalogOrganizationItem{
+			ID: "catalog-" + string(directory.CatalogID), Label: catalogLabel,
+			Description: fmt.Sprintf("%d specs", len(directory.Documents)), Href: href,
+			AvatarSrc: directory.Branding.LogoSrc, AvatarAlt: directory.Branding.LogoAlt,
+			Active: mount == activeMount,
+		})
+		for _, document := range directory.Documents {
+			documentHref, err := catalogURL(mount, "documents", document.Key)
+			if err != nil {
+				continue
+			}
+			data.Specs = append(data.Specs, templates.CatalogOrganizationItem{
+				ID: "spec-" + string(directory.CatalogID) + "-" + document.Key,
+				Label: catalogDocumentLabel(document), Description: catalogLabel,
+				Href: documentHref + "/", AvatarSrc: directory.Branding.LogoSrc,
+				AvatarAlt: directory.Branding.LogoAlt,
+			})
+		}
+		admission.Release()
+	}
+	return data
 }
 
 func catalogSidebarPageWindow(total, page int) (int, int, bool) {
