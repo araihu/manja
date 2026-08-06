@@ -1099,7 +1099,7 @@ summary.manja-schema-row::marker {
   }
 }
 
-@media (min-width: 1280px) {
+@media (min-width: 1024px) {
   .manja-endpoint-shell-layout {
     grid-template-columns: minmax(0, 1fr) minmax(20rem, 28rem);
   }

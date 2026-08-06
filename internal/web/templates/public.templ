@@ -644,14 +644,14 @@ templ endpointSection(op core.Operation, servers []core.SpecServer, exampleSpecJ
 		data-manja-request-config-root
 		x-data="{
 			requestConfigOpen: false,
-			requestConfigDesktop: window.matchMedia('(min-width: 1280px)').matches,
+			requestConfigDesktop: window.matchMedia('(min-width: 1024px)').matches,
 			requestConfigDesktopVisible: false,
 			requestConfigMedia: null,
 			requestConfigMediaHandler: null,
 			requestConfigEscapeHandler: null,
 			requestConfigFocusTimer: null,
 			init() {
-				this.requestConfigMedia = window.matchMedia('(min-width: 1280px)');
+				this.requestConfigMedia = window.matchMedia('(min-width: 1024px)');
 				this.requestConfigDesktop = this.requestConfigMedia.matches;
 				this.requestConfigMediaHandler = (event) => {
 					this.requestConfigDesktop = event.matches;
@@ -1066,31 +1066,62 @@ templ mediaTypeList(idPrefix string, label string, mediaTypes []core.OperationMe
 
 templ responseMediaTypeList(opID string, response core.OperationResponse, exampleSpecJSON string, opts PublicDocsOptions) {
 	if len(response.MediaTypes) > 0 {
-		<div class="grid gap-4">
-			for _, media := range response.MediaTypes {
-				{{ idPrefix := opID+"-response-"+anchorFragment(response.Status) }}
-				{{ cfg := mediaSchemaExampleConfig(idPrefix+"-"+anchorFragment(media.ContentType)+"-example", "Response Example: "+response.Status+" "+media.ContentType, media, exampleSpecJSON) }}
-				<div class="manja-response-media-block border-t border-outline pt-6 pb-5 dark:border-outline-dark">
-					<div class="manja-response-panel-layout">
-						<div class="manja-response-panel-main grid gap-4">
-							<div class="flex flex-wrap items-center gap-3">
-								<span class="font-mono text-xs font-semibold text-on-surface-strong dark:text-on-surface-dark-strong">{ media.ContentType }</span>
-							if schemaInline(media.Schema) != "" {
-								<span class="font-mono text-xs text-on-surface-muted dark:text-on-surface-dark-muted">{ schemaInline(media.Schema) }</span>
-							}
-						</div>
-						@schemaProperties(mediaTypeTableID(idPrefix, media), "Response "+response.Status+" schema for "+media.ContentType, media.Schema, opts)
-					</div>
-						if hasResponseExample(media) {
-							<aside class="manja-response-panel-example" aria-label={ "Response " + response.Status + " " + media.ContentType + " example" }>
-								@schemaExample(cfg)
-							</aside>
-						}
-					</div>
+		if len(response.MediaTypes) > 1 {
+			{{ items := responseMediaAccordionItems(opID, response, exampleSpecJSON, opts) }}
+			@accordion.Accordion(accordion.AccordionConfig{
+				ID:            opID + "-response-" + anchorFragment(response.Status) + "-media-types",
+				Items:         items,
+				Appearance:    accordion.AppearancePlain,
+				RootClass:     "manja-response-media-accordion",
+			})
+		} else {
+			<div class="grid gap-4">
+				@responseMediaTypeBlock(opID, response, response.MediaTypes[0], exampleSpecJSON, opts, false)
+			</div>
+		}
+	}
+}
+
+func responseMediaAccordionItems(opID string, response core.OperationResponse, exampleSpecJSON string, opts PublicDocsOptions) []accordion.AccordionItem {
+	items := make([]accordion.AccordionItem, 0, len(response.MediaTypes))
+	for i, media := range response.MediaTypes {
+		items = append(items, accordion.AccordionItem{
+			ID:                opID + "-response-" + anchorFragment(response.Status) + "-" + anchorFragment(media.ContentType),
+			Title:             media.ContentType,
+			Content:           responseMediaTypeBlock(opID, response, media, exampleSpecJSON, opts, true),
+			InitiallyExpanded: i == 0,
+		})
+	}
+	return items
+}
+
+templ responseMediaTypeBlock(opID string, response core.OperationResponse, media core.OperationMediaType, exampleSpecJSON string, opts PublicDocsOptions, inAccordion bool) {
+	{{ idPrefix := opID+"-response-"+anchorFragment(response.Status) }}
+	{{ cfg := mediaSchemaExampleConfig(idPrefix+"-"+anchorFragment(media.ContentType)+"-example", "Response Example: "+response.Status+" "+media.ContentType, media, exampleSpecJSON) }}
+	{{ blockClass := "manja-response-media-block" }}
+	if inAccordion {
+		{{ blockClass += " grid gap-4" }}
+	} else {
+		{{ blockClass += " border-t border-outline pt-6 pb-5 dark:border-outline-dark" }}
+	}
+	<div class={ blockClass }>
+		<div class="manja-response-panel-layout">
+			<div class="manja-response-panel-main grid gap-4">
+				<div class="flex flex-wrap items-center gap-3">
+					<span class="font-mono text-xs font-semibold text-on-surface-strong dark:text-on-surface-dark-strong">{ media.ContentType }</span>
+					if schemaInline(media.Schema) != "" {
+						<span class="font-mono text-xs text-on-surface-muted dark:text-on-surface-dark-muted">{ schemaInline(media.Schema) }</span>
+					}
 				</div>
+				@schemaProperties(mediaTypeTableID(idPrefix, media), "Response "+response.Status+" schema for "+media.ContentType, media.Schema, opts)
+			</div>
+			if hasResponseExample(media) {
+				<aside class="manja-response-panel-example" aria-label={ "Response " + response.Status + " " + media.ContentType + " example" }>
+					@schemaExample(cfg)
+				</aside>
 			}
 		</div>
-	}
+	</div>
 }
 
 templ paramGroup(idPrefix string, title string, parameters []core.OperationParameter, opts PublicDocsOptions) {
