@@ -326,7 +326,7 @@ func (handler *CatalogHandler) catalogOrganizationNav(activeMount string, rootVi
 			data.Specs = append(data.Specs, templates.CatalogOrganizationItem{
 				ID:    "spec-" + string(directory.CatalogID) + "-" + document.Key,
 				Label: catalogDocumentLabel(document), Description: catalogLabel,
-				Href: documentHref + "/", AvatarSymbol: string(heroicons.Icon16SolidDocumentText),
+				Href: documentHref + "/",
 			})
 		}
 		admission.Release()
