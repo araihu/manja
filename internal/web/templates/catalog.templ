@@ -480,10 +480,6 @@ templ catalogDocument(data CatalogPageData) {
 				@catalogMetric("Operations", fmt.Sprintf("%d", len(data.Document.Operations)))
 				@catalogMetric("Schemas", fmt.Sprintf("%d", len(data.Document.Schemas)))
 			</div>
-			<section class="mt-8 rounded-radius border border-outline p-6 dark:border-outline-dark">
-				<h2 class="font-title text-2xl font-bold text-on-surface-strong dark:text-on-surface-dark-strong">Choose an API section</h2>
-				<p class="mt-2 text-on-surface-muted dark:text-on-surface-dark-muted">Expand one sidebar group to load only its bounded operation or schema links.</p>
-			</section>
 		} else if data.Selected.Operation != nil {
 			@catalogOperationDetail(data)
 		} else if data.Selected.Schema != nil {
