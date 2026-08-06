@@ -15,6 +15,14 @@ func (file RendererFile) Sources() []renderer.CatalogSource {
 	for index, configured := range file.Catalogs {
 		manifest := sourceadapter.CatalogManifest{
 			ID: configured.ID, Title: configured.Title,
+			Branding: domain.DocsBranding{
+				DisplayName: configured.Branding.DisplayName,
+				Logo: domain.DocsBrandingLogo{
+					Src: configured.Branding.Logo.Src, Alt: configured.Branding.Logo.Alt,
+					HomeURL: configured.Branding.Logo.HomeURL,
+				},
+				Favicon: configured.Branding.Favicon,
+			},
 			DefaultDocumentKey: configured.DefaultDocumentKey,
 			ProfileID:          domain.CompatibilityProfileID(configured.ProfileID),
 			Includes:           append([]string(nil), configured.Source.Include...),

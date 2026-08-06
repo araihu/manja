@@ -28,16 +28,32 @@ type RendererFile struct {
 }
 
 type RendererCatalogConfig struct {
-	ID                     string               `yaml:"id"`
-	Mount                  string               `yaml:"mount"`
-	Title                  string               `yaml:"title"`
-	DefaultDocumentKey     string               `yaml:"defaultDocument"`
-	ProfileID              string               `yaml:"profile"`
-	CompatibilityAllowlist string               `yaml:"compatibilityAllowlist"`
-	Source                 RendererSourceConfig `yaml:"source"`
-	SEO                    RendererSEOConfig    `yaml:"seo"`
+	ID                     string                 `yaml:"id"`
+	Mount                  string                 `yaml:"mount"`
+	Title                  string                 `yaml:"title"`
+	Branding               RendererBrandingConfig `yaml:"branding"`
+	DefaultDocumentKey     string                 `yaml:"defaultDocument"`
+	ProfileID              string                 `yaml:"profile"`
+	CompatibilityAllowlist string                 `yaml:"compatibilityAllowlist"`
+	Source                 RendererSourceConfig   `yaml:"source"`
+	SEO                    RendererSEOConfig      `yaml:"seo"`
 
 	compatibilityAllowlist []byte
+}
+
+// RendererBrandingConfig is presentation metadata carried by the catalog
+// source manifest. It stays separate from renderer routing so source-backed
+// snapshots can retain the same brand when they are published elsewhere.
+type RendererBrandingConfig struct {
+	DisplayName string                     `yaml:"displayName"`
+	Logo        RendererBrandingLogoConfig `yaml:"logo"`
+	Favicon     string                     `yaml:"favicon"`
+}
+
+type RendererBrandingLogoConfig struct {
+	Src     string `yaml:"src"`
+	Alt     string `yaml:"alt"`
+	HomeURL string `yaml:"homeUrl"`
 }
 
 type RendererSEOConfig struct {

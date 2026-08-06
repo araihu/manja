@@ -12,6 +12,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/araihu/goshtoso/components/icon/heroicons"
 	"github.com/araihu/manja/application/catalog"
 	"github.com/araihu/manja/application/projection"
 	"github.com/araihu/manja/domain"
@@ -314,7 +315,8 @@ func (handler *CatalogHandler) catalogOrganizationNav(activeMount string, rootVi
 			ID: "catalog-" + string(directory.CatalogID), Label: catalogLabel,
 			Description: fmt.Sprintf("%d specs", len(directory.Documents)), Href: href,
 			AvatarSrc: directory.Branding.LogoSrc, AvatarAlt: directory.Branding.LogoAlt,
-			Active: mount == activeMount,
+			AvatarSymbol: string(heroicons.Icon16SolidCube),
+			Active:       mount == activeMount,
 		})
 		for _, document := range directory.Documents {
 			documentHref, err := catalogURL(mount, "documents", document.Key)
@@ -322,10 +324,9 @@ func (handler *CatalogHandler) catalogOrganizationNav(activeMount string, rootVi
 				continue
 			}
 			data.Specs = append(data.Specs, templates.CatalogOrganizationItem{
-				ID: "spec-" + string(directory.CatalogID) + "-" + document.Key,
+				ID:    "spec-" + string(directory.CatalogID) + "-" + document.Key,
 				Label: catalogDocumentLabel(document), Description: catalogLabel,
-				Href: documentHref + "/", AvatarSrc: directory.Branding.LogoSrc,
-				AvatarAlt: directory.Branding.LogoAlt,
+				Href: documentHref + "/", AvatarSymbol: string(heroicons.Icon16SolidDocumentText),
 			})
 		}
 		admission.Release()

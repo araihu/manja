@@ -3,6 +3,11 @@ catalogs:
   - id: kubernetes
     mount: /
     title: Kubernetes
+    branding:
+      displayName: Kubernetes
+      logo:
+        src: https://raw.githubusercontent.com/kubernetes/kubernetes/a818af18fe29d999d6741234c8cd72709ef2f424/logo/logo.svg
+        alt: Kubernetes
     defaultDocument: core-v1
     profile: kubernetes-v3-v1
     compatibilityAllowlist: default-allowlist.json

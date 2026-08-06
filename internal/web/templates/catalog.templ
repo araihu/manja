@@ -50,6 +50,7 @@ type CatalogOrganizationItem struct {
 	Href        string
 	AvatarSrc   string
 	AvatarAlt   string
+	AvatarSymbol string
 	Initials    string
 	Count       int
 	Active      bool
@@ -328,7 +329,7 @@ templ catalogHeader(data CatalogPageData) {
 			</button>
 			<a href={ templpkg.URL(data.Mount) } class="flex min-w-0 items-center gap-3 font-title text-xl font-bold text-on-surface-strong dark:text-on-surface-dark-strong">
 				if data.Directory.Branding.LogoSrc != "" {
-					<img src={ templpkg.URL(data.Directory.Branding.LogoSrc) } alt={ data.Directory.Branding.LogoAlt } class="size-8 shrink-0 rounded-radius"/>
+					<img src={ templpkg.URL(data.Directory.Branding.LogoSrc) } alt={ data.Directory.Branding.LogoAlt } loading="lazy" decoding="async" class="size-8 shrink-0 rounded-full object-cover"/>
 				}
 				<span class="truncate">{ catalogBrandName(data) }</span>
 			</a>
@@ -394,7 +395,7 @@ templ catalogOrganizationSection(label string, symbol icon.Symbol, items []Catal
 					data-catalog-organization-item={ item.ID }
 					class="group flex min-w-0 items-center gap-3 rounded-radius px-2 py-2 text-sm transition hover:bg-surface-alt focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary dark:hover:bg-surface-dark-alt dark:focus-visible:outline-primary-dark"
 				>
-					@avatar.Avatar(avatar.Config{Src: item.AvatarSrc, Alt: item.AvatarAlt, Name: item.Label, Initials: item.Initials, Size: avatar.SizeSM, Shape: avatar.ShapeSquare, Radius: avatar.RadiusSM, Tone: avatar.TonePrimary, RootClass: "shrink-0"})
+					@catalogOrganizationAvatar(item)
 					<span class="min-w-0 flex-1">
 						<span class="block truncate font-medium text-on-surface-strong group-hover:text-primary dark:text-on-surface-dark-strong dark:group-hover:text-primary-dark">{ item.Label }</span>
 						if item.Description != "" {
@@ -546,6 +547,34 @@ templ catalogOperationDetail(data CatalogPageData) {
 			</section>
 		}
 	</article>
+	}
+}
+
+templ catalogOrganizationAvatar(item CatalogOrganizationItem) {
+	if item.AvatarSrc != "" {
+		<span x-data="{ imageError: false }" class="relative inline-flex size-8 shrink-0 items-center justify-center overflow-hidden rounded-full bg-surface-alt text-xs font-bold tracking-wider text-on-surface-strong dark:bg-surface-dark-alt dark:text-on-surface-dark-strong">
+			<span x-show="imageError" aria-hidden="true" class="absolute inset-0 flex items-center justify-center">
+				if item.AvatarSymbol != "" {
+					@icon.Icon(icon.Config{SpriteURL: heroicons.SpriteURL, Symbol: icon.Symbol(item.AvatarSymbol), Size: icon.SizeSM, Decorative: true})
+				} else {
+					{ item.Initials }
+				}
+			</span>
+			<img
+				src={ templpkg.URL(item.AvatarSrc) }
+				alt={ item.AvatarAlt }
+				loading="lazy"
+				decoding="async"
+				x-init="if ($el.complete && $el.naturalWidth === 0) imageError = true"
+				x-show="!imageError"
+				x-on:error="imageError = true"
+				class="absolute inset-0 size-full object-cover"
+			/>
+		</span>
+	} else if item.AvatarSymbol != "" {
+		@avatar.Avatar(avatar.Config{Icon: icon.Icon(icon.Config{SpriteURL: heroicons.SpriteURL, Symbol: icon.Symbol(item.AvatarSymbol), Size: icon.SizeSM, Decorative: true}), Name: item.Label, Size: avatar.SizeXS, Shape: avatar.ShapeCircle, Tone: avatar.TonePrimary, RootClass: "shrink-0"})
+	} else {
+		@avatar.Avatar(avatar.Config{Name: item.Label, Initials: item.Initials, Size: avatar.SizeXS, Shape: avatar.ShapeCircle, Tone: avatar.TonePrimary, RootClass: "shrink-0"})
 	}
 }
 
