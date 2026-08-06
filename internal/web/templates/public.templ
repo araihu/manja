@@ -666,11 +666,22 @@ templ endpointSection(op core.Operation, servers []core.SpecServer, exampleSpecJ
 					}
 				};
 				document.addEventListener('keydown', this.requestConfigEscapeHandler, true);
+				this.$nextTick(() => {
+					const root = this.$root;
+					if (!root || !root.dataset) return;
+					root.dataset.manjaRequestConfigControlsReady = 'true';
+					root.dispatchEvent(new CustomEvent('manja:request-config-controls-ready'));
+				});
 			},
 			destroy() {
 				if (this.requestConfigMedia && this.requestConfigMediaHandler) this.requestConfigMedia.removeEventListener('change', this.requestConfigMediaHandler);
 				if (this.requestConfigEscapeHandler) document.removeEventListener('keydown', this.requestConfigEscapeHandler, true);
 				if (this.requestConfigFocusTimer) clearTimeout(this.requestConfigFocusTimer);
+				const root = this.$root;
+				if (root && root.dataset) {
+					delete root.dataset.manjaRequestConfigControlsReady;
+					delete root.dataset.manjaRequestConfigEnhanced;
+				}
 			},
 			closeRequestConfig() {
 				this.requestConfigOpen = false;

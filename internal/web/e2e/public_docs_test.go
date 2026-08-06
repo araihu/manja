@@ -451,39 +451,7 @@ func TestRequestComposerRemainsReachableWithoutJavaScript(t *testing.T) {
 	}
 	chdirRepoRoot(t)
 
-	const operationAnchor = "operation-create-widget"
-	idx := core.SpecIndex{
-		Title: "Widget API",
-		Overview: core.SpecOverview{
-			Servers: []core.SpecServer{{URL: "https://api.example.test"}},
-		},
-		Operations: []core.Operation{{
-			ID:      "createWidget",
-			Anchor:  operationAnchor,
-			Method:  "POST",
-			Path:    "/widgets/{widgetID}",
-			Summary: "Create a widget",
-			Parameters: []core.OperationParameter{{
-				Name:     "widgetID",
-				In:       "path",
-				Required: true,
-				Schema:   core.SchemaSummary{Type: "string"},
-			}},
-			Snippets: []core.RequestSnippet{{
-				Label:    "cURL",
-				Language: "shell",
-				Code:     "curl --request POST --url https://api.example.test/widgets/example",
-			}},
-		}},
-		Search: []core.SearchDocument{{
-			ID:      operationAnchor,
-			Title:   "POST /widgets/{widgetID}",
-			Href:    "#" + operationAnchor,
-			Kind:    "Operation",
-			Section: "widgets",
-		}},
-	}
-	server := httptestServer(t, web.NewPublicServer(idx))
+	server := httptestServer(t, web.NewPublicServer(requestComposerFallbackIndex()))
 
 	pw, err := playwright.Run()
 	if err != nil {
@@ -507,51 +475,157 @@ func TestRequestComposerRemainsReachableWithoutJavaScript(t *testing.T) {
 			}
 			defer page.Close()
 
-			if _, err := page.Goto(server + "/?selected=" + operationAnchor + "#" + operationAnchor); err != nil {
+			if _, err := page.Goto(server + "/?selected=" + requestComposerFallbackOperationAnchor + "#" + requestComposerFallbackOperationAnchor); err != nil {
 				t.Fatal(err)
 			}
-			requestConfigRoot := page.Locator("[data-manja-request-config-root]")
-			if enhanced, err := requestConfigRoot.GetAttribute("data-manja-request-config-enhanced"); err != nil {
+			assertStaticRequestComposerFallback(t, page, width, "without JavaScript")
+		})
+	}
+}
+
+func TestRequestComposerRemainsReachableWhenAlpineFailsToLoad(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping e2e test in short mode")
+	}
+	chdirRepoRoot(t)
+
+	server := httptestServer(t, web.NewPublicServer(requestComposerFallbackIndex()))
+
+	pw, err := playwright.Run()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pw.Stop()
+	browser, err := pw.Chromium.Launch()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer browser.Close()
+
+	for _, width := range []int{390, 1440} {
+		t.Run(fmt.Sprintf("%dpx", width), func(t *testing.T) {
+			page, err := browser.NewPage(playwright.BrowserNewPageOptions{
+				Viewport: &playwright.Size{Width: width, Height: 900},
+			})
+			if err != nil {
 				t.Fatal(err)
-			} else if enhanced != "" {
-				t.Fatalf("%dpx request configuration should not be marked enhanced without JavaScript, got %q", width, enhanced)
 			}
-			composer := page.Locator("[data-manja-request-composer]")
-			if got, err := composer.Count(); err != nil {
-				t.Fatal(err)
-			} else if got != 1 {
-				t.Fatalf("%dpx should render one server-side request composer, got %d", width, got)
-			}
-			if visible, err := composer.IsVisible(); err != nil {
-				t.Fatal(err)
-			} else if !visible {
-				t.Fatalf("%dpx server-side request composer should be visible without JavaScript", width)
-			}
-			if err := composer.ScrollIntoViewIfNeeded(); err != nil {
-				t.Fatalf("%dpx server-side request composer should be reachable without JavaScript: %v", width, err)
-			}
-			if bounds, err := composer.BoundingBox(); err != nil {
-				t.Fatal(err)
-			} else if bounds == nil || bounds.Width <= 0 || bounds.Height <= 0 {
-				t.Fatalf("%dpx server-side request composer should have visible bounds, got %#v", width, bounds)
-			}
-			if visible, err := composer.Locator(`[data-manja-request-sample]`).IsVisible(); err != nil {
-				t.Fatal(err)
-			} else if !visible {
-				t.Fatalf("%dpx server-rendered request sample should be visible without JavaScript", width)
-			}
-			for _, selector := range []string{
-				"[data-manja-request-config-trigger]",
-				".manja-request-config-desktop-toggle",
-				".manja-request-config-mobile-close",
+			defer page.Close()
+
+			for _, url := range []string{
+				"https://unpkg.com/alpinejs@3.14.9/dist/cdn.min.js",
+				server + "/assets/js/runtime/alpinejs/3.14.9/alpine.min.js",
 			} {
-				if visible, err := page.Locator(selector).IsVisible(); err != nil {
+				if err := page.Route(url, func(route playwright.Route) {
+					if err := route.Fulfill(playwright.RouteFulfillOptions{
+						Status:      playwright.Int(http.StatusServiceUnavailable),
+						Body:        "simulated Alpine outage",
+						ContentType: playwright.String("text/plain"),
+					}); err != nil {
+						t.Errorf("fail Alpine asset %s: %v", route.Request().URL(), err)
+					}
+				}); err != nil {
 					t.Fatal(err)
-				} else if visible {
-					t.Fatalf("%dpx non-functional request configuration control %q should stay hidden without JavaScript", width, selector)
 				}
 			}
+
+			if _, err := page.Goto(server+"/?selected="+requestComposerFallbackOperationAnchor+"#"+requestComposerFallbackOperationAnchor, playwright.PageGotoOptions{
+				WaitUntil: playwright.WaitUntilStateDomcontentloaded,
+			}); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := page.WaitForFunction(`() => document.querySelector('[data-manja-request-composer]')?.dataset.manjaRequestComposerHydrated === 'true'`, nil); err != nil {
+				t.Fatalf("%dpx request composer should hydrate while Alpine is unavailable: %v", width, err)
+			}
+			if alpine, err := page.Evaluate(`() => typeof window.Alpine`); err != nil {
+				t.Fatal(err)
+			} else if alpine != "undefined" {
+				t.Fatalf("%dpx Alpine should remain unavailable, got %v", width, alpine)
+			}
+
+			assertStaticRequestComposerFallback(t, page, width, "without Alpine")
 		})
+	}
+}
+
+const requestComposerFallbackOperationAnchor = "operation-create-widget"
+
+func requestComposerFallbackIndex() core.SpecIndex {
+	return core.SpecIndex{
+		Title: "Widget API",
+		Overview: core.SpecOverview{
+			Servers: []core.SpecServer{{URL: "https://api.example.test"}},
+		},
+		Operations: []core.Operation{{
+			ID:      "createWidget",
+			Anchor:  requestComposerFallbackOperationAnchor,
+			Method:  "POST",
+			Path:    "/widgets/{widgetID}",
+			Summary: "Create a widget",
+			Parameters: []core.OperationParameter{{
+				Name:     "widgetID",
+				In:       "path",
+				Required: true,
+				Schema:   core.SchemaSummary{Type: "string"},
+			}},
+			Snippets: []core.RequestSnippet{{
+				Label:    "cURL",
+				Language: "shell",
+				Code:     "curl --request POST --url https://api.example.test/widgets/example",
+			}},
+		}},
+		Search: []core.SearchDocument{{
+			ID:      requestComposerFallbackOperationAnchor,
+			Title:   "POST /widgets/{widgetID}",
+			Href:    "#" + requestComposerFallbackOperationAnchor,
+			Kind:    "Operation",
+			Section: "widgets",
+		}},
+	}
+}
+
+func assertStaticRequestComposerFallback(t *testing.T, page playwright.Page, width int, reason string) {
+	t.Helper()
+	requestConfigRoot := page.Locator("[data-manja-request-config-root]")
+	if enhanced, err := requestConfigRoot.GetAttribute("data-manja-request-config-enhanced"); err != nil {
+		t.Fatal(err)
+	} else if enhanced != "" {
+		t.Fatalf("%dpx request configuration should not be marked enhanced %s, got %q", width, reason, enhanced)
+	}
+	composer := page.Locator("[data-manja-request-composer]")
+	if got, err := composer.Count(); err != nil {
+		t.Fatal(err)
+	} else if got != 1 {
+		t.Fatalf("%dpx should render one server-side request composer %s, got %d", width, reason, got)
+	}
+	if visible, err := composer.IsVisible(); err != nil {
+		t.Fatal(err)
+	} else if !visible {
+		t.Fatalf("%dpx server-side request composer should remain visible %s", width, reason)
+	}
+	if err := composer.ScrollIntoViewIfNeeded(); err != nil {
+		t.Fatalf("%dpx server-side request composer should remain viewport reachable %s: %v", width, reason, err)
+	}
+	if bounds, err := composer.BoundingBox(); err != nil {
+		t.Fatal(err)
+	} else if bounds == nil || bounds.Width <= 0 || bounds.Height <= 0 {
+		t.Fatalf("%dpx server-side request composer should have visible bounds %s, got %#v", width, reason, bounds)
+	}
+	if visible, err := composer.Locator(`[data-manja-request-sample]`).IsVisible(); err != nil {
+		t.Fatal(err)
+	} else if !visible {
+		t.Fatalf("%dpx server-rendered request sample should remain visible %s", width, reason)
+	}
+	for _, selector := range []string{
+		"[data-manja-request-config-trigger]",
+		".manja-request-config-desktop-toggle",
+		".manja-request-config-mobile-close",
+	} {
+		if visible, err := page.Locator(selector).IsVisible(); err != nil {
+			t.Fatal(err)
+		} else if visible {
+			t.Fatalf("%dpx non-functional request configuration control %q should stay hidden %s", width, selector, reason)
+		}
 	}
 }
 

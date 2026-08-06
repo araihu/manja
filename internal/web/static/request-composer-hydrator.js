@@ -178,10 +178,27 @@
       });
     }
     render();
-    const requestConfigRoot = root.closest && root.closest('[data-manja-request-config-root]');
-    if (requestConfigRoot && requestConfigRoot.dataset) {
-      requestConfigRoot.dataset.manjaRequestConfigEnhanced = 'true';
+    enhanceRequestConfigWhenReady(root);
+  }
+
+  function enhanceRequestConfigWhenReady(composerRoot) {
+    const requestConfigRoot = composerRoot.closest && composerRoot.closest('[data-manja-request-config-root]');
+    if (!requestConfigRoot || !requestConfigRoot.dataset) {
+      return;
     }
+    const enhance = () => {
+      if (
+        composerRoot.dataset.manjaRequestComposerHydrated === 'true' &&
+        requestConfigRoot.dataset.manjaRequestConfigControlsReady === 'true'
+      ) {
+        requestConfigRoot.dataset.manjaRequestConfigEnhanced = 'true';
+      }
+    };
+    if (requestConfigRoot.dataset.manjaRequestConfigControlsReady === 'true') {
+      enhance();
+      return;
+    }
+    requestConfigRoot.addEventListener('manja:request-config-controls-ready', enhance);
   }
 
   function updateBodyHighlight(bodyInput, bodyHighlight, syntaxHighlighter, logger) {
