@@ -56,6 +56,15 @@ func TestCatalogRouteMatrixForRootAndNestedMounts(t *testing.T) {
 				if test.status == http.StatusOK && response.Header().Get("Cache-Control") != "private, no-cache" {
 					t.Errorf("%s cache = %q", test.path, response.Header().Get("Cache-Control"))
 				}
+				if mount == "/" && test.method == http.MethodGet && test.path == base {
+					body := response.Body.String()
+					if !strings.Contains(body, `id="catalog-organization-navigation"`) || !strings.Contains(body, `data-catalog-organization-item="catalog-kubernetes"`) {
+						t.Errorf("root response missing organization navigation: %q", body)
+					}
+				}
+				if mount == "/" && strings.Contains(test.path, "documents/core-v1") && strings.Contains(response.Body.String(), `id="catalog-organization-navigation"`) {
+					t.Errorf("document response replaced operation sidebar with organization navigation")
+				}
 			}
 			if mount != "/" {
 				response := httptest.NewRecorder()

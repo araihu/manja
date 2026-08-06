@@ -2,6 +2,7 @@ package e2e
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -10,6 +11,139 @@ import (
 	"github.com/araihu/manja/domain"
 	"github.com/araihu/manja/renderer"
 )
+
+func TestCatalogNavigationKeepsLastSpecReachableAndLabelsEachRoute(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping e2e test in short mode")
+	}
+	documents := make([]domain.CatalogDocument, 0, 18)
+	for index := 1; index <= 18; index++ {
+		key := fmt.Sprintf("spec-%02d", index)
+		documents = append(documents, domain.CatalogDocument{
+			Key: key, SourcePath: key + ".json", Format: domain.CatalogFormatJSON,
+			Bytes: []byte(fmt.Sprintf(`{"openapi":"3.0.3","info":{"title":"Spec %02d","version":"v1"},"paths":{}}`, index)),
+		})
+	}
+	server, err := renderer.New(renderer.Config{Version: 1, DataDir: t.TempDir(), Catalogs: []renderer.CatalogConfig{{
+		ID: "kubernetes", Mount: "/", Title: "Kubernetes", ProfileID: domain.CompatibilityProfileStrict,
+	}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = server.Activate(context.Background(), domain.CatalogCandidate{
+		ID: "kubernetes", Title: "Kubernetes", ProfileID: domain.CompatibilityProfileStrict,
+		Revision:  domain.CatalogRevision{Kind: domain.CatalogRevisionFiles, ID: "file-manifest-root-navigation", ManifestDigest: strings.Repeat("d", 64)},
+		Documents: documents,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	baseURL := httptestServer(t, server.Handler())
+
+	pw, err := playwright.Run()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pw.Stop()
+	browser, err := pw.Chromium.Launch()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer browser.Close()
+	page, err := browser.NewPage()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for _, viewport := range []struct {
+		name          string
+		width, height int
+	}{
+		{name: "mobile", width: 390, height: 844},
+		{name: "desktop", width: 1440, height: 900},
+	} {
+		t.Run(viewport.name, func(t *testing.T) {
+			if err := page.SetViewportSize(viewport.width, viewport.height); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := page.Goto(baseURL+"/", playwright.PageGotoOptions{WaitUntil: playwright.WaitUntilStateLoad}); err != nil {
+				t.Fatal(err)
+			}
+			trigger := page.Locator(`[x-ref="catalogNavTrigger"]`)
+			if label, err := trigger.GetAttribute("aria-label"); err != nil || label != "Open Catalogs and specs" {
+				t.Errorf("%s root trigger label = %q, err=%v", viewport.name, label, err)
+			}
+			panel := page.Locator("#catalog-navigation")
+			if label, err := panel.GetAttribute("aria-label"); err != nil || label != "Catalogs and specs" {
+				t.Errorf("%s root panel label = %q, err=%v", viewport.name, label, err)
+			}
+			if viewport.width < 1024 {
+				if err := trigger.Click(); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if err := panel.WaitFor(playwright.LocatorWaitForOptions{State: playwright.WaitForSelectorStateVisible}); err != nil {
+				t.Fatalf("%s root navigation panel: %v", viewport.name, err)
+			}
+			if label, err := panel.Locator(`[x-ref="catalogNavClose"]`).GetAttribute("aria-label"); err != nil || label != "Close Catalogs and specs" {
+				t.Errorf("%s root close label = %q, err=%v", viewport.name, label, err)
+			}
+			if label, err := page.Locator(`[data-catalog-navigation-backdrop]`).GetAttribute("aria-label"); err != nil || label != "Close Catalogs and specs" {
+				t.Errorf("%s root backdrop label = %q, err=%v", viewport.name, label, err)
+			}
+			metricsValue, err := page.Evaluate(`() => {
+				const panel = document.querySelector('#catalog-navigation');
+				const nav = document.querySelector('#catalog-organization-navigation');
+				const last = document.querySelector('[data-catalog-organization-item="spec-kubernetes-spec-18"]');
+				nav.scrollTop = nav.scrollHeight;
+				const panelRect = panel.getBoundingClientRect();
+				const navRect = nav.getBoundingClientRect();
+				const lastRect = last.getBoundingClientRect();
+				return {
+					panelBottom: panelRect.bottom,
+					navBottom: navRect.bottom,
+					navTop: navRect.top,
+					lastBottom: lastRect.bottom,
+					lastTop: lastRect.top,
+					viewportBottom: window.innerHeight,
+				};
+			}`)
+			if err != nil {
+				t.Fatal(err)
+			}
+			metrics, ok := metricsValue.(map[string]any)
+			if !ok {
+				t.Fatalf("%s root navigation metrics = %#v", viewport.name, metricsValue)
+			}
+			visibleBottom := min(metricNumber(t, metrics, "panelBottom"), metricNumber(t, metrics, "viewportBottom"))
+			navBottom := metricNumber(t, metrics, "navBottom")
+			lastBottom := metricNumber(t, metrics, "lastBottom")
+			lastTop := metricNumber(t, metrics, "lastTop")
+			navTop := metricNumber(t, metrics, "navTop")
+			t.Logf("%dx%d root labels=%q/%q/%q nav=%.1f..%.1f last=%.1f..%.1f visible-bottom=%.1f", viewport.width, viewport.height, "Open Catalogs and specs", "Catalogs and specs", "Close Catalogs and specs", navTop, navBottom, lastTop, lastBottom, visibleBottom)
+			if navBottom > visibleBottom+1 {
+				t.Errorf("%s organization navigation bottom %.1f exceeds visible drawer bottom %.1f: %#v", viewport.name, navBottom, visibleBottom, metrics)
+			}
+			if lastBottom > visibleBottom+1 || lastTop < navTop-1 {
+				t.Errorf("%s last spec remains clipped after maximum navigation scroll: %#v", viewport.name, metrics)
+			}
+
+			if _, err := page.Goto(baseURL+"/documents/spec-01/", playwright.PageGotoOptions{WaitUntil: playwright.WaitUntilStateLoad}); err != nil {
+				t.Fatal(err)
+			}
+			if label, err := page.Locator(`[x-ref="catalogNavTrigger"]`).GetAttribute("aria-label"); err != nil || label != "Open API sections" {
+				t.Errorf("%s document trigger label = %q, err=%v", viewport.name, label, err)
+			}
+			if label, err := page.Locator("#catalog-navigation").GetAttribute("aria-label"); err != nil || label != "API sections" {
+				t.Errorf("%s document panel label = %q, err=%v", viewport.name, label, err)
+			}
+			if label, err := page.Locator(`[x-ref="catalogNavClose"]`).GetAttribute("aria-label"); err != nil || label != "Close API sections" {
+				t.Errorf("%s document close label = %q, err=%v", viewport.name, label, err)
+			}
+			t.Logf("%dx%d document labels=%q/%q/%q", viewport.width, viewport.height, "Open API sections", "API sections", "Close API sections")
+		})
+	}
+}
 
 func TestCatalogDocumentComboboxSearchSelectAndClientFirstModal(t *testing.T) {
 	if testing.Short() {
@@ -85,6 +219,30 @@ func TestCatalogDocumentComboboxSearchSelectAndClientFirstModal(t *testing.T) {
 	if err := page.WaitForURL(baseURL + "/documents/apps-v1/"); err != nil {
 		t.Fatalf("selection navigation: %v (url=%s)", err, page.URL())
 	}
+	documentHeader := page.Locator(`main[data-catalog-document] > div.mb-8`)
+	if err := documentHeader.WaitFor(); err != nil {
+		t.Fatalf("catalog document header: %v", err)
+	}
+	if heading, err := documentHeader.Locator("h1").TextContent(); err != nil || strings.TrimSpace(heading) != "Kubernetes Apps" {
+		t.Fatalf("catalog document heading = %q, err=%v", heading, err)
+	}
+	if count, err := documentHeader.Locator("a").Count(); err != nil || count != 1 {
+		t.Fatalf("catalog document header links = %d, err=%v; only source download should remain", count, err)
+	}
+	if count, err := documentHeader.GetByRole("link", playwright.LocatorGetByRoleOptions{Name: "Download source", Exact: playwright.Bool(true)}).Count(); err != nil || count != 1 {
+		t.Fatalf("catalog source download links = %d, err=%v", count, err)
+	}
+	sourcePath := documentHeader.Locator("p.font-mono")
+	if source, err := sourcePath.TextContent(); err != nil || strings.TrimSpace(source) != "apis/apps/v1.json" {
+		t.Fatalf("catalog source path = %q, err=%v", source, err)
+	}
+	if order, err := documentHeader.Evaluate(`element => {
+		const action = element.querySelector('a');
+		const source = element.querySelector('p.font-mono');
+		return Boolean(action && source && (action.compareDocumentPosition(source) & Node.DOCUMENT_POSITION_FOLLOWING));
+	}`, nil); err != nil || order != true {
+		t.Fatalf("catalog source path should follow download action: %v, err=%v", order, err)
+	}
 	if err := page.Route("**/search.json*", func(route playwright.Route) { _ = route.Abort() }); err != nil {
 		t.Fatal(err)
 	}
@@ -99,6 +257,24 @@ func TestCatalogDocumentComboboxSearchSelectAndClientFirstModal(t *testing.T) {
 	modal := page.Locator("#catalog-search-dialog")
 	if err := modal.WaitFor(); err != nil {
 		t.Fatalf("sidebar search opened modal: %v", err)
+	}
+	if err := page.SetViewportSize(884, 790); err != nil {
+		t.Fatal(err)
+	}
+	page.WaitForTimeout(250)
+	searchPanelBox, err := modal.Locator(":scope > div").BoundingBox()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if searchPanelBox == nil {
+		t.Fatal("catalog search panel has no bounding box")
+	}
+	panelCenter := searchPanelBox.Y + searchPanelBox.Height/2
+	if delta := panelCenter - 395; delta < -2 || delta > 2 {
+		t.Fatalf("catalog search panel vertical center = %.1f, want 395±2; box=%#v", panelCenter, searchPanelBox)
+	}
+	if searchPanelBox.Y < 16 || searchPanelBox.Y+searchPanelBox.Height > 774 {
+		t.Fatalf("catalog search panel must retain 16px viewport margins, box=%#v", searchPanelBox)
 	}
 	if expanded, err := searchField.Evaluate(`element => element.getAttribute('aria-expanded')`, nil); err != nil || expanded != "true" {
 		t.Fatalf("sidebar search expanded state = %v, err=%v", expanded, err)
@@ -273,6 +449,36 @@ func TestCatalogDocumentComboboxSearchSelectAndClientFirstModal(t *testing.T) {
 	if _, err := fallbackPage.Goto(baseURL+"/documents/core-v1/", playwright.PageGotoOptions{WaitUntil: playwright.WaitUntilStateLoad}); err != nil {
 		t.Fatal(err)
 	}
+	groupControl := fallbackPage.Locator(`#catalog-sidebar-groups a[data-catalog-group-control]`).First()
+	if err := groupControl.Click(); err != nil {
+		t.Fatalf("open core operation group: %v", err)
+	}
+	coreOperation := fallbackPage.Locator(`[data-catalog-sidebar-operation][title="List core pods"]`)
+	if err := coreOperation.WaitFor(); err != nil {
+		t.Fatalf("core operation link: %v", err)
+	}
+	if err := coreOperation.Click(); err != nil {
+		t.Fatalf("open core operation: %v", err)
+	}
+	if !strings.Contains(fallbackPage.URL(), "/documents/core-v1/?selected=") {
+		t.Fatalf("core operation navigation url = %s", fallbackPage.URL())
+	}
+	operationHeader := fallbackPage.Locator(`[data-catalog-detail="operation"] [data-public-page-header]`)
+	if err := operationHeader.WaitFor(); err != nil {
+		t.Fatalf("catalog operation header: %v", err)
+	}
+	if heading, err := operationHeader.Locator(".manja-doc-title").TextContent(); err != nil || strings.TrimSpace(heading) != "List core pods" {
+		t.Fatalf("catalog operation heading = %q, err=%v", heading, err)
+	}
+	if count, err := operationHeader.Locator(".manja-doc-title + p").Count(); err != nil || count != 0 {
+		t.Fatalf("catalog operation duplicate route subtitle count = %d, err=%v", count, err)
+	}
+	if path, err := fallbackPage.Locator(`[data-catalog-detail="operation"] [aria-label="Endpoint route"] p`).TextContent(); err != nil || strings.TrimSpace(path) != "/api/v1/pods" {
+		t.Fatalf("catalog operation route badge = %q, err=%v", path, err)
+	}
+	if _, err := fallbackPage.Goto(baseURL+"/documents/core-v1/", playwright.PageGotoOptions{WaitUntil: playwright.WaitUntilStateLoad}); err != nil {
+		t.Fatal(err)
+	}
 	if err := fallbackPage.Keyboard().Press("Control+K"); err != nil {
 		t.Fatal(err)
 	}
@@ -302,7 +508,7 @@ func TestCatalogSidebarExpansionPreservesKeyboardFocus(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	spec := []byte(`{"openapi":"3.0.3","info":{"title":"Kubernetes Core","version":"v1"},"paths":{"/api/v1/pods":{"get":{"operationId":"listCorePods","tags":["core_v1"],"summary":"List core pods","responses":{"200":{"description":"OK"}}}}}}`)
+	spec := []byte(`{"openapi":"3.0.3","info":{"title":"Kubernetes Core","version":"v1"},"paths":{"/api/v1/pods":{"get":{"operationId":"listCorePods","tags":["core_v1"],"summary":"List core pods in every namespace with a deliberately long title for overflow verification","responses":{"200":{"description":"OK"}}}},"/api/v1/widgets":{"post":{"operationId":"createCoreWidget","tags":["core_v1"],"summary":"Create widget","responses":{"201":{"description":"Created"}}}},"/api/v1/widgets/replace":{"put":{"operationId":"replaceCoreWidget","tags":["core_v1"],"summary":"Replace widget","responses":{"200":{"description":"OK"}}}},"/api/v1/widgets/status":{"patch":{"operationId":"patchCoreWidget","tags":["core_v1"],"summary":"Patch widget","responses":{"200":{"description":"OK"}}}},"/api/v1/widgets/archive":{"delete":{"operationId":"deleteCoreWidget","tags":["core_v1"],"summary":"Delete widget","responses":{"204":{"description":"Deleted"}}}},"/api/v1/widgets/options":{"options":{"operationId":"optionsCoreWidget","tags":["core_v1"],"summary":"Inspect widget options","responses":{"200":{"description":"OK"}}}}}}`)
 	_, err = server.Activate(context.Background(), domain.CatalogCandidate{
 		ID: "kubernetes", Title: "Kubernetes", ProfileID: domain.CompatibilityProfileStrict,
 		Revision:  domain.CatalogRevision{Kind: domain.CatalogRevisionFiles, ID: "file-manifest-sidebar-focus", ManifestDigest: strings.Repeat("b", 64)},
@@ -349,6 +555,55 @@ func TestCatalogSidebarExpansionPreservesKeyboardFocus(t *testing.T) {
 	}
 	if expanded, err := replacement.GetAttribute("aria-expanded"); err != nil || expanded != "true" {
 		t.Fatalf("expanded group aria-expanded = %q, err=%v", expanded, err)
+	}
+	groupStyle, err := replacement.Evaluate(`element => { const style = getComputedStyle(element); return { borderLeftWidth: style.borderLeftWidth, fontWeight: style.fontWeight, fontSize: style.fontSize }; }`, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	style, ok := groupStyle.(map[string]interface{})
+	if !ok || style["borderLeftWidth"] != "0px" || style["fontWeight"] != "700" || style["fontSize"] != "16px" {
+		t.Fatalf("group hierarchy style = %#v, want no rail, 700 weight, 16px text", groupStyle)
+	}
+	for _, test := range []struct {
+		title string
+		class string
+	}{
+		{title: "List core pods in every namespace with a deliberately long title for overflow verification", class: "catalog-method-get"},
+		{title: "Create widget", class: "catalog-method-post"},
+		{title: "Replace widget", class: "catalog-method-warning"},
+		{title: "Patch widget", class: "catalog-method-warning"},
+		{title: "Delete widget", class: "catalog-method-delete"},
+		{title: "Inspect widget options", class: "catalog-method-neutral"},
+	} {
+		link := page.Locator(`[data-catalog-sidebar-operation][title="` + test.title + `"]`)
+		if err := link.WaitFor(); err != nil {
+			t.Fatalf("sidebar operation %q: %v", test.title, err)
+		}
+		badgeClass, err := link.Locator("sup").GetAttribute("class")
+		if err != nil || !strings.Contains(badgeClass, test.class) {
+			t.Fatalf("sidebar operation %q badge class = %q, want %q; err=%v", test.title, badgeClass, test.class, err)
+		}
+	}
+	longLink := page.Locator(`[data-catalog-sidebar-operation][title="List core pods in every namespace with a deliberately long title for overflow verification"]`)
+	overflow, err := longLink.Locator(".truncate").Evaluate(`element => element.scrollWidth > element.clientWidth`, nil)
+	if err != nil || overflow != true {
+		t.Fatalf("long sidebar label overflow = %v, err=%v", overflow, err)
+	}
+	if err := longLink.Hover(); err != nil {
+		t.Fatal(err)
+	}
+	tooltip := page.Locator(`#catalog-sidebar-overflow-tooltip`)
+	if err := tooltip.WaitFor(); err != nil {
+		t.Fatalf("overflow tooltip: %v", err)
+	}
+	if hidden, err := tooltip.IsHidden(); err != nil || hidden {
+		t.Fatalf("overflow tooltip hidden = %v, err=%v", hidden, err)
+	}
+	if text, err := tooltip.TextContent(); err != nil || text != "List core pods in every namespace with a deliberately long title for overflow verification" {
+		t.Fatalf("overflow tooltip text = %q, err=%v", text, err)
+	}
+	if describedBy, err := longLink.GetAttribute("aria-describedby"); err != nil || describedBy != "catalog-sidebar-overflow-tooltip" {
+		t.Fatalf("overflow tooltip aria-describedby = %q, err=%v", describedBy, err)
 	}
 	focused, err := replacement.Evaluate(`element => document.activeElement === element`, nil)
 	if err != nil || focused != true {

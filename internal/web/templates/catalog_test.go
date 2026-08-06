@@ -3,6 +3,7 @@ package templates
 import (
 	"bytes"
 	"context"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -35,6 +36,103 @@ func TestCatalogHeaderOmitsThemeSelectorButKeepsDarkMode(t *testing.T) {
 	}
 	if !strings.Contains(body, `id="darkModeToggleBtn"`) {
 		t.Fatal("catalog header removed dark mode toggle")
+	}
+}
+
+func TestCatalogOrganizationNavigationRendersCatalogAndSpecSections(t *testing.T) {
+	t.Parallel()
+
+	data := catalogTemplateFixture()
+	data.Mount = "/"
+	data.OrganizationNav = CatalogOrganizationNavData{
+		Visible: true,
+		Catalogs: []CatalogOrganizationItem{{
+			ID: "catalog-kubernetes", Label: "Kubernetes", Description: "2 specs", Href: "/", Count: 2, Active: true,
+		}},
+		Specs: []CatalogOrganizationItem{{
+			ID: "spec-kubernetes-core-v1", Label: "core-v1", Description: "Kubernetes", Href: "/documents/core-v1/",
+		}},
+	}
+	body := renderCatalogTemplate(t, data)
+	for _, want := range []string{
+		`id="catalog-organization-navigation"`,
+		`aria-label="Catalogs and specs"`,
+		`id="catalog-organization-section-catalogs"`,
+		`id="catalog-organization-section-specs"`,
+		`data-catalog-organization-item="catalog-kubernetes"`,
+		`data-catalog-organization-item="spec-kubernetes-core-v1"`,
+		`aria-current="page"`,
+		`Search API...`,
+		`heroicons.svg#hi-16-solid-rectangle-group`,
+		`heroicons.svg#hi-16-solid-document-text`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("organization navigation missing %q", want)
+		}
+	}
+	if strings.Count(body, `data-search-field`) != 1 {
+		t.Fatalf("organization navigation rendered %d search fields, want 1", strings.Count(body, `data-search-field`))
+	}
+}
+
+func TestCatalogShellUsesRouteSpecificNavigationLabels(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name       string
+		data       CatalogPageData
+		label      string
+		otherLabel string
+	}{
+		{
+			name: "catalog root",
+			data: func() CatalogPageData {
+				data := catalogTemplateFixture()
+				data.Mount = "/"
+				data.OrganizationNav = CatalogOrganizationNavData{Visible: true}
+				return data
+			}(),
+			label:      "Catalogs and specs",
+			otherLabel: "API sections",
+		},
+		{
+			name: "document",
+			data: func() CatalogPageData {
+				data := catalogTemplateFixture()
+				document := data.Directory.Documents[0]
+				data.Document = &document
+				return data
+			}(),
+			label:      "API sections",
+			otherLabel: "Catalogs and specs",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			body := renderCatalogTemplate(t, test.data)
+			for _, want := range []string{
+				`aria-label="Open ` + test.label + `"`,
+				`aria-label="Close ` + test.label + `"`,
+			} {
+				if !strings.Contains(body, want) {
+					t.Errorf("%s shell missing %q", test.name, want)
+				}
+			}
+			panel := regexp.MustCompile(`<aside[^>]*id="catalog-navigation"[^>]*>`).FindString(body)
+			if panel == "" || !strings.Contains(panel, `aria-label="`+test.label+`"`) {
+				t.Errorf("%s panel accessible label = %q, want %q", test.name, panel, test.label)
+			}
+			for _, reject := range []string{
+				`aria-label="Open ` + test.otherLabel + `"`,
+				`aria-label="Close ` + test.otherLabel + `"`,
+			} {
+				if strings.Contains(body, reject) {
+					t.Errorf("%s shell retained wrong route label %q", test.name, reject)
+				}
+			}
+		})
 	}
 }
 
@@ -167,6 +265,43 @@ func TestCatalogDocumentRendersOnlyExpandedGroupAndSelectedVisibleAnchor(t *test
 	}
 }
 
+func TestCatalogSidebarUsesMethodHierarchyAndOverflowHooks(t *testing.T) {
+	t.Parallel()
+
+	data := catalogTemplateFixture()
+	document := data.Directory.Documents[0]
+	data.Document = &document
+	data.Groups = []CatalogSidebarGroupData{{
+		ID: "group-core", Label: "core/v1", Href: "/kubernetes/documents/core-v1/?group=group-core", Count: 6,
+		Items: []CatalogSidebarItemData{
+			{ID: "get", Label: "Get resources", Method: "GET", Href: "#get"},
+			{ID: "post", Label: "Create resource", Method: "POST", Href: "#post"},
+			{ID: "delete", Label: "Delete resource", Method: "DELETE", Href: "#delete"},
+			{ID: "put", Label: "Replace resource", Method: "PUT", Href: "#put"},
+			{ID: "patch", Label: "Update resource", Method: "PATCH", Href: "#patch"},
+			{ID: "options", Label: "List a very long operation name that must be discoverable in a tooltip", Method: "OPTIONS", Href: "#options"},
+		},
+	}}
+	body := renderCatalogTemplate(t, data)
+	for _, want := range []string{
+		`data-catalog-group-control="true"`,
+		`data-catalog-sidebar-operation="true"`,
+		`catalog-method-get`,
+		`catalog-method-post`,
+		`catalog-method-delete`,
+		`catalog-method-warning`,
+		`catalog-method-neutral`,
+		`data-catalog-sidebar-overflow-tooltip="true"`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("catalog sidebar hierarchy missing %q", want)
+		}
+	}
+	if got := strings.Count(body, `data-catalog-sidebar-operation="true"`); got != 6 {
+		t.Fatalf("catalog sidebar operation hooks = %d, want 6", got)
+	}
+}
+
 func TestCatalogOperationReusesRichPublicEndpointRenderer(t *testing.T) {
 	t.Parallel()
 
@@ -209,6 +344,54 @@ func TestCatalogOperationReusesRichPublicEndpointRenderer(t *testing.T) {
 	} {
 		if !strings.Contains(body, want) {
 			t.Errorf("rich catalog operation missing %q", want)
+		}
+	}
+}
+
+func TestParameterTableOmitsRedundantLocationAndUsesRequiredMarkers(t *testing.T) {
+	t.Parallel()
+
+	config := parameterTableConfig("operation-test", "Path Parameters", []domain.OperationParameter{
+		{Name: "namespace", In: "path", Required: true, Schema: domain.SchemaSummary{Type: "string"}},
+		{Name: "dryRun", In: "query", Required: false, Schema: domain.SchemaSummary{Type: "string"}},
+	}, nil)
+
+	keys := make([]string, 0, len(config.Columns))
+	for _, column := range config.Columns {
+		keys = append(keys, column.Key)
+	}
+	if got, want := strings.Join(keys, ","), "name,type,description"; got != want {
+		t.Fatalf("parameter columns = %q, want %q", got, want)
+	}
+
+	for _, test := range []struct {
+		name     string
+		required bool
+	}{
+		{name: "namespace", required: true},
+		{name: "dryRun", required: false},
+	} {
+		row := config.Rows[0]
+		if test.name == "dryRun" {
+			row = config.Rows[1]
+		}
+		if _, exists := row.Cells["in"]; exists {
+			t.Fatalf("%s retained redundant location cell", test.name)
+		}
+		cell := row.Cells["name"]
+		if cell.Component == nil {
+			t.Fatalf("%s name cell should render the accessible required marker component", test.name)
+		}
+		if cell.Text != "" {
+			t.Fatalf("%s name cell text = %q, want component-only required marker rendering", test.name, cell.Text)
+		}
+		var rendered bytes.Buffer
+		if err := cell.Component.Render(context.Background(), &rendered); err != nil {
+			t.Fatalf("render %s name cell: %v", test.name, err)
+		}
+		marker := rendered.String()
+		if got := strings.Contains(marker, `aria-label="Required parameter"`); got != test.required {
+			t.Fatalf("%s required marker = %v, want %v: %s", test.name, got, test.required, marker)
 		}
 	}
 }

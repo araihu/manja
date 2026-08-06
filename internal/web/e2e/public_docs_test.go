@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/mxschmitt/playwright-go"
@@ -228,12 +229,15 @@ func TestRequestComposerUpdatesRequestSample(t *testing.T) {
 	if _, err := page.Goto(server + "/?selected=" + operationAnchor + "#" + operationAnchor); err != nil {
 		t.Fatal(err)
 	}
+	if err := page.Locator(".manja-request-config-desktop-toggle").Click(); err != nil {
+		t.Fatal(err)
+	}
 
-	sample := page.Locator("[data-manja-request-sample] .codeblock")
+	sample := page.Locator(".manja-endpoint-examples-rail [data-manja-request-sample] .codeblock")
 	if err := sample.WaitFor(); err != nil {
 		t.Fatal(err)
 	}
-	if err := page.Locator("[data-manja-request-config-panel]").WaitFor(); err != nil {
+	if err := page.Locator(".manja-endpoint-examples-rail [data-manja-request-config-panel]").WaitFor(); err != nil {
 		t.Fatal(err)
 	}
 	themeResult, err := page.Evaluate(`() => {
@@ -286,20 +290,20 @@ func TestRequestComposerUpdatesRequestSample(t *testing.T) {
 	if themeStyles["bodyHighlighted"] != true || bodyTokenCount == 0 {
 		t.Fatalf("request config body should be syntax highlighted, got %#v", themeStyles)
 	}
-	if _, err := page.WaitForFunction(`() => document.querySelector('[data-manja-request-sample] .codeblock')?.textContent.includes("HOSTNAME/api/v3/admin/hooks?page=1")`, nil); err != nil {
+	if _, err := page.WaitForFunction(`() => document.querySelector('.manja-endpoint-examples-rail [data-manja-request-sample] .codeblock')?.textContent.includes("HOSTNAME/api/v3/admin/hooks?page=1")`, nil); err != nil {
 		t.Fatal(err)
 	}
-	if err := page.Locator(`[name="server.hostname"]`).Fill("github.example.test"); err != nil {
+	if err := page.Locator(`.manja-endpoint-examples-rail [name="server.hostname"]`).Fill("github.example.test"); err != nil {
 		t.Fatal(err)
 	}
-	if err := page.Locator(`[name="parameters.page"]`).Fill("2"); err != nil {
+	if err := page.Locator(`.manja-endpoint-examples-rail [name="parameters.page"]`).Fill("2"); err != nil {
 		t.Fatal(err)
 	}
-	if err := page.Locator(`[data-manja-request-body-input]`).Fill("{\n  \"name\": \"changed\"\n}"); err != nil {
+	if err := page.Locator(`.manja-endpoint-examples-rail [data-manja-request-body-input]`).Fill("{\n  \"name\": \"changed\"\n}"); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := page.WaitForFunction(`() => {
-		const text = document.querySelector('[data-manja-request-sample] .codeblock')?.textContent || '';
+		const text = document.querySelector('.manja-endpoint-examples-rail [data-manja-request-sample] .codeblock')?.textContent || '';
 		return text.includes("github.example.test/api/v3/admin/hooks?page=2") &&
 			text.includes("accept: application/vnd.github.superpro-preview+json") &&
 			text.includes("content-type: application/json") &&
@@ -391,7 +395,10 @@ func TestRequestComposerAccordionContentStaysInsideRail(t *testing.T) {
 	if _, err := page.Goto(server + "/?selected=" + operationAnchor + "#" + operationAnchor); err != nil {
 		t.Fatal(err)
 	}
-	if err := page.Locator("[data-manja-request-config-panel]").WaitFor(); err != nil {
+	if err := page.Locator(".manja-request-config-desktop-toggle").Click(); err != nil {
+		t.Fatal(err)
+	}
+	if err := page.Locator(".manja-endpoint-examples-rail [data-manja-request-config-panel]").WaitFor(); err != nil {
 		t.Fatal(err)
 	}
 
@@ -438,6 +445,190 @@ func TestRequestComposerAccordionContentStaysInsideRail(t *testing.T) {
 	}
 }
 
+func TestRequestComposerRemainsReachableWithoutJavaScript(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping e2e test in short mode")
+	}
+	chdirRepoRoot(t)
+
+	server := httptestServer(t, web.NewPublicServer(requestComposerFallbackIndex()))
+
+	pw, err := playwright.Run()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pw.Stop()
+	browser, err := pw.Chromium.Launch()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer browser.Close()
+
+	for _, width := range []int{390, 1440} {
+		t.Run(fmt.Sprintf("%dpx", width), func(t *testing.T) {
+			page, err := browser.NewPage(playwright.BrowserNewPageOptions{
+				JavaScriptEnabled: playwright.Bool(false),
+				Viewport:          &playwright.Size{Width: width, Height: 900},
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer page.Close()
+
+			if _, err := page.Goto(server + "/?selected=" + requestComposerFallbackOperationAnchor + "#" + requestComposerFallbackOperationAnchor); err != nil {
+				t.Fatal(err)
+			}
+			assertStaticRequestComposerFallback(t, page, width, "without JavaScript")
+		})
+	}
+}
+
+func TestRequestComposerRemainsReachableWhenAlpineFailsToLoad(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping e2e test in short mode")
+	}
+	chdirRepoRoot(t)
+
+	server := httptestServer(t, web.NewPublicServer(requestComposerFallbackIndex()))
+
+	pw, err := playwright.Run()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pw.Stop()
+	browser, err := pw.Chromium.Launch()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer browser.Close()
+
+	for _, width := range []int{390, 1440} {
+		t.Run(fmt.Sprintf("%dpx", width), func(t *testing.T) {
+			page, err := browser.NewPage(playwright.BrowserNewPageOptions{
+				Viewport: &playwright.Size{Width: width, Height: 900},
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer page.Close()
+
+			for _, url := range []string{
+				"https://unpkg.com/alpinejs@3.14.9/dist/cdn.min.js",
+				server + "/assets/js/runtime/alpinejs/3.14.9/alpine.min.js",
+			} {
+				if err := page.Route(url, func(route playwright.Route) {
+					if err := route.Fulfill(playwright.RouteFulfillOptions{
+						Status:      playwright.Int(http.StatusServiceUnavailable),
+						Body:        "simulated Alpine outage",
+						ContentType: playwright.String("text/plain"),
+					}); err != nil {
+						t.Errorf("fail Alpine asset %s: %v", route.Request().URL(), err)
+					}
+				}); err != nil {
+					t.Fatal(err)
+				}
+			}
+
+			if _, err := page.Goto(server+"/?selected="+requestComposerFallbackOperationAnchor+"#"+requestComposerFallbackOperationAnchor, playwright.PageGotoOptions{
+				WaitUntil: playwright.WaitUntilStateDomcontentloaded,
+			}); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := page.WaitForFunction(`() => document.querySelector('[data-manja-request-composer]')?.dataset.manjaRequestComposerHydrated === 'true'`, nil); err != nil {
+				t.Fatalf("%dpx request composer should hydrate while Alpine is unavailable: %v", width, err)
+			}
+			if alpine, err := page.Evaluate(`() => typeof window.Alpine`); err != nil {
+				t.Fatal(err)
+			} else if alpine != "undefined" {
+				t.Fatalf("%dpx Alpine should remain unavailable, got %v", width, alpine)
+			}
+
+			assertStaticRequestComposerFallback(t, page, width, "without Alpine")
+		})
+	}
+}
+
+const requestComposerFallbackOperationAnchor = "operation-create-widget"
+
+func requestComposerFallbackIndex() core.SpecIndex {
+	return core.SpecIndex{
+		Title: "Widget API",
+		Overview: core.SpecOverview{
+			Servers: []core.SpecServer{{URL: "https://api.example.test"}},
+		},
+		Operations: []core.Operation{{
+			ID:      "createWidget",
+			Anchor:  requestComposerFallbackOperationAnchor,
+			Method:  "POST",
+			Path:    "/widgets/{widgetID}",
+			Summary: "Create a widget",
+			Parameters: []core.OperationParameter{{
+				Name:     "widgetID",
+				In:       "path",
+				Required: true,
+				Schema:   core.SchemaSummary{Type: "string"},
+			}},
+			Snippets: []core.RequestSnippet{{
+				Label:    "cURL",
+				Language: "shell",
+				Code:     "curl --request POST --url https://api.example.test/widgets/example",
+			}},
+		}},
+		Search: []core.SearchDocument{{
+			ID:      requestComposerFallbackOperationAnchor,
+			Title:   "POST /widgets/{widgetID}",
+			Href:    "#" + requestComposerFallbackOperationAnchor,
+			Kind:    "Operation",
+			Section: "widgets",
+		}},
+	}
+}
+
+func assertStaticRequestComposerFallback(t *testing.T, page playwright.Page, width int, reason string) {
+	t.Helper()
+	requestConfigRoot := page.Locator("[data-manja-request-config-root]")
+	if enhanced, err := requestConfigRoot.GetAttribute("data-manja-request-config-enhanced"); err != nil {
+		t.Fatal(err)
+	} else if enhanced != "" {
+		t.Fatalf("%dpx request configuration should not be marked enhanced %s, got %q", width, reason, enhanced)
+	}
+	composer := page.Locator("[data-manja-request-composer]")
+	if got, err := composer.Count(); err != nil {
+		t.Fatal(err)
+	} else if got != 1 {
+		t.Fatalf("%dpx should render one server-side request composer %s, got %d", width, reason, got)
+	}
+	if visible, err := composer.IsVisible(); err != nil {
+		t.Fatal(err)
+	} else if !visible {
+		t.Fatalf("%dpx server-side request composer should remain visible %s", width, reason)
+	}
+	if err := composer.ScrollIntoViewIfNeeded(); err != nil {
+		t.Fatalf("%dpx server-side request composer should remain viewport reachable %s: %v", width, reason, err)
+	}
+	if bounds, err := composer.BoundingBox(); err != nil {
+		t.Fatal(err)
+	} else if bounds == nil || bounds.Width <= 0 || bounds.Height <= 0 {
+		t.Fatalf("%dpx server-side request composer should have visible bounds %s, got %#v", width, reason, bounds)
+	}
+	if visible, err := composer.Locator(`[data-manja-request-sample]`).IsVisible(); err != nil {
+		t.Fatal(err)
+	} else if !visible {
+		t.Fatalf("%dpx server-rendered request sample should remain visible %s", width, reason)
+	}
+	for _, selector := range []string{
+		"[data-manja-request-config-trigger]",
+		".manja-request-config-desktop-toggle",
+		".manja-request-config-mobile-close",
+	} {
+		if visible, err := page.Locator(selector).IsVisible(); err != nil {
+			t.Fatal(err)
+		} else if visible {
+			t.Fatalf("%dpx non-functional request configuration control %q should stay hidden %s", width, selector, reason)
+		}
+	}
+}
+
 func TestRichOperationDetailsKeepHorizontalOverflowLocal(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping e2e test in short mode")
@@ -468,7 +659,7 @@ func TestRichOperationDetailsKeepHorizontalOverflowLocal(t *testing.T) {
 			}, {
 				Name:        "pretty",
 				In:          "query",
-				Description: "If true, the output is pretty printed.",
+				Description: strings.Repeat("If true, the output is pretty printed and the server may include additional context in the response. ", 4),
 				Schema:      core.SchemaSummary{Type: "string"},
 			}},
 			RequestBody: &core.OperationRequestBody{
@@ -532,21 +723,117 @@ func TestRichOperationDetailsKeepHorizontalOverflowLocal(t *testing.T) {
 	if err := page.Locator("#" + parameterTableID).WaitFor(); err != nil {
 		t.Fatal(err)
 	}
+	parameterPresentation, err := page.Evaluate(`(operationAnchor) => {
+		const read = (location) => {
+			const table = document.getElementById(operationAnchor + '-' + location + '-parameters');
+			return {
+				headers: [...table.querySelectorAll('thead th')].map((cell) => cell.textContent.trim()).join('|'),
+				required: [...table.querySelectorAll('tbody tr')].map((row) => Boolean(row.querySelector('[aria-label="Required parameter"]'))).join('|'),
+			};
+		};
+		return { path: read('path'), query: read('query') };
+	}`, operationAnchor)
+	if err != nil {
+		t.Fatal(err)
+	}
+	presentation, ok := parameterPresentation.(map[string]any)
+	if !ok {
+		t.Fatalf("parameter presentation should be a map, got %#v", parameterPresentation)
+	}
+	for location, wantRequired := range map[string]string{"path": "true", "query": "false|false"} {
+		group, ok := presentation[location].(map[string]any)
+		if !ok {
+			t.Fatalf("%s parameter presentation should be a map, got %#v", location, presentation[location])
+		}
+		if got, want := group["headers"], "Name|Type|Description"; got != want {
+			t.Fatalf("%s parameter headers = %q, want %q", location, got, want)
+		}
+		if got := group["required"]; got != wantRequired {
+			t.Fatalf("%s required values = %q, want %q", location, got, wantRequired)
+		}
+	}
+	if err := page.SetViewportSize(1280, 900); err != nil {
+		t.Fatal(err)
+	}
+	desktopVisibility, err := page.Evaluate(`() => ({
+		enhanced: document.querySelector('[data-manja-request-config-root]')?.getAttribute('data-manja-request-config-enhanced'),
+		rail: getComputedStyle(document.querySelector('.manja-endpoint-examples-rail')).display,
+		trigger: getComputedStyle(document.querySelector('.manja-request-config-trigger-bar')).display,
+		open: document.querySelector('[data-manja-request-config-sheet]')?.getAttribute('data-open'),
+		ariaHidden: document.querySelector('[data-manja-request-config-sheet]')?.getAttribute('aria-hidden'),
+		content: getComputedStyle(document.querySelector('.manja-endpoint-examples-rail-content')).display,
+		contentAriaHidden: document.querySelector('.manja-endpoint-examples-rail-content')?.getAttribute('aria-hidden'),
+		toggle: getComputedStyle(document.querySelector('.manja-request-config-desktop-toggle')).display,
+	})`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, ok := desktopVisibility.(map[string]any); !ok || got["enhanced"] != "true" || got["rail"] != "block" || got["trigger"] != "none" || got["open"] != "false" || got["ariaHidden"] != nil || got["content"] != "none" || got["contentAriaHidden"] != "true" || got["toggle"] == "none" {
+		t.Fatalf("desktop request configuration should remain in the examples rail, got %#v", desktopVisibility)
+	}
+	desktopToggle := page.Locator(".manja-request-config-desktop-toggle")
+	if err := desktopToggle.Click(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := page.WaitForFunction(`() => document.querySelector('[data-manja-request-config-sheet]')?.getAttribute('data-open') === 'true'`, nil); err != nil {
+		t.Fatalf("desktop request configuration should open from its header toggle: %v", err)
+	}
+	desktopOpenState, err := page.Evaluate(`() => {
+		const sheet = document.querySelector('[data-manja-request-config-sheet]');
+		const content = document.querySelector('.manja-endpoint-examples-rail-content');
+		const footer = document.querySelector('footer');
+		const sheetBottom = sheet ? sheet.getBoundingClientRect().bottom + window.scrollY : 0;
+		const footerTop = footer ? footer.getBoundingClientRect().top + window.scrollY : sheetBottom;
+		return {
+			open: sheet?.getAttribute('data-open'),
+			content: getComputedStyle(content).display,
+			expanded: document.querySelector('.manja-request-config-desktop-toggle')?.getAttribute('aria-expanded'),
+			footerGap: footerTop - sheetBottom,
+		};
+	}`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if state, ok := desktopOpenState.(map[string]any); !ok || state["open"] != "true" || state["content"] == "none" || state["expanded"] != "true" || metricNumber(t, state, "footerGap") < 16 {
+		t.Fatalf("desktop request configuration open state should preserve footer breathing room, got %#v", desktopOpenState)
+	}
+	if err := desktopToggle.Click(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := page.WaitForFunction(`() => document.querySelector('[data-manja-request-config-sheet]')?.getAttribute('data-open') === 'false'`, nil); err != nil {
+		t.Fatalf("desktop request configuration should collapse from its header toggle: %v", err)
+	}
 
-	for _, width := range []int{390, 768} {
+	for _, width := range []int{320, 390, 414, 768} {
 		t.Run(fmt.Sprintf("%dpx", width), func(t *testing.T) {
 			if err := page.SetViewportSize(width, 900); err != nil {
 				t.Fatal(err)
 			}
+			trigger := page.Locator("[data-manja-request-config-trigger] button")
+			if err := trigger.WaitFor(); err != nil {
+				t.Fatal(err)
+			}
+			if hidden, err := trigger.IsHidden(); err != nil || hidden {
+				if err != nil {
+					t.Fatal(err)
+				}
+				t.Fatalf("%dpx request configuration trigger should be visible", width)
+			}
 			result, err := page.Evaluate(`(parameterTableID) => {
-			const main = document.querySelector('#main-content');
-			const table = document.getElementById(parameterTableID);
-			const scroller = table?.parentElement;
+		const main = document.querySelector('#main-content');
+			const tableRoot = document.getElementById(parameterTableID);
+			const table = tableRoot?.tagName === 'TABLE' ? tableRoot : tableRoot?.querySelector('table');
+			const tableWrapper = table?.closest('.manja-parameter-table-wrapper') || table?.parentElement;
+			const tableBounds = table?.getBoundingClientRect();
+			const headerDescription = document.querySelector('[data-catalog-detail="operation"] [data-public-page-header] .manja-doc-title + p');
 			return {
 				mainClientWidth: main?.clientWidth || 0,
 				mainScrollWidth: main?.scrollWidth || 0,
-				tableClientWidth: scroller?.clientWidth || 0,
-				tableScrollWidth: scroller?.scrollWidth || 0,
+				headerDescriptionClientWidth: headerDescription?.clientWidth || 0,
+				headerDescriptionScrollWidth: headerDescription?.scrollWidth || 0,
+				tableClientWidth: tableWrapper?.clientWidth || 0,
+				tableScrollWidth: tableWrapper?.scrollWidth || 0,
+				columnRatios: tableBounds ? [...table.querySelectorAll('thead th')].map((cell) => cell.getBoundingClientRect().width / tableBounds.width) : [],
 				hasRequestBody: Boolean(document.querySelector('[aria-label="Request body"]')),
 				hasRequestSample: Boolean(document.querySelector('[data-manja-request-sample]')),
 			};
@@ -565,11 +852,260 @@ func TestRichOperationDetailsKeepHorizontalOverflowLocal(t *testing.T) {
 			if got, want := metricNumber(t, metrics, "mainScrollWidth"), metricNumber(t, metrics, "mainClientWidth"); got != want {
 				t.Fatalf("%dpx main must not own horizontal overflow: scrollWidth=%v clientWidth=%v, metrics %#v", width, got, want, metrics)
 			}
+			if got, want := metricNumber(t, metrics, "headerDescriptionScrollWidth"), metricNumber(t, metrics, "headerDescriptionClientWidth"); got != want {
+				t.Fatalf("%dpx catalog operation header must wrap its route description: scrollWidth=%v clientWidth=%v, metrics %#v", width, got, want, metrics)
+			}
 			if got, max := metricNumber(t, metrics, "tableClientWidth"), metricNumber(t, metrics, "mainClientWidth"); got > max {
 				t.Fatalf("%dpx parameter table container must stay inside main, metrics %#v", width, metrics)
 			}
-			if got, want := metricNumber(t, metrics, "tableScrollWidth"), metricNumber(t, metrics, "tableClientWidth"); got <= want {
-				t.Fatalf("%dpx parameter table should remain fully available through its local scroller, metrics %#v", width, metrics)
+			if got, want := metricNumber(t, metrics, "tableScrollWidth"), metricNumber(t, metrics, "tableClientWidth"); got != want {
+				t.Fatalf("%dpx parameter table should not own horizontal overflow, metrics %#v", width, metrics)
+			}
+			columnRatios, ok := metrics["columnRatios"].([]any)
+			if !ok || len(columnRatios) != 3 {
+				t.Fatalf("%dpx parameter table should expose three columns, metrics %#v", width, metrics)
+			}
+			for index, bounds := range [][2]float64{{0.35, 0.45}, {0.15, 0.25}, {0.35, 0.45}} {
+				got, ok := columnRatios[index].(float64)
+				if !ok {
+					t.Fatalf("%dpx parameter table column %d ratio should be numeric, got %#v", width, index+1, columnRatios[index])
+				}
+				if got < bounds[0] || got > bounds[1] {
+					t.Fatalf("%dpx parameter table column %d ratio = %v, want %.2f..%.2f, metrics %#v", width, index+1, got, bounds[0], bounds[1], metrics)
+				}
+			}
+
+			if width == 390 {
+				descriptionToggle := page.Locator("#" + parameterTableID + " .manja-description-toggle").First()
+				if err := descriptionToggle.WaitFor(); err != nil {
+					t.Fatal(err)
+				}
+				if got, err := descriptionToggle.GetAttribute("aria-expanded"); err != nil || got != "false" {
+					if err != nil {
+						t.Fatal(err)
+					}
+					t.Fatalf("long parameter description should start collapsed, aria-expanded=%q", got)
+				}
+				if got, err := descriptionToggle.TextContent(); err != nil || strings.TrimSpace(got) != "Show more" {
+					if err != nil {
+						t.Fatal(err)
+					}
+					t.Fatalf("collapsed parameter description label = %q, want Show more", got)
+				}
+				if err := descriptionToggle.Click(); err != nil {
+					t.Fatal(err)
+				}
+				if got, err := descriptionToggle.GetAttribute("aria-expanded"); err != nil || got != "true" {
+					if err != nil {
+						t.Fatal(err)
+					}
+					t.Fatalf("long parameter description should expand, aria-expanded=%q", got)
+				}
+				if got, err := descriptionToggle.TextContent(); err != nil || strings.TrimSpace(got) != "Show less" {
+					if err != nil {
+						t.Fatal(err)
+					}
+					t.Fatalf("expanded parameter description label = %q, want Show less", got)
+				}
+				if err := descriptionToggle.Click(); err != nil {
+					t.Fatal(err)
+				}
+				if got, err := descriptionToggle.GetAttribute("aria-expanded"); err != nil || got != "false" {
+					if err != nil {
+						t.Fatal(err)
+					}
+					t.Fatalf("long parameter description should collapse again, aria-expanded=%q", got)
+				}
+				if err := page.Locator("#darkModeToggleBtn").Focus(); err != nil {
+					t.Fatal(err)
+				}
+				if err := page.Keyboard().Press("Escape"); err != nil {
+					t.Fatal(err)
+				}
+				closedEscapeFocus, err := page.Evaluate(`() => document.activeElement?.id`)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if closedEscapeFocus != "darkModeToggleBtn" {
+					t.Fatalf("Escape with a closed request configuration should preserve focus, got %v", closedEscapeFocus)
+				}
+				if err := trigger.Click(); err != nil {
+					t.Fatal(err)
+				}
+				drawerID := operationAnchor + "-request-config"
+				drawer := page.Locator(`[data-manja-request-config-sheet][role="dialog"][aria-labelledby="` + drawerID + `-title"]`)
+				if err := drawer.WaitFor(playwright.LocatorWaitForOptions{State: playwright.WaitForSelectorStateVisible}); err != nil {
+					t.Fatal(err)
+				}
+				if _, err := page.WaitForFunction(`() => {
+					const sheet = document.querySelector('[data-manja-request-config-sheet]');
+					return Boolean(sheet && sheet.contains(document.activeElement));
+				}`, nil); err != nil {
+					t.Fatalf("mobile request configuration should move focus into the sheet: %v", err)
+				}
+				if got, err := drawer.Locator(`[data-manja-request-composer]`).Count(); err != nil {
+					t.Fatal(err)
+				} else if got == 0 {
+					t.Fatalf("mobile request drawer should contain request configuration")
+				}
+				mobileState, err := page.Evaluate(`() => {
+					const ids = [...document.querySelectorAll('[id]')].map((element) => element.id);
+					const duplicates = ids.filter((id, index) => ids.indexOf(id) !== index);
+					const sheet = document.querySelector('[data-manja-request-config-sheet]');
+					const triggerButton = document.querySelector('[data-manja-request-config-trigger] button');
+					const active = document.activeElement;
+					return {
+						duplicateIDs: [...new Set(duplicates)],
+						triggerExpanded: triggerButton?.getAttribute('aria-expanded'),
+						triggerPosition: getComputedStyle(document.querySelector('[data-manja-request-config-trigger]')).position,
+						sheetPosition: getComputedStyle(sheet).position,
+						activeInsideSheet: Boolean(active && sheet?.contains(active)),
+						composerCount: document.querySelectorAll('[data-manja-request-composer]').length,
+						fieldDescriptions: [...(sheet?.querySelectorAll('[data-manja-request-config-fields] [data-field-path]') || [])].map((field) => {
+							const control = field.querySelector('input[id], select[id], textarea[id]');
+							const helper = field.querySelector('p.text-xs:not([data-manja-request-body-status])');
+							return { control: control?.id || '', describedBy: control?.getAttribute('aria-describedby') || '', helper: helper?.id || '' };
+						}),
+					};
+				}`)
+				if err != nil {
+					t.Fatal(err)
+				}
+				state, ok := mobileState.(map[string]any)
+				if !ok {
+					t.Fatalf("mobile request configuration state should be a map, got %#v", mobileState)
+				}
+				if duplicates, ok := state["duplicateIDs"].([]any); !ok || len(duplicates) != 0 {
+					t.Fatalf("mobile request configuration must not duplicate ids, got %#v", state["duplicateIDs"])
+				}
+				if state["triggerExpanded"] != "true" || state["triggerPosition"] != "fixed" || state["sheetPosition"] != "fixed" || state["activeInsideSheet"] != true || numericValue(state["composerCount"]) != 1 {
+					t.Fatalf("mobile request configuration semantics = %#v", state)
+				}
+				fields, fieldsOK := state["fieldDescriptions"].([]any)
+				if !fieldsOK || len(fields) == 0 {
+					t.Fatalf("request configuration should expose field helper descriptions, state=%#v", state)
+				}
+				for _, rawField := range fields {
+					field, ok := rawField.(map[string]any)
+					control, controlOK := field["control"].(string)
+					describedBy, describedByOK := field["describedBy"].(string)
+					helper, helperOK := field["helper"].(string)
+					if !ok || !controlOK || !describedByOK || !helperOK || control == "" || helper == "" || !strings.Contains(describedBy, helper) {
+						t.Fatalf("request configuration field helper association = %#v", rawField)
+					}
+				}
+				configDescriptionToggle := drawer.Locator(`[data-manja-request-config-fields] [data-manja-description-toggle]`).First()
+				if err := configDescriptionToggle.WaitFor(); err != nil {
+					t.Fatal(err)
+				}
+				if got, err := configDescriptionToggle.GetAttribute("aria-expanded"); err != nil || got != "false" {
+					if err != nil {
+						t.Fatal(err)
+					}
+					t.Fatalf("long request configuration description should start collapsed, aria-expanded=%q", got)
+				}
+				if got, err := configDescriptionToggle.TextContent(); err != nil || strings.TrimSpace(got) != "Show more" {
+					if err != nil {
+						t.Fatal(err)
+					}
+					t.Fatalf("collapsed request configuration label = %q, want Show more", got)
+				}
+				if err := configDescriptionToggle.Click(); err != nil {
+					t.Fatal(err)
+				}
+				if got, err := configDescriptionToggle.GetAttribute("aria-expanded"); err != nil || got != "true" {
+					if err != nil {
+						t.Fatal(err)
+					}
+					t.Fatalf("long request configuration description should expand, aria-expanded=%q", got)
+				}
+				if got, err := configDescriptionToggle.TextContent(); err != nil || strings.TrimSpace(got) != "Show less" {
+					if err != nil {
+						t.Fatal(err)
+					}
+					t.Fatalf("expanded request configuration label = %q, want Show less", got)
+				}
+				darkVisuals, err := page.Evaluate(`() => {
+					const root = document.documentElement;
+					const sheet = document.querySelector('[data-manja-request-config-sheet]');
+					const triggerBar = document.querySelector('[data-manja-request-config-trigger]');
+					const wasDark = root.classList.contains('dark');
+					root.classList.remove('dark');
+					const light = {
+						sheet: getComputedStyle(sheet).backgroundColor,
+						bar: getComputedStyle(triggerBar).backgroundColor,
+					};
+					root.classList.add('dark');
+					const dark = {
+						sheet: getComputedStyle(sheet).backgroundColor,
+						bar: getComputedStyle(triggerBar).backgroundColor,
+					};
+					root.classList.toggle('dark', wasDark);
+					return { light, dark };
+				}`)
+				if err != nil {
+					t.Fatal(err)
+				}
+				visuals, ok := darkVisuals.(map[string]any)
+				if !ok {
+					t.Fatalf("mobile request configuration theme styles should be a map, got %#v", darkVisuals)
+				}
+				light, lightOK := visuals["light"].(map[string]any)
+				dark, darkOK := visuals["dark"].(map[string]any)
+				if !lightOK || !darkOK || light["sheet"] == dark["sheet"] || light["bar"] == dark["bar"] {
+					t.Fatalf("mobile request configuration should switch sheet and bar surfaces with dark mode, got %#v", visuals)
+				}
+				if err := page.Keyboard().Press("Escape"); err != nil {
+					t.Fatal(err)
+				}
+				if err := drawer.WaitFor(playwright.LocatorWaitForOptions{State: playwright.WaitForSelectorStateHidden}); err != nil {
+					t.Fatal(err)
+				}
+				focusedTrigger, err := page.Evaluate(`() => document.activeElement === document.querySelector('[data-manja-request-config-trigger] button')`)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if focusedTrigger != true {
+					t.Fatalf("closing request configuration with Escape should restore focus to its trigger")
+				}
+				if err := trigger.Click(); err != nil {
+					t.Fatal(err)
+				}
+				if err := drawer.WaitFor(playwright.LocatorWaitForOptions{State: playwright.WaitForSelectorStateVisible}); err != nil {
+					t.Fatal(err)
+				}
+				if err := page.Mouse().Click(2, 50); err != nil {
+					t.Fatal(err)
+				}
+				if err := drawer.WaitFor(playwright.LocatorWaitForOptions{State: playwright.WaitForSelectorStateHidden}); err != nil {
+					t.Fatal(err)
+				}
+				focusedTrigger, err = page.Evaluate(`() => document.activeElement === document.querySelector('[data-manja-request-config-trigger] button')`)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if focusedTrigger != true {
+					t.Fatalf("clicking the request configuration backdrop should restore focus to its trigger")
+				}
+				if err := trigger.Click(); err != nil {
+					t.Fatal(err)
+				}
+				if err := drawer.WaitFor(playwright.LocatorWaitForOptions{State: playwright.WaitForSelectorStateVisible}); err != nil {
+					t.Fatal(err)
+				}
+				if err := drawer.Locator(`[aria-label="Close request configuration"]`).Click(); err != nil {
+					t.Fatal(err)
+				}
+				if err := drawer.WaitFor(playwright.LocatorWaitForOptions{State: playwright.WaitForSelectorStateHidden}); err != nil {
+					t.Fatal(err)
+				}
+				focusedTrigger, err = page.Evaluate(`() => document.activeElement === document.querySelector('[data-manja-request-config-trigger] button')`)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if focusedTrigger != true {
+					t.Fatalf("clicking the request configuration close button should restore focus to its trigger")
+				}
 			}
 		})
 	}
