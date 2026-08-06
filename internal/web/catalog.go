@@ -233,7 +233,12 @@ func (handler *CatalogHandler) serveOverview(response http.ResponseWriter, reque
 }
 
 func (handler *CatalogHandler) serveDocument(response http.ResponseWriter, request *http.Request, snapshot catalog.RuntimeSnapshot, mount, key string) {
-	data, err := handler.catalogPageData(request.Context(), snapshot, mount, key, request.URL.Query().Get("selected"), request.URL.Query().Get("group"), request.URL.Query().Get("node"), request.URL.Query().Get("page"))
+	query := request.URL.Query()
+	expandedGroups, groupsExplicit := query["group"]
+	data, err := handler.catalogPageDataWithSidebarQuery(
+		request.Context(), snapshot, mount, key, query.Get("selected"), query.Get("node"),
+		catalogSidebarQuery{groups: expandedGroups, explicit: groupsExplicit, pages: query["page"]},
+	)
 	if err != nil {
 		if errors.Is(err, errCatalogPageNotFound) {
 			http.NotFound(response, request)

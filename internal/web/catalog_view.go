@@ -23,10 +23,33 @@ var errCatalogPageNotFound = errors.New("catalog page not found")
 
 const catalogSidebarPageSize = 100
 
+type catalogSidebarQuery struct {
+	groups   []string
+	explicit bool
+	pages    []string
+}
+
 func (handler *CatalogHandler) catalogPageData(
 	ctx context.Context,
 	snapshot catalog.RuntimeSnapshot,
 	mount, documentKey, selectedID, expandedGroup, selectedNode, groupPage string,
+) (templates.CatalogPageData, error) {
+	sidebarQuery := catalogSidebarQuery{}
+	if expandedGroup != "" {
+		sidebarQuery.explicit = true
+		sidebarQuery.groups = []string{expandedGroup}
+	}
+	if groupPage != "" {
+		sidebarQuery.pages = []string{groupPage}
+	}
+	return handler.catalogPageDataWithSidebarQuery(ctx, snapshot, mount, documentKey, selectedID, selectedNode, sidebarQuery)
+}
+
+func (handler *CatalogHandler) catalogPageDataWithSidebarQuery(
+	ctx context.Context,
+	snapshot catalog.RuntimeSnapshot,
+	mount, documentKey, selectedID, selectedNode string,
+	sidebarQuery catalogSidebarQuery,
 ) (templates.CatalogPageData, error) {
 	data := templates.CatalogPageData{
 		Mount: mount, SnapshotID: snapshot.ID, Directory: snapshot.Directory,
@@ -105,32 +128,59 @@ func (handler *CatalogHandler) catalogPageData(
 			return templates.CatalogPageData{}, errCatalogPageNotFound
 		}
 	}
-	if expandedGroup == "" {
-		expandedGroup = selectedGroup
+	validGroupIDs := make(map[string]struct{}, len(operationGroups)+1)
+	for _, grouped := range operationGroups {
+		validGroupIDs[catalogGroupID("operations-"+grouped.label)] = struct{}{}
 	}
-	requestedPage := 1
-	if groupPage != "" {
-		parsed, err := strconv.Atoi(groupPage)
-		if err != nil || parsed < 1 {
-			return templates.CatalogPageData{}, errCatalogPageNotFound
+	if len(document.Schemas) > 0 {
+		validGroupIDs[catalogGroupID("schemas")] = struct{}{}
+	}
+	openGroups := make(map[string]struct{}, len(sidebarQuery.groups)+1)
+	if sidebarQuery.explicit {
+		for _, groupID := range sidebarQuery.groups {
+			if _, valid := validGroupIDs[groupID]; valid {
+				openGroups[groupID] = struct{}{}
+			}
 		}
-		requestedPage = parsed
+	} else if selectedGroup != "" {
+		openGroups[selectedGroup] = struct{}{}
+	}
+	groupPages, err := catalogSidebarPages(sidebarQuery.pages, openGroups)
+	if err != nil {
+		return templates.CatalogPageData{}, errCatalogPageNotFound
+	}
+	if _, selectedGroupOpen := openGroups[selectedGroup]; selectedGroupOpen && selectedDetailID != "" {
+		for _, grouped := range operationGroups {
+			if catalogGroupID("operations-"+grouped.label) != selectedGroup {
+				continue
+			}
+			for index, operation := range grouped.operations {
+				if operation.DetailID == selectedDetailID {
+					catalogSetSidebarPage(groupPages, selectedGroup, index/catalogSidebarPageSize+1)
+					break
+				}
+			}
+		}
+		if selectedGroup == catalogGroupID("schemas") {
+			for index, schema := range document.Schemas {
+				if schema.DetailID == selectedDetailID {
+					catalogSetSidebarPage(groupPages, selectedGroup, index/catalogSidebarPageSize+1)
+					break
+				}
+			}
+		}
 	}
 	for _, grouped := range operationGroups {
 		groupID := catalogGroupID("operations-" + grouped.label)
+		_, groupOpen := openGroups[groupID]
 		group := templates.CatalogSidebarGroupData{
-			ID: groupID, Label: grouped.label, Count: len(grouped.operations), Open: groupID == expandedGroup,
-			Href: documentHref + "?group=" + url.QueryEscape(groupID),
+			ID: groupID, Label: grouped.label, Count: len(grouped.operations), Open: groupOpen,
+			Href: catalogSidebarToggleHref(documentHref, selectedID, selectedNode, openGroups, groupPages, groupID),
 		}
 		if group.Open {
-			page := requestedPage
-			if selectedGroup == groupID && selectedDetailID != "" {
-				for index, operation := range grouped.operations {
-					if operation.DetailID == selectedDetailID {
-						page = index/catalogSidebarPageSize + 1
-						break
-					}
-				}
+			page := groupPages[groupID]
+			if page == 0 {
+				page = 1
 			}
 			start, end, ok := catalogSidebarPageWindow(len(grouped.operations), page)
 			if !ok {
@@ -138,7 +188,7 @@ func (handler *CatalogHandler) catalogPageData(
 			}
 			group.Items = make([]templates.CatalogSidebarItemData, 0, end-start+2)
 			if start > 0 {
-				group.Items = append(group.Items, templates.CatalogSidebarItemData{ID: groupID + "-previous", Label: "Previous 100 operations", Href: catalogGroupPageHref(documentHref, groupID, page-1)})
+				group.Items = append(group.Items, templates.CatalogSidebarItemData{ID: groupID + "-previous", Label: "Previous 100 operations", Href: catalogGroupPageHref(documentHref, selectedID, selectedNode, openGroups, groupPages, groupID, page-1)})
 			}
 			for _, operation := range grouped.operations[start:end] {
 				href := catalogDetailHref(documentHref, operation.DetailID)
@@ -148,26 +198,22 @@ func (handler *CatalogHandler) catalogPageData(
 				})
 			}
 			if end < len(grouped.operations) {
-				group.Items = append(group.Items, templates.CatalogSidebarItemData{ID: groupID + "-next", Label: "Next 100 operations", Href: catalogGroupPageHref(documentHref, groupID, page+1)})
+				group.Items = append(group.Items, templates.CatalogSidebarItemData{ID: groupID + "-next", Label: "Next 100 operations", Href: catalogGroupPageHref(documentHref, selectedID, selectedNode, openGroups, groupPages, groupID, page+1)})
 			}
 		}
 		data.Groups = append(data.Groups, group)
 	}
 	if len(document.Schemas) > 0 {
 		groupID := catalogGroupID("schemas")
+		_, groupOpen := openGroups[groupID]
 		group := templates.CatalogSidebarGroupData{
-			ID: groupID, Label: "Schemas", Count: len(document.Schemas), Open: groupID == expandedGroup,
-			Href: documentHref + "?group=" + url.QueryEscape(groupID),
+			ID: groupID, Label: "Schemas", Count: len(document.Schemas), Open: groupOpen,
+			Href: catalogSidebarToggleHref(documentHref, selectedID, selectedNode, openGroups, groupPages, groupID),
 		}
 		if group.Open {
-			page := requestedPage
-			if selectedGroup == groupID && selectedDetailID != "" {
-				for index, schema := range document.Schemas {
-					if schema.DetailID == selectedDetailID {
-						page = index/catalogSidebarPageSize + 1
-						break
-					}
-				}
+			page := groupPages[groupID]
+			if page == 0 {
+				page = 1
 			}
 			start, end, ok := catalogSidebarPageWindow(len(document.Schemas), page)
 			if !ok {
@@ -175,7 +221,7 @@ func (handler *CatalogHandler) catalogPageData(
 			}
 			group.Items = make([]templates.CatalogSidebarItemData, 0, end-start+2)
 			if start > 0 {
-				group.Items = append(group.Items, templates.CatalogSidebarItemData{ID: groupID + "-previous", Label: "Previous 100 schemas", Href: catalogGroupPageHref(documentHref, groupID, page-1)})
+				group.Items = append(group.Items, templates.CatalogSidebarItemData{ID: groupID + "-previous", Label: "Previous 100 schemas", Href: catalogGroupPageHref(documentHref, selectedID, selectedNode, openGroups, groupPages, groupID, page-1)})
 			}
 			for _, schema := range document.Schemas[start:end] {
 				group.Items = append(group.Items, templates.CatalogSidebarItemData{
@@ -184,7 +230,7 @@ func (handler *CatalogHandler) catalogPageData(
 				})
 			}
 			if end < len(document.Schemas) {
-				group.Items = append(group.Items, templates.CatalogSidebarItemData{ID: groupID + "-next", Label: "Next 100 schemas", Href: catalogGroupPageHref(documentHref, groupID, page+1)})
+				group.Items = append(group.Items, templates.CatalogSidebarItemData{ID: groupID + "-next", Label: "Next 100 schemas", Href: catalogGroupPageHref(documentHref, selectedID, selectedNode, openGroups, groupPages, groupID, page+1)})
 			}
 		}
 		data.Groups = append(data.Groups, group)
@@ -303,8 +349,128 @@ func catalogSidebarPageWindow(total, page int) (int, int, bool) {
 	return start, end, true
 }
 
-func catalogGroupPageHref(documentHref, groupID string, page int) string {
-	return documentHref + "?group=" + url.QueryEscape(groupID) + "&page=" + strconv.Itoa(page)
+func catalogSidebarPages(rawPages []string, openGroups map[string]struct{}) (map[string]int, error) {
+	pages := make(map[string]int, len(rawPages))
+	for _, raw := range rawPages {
+		if raw == "" {
+			continue
+		}
+		groupID, pageValue, scoped := strings.Cut(raw, ":")
+		if !scoped {
+			pageValue = raw
+			if len(openGroups) > 1 {
+				return nil, fmt.Errorf("catalog sidebar page %q is ambiguous", raw)
+			}
+			for openGroupID := range openGroups {
+				groupID = openGroupID
+			}
+		} else if groupID == "" {
+			return nil, fmt.Errorf("catalog sidebar page %q has no group", raw)
+		}
+		page, err := strconv.Atoi(pageValue)
+		if err != nil || page < 1 {
+			return nil, fmt.Errorf("catalog sidebar page %q is invalid", raw)
+		}
+		if _, open := openGroups[groupID]; open {
+			catalogSetSidebarPage(pages, groupID, page)
+		}
+	}
+	return pages, nil
+}
+
+func catalogSetSidebarPage(pages map[string]int, groupID string, page int) {
+	if page <= 1 {
+		delete(pages, groupID)
+		return
+	}
+	pages[groupID] = page
+}
+
+func catalogSidebarToggleHref(
+	documentHref, selectedID, selectedNode string,
+	openGroups map[string]struct{}, pages map[string]int,
+	groupID string,
+) string {
+	toggledGroups := cloneCatalogOpenGroups(openGroups)
+	toggledPages := cloneCatalogSidebarPages(pages)
+	if _, open := toggledGroups[groupID]; open {
+		delete(toggledGroups, groupID)
+		delete(toggledPages, groupID)
+	} else {
+		toggledGroups[groupID] = struct{}{}
+	}
+	return catalogSidebarHref(documentHref, selectedID, selectedNode, toggledGroups, toggledPages)
+}
+
+func catalogGroupPageHref(
+	documentHref, selectedID, selectedNode string,
+	openGroups map[string]struct{}, pages map[string]int,
+	groupID string, page int,
+) string {
+	nextPages := cloneCatalogSidebarPages(pages)
+	catalogSetSidebarPage(nextPages, groupID, page)
+	return catalogSidebarHref(documentHref, selectedID, selectedNode, openGroups, nextPages)
+}
+
+func catalogSidebarHref(
+	documentHref, selectedID, selectedNode string,
+	openGroups map[string]struct{}, pages map[string]int,
+) string {
+	query := url.Values{}
+	groupIDs := make([]string, 0, len(openGroups))
+	for groupID := range openGroups {
+		groupIDs = append(groupIDs, groupID)
+	}
+	sort.Strings(groupIDs)
+	if len(groupIDs) == 0 {
+		query.Add("group", "")
+	} else {
+		for _, groupID := range groupIDs {
+			query.Add("group", groupID)
+		}
+	}
+	pageGroupIDs := make([]string, 0, len(pages))
+	for groupID, page := range pages {
+		if page > 1 {
+			if _, open := openGroups[groupID]; open {
+				pageGroupIDs = append(pageGroupIDs, groupID)
+			}
+		}
+	}
+	sort.Strings(pageGroupIDs)
+	for _, groupID := range pageGroupIDs {
+		query.Add("page", groupID+":"+strconv.Itoa(pages[groupID]))
+	}
+	if selectedNode != "" {
+		query.Set("node", selectedNode)
+	}
+	if selectedID != "" {
+		query.Set("selected", selectedID)
+	}
+	href := documentHref + "?" + query.Encode()
+	if selectedNode != "" {
+		return href + "#schema-node-panel"
+	}
+	if selectedID != "" {
+		return href + "#" + url.PathEscape(selectedID)
+	}
+	return href
+}
+
+func cloneCatalogOpenGroups(groups map[string]struct{}) map[string]struct{} {
+	cloned := make(map[string]struct{}, len(groups)+1)
+	for groupID := range groups {
+		cloned[groupID] = struct{}{}
+	}
+	return cloned
+}
+
+func cloneCatalogSidebarPages(pages map[string]int) map[string]int {
+	cloned := make(map[string]int, len(pages)+1)
+	for groupID, page := range pages {
+		cloned[groupID] = page
+	}
+	return cloned
 }
 
 func catalogOperationServers(servers []projection.Server) []domain.SpecServer {
