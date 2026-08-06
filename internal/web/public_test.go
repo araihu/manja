@@ -1762,6 +1762,7 @@ func TestPublicDocsRenderEndpointDetails(t *testing.T) {
 		`Update Todo`,
 		`/todos/{todoId}`,
 		`aria-label="Endpoint route"`,
+		`data-manja-request-config-root`,
 		`<div class="manja-endpoint-shell-layout">`,
 		`<div class="manja-endpoint-detail-layout">`,
 		`<section class="grid gap-8" aria-label="Request">`,
@@ -2319,22 +2320,30 @@ func TestPublicDocsEndpointShellCSSUsesResponsiveExamplesRail(t *testing.T) {
 	if !strings.Contains(railRule, `align-self: stretch;`) {
 		t.Fatalf("endpoint examples rail should stretch to the endpoint row so sticky examples keep working:\n%s", railRule)
 	}
-	if !strings.Contains(railRule, `display: none;`) {
-		t.Fatalf("endpoint examples rail should stay hidden below the desktop breakpoint:\n%s", railRule)
+	if !strings.Contains(railRule, `display: block;`) {
+		t.Fatalf("server-rendered endpoint examples rail should remain visible before enhancement:\n%s", railRule)
 	}
-	if !regexp.MustCompile(`(?s)@media\s*\(min-width:\s*1280px\).*?\.manja-endpoint-examples-rail\s*\{[^}]*display:\s*block;`).Match(css) {
-		t.Fatalf("endpoint examples rail should become visible at the desktop breakpoint")
+	chromeRule := regexp.MustCompile(`(?s)\.manja-request-config-backdrop,\s*\.manja-request-config-trigger-bar\s*\{[^}]*\}`).FindString(string(css))
+	if chromeRule == "" || !strings.Contains(chromeRule, `display: none;`) {
+		t.Fatalf("request configuration controls should stay hidden before enhancement:\n%s", chromeRule)
 	}
-	triggerRule := regexp.MustCompile(`(?s)\.manja-request-config-trigger-bar\s*\{[^}]*\}`).FindString(string(css))
+	triggerRule := regexp.MustCompile(`(?s):where\(\[data-manja-request-config-enhanced="true"\]\)\s*\.manja-request-config-trigger-bar\s*\{[^}]*\}`).FindString(string(css))
 	if triggerRule == "" || !strings.Contains(triggerRule, `position: fixed;`) || !strings.Contains(triggerRule, `bottom: 0;`) {
-		t.Fatalf("mobile request configuration should use a fixed bottom trigger bar:\n%s", triggerRule)
+		t.Fatalf("enhanced mobile request configuration should use a fixed bottom trigger bar:\n%s", triggerRule)
 	}
-	if !regexp.MustCompile(`(?s)@media\s*\(min-width:\s*1280px\).*?\.manja-request-config-backdrop,\s*\.manja-request-config-trigger-bar\s*\{[^}]*display:\s*none;`).Match(css) {
+	if !regexp.MustCompile(`(?s)@media\s*\(min-width:\s*1280px\).*?:where\(\[data-manja-request-config-enhanced="true"\]\)\s*\.manja-request-config-backdrop,\s*:where\(\[data-manja-request-config-enhanced="true"\]\)\s*\.manja-request-config-trigger-bar\s*\{[^}]*display:\s*none;`).Match(css) {
 		t.Fatalf("mobile request configuration chrome should hide at the desktop breakpoint")
 	}
 	sheetRule := regexp.MustCompile(`(?s)\.manja-request-config-sheet\s*\{[^}]*\}`).FindString(string(css))
-	if sheetRule == "" || !strings.Contains(sheetRule, `position: fixed;`) || !strings.Contains(sheetRule, `transform: translateY(100%);`) {
-		t.Fatalf("mobile request configuration should be a hidden bottom sheet by default:\n%s", sheetRule)
+	if sheetRule == "" || !strings.Contains(sheetRule, `position: static;`) || !strings.Contains(sheetRule, `visibility: visible;`) {
+		t.Fatalf("server-rendered request configuration should stay inline and visible before enhancement:\n%s", sheetRule)
+	}
+	enhancedSheetRule := regexp.MustCompile(`(?s):where\(\[data-manja-request-config-enhanced="true"\]\)\s*\.manja-request-config-sheet\s*\{[^}]*\}`).FindString(string(css))
+	if enhancedSheetRule == "" || !strings.Contains(enhancedSheetRule, `position: fixed;`) || !strings.Contains(enhancedSheetRule, `transform: translateY(100%);`) {
+		t.Fatalf("enhanced mobile request configuration should become a hidden bottom sheet:\n%s", enhancedSheetRule)
+	}
+	if !regexp.MustCompile(`(?s)@media\s*\(min-width:\s*1280px\).*?:where\(\[data-manja-request-config-enhanced="true"\]\)\s*\.manja-request-config-sheet\[data-open="false"\]\s*\.manja-endpoint-examples-rail-content\s*\{[^}]*display:\s*none;`).Match(css) {
+		t.Fatalf("enhanced desktop request configuration should support collapse")
 	}
 	railContentRule := regexp.MustCompile(`(?s)\.manja-endpoint-examples-rail-content\s*>\s*\*[^}]*\}`).FindString(string(css))
 	if railContentRule == "" {

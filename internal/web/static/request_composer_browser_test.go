@@ -41,3 +41,46 @@ func TestRequestComposerBundleBuildsCurlAndExposesLanguages(t *testing.T) {
 		t.Fatal("bundle globals unavailable")
 	}
 }
+
+func TestRequestComposerBundleMarksOnlySuccessfullyHydratedShellsEnhanced(t *testing.T) {
+	page := browserPage(t)
+	if err := page.SetContent(`
+		<section id="valid-shell" data-manja-request-config-root>
+			<div data-manja-request-composer>
+				<div data-manja-request-sample><div class="codeblock"><code>curl</code></div></div>
+				<script id="valid-request-composer-payload" type="application/json">{"method":"GET","urlTemplate":"https://api.example.test/widgets"}</script>
+			</div>
+		</section>
+		<section id="invalid-shell" data-manja-request-config-root>
+			<div data-manja-request-composer>
+				<div data-manja-request-sample><div class="codeblock"><code>curl</code></div></div>
+				<script id="invalid-request-composer-payload" type="application/json">{</script>
+			</div>
+		</section>
+	`); err != nil {
+		t.Fatal(err)
+	}
+	path, err := filepath.Abs("request-composer.js")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := page.AddScriptTag(playwright.PageAddScriptTagOptions{Path: playwright.String(path)}); err != nil {
+		t.Fatal(err)
+	}
+	enhancementState, err := page.Evaluate(`() => ({
+		validEnhanced: document.getElementById('valid-shell')?.dataset.manjaRequestConfigEnhanced,
+		validHydrated: document.querySelector('#valid-shell [data-manja-request-composer]')?.dataset.manjaRequestComposerHydrated,
+		invalidEnhanced: document.getElementById('invalid-shell')?.dataset.manjaRequestConfigEnhanced || '',
+		invalidHydrated: document.querySelector('#invalid-shell [data-manja-request-composer]')?.dataset.manjaRequestComposerHydrated || '',
+	})`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	state, ok := enhancementState.(map[string]any)
+	if !ok {
+		t.Fatalf("request composer enhancement state should be a map, got %#v", enhancementState)
+	}
+	if state["validEnhanced"] != "true" || state["validHydrated"] != "true" || state["invalidEnhanced"] != "" || state["invalidHydrated"] != "" {
+		t.Fatalf("request composer should enhance only after successful hydration, got %#v", state)
+	}
+}

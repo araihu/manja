@@ -621,12 +621,13 @@ func renderedMarkdown(renderer port.MarkdownRenderer, input string) templpkg.Com
 	})
 }
 
-// The request rail keeps one server-rendered body and changes presentation at
-// the mobile breakpoint. Goshtoso's edge-complete drawer is intentionally not
-// mounted as a second copy here: its fixed panel has no static-desktop mode,
-// and duplicating a large request/example tree would make every operation pay
-// twice in the browser. This small adapter reuses Goshtoso semantic tokens and
-// its Alpine focus-trap contract while preserving one body and a static rail.
+// The request rail keeps one server-rendered body visible until its composer
+// hydrates, then changes presentation at the mobile breakpoint. Goshtoso's
+// edge-complete drawer is intentionally not mounted as a second copy here: its
+// fixed panel has no static-desktop mode, and duplicating a large request/example
+// tree would make every operation pay twice in the browser. This small adapter
+// reuses Goshtoso semantic tokens and its Alpine focus-trap contract while
+// preserving one body and a static rail.
 templ endpointSection(op core.Operation, servers []core.SpecServer, exampleSpecJSON string, opts PublicDocsOptions) {
 	{{ opID := operationAnchor(op) }}
 	{{ requestConfigID := opID + "-request-config" }}
@@ -640,6 +641,7 @@ templ endpointSection(op core.Operation, servers []core.SpecServer, exampleSpecJ
 	<section
 		id={ opID }
 		class={ sectionClass }
+		data-manja-request-config-root
 		x-data="{
 			requestConfigOpen: false,
 			requestConfigDesktop: window.matchMedia('(min-width: 1280px)').matches,

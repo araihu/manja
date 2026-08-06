@@ -248,6 +248,10 @@ punycode/punycode.js:
       });
     }
     render();
+    const requestConfigRoot = root.closest && root.closest('[data-manja-request-config-root]');
+    if (requestConfigRoot && requestConfigRoot.dataset) {
+      requestConfigRoot.dataset.manjaRequestConfigEnhanced = 'true';
+    }
   }
 
   function updateBodyHighlight(bodyInput, bodyHighlight, syntaxHighlighter, logger) {

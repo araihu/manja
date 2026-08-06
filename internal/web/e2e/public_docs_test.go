@@ -445,6 +445,116 @@ func TestRequestComposerAccordionContentStaysInsideRail(t *testing.T) {
 	}
 }
 
+func TestRequestComposerRemainsReachableWithoutJavaScript(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping e2e test in short mode")
+	}
+	chdirRepoRoot(t)
+
+	const operationAnchor = "operation-create-widget"
+	idx := core.SpecIndex{
+		Title: "Widget API",
+		Overview: core.SpecOverview{
+			Servers: []core.SpecServer{{URL: "https://api.example.test"}},
+		},
+		Operations: []core.Operation{{
+			ID:      "createWidget",
+			Anchor:  operationAnchor,
+			Method:  "POST",
+			Path:    "/widgets/{widgetID}",
+			Summary: "Create a widget",
+			Parameters: []core.OperationParameter{{
+				Name:     "widgetID",
+				In:       "path",
+				Required: true,
+				Schema:   core.SchemaSummary{Type: "string"},
+			}},
+			Snippets: []core.RequestSnippet{{
+				Label:    "cURL",
+				Language: "shell",
+				Code:     "curl --request POST --url https://api.example.test/widgets/example",
+			}},
+		}},
+		Search: []core.SearchDocument{{
+			ID:      operationAnchor,
+			Title:   "POST /widgets/{widgetID}",
+			Href:    "#" + operationAnchor,
+			Kind:    "Operation",
+			Section: "widgets",
+		}},
+	}
+	server := httptestServer(t, web.NewPublicServer(idx))
+
+	pw, err := playwright.Run()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pw.Stop()
+	browser, err := pw.Chromium.Launch()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer browser.Close()
+
+	for _, width := range []int{390, 1440} {
+		t.Run(fmt.Sprintf("%dpx", width), func(t *testing.T) {
+			page, err := browser.NewPage(playwright.BrowserNewPageOptions{
+				JavaScriptEnabled: playwright.Bool(false),
+				Viewport:          &playwright.Size{Width: width, Height: 900},
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer page.Close()
+
+			if _, err := page.Goto(server + "/?selected=" + operationAnchor + "#" + operationAnchor); err != nil {
+				t.Fatal(err)
+			}
+			requestConfigRoot := page.Locator("[data-manja-request-config-root]")
+			if enhanced, err := requestConfigRoot.GetAttribute("data-manja-request-config-enhanced"); err != nil {
+				t.Fatal(err)
+			} else if enhanced != "" {
+				t.Fatalf("%dpx request configuration should not be marked enhanced without JavaScript, got %q", width, enhanced)
+			}
+			composer := page.Locator("[data-manja-request-composer]")
+			if got, err := composer.Count(); err != nil {
+				t.Fatal(err)
+			} else if got != 1 {
+				t.Fatalf("%dpx should render one server-side request composer, got %d", width, got)
+			}
+			if visible, err := composer.IsVisible(); err != nil {
+				t.Fatal(err)
+			} else if !visible {
+				t.Fatalf("%dpx server-side request composer should be visible without JavaScript", width)
+			}
+			if err := composer.ScrollIntoViewIfNeeded(); err != nil {
+				t.Fatalf("%dpx server-side request composer should be reachable without JavaScript: %v", width, err)
+			}
+			if bounds, err := composer.BoundingBox(); err != nil {
+				t.Fatal(err)
+			} else if bounds == nil || bounds.Width <= 0 || bounds.Height <= 0 {
+				t.Fatalf("%dpx server-side request composer should have visible bounds, got %#v", width, bounds)
+			}
+			if visible, err := composer.Locator(`[data-manja-request-sample]`).IsVisible(); err != nil {
+				t.Fatal(err)
+			} else if !visible {
+				t.Fatalf("%dpx server-rendered request sample should be visible without JavaScript", width)
+			}
+			for _, selector := range []string{
+				"[data-manja-request-config-trigger]",
+				".manja-request-config-desktop-toggle",
+				".manja-request-config-mobile-close",
+			} {
+				if visible, err := page.Locator(selector).IsVisible(); err != nil {
+					t.Fatal(err)
+				} else if visible {
+					t.Fatalf("%dpx non-functional request configuration control %q should stay hidden without JavaScript", width, selector)
+				}
+			}
+		})
+	}
+}
+
 func TestRichOperationDetailsKeepHorizontalOverflowLocal(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping e2e test in short mode")
@@ -572,6 +682,7 @@ func TestRichOperationDetailsKeepHorizontalOverflowLocal(t *testing.T) {
 		t.Fatal(err)
 	}
 	desktopVisibility, err := page.Evaluate(`() => ({
+		enhanced: document.querySelector('[data-manja-request-config-root]')?.getAttribute('data-manja-request-config-enhanced'),
 		rail: getComputedStyle(document.querySelector('.manja-endpoint-examples-rail')).display,
 		trigger: getComputedStyle(document.querySelector('.manja-request-config-trigger-bar')).display,
 		open: document.querySelector('[data-manja-request-config-sheet]')?.getAttribute('data-open'),
@@ -583,7 +694,7 @@ func TestRichOperationDetailsKeepHorizontalOverflowLocal(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got, ok := desktopVisibility.(map[string]any); !ok || got["rail"] != "block" || got["trigger"] != "none" || got["open"] != "false" || got["ariaHidden"] != nil || got["content"] != "none" || got["contentAriaHidden"] != "true" || got["toggle"] == "none" {
+	if got, ok := desktopVisibility.(map[string]any); !ok || got["enhanced"] != "true" || got["rail"] != "block" || got["trigger"] != "none" || got["open"] != "false" || got["ariaHidden"] != nil || got["content"] != "none" || got["contentAriaHidden"] != "true" || got["toggle"] == "none" {
 		t.Fatalf("desktop request configuration should remain in the examples rail, got %#v", desktopVisibility)
 	}
 	desktopToggle := page.Locator(".manja-request-config-desktop-toggle")
