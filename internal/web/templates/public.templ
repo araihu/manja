@@ -49,6 +49,10 @@ type PublicDocsOptions struct {
 	MarkdownRenderer     port.MarkdownRenderer
 	ManageDefaultLogo    bool
 	ManageDefaultFavicon bool
+	SchemaLinks          map[string]string
+	SchemaLinkTarget     string
+	SchemaLinkSelect     string
+	SchemaLinkSwap       string
 }
 
 const (
@@ -56,6 +60,12 @@ const (
 )
 
 func (opts PublicDocsOptions) withDefaults() PublicDocsOptions {
+	if strings.TrimSpace(opts.SchemaLinkTarget) == "" {
+		opts.SchemaLinkTarget = "#main-content"
+	}
+	if strings.TrimSpace(opts.SchemaLinkSwap) == "" {
+		opts.SchemaLinkSwap = "innerHTML swap:120ms settle:240ms"
+	}
 	switch opts.EndpointSidebarLabel {
 	case EndpointSidebarLabelPath:
 		return opts
@@ -102,6 +112,7 @@ templ PublicDocs(idx core.SpecIndex, selectedID string) {
 
 templ PublicDocsWithOptions(idx core.SpecIndex, selectedID string, opts PublicDocsOptions) {
 	{{ opts = opts.withDefaults() }}
+	{{ opts.SchemaLinks = schemaLinksForIndex(idx, opts.SchemaLinks) }}
 	{{ selected := selectedDocsItemFor(idx, selectedID) }}
 	@LayoutWithBranding(publicDocsDocumentTitle(idx, selected), idx.Branding, true, opts.ManageDefaultFavicon) {
 		<div hx-history="false" class="fixed inset-0 overflow-clip bg-surface text-on-surface dark:bg-surface-dark dark:text-on-surface-dark">
@@ -281,6 +292,7 @@ templ manjaFuzzySearchScript() {
 
 templ PublicDocsFragmentWithOptions(idx core.SpecIndex, selectedID string, opts PublicDocsOptions) {
 	{{ opts = opts.withDefaults() }}
+	{{ opts.SchemaLinks = schemaLinksForIndex(idx, opts.SchemaLinks) }}
 	@PublicDocsFragmentContent(idx, selectedID, opts)
 }
 
@@ -1054,7 +1066,7 @@ templ mediaTypeList(idPrefix string, label string, mediaTypes []core.OperationMe
 					<div class="flex flex-wrap items-center gap-3">
 						<span class="font-mono text-xs font-semibold text-on-surface-strong dark:text-on-surface-dark-strong">{ media.ContentType }</span>
 						if schemaInline(media.Schema) != "" {
-							<span class="font-mono text-xs text-on-surface-muted dark:text-on-surface-dark-muted">{ schemaInline(media.Schema) }</span>
+							@schemaTypeLink(media.Schema, opts)
 						}
 					</div>
 					@schemaProperties(mediaTypeTableID(idPrefix, media), label+" schema for "+media.ContentType, media.Schema, opts)
@@ -1110,7 +1122,7 @@ templ responseMediaTypeBlock(opID string, response core.OperationResponse, media
 				<div class="flex flex-wrap items-center gap-3">
 					<span class="font-mono text-xs font-semibold text-on-surface-strong dark:text-on-surface-dark-strong">{ media.ContentType }</span>
 					if schemaInline(media.Schema) != "" {
-						<span class="font-mono text-xs text-on-surface-muted dark:text-on-surface-dark-muted">{ schemaInline(media.Schema) }</span>
+						@schemaTypeLink(media.Schema, opts)
 					}
 				</div>
 				@schemaProperties(mediaTypeTableID(idPrefix, media), "Response "+response.Status+" schema for "+media.ContentType, media.Schema, opts)
@@ -1918,6 +1930,56 @@ func schemaInline(schema core.SchemaSummary) string {
 		parts = append(parts, typeLabel)
 	}
 	return strings.Join(parts, " ")
+}
+
+func schemaLinksForIndex(idx core.SpecIndex, existing map[string]string) map[string]string {
+	links := make(map[string]string, len(existing)+len(idx.Schemas))
+	for name, href := range existing {
+		links[name] = href
+	}
+	for _, schema := range idx.Schemas {
+		name := strings.TrimSpace(schema.Name)
+		if name == "" {
+			continue
+		}
+		if _, exists := links[name]; !exists {
+			links[name] = selectedDocsHref(schemaAnchor(schema))
+		}
+	}
+	return links
+}
+
+func schemaTypeHref(schema core.SchemaSummary, opts PublicDocsOptions) string {
+	name := strings.TrimSpace(schema.Name)
+	if name == "" || opts.SchemaLinks == nil {
+		return ""
+	}
+	return strings.TrimSpace(opts.SchemaLinks[name])
+}
+
+templ schemaTypeLink(schema core.SchemaSummary, opts PublicDocsOptions) {
+	{{ label := schemaInline(schema) }}
+	{{ href := schemaTypeHref(schema, opts) }}
+	if href == "" {
+		<span class="font-mono text-xs text-on-surface-muted dark:text-on-surface-dark-muted">{ label }</span>
+	} else {
+		<a
+			href={ templpkg.URL(href) }
+			hx-get={ href }
+			hx-target={ opts.SchemaLinkTarget }
+			if opts.SchemaLinkSelect != "" {
+				hx-select={ opts.SchemaLinkSelect }
+			}
+			hx-swap={ opts.SchemaLinkSwap }
+			hx-push-url="true"
+			aria-label={ "Open schema " + label }
+			title={ "Open schema " + label }
+			class="inline-flex min-h-8 max-w-full items-center gap-1 rounded-radius border border-outline px-2 py-1 font-mono text-xs text-on-surface-muted transition hover:border-primary hover:text-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary dark:border-outline-dark dark:text-on-surface-dark-muted dark:hover:border-primary-dark dark:hover:text-primary-dark dark:focus-visible:outline-primary-dark"
+		>
+			<span class="min-w-0 break-all">{ label }</span>
+			<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="size-3.5 shrink-0" aria-hidden="true"><path fill-rule="evenodd" d="M3 10a1 1 0 0 1 1-1h9.586l-3.293-3.293a1 1 0 0 1 1.414-1.414l5 5a1 1 0 0 1 0 1.414l-5 5a1 1 0 0 1-1.414-1.414L13.586 11H4a1 1 0 0 1-1-1Z" clip-rule="evenodd"></path></svg>
+		</a>
+	}
 }
 
 func schemaTreeRootName(caption string, schema core.SchemaSummary) string {

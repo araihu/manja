@@ -69,6 +69,7 @@ type CatalogPageData struct {
 	Directory catalog.CatalogArtifactV1
 	Document *catalog.DocumentDirectoryV1
 	DocumentHref string
+	SchemaLinks map[string]string
 	Documents []CatalogDocumentOption
 	Groups []CatalogSidebarGroupData
 	OrganizationNav CatalogOrganizationNavData
@@ -512,7 +513,12 @@ templ catalogOperationDetail(data CatalogPageData) {
 					"data-manja-settled-focus": "true",
 				},
 			})
-			@endpointSection(operation, data.OperationServers, "", PublicDocsOptions{})
+			@endpointSection(operation, data.OperationServers, "", PublicDocsOptions{
+				SchemaLinks:      data.SchemaLinks,
+				SchemaLinkTarget: "#main-content",
+				SchemaLinkSelect: "#main-content",
+				SchemaLinkSwap:   "outerHTML show:#main-content:top",
+			})
 		</article>
 	} else {
 		{{ operation := *data.Selected.Operation }}

@@ -89,6 +89,16 @@ func (handler *CatalogHandler) catalogPageDataWithSidebarQuery(
 	documentHref, _ := catalogURL(mount, "documents", document.Key)
 	documentHref += "/"
 	data.DocumentHref = documentHref
+	data.SchemaLinks = make(map[string]string, len(document.Schemas))
+	for _, schema := range document.Schemas {
+		name := strings.TrimSpace(schema.Name)
+		if name == "" {
+			continue
+		}
+		if _, exists := data.SchemaLinks[name]; !exists {
+			data.SchemaLinks[name] = catalogDetailHref(documentHref, schema.DetailID)
+		}
+	}
 	data.CurrentVisit = &templates.CatalogSearchItemData{
 		ID: "document-" + document.Key, Title: document.Key, Description: document.Title,
 		Href: documentHref, Kind: "Document", Section: snapshot.Directory.Title,
