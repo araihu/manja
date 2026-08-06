@@ -68,6 +68,7 @@ type CatalogPageData struct {
 	SnapshotID catalog.SnapshotID
 	Directory catalog.CatalogArtifactV1
 	Document *catalog.DocumentDirectoryV1
+	DocumentHref string
 	Documents []CatalogDocumentOption
 	Groups []CatalogSidebarGroupData
 	OrganizationNav CatalogOrganizationNavData
@@ -327,11 +328,15 @@ templ catalogHeader(data CatalogPageData) {
 					<path stroke-linecap="round" d="M4 6h16M4 12h16M4 18h16"></path>
 				</svg>
 			</button>
-			<a href={ templpkg.URL(data.Mount) } class="flex min-w-0 items-center gap-3 font-title text-xl font-bold text-on-surface-strong dark:text-on-surface-dark-strong">
+			<a href="/" class="shrink-0 font-title text-base font-bold text-on-surface-strong dark:text-on-surface-dark-strong">Manja</a>
+			<span class="text-on-surface-muted dark:text-on-surface-dark-muted">/</span>
+			<a href={ templpkg.URL(data.Mount) } class="hidden shrink-0 text-sm font-semibold text-on-surface-muted hover:text-on-surface-strong sm:inline dark:text-on-surface-dark-muted dark:hover:text-on-surface-dark-strong">Catalogs</a>
+			<span class="hidden text-on-surface-muted sm:inline dark:text-on-surface-dark-muted">/</span>
+			<a href={ templpkg.URL(data.Mount) } class="flex min-w-0 items-center gap-2 font-title text-lg font-bold text-on-surface-strong dark:text-on-surface-dark-strong">
 				if data.Directory.Branding.LogoSrc != "" {
 					<img src={ templpkg.URL(data.Directory.Branding.LogoSrc) } alt={ data.Directory.Branding.LogoAlt } loading="lazy" decoding="async" class="size-8 shrink-0 rounded-full object-cover"/>
 				}
-				<span class="truncate">{ catalogBrandName(data) }</span>
+				<span class="max-w-[12rem] truncate">{ catalogBrandName(data) }</span>
 			</a>
 			<span class="hidden text-on-surface-muted sm:inline dark:text-on-surface-dark-muted">/</span>
 			<div class="hidden items-center md:flex">
@@ -469,10 +474,12 @@ templ catalogDocument(data CatalogPageData) {
 			<div class="min-w-0">
 				<h1 class="font-title text-4xl font-bold text-on-surface-strong dark:text-on-surface-dark-strong">{ data.Document.Title }</h1>
 			</div>
-			<div class="flex min-w-0 flex-col items-start gap-2 sm:items-end">
-				<a href={ templpkg.URL(data.DownloadHref) } class="inline-flex min-h-11 items-center rounded-radius border border-outline px-4 font-semibold hover:bg-surface-alt dark:border-outline-dark dark:hover:bg-surface-dark-alt">Download source</a>
-				<p class="max-w-full break-all text-left font-mono text-sm text-on-surface-muted sm:text-right dark:text-on-surface-dark-muted">{ data.Document.SourcePath }</p>
-			</div>
+			if data.Selected == nil {
+				<div class="flex min-w-0 flex-col items-start gap-2 sm:items-end">
+					<a href={ templpkg.URL(data.DownloadHref) } class="inline-flex min-h-11 items-center rounded-radius border border-outline px-4 font-semibold hover:bg-surface-alt dark:border-outline-dark dark:hover:bg-surface-dark-alt">Download source</a>
+					<p class="max-w-full break-all text-left font-mono text-sm text-on-surface-muted sm:text-right dark:text-on-surface-dark-muted">{ data.Document.SourcePath }</p>
+				</div>
+			}
 		</div>
 		if data.Selected == nil {
 			<div class="grid gap-4 sm:grid-cols-2">
@@ -688,7 +695,14 @@ func catalogSidebarConfig(data CatalogPageData) sidebar.Config {
 		DisableSkipLink: true,
 		SearchSlot: catalogSidebarSearch(),
 	}
-	config.Items = []sidebar.Item{{ID: "catalog-overview", Label: "Catalog overview", Href: data.Mount, Active: data.Document == nil}}
+	if data.Document == nil {
+		config.Items = []sidebar.Item{{ID: "catalog-overview", Label: "Catalog overview", Href: data.Mount, Active: true}}
+	} else {
+		config.Items = []sidebar.Item{
+			{ID: "back-to-catalog", Label: "Back to catalog", Href: data.Mount},
+			{ID: "spec-overview", Label: "Spec overview", Href: data.DocumentHref, Active: data.Selected == nil},
+		}
+	}
 	if data.Document == nil { return config }
 	items := make([]sidebar.Item, 0, len(data.Groups))
 	for _, group := range data.Groups {

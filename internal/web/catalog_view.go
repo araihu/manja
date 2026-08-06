@@ -88,6 +88,7 @@ func (handler *CatalogHandler) catalogPageDataWithSidebarQuery(
 	data.DownloadHref, _ = catalogURL(mount, "openapi", document.Key+extension)
 	documentHref, _ := catalogURL(mount, "documents", document.Key)
 	documentHref += "/"
+	data.DocumentHref = documentHref
 	data.CurrentVisit = &templates.CatalogSearchItemData{
 		ID: "document-" + document.Key, Title: document.Key, Description: document.Title,
 		Href: documentHref, Kind: "Document", Section: snapshot.Directory.Title,
