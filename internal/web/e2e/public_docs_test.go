@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/mxschmitt/playwright-go"
@@ -228,6 +229,9 @@ func TestRequestComposerUpdatesRequestSample(t *testing.T) {
 	if _, err := page.Goto(server + "/?selected=" + operationAnchor + "#" + operationAnchor); err != nil {
 		t.Fatal(err)
 	}
+	if err := page.Locator(".manja-request-config-desktop-toggle").Click(); err != nil {
+		t.Fatal(err)
+	}
 
 	sample := page.Locator(".manja-endpoint-examples-rail [data-manja-request-sample] .codeblock")
 	if err := sample.WaitFor(); err != nil {
@@ -391,6 +395,9 @@ func TestRequestComposerAccordionContentStaysInsideRail(t *testing.T) {
 	if _, err := page.Goto(server + "/?selected=" + operationAnchor + "#" + operationAnchor); err != nil {
 		t.Fatal(err)
 	}
+	if err := page.Locator(".manja-request-config-desktop-toggle").Click(); err != nil {
+		t.Fatal(err)
+	}
 	if err := page.Locator(".manja-endpoint-examples-rail [data-manja-request-config-panel]").WaitFor(); err != nil {
 		t.Fatal(err)
 	}
@@ -468,7 +475,7 @@ func TestRichOperationDetailsKeepHorizontalOverflowLocal(t *testing.T) {
 			}, {
 				Name:        "pretty",
 				In:          "query",
-				Description: "If true, the output is pretty printed.",
+				Description: strings.Repeat("If true, the output is pretty printed and the server may include additional context in the response. ", 4),
 				Schema:      core.SchemaSummary{Type: "string"},
 			}},
 			RequestBody: &core.OperationRequestBody{
@@ -566,21 +573,58 @@ func TestRichOperationDetailsKeepHorizontalOverflowLocal(t *testing.T) {
 	}
 	desktopVisibility, err := page.Evaluate(`() => ({
 		rail: getComputedStyle(document.querySelector('.manja-endpoint-examples-rail')).display,
-		trigger: getComputedStyle(document.querySelector('.manja-request-drawer-trigger')).display,
+		trigger: getComputedStyle(document.querySelector('.manja-request-config-trigger-bar')).display,
+		open: document.querySelector('[data-manja-request-config-sheet]')?.getAttribute('data-open'),
+		ariaHidden: document.querySelector('[data-manja-request-config-sheet]')?.getAttribute('aria-hidden'),
+		content: getComputedStyle(document.querySelector('.manja-endpoint-examples-rail-content')).display,
+		contentAriaHidden: document.querySelector('.manja-endpoint-examples-rail-content')?.getAttribute('aria-hidden'),
+		toggle: getComputedStyle(document.querySelector('.manja-request-config-desktop-toggle')).display,
 	})`)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got, ok := desktopVisibility.(map[string]any); !ok || got["rail"] != "block" || got["trigger"] != "none" {
+	if got, ok := desktopVisibility.(map[string]any); !ok || got["rail"] != "block" || got["trigger"] != "none" || got["open"] != "false" || got["ariaHidden"] != nil || got["content"] != "none" || got["contentAriaHidden"] != "true" || got["toggle"] == "none" {
 		t.Fatalf("desktop request configuration should remain in the examples rail, got %#v", desktopVisibility)
 	}
+	desktopToggle := page.Locator(".manja-request-config-desktop-toggle")
+	if err := desktopToggle.Click(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := page.WaitForFunction(`() => document.querySelector('[data-manja-request-config-sheet]')?.getAttribute('data-open') === 'true'`, nil); err != nil {
+		t.Fatalf("desktop request configuration should open from its header toggle: %v", err)
+	}
+	desktopOpenState, err := page.Evaluate(`() => {
+		const sheet = document.querySelector('[data-manja-request-config-sheet]');
+		const content = document.querySelector('.manja-endpoint-examples-rail-content');
+		const footer = document.querySelector('footer');
+		const sheetBottom = sheet ? sheet.getBoundingClientRect().bottom + window.scrollY : 0;
+		const footerTop = footer ? footer.getBoundingClientRect().top + window.scrollY : sheetBottom;
+		return {
+			open: sheet?.getAttribute('data-open'),
+			content: getComputedStyle(content).display,
+			expanded: document.querySelector('.manja-request-config-desktop-toggle')?.getAttribute('aria-expanded'),
+			footerGap: footerTop - sheetBottom,
+		};
+	}`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if state, ok := desktopOpenState.(map[string]any); !ok || state["open"] != "true" || state["content"] == "none" || state["expanded"] != "true" || metricNumber(t, state, "footerGap") < 16 {
+		t.Fatalf("desktop request configuration open state should preserve footer breathing room, got %#v", desktopOpenState)
+	}
+	if err := desktopToggle.Click(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := page.WaitForFunction(`() => document.querySelector('[data-manja-request-config-sheet]')?.getAttribute('data-open') === 'false'`, nil); err != nil {
+		t.Fatalf("desktop request configuration should collapse from its header toggle: %v", err)
+	}
 
-	for _, width := range []int{390, 768} {
+	for _, width := range []int{320, 390, 414, 768} {
 		t.Run(fmt.Sprintf("%dpx", width), func(t *testing.T) {
 			if err := page.SetViewportSize(width, 900); err != nil {
 				t.Fatal(err)
 			}
-			trigger := page.Locator("[data-manja-request-drawer-trigger] button")
+			trigger := page.Locator("[data-manja-request-config-trigger] button")
 			if err := trigger.WaitFor(); err != nil {
 				t.Fatal(err)
 			}
@@ -591,14 +635,20 @@ func TestRichOperationDetailsKeepHorizontalOverflowLocal(t *testing.T) {
 				t.Fatalf("%dpx request configuration trigger should be visible", width)
 			}
 			result, err := page.Evaluate(`(parameterTableID) => {
-			const main = document.querySelector('#main-content');
-			const table = document.getElementById(parameterTableID);
-			const scroller = table?.parentElement;
+		const main = document.querySelector('#main-content');
+			const tableRoot = document.getElementById(parameterTableID);
+			const table = tableRoot?.tagName === 'TABLE' ? tableRoot : tableRoot?.querySelector('table');
+			const tableWrapper = table?.closest('.manja-parameter-table-wrapper') || table?.parentElement;
+			const tableBounds = table?.getBoundingClientRect();
+			const headerDescription = document.querySelector('[data-catalog-detail="operation"] [data-public-page-header] .manja-doc-title + p');
 			return {
 				mainClientWidth: main?.clientWidth || 0,
 				mainScrollWidth: main?.scrollWidth || 0,
-				tableClientWidth: scroller?.clientWidth || 0,
-				tableScrollWidth: scroller?.scrollWidth || 0,
+				headerDescriptionClientWidth: headerDescription?.clientWidth || 0,
+				headerDescriptionScrollWidth: headerDescription?.scrollWidth || 0,
+				tableClientWidth: tableWrapper?.clientWidth || 0,
+				tableScrollWidth: tableWrapper?.scrollWidth || 0,
+				columnRatios: tableBounds ? [...table.querySelectorAll('thead th')].map((cell) => cell.getBoundingClientRect().width / tableBounds.width) : [],
 				hasRequestBody: Boolean(document.querySelector('[aria-label="Request body"]')),
 				hasRequestSample: Boolean(document.querySelector('[data-manja-request-sample]')),
 			};
@@ -617,41 +667,259 @@ func TestRichOperationDetailsKeepHorizontalOverflowLocal(t *testing.T) {
 			if got, want := metricNumber(t, metrics, "mainScrollWidth"), metricNumber(t, metrics, "mainClientWidth"); got != want {
 				t.Fatalf("%dpx main must not own horizontal overflow: scrollWidth=%v clientWidth=%v, metrics %#v", width, got, want, metrics)
 			}
+			if got, want := metricNumber(t, metrics, "headerDescriptionScrollWidth"), metricNumber(t, metrics, "headerDescriptionClientWidth"); got != want {
+				t.Fatalf("%dpx catalog operation header must wrap its route description: scrollWidth=%v clientWidth=%v, metrics %#v", width, got, want, metrics)
+			}
 			if got, max := metricNumber(t, metrics, "tableClientWidth"), metricNumber(t, metrics, "mainClientWidth"); got > max {
 				t.Fatalf("%dpx parameter table container must stay inside main, metrics %#v", width, metrics)
 			}
-			if width == 390 {
-				if got, want := metricNumber(t, metrics, "tableScrollWidth"), metricNumber(t, metrics, "tableClientWidth"); got <= want {
-					t.Fatalf("%dpx parameter table should remain fully available through its local scroller, metrics %#v", width, metrics)
+			if got, want := metricNumber(t, metrics, "tableScrollWidth"), metricNumber(t, metrics, "tableClientWidth"); got != want {
+				t.Fatalf("%dpx parameter table should not own horizontal overflow, metrics %#v", width, metrics)
+			}
+			columnRatios, ok := metrics["columnRatios"].([]any)
+			if !ok || len(columnRatios) != 3 {
+				t.Fatalf("%dpx parameter table should expose three columns, metrics %#v", width, metrics)
+			}
+			for index, bounds := range [][2]float64{{0.35, 0.45}, {0.15, 0.25}, {0.35, 0.45}} {
+				got, ok := columnRatios[index].(float64)
+				if !ok {
+					t.Fatalf("%dpx parameter table column %d ratio should be numeric, got %#v", width, index+1, columnRatios[index])
+				}
+				if got < bounds[0] || got > bounds[1] {
+					t.Fatalf("%dpx parameter table column %d ratio = %v, want %.2f..%.2f, metrics %#v", width, index+1, got, bounds[0], bounds[1], metrics)
 				}
 			}
 
 			if width == 390 {
+				descriptionToggle := page.Locator("#" + parameterTableID + " .manja-description-toggle").First()
+				if err := descriptionToggle.WaitFor(); err != nil {
+					t.Fatal(err)
+				}
+				if got, err := descriptionToggle.GetAttribute("aria-expanded"); err != nil || got != "false" {
+					if err != nil {
+						t.Fatal(err)
+					}
+					t.Fatalf("long parameter description should start collapsed, aria-expanded=%q", got)
+				}
+				if got, err := descriptionToggle.TextContent(); err != nil || strings.TrimSpace(got) != "Show more" {
+					if err != nil {
+						t.Fatal(err)
+					}
+					t.Fatalf("collapsed parameter description label = %q, want Show more", got)
+				}
+				if err := descriptionToggle.Click(); err != nil {
+					t.Fatal(err)
+				}
+				if got, err := descriptionToggle.GetAttribute("aria-expanded"); err != nil || got != "true" {
+					if err != nil {
+						t.Fatal(err)
+					}
+					t.Fatalf("long parameter description should expand, aria-expanded=%q", got)
+				}
+				if got, err := descriptionToggle.TextContent(); err != nil || strings.TrimSpace(got) != "Show less" {
+					if err != nil {
+						t.Fatal(err)
+					}
+					t.Fatalf("expanded parameter description label = %q, want Show less", got)
+				}
+				if err := descriptionToggle.Click(); err != nil {
+					t.Fatal(err)
+				}
+				if got, err := descriptionToggle.GetAttribute("aria-expanded"); err != nil || got != "false" {
+					if err != nil {
+						t.Fatal(err)
+					}
+					t.Fatalf("long parameter description should collapse again, aria-expanded=%q", got)
+				}
+				if err := page.Locator("#darkModeToggleBtn").Focus(); err != nil {
+					t.Fatal(err)
+				}
+				if err := page.Keyboard().Press("Escape"); err != nil {
+					t.Fatal(err)
+				}
+				closedEscapeFocus, err := page.Evaluate(`() => document.activeElement?.id`)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if closedEscapeFocus != "darkModeToggleBtn" {
+					t.Fatalf("Escape with a closed request configuration should preserve focus, got %v", closedEscapeFocus)
+				}
 				if err := trigger.Click(); err != nil {
 					t.Fatal(err)
 				}
-				drawerID := operationAnchor + "-request-drawer"
-				drawer := page.Locator(`[role="dialog"][aria-labelledby="` + drawerID + `Title"]`)
+				drawerID := operationAnchor + "-request-config"
+				drawer := page.Locator(`[data-manja-request-config-sheet][role="dialog"][aria-labelledby="` + drawerID + `-title"]`)
 				if err := drawer.WaitFor(playwright.LocatorWaitForOptions{State: playwright.WaitForSelectorStateVisible}); err != nil {
 					t.Fatal(err)
+				}
+				if _, err := page.WaitForFunction(`() => {
+					const sheet = document.querySelector('[data-manja-request-config-sheet]');
+					return Boolean(sheet && sheet.contains(document.activeElement));
+				}`, nil); err != nil {
+					t.Fatalf("mobile request configuration should move focus into the sheet: %v", err)
 				}
 				if got, err := drawer.Locator(`[data-manja-request-composer]`).Count(); err != nil {
 					t.Fatal(err)
 				} else if got == 0 {
 					t.Fatalf("mobile request drawer should contain request configuration")
 				}
-				railDisplay, err := page.Evaluate(`() => getComputedStyle(document.querySelector('.manja-endpoint-examples-rail')).display`)
+				mobileState, err := page.Evaluate(`() => {
+					const ids = [...document.querySelectorAll('[id]')].map((element) => element.id);
+					const duplicates = ids.filter((id, index) => ids.indexOf(id) !== index);
+					const sheet = document.querySelector('[data-manja-request-config-sheet]');
+					const triggerButton = document.querySelector('[data-manja-request-config-trigger] button');
+					const active = document.activeElement;
+					return {
+						duplicateIDs: [...new Set(duplicates)],
+						triggerExpanded: triggerButton?.getAttribute('aria-expanded'),
+						triggerPosition: getComputedStyle(document.querySelector('[data-manja-request-config-trigger]')).position,
+						sheetPosition: getComputedStyle(sheet).position,
+						activeInsideSheet: Boolean(active && sheet?.contains(active)),
+						composerCount: document.querySelectorAll('[data-manja-request-composer]').length,
+						fieldDescriptions: [...(sheet?.querySelectorAll('[data-manja-request-config-fields] [data-field-path]') || [])].map((field) => {
+							const control = field.querySelector('input[id], select[id], textarea[id]');
+							const helper = field.querySelector('p.text-xs:not([data-manja-request-body-status])');
+							return { control: control?.id || '', describedBy: control?.getAttribute('aria-describedby') || '', helper: helper?.id || '' };
+						}),
+					};
+				}`)
 				if err != nil {
 					t.Fatal(err)
 				}
-				if got, ok := railDisplay.(string); !ok || got != "none" {
-					t.Fatalf("mobile endpoint examples rail display = %#v, want none", railDisplay)
+				state, ok := mobileState.(map[string]any)
+				if !ok {
+					t.Fatalf("mobile request configuration state should be a map, got %#v", mobileState)
 				}
-				if err := drawer.Locator(`[aria-label="Close"]`).Click(); err != nil {
+				if duplicates, ok := state["duplicateIDs"].([]any); !ok || len(duplicates) != 0 {
+					t.Fatalf("mobile request configuration must not duplicate ids, got %#v", state["duplicateIDs"])
+				}
+				if state["triggerExpanded"] != "true" || state["triggerPosition"] != "fixed" || state["sheetPosition"] != "fixed" || state["activeInsideSheet"] != true || numericValue(state["composerCount"]) != 1 {
+					t.Fatalf("mobile request configuration semantics = %#v", state)
+				}
+				fields, fieldsOK := state["fieldDescriptions"].([]any)
+				if !fieldsOK || len(fields) == 0 {
+					t.Fatalf("request configuration should expose field helper descriptions, state=%#v", state)
+				}
+				for _, rawField := range fields {
+					field, ok := rawField.(map[string]any)
+					control, controlOK := field["control"].(string)
+					describedBy, describedByOK := field["describedBy"].(string)
+					helper, helperOK := field["helper"].(string)
+					if !ok || !controlOK || !describedByOK || !helperOK || control == "" || helper == "" || !strings.Contains(describedBy, helper) {
+						t.Fatalf("request configuration field helper association = %#v", rawField)
+					}
+				}
+				configDescriptionToggle := drawer.Locator(`[data-manja-request-config-fields] [data-manja-description-toggle]`).First()
+				if err := configDescriptionToggle.WaitFor(); err != nil {
+					t.Fatal(err)
+				}
+				if got, err := configDescriptionToggle.GetAttribute("aria-expanded"); err != nil || got != "false" {
+					if err != nil {
+						t.Fatal(err)
+					}
+					t.Fatalf("long request configuration description should start collapsed, aria-expanded=%q", got)
+				}
+				if got, err := configDescriptionToggle.TextContent(); err != nil || strings.TrimSpace(got) != "Show more" {
+					if err != nil {
+						t.Fatal(err)
+					}
+					t.Fatalf("collapsed request configuration label = %q, want Show more", got)
+				}
+				if err := configDescriptionToggle.Click(); err != nil {
+					t.Fatal(err)
+				}
+				if got, err := configDescriptionToggle.GetAttribute("aria-expanded"); err != nil || got != "true" {
+					if err != nil {
+						t.Fatal(err)
+					}
+					t.Fatalf("long request configuration description should expand, aria-expanded=%q", got)
+				}
+				if got, err := configDescriptionToggle.TextContent(); err != nil || strings.TrimSpace(got) != "Show less" {
+					if err != nil {
+						t.Fatal(err)
+					}
+					t.Fatalf("expanded request configuration label = %q, want Show less", got)
+				}
+				darkVisuals, err := page.Evaluate(`() => {
+					const root = document.documentElement;
+					const sheet = document.querySelector('[data-manja-request-config-sheet]');
+					const triggerBar = document.querySelector('[data-manja-request-config-trigger]');
+					const wasDark = root.classList.contains('dark');
+					root.classList.remove('dark');
+					const light = {
+						sheet: getComputedStyle(sheet).backgroundColor,
+						bar: getComputedStyle(triggerBar).backgroundColor,
+					};
+					root.classList.add('dark');
+					const dark = {
+						sheet: getComputedStyle(sheet).backgroundColor,
+						bar: getComputedStyle(triggerBar).backgroundColor,
+					};
+					root.classList.toggle('dark', wasDark);
+					return { light, dark };
+				}`)
+				if err != nil {
+					t.Fatal(err)
+				}
+				visuals, ok := darkVisuals.(map[string]any)
+				if !ok {
+					t.Fatalf("mobile request configuration theme styles should be a map, got %#v", darkVisuals)
+				}
+				light, lightOK := visuals["light"].(map[string]any)
+				dark, darkOK := visuals["dark"].(map[string]any)
+				if !lightOK || !darkOK || light["sheet"] == dark["sheet"] || light["bar"] == dark["bar"] {
+					t.Fatalf("mobile request configuration should switch sheet and bar surfaces with dark mode, got %#v", visuals)
+				}
+				if err := page.Keyboard().Press("Escape"); err != nil {
 					t.Fatal(err)
 				}
 				if err := drawer.WaitFor(playwright.LocatorWaitForOptions{State: playwright.WaitForSelectorStateHidden}); err != nil {
 					t.Fatal(err)
+				}
+				focusedTrigger, err := page.Evaluate(`() => document.activeElement === document.querySelector('[data-manja-request-config-trigger] button')`)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if focusedTrigger != true {
+					t.Fatalf("closing request configuration with Escape should restore focus to its trigger")
+				}
+				if err := trigger.Click(); err != nil {
+					t.Fatal(err)
+				}
+				if err := drawer.WaitFor(playwright.LocatorWaitForOptions{State: playwright.WaitForSelectorStateVisible}); err != nil {
+					t.Fatal(err)
+				}
+				if err := page.Mouse().Click(2, 50); err != nil {
+					t.Fatal(err)
+				}
+				if err := drawer.WaitFor(playwright.LocatorWaitForOptions{State: playwright.WaitForSelectorStateHidden}); err != nil {
+					t.Fatal(err)
+				}
+				focusedTrigger, err = page.Evaluate(`() => document.activeElement === document.querySelector('[data-manja-request-config-trigger] button')`)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if focusedTrigger != true {
+					t.Fatalf("clicking the request configuration backdrop should restore focus to its trigger")
+				}
+				if err := trigger.Click(); err != nil {
+					t.Fatal(err)
+				}
+				if err := drawer.WaitFor(playwright.LocatorWaitForOptions{State: playwright.WaitForSelectorStateVisible}); err != nil {
+					t.Fatal(err)
+				}
+				if err := drawer.Locator(`[aria-label="Close request configuration"]`).Click(); err != nil {
+					t.Fatal(err)
+				}
+				if err := drawer.WaitFor(playwright.LocatorWaitForOptions{State: playwright.WaitForSelectorStateHidden}); err != nil {
+					t.Fatal(err)
+				}
+				focusedTrigger, err = page.Evaluate(`() => document.activeElement === document.querySelector('[data-manja-request-config-trigger] button')`)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if focusedTrigger != true {
+					t.Fatalf("clicking the request configuration close button should restore focus to its trigger")
 				}
 			}
 		})

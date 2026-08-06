@@ -85,6 +85,30 @@ func TestCatalogDocumentComboboxSearchSelectAndClientFirstModal(t *testing.T) {
 	if err := page.WaitForURL(baseURL + "/documents/apps-v1/"); err != nil {
 		t.Fatalf("selection navigation: %v (url=%s)", err, page.URL())
 	}
+	documentHeader := page.Locator(`main[data-catalog-document] > div.mb-8`)
+	if err := documentHeader.WaitFor(); err != nil {
+		t.Fatalf("catalog document header: %v", err)
+	}
+	if heading, err := documentHeader.Locator("h1").TextContent(); err != nil || strings.TrimSpace(heading) != "Kubernetes Apps" {
+		t.Fatalf("catalog document heading = %q, err=%v", heading, err)
+	}
+	if count, err := documentHeader.Locator("a").Count(); err != nil || count != 1 {
+		t.Fatalf("catalog document header links = %d, err=%v; only source download should remain", count, err)
+	}
+	if count, err := documentHeader.GetByRole("link", playwright.LocatorGetByRoleOptions{Name: "Download source", Exact: playwright.Bool(true)}).Count(); err != nil || count != 1 {
+		t.Fatalf("catalog source download links = %d, err=%v", count, err)
+	}
+	sourcePath := documentHeader.Locator("p.font-mono")
+	if source, err := sourcePath.TextContent(); err != nil || strings.TrimSpace(source) != "apis/apps/v1.json" {
+		t.Fatalf("catalog source path = %q, err=%v", source, err)
+	}
+	if order, err := documentHeader.Evaluate(`element => {
+		const action = element.querySelector('a');
+		const source = element.querySelector('p.font-mono');
+		return Boolean(action && source && (action.compareDocumentPosition(source) & Node.DOCUMENT_POSITION_FOLLOWING));
+	}`, nil); err != nil || order != true {
+		t.Fatalf("catalog source path should follow download action: %v, err=%v", order, err)
+	}
 	if err := page.Route("**/search.json*", func(route playwright.Route) { _ = route.Abort() }); err != nil {
 		t.Fatal(err)
 	}
@@ -287,6 +311,36 @@ func TestCatalogDocumentComboboxSearchSelectAndClientFirstModal(t *testing.T) {
 	defer fallbackPage.Close()
 	if err := fallbackPage.Route("**/snapshots/**/search-data/**", func(route playwright.Route) { _ = route.Abort() }); err != nil {
 		t.Fatal(err)
+	}
+	if _, err := fallbackPage.Goto(baseURL+"/documents/core-v1/", playwright.PageGotoOptions{WaitUntil: playwright.WaitUntilStateLoad}); err != nil {
+		t.Fatal(err)
+	}
+	groupControl := fallbackPage.Locator(`#catalog-sidebar-groups a[data-catalog-group-control]`).First()
+	if err := groupControl.Click(); err != nil {
+		t.Fatalf("open core operation group: %v", err)
+	}
+	coreOperation := fallbackPage.Locator(`[data-catalog-sidebar-operation][title="List core pods"]`)
+	if err := coreOperation.WaitFor(); err != nil {
+		t.Fatalf("core operation link: %v", err)
+	}
+	if err := coreOperation.Click(); err != nil {
+		t.Fatalf("open core operation: %v", err)
+	}
+	if !strings.Contains(fallbackPage.URL(), "/documents/core-v1/?selected=") {
+		t.Fatalf("core operation navigation url = %s", fallbackPage.URL())
+	}
+	operationHeader := fallbackPage.Locator(`[data-catalog-detail="operation"] [data-public-page-header]`)
+	if err := operationHeader.WaitFor(); err != nil {
+		t.Fatalf("catalog operation header: %v", err)
+	}
+	if heading, err := operationHeader.Locator(".manja-doc-title").TextContent(); err != nil || strings.TrimSpace(heading) != "List core pods" {
+		t.Fatalf("catalog operation heading = %q, err=%v", heading, err)
+	}
+	if count, err := operationHeader.Locator(".manja-doc-title + p").Count(); err != nil || count != 0 {
+		t.Fatalf("catalog operation duplicate route subtitle count = %d, err=%v", count, err)
+	}
+	if path, err := fallbackPage.Locator(`[data-catalog-detail="operation"] [aria-label="Endpoint route"] p`).TextContent(); err != nil || strings.TrimSpace(path) != "/api/v1/pods" {
+		t.Fatalf("catalog operation route badge = %q, err=%v", path, err)
 	}
 	if _, err := fallbackPage.Goto(baseURL+"/documents/core-v1/", playwright.PageGotoOptions{WaitUntil: playwright.WaitUntilStateLoad}); err != nil {
 		t.Fatal(err)

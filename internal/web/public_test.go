@@ -1395,6 +1395,13 @@ func TestPublicDocsRendersSchemaTree(t *testing.T) {
 			t.Fatalf("schema tree missing %q:\n%s", want, body)
 		}
 	}
+	requiredPropertyMarker := regexp.MustCompile(`<span class="manja-schema-name">id</span><span role="img" aria-label="Required property" title="Required property" class="manja-schema-required">\*</span>`)
+	if !requiredPropertyMarker.MatchString(body) {
+		t.Fatalf("required schema properties should render a red accessible star after the property name:\n%s", body)
+	}
+	if strings.Contains(body, `>required</span>`) {
+		t.Fatalf("schema properties should use the compact required star instead of a visible required label:\n%s", body)
+	}
 	if strings.Contains(body, `<table`) {
 		t.Fatalf("schema page should render a tree component, not a table:\n%s", body)
 	}
@@ -1796,8 +1803,8 @@ func TestPublicDocsRenderEndpointDetails(t *testing.T) {
 		`Todo was not found.`,
 		`Security`,
 		`bearerAuth`,
-		`<aside class="manja-endpoint-examples-rail" aria-label="Endpoint examples">`,
-		`<div class="manja-endpoint-examples-rail-content">`,
+		`<aside id="operation-updatetodo-request-config" class="manja-endpoint-examples-rail manja-request-config-sheet" data-manja-request-config-sheet`,
+		`manja-endpoint-examples-rail-content`,
 		`aria-label="200"`,
 		`bg-success`,
 		`text-on-success`,
@@ -1841,6 +1848,12 @@ func TestPublicDocsRenderEndpointDetails(t *testing.T) {
 			t.Fatalf("endpoint detail view missing %q:\n%s", want, body)
 		}
 	}
+	if got := strings.Count(body, `data-manja-request-composer`); got != 1 {
+		t.Fatalf("endpoint detail view should render one request composer tree, got %d", got)
+	}
+	if strings.Contains(body, `request-drawer`) {
+		t.Fatalf("endpoint detail view should not retain the old duplicated request drawer markup")
+	}
 	if strings.Contains(body, `data-schema-tree-node="Error"`) {
 		t.Fatalf("endpoint schema tree should start at the root object properties, not render the root object row:\n%s", body)
 	}
@@ -1865,7 +1878,7 @@ func TestPublicDocsRenderEndpointDetails(t *testing.T) {
 			t.Fatalf("response status badge %q should render once in the tab, got %d:\n%s", status, count, body)
 		}
 	}
-	rail := htmlBetween(t, body, `<aside class="manja-endpoint-examples-rail"`, `</aside>`)
+	rail := htmlBetween(t, body, `<aside id="operation-updatetodo-request-config"`, `</aside>`)
 	if strings.Contains(rail, `Response Example`) {
 		t.Fatalf("endpoint examples rail should not include response examples:\n%s", rail)
 	}
@@ -2034,6 +2047,41 @@ func TestPublicDocsEndpointResponsesOnlyUsesSingleDetailColumn(t *testing.T) {
 	}
 	if count := len(regexp.MustCompile(`<span class="[^"]*border border-success bg-success text-on-success[^"]*">200</span>`).FindAllString(body, -1)); count != 1 {
 		t.Fatalf("response status badge should render once in the tab, got %d:\n%s", count, body)
+	}
+}
+
+func TestPublicDocsRequestComposerProvidesClientFallbackWithoutServerOrShellSnippet(t *testing.T) {
+	idx := core.SpecIndex{
+		Title: "No Server API",
+		Operations: []core.Operation{{
+			ID:      "listWidgets",
+			Anchor:  "operation-listwidgets",
+			Method:  http.MethodGet,
+			Path:    "/widgets",
+			Summary: "List widgets",
+			Parameters: []core.OperationParameter{{
+				Name:        "limit",
+				In:          "query",
+				Schema:      core.SchemaSummary{Type: "integer"},
+				Description: "Maximum number of widgets.",
+			}},
+		}},
+	}
+
+	body := renderPublicDocs(t, NewPublicServer(idx), "/?selected=operation-listwidgets")
+	composer := htmlBetween(t, body, `<div data-manja-request-composer`, `</div>`) // The first closing div is enough to prove the root is present.
+	if composer == "" {
+		t.Fatalf("request composer should render for a parameterized operation without a server")
+	}
+	for _, want := range []string{
+		`data-manja-request-sample`,
+		`Request Sample: Shell / cURL`,
+		`"urlTemplate":"/widgets"`,
+		`"sampleTargets"`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("serverless request composer missing client fallback marker %q:\n%s", want, body)
+		}
 	}
 }
 
@@ -2277,12 +2325,16 @@ func TestPublicDocsEndpointShellCSSUsesResponsiveExamplesRail(t *testing.T) {
 	if !regexp.MustCompile(`(?s)@media\s*\(min-width:\s*1280px\).*?\.manja-endpoint-examples-rail\s*\{[^}]*display:\s*block;`).Match(css) {
 		t.Fatalf("endpoint examples rail should become visible at the desktop breakpoint")
 	}
-	triggerRule := regexp.MustCompile(`(?s)\.manja-request-drawer-trigger\s*\{[^}]*\}`).FindString(string(css))
-	if triggerRule == "" || !strings.Contains(triggerRule, `display: block;`) {
-		t.Fatalf("mobile request drawer trigger should be visible by default:\n%s", triggerRule)
+	triggerRule := regexp.MustCompile(`(?s)\.manja-request-config-trigger-bar\s*\{[^}]*\}`).FindString(string(css))
+	if triggerRule == "" || !strings.Contains(triggerRule, `position: fixed;`) || !strings.Contains(triggerRule, `bottom: 0;`) {
+		t.Fatalf("mobile request configuration should use a fixed bottom trigger bar:\n%s", triggerRule)
 	}
-	if !regexp.MustCompile(`(?s)@media\s*\(min-width:\s*1280px\).*?\.manja-request-drawer-trigger\s*\{[^}]*display:\s*none;`).Match(css) {
-		t.Fatalf("request drawer trigger should hide at the desktop breakpoint")
+	if !regexp.MustCompile(`(?s)@media\s*\(min-width:\s*1280px\).*?\.manja-request-config-backdrop,\s*\.manja-request-config-trigger-bar\s*\{[^}]*display:\s*none;`).Match(css) {
+		t.Fatalf("mobile request configuration chrome should hide at the desktop breakpoint")
+	}
+	sheetRule := regexp.MustCompile(`(?s)\.manja-request-config-sheet\s*\{[^}]*\}`).FindString(string(css))
+	if sheetRule == "" || !strings.Contains(sheetRule, `position: fixed;`) || !strings.Contains(sheetRule, `transform: translateY(100%);`) {
+		t.Fatalf("mobile request configuration should be a hidden bottom sheet by default:\n%s", sheetRule)
 	}
 	railContentRule := regexp.MustCompile(`(?s)\.manja-endpoint-examples-rail-content\s*>\s*\*[^}]*\}`).FindString(string(css))
 	if railContentRule == "" {

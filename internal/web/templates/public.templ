@@ -7,6 +7,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"unicode/utf8"
 
 	templpkg "github.com/a-h/templ"
 	"github.com/araihu/goshtoso/components/accordion"
@@ -14,7 +15,6 @@ import (
 	"github.com/araihu/goshtoso/components/badge"
 	"github.com/araihu/goshtoso/components/breadcrumbs"
 	"github.com/araihu/goshtoso/components/codeblock"
-	"github.com/araihu/goshtoso/components/drawer"
 	"github.com/araihu/goshtoso/components/emptystate"
 	"github.com/araihu/goshtoso/components/pageheader"
 	"github.com/araihu/goshtoso/components/panel"
@@ -621,10 +621,75 @@ func renderedMarkdown(renderer port.MarkdownRenderer, input string) templpkg.Com
 	})
 }
 
+// The request rail keeps one server-rendered body and changes presentation at
+// the mobile breakpoint. Goshtoso's edge-complete drawer is intentionally not
+// mounted as a second copy here: its fixed panel has no static-desktop mode,
+// and duplicating a large request/example tree would make every operation pay
+// twice in the browser. This small adapter reuses Goshtoso semantic tokens and
+// its Alpine focus-trap contract while preserving one body and a static rail.
 templ endpointSection(op core.Operation, servers []core.SpecServer, exampleSpecJSON string, opts PublicDocsOptions) {
 	{{ opID := operationAnchor(op) }}
-	{{ requestDrawerID := opID + "-request-drawer" }}
-	<section id={ opID } class="scroll-mt-24">
+	{{ requestConfigID := opID + "-request-config" }}
+	{{ requestConfigTitleID := requestConfigID + "-title" }}
+	{{ requestConfigContentID := requestConfigID + "-content" }}
+	{{ requestConfigLabel := requestConfigPanelLabel(op, servers) }}
+	{{ sectionClass := "scroll-mt-24" }}
+	if operationHasRail(op, servers) {
+		{{ sectionClass += " manja-endpoint-section-with-request-config" }}
+	}
+	<section
+		id={ opID }
+		class={ sectionClass }
+		x-data="{
+			requestConfigOpen: false,
+			requestConfigDesktop: window.matchMedia('(min-width: 1280px)').matches,
+			requestConfigDesktopVisible: false,
+			requestConfigMedia: null,
+			requestConfigMediaHandler: null,
+			requestConfigEscapeHandler: null,
+			requestConfigFocusTimer: null,
+			init() {
+				this.requestConfigMedia = window.matchMedia('(min-width: 1280px)');
+				this.requestConfigDesktop = this.requestConfigMedia.matches;
+				this.requestConfigMediaHandler = (event) => {
+					this.requestConfigDesktop = event.matches;
+					if (event.matches && this.requestConfigOpen) this.closeRequestConfig();
+				};
+				this.requestConfigMedia.addEventListener('change', this.requestConfigMediaHandler);
+				this.requestConfigEscapeHandler = (event) => {
+					if (event.key === 'Escape' && this.requestConfigOpen && !this.requestConfigDesktop) {
+						event.preventDefault();
+						event.stopPropagation();
+						this.closeRequestConfig();
+					}
+				};
+				document.addEventListener('keydown', this.requestConfigEscapeHandler, true);
+			},
+			destroy() {
+				if (this.requestConfigMedia && this.requestConfigMediaHandler) this.requestConfigMedia.removeEventListener('change', this.requestConfigMediaHandler);
+				if (this.requestConfigEscapeHandler) document.removeEventListener('keydown', this.requestConfigEscapeHandler, true);
+				if (this.requestConfigFocusTimer) clearTimeout(this.requestConfigFocusTimer);
+			},
+			closeRequestConfig() {
+				this.requestConfigOpen = false;
+				this.$nextTick(() => {
+					if (this.requestConfigFocusTimer) clearTimeout(this.requestConfigFocusTimer);
+					this.requestConfigFocusTimer = setTimeout(() => {
+						this.requestConfigFocusTimer = null;
+						requestAnimationFrame(() => requestAnimationFrame(() => {
+							const trigger = this.$refs.requestConfigTrigger;
+							if (trigger && trigger.getClientRects().length > 0 && !trigger.disabled) {
+								trigger.focus({ preventScroll: true });
+							} else if (this.$refs.requestConfigSheet) {
+								this.$refs.requestConfigSheet.focus({ preventScroll: true });
+							}
+						}));
+					}, 0);
+				});
+			}
+		}"
+		x-on:keydown.escape.window="if (requestConfigOpen && !requestConfigDesktop) closeRequestConfig()"
+	>
 		<div class="manja-endpoint-shell-layout">
 			<div class="manja-endpoint-main min-w-0">
 				<div class="border-b border-outline pb-6 dark:border-outline-dark">
@@ -647,22 +712,6 @@ templ endpointSection(op core.Operation, servers []core.SpecServer, exampleSpecJ
 					</div>
 					if operationHasRequest(op) || len(op.Responses) > 0 {
 						<div class={ endpointDetailLayoutClass(op) }>
-							if operationHasRail(op, servers) {
-								<div class="manja-request-drawer-trigger" data-manja-request-drawer-trigger>
-									<button
-										type="button"
-										aria-haspopup="dialog"
-										aria-controls={ requestDrawerID }
-										x-on:click={ "$dispatch('drawer:open', { id: '" + requestDrawerID + "' })" }
-										class="inline-flex min-h-10 w-full items-center justify-between gap-3 rounded-radius border border-outline bg-surface-alt px-4 py-2 text-sm font-semibold text-on-surface-strong transition hover:border-primary hover:text-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary dark:border-outline-dark dark:bg-surface-dark-alt dark:text-on-surface-dark-strong dark:hover:border-primary-dark dark:hover:text-primary-dark dark:focus-visible:outline-primary-dark"
-									>
-										<span>Request configuration</span>
-										<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" class="size-5" aria-hidden="true">
-											<path stroke-linecap="round" stroke-linejoin="round" d="M8 4h8m-8 4h8m-8 4h5m-5 4h8M5 4h.01M5 8h.01M5 12h.01M5 16h.01"/>
-										</svg>
-									</button>
-								</div>
-							}
 							if operationHasRequest(op) {
 							<section class="grid gap-8" aria-label="Request">
 								<h4 class="font-title text-2xl font-bold text-on-surface-strong dark:text-on-surface-dark-strong">Request</h4>
@@ -703,27 +752,94 @@ templ endpointSection(op core.Operation, servers []core.SpecServer, exampleSpecJ
 				}
 			</div>
 			if operationHasRail(op, servers) {
-				<aside class="manja-endpoint-examples-rail" aria-label="Endpoint examples">
-					<div class="manja-endpoint-examples-rail-content">
+				<aside
+					id={ requestConfigID }
+					class="manja-endpoint-examples-rail manja-request-config-sheet"
+					data-manja-request-config-sheet
+					x-ref="requestConfigSheet"
+					tabindex="-1"
+					data-open="false"
+					x-bind:data-open="(requestConfigDesktop ? requestConfigDesktopVisible : requestConfigOpen).toString()"
+					x-bind:role="requestConfigDesktop ? null : 'dialog'"
+					x-bind:aria-modal="requestConfigDesktop ? null : 'true'"
+					x-bind:aria-hidden="requestConfigDesktop ? null : (!requestConfigOpen).toString()"
+					aria-labelledby={ requestConfigTitleID }
+					x-trap.inert.noscroll="requestConfigOpen && !requestConfigDesktop"
+					x-on:keydown.esc.prevent="if (requestConfigOpen && !requestConfigDesktop) closeRequestConfig()"
+					aria-label="Request configuration panel"
+				>
+					<header class="manja-request-config-sheet-header flex items-center justify-between gap-3 border-b border-outline bg-surface-alt px-4 py-3 dark:border-outline-dark dark:bg-surface-dark-alt">
+						<div class="flex min-w-0 items-center gap-3">
+							<span class="manja-request-config-sheet-handle" aria-hidden="true"></span>
+							<h2 id={ requestConfigTitleID } class="truncate font-semibold text-on-surface-strong dark:text-on-surface-dark-strong">{ requestConfigLabel }</h2>
+						</div>
+						<button
+							type="button"
+							x-ref="requestConfigDesktopToggle"
+							x-on:click="requestConfigDesktopVisible = !requestConfigDesktopVisible"
+							x-bind:aria-expanded="requestConfigDesktopVisible.toString()"
+							aria-controls={ requestConfigContentID }
+							aria-label="Toggle request configuration"
+							class="manja-request-config-desktop-toggle inline-flex min-h-9 shrink-0 items-center gap-2 rounded-radius border border-outline px-3 text-xs font-semibold text-on-surface-strong transition hover:border-primary hover:text-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary dark:border-outline-dark dark:text-on-surface-dark-strong dark:hover:border-primary-dark dark:hover:text-primary-dark dark:focus-visible:outline-primary-dark"
+						>
+							<span x-text="requestConfigDesktopVisible ? 'Hide' : 'Show'"></span>
+							<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" class="size-4" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="m6 9 6 6 6-6"/></svg>
+						</button>
+						<button
+							type="button"
+							x-ref="requestConfigClose"
+							x-on:click="closeRequestConfig()"
+							aria-label="Close request configuration"
+							class="manja-request-config-mobile-close inline-flex size-9 shrink-0 items-center justify-center rounded-radius text-on-surface-muted hover:bg-surface-alt hover:text-on-surface-strong focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary dark:text-on-surface-dark-muted dark:hover:bg-surface-dark-alt dark:hover:text-on-surface-dark-strong dark:focus-visible:outline-primary-dark"
+						>
+							@requestConfigCloseIcon()
+						</button>
+					</header>
+					<div id={ requestConfigContentID } class="manja-endpoint-examples-rail-content" x-bind:aria-hidden="(requestConfigDesktop ? !requestConfigDesktopVisible : !requestConfigOpen).toString()">
 						@endpointExamplesContent(opID, op, servers, exampleSpecJSON)
 					</div>
 				</aside>
 			}
 		</div>
 		if operationHasRail(op, servers) {
-			@drawer.Drawer(drawer.Config{
-				ID:    requestDrawerID,
-				Title: "Request configuration",
-				Side:  drawer.SideRight,
-				Width: drawer.WidthFull,
-				BodyID: requestDrawerID + "-body",
-			}) {
-				<div class="p-4">
-					@endpointExamplesContent(opID+"-drawer", op, servers, exampleSpecJSON)
-				</div>
-			}
+			<div
+				class="manja-request-config-backdrop"
+				data-manja-request-config-backdrop
+				data-open="false"
+				x-bind:data-open="(requestConfigOpen && !requestConfigDesktop).toString()"
+				x-on:click="closeRequestConfig()"
+				aria-hidden="true"
+			></div>
+			<div
+				class="manja-request-config-trigger-bar"
+				data-manja-request-config-trigger
+				data-request-config-trigger-variant="bar"
+				data-open="false"
+				x-bind:data-open="(requestConfigOpen && !requestConfigDesktop).toString()"
+			>
+				<button
+					type="button"
+					x-ref="requestConfigTrigger"
+					aria-haspopup="dialog"
+					aria-controls={ requestConfigID }
+					x-bind:aria-expanded="requestConfigOpen.toString()"
+					x-on:click="requestConfigOpen = true; $nextTick(() => { if ($refs.requestConfigClose) $refs.requestConfigClose.focus(); })"
+					class="manja-request-config-trigger inline-flex min-h-11 w-full max-w-md items-center justify-center gap-3 rounded-radius border border-outline bg-surface-alt px-5 py-2 text-sm font-semibold text-on-surface-strong shadow-lg transition hover:border-primary hover:text-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary dark:border-outline-dark dark:bg-surface-dark-alt dark:text-on-surface-dark-strong dark:hover:border-primary-dark dark:hover:text-primary-dark dark:focus-visible:outline-primary-dark"
+				>
+									<span>{ requestConfigLabel }</span>
+					<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" class="size-5" aria-hidden="true">
+						<path stroke-linecap="round" stroke-linejoin="round" d="M8 4h8m-8 4h8m-8 4h5m-5 4h8M5 4h.01M5 8h.01M5 12h.01M5 16h.01"/>
+					</svg>
+				</button>
+			</div>
 		}
 	</section>
+}
+
+templ requestConfigCloseIcon() {
+	<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" aria-hidden="true" stroke="currentColor" fill="none" stroke-width="1.8" class="size-5">
+		<path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"></path>
+	</svg>
 }
 
 templ endpointExamplesContent(opID string, op core.Operation, servers []core.SpecServer, exampleSpecJSON string) {
@@ -763,12 +879,10 @@ templ requestComposer(opID string, op core.Operation, servers []core.SpecServer,
 				})
 			</section>
 		}
-		if snippet.Label != "" || snippet.Code != "" {
-			<div data-manja-request-sample class="min-w-0">
-				@requestSampleTargetSelect(opID)
-				@codeExample("Request Sample: "+requestSampleTargets()[0].Label, snippet.Language, snippet.Code)
-			</div>
-		}
+		<div data-manja-request-sample class="min-w-0">
+			@requestSampleTargetSelect(opID)
+			@codeExample("Request Sample: "+requestSampleTargets()[0].Label, requestSampleTargets()[0].Language, snippet.Code)
+		</div>
 		@templpkg.JSONScript(opID+"-request-composer-payload", requestComposerPayload(op, server, body))
 	</div>
 }
@@ -829,7 +943,7 @@ func requestConfigAccordionItems(opID string, op core.Operation, server core.Spe
 }
 
 templ requestConfigFieldsContent(fields []schemaform.Field, namePrefix string) {
-	<div class="manja-request-config-fields">
+	<div class="manja-request-config-fields" data-manja-request-config-fields>
 		@schemaform.Fields(schemaform.FieldsConfig{
 			Fields:     fields,
 			NamePrefix: namePrefix,
@@ -1016,16 +1130,14 @@ templ schemaTreeNode(name string, required bool, schema core.SchemaSummary, root
 			<div data-schema-tree-node={ displayName } class="manja-schema-node manja-schema-node-root">
 				<div class="manja-schema-row">
 					<span class="manja-schema-branch" aria-hidden="true"></span>
-					@schemaTreeLabel(displayName, schema, opts)
-					@schemaTreeRequired(required)
+					@schemaTreeLabel(displayName, required, schema, opts)
 				</div>
 			</div>
 		} else {
 			<div data-schema-tree-row={ displayName } class="manja-schema-node">
 				<div class="manja-schema-row">
 					<span class="manja-schema-branch" aria-hidden="true"></span>
-					@schemaTreeLabel(displayName, schema, opts)
-					@schemaTreeRequired(required)
+					@schemaTreeLabel(displayName, required, schema, opts)
 				</div>
 			</div>
 		}
@@ -1036,15 +1148,15 @@ templ schemaTreeSummary(name string, required bool, schema core.SchemaSummary, o
 	<summary class="manja-schema-row">
 		<span class="manja-schema-branch" aria-hidden="true"></span>
 		<span class="manja-schema-caret" aria-hidden="true"></span>
-		@schemaTreeLabel(name, schema, opts)
-		@schemaTreeRequired(required)
+		@schemaTreeLabel(name, required, schema, opts)
 	</summary>
 }
 
-templ schemaTreeLabel(name string, schema core.SchemaSummary, opts PublicDocsOptions) {
+templ schemaTreeLabel(name string, required bool, schema core.SchemaSummary, opts PublicDocsOptions) {
 	<div class="manja-schema-label">
 		<div class="manja-schema-heading">
 			<span class="manja-schema-name">{ name }</span>
+			@schemaTreeRequired(required)
 			if schemaInline(schema) != "" {
 				<span class="manja-schema-type">{ schemaInline(schema) }</span>
 			}
@@ -1076,7 +1188,7 @@ templ schemaTreeLabel(name string, schema core.SchemaSummary, opts PublicDocsOpt
 
 templ schemaTreeRequired(required bool) {
 	if required {
-		<span class="manja-schema-required">required</span>
+		<span role="img" aria-label="Required property" title="Required property" class="manja-schema-required">*</span>
 	}
 }
 
@@ -1183,7 +1295,32 @@ func responseTabID(response core.OperationResponse) string {
 	return "response-" + id
 }
 
-templ parameterDescriptionCell(renderer port.MarkdownRenderer, description string, example string) {
+templ parameterDescriptionCell(id string, renderer port.MarkdownRenderer, description string, example string) {
+	if parameterDescriptionNeedsCollapse(description, example) {
+		<div x-data="{ expanded: false }" class="manja-parameter-description">
+			<div id={ id + "-description" } class="manja-parameter-description-content" data-expanded="true" x-bind:data-expanded="expanded.toString()">
+				@parameterDescriptionBody(renderer, description, example)
+			</div>
+			<button
+				type="button"
+				x-cloak
+				class="manja-description-toggle mt-1 text-xs font-medium text-primary underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary dark:text-primary-dark dark:focus-visible:outline-primary-dark"
+				x-bind:aria-expanded="expanded.toString()"
+				aria-controls={ id + "-description" }
+				x-on:click="expanded = !expanded"
+				x-text="expanded ? 'Show less' : 'Show more'"
+			>
+				Show more
+			</button>
+		</div>
+	} else {
+		<div class="manja-parameter-description">
+			@parameterDescriptionBody(renderer, description, example)
+		</div>
+	}
+}
+
+templ parameterDescriptionBody(renderer port.MarkdownRenderer, description string, example string) {
 	if strings.TrimSpace(description) != "" {
 		if hasMarkdown(renderer, description) {
 			@renderedMarkdown(renderer, description)
@@ -1219,8 +1356,8 @@ func parameterTableConfig(idPrefix string, title string, parameters []core.Opera
 			description += "Example: " + param.Example
 		}
 		descriptionCell := table.Cell{Text: description}
-		if renderer != nil && (strings.TrimSpace(param.Description) != "" || strings.TrimSpace(param.Example) != "") {
-			descriptionCell = table.Cell{Component: parameterDescriptionCell(renderer, param.Description, param.Example)}
+		if (renderer != nil || parameterDescriptionNeedsCollapse(param.Description, param.Example)) && (strings.TrimSpace(param.Description) != "" || strings.TrimSpace(param.Example) != "") {
+			descriptionCell = table.Cell{Component: parameterDescriptionCell(idPrefix + "-" + anchorFragment(title) + "-" + anchorFragment(param.In+"-"+param.Name), renderer, param.Description, param.Example)}
 		}
 		rows = append(rows, table.Row{
 			ID: idPrefix + "-" + anchorFragment(title) + "-" + anchorFragment(param.In+"-"+param.Name),
@@ -1240,8 +1377,19 @@ func parameterTableConfig(idPrefix string, title string, parameters []core.Opera
 			{Key: "description", Label: "Description"},
 		},
 		Rows:      rows,
-		RootClass: "text-sm",
+		RootClass: "manja-parameter-table-wrapper text-sm",
 	}
+}
+
+func parameterDescriptionNeedsCollapse(description string, example string) bool {
+	text := strings.TrimSpace(description)
+	if example != "" {
+		if text != "" {
+			text += " "
+		}
+		text += "Example: " + example
+	}
+	return utf8.RuneCountInString(text) > 220 || strings.Count(text, "\n") >= 4
 }
 
 func mediaTypeTableID(idPrefix string, media core.OperationMediaType) string {
@@ -1790,6 +1938,13 @@ func operationHasRail(op core.Operation, servers []core.SpecServer) bool {
 		}
 	}
 	return false
+}
+
+func requestConfigPanelLabel(op core.Operation, servers []core.SpecServer) string {
+	if requestConfigHasContent(op, servers) {
+		return "Request configuration"
+	}
+	return "Request examples"
 }
 
 func requestConfigHasContent(op core.Operation, servers []core.SpecServer) bool {

@@ -390,12 +390,13 @@ templ catalogMetric(label string, value string) {
 templ catalogDocument(data CatalogPageData) {
 	<main data-catalog-document={ data.Document.Key } class="pb-16">
 		<div class="mb-8 flex flex-wrap items-start justify-between gap-5 border-b border-outline pb-8 dark:border-outline-dark">
-			<div>
-				<a href={ templpkg.URL(data.Mount) } class="text-sm font-medium text-primary hover:underline dark:text-primary-dark">{ data.Directory.Title }</a>
-				<h1 class="mt-2 font-title text-4xl font-bold text-on-surface-strong dark:text-on-surface-dark-strong">{ data.Document.Title }</h1>
-				<p class="mt-3 font-mono text-sm text-on-surface-muted dark:text-on-surface-dark-muted">{ data.Document.SourcePath }</p>
+			<div class="min-w-0">
+				<h1 class="font-title text-4xl font-bold text-on-surface-strong dark:text-on-surface-dark-strong">{ data.Document.Title }</h1>
 			</div>
-			<a href={ templpkg.URL(data.DownloadHref) } class="inline-flex min-h-11 items-center rounded-radius border border-outline px-4 font-semibold hover:bg-surface-alt dark:border-outline-dark dark:hover:bg-surface-dark-alt">Download source</a>
+			<div class="flex min-w-0 flex-col items-start gap-2 sm:items-end">
+				<a href={ templpkg.URL(data.DownloadHref) } class="inline-flex min-h-11 items-center rounded-radius border border-outline px-4 font-semibold hover:bg-surface-alt dark:border-outline-dark dark:hover:bg-surface-dark-alt">Download source</a>
+				<p class="max-w-full break-all text-left font-mono text-sm text-on-surface-muted sm:text-right dark:text-on-surface-dark-muted">{ data.Document.SourcePath }</p>
+			</div>
 		</div>
 		if data.Selected == nil {
 			<div class="grid gap-4 sm:grid-cols-2">
@@ -420,8 +421,10 @@ templ catalogOperationDetail(data CatalogPageData) {
 		<article data-catalog-detail="operation">
 			@pageheader.PageHeader(pageheader.Config{
 				Title: operationTitle(operation),
-				Description: strings.TrimSpace(strings.ToUpper(operation.Method) + " " + operation.Path),
-				RootClass: "mb-8",
+				RootClass: "mb-8 min-w-0",
+				RootAttrs: templpkg.Attributes{
+					"data-public-page-header": "true",
+				},
 				TitleClass: "manja-doc-title",
 				TitleAttrs: templpkg.Attributes{
 					"id": operation.Anchor + "-heading",
