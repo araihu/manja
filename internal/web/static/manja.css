@@ -1685,6 +1685,37 @@ summary.manja-schema-row::marker {
   color: var(--color-on-surface-dark-muted);
 }
 
+.manja-copy-page-actions {
+  border: 1px solid var(--color-outline);
+  border-radius: var(--radius-radius);
+}
+
+.manja-copy-page-actions [data-manja-copy-page-trigger] {
+  border: 0;
+  border-radius: var(--radius-radius) 0 0 var(--radius-radius);
+  border-right: 1px solid var(--color-outline);
+}
+
+.manja-copy-page-actions > .relative {
+  display: flex;
+}
+
+.manja-copy-page-actions > .relative > button {
+  border: 0;
+  border-radius: 0 var(--radius-radius) var(--radius-radius) 0;
+}
+
+.manja-copy-page-actions [data-manja-copy-page-trigger]:focus-visible,
+.manja-copy-page-actions > .relative > button:focus-visible {
+  position: relative;
+  z-index: 1;
+}
+
+.dark .manja-copy-page-actions,
+.dark .manja-copy-page-actions [data-manja-copy-page-trigger] {
+  border-color: var(--color-outline-dark);
+}
+
 [data-manja-copy-page] [x-ref="menu"] {
   left: 0;
   right: auto;

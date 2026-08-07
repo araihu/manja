@@ -745,7 +745,7 @@ func copyPageAction(id string, markdownHref string) templ.Component {
 			templ_7745c5c3_Var21 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 31, "<div data-manja-copy-page class=\"inline-flex items-stretch gap-1\" role=\"group\" aria-label=\"Copy page as Markdown\"><button type=\"button\" data-manja-copy-page-trigger data-markdown-source=\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 31, "<div data-manja-copy-page class=\"manja-copy-page-actions inline-flex items-stretch\" role=\"group\" aria-label=\"Copy page as Markdown\"><button type=\"button\" data-manja-copy-page-trigger data-markdown-source=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
