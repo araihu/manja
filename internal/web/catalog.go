@@ -26,14 +26,42 @@ type CatalogHandler struct {
 	details      *catalog.ByteCache
 	search       *catalog.ByteCache
 	presentation map[string]CatalogPresentation
+	organization OrganizationPresentation
 }
 
 type CatalogPresentation struct {
 	Description         string
+	Readme              string
+	License             CatalogLicensePresentation
 	CanonicalBase       string
 	SocialImage         string
 	SocialImageMIMEType string
 	SocialImageAlt      string
+}
+
+type CatalogLicensePresentation struct {
+	Name string
+	URL  string
+}
+
+type OrganizationPresentation struct {
+	Title   string
+	Readme  string
+	License OrganizationLicensePresentation
+	Sources []OrganizationSourcePresentation
+	SEO     CatalogPresentation
+}
+
+type OrganizationLicensePresentation struct {
+	Name string
+	URL  string
+}
+
+type OrganizationSourcePresentation struct {
+	Name     string
+	Kind     string
+	Location string
+	URL      string
 }
 
 const maxCatalogPageBytes = 512 << 10
@@ -64,11 +92,16 @@ func NewCatalogHandler(runtime *catalog.Runtime, children catalogChildReader) ht
 }
 
 func NewCatalogHandlerWithPresentation(runtime *catalog.Runtime, children catalogChildReader, presentation map[string]CatalogPresentation) http.Handler {
+	return NewCatalogHandlerWithOrganization(runtime, children, presentation, OrganizationPresentation{})
+}
+
+func NewCatalogHandlerWithOrganization(runtime *catalog.Runtime, children catalogChildReader, presentation map[string]CatalogPresentation, organization OrganizationPresentation) http.Handler {
 	copyPresentation := make(map[string]CatalogPresentation, len(presentation))
 	for mount, value := range presentation {
 		copyPresentation[mount] = value
 	}
-	return &CatalogHandler{runtime: runtime, children: children, details: catalog.NewDetailCache(), search: catalog.NewSearchCache(), presentation: copyPresentation}
+	organization.Sources = append([]OrganizationSourcePresentation(nil), organization.Sources...)
+	return &CatalogHandler{runtime: runtime, children: children, details: catalog.NewDetailCache(), search: catalog.NewSearchCache(), presentation: copyPresentation, organization: organization}
 }
 
 // CatalogFlightReservationBytes reports the maximum encoded-plus-decoded
@@ -90,6 +123,22 @@ func (handler *CatalogHandler) ServeHTTP(response http.ResponseWriter, request *
 	}
 	if IsCatalogComponentPath(request.URL.Path) {
 		handler.serveCatalogDocumentCombobox(response, request)
+		return
+	}
+	// The root is an organization landing page only when every publication is
+	// mounted below it. A deliberate "/" catalog owns the root route and must
+	// retain its own overview instead of looping through a synthetic card.
+	if request.URL.Path == "/" && handler.servesOrganizationRoot() {
+		if request.Method != http.MethodGet && request.Method != http.MethodHead {
+			response.Header().Set("Allow", "GET, HEAD")
+			http.Error(response, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		if hasEncodedSeparator(request.URL.EscapedPath()) {
+			http.Error(response, "invalid path", http.StatusBadRequest)
+			return
+		}
+		handler.serveOrganizationRoot(response, request)
 		return
 	}
 	mount, exactMount := handler.matchMount(request.URL.Path)
@@ -132,6 +181,95 @@ func (handler *CatalogHandler) ServeHTTP(response http.ResponseWriter, request *
 	handler.serveAdmitted(response, request, admission.Snapshot, mount, relative)
 }
 
+func (handler *CatalogHandler) servesOrganizationRoot() bool {
+	if handler == nil || handler.runtime == nil {
+		return false
+	}
+	mounts := handler.runtime.MountNames()
+	if len(mounts) == 0 {
+		return false
+	}
+	for _, mount := range mounts {
+		if mount == "/" {
+			return false
+		}
+	}
+	return true
+}
+
+func (handler *CatalogHandler) serveOrganizationRoot(response http.ResponseWriter, request *http.Request) {
+	title := strings.TrimSpace(handler.organization.Title)
+	if title == "" {
+		title = "Manja"
+	}
+	data := templates.CatalogPageData{
+		OrganizationRoot: true,
+		Mount:            "/",
+		Directory: catalog.CatalogArtifactV1{
+			Title: title,
+			Branding: catalog.BrandingV1{
+				DisplayName: title,
+				LogoSrc:     "/manja-assets/manja-mark.svg",
+				LogoAlt:     title,
+			},
+		},
+		OrganizationNav: handler.catalogOrganizationNav("", true),
+		Organization: templates.CatalogOrganizationPageData{
+			Title:  title,
+			Readme: strings.TrimSpace(handler.organization.Readme),
+			License: templates.CatalogOrganizationLicenseData{
+				Name: strings.TrimSpace(handler.organization.License.Name),
+				URL:  strings.TrimSpace(handler.organization.License.URL),
+			},
+			Sources: make([]templates.CatalogOrganizationSourceData, len(handler.organization.Sources)),
+		},
+	}
+	for index, source := range handler.organization.Sources {
+		data.Organization.Sources[index] = templates.CatalogOrganizationSourceData{
+			Name: strings.TrimSpace(source.Name), Kind: strings.TrimSpace(source.Kind),
+			Location: strings.TrimSpace(source.Location), URL: strings.TrimSpace(source.URL),
+		}
+	}
+	// Keep the root search affordance useful while cross-catalog search is
+	// being added: use the first admitted catalog as the bounded search source.
+	// The root itself still remains free of catalog selection state.
+	mounts := handler.runtime.MountNames()
+	sort.Strings(mounts)
+	for _, mount := range mounts {
+		admission, err := handler.runtime.Admit(mount)
+		if err != nil {
+			continue
+		}
+		if data.SearchHref == "" {
+			data.SearchMount = mount
+			data.SearchScopeLabel = strings.TrimSpace(admission.Snapshot.Directory.Title)
+			data.SearchHref, _ = catalogURL(mount, "search")
+			identity, exists := catalogChildIdentity(admission.Snapshot.Manifest, admission.Snapshot.Directory.SearchChild)
+			if exists && identity.Kind == "search-directory" {
+				data.SearchDirectoryPath = identity.Path
+				data.SearchDirectoryLength = identity.Length
+				data.SearchDirectorySHA256 = identity.SHA256
+				data.SearchChildBase, _ = catalogURL(mount, "snapshots", string(admission.Snapshot.ID), "search-data")
+				data.SearchChildBase += "/"
+			}
+		}
+		for _, document := range admission.Snapshot.Directory.Documents {
+			href, err := catalogURL(mount, "documents", document.Key)
+			if err != nil {
+				continue
+			}
+			data.Documents = append(data.Documents, templates.CatalogDocumentOption{
+				Key: document.Key, Label: catalogDocumentLabel(document), Version: document.APIVersion,
+				Operations: len(document.Operations), Schemas: len(document.Schemas), Href: href + "/",
+				SearchText: strings.ToLower(document.Key + " " + document.APIVersion),
+				AvatarSrc:  document.Branding.LogoSrc, AvatarAlt: document.Branding.LogoAlt,
+			})
+		}
+		admission.Release()
+	}
+	handler.renderCatalogPage(response, request, data)
+}
+
 func (handler *CatalogHandler) matchMount(requestPath string) (string, bool) {
 	mounts := handler.runtime.MountNames()
 	sort.Slice(mounts, func(left, right int) bool { return len(mounts[left]) > len(mounts[right]) })
@@ -164,6 +302,8 @@ func (handler *CatalogHandler) serveAdmitted(response http.ResponseWriter, reque
 		handler.serveOverview(response, request, snapshot, mount)
 	case relative == "catalog.json":
 		handler.redirectStable(response, request, snapshot, mount, "catalog.json")
+	case relative == "llms.txt":
+		writePageMarkdown(response, request, catalogLLMsText(snapshot.Directory, mount))
 	case relative == "search":
 		handler.serveSearch(response, request, snapshot, mount)
 	case relative == "search.json":
@@ -229,7 +369,65 @@ func (handler *CatalogHandler) serveOverview(response http.ResponseWriter, reque
 		http.Error(response, "catalog temporarily unavailable", http.StatusServiceUnavailable)
 		return
 	}
+	if err := sortCatalogDocuments(data.Documents, request.URL.Query().Get("order_by"), request.URL.Query().Get("order_dir")); err != nil {
+		http.Error(response, "invalid catalog document sort", http.StatusBadRequest)
+		return
+	}
+	data.DocumentSortBy = request.URL.Query().Get("order_by")
+	data.DocumentSortDir = request.URL.Query().Get("order_dir")
+	if request.URL.Query().Get("table_id") == "catalog-documents-table" {
+		handler.renderCatalogDocumentTable(response, request, data)
+		return
+	}
 	handler.renderCatalogPage(response, request, data)
+}
+
+func sortCatalogDocuments(documents []templates.CatalogDocumentOption, orderBy, orderDir string) error {
+	if orderBy == "" && orderDir == "" {
+		return nil
+	}
+	if orderDir != "asc" && orderDir != "desc" {
+		return fmt.Errorf("unsupported sort direction %q", orderDir)
+	}
+	if orderBy != "name" && orderBy != "version" && orderBy != "operations" && orderBy != "schemas" {
+		return fmt.Errorf("unsupported sort column %q", orderBy)
+	}
+	descending := orderDir == "desc"
+	sort.SliceStable(documents, func(left, right int) bool {
+		comparison := 0
+		switch orderBy {
+		case "name":
+			comparison = strings.Compare(strings.ToLower(documents[left].Label), strings.ToLower(documents[right].Label))
+		case "version":
+			comparison = strings.Compare(strings.ToLower(documents[left].Version), strings.ToLower(documents[right].Version))
+		case "operations":
+			comparison = documents[left].Operations - documents[right].Operations
+		case "schemas":
+			comparison = documents[left].Schemas - documents[right].Schemas
+		}
+		if comparison == 0 {
+			comparison = strings.Compare(documents[left].Key, documents[right].Key)
+		}
+		if descending {
+			return comparison > 0
+		}
+		return comparison < 0
+	})
+	return nil
+}
+
+func (handler *CatalogHandler) renderCatalogDocumentTable(response http.ResponseWriter, request *http.Request, data templates.CatalogPageData) {
+	var body catalogPageBuffer
+	err := templates.CatalogDocumentTableFragment(data).Render(request.Context(), &body)
+	if body.exceeded || errors.Is(err, errCatalogPageTooLarge) {
+		http.Error(response, "catalog representation exceeds byte limit", http.StatusInternalServerError)
+		return
+	}
+	if err != nil {
+		http.Error(response, "render catalog document table", http.StatusInternalServerError)
+		return
+	}
+	writeCatalogRepresentation(response, request, body.Bytes(), "text/html; charset=utf-8")
 }
 
 func (handler *CatalogHandler) serveDocument(response http.ResponseWriter, request *http.Request, snapshot catalog.RuntimeSnapshot, mount, key string) {
@@ -247,10 +445,21 @@ func (handler *CatalogHandler) serveDocument(response http.ResponseWriter, reque
 		http.Error(response, "catalog temporarily unavailable", http.StatusServiceUnavailable)
 		return
 	}
+	data.PageMarkdownHref = selectedPageMarkdownHref(request.URL.Path, query.Get("selected"))
+	if query.Get("format") == "markdown" {
+		document, ok := catalogPageMarkdown(data)
+		if !ok {
+			http.NotFound(response, request)
+			return
+		}
+		writePageMarkdown(response, request, document)
+		return
+	}
 	handler.renderCatalogPage(response, request, data)
 }
 
 func (handler *CatalogHandler) renderCatalogPage(response http.ResponseWriter, request *http.Request, data templates.CatalogPageData) {
+	data.CapabilityFooter = handler.catalogCapabilityFooter(data)
 	data.Metadata = handler.catalogPageMetadata(request, data)
 	var body catalogPageBuffer
 	err := templates.CatalogPage(data).Render(request.Context(), &body)
@@ -263,6 +472,42 @@ func (handler *CatalogHandler) renderCatalogPage(response http.ResponseWriter, r
 		return
 	}
 	writeCatalogRepresentation(response, request, body.Bytes(), "text/html; charset=utf-8")
+}
+
+func (handler *CatalogHandler) catalogCapabilityFooter(data templates.CatalogPageData) templates.CapabilityFooterData {
+	footer := templates.CapabilityFooterData{}
+	if !data.OrganizationRoot {
+		footer.LLMsHref, _ = catalogURL(data.Mount, "llms.txt")
+	}
+	for _, source := range handler.organization.Sources {
+		if source.Kind != "git" || strings.TrimSpace(source.URL) == "" {
+			continue
+		}
+		footer.Clone = &templates.CapabilityFooterLink{
+			Label: "Clone", Href: strings.TrimSpace(source.URL),
+			Title: "Open source and ref guidance for " + strings.TrimSpace(source.Location),
+		}
+		break
+	}
+	if data.DownloadHref != "" {
+		label := "Catalog JSON"
+		title := "Export the catalog directory as JSON"
+		download := false
+		if data.Document != nil {
+			label = "OpenAPI JSON"
+			title = "Download the OpenAPI document as JSON"
+			download = true
+		}
+		footer.Exports = append(footer.Exports, templates.CapabilityFooterLink{
+			Label: label, Href: data.DownloadHref, Title: title, Download: download,
+		})
+	}
+	if data.PageMarkdownHref != "" && data.Selected != nil {
+		footer.Exports = append(footer.Exports, templates.CapabilityFooterLink{
+			Label: "Page Markdown", Href: data.PageMarkdownHref, Title: "View this page as Markdown",
+		})
+	}
+	return footer
 }
 
 func writeCatalogRepresentation(response http.ResponseWriter, request *http.Request, body []byte, contentType string) {

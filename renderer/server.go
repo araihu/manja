@@ -266,11 +266,31 @@ func (server *server) ensureRuntime(ctx context.Context) error {
 	presentation := make(map[string]web.CatalogPresentation, len(server.config.Catalogs))
 	for _, configured := range server.config.Catalogs {
 		presentation[configured.Mount] = web.CatalogPresentation{
-			Description: configured.SEO.Description, CanonicalBase: configured.SEO.CanonicalBase,
-			SocialImage: configured.SEO.SocialImage, SocialImageMIMEType: socialImageMIMEType(configured.SEO.SocialImage), SocialImageAlt: configured.SEO.SocialImageAlt,
+			Description: configured.SEO.Description, Readme: configured.Readme,
+			License:       web.CatalogLicensePresentation{Name: configured.License.Name, URL: configured.License.URL},
+			CanonicalBase: configured.SEO.CanonicalBase,
+			SocialImage:   configured.SEO.SocialImage, SocialImageMIMEType: socialImageMIMEType(configured.SEO.SocialImage), SocialImageAlt: configured.SEO.SocialImageAlt,
 		}
 	}
-	server.handler.install(runtime, web.NewCatalogHandlerWithPresentation(runtime, coordinator.Store(), presentation))
+	organization := web.OrganizationPresentation{
+		Title:  server.config.Organization.Title,
+		Readme: server.config.Organization.Readme,
+		License: web.OrganizationLicensePresentation{
+			Name: server.config.Organization.License.Name,
+			URL:  server.config.Organization.License.URL,
+		},
+		Sources: make([]web.OrganizationSourcePresentation, len(server.config.Organization.Sources)),
+		SEO: web.CatalogPresentation{
+			Description: server.config.Organization.SEO.Description, CanonicalBase: server.config.Organization.SEO.CanonicalBase,
+			SocialImage: server.config.Organization.SEO.SocialImage, SocialImageMIMEType: socialImageMIMEType(server.config.Organization.SEO.SocialImage), SocialImageAlt: server.config.Organization.SEO.SocialImageAlt,
+		},
+	}
+	for index, source := range server.config.Organization.Sources {
+		organization.Sources[index] = web.OrganizationSourcePresentation{
+			Name: source.Name, Kind: source.Kind, Location: source.Location, URL: source.URL,
+		}
+	}
+	server.handler.install(runtime, web.NewCatalogHandlerWithOrganization(runtime, coordinator.Store(), presentation, organization))
 	return nil
 }
 
@@ -414,6 +434,14 @@ func (gateway *catalogGateway) ServeHTTP(response http.ResponseWriter, request *
 	gateway.mutex.RUnlock()
 	if web.IsCatalogComponentPath(request.URL.Path) {
 		if runtime == nil || delegate == nil {
+			http.Error(response, "catalog unavailable", http.StatusServiceUnavailable)
+			return
+		}
+		delegate.ServeHTTP(response, request)
+		return
+	}
+	if request.URL.Path == "/" {
+		if runtime == nil {
 			http.Error(response, "catalog unavailable", http.StatusServiceUnavailable)
 			return
 		}

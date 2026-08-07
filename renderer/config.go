@@ -9,7 +9,14 @@ import (
 	"github.com/araihu/manja/domain"
 )
 
-const maxConfiguredCatalogs = 8
+const (
+	maxConfiguredCatalogs      = 8
+	maxCatalogReadmeBytes      = 64 << 10
+	maxOrganizationSources     = 32
+	maxOrganizationReadmeBytes = 64 << 10
+	OrganizationSourceKindGit  = "git"
+	OrganizationSourceKindFile = "file"
+)
 
 const DefaultStartupProcessBytes = uint64(512 << 20)
 
@@ -17,17 +24,48 @@ type Config struct {
 	Version             uint32
 	DataDir             string
 	StartupProcessBytes uint64
+	Organization        OrganizationConfig
 	Catalogs            []CatalogConfig
+}
+
+// OrganizationConfig describes the optional renderer root. Sources are
+// intentionally explicit: Manja never derives or exposes private acquisition
+// locations from catalog source adapters.
+type OrganizationConfig struct {
+	Title   string
+	Readme  string
+	License OrganizationLicense
+	Sources []OrganizationSource
+	SEO     CatalogSEO
+}
+
+type OrganizationLicense struct {
+	Name string
+	URL  string
+}
+
+type OrganizationSource struct {
+	Name     string
+	Kind     string
+	Location string
+	URL      string
 }
 
 type CatalogConfig struct {
 	ID                     string
 	Mount                  string
 	Title                  string
+	Readme                 string
+	License                CatalogLicense
 	DefaultDocumentKey     string
 	ProfileID              domain.CompatibilityProfileID
 	CompatibilityAllowlist []byte
 	SEO                    CatalogSEO
+}
+
+type CatalogLicense struct {
+	Name string
+	URL  string
 }
 
 type CatalogSEO struct {
@@ -47,6 +85,9 @@ func validateConfig(config Config) error {
 	if len(config.Catalogs) > maxConfiguredCatalogs {
 		return fmt.Errorf("renderer catalogs exceed %d", maxConfiguredCatalogs)
 	}
+	if err := validateOrganization(config.Organization); err != nil {
+		return err
+	}
 	ids := make(map[string]struct{}, len(config.Catalogs))
 	for index, catalog := range config.Catalogs {
 		if err := domain.ValidateCatalogID(catalog.ID); err != nil {
@@ -62,6 +103,27 @@ func validateConfig(config Config) error {
 		if err := domain.ValidateCanonicalIdentity(fmt.Sprintf("catalog %q profile", catalog.ID), string(catalog.ProfileID), false); err != nil {
 			return err
 		}
+		if len(catalog.Readme) > maxCatalogReadmeBytes {
+			return fmt.Errorf("catalog %q README exceeds %d bytes", catalog.ID, maxCatalogReadmeBytes)
+		}
+		if catalog.Readme != "" {
+			if err := domain.ValidateCanonicalIdentity(fmt.Sprintf("catalog %q README", catalog.ID), catalog.Readme, false); err != nil {
+				return err
+			}
+		}
+		if catalog.License.Name != "" {
+			if err := domain.ValidateCanonicalIdentity(fmt.Sprintf("catalog %q license name", catalog.ID), catalog.License.Name, false); err != nil {
+				return err
+			}
+		}
+		if catalog.License.URL != "" {
+			if catalog.License.Name == "" {
+				return fmt.Errorf("catalog %q license name is required with URL", catalog.ID)
+			}
+			if err := validatePublicHTTPSURL(fmt.Sprintf("catalog %q license URL", catalog.ID), catalog.License.URL); err != nil {
+				return err
+			}
+		}
 		if catalog.DefaultDocumentKey != "" {
 			if err := domain.ValidateCatalogDocumentKey(catalog.DefaultDocumentKey); err != nil {
 				return fmt.Errorf("catalog %q default document: %w", catalog.ID, err)
@@ -70,7 +132,7 @@ func validateConfig(config Config) error {
 		if err := validateMount(catalog.Mount); err != nil {
 			return fmt.Errorf("catalog %q mount: %w", catalog.ID, err)
 		}
-		if err := validateCatalogSEO(catalog.ID, catalog.SEO); err != nil {
+		if err := validateSEO(fmt.Sprintf("catalog %q", catalog.ID), catalog.SEO); err != nil {
 			return err
 		}
 	}
@@ -93,10 +155,59 @@ func ValidateConfig(config Config) error {
 	return validateConfig(config)
 }
 
-func validateCatalogSEO(catalogID string, seo CatalogSEO) error {
+func validateOrganization(organization OrganizationConfig) error {
+	if organization.Title != "" {
+		if err := domain.ValidateCanonicalIdentity("organization title", organization.Title, false); err != nil {
+			return err
+		}
+	}
+	if len(organization.Readme) > maxOrganizationReadmeBytes {
+		return fmt.Errorf("organization README exceeds %d bytes", maxOrganizationReadmeBytes)
+	}
+	if organization.Readme != "" {
+		if err := domain.ValidateCanonicalIdentity("organization README", organization.Readme, false); err != nil {
+			return err
+		}
+	}
+	if organization.License.Name != "" {
+		if err := domain.ValidateCanonicalIdentity("organization license name", organization.License.Name, false); err != nil {
+			return err
+		}
+	}
+	if organization.License.URL != "" {
+		if organization.License.Name == "" {
+			return fmt.Errorf("organization license name is required with URL")
+		}
+		if err := validatePublicHTTPSURL("organization license URL", organization.License.URL); err != nil {
+			return err
+		}
+	}
+	if len(organization.Sources) > maxOrganizationSources {
+		return fmt.Errorf("organization sources exceed %d", maxOrganizationSources)
+	}
+	for index, source := range organization.Sources {
+		prefix := fmt.Sprintf("organization source %d", index)
+		for label, value := range map[string]string{"name": source.Name, "kind": source.Kind, "location": source.Location} {
+			if err := domain.ValidateCanonicalIdentity(prefix+" "+label, value, false); err != nil {
+				return err
+			}
+		}
+		if source.Kind != OrganizationSourceKindGit && source.Kind != OrganizationSourceKindFile {
+			return fmt.Errorf("%s kind %q is unsupported", prefix, source.Kind)
+		}
+		if source.URL != "" {
+			if err := validatePublicHTTPSURL(prefix+" URL", source.URL); err != nil {
+				return err
+			}
+		}
+	}
+	return validateSEO("organization", organization.SEO)
+}
+
+func validateSEO(owner string, seo CatalogSEO) error {
 	for label, value := range map[string]string{"description": seo.Description, "social image alt": seo.SocialImageAlt} {
 		if value != "" {
-			if err := domain.ValidateCanonicalIdentity(fmt.Sprintf("catalog %q SEO %s", catalogID, label), value, false); err != nil {
+			if err := domain.ValidateCanonicalIdentity(fmt.Sprintf("%s SEO %s", owner, label), value, false); err != nil {
 				return err
 			}
 		}
@@ -105,16 +216,23 @@ func validateCatalogSEO(catalogID string, seo CatalogSEO) error {
 		if value == "" {
 			continue
 		}
-		parsed, err := url.Parse(value)
-		if err != nil || parsed.Scheme != "https" || parsed.Host == "" || parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" {
-			return fmt.Errorf("catalog %q SEO %s must be an absolute HTTPS URL without credentials, query, or fragment", catalogID, label)
+		if err := validatePublicHTTPSURL(fmt.Sprintf("%s SEO %s", owner, label), value); err != nil {
+			return err
 		}
 	}
 	if seo.SocialImage != "" && seo.SocialImageAlt == "" {
-		return fmt.Errorf("catalog %q SEO social image alt is required with social image", catalogID)
+		return fmt.Errorf("%s SEO social image alt is required with social image", owner)
 	}
 	if seo.SocialImage != "" && socialImageMIMEType(seo.SocialImage) == "" {
-		return fmt.Errorf("catalog %q SEO social image must use a supported .png, .jpg, .jpeg, or .webp extension", catalogID)
+		return fmt.Errorf("%s SEO social image must use a supported .png, .jpg, .jpeg, or .webp extension", owner)
+	}
+	return nil
+}
+
+func validatePublicHTTPSURL(name, value string) error {
+	parsed, err := url.Parse(value)
+	if err != nil || parsed.Scheme != "https" || parsed.Host == "" || parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" {
+		return fmt.Errorf("%s must be an absolute HTTPS URL without credentials, query, or fragment", name)
 	}
 	return nil
 }

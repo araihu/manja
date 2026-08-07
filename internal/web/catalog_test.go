@@ -58,8 +58,8 @@ func TestCatalogRouteMatrixForRootAndNestedMounts(t *testing.T) {
 				}
 				if mount == "/" && test.method == http.MethodGet && test.path == base {
 					body := response.Body.String()
-					if !strings.Contains(body, `id="catalog-organization-navigation"`) || !strings.Contains(body, `data-catalog-organization-item="catalog-kubernetes"`) {
-						t.Errorf("root response missing organization navigation: %q", body)
+					if !strings.Contains(body, `data-catalog-overview="true"`) || strings.Contains(body, `id="catalog-organization-navigation"`) {
+						t.Errorf("root-mounted catalog response did not remain a catalog overview: %q", body)
 					}
 				}
 				if mount == "/" && strings.Contains(test.path, "documents/core-v1") && strings.Contains(response.Body.String(), `id="catalog-organization-navigation"`) {
@@ -75,6 +75,94 @@ func TestCatalogRouteMatrixForRootAndNestedMounts(t *testing.T) {
 			}
 			_ = snapshot
 		})
+	}
+}
+
+func TestOrganizationRootCatalogCardNavigatesToCatalogOverview(t *testing.T) {
+	t.Parallel()
+
+	handler, _ := catalogHandlerFixture(t, "/kubernetes")
+	root := httptest.NewRecorder()
+	handler.ServeHTTP(root, httptest.NewRequest(http.MethodGet, "/", nil))
+	if root.Code != http.StatusOK {
+		t.Fatalf("organization root = %d body=%q", root.Code, root.Body.String())
+	}
+	if !strings.Contains(root.Body.String(), `id="catalog-organization-navigation"`) || !strings.Contains(root.Body.String(), `data-catalog-organization-item="catalog-kubernetes"`) || !strings.Contains(root.Body.String(), `href="/kubernetes/"`) {
+		t.Fatalf("organization root card missing catalog overview target: %q", root.Body.String())
+	}
+	if strings.Contains(root.Body.String(), `id="organization-catalogs-heading"`) || strings.Contains(root.Body.String(), `id="organization-specs-heading"`) {
+		t.Fatal("organization root main content duplicated sidebar catalogs or specs")
+	}
+
+	catalogRoot := httptest.NewRecorder()
+	handler.ServeHTTP(catalogRoot, httptest.NewRequest(http.MethodGet, "/kubernetes/", nil))
+	if catalogRoot.Code != http.StatusOK || !strings.Contains(catalogRoot.Body.String(), `data-catalog-overview="true"`) {
+		t.Fatalf("catalog overview = %d body=%q", catalogRoot.Code, catalogRoot.Body.String())
+	}
+	if strings.Contains(catalogRoot.Body.String(), `id="catalog-readme-heading"`) || strings.Contains(catalogRoot.Body.String(), `id="catalog-license-heading"`) {
+		t.Fatal("catalog overview rendered undeclared README or license")
+	}
+}
+
+func TestCatalogOverviewDocumentTableSortsThroughHTMXFragment(t *testing.T) {
+	t.Parallel()
+
+	handler, _ := catalogHandlerFixture(t, "/kubernetes")
+	request := httptest.NewRequest(http.MethodGet, "/kubernetes/?table_id=catalog-documents-table&order_by=operations&order_dir=desc", nil)
+	request.Header.Set("HX-Request", "true")
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("sorted table = %d body=%q", response.Code, response.Body.String())
+	}
+	body := response.Body.String()
+	if strings.Contains(body, `data-catalog-overview="true"`) {
+		t.Fatal("sorted table response rendered the full catalog page")
+	}
+	core := strings.Index(body, `data-search-text="core-v1 v1"`)
+	apps := strings.Index(body, `data-search-text="apps-v1 v1"`)
+	if core < 0 || apps < 0 || core > apps {
+		t.Fatalf("operations descending order = core %d apps %d", core, apps)
+	}
+	for _, want := range []string{`id="catalog-documents-table-thead"`, `hx-swap-oob="innerHTML"`, `data-table-sort-by="operations"`, `data-table-sort-dir="desc"`, `table_id=catalog-documents-table`, `order_by=name`} {
+		if !strings.Contains(body, want) {
+			t.Errorf("sorted table response missing %q", want)
+		}
+	}
+}
+
+func TestCatalogOverviewDocumentTableRejectsInvalidSort(t *testing.T) {
+	t.Parallel()
+
+	handler, _ := catalogHandlerFixture(t, "/kubernetes")
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/kubernetes/?table_id=catalog-documents-table&order_by=source&order_dir=asc", nil))
+	if response.Code != http.StatusBadRequest {
+		t.Fatalf("invalid sort = %d, want 400", response.Code)
+	}
+}
+
+func TestOrganizationRootRendersOnlyOptedInMetadata(t *testing.T) {
+	t.Parallel()
+
+	organization := OrganizationPresentation{
+		Title: "Example APIs", Readme: "Public API documentation.",
+		License: OrganizationLicensePresentation{Name: "Apache-2.0", URL: "https://example.test/license"},
+		Sources: []OrganizationSourcePresentation{{Name: "Definitions", Kind: "git", Location: "github.com/example/apis", URL: "https://github.com/example/apis"}},
+		SEO:     CatalogPresentation{Description: "Example API documentation.", CanonicalBase: "https://example.test", SocialImage: "https://example.test/social.png", SocialImageMIMEType: "image/png", SocialImageAlt: "Example APIs"},
+	}
+	handler, _ := catalogHandlerFixtureWithOrganization(t, "/kubernetes", nil, organization)
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "https://example.test/", nil))
+	if response.Code != http.StatusOK {
+		t.Fatalf("organization root = %d body=%q", response.Code, response.Body.String())
+	}
+	body := response.Body.String()
+	for _, want := range []string{"Example APIs", "Public API documentation.", "Apache-2.0", "Definitions", "github.com/example/apis", `<meta name="description" content="Example API documentation.">`, `<link rel="canonical" href="https://example.test/">`} {
+		if !strings.Contains(body, want) {
+			t.Errorf("organization root missing %q", want)
+		}
 	}
 }
 
@@ -247,15 +335,15 @@ func TestCatalogInitialHTMLIncludesCompleteRouteSocialMetadata(t *testing.T) {
 		canonical   string
 	}{
 		{
-			name: "catalog root", requestURL: "/kubernetes/", title: "Kubernetes",
+			name: "catalog root", requestURL: "/kubernetes/", title: "Kubernetes · Manja",
 			description: "Browse Kubernetes APIs.", canonical: "https://docs.example.test/kubernetes/",
 		},
 		{
-			name: "document", requestURL: "/kubernetes/documents/core-v1/", title: "Kubernetes Core v1 · Kubernetes",
-			description: "OpenAPI operations and schemas for Kubernetes Core v1.", canonical: "https://docs.example.test/kubernetes/documents/core-v1/",
+			name: "document", requestURL: "/kubernetes/documents/core-v1/", title: "core-v1 · Manja",
+			description: "OpenAPI operations and schemas for core-v1.", canonical: "https://docs.example.test/kubernetes/documents/core-v1/",
 		},
 		{
-			name: "operation", requestURL: "/kubernetes/documents/core-v1/?selected=" + detailID + "&group=ignored#ignored", title: "List Pods · Kubernetes",
+			name: "operation", requestURL: "/kubernetes/documents/core-v1/?selected=" + detailID + "&group=ignored#ignored", title: "List Pods · Manja",
 			description: "Lists Pods.", canonical: "https://docs.example.test/kubernetes/documents/core-v1/?selected=" + detailID,
 		},
 	} {
@@ -291,6 +379,49 @@ func TestCatalogInitialHTMLIncludesCompleteRouteSocialMetadata(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestOrganizationRootMetadataUsesOriginOnly(t *testing.T) {
+	t.Parallel()
+
+	presentation := map[string]CatalogPresentation{
+		"/catalogs/alpha": {CanonicalBase: "https://docs.example.test/catalogs/alpha", SocialImage: "https://docs.example.test/catalogs/alpha/catalog.png", SocialImageMIMEType: "image/png"},
+	}
+	handler, _ := catalogHandlerFixtureWithPresentation(t, "/catalogs/alpha", presentation)
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/", nil))
+	if response.Code != http.StatusOK {
+		t.Fatalf("organization root = %d body=%q", response.Code, response.Body.String())
+	}
+	body := response.Body.String()
+	for _, want := range []string{
+		`<link rel="canonical" href="https://docs.example.test/">`,
+		`<meta property="og:url" content="https://docs.example.test/">`,
+		`<meta property="og:image" content="https://docs.example.test/manja-assets/manja-social.png">`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("organization metadata missing %q", want)
+		}
+	}
+	if strings.Contains(body, "https://docs.example.test/catalogs/alpha/catalog.png") || strings.Contains(body, "https://docs.example.test/catalogs/alpha/") {
+		t.Errorf("organization metadata leaked catalog-qualified presentation: %q", body)
+	}
+}
+
+func TestOrganizationRootMetadataOmitsRelativePresentation(t *testing.T) {
+	t.Parallel()
+
+	presentation := map[string]CatalogPresentation{"/catalogs/alpha": {CanonicalBase: "/docs/alpha"}}
+	handler, _ := catalogHandlerFixtureWithPresentation(t, "/catalogs/alpha", presentation)
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/", nil))
+	if response.Code != http.StatusOK {
+		t.Fatalf("organization root = %d body=%q", response.Code, response.Body.String())
+	}
+	body := response.Body.String()
+	if strings.Contains(body, `rel="canonical"`) || strings.Contains(body, `property="og:image"`) {
+		t.Errorf("organization metadata emitted relative presentation: %q", body)
 	}
 }
 
@@ -517,7 +648,7 @@ func TestCatalogAssetsServeClientSearchRouter(t *testing.T) {
 	if response.Code != http.StatusOK {
 		t.Fatalf("catalog search asset = %d, want 200", response.Code)
 	}
-	for _, contract := range []string{"crypto.subtle.digest", "Browser index", "Server fallback", "manja.catalog.recent.v1", "escapeHTML", "search-highlight", "highlight"} {
+	for _, contract := range []string{"crypto.subtle.digest", "Browser index", "Server fallback", "manja.catalog.recent.v1", "escapeHTML", "search-highlight", "highlight", "usesCommandShortcut", "Command K", "Ctrl K"} {
 		if !strings.Contains(response.Body.String(), contract) {
 			t.Errorf("catalog search asset missing %q", contract)
 		}
@@ -586,6 +717,10 @@ func catalogHandlerFixture(t *testing.T, mount string) (http.Handler, catalog.Ru
 }
 
 func catalogHandlerFixtureWithPresentation(t *testing.T, mount string, presentation map[string]CatalogPresentation) (http.Handler, catalog.RuntimeSnapshot) {
+	return catalogHandlerFixtureWithOrganization(t, mount, presentation, OrganizationPresentation{})
+}
+
+func catalogHandlerFixtureWithOrganization(t *testing.T, mount string, presentation map[string]CatalogPresentation, organization OrganizationPresentation) (http.Handler, catalog.RuntimeSnapshot) {
 	t.Helper()
 	detailID := domain.DetailID("detail-sha256-" + strings.Repeat("a", 64))
 	schemaID := domain.DetailID("detail-sha256-" + strings.Repeat("c", 64))
@@ -675,5 +810,5 @@ func catalogHandlerFixtureWithPresentation(t *testing.T, mount string, presentat
 	if _, err := runtime.ActivateMount(mount, "", 1, snapshot); err != nil {
 		t.Fatal(err)
 	}
-	return NewCatalogHandlerWithPresentation(runtime, children, presentation), snapshot
+	return NewCatalogHandlerWithOrganization(runtime, children, presentation, organization), snapshot
 }

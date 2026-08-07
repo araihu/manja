@@ -336,6 +336,25 @@ func TestPublicDocsOperationTagDisclosuresDoNotDrawRails(t *testing.T) {
 	}
 }
 
+func TestCatalogGroupControlsUseAccessibleChevronStates(t *testing.T) {
+	css, err := os.ReadFile("static/manja.css")
+	if err != nil {
+		t.Fatal(err)
+	}
+	stylesheet := string(css)
+	for _, want := range []string{
+		`#catalog-sidebar-groups a[data-catalog-group-control]::after`,
+		`border-right: 0.1rem solid currentColor;`,
+		`border-bottom: 0.1rem solid currentColor;`,
+		`[aria-expanded="true"]::after`,
+		`transform: rotate(225deg);`,
+	} {
+		if !strings.Contains(stylesheet, want) {
+			t.Fatalf("catalog group chevron CSS missing %q", want)
+		}
+	}
+}
+
 func TestPublicDocsSchemaSidebarChildrenIndentLikeTagChildren(t *testing.T) {
 	idx := core.SpecIndex{
 		Title: "Schema Labels",
@@ -645,7 +664,7 @@ func TestPublicDocsBrandingDefaultsToManjaAssets(t *testing.T) {
 	body := renderPublicDocs(t, NewPublicServer(idx))
 
 	for _, want := range []string{
-		`<title>Petstore</title>`,
+		`<title>Petstore · Manja</title>`,
 		`<link rel="icon" href="/manja-assets/favicon.svg" crossorigin="anonymous" data-asset-brand="icon">`,
 		`href="/" class="flex min-w-0 items-center gap-2`,
 		`<img src="/manja-assets/manja-mark.svg" alt="" width="32" height="32" crossorigin="anonymous" data-asset-brand="logo"`,
@@ -752,7 +771,7 @@ func TestPublicDocsBrandingUsesOptionsOverSpecAndDefaults(t *testing.T) {
 	}))
 
 	for _, want := range []string{
-		`<title>Spec API</title>`,
+		`<title>Spec API · Manja</title>`,
 		`<link rel="icon" href="https://cdn.example.test/acme-favicon.svg">`,
 		`href="https://developers.example.test" class="flex min-w-0 items-center gap-2`,
 		`<img src="https://cdn.example.test/acme-logo.svg" alt="Acme Developers" width="32" height="32"`,
@@ -1395,12 +1414,12 @@ func TestPublicDocsRendersSchemaTree(t *testing.T) {
 			t.Fatalf("schema tree missing %q:\n%s", want, body)
 		}
 	}
-	requiredPropertyMarker := regexp.MustCompile(`<span class="manja-schema-name">id</span><span role="img" aria-label="Required property" title="Required property" class="manja-schema-required">\*</span>`)
+	requiredPropertyMarker := regexp.MustCompile(`<span class="manja-schema-name">id</span>.*<span class="manja-schema-property-state" data-required="true">required</span>`)
 	if !requiredPropertyMarker.MatchString(body) {
-		t.Fatalf("required schema properties should render a red accessible star after the property name:\n%s", body)
+		t.Fatalf("required schema properties should render an aligned visible state:\n%s", body)
 	}
-	if strings.Contains(body, `>required</span>`) {
-		t.Fatalf("schema properties should use the compact required star instead of a visible required label:\n%s", body)
+	if !strings.Contains(body, `<span class="manja-schema-property-state" data-required="false">optional</span>`) {
+		t.Fatalf("optional schema properties should render an aligned visible state:\n%s", body)
 	}
 	if strings.Contains(body, `<table`) {
 		t.Fatalf("schema page should render a tree component, not a table:\n%s", body)
@@ -1830,15 +1849,14 @@ func TestPublicDocsRenderEndpointDetails(t *testing.T) {
 		`id="operation-updatetodo-query-parameters"`,
 		`id="operation-updatetodo-request-body-application-json-schema"`,
 		`id="operation-updatetodo-responses"`,
-		`role="tablist"`,
-		`role="tab"`,
-		`role="tabpanel"`,
-		`tabpaneloperation-updatetodo-responsesresponse-200`,
-		`id="tabpaneloperation-updatetodo-responsesresponse-200" role="tabpanel" aria-label="200"><section class="grid gap-4">`,
+		`class="w-full divide-y divide-outline overflow-hidden rounded-radius border border-outline text-on-surface dark:divide-outline-dark dark:border-outline-dark dark:text-on-surface-dark bg-surface dark:bg-surface-dark manja-response-accordion"`,
+		`id="controls-operation-updatetodo-response-200"`,
+		`id="content-operation-updatetodo-response-200" role="region" aria-labelledby="controls-operation-updatetodo-response-200"`,
 		`class="manja-response-panel-main grid gap-4"`,
 		`class="manja-response-panel-example"`,
 		`class="manja-response-media-block border-t border-outline pt-6 pb-5 dark:border-outline-dark"><div class="manja-response-panel-layout">`,
-		`tabpaneloperation-updatetodo-responsesresponse-404`,
+		`id="controls-operation-updatetodo-response-404"`,
+		`id="content-operation-updatetodo-response-404" role="region" aria-labelledby="controls-operation-updatetodo-response-404"`,
 		`caption class="sr-only">Path Parameters</caption>`,
 		`aria-label="Request body schema for application/json schema tree"`,
 		`aria-label="Response 404 schema for application/json schema tree"`,
@@ -1859,6 +1877,9 @@ func TestPublicDocsRenderEndpointDetails(t *testing.T) {
 		t.Fatalf("endpoint schema tree should start at the root object properties, not render the root object row:\n%s", body)
 	}
 	for _, reject := range []string{
+		`role="tablist"`,
+		`role="tab"`,
+		`role="tabpanel"`,
 		`size-1.5 rounded-full bg-success`,
 		`size-1.5 rounded-full bg-danger`,
 		`class="dark grid min-w-0 gap-2" data-manja-request-config-panel`,
@@ -2256,7 +2277,7 @@ func TestPublicDocsEndpointResponseExamplesRenderInsideMatchingTabPanel(t *testi
 	if strings.Contains(body, `<aside class="manja-endpoint-examples-rail"`) {
 		t.Fatalf("response examples should not create the endpoint examples rail:\n%s", body)
 	}
-	response200Panel := htmlBetween(t, body, `id="tabpaneloperation-gettodo-responsesresponse-200"`, `id="tabpaneloperation-gettodo-responsesresponse-404"`)
+	response200Panel := htmlBetween(t, body, `id="content-operation-gettodo-response-200"`, `id="controls-operation-gettodo-response-404"`)
 	for _, want := range []string{
 		`class="manja-response-media-block border-t border-outline pt-6 pb-5 dark:border-outline-dark"><div class="manja-response-panel-layout">`,
 		`class="manja-response-panel-main grid gap-4"`,
@@ -2274,9 +2295,9 @@ func TestPublicDocsEndpointResponseExamplesRenderInsideMatchingTabPanel(t *testi
 	if strings.Contains(response200Panel, `<section class="manja-response-panel-layout">`) {
 		t.Fatalf("response example grid should live inside the media block under its divider:\n%s", response200Panel)
 	}
-	response404Start := strings.Index(body, `id="tabpaneloperation-gettodo-responsesresponse-404"`)
+	response404Start := strings.Index(body, `id="content-operation-gettodo-response-404"`)
 	if response404Start < 0 {
-		t.Fatalf("404 response tab panel missing:\n%s", body)
+		t.Fatalf("404 response accordion panel missing:\n%s", body)
 	}
 	response404Panel := body[response404Start:]
 	if strings.Contains(response404Panel, `Response Example: 404 application/json`) || strings.Contains(response404Panel, `Example unavailable`) {

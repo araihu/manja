@@ -234,6 +234,18 @@ func NewPublicServerWithOptions(idx core.SpecIndex, opts PublicOptions) http.Han
 		}
 		_, _ = w.Write(idx.SpecDownload.JSON)
 	})
+	mux.HandleFunc("/llms.txt", func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/llms.txt" {
+			http.NotFound(w, r)
+			return
+		}
+		if r.Method != http.MethodGet && r.Method != http.MethodHead {
+			w.Header().Set("Allow", strings.Join([]string{http.MethodGet, http.MethodHead}, ", "))
+			http.Error(w, http.StatusText(http.StatusMethodNotAllowed), http.StatusMethodNotAllowed)
+			return
+		}
+		writePageMarkdown(w, r, publicLLMsText(idx))
+	})
 	mux.HandleFunc("/sitemap.xml", func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/sitemap.xml" {
 			http.NotFound(w, r)
@@ -259,8 +271,22 @@ func NewPublicServerWithOptions(idx core.SpecIndex, opts PublicOptions) http.Han
 			http.NotFound(w, r)
 			return
 		}
-		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		selected := r.URL.Query().Get("selected")
+		if r.URL.Query().Get("format") == "markdown" {
+			if r.Method != http.MethodGet && r.Method != http.MethodHead {
+				w.Header().Set("Allow", strings.Join([]string{http.MethodGet, http.MethodHead}, ", "))
+				http.Error(w, http.StatusText(http.StatusMethodNotAllowed), http.StatusMethodNotAllowed)
+				return
+			}
+			document, ok := publicPageMarkdown(idx, selected)
+			if !ok {
+				http.NotFound(w, r)
+				return
+			}
+			writePageMarkdown(w, r, document)
+			return
+		}
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		renderOpts := templates.PublicDocsOptions{
 			EndpointSidebarLabel: opts.EndpointSidebarLabel,
 			MarkdownRenderer:     opts.MarkdownRenderer,

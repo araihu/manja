@@ -12,6 +12,36 @@
   var MAX_TOKENS = 8;
   var MAX_RECENT = 6;
 
+  function usesCommandShortcut() {
+    var platform = "";
+    if (navigator.userAgentData && navigator.userAgentData.platform) {
+      platform = navigator.userAgentData.platform;
+    } else {
+      platform = navigator.platform || navigator.userAgent || "";
+    }
+    return /Mac|iPhone|iPad|iPod/i.test(platform);
+  }
+
+  function syncPlatformShortcuts(root) {
+    var scope = root && root.querySelectorAll ? root : document;
+    var command = usesCommandShortcut();
+    scope.querySelectorAll("[data-catalog-platform-shortcut]").forEach(function (wrapper) {
+      var shortcut = wrapper.querySelector("kbd");
+      if (!shortcut) return;
+      shortcut.textContent = command ? "⌘ K" : "Ctrl K";
+      shortcut.setAttribute("aria-label", command ? "Command K" : "Control K");
+    });
+  }
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", function () { syncPlatformShortcuts(document); }, { once: true });
+  } else {
+    syncPlatformShortcuts(document);
+  }
+  document.addEventListener("htmx:afterSettle", function (event) {
+    syncPlatformShortcuts(event.target || document);
+  });
+
   function asString(value) {
     return value === null || value === undefined ? "" : String(value);
   }
@@ -505,13 +535,40 @@
     };
   }
 
+  function groupSearchItems(items) {
+    var order = [];
+    var groups = new Map();
+    items.forEach(function (item) {
+      var labels = { operation: "Operations", schema: "Schemas", document: "Documents" };
+      var label = labels[item.kind.toLowerCase()] || "Other results";
+      if (!groups.has(label)) {
+        groups.set(label, []);
+        order.push(label);
+      }
+      groups.get(label).push(item);
+    });
+    var grouped = [];
+    order.forEach(function (label) {
+      var values = groups.get(label);
+      values.forEach(function (item, index) {
+        grouped.push(Object.assign({}, item, {
+          groupStart: index === 0,
+          groupLabel: label,
+          groupCount: values.length,
+        }));
+      });
+    });
+    return grouped;
+  }
+
   window.ManjaCatalogSearchRouter = {
     create: function (root) { return new SearchRouter(root); },
   };
 
-  window.manjaCatalogSearch = function (root) {
-    var router = window.ManjaCatalogSearchRouter.create(root);
-    var mount = root.dataset.searchMount || "/";
+	window.manjaCatalogSearch = function (root) {
+	  var router = window.ManjaCatalogSearchRouter.create(root);
+	  var mount = root.dataset.searchMount || "/";
+	  var scopeLabel = root.dataset.searchScopeLabel || "";
     var storageKey = "manja.catalog.recent.v1:" + (root.dataset.searchCatalogId || "catalog");
     return {
       open: false,
@@ -546,6 +603,7 @@
         try { localStorage.setItem(storageKey, JSON.stringify(this.recent)); } catch (error) {}
       },
       handleWindowKey: function (event) {
+        if (event.defaultPrevented) return;
         if ((event.metaKey || event.ctrlKey) && !event.altKey && !event.shiftKey && asString(event.key).toLowerCase() === "k") {
           event.preventDefault();
           if (!this.open) this.openSearch();
@@ -557,7 +615,11 @@
         }
       },
       openSearch: function () {
-        this.previousFocus = document.activeElement;
+        var focus = document.activeElement;
+        if (focus && focus.closest && focus.closest("#catalog-navigation")) {
+          focus = document.querySelector('[aria-controls="catalog-navigation"]') || focus;
+        }
+        this.previousFocus = focus;
         this.open = true;
         this.query = "";
         this.results = [];
@@ -565,6 +627,7 @@
         this.sourceLabel = "";
         this.activeIndex = 0;
         this.readRecent();
+        this.resetResultsScroll();
         window.dispatchEvent(new CustomEvent("goshtoso-search-open", { detail: { id: "catalog-search" } }));
         this.$nextTick(function () { if (this.$refs.input) this.$refs.input.focus(); }.bind(this));
       },
@@ -592,7 +655,34 @@
         this.error = "";
         this.sourceLabel = "";
         this.activeIndex = 0;
+        this.resetResultsScroll();
         this.$nextTick(function () { this.$refs.input.focus(); }.bind(this));
+      },
+      resetResultsScroll: function () {
+        this.$nextTick(function () {
+          if (this.$refs.results) this.$refs.results.scrollTop = 0;
+        }.bind(this));
+      },
+      scrollActiveIntoView: function () {
+        this.$nextTick(function () {
+          var option = document.getElementById(this.optionID(this.activeIndex));
+          var results = this.$refs.results;
+          if (!option || !results || !option.scrollIntoView) return;
+          option.scrollIntoView({ block: "nearest" });
+          var bounds = results.getBoundingClientRect();
+          var top = bounds.top;
+          var bottom = bounds.bottom;
+          var footer = results.querySelector("[data-catalog-search-footer]");
+          if (footer) bottom = Math.min(bottom, footer.getBoundingClientRect().top);
+          results.querySelectorAll("[data-catalog-search-group]").forEach(function (group) {
+            if (getComputedStyle(group).display === "none") return;
+            var groupBounds = group.getBoundingClientRect();
+            if (groupBounds.top <= top + 1 && groupBounds.bottom > top) top = Math.max(top, groupBounds.bottom);
+          });
+          var optionBounds = option.getBoundingClientRect();
+          if (optionBounds.top < top) results.scrollTop -= top - optionBounds.top;
+          else if (optionBounds.bottom > bottom) results.scrollTop += optionBounds.bottom - bottom;
+        }.bind(this));
       },
       queueSearch: function () {
         if (this.timer) clearTimeout(this.timer);
@@ -601,6 +691,7 @@
         this.activeIndex = 0;
         this.error = "";
         this.sourceLabel = "";
+        this.resetResultsScroll();
         if (!this.query.trim()) {
           this.results = [];
           this.loading = false;
@@ -614,9 +705,10 @@
         var query = this.query;
         router.search(query).then(function (response) {
           if (generation !== this.generation || query !== this.query) return;
-          this.results = response.items.map(function (item) { return normalizeDisplayItem(item, mount); }).filter(Boolean);
-          this.sourceLabel = response.source;
+          this.results = groupSearchItems(response.items.map(function (item) { return normalizeDisplayItem(item, mount); }).filter(Boolean));
+          this.sourceLabel = scopeLabel ? response.source + " · " + scopeLabel : response.source;
           this.loading = false;
+          this.resetResultsScroll();
         }.bind(this)).catch(function (error) {
           if (generation !== this.generation || query !== this.query) return;
           this.results = [];
@@ -635,6 +727,16 @@
         var values = this.visibleItems();
         if (!values.length) return;
         this.activeIndex = (this.activeIndex + delta + values.length) % values.length;
+        this.scrollActiveIntoView();
+      },
+      moveTo: function (index) {
+        var values = this.visibleItems();
+        if (!values.length) return;
+        this.activeIndex = Math.max(0, Math.min(index, values.length - 1));
+        this.scrollActiveIntoView();
+      },
+      moveToEnd: function () {
+        this.moveTo(this.visibleItems().length - 1);
       },
       choose: function () {
         var values = this.visibleItems();

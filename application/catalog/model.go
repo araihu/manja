@@ -85,15 +85,29 @@ type BrandingV1 struct {
 }
 
 type DocumentDirectoryV1 struct {
-	Key              string                 `json:"key"`
-	SourcePath       string                 `json:"sourcePath"`
-	Title            string                 `json:"title"`
-	APIVersion       string                 `json:"apiVersion"`
-	Overview         projection.Overview    `json:"overview"`
-	SourceChild      string                 `json:"sourceChild"`
-	SchemaNodeShards []ShardReferenceV1     `json:"schemaNodeShards"`
-	Operations       []OperationDirectoryV1 `json:"operations"`
-	Schemas          []SchemaDirectoryV1    `json:"schemas"`
+	Key              string                      `json:"key"`
+	SourcePath       string                      `json:"sourcePath"`
+	Title            string                      `json:"title"`
+	APIVersion       string                      `json:"apiVersion"`
+	Branding         BrandingV1                  `json:"branding"`
+	Overview         projection.Overview         `json:"overview"`
+	SourceChild      string                      `json:"sourceChild"`
+	SchemaNodeShards []ShardReferenceV1          `json:"schemaNodeShards"`
+	Operations       []OperationDirectoryV1      `json:"operations"`
+	Schemas          []SchemaDirectoryV1         `json:"schemas"`
+	SecuritySchemes  []SecuritySchemeDirectoryV1 `json:"securitySchemes,omitempty"`
+}
+
+type SecuritySchemeDirectoryV1 struct {
+	Name             string `json:"name"`
+	Anchor           string `json:"anchor"`
+	Type             string `json:"type"`
+	Description      string `json:"description,omitempty"`
+	ParameterName    string `json:"parameterName,omitempty"`
+	In               string `json:"in,omitempty"`
+	Scheme           string `json:"scheme,omitempty"`
+	BearerFormat     string `json:"bearerFormat,omitempty"`
+	OpenIDConnectURL string `json:"openIdConnectUrl,omitempty"`
 }
 
 type OperationDirectoryV1 struct {

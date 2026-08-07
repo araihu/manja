@@ -20,25 +20,53 @@ const (
 )
 
 type RendererFile struct {
-	Version  uint32                  `yaml:"version"`
-	DataDir  string                  `yaml:"dataDir"`
-	Catalogs []RendererCatalogConfig `yaml:"catalogs"`
+	Version      uint32                     `yaml:"version"`
+	DataDir      string                     `yaml:"dataDir"`
+	Organization RendererOrganizationConfig `yaml:"organization"`
+	Catalogs     []RendererCatalogConfig    `yaml:"catalogs"`
 
 	baseDir string
 }
 
+type RendererOrganizationConfig struct {
+	Title   string                             `yaml:"title"`
+	Readme  string                             `yaml:"readme"`
+	License RendererOrganizationLicenseConfig  `yaml:"license"`
+	Sources []RendererOrganizationSourceConfig `yaml:"sources"`
+	SEO     RendererSEOConfig                  `yaml:"seo"`
+}
+
+type RendererOrganizationLicenseConfig struct {
+	Name string `yaml:"name"`
+	URL  string `yaml:"url"`
+}
+
+type RendererOrganizationSourceConfig struct {
+	Name     string `yaml:"name"`
+	Kind     string `yaml:"kind"`
+	Location string `yaml:"location"`
+	URL      string `yaml:"url"`
+}
+
 type RendererCatalogConfig struct {
-	ID                     string                 `yaml:"id"`
-	Mount                  string                 `yaml:"mount"`
-	Title                  string                 `yaml:"title"`
-	Branding               RendererBrandingConfig `yaml:"branding"`
-	DefaultDocumentKey     string                 `yaml:"defaultDocument"`
-	ProfileID              string                 `yaml:"profile"`
-	CompatibilityAllowlist string                 `yaml:"compatibilityAllowlist"`
-	Source                 RendererSourceConfig   `yaml:"source"`
-	SEO                    RendererSEOConfig      `yaml:"seo"`
+	ID                     string                       `yaml:"id"`
+	Mount                  string                       `yaml:"mount"`
+	Title                  string                       `yaml:"title"`
+	Readme                 string                       `yaml:"readme"`
+	License                RendererCatalogLicenseConfig `yaml:"license"`
+	Branding               RendererBrandingConfig       `yaml:"branding"`
+	DefaultDocumentKey     string                       `yaml:"defaultDocument"`
+	ProfileID              string                       `yaml:"profile"`
+	CompatibilityAllowlist string                       `yaml:"compatibilityAllowlist"`
+	Source                 RendererSourceConfig         `yaml:"source"`
+	SEO                    RendererSEOConfig            `yaml:"seo"`
 
 	compatibilityAllowlist []byte
+}
+
+type RendererCatalogLicenseConfig struct {
+	Name string `yaml:"name"`
+	URL  string `yaml:"url"`
 }
 
 // RendererBrandingConfig is presentation metadata carried by the catalog
@@ -120,10 +148,30 @@ func LoadRenderer(filename string) (RendererFile, error) {
 }
 
 func (file RendererFile) RuntimeConfig() renderer.Config {
-	result := renderer.Config{Version: file.Version, DataDir: file.resolve(file.DataDir), Catalogs: make([]renderer.CatalogConfig, len(file.Catalogs))}
+	result := renderer.Config{
+		Version: file.Version,
+		DataDir: file.resolve(file.DataDir),
+		Organization: renderer.OrganizationConfig{
+			Title:   file.Organization.Title,
+			Readme:  file.Organization.Readme,
+			License: renderer.OrganizationLicense{Name: file.Organization.License.Name, URL: file.Organization.License.URL},
+			Sources: make([]renderer.OrganizationSource, len(file.Organization.Sources)),
+			SEO: renderer.CatalogSEO{
+				Description: file.Organization.SEO.Description, CanonicalBase: file.Organization.SEO.CanonicalBase,
+				SocialImage: file.Organization.SEO.SocialImage, SocialImageAlt: file.Organization.SEO.SocialImageAlt,
+			},
+		},
+		Catalogs: make([]renderer.CatalogConfig, len(file.Catalogs)),
+	}
+	for index, source := range file.Organization.Sources {
+		result.Organization.Sources[index] = renderer.OrganizationSource{
+			Name: source.Name, Kind: source.Kind, Location: source.Location, URL: source.URL,
+		}
+	}
 	for index, catalog := range file.Catalogs {
 		result.Catalogs[index] = renderer.CatalogConfig{
-			ID: catalog.ID, Mount: catalog.Mount, Title: catalog.Title,
+			ID: catalog.ID, Mount: catalog.Mount, Title: catalog.Title, Readme: catalog.Readme,
+			License:                renderer.CatalogLicense{Name: catalog.License.Name, URL: catalog.License.URL},
 			DefaultDocumentKey:     catalog.DefaultDocumentKey,
 			ProfileID:              domain.CompatibilityProfileID(catalog.ProfileID),
 			CompatibilityAllowlist: append([]byte(nil), catalog.compatibilityAllowlist...),

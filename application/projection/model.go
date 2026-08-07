@@ -161,11 +161,21 @@ type RequestBody struct {
 }
 
 type Response struct {
-	Ordinal     uint32      `json:"ordinal"`
-	ID          string      `json:"id"`
-	Status      string      `json:"status"`
-	Description string      `json:"description"`
-	MediaTypes  []MediaType `json:"mediaTypes"`
+	Ordinal     uint32           `json:"ordinal"`
+	ID          string           `json:"id"`
+	Status      string           `json:"status"`
+	Description string           `json:"description"`
+	Headers     []ResponseHeader `json:"headers"`
+	MediaTypes  []MediaType      `json:"mediaTypes"`
+}
+
+type ResponseHeader struct {
+	Ordinal     uint32    `json:"ordinal"`
+	ID          string    `json:"id"`
+	Name        string    `json:"name"`
+	Description string    `json:"description"`
+	SchemaRef   SchemaRef `json:"schemaRef"`
+	Examples    []Example `json:"examples"`
 }
 
 type MediaType struct {
@@ -177,10 +187,22 @@ type MediaType struct {
 }
 
 type SecurityRequirement struct {
-	Ordinal uint32       `json:"ordinal"`
-	ID      string       `json:"id"`
-	Name    string       `json:"name"`
-	Scopes  []TextRecord `json:"scopes"`
+	Ordinal    uint32         `json:"ordinal"`
+	ID         string         `json:"id"`
+	Name       string         `json:"name"`
+	Scopes     []TextRecord   `json:"scopes"`
+	Definition SecurityScheme `json:"definition"`
+}
+
+type SecurityScheme struct {
+	Name             string `json:"name"`
+	Type             string `json:"type"`
+	Description      string `json:"description"`
+	ParameterName    string `json:"parameterName"`
+	In               string `json:"in"`
+	Scheme           string `json:"scheme"`
+	BearerFormat     string `json:"bearerFormat"`
+	OpenIDConnectURL string `json:"openIdConnectUrl"`
 }
 
 type CodeSample struct {
@@ -202,9 +224,18 @@ type SchemaNode struct {
 	Description  string               `json:"description"`
 	DefaultValue string               `json:"defaultValue"`
 	ExampleText  string               `json:"exampleText"`
+	Enum         []string             `json:"enum"`
+	Constraints  []SchemaConstraint   `json:"constraints"`
+	Nullable     bool                 `json:"nullable"`
+	Deprecated   bool                 `json:"deprecated"`
 	JSON         string               `json:"json"`
 	Properties   []SchemaNodeProperty `json:"properties"`
 	Items        []SchemaNodeItem     `json:"items"`
+}
+
+type SchemaConstraint struct {
+	Name  string `json:"name"`
+	Value string `json:"value"`
 }
 
 type SchemaNodeProperty struct {

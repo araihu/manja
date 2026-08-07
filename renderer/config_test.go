@@ -64,6 +64,10 @@ func TestNewRejectsInvalidCatalogConfiguration(t *testing.T) {
 		{name: "social image without alt", config: Config{Version: 1, Catalogs: []CatalogConfig{{ID: "payments", Mount: "/", Title: "Payments", ProfileID: domain.CompatibilityProfileStrict, SEO: CatalogSEO{SocialImage: "https://docs.example.test/social.png"}}}}},
 		{name: "social image query", config: Config{Version: 1, Catalogs: []CatalogConfig{{ID: "payments", Mount: "/", Title: "Payments", ProfileID: domain.CompatibilityProfileStrict, SEO: CatalogSEO{SocialImage: "https://docs.example.test/social.png?v=1", SocialImageAlt: "Preview"}}}}},
 		{name: "unsupported social image type", config: Config{Version: 1, Catalogs: []CatalogConfig{{ID: "payments", Mount: "/", Title: "Payments", ProfileID: domain.CompatibilityProfileStrict, SEO: CatalogSEO{SocialImage: "https://docs.example.test/social.svg", SocialImageAlt: "Preview"}}}}},
+		{name: "catalog license URL without name", config: Config{Version: 1, Catalogs: []CatalogConfig{{ID: "payments", Mount: "/", Title: "Payments", ProfileID: domain.CompatibilityProfileStrict, License: CatalogLicense{URL: "https://example.test/license"}}}}},
+		{name: "organization source kind", config: Config{Version: 1, Organization: OrganizationConfig{Sources: []OrganizationSource{{Name: "API", Kind: "network", Location: "example"}}}, Catalogs: []CatalogConfig{validCatalogConfig("payments", "/")}}},
+		{name: "organization source URL", config: Config{Version: 1, Organization: OrganizationConfig{Sources: []OrganizationSource{{Name: "API", Kind: OrganizationSourceKindGit, Location: "example", URL: "http://example.test/repo"}}}, Catalogs: []CatalogConfig{validCatalogConfig("payments", "/")}}},
+		{name: "organization license URL without name", config: Config{Version: 1, Organization: OrganizationConfig{License: OrganizationLicense{URL: "https://example.test/license"}}, Catalogs: []CatalogConfig{validCatalogConfig("payments", "/")}}},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -72,6 +76,35 @@ func TestNewRejectsInvalidCatalogConfiguration(t *testing.T) {
 				t.Fatal("invalid renderer configuration was accepted")
 			}
 		})
+	}
+}
+
+func TestNewAcceptsOptionalOrganizationPresentation(t *testing.T) {
+	t.Parallel()
+
+	config := Config{
+		Version: 1,
+		Organization: OrganizationConfig{
+			Title: "Manja", Readme: "OpenAPI workbench.",
+			License: OrganizationLicense{Name: "Apache-2.0", URL: "https://example.test/license"},
+			Sources: []OrganizationSource{{Name: "API definitions", Kind: OrganizationSourceKindGit, Location: "github.com/example/api", URL: "https://github.com/example/api"}},
+			SEO:     CatalogSEO{Description: "OpenAPI workbench.", CanonicalBase: "https://example.test", SocialImage: "https://example.test/social.png", SocialImageAlt: "Preview"},
+		},
+		Catalogs: []CatalogConfig{validCatalogConfig("payments", "/")},
+	}
+	if _, err := New(config); err != nil {
+		t.Fatalf("New: %v", err)
+	}
+}
+
+func TestNewAcceptsOptionalCatalogReadmeAndLicense(t *testing.T) {
+	t.Parallel()
+
+	catalog := validCatalogConfig("payments", "/")
+	catalog.Readme = "Payments API documentation."
+	catalog.License = CatalogLicense{Name: "Apache-2.0", URL: "https://example.test/license"}
+	if _, err := New(Config{Version: 1, Catalogs: []CatalogConfig{catalog}}); err != nil {
+		t.Fatalf("New: %v", err)
 	}
 }
 

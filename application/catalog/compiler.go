@@ -243,8 +243,10 @@ func validateCompilerAlignment(candidate domain.CatalogCandidate, index domain.C
 func buildDocumentDirectory(catalogID string, document domain.CatalogDocument, index domain.SpecIndex, sourceChild string) (DocumentDirectoryV1, error) {
 	result := DocumentDirectoryV1{
 		Key: document.Key, SourcePath: document.SourcePath, Title: index.Title, APIVersion: index.Version,
+		Branding:    candidateBranding(index.Branding),
 		SourceChild: sourceChild, SchemaNodeShards: []ShardReferenceV1{},
 		Operations: make([]OperationDirectoryV1, 0, len(index.Operations)), Schemas: make([]SchemaDirectoryV1, 0, len(index.Schemas)),
+		SecuritySchemes: make([]SecuritySchemeDirectoryV1, 0, len(index.SecuritySchemes)),
 	}
 	operations := append([]domain.Operation(nil), index.Operations...)
 	sort.Slice(operations, func(i, j int) bool {
@@ -279,6 +281,16 @@ func buildDocumentDirectory(catalogID string, document domain.CatalogDocument, i
 		result.Schemas = append(result.Schemas, SchemaDirectoryV1{
 			DetailID: detailID, Name: schema.Name, Description: schema.Description, Href: catalogDetailHref(document.Key, detailID),
 			CanonicalSHA256: canonicalDigest, ProjectionSHA256: projectionDigest,
+		})
+	}
+	securitySchemes := append([]domain.SecurityScheme(nil), index.SecuritySchemes...)
+	sort.Slice(securitySchemes, func(i, j int) bool { return securitySchemes[i].Name < securitySchemes[j].Name })
+	for _, scheme := range securitySchemes {
+		digest := sha256.Sum256([]byte(scheme.Name))
+		result.SecuritySchemes = append(result.SecuritySchemes, SecuritySchemeDirectoryV1{
+			Name: scheme.Name, Anchor: "security-scheme-" + hex.EncodeToString(digest[:8]), Type: scheme.Type,
+			Description: scheme.Description, ParameterName: scheme.ParameterName, In: scheme.In,
+			Scheme: scheme.Scheme, BearerFormat: scheme.BearerFormat, OpenIDConnectURL: scheme.OpenIDConnectURL,
 		})
 	}
 	return result, nil

@@ -25,7 +25,7 @@ func TestCatalogNavigationKeepsLastSpecReachableAndLabelsEachRoute(t *testing.T)
 		})
 	}
 	server, err := renderer.New(renderer.Config{Version: 1, DataDir: t.TempDir(), Catalogs: []renderer.CatalogConfig{{
-		ID: "kubernetes", Mount: "/", Title: "Kubernetes", ProfileID: domain.CompatibilityProfileStrict,
+		ID: "kubernetes", Mount: "/catalogs/kubernetes", Title: "Kubernetes", ProfileID: domain.CompatibilityProfileStrict,
 	}}})
 	if err != nil {
 		t.Fatal(err)
@@ -128,7 +128,7 @@ func TestCatalogNavigationKeepsLastSpecReachableAndLabelsEachRoute(t *testing.T)
 				t.Errorf("%s last spec remains clipped after maximum navigation scroll: %#v", viewport.name, metrics)
 			}
 
-			if _, err := page.Goto(baseURL+"/documents/spec-01/", playwright.PageGotoOptions{WaitUntil: playwright.WaitUntilStateLoad}); err != nil {
+			if _, err := page.Goto(baseURL+"/catalogs/kubernetes/documents/spec-01/", playwright.PageGotoOptions{WaitUntil: playwright.WaitUntilStateLoad}); err != nil {
 				t.Fatal(err)
 			}
 			if label, err := page.Locator(`[x-ref="catalogNavTrigger"]`).GetAttribute("aria-label"); err != nil || label != "Open API sections" {
@@ -145,7 +145,7 @@ func TestCatalogNavigationKeepsLastSpecReachableAndLabelsEachRoute(t *testing.T)
 	}
 }
 
-func TestCatalogDocumentComboboxSearchSelectAndClientFirstModal(t *testing.T) {
+func TestCatalogDocumentSearchAndClientFirstModal(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping e2e test in short mode")
 	}
@@ -193,31 +193,8 @@ func TestCatalogDocumentComboboxSearchSelectAndClientFirstModal(t *testing.T) {
 	if count, err := page.GetByRole("button", playwright.PageGetByRoleOptions{Name: "Open", Exact: playwright.Bool(true)}).Count(); err != nil || count != 0 {
 		t.Fatalf("header Open buttons = %d, err=%v", count, err)
 	}
-	if err := page.Locator("#catalog-document-trigger").Click(); err != nil {
-		t.Fatal(err)
-	}
-	apps := page.Locator(`#catalog-document-options [data-value="/documents/apps-v1/"]`)
-	if err := apps.WaitFor(); err != nil {
-		t.Fatalf("first-open options: %v", err)
-	}
-	core := page.Locator(`#catalog-document-options [data-value="/documents/core-v1/"]`)
-	if err := core.WaitFor(); err != nil {
-		t.Fatalf("first-open core option: %v", err)
-	}
-	if err := page.Locator(`#catalog-document-body input[name="q"]`).Fill("apps"); err != nil {
-		t.Fatal(err)
-	}
-	if err := core.WaitFor(playwright.LocatorWaitForOptions{State: playwright.WaitForSelectorStateHidden}); err != nil {
-		t.Fatalf("filtered core option remained visible: %v", err)
-	}
-	if count, err := page.Locator(`#catalog-document-options [data-combobox-option]`).Count(); err != nil || count != 1 {
-		t.Fatalf("filtered option count = %d, err=%v", count, err)
-	}
-	if err := apps.Click(); err != nil {
-		t.Fatal(err)
-	}
-	if err := page.WaitForURL(baseURL + "/documents/apps-v1/"); err != nil {
-		t.Fatalf("selection navigation: %v (url=%s)", err, page.URL())
+	if _, err := page.Goto(baseURL+"/documents/apps-v1/", playwright.PageGotoOptions{WaitUntil: playwright.WaitUntilStateLoad}); err != nil {
+		t.Fatalf("document navigation: %v", err)
 	}
 	documentHeader := page.Locator(`main[data-catalog-document] > div.mb-8`)
 	if err := documentHeader.WaitFor(); err != nil {
@@ -296,7 +273,7 @@ func TestCatalogDocumentComboboxSearchSelectAndClientFirstModal(t *testing.T) {
 	if _, err := input.Evaluate(`element => element.dispatchEvent(new Event('input', { bubbles: true }))`, nil); err != nil {
 		t.Fatal(err)
 	}
-	if err := modal.Locator(`[data-catalog-search-source]`).GetByText("Browser index", playwright.LocatorGetByTextOptions{Exact: playwright.Bool(true)}).WaitFor(); err != nil {
+	if err := modal.Locator(`[data-catalog-search-source]`).GetByText("Browser index", playwright.LocatorGetByTextOptions{Exact: playwright.Bool(false)}).WaitFor(); err != nil {
 		t.Fatalf("client search source: %v", err)
 	}
 	if err := modal.GetByText("List app deployments", playwright.LocatorGetByTextOptions{Exact: playwright.Bool(true)}).WaitFor(); err != nil {
@@ -368,7 +345,7 @@ func TestCatalogDocumentComboboxSearchSelectAndClientFirstModal(t *testing.T) {
 	if _, err := input.Evaluate(`element => element.dispatchEvent(new Event('input', { bubbles: true }))`, nil); err != nil {
 		t.Fatal(err)
 	}
-	if err := modal.Locator(`[data-catalog-search-source]`).GetByText("Browser index", playwright.LocatorGetByTextOptions{Exact: playwright.Bool(true)}).WaitFor(); err != nil {
+	if err := modal.Locator(`[data-catalog-search-source]`).GetByText("Browser index", playwright.LocatorGetByTextOptions{Exact: playwright.Bool(false)}).WaitFor(); err != nil {
 		t.Fatalf("fuzzy client search source: %v", err)
 	}
 	if err := modal.GetByText("List app deployments", playwright.LocatorGetByTextOptions{Exact: playwright.Bool(true)}).WaitFor(); err != nil {
@@ -495,6 +472,92 @@ func TestCatalogDocumentComboboxSearchSelectAndClientFirstModal(t *testing.T) {
 	}
 	if source, err := fallbackModal.Locator(`[data-catalog-search-source]`).TextContent(); err != nil || !strings.Contains(source, "Server fallback") {
 		t.Fatalf("fallback search source = %q, err=%v", source, err)
+	}
+}
+
+func TestOrganizationRootSearchKeepsNestedCatalogMount(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping e2e test in short mode")
+	}
+	server, err := renderer.New(renderer.Config{
+		Version: 1,
+		DataDir: t.TempDir(),
+		Catalogs: []renderer.CatalogConfig{
+			{ID: "alpha", Mount: "/catalogs/alpha", Title: "Alpha Catalog", ProfileID: domain.CompatibilityProfileStrict},
+			{ID: "beta", Mount: "/catalogs/beta", Title: "Beta Catalog", ProfileID: domain.CompatibilityProfileStrict},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	alphaSpec := []byte(`{"openapi":"3.0.3","info":{"title":"Alpha API","version":"v1"},"paths":{"/alpha":{"get":{"operationId":"listAlphaThings","summary":"List Alpha things","description":"Alpha browser index result.","responses":{"200":{"description":"OK"}}}}}}`)
+	betaSpec := []byte(`{"openapi":"3.0.3","info":{"title":"Beta API","version":"v1"},"paths":{"/beta":{"get":{"operationId":"listBetaThings","summary":"List Beta things","description":"Beta browser index result.","responses":{"200":{"description":"OK"}}}}}}`)
+	for _, candidate := range []domain.CatalogCandidate{
+		{ID: "alpha", Title: "Alpha Catalog", ProfileID: domain.CompatibilityProfileStrict, Revision: domain.CatalogRevision{Kind: domain.CatalogRevisionFiles, ID: "root-multi-mount-alpha", ManifestDigest: strings.Repeat("a", 64)}, Documents: []domain.CatalogDocument{{Key: "alpha-v1", SourcePath: "alpha.json", Format: domain.CatalogFormatJSON, Bytes: alphaSpec}}},
+		{ID: "beta", Title: "Beta Catalog", ProfileID: domain.CompatibilityProfileStrict, Revision: domain.CatalogRevision{Kind: domain.CatalogRevisionFiles, ID: "root-multi-mount-beta", ManifestDigest: strings.Repeat("b", 64)}, Documents: []domain.CatalogDocument{{Key: "beta-v1", SourcePath: "beta.json", Format: domain.CatalogFormatJSON, Bytes: betaSpec}}},
+	} {
+		if _, err := server.Activate(context.Background(), candidate); err != nil {
+			t.Fatalf("activate %s: %v", candidate.ID, err)
+		}
+	}
+	baseURL := httptestServer(t, server.Handler())
+
+	pw, err := playwright.Run()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pw.Stop()
+	browser, err := pw.Chromium.Launch()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer browser.Close()
+	page, err := browser.NewPage()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := page.Goto(baseURL+"/", playwright.PageGotoOptions{WaitUntil: playwright.WaitUntilStateLoad}); err != nil {
+		t.Fatal(err)
+	}
+	if count, err := page.GetByText("Alpha Catalog", playwright.PageGetByTextOptions{Exact: playwright.Bool(true)}).Count(); err != nil || count == 0 {
+		t.Fatalf("root Alpha Catalog navigation count = %d, err=%v", count, err)
+	}
+	if count, err := page.GetByText("Beta Catalog", playwright.PageGetByTextOptions{Exact: playwright.Bool(true)}).Count(); err != nil || count == 0 {
+		t.Fatalf("root Beta Catalog navigation count = %d, err=%v", count, err)
+	}
+	if count, err := page.Locator(`main[data-catalog-overview]`).GetByRole("heading", playwright.LocatorGetByRoleOptions{Name: "Specs", Exact: playwright.Bool(true)}).Count(); err != nil || count != 1 {
+		t.Fatalf("root Specs heading count = %d, err=%v", count, err)
+	}
+	if count, err := page.Locator(`[data-search-mount="/catalogs/alpha"]`).Count(); err != nil || count != 1 {
+		t.Fatalf("root bounded search mount count = %d, err=%v", count, err)
+	}
+	searchField := page.Locator(`[data-search-id="catalog-search"] button`)
+	if err := searchField.Click(); err != nil {
+		t.Fatal(err)
+	}
+	modal := page.Locator("#catalog-search-dialog")
+	if err := modal.WaitFor(); err != nil {
+		t.Fatalf("root search modal: %v", err)
+	}
+	input := page.Locator("#catalog-search-input")
+	if err := input.Fill("Alpha things"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := input.Evaluate(`element => element.dispatchEvent(new Event('input', { bubbles: true }))`, nil); err != nil {
+		t.Fatal(err)
+	}
+	result := modal.GetByText("List Alpha things", playwright.LocatorGetByTextOptions{Exact: playwright.Bool(true)})
+	if err := result.WaitFor(); err != nil {
+		t.Fatalf("root browser-index result: %v", err)
+	}
+	if err := result.Click(); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(page.URL(), "/catalogs/alpha/documents/alpha-v1/") {
+		t.Fatalf("root search navigation url = %q, want nested alpha mount", page.URL())
+	}
+	if err := page.Locator(`main[data-catalog-document="alpha-v1"]`).WaitFor(); err != nil {
+		t.Fatalf("nested alpha document after root search: %v", err)
 	}
 }
 

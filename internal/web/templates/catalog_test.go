@@ -37,6 +37,12 @@ func TestCatalogHeaderOmitsThemeSelectorButKeepsDarkMode(t *testing.T) {
 	if !strings.Contains(body, `id="darkModeToggleBtn"`) {
 		t.Fatal("catalog header removed dark mode toggle")
 	}
+	if !strings.Contains(body, `aria-hidden="true"`) || !strings.Contains(body, `fill="var(--color-primary)"`) || strings.Contains(body, `aria-label="Manja"`) {
+		t.Fatal("catalog header does not use the theme-aware inline Manja mark")
+	}
+	if strings.Contains(body, `src="/manja-assets/manja-mark.svg"`) {
+		t.Fatal("catalog header still depends on an OS-themed external Manja mark")
+	}
 }
 
 func TestCatalogOrganizationNavigationRendersCatalogAndSpecSections(t *testing.T) {
@@ -140,6 +146,8 @@ func TestCatalogShellProvidesOneResponsiveSidebarWithMobileDrawerControls(t *tes
 	t.Parallel()
 
 	data := catalogTemplateFixture()
+	document := data.Directory.Documents[0]
+	data.Document = &document
 	body := renderCatalogTemplate(t, data)
 	for _, want := range []string{
 		`x-data="{ catalogNavOpen: false }"`,
@@ -168,6 +176,22 @@ func TestCatalogShellProvidesOneResponsiveSidebarWithMobileDrawerControls(t *tes
 	}
 }
 
+func TestCatalogOverviewOmitsEmptySidebarAndKeepsSearchInHeader(t *testing.T) {
+	t.Parallel()
+
+	body := renderCatalogTemplate(t, catalogTemplateFixture())
+	for _, unwanted := range []string{`id="catalog-navigation"`, `data-catalog-navigation-backdrop="true"`, `aria-controls="catalog-navigation"`} {
+		if strings.Contains(body, unwanted) {
+			t.Errorf("catalog overview retained empty sidebar shell %q", unwanted)
+		}
+	}
+	searchAt := strings.Index(body, `data-catalog-header-search`)
+	themeAt := strings.Index(body, `id="darkModeToggleBtn"`)
+	if searchAt < 0 || themeAt < 0 || searchAt >= themeAt {
+		t.Fatalf("catalog header search/theme order invalid: search=%d theme=%d", searchAt, themeAt)
+	}
+}
+
 func TestCatalogShellProvidesClientFirstSearchModalWithServerFallback(t *testing.T) {
 	t.Parallel()
 
@@ -175,16 +199,19 @@ func TestCatalogShellProvidesClientFirstSearchModalWithServerFallback(t *testing
 	for _, want := range []string{
 		`src="/manja-assets/catalog-search.js"`,
 		`data-search-field`,
-		`data-catalog-sidebar-search`,
+		`data-catalog-header-search`,
 		`data-search-id="catalog-search"`,
 		`aria-controls="catalog-search-dialog"`,
 		`Search API...`,
+		`data-catalog-platform-shortcut`,
+		`>Ctrl K</kbd>`,
 		`Search operations and schemas`,
 		`id="catalog-search-dialog"`,
 		`role="dialog"`,
 		`x-data="manjaCatalogSearch($el)"`,
 		`data-search-child-base="/kubernetes/snapshots/snapshot-sha256-`,
 		`/search-data/"`,
+		`data-search-mount="/kubernetes"`,
 		`data-search-directory-path="search/directory.json"`,
 		`data-search-directory-sha256="`,
 		`data-search-fallback-url="/kubernetes/search.json"`,
@@ -199,40 +226,208 @@ func TestCatalogShellProvidesClientFirstSearchModalWithServerFallback(t *testing
 		}
 	}
 	if strings.Count(body, `data-search-field`) != 1 {
-		t.Fatal("catalog rendered duplicate sidebar search fields")
+		t.Fatal("catalog rendered duplicate search fields")
+	}
+	if strings.Contains(body, `Ctrl/Cmd K`) {
+		t.Fatal("catalog renders ambiguous shortcut label instead of platform enhancement")
 	}
 	if strings.Contains(body, `window.location.assign(href)`) && strings.Contains(body, `data-catalog-search-shortcut`) {
 		t.Fatal("catalog Ctrl+K shortcut still navigates to a separate page")
 	}
 }
 
-func TestCatalogHeaderUsesSearchableGoshtosoDocumentCombobox(t *testing.T) {
+func TestCatalogOverviewUsesFilterableDocumentTable(t *testing.T) {
 	t.Parallel()
 
 	body := renderCatalogTemplate(t, catalogTemplateFixture())
 	for _, want := range []string{
-		`data-combobox`,
-		`id="catalog-document"`,
-		`role="combobox"`,
-		`data-combobox-search`,
-		`hx-get="/_manja/catalog/document-combobox/options"`,
-		`hx-trigger="click once"`,
+		`data-catalog-overview="true"`,
+		`id="catalog-document-filter"`,
+		`type="search"`,
+		`x-model="filter"`,
+		`Filter by name or version`,
+		`<table`,
+		`OpenAPI documents in this catalog`,
+		`id="catalog-documents-table"`,
+		`order_by=name`,
+		`order_by=version`,
+		`order_by=operations`,
+		`order_by=schemas`,
+		`Operations`,
+		`Schemas`,
 		`core-v1`,
 		`apps-v1`,
-		`combobox:change`,
-		`window.location.assign(value)`,
 	} {
 		if !strings.Contains(body, want) {
-			t.Errorf("catalog document combobox missing %q", want)
+			t.Errorf("catalog document table missing %q", want)
 		}
 	}
-	for _, unwanted := range []string{`<select id="catalog-document"`, `>Open</button>`} {
+	if !strings.Contains(body, `rounded-full`) || !strings.Contains(body, `>CV<`) {
+		t.Fatal("catalog document table does not render Goshtoso circular avatar initials")
+	}
+	for _, unwanted := range []string{`catalog-document-trigger`, `data-combobox`, `/_manja/catalog/document-combobox/options`} {
 		if strings.Contains(body, unwanted) {
-			t.Errorf("catalog document combobox retains obsolete control %q", unwanted)
+			t.Errorf("catalog overview retains obsolete combobox control %q", unwanted)
 		}
 	}
-	if strings.Contains(body, `data-combobox-option`) {
-		t.Fatal("catalog overview eagerly renders document options before the combobox opens")
+	if !strings.Contains(body, `x-show="filter.trim()`) {
+		t.Fatal("catalog document rows are not bound to the client-side filter")
+	}
+	for _, want := range []string{`data-catalog-document-row`, `No matching API documents.`, `aria-live="polite"`, `x-text=`} {
+		if !strings.Contains(body, want) {
+			t.Errorf("catalog document filter missing %q", want)
+		}
+	}
+}
+
+func TestCatalogOverviewRendersOnlyDeclaredReadmeAndLicense(t *testing.T) {
+	t.Parallel()
+
+	data := catalogTemplateFixture()
+	body := renderCatalogTemplate(t, data)
+	for _, unwanted := range []string{`id="catalog-readme-heading"`, `id="catalog-license-heading"`} {
+		if strings.Contains(body, unwanted) {
+			t.Errorf("undeclared catalog metadata rendered %q", unwanted)
+		}
+	}
+
+	data.CatalogReadme = "Kubernetes API documentation."
+	data.CatalogLicense = CatalogOrganizationLicenseData{Name: "Apache-2.0", URL: "https://example.test/license"}
+	body = renderCatalogTemplate(t, data)
+	for _, want := range []string{`id="catalog-readme-heading"`, "Kubernetes API documentation.", `id="catalog-license-heading"`, "Apache-2.0", `href="https://example.test/license"`} {
+		if !strings.Contains(body, want) {
+			t.Errorf("declared catalog metadata missing %q", want)
+		}
+	}
+}
+
+func TestCatalogRootRendersStandaloneSpecsAndRootBreadcrumb(t *testing.T) {
+	t.Parallel()
+
+	data := catalogTemplateFixture()
+	data.OrganizationRoot = true
+	data.Mount = "/"
+	data.SearchMount = "/kubernetes"
+	data.OrganizationNav = CatalogOrganizationNavData{
+		Visible:  true,
+		Catalogs: []CatalogOrganizationItem{{ID: "catalog-kubernetes", Label: "Kubernetes", Description: "2 specs", Href: "/kubernetes/"}},
+		Specs:    []CatalogOrganizationItem{{ID: "spec-core-v1", Label: "core-v1", Description: "Kubernetes", Href: "/kubernetes/documents/core-v1/"}},
+	}
+	data.Organization = CatalogOrganizationPageData{
+		Title:   "Manja",
+		Readme:  "Fast, search-first OpenAPI documentation.",
+		License: CatalogOrganizationLicenseData{Name: "No license declared"},
+		Sources: []CatalogOrganizationSourceData{{Name: "Kubernetes definitions", Kind: "git", Location: "github.com/kubernetes/kubernetes", URL: "https://github.com/kubernetes/kubernetes"}},
+	}
+	body := renderCatalogTemplate(t, data)
+	for _, want := range []string{"Manja", "About", "Fast, search-first OpenAPI documentation.", "License", "No license declared", "Published sources", "Kubernetes definitions", `data-search-mount="/kubernetes"`} {
+		if !strings.Contains(body, want) {
+			t.Errorf("root overview missing %q", want)
+		}
+	}
+	for _, duplicate := range []string{`id="organization-catalogs-heading"`, `id="organization-specs-heading"`} {
+		if strings.Contains(body, duplicate) {
+			t.Errorf("root main content duplicated sidebar section %q", duplicate)
+		}
+	}
+
+	data.OrganizationRoot = false
+	data.Document = &data.Directory.Documents[0]
+	data.DocumentHref = "/kubernetes/documents/core-v1/"
+	body = renderCatalogTemplate(t, data)
+	if !strings.Contains(body, `href="/"`) || !strings.Contains(body, ">Catalogs</a>") {
+		t.Fatal("nested catalog breadcrumb does not return to organization root")
+	}
+	for _, want := range []string{`href="/kubernetes/documents/core-v1/"`, `aria-current="page"`, `>core-v1</span>`} {
+		if !strings.Contains(body, want) {
+			t.Errorf("nested document breadcrumb missing %q", want)
+		}
+	}
+}
+
+func TestCatalogDocumentOverviewKeepsIdentityVersionAndDownloadInHeader(t *testing.T) {
+	t.Parallel()
+
+	data := catalogTemplateFixture()
+	document := data.Directory.Documents[0]
+	document.APIVersion = "v1"
+	data.Document = &document
+	data.DocumentHref = "/kubernetes/documents/core-v1/"
+	data.DownloadHref = "/kubernetes/documents/core-v1/source.json"
+	body := renderCatalogTemplate(t, data)
+	for _, want := range []string{
+		`>OpenAPI document</p>`,
+		`>core-v1</h1>`,
+		`>v1</span>`,
+		`href="/kubernetes/documents/core-v1/source.json"`,
+		`>Download source</a>`,
+		`sm:flex-row`,
+		`sm:justify-between`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("document overview header missing %q", want)
+		}
+	}
+	if strings.Contains(body, document.SourcePath) {
+		t.Fatalf("document overview exposed source path %q", document.SourcePath)
+	}
+}
+
+func TestCatalogDocumentOverviewRendersOnlyDeclaredOpenAPIInfo(t *testing.T) {
+	t.Parallel()
+
+	data := catalogTemplateFixture()
+	document := data.Directory.Documents[0]
+	data.Document = &document
+	data.DocumentHref = "/kubernetes/documents/core-v1/"
+	body := renderCatalogTemplate(t, data)
+	for _, unwanted := range []string{`aria-label="OpenAPI information"`, `>Contact</dt>`, `>License</dt>`, `>Terms of service</dt>`} {
+		if strings.Contains(body, unwanted) {
+			t.Errorf("undeclared OpenAPI info rendered %q", unwanted)
+		}
+	}
+
+	document.Overview.Description = "This is an example server for a pet store."
+	document.Overview.TermsOfService = "https://example.test/terms"
+	document.Overview.Contact = projection.Contact{Name: "API Support", URL: "https://example.test/support", Email: "support@example.test"}
+	document.Overview.License = projection.License{Name: "Apache 2.0", URL: "https://example.test/license", Identifier: "Apache-2.0"}
+	data.Document = &document
+	body = renderCatalogTemplate(t, data)
+	for _, want := range []string{
+		`aria-label="OpenAPI information"`,
+		"This is an example server for a pet store.",
+		">Contact</dt>", "API Support", `href="https://example.test/support"`, `href="mailto:support@example.test"`,
+		">License</dt>", "Apache 2.0", "Apache-2.0", `href="https://example.test/license"`,
+		">Terms of service</dt>", `href="https://example.test/terms"`, ">View terms</a>",
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("declared OpenAPI info missing %q", want)
+		}
+	}
+}
+
+func TestCatalogDocumentSidebarUsesGoshtosoNavigationIconsWithoutRedundantTitle(t *testing.T) {
+	t.Parallel()
+
+	data := catalogTemplateFixture()
+	document := data.Directory.Documents[0]
+	data.Document = &document
+	data.Groups = []CatalogSidebarGroupData{
+		{ID: "paths", Kind: "operations", Label: "Paths", Href: "?group=paths", Count: 1},
+		{ID: "schemas", Kind: "schemas", Label: "Schemas", Href: "?group=schemas", Count: 3},
+	}
+	body := renderCatalogTemplate(t, data)
+	for _, want := range []string{
+		`heroicons.svg#hi-16-solid-chevron-left`,
+		`heroicons.svg#hi-16-solid-code-bracket`,
+		`heroicons.svg#hi-16-solid-cube`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("document sidebar missing Goshtoso icon %q", want)
+		}
+	}
+	if strings.Contains(body, `class="mb-2 mt-8`) && strings.Contains(body, `>Kubernetes</h3>`) {
+		t.Fatal("document sidebar retained redundant catalog title")
 	}
 }
 
@@ -299,6 +494,34 @@ func TestCatalogSidebarUsesMethodHierarchyAndOverflowHooks(t *testing.T) {
 	}
 	if got := strings.Count(body, `data-catalog-sidebar-operation="true"`); got != 6 {
 		t.Fatalf("catalog sidebar operation hooks = %d, want 6", got)
+	}
+}
+
+func TestCatalogSidebarGroupControlsExposeDisclosureState(t *testing.T) {
+	t.Parallel()
+
+	data := catalogTemplateFixture()
+	document := data.Directory.Documents[0]
+	data.Document = &document
+	data.Groups = []CatalogSidebarGroupData{
+		{
+			ID: "group-open", Label: "Operations", Href: "/documents/core-v1/?group=group-open", Count: 2,
+			Open: true, Items: []CatalogSidebarItemData{{ID: "operation-one", Label: "List pods", Href: "#operation-one"}},
+		},
+		{ID: "group-closed", Label: "Schemas", Href: "/documents/core-v1/?group=group-closed", Count: 3},
+	}
+	body := renderCatalogTemplate(t, data)
+	if got := strings.Count(body, `data-catalog-group-control="true"`); got != 2 {
+		t.Fatalf("catalog group controls = %d, want 2", got)
+	}
+	for _, want := range []string{
+		`aria-expanded="true"`,
+		`aria-expanded="false"`,
+		`aria-controls="catalog-sidebar-groups"`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("catalog group control missing %q", want)
+		}
 	}
 }
 
@@ -441,7 +664,7 @@ func catalogTemplateFixture() CatalogPageData {
 	return CatalogPageData{
 		Mount: "/kubernetes", SnapshotID: catalog.SnapshotID("snapshot-sha256-" + strings.Repeat("b", 64)), Directory: directory,
 		Documents:    []CatalogDocumentOption{{Key: "core-v1", Label: "core-v1", Href: "/kubernetes/documents/core-v1/"}, {Key: "apps-v1", Label: "apps-v1", Href: "/kubernetes/documents/apps-v1/"}},
-		DownloadHref: "/kubernetes/catalog.json", SearchHref: "/kubernetes/search",
+		DownloadHref: "/kubernetes/catalog.json", SearchHref: "/kubernetes/search", SearchMount: "/kubernetes",
 		SearchChildBase:     "/kubernetes/snapshots/snapshot-sha256-" + strings.Repeat("b", 64) + "/search-data/",
 		SearchDirectoryPath: "search/directory.json", SearchDirectoryLength: 42, SearchDirectorySHA256: strings.Repeat("c", 64),
 	}

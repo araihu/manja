@@ -809,7 +809,7 @@ func TestRichOperationDetailsKeepHorizontalOverflowLocal(t *testing.T) {
 			if err := page.SetViewportSize(width, 900); err != nil {
 				t.Fatal(err)
 			}
-			trigger := page.Locator("[data-manja-request-config-trigger] button")
+			trigger := page.Locator("[data-manja-request-config-trigger]")
 			if err := trigger.WaitFor(); err != nil {
 				t.Fatal(err)
 			}
@@ -952,7 +952,7 @@ func TestRichOperationDetailsKeepHorizontalOverflowLocal(t *testing.T) {
 					const ids = [...document.querySelectorAll('[id]')].map((element) => element.id);
 					const duplicates = ids.filter((id, index) => ids.indexOf(id) !== index);
 					const sheet = document.querySelector('[data-manja-request-config-sheet]');
-					const triggerButton = document.querySelector('[data-manja-request-config-trigger] button');
+					const triggerButton = document.querySelector('[data-manja-request-config-trigger]');
 					const active = document.activeElement;
 					return {
 						duplicateIDs: [...new Set(duplicates)],
@@ -1061,7 +1061,7 @@ func TestRichOperationDetailsKeepHorizontalOverflowLocal(t *testing.T) {
 				if err := drawer.WaitFor(playwright.LocatorWaitForOptions{State: playwright.WaitForSelectorStateHidden}); err != nil {
 					t.Fatal(err)
 				}
-				focusedTrigger, err := page.Evaluate(`() => document.activeElement === document.querySelector('[data-manja-request-config-trigger] button')`)
+				focusedTrigger, err := page.Evaluate(`() => document.activeElement === document.querySelector('[data-manja-request-config-trigger]')`)
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -1080,7 +1080,7 @@ func TestRichOperationDetailsKeepHorizontalOverflowLocal(t *testing.T) {
 				if err := drawer.WaitFor(playwright.LocatorWaitForOptions{State: playwright.WaitForSelectorStateHidden}); err != nil {
 					t.Fatal(err)
 				}
-				focusedTrigger, err = page.Evaluate(`() => document.activeElement === document.querySelector('[data-manja-request-config-trigger] button')`)
+				focusedTrigger, err = page.Evaluate(`() => document.activeElement === document.querySelector('[data-manja-request-config-trigger]')`)
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -1099,7 +1099,7 @@ func TestRichOperationDetailsKeepHorizontalOverflowLocal(t *testing.T) {
 				if err := drawer.WaitFor(playwright.LocatorWaitForOptions{State: playwright.WaitForSelectorStateHidden}); err != nil {
 					t.Fatal(err)
 				}
-				focusedTrigger, err = page.Evaluate(`() => document.activeElement === document.querySelector('[data-manja-request-config-trigger] button')`)
+				focusedTrigger, err = page.Evaluate(`() => document.activeElement === document.querySelector('[data-manja-request-config-trigger]')`)
 				if err != nil {
 					t.Fatal(err)
 				}
