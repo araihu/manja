@@ -22,7 +22,10 @@ import (
 
 var errCatalogPageNotFound = errors.New("catalog page not found")
 
-const catalogSidebarPageSize = 100
+const (
+	catalogSidebarPageSize             = 100
+	catalogSidebarInitialOpenItemLimit = 600
+)
 
 type catalogSidebarQuery struct {
 	groups   []string
@@ -137,10 +140,7 @@ func (handler *CatalogHandler) catalogPageDataWithSidebarQuery(
 	selectedChild := ""
 	selectedDetailID := domain.DetailID(selectedID)
 	for _, operation := range document.Operations {
-		label := "Untagged"
-		if len(operation.Tags) > 0 && strings.TrimSpace(operation.Tags[0]) != "" {
-			label = operation.Tags[0]
-		}
+		label := catalogOperationGroupLabel(operation)
 		groupsByLabel[label] = append(groupsByLabel[label], operation)
 		if operation.DetailID == selectedDetailID {
 			selectedGroup = catalogGroupID("operations-" + label)
@@ -174,6 +174,10 @@ func (handler *CatalogHandler) catalogPageDataWithSidebarQuery(
 	if len(document.SecuritySchemes) > 0 {
 		validGroupIDs[catalogGroupID("security-schemes")] = struct{}{}
 	}
+	sidebarItemCount := len(document.Schemas) + len(document.SecuritySchemes)
+	for _, grouped := range operationGroups {
+		sidebarItemCount += len(grouped.operations)
+	}
 	openGroups := make(map[string]struct{}, len(sidebarQuery.groups)+1)
 	if sidebarQuery.explicit {
 		for _, groupID := range sidebarQuery.groups {
@@ -182,11 +186,13 @@ func (handler *CatalogHandler) catalogPageDataWithSidebarQuery(
 			}
 		}
 	} else {
-		// The initial document view should expose its navigation immediately.
-		// An explicit group query remains authoritative so a user can collapse
-		// any section without forcing all of its siblings open again.
-		for groupID := range validGroupIDs {
-			openGroups[groupID] = struct{}{}
+		// A bounded initial sidebar is easier to scan and keeps the document
+		// representation within its response budget. Deep links still open the
+		// selected group below, while explicit group queries remain authoritative.
+		if sidebarItemCount <= catalogSidebarInitialOpenItemLimit {
+			for groupID := range validGroupIDs {
+				openGroups[groupID] = struct{}{}
+			}
 		}
 		if selectedGroup != "" {
 			openGroups[selectedGroup] = struct{}{}
@@ -535,7 +541,41 @@ func catalogOperationGroupLabel(operation catalog.OperationDirectoryV1) string {
 			return label
 		}
 	}
+	// Some otherwise useful OpenAPI descriptions omit tags entirely. Grouping
+	// every such operation together makes a large sidebar both hard to scan and
+	// too expensive to render. The first resource segment gives those routes a
+	// stable, human-readable fallback without changing tagged APIs.
+	fallback := ""
+	for _, segment := range strings.Split(strings.Trim(operation.Path, "/"), "/") {
+		segment = strings.TrimSpace(segment)
+		if segment == "" || strings.HasPrefix(segment, "{") {
+			continue
+		}
+		if fallback == "" {
+			fallback = segment
+		}
+		if segment == "api" || isCatalogAPIVersionSegment(segment) {
+			continue
+		}
+		return segment
+	}
+	if fallback != "" {
+		return fallback
+	}
 	return "Untagged"
+}
+
+func isCatalogAPIVersionSegment(segment string) bool {
+	segment = strings.TrimSpace(segment)
+	if len(segment) < 2 || segment[0] != 'v' {
+		return false
+	}
+	for _, character := range segment[1:] {
+		if character < '0' || character > '9' {
+			return false
+		}
+	}
+	return true
 }
 
 func cloneCatalogOpenGroups(groups map[string]struct{}) map[string]struct{} {

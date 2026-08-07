@@ -3,9 +3,9 @@ organization:
   title: Manja
   readme: >-
     Manja turns OpenAPI catalogs and standalone specifications into fast,
-    search-first documentation. This demo publishes the Kubernetes API as a
-    precompiled catalog so browsing never depends on compiling the source on
-    the application server.
+    search-first documentation. This demo publishes Kubernetes alongside
+    GitHub and Stripe as precompiled catalogs, so browsing never depends on
+    compiling source specifications on the application server.
   license:
     name: No license declared
   sources:
@@ -16,6 +16,14 @@ organization:
     - name: Precompiled Kubernetes catalog
       kind: file
       location: internal/renderer/testdata/kubernetes/specs
+    - name: GitHub REST API OpenAPI description
+      kind: file
+      location: internal/adapters/openapi/testdata/github-v3-rest.json
+      url: https://github.com/github/rest-api-description
+    - name: Stripe OpenAPI specification
+      kind: git
+      location: github.com/stripe/openapi
+      url: https://github.com/stripe/openapi
   seo:
     description: Explore OpenAPI catalogs and standalone specs with Manja.
     canonicalBase: https://manja.araihu.com
@@ -174,3 +182,53 @@ catalogs:
           key: openid-v1-jwks
         - path: specs/version_openapi.json
           key: version
+  - id: github
+    mount: /catalogs/github
+    title: GitHub REST API
+    branding:
+      displayName: GitHub
+    license:
+      name: MIT License
+      url: https://github.com/github/rest-api-description/blob/main/LICENSE.md
+    defaultDocument: github-v3-rest
+    profile: strict-v1
+    seo:
+      description: Explore the GitHub REST API as a searchable OpenAPI catalog rendered by Manja.
+      canonicalBase: https://manja.araihu.com/catalogs/github
+      socialImage: https://manja.araihu.com/manja-assets/manja-social.png
+      socialImageAlt: GitHub REST API reference rendered by Manja
+    source:
+      kind: files
+      root: ../../../adapters/openapi/testdata
+      include:
+        - github-v3-rest.json
+      documents:
+        - path: github-v3-rest.json
+          key: github-v3-rest
+  - id: stripe
+    mount: /catalogs/stripe
+    title: Stripe API
+    readme: >-
+      A pinned official Stripe OpenAPI release from 2020-08-27, retained as a
+      stable public demo catalog.
+    branding:
+      displayName: Stripe
+    license:
+      name: MIT License
+      url: https://github.com/stripe/openapi/blob/master/LICENSE
+    defaultDocument: stripe-v1
+    profile: strict-v1
+    seo:
+      description: Explore the Stripe API as a searchable OpenAPI catalog rendered by Manja.
+      canonicalBase: https://manja.araihu.com/catalogs/stripe
+      socialImage: https://manja.araihu.com/manja-assets/manja-social.png
+      socialImageAlt: Stripe API reference rendered by Manja
+    source:
+      kind: git
+      repository: https://github.com/stripe/openapi.git
+      ref: d70de345383dd818a0ce831f4e20d375c5a90cec
+      include:
+        - openapi/spec3.json
+      documents:
+        - path: openapi/spec3.json
+          key: stripe-v1
