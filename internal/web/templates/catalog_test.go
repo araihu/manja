@@ -406,15 +406,32 @@ func TestCatalogDocumentOverviewRendersOnlyDeclaredOpenAPIInfo(t *testing.T) {
 	}
 }
 
-func TestCatalogDocumentSidebarUsesGoshtosoNavigationIconsWithoutRedundantTitle(t *testing.T) {
+func TestCatalogDocumentSidebarGroupsOperationsUnderOnePathsItem(t *testing.T) {
 	t.Parallel()
 
 	data := catalogTemplateFixture()
 	document := data.Directory.Documents[0]
 	data.Document = &document
 	data.Groups = []CatalogSidebarGroupData{
-		{ID: "paths", Kind: "operations", Label: "Paths", Href: "?group=paths", Count: 1},
+		{ID: "group-actions", Kind: "operations", Label: "actions", Href: "?group=group-actions", Count: 72},
+		{ID: "group-activity", Kind: "operations", Label: "activity", Href: "?group=group-activity", Count: 31},
 		{ID: "schemas", Kind: "schemas", Label: "Schemas", Href: "?group=schemas", Count: 3},
+	}
+	config := catalogSidebarConfig(data)
+	if len(config.Items) != 4 {
+		t.Fatalf("sidebar item count = %d, want 4", len(config.Items))
+	}
+	paths := config.Items[2]
+	if paths.ID != "catalog-paths" || paths.Label != "Paths" || paths.Icon == nil {
+		t.Fatalf("paths parent = %#v, want visible Paths item with one icon", paths)
+	}
+	if paths.Href != data.DocumentHref || len(paths.Items) != 2 {
+		t.Fatalf("paths parent href/items = %q/%d, want %q/2", paths.Href, len(paths.Items), data.DocumentHref)
+	}
+	for _, group := range paths.Items {
+		if group.Icon != nil {
+			t.Fatalf("operation group %q retained a repeated icon", group.Label)
+		}
 	}
 	body := renderCatalogTemplate(t, data)
 	for _, want := range []string{
@@ -425,6 +442,9 @@ func TestCatalogDocumentSidebarUsesGoshtosoNavigationIconsWithoutRedundantTitle(
 		if !strings.Contains(body, want) {
 			t.Errorf("document sidebar missing Goshtoso icon %q", want)
 		}
+	}
+	if got := strings.Count(body, `heroicons.svg#hi-16-solid-code-bracket`); got != 1 {
+		t.Fatalf("code bracket icon count = %d, want 1", got)
 	}
 	if strings.Contains(body, `class="mb-2 mt-8`) && strings.Contains(body, `>Kubernetes</h3>`) {
 		t.Fatal("document sidebar retained redundant catalog title")
@@ -442,8 +462,8 @@ func TestCatalogDocumentRendersOnlyExpandedGroupAndSelectedVisibleAnchor(t *test
 		ID: string(detailID), Anchor: string(detailID), HeadingID: string(detailID), Heading: "List Pods", Method: "GET", Path: "/api/v1/pods",
 	}}
 	data.Groups = []CatalogSidebarGroupData{
-		{ID: "group-core", Label: "core/v1", Href: "/kubernetes/core-v1/?group=group-core", Count: 2, Open: true, Items: []CatalogSidebarItemData{{ID: "sidebar-one", Label: "List Pods", Href: "/kubernetes/core-v1/?selected=" + string(detailID) + "#" + string(detailID), Method: "GET", Active: true}}},
-		{ID: "group-schemas", Label: "Schemas", Href: "/kubernetes/core-v1/?group=group-schemas", Count: 500},
+		{ID: "group-core", Kind: "operations", Label: "core/v1", Href: "/kubernetes/core-v1/?group=group-core", Count: 2, Open: true, Items: []CatalogSidebarItemData{{ID: "sidebar-one", Label: "List Pods", Href: "/kubernetes/core-v1/?selected=" + string(detailID) + "#" + string(detailID), Method: "GET", Active: true}}},
+		{ID: "group-schemas", Kind: "schemas", Label: "Schemas", Href: "/kubernetes/core-v1/?group=group-schemas", Count: 500},
 	}
 	body := renderCatalogTemplate(t, data)
 	if strings.Count(body, `href="/kubernetes/core-v1/?selected=`) != 1 {
@@ -467,7 +487,7 @@ func TestCatalogSidebarUsesMethodHierarchyAndOverflowHooks(t *testing.T) {
 	document := data.Directory.Documents[0]
 	data.Document = &document
 	data.Groups = []CatalogSidebarGroupData{{
-		ID: "group-core", Label: "core/v1", Href: "/kubernetes/documents/core-v1/?group=group-core", Count: 6,
+		ID: "group-core", Kind: "operations", Label: "core/v1", Href: "/kubernetes/documents/core-v1/?group=group-core", Count: 6,
 		Items: []CatalogSidebarItemData{
 			{ID: "get", Label: "Get resources", Method: "GET", Href: "#get"},
 			{ID: "post", Label: "Create resource", Method: "POST", Href: "#post"},
@@ -505,10 +525,10 @@ func TestCatalogSidebarGroupControlsExposeDisclosureState(t *testing.T) {
 	data.Document = &document
 	data.Groups = []CatalogSidebarGroupData{
 		{
-			ID: "group-open", Label: "Operations", Href: "/documents/core-v1/?group=group-open", Count: 2,
+			ID: "group-open", Kind: "operations", Label: "Operations", Href: "/documents/core-v1/?group=group-open", Count: 2,
 			Open: true, Items: []CatalogSidebarItemData{{ID: "operation-one", Label: "List pods", Href: "#operation-one"}},
 		},
-		{ID: "group-closed", Label: "Schemas", Href: "/documents/core-v1/?group=group-closed", Count: 3},
+		{ID: "group-closed", Kind: "schemas", Label: "Schemas", Href: "/documents/core-v1/?group=group-closed", Count: 3},
 	}
 	body := renderCatalogTemplate(t, data)
 	if got := strings.Count(body, `data-catalog-group-control="true"`); got != 2 {

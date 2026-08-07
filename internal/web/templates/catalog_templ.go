@@ -4244,6 +4244,8 @@ func catalogSidebarConfig(data CatalogPageData) sidebar.Config {
 	if data.Document == nil {
 		return config
 	}
+	operationGroups := make([]sidebar.Item, 0, len(data.Groups))
+	otherGroups := make([]sidebar.Item, 0, len(data.Groups))
 	for _, group := range data.Groups {
 		children := make([]sidebar.Item, 0, len(group.Items))
 		for _, item := range group.Items {
@@ -4273,22 +4275,32 @@ func catalogSidebarConfig(data CatalogPageData) sidebar.Config {
 		}
 		linkAttrs["aria-expanded"] = strconv.FormatBool(group.Open)
 		linkAttrs["aria-controls"] = "catalog-sidebar-groups"
-		config.Items = append(config.Items, sidebar.Item{
+		sidebarGroup := sidebar.Item{
 			ID: group.ID, Label: group.Label, Href: group.Href, Badge: fmt.Sprintf("%d", group.Count),
-			Icon: func() templpkg.Component {
-				switch group.Kind {
-				case "schemas":
-					return catalogSidebarIcon(heroicons.Icon16SolidCube)
-				case "security-schemes":
-					return catalogSidebarIcon(heroicons.Icon16SolidLockClosed)
-				default:
-					return catalogSidebarIcon(heroicons.Icon16SolidCodeBracket)
-				}
-			}(),
 			Items: children, Collapsible: group.Open, Open: group.Open,
 			LinkAttrs: linkAttrs,
+		}
+		switch group.Kind {
+		case "operations":
+			operationGroups = append(operationGroups, sidebarGroup)
+		case "schemas":
+			sidebarGroup.Icon = catalogSidebarIcon(heroicons.Icon16SolidCube)
+			otherGroups = append(otherGroups, sidebarGroup)
+		case "security-schemes":
+			sidebarGroup.Icon = catalogSidebarIcon(heroicons.Icon16SolidLockClosed)
+			otherGroups = append(otherGroups, sidebarGroup)
+		default:
+			sidebarGroup.Icon = catalogSidebarIcon(heroicons.Icon16SolidCodeBracket)
+			otherGroups = append(otherGroups, sidebarGroup)
+		}
+	}
+	if len(operationGroups) > 0 {
+		config.Items = append(config.Items, sidebar.Item{
+			ID: "catalog-paths", Label: "Paths", Href: data.DocumentHref,
+			Icon: catalogSidebarIcon(heroicons.Icon16SolidCodeBracket), Items: operationGroups,
 		})
 	}
+	config.Items = append(config.Items, otherGroups...)
 	return config
 }
 
