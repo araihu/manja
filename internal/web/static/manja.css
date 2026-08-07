@@ -1216,6 +1216,13 @@ summary.manja-schema-row::marker {
   overflow-wrap: anywhere;
 }
 
+[id^="schema-enum-alias-"][role="tooltip"],
+[id^="catalog-schema-enum-alias-"][role="tooltip"] {
+  background: var(--color-surface-alt);
+  border: 1px solid var(--color-outline);
+  color: var(--color-on-surface);
+}
+
 .manja-schema-description {
   color: var(--color-on-surface-muted);
   line-height: 1.5;
@@ -1506,6 +1513,18 @@ summary.manja-schema-row::marker {
 
 .dark .manja-schema-reference {
   color: var(--color-primary-dark);
+}
+
+html.dark body [id^="schema-enum-alias-"][role="tooltip"],
+html.dark body [id^="catalog-schema-enum-alias-"][role="tooltip"] {
+  background: var(--color-surface-dark-alt);
+  border-color: var(--color-outline-dark);
+  color: var(--color-on-surface-dark);
+}
+
+html.dark body [id^="schema-enum-alias-"][role="tooltip"] > span,
+html.dark body [id^="catalog-schema-enum-alias-"][role="tooltip"] > span {
+  color: var(--color-on-surface-dark-strong);
 }
 
 .dark .manja-schema-property-state[data-required="true"] {

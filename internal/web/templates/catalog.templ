@@ -17,6 +17,7 @@ import (
 	searchcomponent "github.com/araihu/goshtoso/components/search"
 	"github.com/araihu/goshtoso/components/sidebar"
 	"github.com/araihu/goshtoso/components/table"
+	"github.com/araihu/goshtoso/components/tooltip"
 	"github.com/araihu/manja/application/catalog"
 	core "github.com/araihu/manja/domain"
 )
@@ -285,6 +286,7 @@ type CatalogSchemaEdgeData struct {
 	Deprecated bool
 	Required bool
 	ReferenceHref string
+	ReferenceIsEnumAlias bool
 }
 
 templ CatalogPage(data CatalogPageData) {
@@ -1164,7 +1166,7 @@ templ catalogSchemaNode(node CatalogSchemaNodeData, rootHeading string) {
 					>
 						<div class="manja-schema-label">
 							<div class="manja-schema-heading">
-								@catalogSchemaPropertyIdentity(edge)
+								@catalogSchemaPropertyIdentity(node.Ordinal, edge)
 								@schemaPropertyStates(schemaPropertyStateLabel(edge.Required), edge.Nullable, edge.Deprecated)
 							</div>
 							if catalogSchemaEdgeHasDescription(edge) {
@@ -1184,30 +1186,87 @@ templ catalogSchemaNode(node CatalogSchemaNodeData, rootHeading string) {
 	</section>
 }
 
-templ catalogSchemaPropertyIdentity(edge CatalogSchemaEdgeData) {
+templ catalogSchemaPropertyIdentity(nodeOrdinal uint32, edge CatalogSchemaEdgeData) {
 	<div class="manja-schema-identity">
 		<span class="manja-schema-name">{ edge.Name }</span>
-		if edge.Reference != "" {
-			if edge.ReferenceHref != "" {
-				<a
-					data-catalog-schema-reference="true"
-					href={ templpkg.URL(edge.ReferenceHref) }
-					hx-get={ edge.ReferenceHref }
-					hx-target="#schema-node-panel"
-					hx-select="#schema-node-panel"
-					hx-swap="outerHTML show:#schema-node-panel:top"
-					hx-push-url="true"
-					title={ "Open schema " + edge.Reference }
-					class="manja-schema-reference rounded-radius underline-offset-4 transition hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary dark:focus-visible:outline-primary-dark"
-				>{ edge.Reference }</a>
-			} else {
-				<span class="manja-schema-type">{ edge.Reference }</span>
+		if edge.ReferenceIsEnumAlias {
+			@catalogSchemaEnumAliasType(nodeOrdinal, edge)
+		} else {
+			if edge.Reference != "" {
+				@catalogSchemaReferenceLink(edge, "")
+			}
+			if edge.Type != "" {
+				<span class="manja-schema-type">{ edge.Type }</span>
 			}
 		}
-		if edge.Type != "" {
-			<span class="manja-schema-type">{ edge.Type }</span>
-		}
 	</div>
+}
+
+templ catalogSchemaEnumAliasType(nodeOrdinal uint32, edge CatalogSchemaEdgeData) {
+	{{ tooltipID := catalogSchemaEnumAliasTooltipID(nodeOrdinal, edge) }}
+	@tooltip.Tooltip(
+		tooltipID,
+		edge.Reference,
+		tooltip.WithDescription(catalogSchemaEnumAliasPreview(edge.EnumValues)),
+		tooltip.WithPosition(tooltip.PositionBottom),
+		tooltip.WithTrigger(catalogSchemaEnumAliasTrigger(edge, tooltipID)),
+	)
+}
+
+templ catalogSchemaEnumAliasTrigger(edge CatalogSchemaEdgeData, tooltipID string) {
+	<span class="manja-schema-type">{ edge.Type }&lt;</span>
+	@catalogSchemaReferenceLink(edge, tooltipID)
+	<span class="manja-schema-type">&gt;</span>
+}
+
+templ catalogSchemaReferenceLink(edge CatalogSchemaEdgeData, tooltipID string) {
+	if edge.ReferenceHref != "" {
+		<a
+			data-catalog-schema-reference="true"
+			if edge.ReferenceIsEnumAlias {
+				data-catalog-schema-enum-reference="true"
+			}
+			href={ templpkg.URL(edge.ReferenceHref) }
+			hx-get={ edge.ReferenceHref }
+			hx-target="#schema-node-panel"
+			hx-select="#schema-node-panel"
+			hx-swap="outerHTML show:#schema-node-panel:top"
+			hx-push-url="true"
+			if tooltipID != "" {
+				aria-describedby={ tooltipID }
+			}
+			title={ "Open schema " + edge.Reference }
+			class="manja-schema-reference rounded-radius underline-offset-4 transition hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary dark:focus-visible:outline-primary-dark"
+		>{ edge.Reference }</a>
+	} else {
+		<span class="manja-schema-type">{ edge.Reference }</span>
+	}
+}
+
+func catalogSchemaEnumAliasTooltipID(nodeOrdinal uint32, edge CatalogSchemaEdgeData) string {
+	return "catalog-schema-enum-alias-" + strconv.FormatUint(uint64(nodeOrdinal), 10) + "-" + anchorFragment(edge.Name) + "-" + anchorFragment(edge.Reference)
+}
+
+func catalogSchemaEnumAliasPreview(values []string) string {
+	const previewLimit = 5
+	preview := make([]string, 0, min(len(values), previewLimit))
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value == "" {
+			continue
+		}
+		preview = append(preview, value)
+		if len(preview) == previewLimit {
+			break
+		}
+	}
+	if len(preview) == 0 {
+		return "Named primitive enum."
+	}
+	if len(values) > len(preview) {
+		return "Allowed: " + strings.Join(preview, ", ") + ", and more."
+	}
+	return "Allowed: " + strings.Join(preview, ", ")
 }
 
 templ catalogSchemaEdgeDescription(nodeOrdinal uint32, edge CatalogSchemaEdgeData) {

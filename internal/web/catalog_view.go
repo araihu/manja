@@ -723,13 +723,14 @@ func (handler *CatalogHandler) catalogSchemaNodeData(
 		}
 		reference := ""
 		referenceHref := ""
+		referenceIsEnumAlias := catalogSchemaNodeIsNamedPrimitiveEnumAlias(target)
 		if catalogSchemaNodeReferenceNavigable(target) {
 			reference = strings.TrimSpace(target.Name)
 			referenceHref = catalogSchemaNodeHref(documentHref, detailID, uint32(ref))
 		}
 		result.Edges = append(result.Edges, templates.CatalogSchemaEdgeData{
 			Name: name, Description: catalogSchemaText(description), Required: required,
-			Type: catalogSchemaNodeShapeType(target), Reference: reference, ReferenceHref: referenceHref,
+			Type: catalogSchemaNodeShapeType(target), Reference: reference, ReferenceHref: referenceHref, ReferenceIsEnumAlias: referenceIsEnumAlias,
 			DefaultValue: catalogSchemaText(target.DefaultValue), ExampleText: catalogSchemaText(target.ExampleText),
 			EnumValues: append([]string(nil), target.Enum...), Constraints: catalogSchemaConstraints(target.Constraints),
 			Nullable: target.Nullable, Deprecated: target.Deprecated,
@@ -785,11 +786,22 @@ func catalogSchemaNodeReferenceNavigable(node projection.SchemaNode) bool {
 	if strings.TrimSpace(node.Name) == "" {
 		return false
 	}
+	if catalogSchemaNodeIsNamedPrimitiveEnumAlias(node) {
+		return true
+	}
+	return !catalogSchemaNodeIsPrimitiveType(node)
+}
+
+func catalogSchemaNodeIsPrimitiveType(node projection.SchemaNode) bool {
 	switch strings.ToLower(strings.TrimSpace(node.Type)) {
 	case "string", "number", "integer", "boolean", "null":
-		return false
+		return true
 	}
-	return true
+	return false
+}
+
+func catalogSchemaNodeIsNamedPrimitiveEnumAlias(node projection.SchemaNode) bool {
+	return strings.TrimSpace(node.Name) != "" && catalogSchemaNodeIsPrimitiveType(node) && len(node.Enum) > 0
 }
 
 func catalogSchemaText(value string) string {

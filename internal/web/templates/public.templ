@@ -27,6 +27,7 @@ import (
 	selectfield "github.com/araihu/goshtoso/components/select"
 	"github.com/araihu/goshtoso/components/sidebar"
 	"github.com/araihu/goshtoso/components/skeleton"
+	"github.com/araihu/goshtoso/components/tooltip"
 
 	"github.com/araihu/manja/application/port"
 	core "github.com/araihu/manja/domain"
@@ -1404,7 +1405,7 @@ templ responsePanel(opID string, response core.OperationResponse, exampleSpecJSO
 	<section class="grid gap-4">
 		if len(response.MediaTypes) == 0 {
 			@responseDescription(response.Description, opts)
-			@responseHeaders(response.Headers, opts)
+			@responseHeaders(response.Headers, opID+"-"+anchorFragment(response.Status)+"-headers", opts)
 		}
 		@responseMediaTypeList(opID, response, exampleSpecJSON, opts)
 	</section>
@@ -1424,14 +1425,14 @@ templ responseDescription(description string, opts PublicDocsOptions) {
 	}
 }
 
-templ responseHeaders(headers []core.OperationResponseHeader, opts PublicDocsOptions) {
+templ responseHeaders(headers []core.OperationResponseHeader, scope string, opts PublicDocsOptions) {
 	if len(headers) > 0 {
 		<section data-manja-response-section="headers" aria-label="Response headers" class="grid gap-3">
 			<h6 class="font-title text-sm font-semibold text-on-surface-strong dark:text-on-surface-dark-strong">Headers</h6>
 			<div class="manja-schema-tree">
 				<div class="manja-schema-root">
 					for _, header := range headers {
-						@schemaTreeNode(header.Name, "", responseHeaderSummary(header), false, opts)
+						@schemaTreeNode(header.Name, "", responseHeaderSummary(header), scope, false, opts)
 					}
 				</div>
 			</div>
@@ -1518,7 +1519,7 @@ templ responseMediaTypeBlock(opID string, response core.OperationResponse, media
 					}
 				</div>
 				@responseDescription(response.Description, opts)
-				@responseHeaders(response.Headers, opts)
+				@responseHeaders(response.Headers, idPrefix+"-"+anchorFragment(media.ContentType)+"-headers", opts)
 				@schemaProperties(mediaTypeTableID(idPrefix, media), "Response body", media.Schema, opts)
 			</div>
 			if hasResponseExample(media) {
@@ -1571,26 +1572,27 @@ templ schemaTree(id string, caption string, schema core.SchemaSummary, opts Publ
 	<section id={ id } aria-label={ caption + " schema tree" } class="manja-schema-tree">
 		if schemaTreeExpandable(schema) {
 			<div class="manja-schema-root">
-				@schemaTreeChildNodes(schema, opts)
+				@schemaTreeChildNodes(schema, opts, id)
 			</div>
 		} else {
-			@schemaTreeNode(schemaTreeRootName(caption, schema), "", schema, true, opts)
+			@schemaTreeNode(schemaTreeRootName(caption, schema), "", schema, id, true, opts)
 		}
 	</section>
 }
 
-templ schemaTreeNode(name string, propertyState string, schema core.SchemaSummary, root bool, opts PublicDocsOptions) {
+templ schemaTreeNode(name string, propertyState string, schema core.SchemaSummary, scope string, root bool, opts PublicDocsOptions) {
 	{{ displayName := schemaTreeDisplayName(name, schema) }}
+	{{ rowScope := scope + "-" + anchorFragment(displayName) }}
 	if schemaTreeExpandable(schema) {
 		if root {
 			<details open data-schema-tree-node={ displayName } class="manja-schema-node manja-schema-node-root">
-				@schemaTreeSummary(displayName, propertyState, schema, opts)
-				@schemaTreeChildren(schema, opts)
+				@schemaTreeSummary(displayName, propertyState, schema, rowScope, opts)
+				@schemaTreeChildren(schema, opts, rowScope)
 			</details>
 		} else {
 			<details open data-schema-tree-row={ displayName } class="manja-schema-node">
-				@schemaTreeSummary(displayName, propertyState, schema, opts)
-				@schemaTreeChildren(schema, opts)
+				@schemaTreeSummary(displayName, propertyState, schema, rowScope, opts)
+				@schemaTreeChildren(schema, opts, rowScope)
 			</details>
 		}
 	} else {
@@ -1598,32 +1600,32 @@ templ schemaTreeNode(name string, propertyState string, schema core.SchemaSummar
 			<div data-schema-tree-node={ displayName } class="manja-schema-node manja-schema-node-root">
 				<div class="manja-schema-row">
 					<span class="manja-schema-branch" aria-hidden="true"></span>
-					@schemaTreeLabel(displayName, propertyState, schema, opts)
+					@schemaTreeLabel(displayName, propertyState, schema, rowScope, opts)
 				</div>
 			</div>
 		} else {
 			<div data-schema-tree-row={ displayName } class="manja-schema-node">
 				<div class="manja-schema-row">
 					<span class="manja-schema-branch" aria-hidden="true"></span>
-					@schemaTreeLabel(displayName, propertyState, schema, opts)
+					@schemaTreeLabel(displayName, propertyState, schema, rowScope, opts)
 				</div>
 			</div>
 		}
 	}
 }
 
-templ schemaTreeSummary(name string, propertyState string, schema core.SchemaSummary, opts PublicDocsOptions) {
+templ schemaTreeSummary(name string, propertyState string, schema core.SchemaSummary, scope string, opts PublicDocsOptions) {
 	<summary class="manja-schema-row">
 		<span class="manja-schema-branch" aria-hidden="true"></span>
 		<span class="manja-schema-caret" aria-hidden="true"></span>
-		@schemaTreeLabel(name, propertyState, schema, opts)
+		@schemaTreeLabel(name, propertyState, schema, scope, opts)
 	</summary>
 }
 
-templ schemaTreeLabel(name string, propertyState string, schema core.SchemaSummary, opts PublicDocsOptions) {
+templ schemaTreeLabel(name string, propertyState string, schema core.SchemaSummary, scope string, opts PublicDocsOptions) {
 	<div class="manja-schema-label">
 		<div class="manja-schema-heading">
-			@schemaPropertyIdentity(name, schemaInline(schema))
+			@schemaTreePropertyIdentity(name, schema, scope, opts)
 			@schemaPropertyStates(propertyState, schema.Nullable, schema.Deprecated)
 		</div>
 		if schema.Description != "" {
@@ -1685,6 +1687,53 @@ templ schemaPropertyState(state string) {
 	}
 }
 
+templ schemaTreePropertyIdentity(name string, schema core.SchemaSummary, scope string, opts PublicDocsOptions) {
+	<div class="manja-schema-identity">
+		<span class="manja-schema-name">{ name }</span>
+		if schemaIsNamedPrimitiveEnumAlias(schema) {
+			@schemaEnumAliasType(name, schema, scope, opts)
+		} else if typeLabel := schemaInline(schema); typeLabel != "" {
+			<span class="manja-schema-type">{ typeLabel }</span>
+		}
+	</div>
+}
+
+templ schemaEnumAliasType(name string, schema core.SchemaSummary, scope string, opts PublicDocsOptions) {
+	{{ tooltipID := schemaEnumAliasTooltipID(scope, name, schema) }}
+	@tooltip.Tooltip(
+		tooltipID,
+		schema.Name,
+		tooltip.WithDescription(schemaEnumAliasPreview(schema.Enum)),
+		tooltip.WithPosition(tooltip.PositionBottom),
+		tooltip.WithTrigger(schemaEnumAliasTrigger(schema, opts, tooltipID)),
+	)
+}
+
+templ schemaEnumAliasTrigger(schema core.SchemaSummary, opts PublicDocsOptions, tooltipID string) {
+	{{ href := schemaTypeHref(schema, opts) }}
+	<span class="manja-schema-type">{ schemaInlineTypeLabel(schema) }&lt;</span>
+	if href != "" {
+		<a
+			data-manja-schema-enum-reference="true"
+			href={ templpkg.URL(href) }
+			hx-get={ href }
+			hx-target={ opts.SchemaLinkTarget }
+			if opts.SchemaLinkSelect != "" {
+				hx-select={ opts.SchemaLinkSelect }
+			}
+			hx-swap={ opts.SchemaLinkSwap }
+			hx-push-url="true"
+			aria-describedby={ tooltipID }
+			aria-label={ "Open schema " + schema.Name }
+			title={ "Open schema " + schema.Name }
+			class="manja-schema-reference rounded-radius underline-offset-4 transition hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary dark:focus-visible:outline-primary-dark"
+		>{ schema.Name }</a>
+	} else {
+		<span class="manja-schema-type">{ schema.Name }</span>
+	}
+	<span class="manja-schema-type">&gt;</span>
+}
+
 templ schemaPropertyStates(state string, nullable bool, deprecated bool) {
 	<span class="flex flex-wrap items-center justify-end gap-2">
 		@schemaPropertyState(state)
@@ -1697,18 +1746,18 @@ templ schemaPropertyStates(state string, nullable bool, deprecated bool) {
 	</span>
 }
 
-templ schemaTreeChildren(schema core.SchemaSummary, opts PublicDocsOptions) {
+templ schemaTreeChildren(schema core.SchemaSummary, opts PublicDocsOptions, scope string) {
 	<div class="manja-schema-children">
-		@schemaTreeChildNodes(schema, opts)
+		@schemaTreeChildNodes(schema, opts, scope)
 	</div>
 }
 
-templ schemaTreeChildNodes(schema core.SchemaSummary, opts PublicDocsOptions) {
+templ schemaTreeChildNodes(schema core.SchemaSummary, opts PublicDocsOptions, scope string) {
 	if schema.Items != nil && schemaTreeExpandable(*schema.Items) {
-		@schemaTreeNode("items", "", *schema.Items, false, opts)
+		@schemaTreeNode("items", "", *schema.Items, scope, false, opts)
 	}
 	for _, property := range schema.Properties {
-		@schemaTreeNode(property.Name, schemaPropertyStateLabel(property.Required), property.Schema, false, opts)
+		@schemaTreeNode(property.Name, schemaPropertyStateLabel(property.Required), property.Schema, scope, false, opts)
 	}
 }
 
@@ -2395,7 +2444,7 @@ func pluralizedCount(count int, singular string) string {
 	return strconv.Itoa(count) + " " + label
 }
 
-func schemaInline(schema core.SchemaSummary) string {
+func schemaInlineTypeLabel(schema core.SchemaSummary) string {
 	typeLabel := schema.Type
 	if strings.Contains(schema.Type, "array") {
 		typeLabel = "array"
@@ -2411,6 +2460,14 @@ func schemaInline(schema core.SchemaSummary) string {
 			typeLabel = schema.Format
 		}
 	}
+	return typeLabel
+}
+
+func schemaInline(schema core.SchemaSummary) string {
+	typeLabel := schemaInlineTypeLabel(schema)
+	if schemaIsNamedPrimitiveEnumAlias(schema) {
+		return typeLabel + "<" + strings.TrimSpace(schema.Name) + ">"
+	}
 
 	parts := make([]string, 0, 2)
 	if schema.Name != "" {
@@ -2420,6 +2477,44 @@ func schemaInline(schema core.SchemaSummary) string {
 		parts = append(parts, typeLabel)
 	}
 	return strings.Join(parts, " ")
+}
+
+func schemaIsPrimitiveType(schema core.SchemaSummary) bool {
+	switch strings.ToLower(strings.TrimSpace(schema.Type)) {
+	case "string", "number", "integer", "boolean", "null":
+		return true
+	}
+	return false
+}
+
+func schemaIsNamedPrimitiveEnumAlias(schema core.SchemaSummary) bool {
+	return strings.TrimSpace(schema.Name) != "" && schemaIsPrimitiveType(schema) && len(schema.Enum) > 0
+}
+
+func schemaEnumAliasPreview(values []string) string {
+	const previewLimit = 5
+	preview := make([]string, 0, min(len(values), previewLimit))
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value == "" {
+			continue
+		}
+		preview = append(preview, value)
+		if len(preview) == previewLimit {
+			break
+		}
+	}
+	if len(preview) == 0 {
+		return "Named primitive enum."
+	}
+	if len(values) > len(preview) {
+		return "Allowed: " + strings.Join(preview, ", ") + ", and more."
+	}
+	return "Allowed: " + strings.Join(preview, ", ")
+}
+
+func schemaEnumAliasTooltipID(scope string, name string, schema core.SchemaSummary) string {
+	return "schema-enum-alias-" + anchorFragment(scope) + "-" + anchorFragment(name) + "-" + anchorFragment(schema.Name)
 }
 
 func schemaLinksForIndex(idx core.SpecIndex, existing map[string]string) map[string]string {
@@ -2441,7 +2536,7 @@ func schemaLinksForIndex(idx core.SpecIndex, existing map[string]string) map[str
 
 func schemaTypeHref(schema core.SchemaSummary, opts PublicDocsOptions) string {
 	name := strings.TrimSpace(schema.Name)
-	if name == "" || opts.SchemaLinks == nil {
+	if name == "" || opts.SchemaLinks == nil || (schemaIsPrimitiveType(schema) && !schemaIsNamedPrimitiveEnumAlias(schema)) {
 		return ""
 	}
 	return strings.TrimSpace(opts.SchemaLinks[name])
