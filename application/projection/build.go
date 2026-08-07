@@ -317,6 +317,10 @@ func (s *buildState) buildOperationDetail(ordinal uint32, indexed indexedOperati
 	responses := make([]Response, 0, len(operation.Responses))
 	responseIDs := make(map[string]struct{})
 	for sourceIndex, response := range operation.Responses {
+		headers, err := s.buildResponseHeaders(response.Headers)
+		if err != nil {
+			return OperationDetail{}, err
+		}
 		media, err := s.buildMediaTypes(response.MediaTypes)
 		if err != nil {
 			return OperationDetail{}, err
@@ -325,7 +329,7 @@ func (s *buildState) buildOperationDetail(ordinal uint32, indexed indexedOperati
 			return OperationDetail{}, projectionFailure("operations.responses", "duplicate_record")
 		}
 		responseIDs[response.Status] = struct{}{}
-		responses = append(responses, Response{Ordinal: uint32(sourceIndex), ID: response.Status, Status: response.Status, Description: response.Description, MediaTypes: media})
+		responses = append(responses, Response{Ordinal: uint32(sourceIndex), ID: response.Status, Status: response.Status, Description: response.Description, Headers: headers, MediaTypes: media})
 	}
 	security := make([]SecurityRequirement, 0, len(operation.Security))
 	securityIDs := make(map[string]struct{})
@@ -334,7 +338,16 @@ func (s *buildState) buildOperationDetail(ordinal uint32, indexed indexedOperati
 			return OperationDetail{}, projectionFailure("operations.security", "duplicate_record")
 		}
 		securityIDs[requirement.Name] = struct{}{}
-		security = append(security, SecurityRequirement{Ordinal: uint32(sourceIndex), ID: requirement.Name, Name: requirement.Name, Scopes: textRecords("scope", requirement.Scopes, false, true)})
+		security = append(security, SecurityRequirement{
+			Ordinal: uint32(sourceIndex), ID: requirement.Name, Name: requirement.Name,
+			Scopes: textRecords("scope", requirement.Scopes, false, true),
+			Definition: SecurityScheme{
+				Name: requirement.Definition.Name, Type: requirement.Definition.Type,
+				Description: requirement.Definition.Description, ParameterName: requirement.Definition.ParameterName,
+				In: requirement.Definition.In, Scheme: requirement.Definition.Scheme,
+				BearerFormat: requirement.Definition.BearerFormat, OpenIDConnectURL: requirement.Definition.OpenIDConnectURL,
+			},
+		})
 	}
 	codeSamples := make([]CodeSample, 0, len(operation.Snippets))
 	codeIDs := make(map[string]struct{})
@@ -355,6 +368,34 @@ func (s *buildState) buildOperationDetail(ordinal uint32, indexed indexedOperati
 		HasRequestBody: hasRequestBody, RequestBody: requestBody, Responses: responses,
 		Security: security, CodeSamples: codeSamples,
 	}, nil
+}
+
+func (s *buildState) buildResponseHeaders(source []domain.OperationResponseHeader) ([]ResponseHeader, error) {
+	result := make([]ResponseHeader, 0, len(source))
+	ids := make(map[string]struct{})
+	for sourceIndex, header := range source {
+		if err := s.checkpoint(); err != nil {
+			return nil, err
+		}
+		schemaRef, err := s.internSchema(header.Schema)
+		if err != nil {
+			return nil, err
+		}
+		id := recordID("response-header", strings.ToLower(header.Name))
+		if _, duplicate := ids[id]; duplicate {
+			return nil, projectionFailure("operations.responses.headers", "duplicate_record")
+		}
+		ids[id] = struct{}{}
+		examples := []Example{}
+		if header.Example != "" {
+			examples = append(examples, Example{Ordinal: 0, ID: "primary", Text: header.Example, Provided: true})
+		}
+		result = append(result, ResponseHeader{
+			Ordinal: uint32(sourceIndex), ID: id, Name: header.Name, Description: header.Description,
+			SchemaRef: schemaRef, Examples: examples,
+		})
+	}
+	return result, nil
 }
 
 func (s *buildState) buildMediaTypes(source []domain.OperationMediaType) ([]MediaType, error) {
@@ -493,10 +534,13 @@ func (s *buildState) buildPublicRoutes(source []domain.PublicRoute) ([]PublicRou
 }
 
 func operationTitle(operation domain.Operation) string {
-	if operation.Summary != "" {
+	if strings.TrimSpace(operation.Title) != "" {
+		return operation.Title
+	}
+	if strings.TrimSpace(operation.Summary) != "" {
 		return operation.Summary
 	}
-	if operation.ID != "" {
+	if strings.TrimSpace(operation.ID) != "" {
 		return operation.ID
 	}
 	return strings.TrimSpace(strings.ToUpper(operation.Method) + " " + operation.Path)

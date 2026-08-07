@@ -14,10 +14,30 @@ import (
 const validRendererConfig = `
 version: 1
 dataDir: .manja/renderer
+organization:
+  title: Example APIs
+  readme: API documentation published by Example.
+  license:
+    name: Apache-2.0
+    url: https://example.test/license
+  sources:
+    - name: Public definitions
+      kind: git
+      location: github.com/example/apis
+      url: https://github.com/example/apis
+  seo:
+    description: Example API documentation.
+    canonicalBase: https://example.test
+    socialImage: https://example.test/social.png
+    socialImageAlt: Example APIs
 catalogs:
   - id: kubernetes
     mount: /kubernetes
     title: Kubernetes
+    readme: Kubernetes API documentation.
+    license:
+      name: Apache-2.0
+      url: https://example.test/kubernetes-license
     defaultDocument: core-v1
     profile: kubernetes-v3-v1
     compatibilityAllowlist: allowlists/kubernetes.json
@@ -66,8 +86,14 @@ func TestLoadRendererBuildsRuntimeAndSourceConfiguration(t *testing.T) {
 	if runtime.Version != 1 || runtime.DataDir != filepath.Join(root, ".manja/renderer") || len(runtime.Catalogs) != 2 {
 		t.Fatalf("runtime config = %#v", runtime)
 	}
+	if runtime.Organization.Title != "Example APIs" || runtime.Organization.License.Name != "Apache-2.0" || len(runtime.Organization.Sources) != 1 || runtime.Organization.Sources[0].Location != "github.com/example/apis" {
+		t.Fatalf("organization config = %#v", runtime.Organization)
+	}
 	if runtime.Catalogs[0].ID != "kubernetes" || runtime.Catalogs[0].ProfileID != domain.CompatibilityProfileKubernetes {
 		t.Fatalf("Kubernetes runtime catalog = %#v", runtime.Catalogs[0])
+	}
+	if runtime.Catalogs[0].Readme != "Kubernetes API documentation." || runtime.Catalogs[0].License.Name != "Apache-2.0" {
+		t.Fatalf("Kubernetes catalog metadata = %#v", runtime.Catalogs[0])
 	}
 	if runtime.Catalogs[0].SEO.CanonicalBase != "https://docs.example.test/kubernetes" || runtime.Catalogs[0].SEO.SocialImageAlt != "Kubernetes API reference" {
 		t.Fatalf("Kubernetes SEO config = %#v", runtime.Catalogs[0].SEO)
@@ -161,8 +187,11 @@ func TestCommittedKubernetesRendererConfigUsesAuthorityDocumentKeys(t *testing.T
 	if len(loaded.Catalogs) != 1 || loaded.Catalogs[0].DefaultDocumentKey != "core-v1" || len(loaded.Catalogs[0].Source.Documents) != 65 {
 		t.Fatalf("Kubernetes renderer config = %#v", loaded.Catalogs)
 	}
-	if loaded.RuntimeConfig().Catalogs[0].SEO.CanonicalBase != "https://manja.araihu.com" {
+	if loaded.RuntimeConfig().Catalogs[0].SEO.CanonicalBase != "https://manja.araihu.com/catalogs/kubernetes" {
 		t.Fatalf("Kubernetes canonical base = %q", loaded.RuntimeConfig().Catalogs[0].SEO.CanonicalBase)
+	}
+	if loaded.RuntimeConfig().Organization.Title != "Manja" || len(loaded.RuntimeConfig().Organization.Sources) != 2 {
+		t.Fatalf("Kubernetes organization config = %#v", loaded.RuntimeConfig().Organization)
 	}
 	candidate, err := loaded.Sources()[0].Load(context.Background())
 	if err != nil {

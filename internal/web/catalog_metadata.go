@@ -3,6 +3,7 @@ package web
 import (
 	"net/http"
 	"net/url"
+	"sort"
 	"strings"
 
 	"github.com/araihu/manja/internal/web/templates"
@@ -10,13 +11,18 @@ import (
 
 func (handler *CatalogHandler) catalogPageMetadata(request *http.Request, data templates.CatalogPageData) templates.PageMetadata {
 	presentation := handler.presentation[data.Mount]
+	if data.OrganizationRoot {
+		presentation = handler.organizationPresentation(request)
+	}
 	description := strings.TrimSpace(presentation.Description)
-	if data.Selected != nil && data.Selected.Operation != nil {
+	if data.OrganizationRoot {
+		description = firstNonempty(description, "Browse OpenAPI catalogs and standalone specs published by "+data.Organization.Title+".")
+	} else if data.Selected != nil && data.Selected.Operation != nil {
 		description = firstNonempty(data.Selected.Operation.Description, data.Selected.Operation.Summary, strings.TrimSpace(strings.ToUpper(data.Selected.Operation.Method)+" "+data.Selected.Operation.Path))
 	} else if data.Selected != nil && data.Selected.Schema != nil {
 		description = firstNonempty(data.Selected.Schema.Description, "OpenAPI schema "+data.Selected.Schema.Heading+" in "+data.Directory.Title+".")
 	} else if data.Document != nil {
-		description = firstNonempty(data.Document.Overview.Description, "OpenAPI operations and schemas for "+data.Document.Title+".")
+		description = firstNonempty(data.Document.Overview.Description, "OpenAPI operations and schemas for "+data.Document.Key+".")
 	} else if data.Search != nil {
 		description = "Search operations, paths, and schemas across " + data.Directory.Title + "."
 	}
@@ -35,20 +41,80 @@ func (handler *CatalogHandler) catalogPageMetadata(request *http.Request, data t
 	return metadata
 }
 
+func (handler *CatalogHandler) organizationPresentation(request *http.Request) CatalogPresentation {
+	presentation := CatalogPresentation{}
+	if handler != nil {
+		presentation = handler.organization.SEO
+		mounts := make([]string, 0, len(handler.presentation))
+		for mount := range handler.presentation {
+			if mount != "/" {
+				mounts = append(mounts, mount)
+			}
+		}
+		sort.Strings(mounts)
+		for _, mount := range mounts {
+			if origin, ok := absoluteOrigin(handler.presentation[mount].CanonicalBase); ok {
+				presentation = organizationPresentationDefaults(presentation, origin)
+				return presentation
+			}
+		}
+	}
+	if request != nil && request.URL != nil {
+		if origin, ok := absoluteOrigin(request.URL.String()); ok {
+			return organizationPresentationDefaults(presentation, origin)
+		}
+	}
+	return presentation
+}
+
+func organizationPresentationDefaults(presentation CatalogPresentation, origin string) CatalogPresentation {
+	if presentation.CanonicalBase == "" {
+		presentation.CanonicalBase = origin
+	}
+	if presentation.SocialImage == "" {
+		presentation.SocialImage = origin + "/manja-assets/manja-social.png"
+		presentation.SocialImageMIMEType = "image/png"
+		presentation.SocialImageAlt = "Manja OpenAPI workbench"
+	}
+	return presentation
+}
+
+func absoluteOrigin(raw string) (string, bool) {
+	parsed, err := url.Parse(strings.TrimSpace(raw))
+	if err != nil || parsed.Scheme == "" || parsed.Host == "" || (parsed.Scheme != "http" && parsed.Scheme != "https") {
+		return "", false
+	}
+	return parsed.Scheme + "://" + parsed.Host, true
+}
+
 func catalogPageTitleForMetadata(data templates.CatalogPageData) string {
+	if data.OrganizationRoot {
+		return catalogManjaDocumentTitle("Dashboard")
+	}
 	if data.Selected != nil && data.Selected.Operation != nil {
-		return data.Selected.Operation.Heading + " · " + data.Directory.Title
+		return catalogManjaDocumentTitle(data.Selected.Operation.Heading)
 	}
 	if data.Selected != nil && data.Selected.Schema != nil {
-		return data.Selected.Schema.Heading + " · " + data.Directory.Title
+		return catalogManjaDocumentTitle(data.Selected.Schema.Heading)
 	}
 	if data.Search != nil {
-		return "Search · " + data.Directory.Title
+		return catalogManjaDocumentTitle("Search")
 	}
 	if data.Document != nil {
-		return data.Document.Title + " · " + data.Directory.Title
+		return catalogManjaDocumentTitle(data.Document.Key)
 	}
-	return data.Directory.Title
+	return catalogManjaDocumentTitle(data.Directory.Title)
+}
+
+func catalogManjaDocumentTitle(label string) string {
+	label = strings.TrimSpace(label)
+	if label == "" {
+		label = "OpenAPI documentation"
+	}
+	if strings.HasSuffix(label, " · Manja") {
+		return label
+	}
+	return label + " · Manja"
 }
 
 func catalogCanonicalURL(request *http.Request, mount, base string) string {

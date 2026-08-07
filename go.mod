@@ -5,7 +5,7 @@ go 1.26.5
 require (
 	github.com/a-h/templ v0.3.1020
 	github.com/araihu/assets v0.1.4
-	github.com/araihu/goshtoso v0.1.7
+	github.com/araihu/goshtoso v0.1.8
 	github.com/evanw/esbuild v0.28.1
 	github.com/getkin/kin-openapi v0.140.0
 	github.com/go-openapi/jsonpointer v0.22.5

@@ -34,8 +34,17 @@ func (handler *CatalogHandler) catalogOperationView(
 		handler: handler, ctx: ctx, snapshot: snapshot, document: document,
 		active: make(map[projection.SchemaRef]bool),
 	}
+	operationID := string(detail.ID)
+	for _, directoryOperation := range document.Operations {
+		if string(directoryOperation.DetailID) == string(detail.ID) {
+			if strings.TrimSpace(directoryOperation.OperationID) != "" {
+				operationID = directoryOperation.OperationID
+			}
+			break
+		}
+	}
 	operation := &domain.Operation{
-		ID: detail.ID, Anchor: detail.Anchor, Title: detail.Heading, Method: detail.Method, Path: detail.Path,
+		ID: operationID, Anchor: detail.Anchor, Title: detail.Heading, Method: detail.Method, Path: detail.Path,
 		Summary: detail.Summary, Description: detail.Description, Deprecated: detail.Deprecated,
 		Tags: textRecordValues(detail.Tags),
 	}
@@ -63,18 +72,35 @@ func (handler *CatalogHandler) catalogOperationView(
 	}
 	operation.Responses = make([]domain.OperationResponse, 0, len(detail.Responses))
 	for _, response := range detail.Responses {
+		headers := make([]domain.OperationResponseHeader, 0, len(response.Headers))
+		for _, header := range response.Headers {
+			schema, err := resolver.schema(header.SchemaRef, 0)
+			if err != nil {
+				return nil, err
+			}
+			headers = append(headers, domain.OperationResponseHeader{
+				Name: header.Name, Description: header.Description,
+				Schema: schema, Example: firstProjectionExample(header.Examples),
+			})
+		}
 		mediaTypes, err := resolver.mediaTypes(response.MediaTypes)
 		if err != nil {
 			return nil, err
 		}
 		operation.Responses = append(operation.Responses, domain.OperationResponse{
-			Status: response.Status, Description: response.Description, MediaTypes: mediaTypes,
+			Status: response.Status, Description: response.Description, Headers: headers, MediaTypes: mediaTypes,
 		})
 	}
 	operation.Security = make([]domain.OperationSecurity, 0, len(detail.Security))
 	for _, security := range detail.Security {
 		operation.Security = append(operation.Security, domain.OperationSecurity{
 			Name: security.Name, Scopes: textRecordValues(security.Scopes),
+			Definition: domain.SecurityScheme{
+				Name: security.Definition.Name, Type: security.Definition.Type,
+				Description: security.Definition.Description, ParameterName: security.Definition.ParameterName,
+				In: security.Definition.In, Scheme: security.Definition.Scheme,
+				BearerFormat: security.Definition.BearerFormat, OpenIDConnectURL: security.Definition.OpenIDConnectURL,
+			},
 		})
 	}
 	operation.Snippets = make([]domain.RequestSnippet, 0, len(detail.CodeSamples))
@@ -89,6 +115,27 @@ func (handler *CatalogHandler) catalogOperationView(
 		}}
 	}
 	return operation, nil
+}
+
+func (handler *CatalogHandler) catalogSchemaView(
+	ctx context.Context,
+	snapshot catalog.RuntimeSnapshot,
+	document catalog.DocumentDirectoryV1,
+	detail projection.SchemaDetail,
+) (*domain.Schema, error) {
+	resolver := catalogOperationSchemaResolver{
+		handler: handler, ctx: ctx, snapshot: snapshot, document: document,
+		active: make(map[projection.SchemaRef]bool),
+	}
+	summary, err := resolver.schema(detail.SchemaRef, 0)
+	if err != nil {
+		return nil, err
+	}
+	example, provided := projectionExample(detail.Examples)
+	return &domain.Schema{
+		Name: detail.Heading, Description: detail.Description, Summary: summary,
+		Example: domain.SchemaExample{JSON: detail.ExampleSchemaJSON, Example: example, Provided: provided},
+	}, nil
 }
 
 func catalogOperationCurl(operation domain.Operation) string {
@@ -133,7 +180,9 @@ func (resolver *catalogOperationSchemaResolver) schema(ref projection.SchemaRef,
 	}
 	summary := domain.SchemaSummary{
 		Name: node.Name, Type: node.Type, Format: node.Format, Description: node.Description,
-		Default: node.DefaultValue, Example: node.ExampleText, JSON: node.JSON,
+		Default: node.DefaultValue, Example: node.ExampleText,
+		Enum: append([]string(nil), node.Enum...), Constraints: domainSchemaConstraints(node.Constraints),
+		Nullable: node.Nullable, Deprecated: node.Deprecated, JSON: node.JSON,
 	}
 	if depth >= catalogOperationSchemaDepth || resolver.loaded >= catalogOperationSchemaNodes || resolver.active[ref] {
 		return summary, nil
@@ -165,6 +214,14 @@ func (resolver *catalogOperationSchemaResolver) schema(ref projection.SchemaRef,
 		summary.Items = &items
 	}
 	return summary, nil
+}
+
+func domainSchemaConstraints(constraints []projection.SchemaConstraint) []domain.SchemaConstraint {
+	result := make([]domain.SchemaConstraint, 0, len(constraints))
+	for _, constraint := range constraints {
+		result = append(result, domain.SchemaConstraint{Name: constraint.Name, Value: constraint.Value})
+	}
+	return result
 }
 
 func textRecordValues(records []projection.TextRecord) []string {

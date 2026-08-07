@@ -12,7 +12,7 @@ import (
 const maxSchemaGraphNodes = 100_000
 const maxSchemaGraphEdges = 100_000
 
-var schemaNodeDomain = []byte("manja.projection.schema-node.v2\x00")
+var schemaNodeDomain = []byte("manja.projection.schema-node.v3\x00")
 
 type schemaHashFunc func([]byte) [32]byte
 
@@ -76,9 +76,15 @@ func (s *buildState) internSchema(source domain.SchemaSummary) (SchemaRef, error
 		items = append(items, SchemaNodeItem{Ordinal: 0, ID: "items", SchemaRef: childRef})
 	}
 
+	constraints := make([]SchemaConstraint, 0, len(source.Constraints))
+	for _, constraint := range source.Constraints {
+		constraints = append(constraints, SchemaConstraint{Name: constraint.Name, Value: constraint.Value})
+	}
 	node := SchemaNode{
 		Name: source.Name, Type: source.Type, Format: source.Format, Description: source.Description,
-		DefaultValue: source.Default, ExampleText: source.Example, JSON: canonicalJSON,
+		DefaultValue: source.Default, ExampleText: source.Example,
+		Enum: append([]string(nil), source.Enum...), Constraints: constraints,
+		Nullable: source.Nullable, Deprecated: source.Deprecated, JSON: canonicalJSON,
 		Properties: properties, Items: items,
 	}
 	preimage := s.schemaNodePreimage(node)
@@ -114,6 +120,14 @@ func (s *buildState) schemaNodePreimage(node SchemaNode) []byte {
 	} {
 		preimage = appendSchemaString(preimage, value)
 	}
+	preimage = appendSchemaStrings(preimage, node.Enum)
+	preimage = appendSchemaUint64(preimage, uint64(len(node.Constraints)))
+	for _, constraint := range node.Constraints {
+		preimage = appendSchemaString(preimage, constraint.Name)
+		preimage = appendSchemaString(preimage, constraint.Value)
+	}
+	preimage = appendSchemaBool(preimage, node.Nullable)
+	preimage = appendSchemaBool(preimage, node.Deprecated)
 	preimage = appendSchemaUint64(preimage, uint64(len(node.Properties)))
 	for _, property := range node.Properties {
 		preimage = appendSchemaUint32(preimage, property.Ordinal)
@@ -139,6 +153,21 @@ func (s *buildState) schemaNodePreimage(node SchemaNode) []byte {
 func appendSchemaString(target []byte, value string) []byte {
 	target = appendSchemaUint64(target, uint64(len([]byte(value))))
 	return append(target, value...)
+}
+
+func appendSchemaStrings(target []byte, values []string) []byte {
+	target = appendSchemaUint64(target, uint64(len(values)))
+	for _, value := range values {
+		target = appendSchemaString(target, value)
+	}
+	return target
+}
+
+func appendSchemaBool(target []byte, value bool) []byte {
+	if value {
+		return append(target, 1)
+	}
+	return append(target, 0)
 }
 
 func appendSchemaUint32(target []byte, value uint32) []byte {
@@ -187,6 +216,10 @@ func (s *buildState) finalizeSchemaGraph(document *Document) error {
 			operation.RequestBody.MediaTypes[index].SchemaRef = remap[operation.RequestBody.MediaTypes[index].SchemaRef]
 		}
 		for responseIndex := range operation.Responses {
+			for headerIndex := range operation.Responses[responseIndex].Headers {
+				header := &operation.Responses[responseIndex].Headers[headerIndex]
+				header.SchemaRef = remap[header.SchemaRef]
+			}
 			for mediaIndex := range operation.Responses[responseIndex].MediaTypes {
 				media := &operation.Responses[responseIndex].MediaTypes[mediaIndex]
 				media.SchemaRef = remap[media.SchemaRef]

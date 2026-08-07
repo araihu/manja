@@ -2,28 +2,35 @@ package templates
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 
 	templpkg "github.com/a-h/templ"
 	"github.com/araihu/goshtoso/components/appshell"
 	"github.com/araihu/goshtoso/components/avatar"
 	"github.com/araihu/goshtoso/components/badge"
-	"github.com/araihu/goshtoso/components/combobox"
 	"github.com/araihu/goshtoso/components/icon"
 	"github.com/araihu/goshtoso/components/icon/heroicons"
 	"github.com/araihu/goshtoso/components/kbd"
-	"github.com/araihu/goshtoso/components/pageheader"
+	"github.com/araihu/goshtoso/components/scrollregion"
 	searchcomponent "github.com/araihu/goshtoso/components/search"
 	"github.com/araihu/goshtoso/components/sidebar"
+	"github.com/araihu/goshtoso/components/table"
 	"github.com/araihu/manja/application/catalog"
 	core "github.com/araihu/manja/domain"
 )
 
 type CatalogDocumentOption struct {
-	Key string
-	Label string
-	Href string
-	Selected bool
+	Key        string
+	Label      string
+	Version    string
+	Operations int
+	Schemas    int
+	SearchText string
+	Href       string
+	AvatarSrc  string
+	AvatarAlt  string
+	Selected   bool
 }
 
 type CatalogSidebarItemData struct {
@@ -36,6 +43,7 @@ type CatalogSidebarItemData struct {
 
 type CatalogSidebarGroupData struct {
 	ID string
+	Kind string
 	Label string
 	Href string
 	Count int
@@ -50,6 +58,7 @@ type CatalogOrganizationItem struct {
 	Href        string
 	AvatarSrc   string
 	AvatarAlt   string
+	AvatarSymbol string
 	Initials    string
 	Count       int
 	Active      bool
@@ -61,27 +70,68 @@ type CatalogOrganizationNavData struct {
 	Specs    []CatalogOrganizationItem
 }
 
+type CatalogOrganizationLicenseData struct {
+	Name string
+	URL  string
+}
+
+type CatalogOrganizationSourceData struct {
+	Name     string
+	Kind     string
+	Location string
+	URL      string
+}
+
+type CatalogOrganizationPageData struct {
+	Title   string
+	Readme  string
+	License CatalogOrganizationLicenseData
+	Sources []CatalogOrganizationSourceData
+}
+
 type CatalogPageData struct {
-	Metadata PageMetadata
+	Metadata         PageMetadata
+	OrganizationRoot bool
 	Mount string
 	SnapshotID catalog.SnapshotID
+	RevisionID string
+	CommitSHA string
 	Directory catalog.CatalogArtifactV1
+	StandaloneSpec bool
 	Document *catalog.DocumentDirectoryV1
+	DocumentHref string
+	CatalogReadme string
+	CatalogLicense CatalogOrganizationLicenseData
+	SchemaLinks map[string]string
 	Documents []CatalogDocumentOption
 	Groups []CatalogSidebarGroupData
 	OrganizationNav CatalogOrganizationNavData
+	Organization CatalogOrganizationPageData
 	Selected *catalog.DetailRecordV1
 	OperationView *core.Operation
+	OperationNavigation OperationNavigationData
+	SchemaView *core.Schema
 	OperationServers []core.SpecServer
 	Search *CatalogSearchData
 	SchemaNode *CatalogSchemaNodeData
 	DownloadHref string
+	PageMarkdownHref string
+	CapabilityFooter CapabilityFooterData
 	SearchHref string
+	// SearchMount identifies the catalog whose bounded client index backs the
+	// search modal. The organization root itself uses "/" as its route mount,
+	// but its first search index still lives below that catalog's mount.
+	SearchMount string
+	// SearchScopeLabel makes the bounded root search source explicit while
+	// federation across multiple catalogs is not yet available.
+	SearchScopeLabel string
 	SearchChildBase string
 	SearchDirectoryPath string
 	SearchDirectoryLength uint64
 	SearchDirectorySHA256 string
 	CurrentVisit *CatalogSearchItemData
+	DocumentSortBy string
+	DocumentSortDir string
 }
 
 func catalogNavigationLabel(data CatalogPageData) string {
@@ -89,6 +139,91 @@ func catalogNavigationLabel(data CatalogPageData) string {
 		return "Catalogs and specs"
 	}
 	return "API sections"
+}
+
+func catalogDocumentFilterExpression(searchText string) string {
+	return "filter.trim() === '' || " + strconv.Quote(strings.ToLower(searchText)) + ".includes(filter.toLowerCase())"
+}
+
+func catalogDocumentLabel(document catalog.DocumentDirectoryV1) string {
+	return document.Key
+}
+
+func catalogDocumentTitle(document catalog.DocumentDirectoryV1) string {
+	if key := strings.TrimSpace(document.Key); key != "" {
+		return key
+	}
+	return strings.TrimSpace(document.Title)
+}
+
+func catalogDocumentTableEndpoint(mount string) string {
+	if mount == "/" {
+		return "/"
+	}
+	return strings.TrimRight(mount, "/") + "/"
+}
+
+func catalogDocumentTableConfig(data CatalogPageData) table.Config {
+	rows := make([]table.Row, 0, len(data.Documents))
+	for _, option := range data.Documents {
+		rows = append(rows, table.Row{
+			ID:       option.Key,
+			Link:     option.Href,
+			LinkMode: table.LinkFull,
+			Cells: map[string]table.Cell{
+				"name": {
+					Component: table.ImageCell(option.AvatarSrc, option.Label, ""),
+				},
+				"version": {Text: option.Version, Code: true},
+				"operations": {Text: strconv.Itoa(option.Operations)},
+				"schemas": {Text: strconv.Itoa(option.Schemas)},
+			},
+			AlpineAttrs: map[string]string{
+				"data-catalog-document-row": "true",
+				"data-search-text": option.SearchText,
+				"x-show": catalogDocumentFilterExpression(option.SearchText),
+			},
+		})
+	}
+	return table.Config{
+		ID: "catalog-documents-table",
+		Caption: "OpenAPI documents in this catalog",
+		Columns: []table.Column{
+			{Key: "name", Label: "Name", Sortable: true, Width: "w-[46%]"},
+			{Key: "version", Label: "Version", Sortable: true, Width: "w-[22%]"},
+			{Key: "operations", Label: "Operations", Sortable: true, Width: "w-[16%]", Align: "right"},
+			{Key: "schemas", Label: "Schemas", Sortable: true, Width: "w-[16%]", Align: "right"},
+		},
+		Rows: rows,
+		SortBy: data.DocumentSortBy,
+		SortDir: table.SortDir(data.DocumentSortDir),
+		HTMX: &table.HTMXConfig{Endpoint: catalogDocumentTableEndpoint(data.Mount)},
+		RootClass: "catalog-documents-table",
+	}
+}
+
+func catalogDocumentHasContact(document catalog.DocumentDirectoryV1) bool {
+	contact := document.Overview.Contact
+	return strings.TrimSpace(contact.Name) != "" || strings.TrimSpace(contact.URL) != "" || strings.TrimSpace(contact.Email) != ""
+}
+
+func catalogDocumentHasLicense(document catalog.DocumentDirectoryV1) bool {
+	license := document.Overview.License
+	return strings.TrimSpace(license.Name) != "" || strings.TrimSpace(license.URL) != "" || strings.TrimSpace(license.Identifier) != ""
+}
+
+func catalogDocumentHasInfoLinks(document catalog.DocumentDirectoryV1) bool {
+	return strings.TrimSpace(document.Overview.TermsOfService) != "" || catalogDocumentHasContact(document) || catalogDocumentHasLicense(document)
+}
+
+templ catalogSidebarIconFrame(symbol icon.Symbol) {
+	<span data-catalog-sidebar-icon-frame="true" class="flex size-5 items-center justify-center">
+		@icon.Icon(icon.Config{SpriteURL: heroicons.SpriteURL, Symbol: symbol, Size: icon.SizeSM, Decorative: true})
+	</span>
+}
+
+func catalogSidebarIcon(symbol icon.Symbol) templpkg.Component {
+	return catalogSidebarIconFrame(symbol)
 }
 
 type CatalogSearchItemData struct {
@@ -123,14 +258,29 @@ type CatalogSchemaNodeData struct {
 	Description string
 	DefaultValue string
 	ExampleText string
+	EnumValues []string
+	Constraints []CatalogSchemaConstraintData
+	Nullable bool
+	Deprecated bool
 	Edges []CatalogSchemaEdgeData
 	Truncated bool
+}
+
+type CatalogSchemaConstraintData struct {
+	Name string
+	Value string
 }
 
 type CatalogSchemaEdgeData struct {
 	Name string
 	Type string
 	Description string
+	DefaultValue string
+	ExampleText string
+	EnumValues []string
+	Constraints []CatalogSchemaConstraintData
+	Nullable bool
+	Deprecated bool
 	Required bool
 	Href string
 }
@@ -142,25 +292,29 @@ templ CatalogPage(data CatalogPageData) {
 	}
 	@LayoutWithBrandingMetadata(metadata, catalogBranding(data.Directory.Branding), false, false) {
 		<script src="/manja-assets/catalog-search.js"></script>
+		@copyPageScript()
 		<div
 			hx-history="false"
 			x-data="{ catalogNavOpen: false }"
+			x-on:goshtoso-search-open.window="catalogNavOpen = false"
 			x-on:keydown.escape.window="if (catalogNavOpen) { catalogNavOpen = false; $nextTick(() => $refs.catalogNavTrigger.focus()) }"
 			x-on:resize.window="if (window.innerWidth >= 1024) catalogNavOpen = false"
 			class="fixed inset-0 overflow-clip bg-surface text-on-surface dark:bg-surface-dark dark:text-on-surface-dark"
 		>
-			<button
-				type="button"
-				x-cloak
-				x-show="catalogNavOpen"
-				x-on:click="catalogNavOpen = false; $nextTick(() => $refs.catalogNavTrigger.focus())"
-				aria-label={ "Close " + catalogNavigationLabel(data) }
-				data-catalog-navigation-backdrop="true"
-				class="fixed inset-0 z-[60] bg-black/40 lg:hidden"
-			></button>
+			if catalogHasSidebar(data) {
+				<button
+					type="button"
+					x-cloak
+					x-show="catalogNavOpen"
+					x-on:click="catalogNavOpen = false; $nextTick(() => $refs.catalogNavTrigger.focus())"
+					aria-label={ "Close " + catalogNavigationLabel(data) }
+					data-catalog-navigation-backdrop="true"
+					class="manja-catalog-navigation-backdrop fixed inset-0 lg:hidden"
+				></button>
+			}
 			@appshell.AppShell(appshell.Config{
 				Header: catalogHeader(data),
-				Sidebar: catalogSidebar(data),
+				Sidebar: catalogSidebarComponent(data),
 				MainID: "main-content",
 				RootClass: "h-full",
 				RootAttrs: templpkg.Attributes{
@@ -174,7 +328,7 @@ templ CatalogPage(data CatalogPageData) {
 					"id": "catalog-navigation",
 					"aria-label": catalogNavigationLabel(data),
 					"x-bind:style": "catalogNavOpen ? 'display: block' : ''",
-					"x-bind:class": "catalogNavOpen ? 'fixed inset-y-0 left-0 z-[80] w-80 max-w-full shadow-xl' : ''",
+					"x-bind:class": "catalogNavOpen ? 'manja-catalog-navigation-open fixed inset-y-0 left-0 w-80 max-w-full shadow-xl' : ''",
 					"x-bind:role": "catalogNavOpen ? 'dialog' : null",
 					"x-bind:aria-modal": "catalogNavOpen ? 'true' : null",
 					"x-trap.noscroll": "catalogNavOpen",
@@ -190,10 +344,7 @@ templ CatalogPage(data CatalogPageData) {
 					} else {
 						@catalogDocument(data)
 					}
-					<footer class="mt-auto border-t border-outline pt-8 pb-4 text-sm text-on-surface-muted dark:border-outline-dark dark:text-on-surface-dark-muted">
-						<span aria-hidden="true" class="mr-2 text-primary dark:text-primary-dark">ϟ</span>
-						Powered by <strong class="text-on-surface-strong dark:text-on-surface-dark-strong">Manja</strong>
-					</footer>
+					@capabilityFooter(data.CapabilityFooter)
 				</div>
 			}
 			@catalogSearchModal(data)
@@ -205,6 +356,7 @@ templ CatalogPage(data CatalogPageData) {
 }
 
 templ catalogSearchModal(data CatalogPageData) {
+	// Keep the search layer above the mobile navigation drawer.
 	@templpkg.JSONScript("catalog-search-current-visit", data.CurrentVisit)
 	<div
 		x-cloak
@@ -221,23 +373,24 @@ templ catalogSearchModal(data CatalogPageData) {
 		data-search-directory-length={ fmt.Sprint(data.SearchDirectoryLength) }
 		data-search-directory-sha256={ data.SearchDirectorySHA256 }
 		data-search-fallback-url={ data.SearchHref + ".json" }
-		data-search-mount={ data.Mount }
+		data-search-mount={ data.SearchMount }
+		data-search-scope-label={ data.SearchScopeLabel }
 		data-search-catalog-id={ data.Directory.CatalogID }
-		class="fixed inset-0 z-[90] flex items-center justify-center bg-surface-dark/55 p-4 backdrop-blur-md dark:bg-black/60"
+			class="manja-catalog-search-dialog fixed inset-0 z-[60] flex items-center justify-center p-4 backdrop-blur-md"
 		role="dialog"
 		aria-modal="true"
 		aria-labelledby="catalog-search-label"
 		id="catalog-search-dialog"
 	>
-		<div x-show="open" x-transition:enter="transition ease-out duration-150" x-transition:enter-start="opacity-0 translate-y-1" x-transition:enter-end="opacity-100 translate-y-0" class="relative flex w-full max-w-2xl flex-col text-on-surface shadow-2xl shadow-black/20 dark:text-on-surface-dark">
+		<div x-show="open" x-transition:enter="transition ease-out duration-150" x-transition:enter-start="opacity-0 translate-y-1" x-transition:enter-end="opacity-100 translate-y-0" class="manja-catalog-search-panel relative flex w-full max-w-2xl flex-col text-on-surface dark:text-on-surface-dark">
 			<div class="relative flex items-center gap-3 rounded-t-radius border border-b-0 border-outline bg-surface px-4 py-3 dark:border-outline-dark dark:bg-surface-dark-alt">
 				<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" stroke="currentColor" fill="none" stroke-width="2" class="size-5 shrink-0 text-on-surface-muted dark:text-on-surface-dark-muted" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z"></path></svg>
 				<label id="catalog-search-label" class="sr-only" for="catalog-search-input">Search operations and schemas</label>
-				<input x-ref="input" x-model="query" x-on:input="queueSearch()" x-on:keydown.down.prevent="move(1)" x-on:keydown.up.prevent="move(-1)" x-on:keydown.enter.prevent="choose()" x-on:keydown.escape.prevent="closeSearch()" x-bind:aria-expanded="open.toString()" x-bind:aria-activedescendant="activeOptionID()" id="catalog-search-input" type="text" role="combobox" aria-autocomplete="list" aria-controls="catalog-search-results" maxlength="256" class="min-w-0 flex-1 bg-transparent py-1 text-base text-on-surface-strong placeholder:text-on-surface-muted focus:outline-none dark:text-on-surface-dark-strong dark:placeholder:text-on-surface-dark-muted" placeholder="Operation, path, schema, or content" autocomplete="off" spellcheck="false"/>
-				<button type="button" x-cloak x-show="query.length > 0" x-on:click="clearQuery()" aria-label="Clear search" class="inline-flex size-8 items-center justify-center rounded-radius text-on-surface-muted hover:text-on-surface-strong dark:text-on-surface-dark-muted dark:hover:text-on-surface-dark-strong">×</button>
+				<input x-ref="input" x-model="query" x-on:input="queueSearch()" x-on:keydown.down.prevent="move(1)" x-on:keydown.up.prevent="move(-1)" x-on:keydown.home.prevent="moveTo(0)" x-on:keydown.end.prevent="moveToEnd()" x-on:keydown.enter.prevent="choose()" x-on:keydown.escape.prevent="closeSearch()" x-bind:aria-expanded="open.toString()" x-bind:aria-activedescendant="activeOptionID()" id="catalog-search-input" type="text" role="combobox" aria-autocomplete="list" aria-controls="catalog-search-results" maxlength="256" class="min-w-0 flex-1 bg-transparent py-1 text-base text-on-surface-strong placeholder:text-on-surface-muted focus:outline-none dark:text-on-surface-dark-strong dark:placeholder:text-on-surface-dark-muted" placeholder="Operation, path, schema, or content" autocomplete="off" spellcheck="false"/>
+				<button type="button" x-cloak x-show="query.length > 0" x-on:click="clearQuery()" aria-label="Clear search" class="inline-flex size-11 items-center justify-center rounded-radius text-on-surface-muted hover:text-on-surface-strong dark:text-on-surface-dark-muted dark:hover:text-on-surface-dark-strong">×</button>
 				@kbd.Kbd("Esc", kbd.WithSize(kbd.SizeSM), kbd.WithRootClass("text-on-surface-muted dark:text-on-surface-dark-muted"))
 			</div>
-			<div id="catalog-search-results" class="flex max-h-[min(28rem,calc(100vh-12rem))] flex-col overflow-hidden overflow-y-auto rounded-b-radius border border-outline bg-surface text-sm font-light dark:border-outline-dark dark:bg-surface-dark-alt" role="listbox" aria-label="Catalog search results" x-bind:aria-busy="loading.toString()">
+			<div x-ref="results" id="catalog-search-results" class="flex max-h-[min(28rem,calc(100vh-12rem))] flex-col overflow-hidden overflow-y-auto rounded-b-radius border border-outline bg-surface text-sm font-light dark:border-outline-dark dark:bg-surface-dark-alt" role="listbox" aria-label="Catalog search results" x-bind:aria-busy="loading.toString()">
 				<div x-show="query.trim().length === 0" data-catalog-search-recent>
 					<p class="border-b border-outline px-4 py-2 text-xs font-semibold uppercase tracking-wide text-on-surface-muted dark:border-outline-dark dark:text-on-surface-dark-muted">Recently visited</p>
 					<p x-show="recent.length === 0" class="px-4 py-4 text-on-surface-muted dark:text-on-surface-dark-muted">No recently visited items yet.</p>
@@ -245,21 +398,34 @@ templ catalogSearchModal(data CatalogPageData) {
 				<p x-show="query.trim().length > 0 && loading" class="px-4 py-4 text-on-surface-muted dark:text-on-surface-dark-muted">Searching…</p>
 				<p x-show="query.trim().length > 0 && !loading && error" x-text="error" class="px-4 py-4 text-danger"></p>
 				<p x-show="query.trim().length > 0 && !loading && !error && results.length === 0" class="px-4 py-4 text-on-surface-muted dark:text-on-surface-dark-muted">No matching operations or schemas.</p>
-				<div class="divide-y divide-outline dark:divide-outline-dark">
+				<div>
 					<template x-for="(item, index) in visibleItems()" x-bind:key="item.id || item.href">
-						<button type="button" tabindex="-1" data-catalog-search-result x-bind:id="optionID(index)" x-bind:aria-selected="(activeIndex === index).toString()" x-bind:data-catalog-search-recent-result="query.trim().length === 0 ? 'true' : null" x-on:mouseenter="activeIndex = index" x-on:click="select(item)" x-bind:class="activeIndex === index ? 'bg-surface-alt text-on-surface-strong shadow-[inset_2px_0_0_var(--color-outline-strong)] dark:bg-surface-dark dark:text-on-surface-dark-strong' : 'text-on-surface hover:bg-surface-alt dark:text-on-surface-dark dark:hover:bg-surface-dark'" class="flex w-full flex-col gap-2 p-4 text-left transition focus:outline-none" role="option">
-							<div class="flex items-start justify-between gap-3">
-								<div class="min-w-0 space-y-1">
-									<div class="flex min-w-0 flex-wrap items-center gap-2"><span x-show="item.method" x-text="item.method" class="shrink-0 rounded-radius border border-outline px-1.5 py-0.5 font-mono text-[10px] font-bold uppercase dark:border-outline-dark"></span><strong x-html="highlight(item.title)" class="min-w-0 text-base font-semibold"></strong></div>
-									<div x-show="item.kind || item.path" class="flex min-w-0 flex-wrap items-center gap-1.5 text-xs text-on-surface-muted dark:text-on-surface-dark-muted"><span x-html="highlight(item.kind)"></span><span x-show="item.kind && item.path" aria-hidden="true">·</span><code x-show="item.path" x-html="highlight(item.path)" class="min-w-0 font-mono text-[11px]"></code></div>
-								</div>
-								<span x-show="item.section" x-html="highlight(item.section)" class="shrink-0 rounded-radius border border-outline px-2 py-0.5 text-xs font-medium text-on-surface-muted dark:border-outline-dark dark:text-on-surface-dark-muted"></span>
+						<div role="presentation">
+							<div x-show="query.trim().length > 0 && item.groupStart" data-catalog-search-group role="presentation" class="sticky top-0 z-10 flex items-center justify-between gap-3 border-y border-outline bg-surface-alt px-3 py-2 text-xs font-semibold uppercase tracking-wide text-on-surface-muted dark:border-outline-dark dark:bg-surface-dark dark:text-on-surface-dark-muted">
+								<span x-text="item.groupLabel"></span>
+								<span x-text="item.groupCount + (item.groupCount === 1 ? ' result' : ' results')" class="font-mono font-medium normal-case tracking-normal"></span>
 							</div>
-							<p x-show="item.description" x-html="highlight(item.description)" class="line-clamp-2 text-sm leading-6 text-on-surface-muted dark:text-on-surface-dark-muted"></p>
-						</button>
+							<button type="button" tabindex="-1" data-catalog-search-result x-bind:id="optionID(index)" x-bind:aria-selected="(activeIndex === index).toString()" x-bind:data-catalog-search-recent-result="query.trim().length === 0 ? 'true' : null" x-on:mouseenter="activeIndex = index" x-on:click="select(item)" x-bind:class="activeIndex === index ? 'bg-surface-alt text-on-surface-strong shadow-[inset_2px_0_0_var(--color-outline-strong)] dark:bg-surface-dark dark:text-on-surface-dark-strong' : 'text-on-surface hover:bg-surface-alt dark:text-on-surface-dark dark:hover:bg-surface-dark'" class="flex w-full flex-col gap-1.5 border-b border-outline p-3 text-left transition focus:outline-none dark:border-outline-dark" role="option">
+								<div class="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between sm:gap-3">
+									<div class="min-w-0 space-y-1">
+										<div class="flex min-w-0 flex-wrap items-center gap-2"><span x-show="item.method" x-text="item.method" x-bind:data-catalog-search-method="item.method || null" class="shrink-0 rounded-radius border border-outline px-1.5 py-0.5 font-mono text-xs font-bold uppercase dark:border-outline-dark"></span><strong x-html="highlight(item.title)" class="min-w-0 break-words text-base font-semibold leading-6"></strong></div>
+										<div x-show="item.kind || item.path" class="flex min-w-0 flex-wrap items-center gap-1.5 text-xs text-on-surface-muted dark:text-on-surface-dark-muted"><span x-html="highlight(item.kind)"></span><span x-show="item.kind && item.path" aria-hidden="true">·</span><code x-show="item.path" x-html="highlight(item.path)" class="min-w-0 break-all font-mono text-xs"></code></div>
+									</div>
+									<span x-show="item.section" x-html="highlight(item.section)" class="shrink-0 self-start rounded-radius border border-outline px-2 py-0.5 text-xs font-medium text-on-surface-muted dark:border-outline-dark dark:text-on-surface-dark-muted"></span>
+								</div>
+								<p x-show="item.description" x-html="highlight(item.description)" class="line-clamp-2 text-sm leading-5 text-on-surface-muted dark:text-on-surface-dark-muted"></p>
+							</button>
+						</div>
 					</template>
 				</div>
-				<p x-show="query.trim().length > 0 && sourceLabel" data-catalog-search-source x-text="sourceLabel" class="border-t border-outline px-4 py-2 text-xs text-on-surface-muted dark:border-outline-dark dark:text-on-surface-dark-muted"></p>
+				<div data-catalog-search-footer class="sticky bottom-0 mt-auto flex flex-wrap items-center justify-between gap-2 border-t border-outline bg-surface px-3 py-2 text-xs text-on-surface-muted dark:border-outline-dark dark:bg-surface-dark-alt dark:text-on-surface-dark-muted">
+					<p x-show="query.trim().length > 0 && sourceLabel" data-catalog-search-source x-text="sourceLabel" class="w-full sm:w-auto"></p>
+					<div aria-label="Search keyboard shortcuts" class="flex w-full flex-wrap items-center justify-start gap-3 sm:ml-auto sm:w-auto sm:justify-end">
+						<span class="inline-flex items-center gap-1">@kbd.Kbd("↑↓", kbd.WithSize(kbd.SizeSM)) Navigate</span>
+						<span class="inline-flex items-center gap-1">@kbd.Kbd("↵", kbd.WithSize(kbd.SizeSM)) Open</span>
+						<span class="inline-flex items-center gap-1">@kbd.Kbd("Esc", kbd.WithSize(kbd.SizeSM)) Close</span>
+					</div>
+				</div>
 			</div>
 		</div>
 	</div>
@@ -268,7 +434,7 @@ templ catalogSearchModal(data CatalogPageData) {
 templ catalogSearch(data CatalogPageData) {
 	<main data-catalog-search="true" class="pb-16">
 		<div class="mb-8 border-b border-outline pb-8 dark:border-outline-dark">
-			<p class="mb-2 text-sm font-semibold uppercase tracking-wide text-primary dark:text-primary-dark">Global catalog search</p>
+			<p class="mb-2 text-sm font-semibold uppercase tracking-wide text-primary dark:text-primary-dark">Catalog search · { data.SearchScopeLabel }</p>
 			<h1 class="font-title text-4xl font-bold text-on-surface-strong dark:text-on-surface-dark-strong">Search { data.Directory.Title }</h1>
 			<form method="get" action={ data.SearchHref } class="mt-6 flex max-w-3xl gap-3">
 				<label for="catalog-search-query" class="sr-only">Search operations and schemas</label>
@@ -304,8 +470,8 @@ templ catalogSearch(data CatalogPageData) {
 							}
 						</a>
 					}
-				</div>
-			}
+					</div>
+				}
 		}
 	</main>
 }
@@ -313,32 +479,52 @@ templ catalogSearch(data CatalogPageData) {
 templ catalogHeader(data CatalogPageData) {
 	<div class="flex h-16 items-center justify-between gap-4 px-4 lg:px-8">
 		<div class="flex min-w-0 items-center gap-3">
-			<button
-				type="button"
-				x-ref="catalogNavTrigger"
-				x-on:click="catalogNavOpen = true; $nextTick(() => $refs.catalogNavClose.focus())"
-				x-bind:aria-expanded="catalogNavOpen.toString()"
-				aria-controls="catalog-navigation"
-				aria-label={ "Open " + catalogNavigationLabel(data) }
-				class="inline-flex size-10 shrink-0 items-center justify-center rounded-radius border border-outline hover:bg-surface-alt focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary lg:hidden dark:border-outline-dark dark:hover:bg-surface-dark-alt dark:focus-visible:outline-primary-dark"
-			>
-				<svg xmlns="http://www.w3.org/2000/svg" class="size-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
-					<path stroke-linecap="round" d="M4 6h16M4 12h16M4 18h16"></path>
-				</svg>
-			</button>
-			<a href={ templpkg.URL(data.Mount) } class="flex min-w-0 items-center gap-3 font-title text-xl font-bold text-on-surface-strong dark:text-on-surface-dark-strong">
-				if data.Directory.Branding.LogoSrc != "" {
-					<img src={ templpkg.URL(data.Directory.Branding.LogoSrc) } alt={ data.Directory.Branding.LogoAlt } class="size-8 shrink-0 rounded-radius"/>
-				}
-				<span class="truncate">{ catalogBrandName(data) }</span>
+			if catalogHasSidebar(data) {
+				<button
+					type="button"
+					x-ref="catalogNavTrigger"
+					x-on:click="catalogNavOpen = true; $nextTick(() => $refs.catalogNavClose.focus())"
+					x-bind:aria-expanded="catalogNavOpen.toString()"
+					aria-controls="catalog-navigation"
+					aria-label={ "Open " + catalogNavigationLabel(data) }
+					class="inline-flex size-10 shrink-0 items-center justify-center rounded-radius border border-outline hover:bg-surface-alt focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary lg:hidden dark:border-outline-dark dark:hover:bg-surface-dark-alt dark:focus-visible:outline-primary-dark"
+				>
+					<svg xmlns="http://www.w3.org/2000/svg" class="size-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+						<path stroke-linecap="round" d="M4 6h16M4 12h16M4 18h16"></path>
+					</svg>
+				</button>
+			}
+			<a href="/" aria-label="Manja" class="flex shrink-0 items-center gap-2 font-title text-base font-bold text-on-surface-strong dark:text-on-surface-dark-strong">
+				<svg xmlns="http://www.w3.org/2000/svg" viewBox="167.325 123.377 776.662 776.662" class="size-7 shrink-0" aria-hidden="true"><path fill="currentColor" d="M740.383 586.072c-.647 3.511-.247 19.218-.238 23.876l.008 37.168c.046 31.636-.634 54.241-22.716 79.514a87.18 87.18 0 0 1-60.113 29.978c-18.82 1.181-45.321.301-64.691.306l-121.335.05-81.527-.042c-17.982 0-38.559 1.079-55.938-1.778-40.426-6.644-72.024-43.733-72.765-84.589-.393-21.714-.134-43.27-.206-64.881l-.279-136.952q-.104-37.737.221-75.475c0-37.841-4.547-66.466 23.251-97.172a88.2 88.2 0 0 1 62.939-29.471c20.206-.851 45.424-.123 66.08-.118l127.117.027 70.898-.013c19.278-.047 38.756-.986 57.903 2.166 29.657 4.882 56.69 29.14 66.267 57.398 5.884 17.884 4.588 36.864 4.872 55.325.296 19.277-.576 38.856.288 58.046 31.374-.505 63.14-3.277 87.514 20.727 30.042 29.585 30.634 74.265.786 104.401-26.55 26.806-55.208 19.257-88.336 21.509"/><path fill="var(--color-primary)" d="M740.419 439.435c31.374-.505 63.14-3.277 87.514 20.727 30.042 29.585 30.634 74.265.786 104.401-26.55 26.806-55.208 19.257-88.336 21.509-1.63.133-3.92.178-5.606.18-26.744.028-53.545-.312-80.288-.152l-41.62.313c-28.398.123-51.02.636-73.078-20.918a73.37 73.37 0 0 1-21.871-52.348 72.55 72.55 0 0 1 21.179-51.85 73.6 73.6 0 0 1 34.229-19.494c15.408-3.745 48.738-2.349 66.044-2.323z"/><path fill="currentColor" d="M740.419 439.435c31.374-.505 63.14-3.277 87.514 20.727 30.042 29.585 30.634 74.265.786 104.401-26.55 26.806-55.208 19.257-88.336 21.509.267-6.199.184-12.735.124-18.966-.411-42.498.604-85.195-.088-127.671"/></svg>
+				<span data-catalog-header-brand-label>Manja</span>
 			</a>
-			<span class="hidden text-on-surface-muted sm:inline dark:text-on-surface-dark-muted">/</span>
-			<div class="hidden items-center md:flex">
-				<input type="hidden" name={ CatalogDocumentComboboxMountFieldName } value={ data.Mount }/>
-				@combobox.Combobox(CatalogDocumentComboboxConfig(), catalogDocumentComboboxState(data.Documents))
-			</div>
+			if !data.OrganizationRoot {
+				<span class="text-on-surface-muted dark:text-on-surface-dark-muted">/</span>
+				<a href="/" class="hidden min-h-11 shrink-0 items-center text-sm font-semibold text-on-surface-muted hover:text-on-surface-strong sm:inline-flex dark:text-on-surface-dark-muted dark:hover:text-on-surface-dark-strong">Catalogs</a>
+				<span class="hidden text-on-surface-muted sm:inline dark:text-on-surface-dark-muted">/</span>
+				<a href={ templpkg.URL(data.Mount) } aria-label={ catalogBrandName(data) } class="flex min-w-0 shrink-0 items-center gap-2 font-title text-lg font-bold text-on-surface-strong dark:text-on-surface-dark-strong">
+					if data.Directory.Branding.LogoSrc != "" {
+						<img src={ templpkg.URL(data.Directory.Branding.LogoSrc) } alt="" loading="lazy" decoding="async" class="size-8 shrink-0 rounded-full object-cover"/>
+					}
+					<span data-catalog-header-brand-label class="max-w-[12rem] truncate">{ catalogBrandName(data) }</span>
+				</a>
+				if data.Document != nil {
+					<span class="hidden text-on-surface-muted md:inline dark:text-on-surface-dark-muted">/</span>
+					<a
+						href={ templpkg.URL(data.DocumentHref) }
+						title={ data.Document.Key }
+						if data.Selected == nil {
+							aria-current="page"
+						}
+						class="hidden min-w-0 items-center font-title text-base font-semibold text-on-surface-muted hover:text-on-surface-strong md:flex dark:text-on-surface-dark-muted dark:hover:text-on-surface-dark-strong"
+					>
+						<span class="max-w-[18rem] truncate">{ catalogDocumentLabel(*data.Document) }</span>
+					</a>
+				}
+			}
 		</div>
 		<div class="flex shrink-0 items-center gap-2">
+			@catalogHeaderSearch()
 			@themeToggle()
 			<span class="hidden rounded-radius border border-outline px-2 py-1 font-mono text-xs text-on-surface-muted xl:inline dark:border-outline-dark dark:text-on-surface-dark-muted">{ shortSnapshotID(data.SnapshotID) }</span>
 		</div>
@@ -362,7 +548,6 @@ templ catalogSidebar(data CatalogPageData) {
 		</div>
 		<div id="catalog-sidebar-groups" class="flex min-h-0 flex-1 flex-col">
 			if data.OrganizationNav.Visible {
-				@catalogSidebarSearch()
 				@catalogOrganizationNav(data.OrganizationNav)
 			} else {
 				@sidebar.Sidebar(catalogSidebarConfig(data))
@@ -372,10 +557,20 @@ templ catalogSidebar(data CatalogPageData) {
 }
 
 templ catalogOrganizationNav(data CatalogOrganizationNavData) {
-	<nav id="catalog-organization-navigation" aria-label="Catalogs and specs" class="flex min-h-0 flex-1 flex-col overflow-y-auto px-3 pb-4">
+	<nav id="catalog-organization-navigation" aria-label="Catalogs and specs" class="flex min-h-0 flex-1 flex-col">
+		@scrollregion.ScrollRegion(scrollregion.Config{
+			RootClass:     "min-h-0 flex-1",
+			ViewportClass: "h-full overflow-y-auto px-3 pb-4",
+			Content:       catalogOrganizationNavContent(data),
+		})
+	</nav>
+}
+
+templ catalogOrganizationNavContent(data CatalogOrganizationNavData) {
+	<div>
 		@catalogOrganizationSection("Catalogs", heroicons.Icon16SolidRectangleGroup, data.Catalogs)
 		@catalogOrganizationSection("Specs", heroicons.Icon16SolidDocumentText, data.Specs)
-	</nav>
+	</div>
 }
 
 templ catalogOrganizationSection(label string, symbol icon.Symbol, items []CatalogOrganizationItem) {
@@ -392,9 +587,9 @@ templ catalogOrganizationSection(label string, symbol icon.Symbol, items []Catal
 						aria-current="page"
 					}
 					data-catalog-organization-item={ item.ID }
-					class="group flex min-w-0 items-center gap-3 rounded-radius px-2 py-2 text-sm transition hover:bg-surface-alt focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary dark:hover:bg-surface-dark-alt dark:focus-visible:outline-primary-dark"
+					class="group flex min-h-11 min-w-0 items-center gap-3 rounded-radius px-2 py-2 text-sm transition hover:bg-surface-alt focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary dark:hover:bg-surface-dark-alt dark:focus-visible:outline-primary-dark"
 				>
-					@avatar.Avatar(avatar.Config{Src: item.AvatarSrc, Alt: item.AvatarAlt, Name: item.Label, Initials: item.Initials, Size: avatar.SizeSM, Shape: avatar.ShapeSquare, Radius: avatar.RadiusSM, Tone: avatar.TonePrimary, RootClass: "shrink-0"})
+					@catalogOrganizationAvatar(item)
 					<span class="min-w-0 flex-1">
 						<span class="block truncate font-medium text-on-surface-strong group-hover:text-primary dark:text-on-surface-dark-strong dark:group-hover:text-primary-dark">{ item.Label }</span>
 						if item.Description != "" {
@@ -413,12 +608,12 @@ templ catalogOrganizationSection(label string, symbol icon.Symbol, items []Catal
 	</section>
 }
 
-templ catalogSidebarSearch() {
-	<div data-catalog-sidebar-search class="shrink-0 px-4 py-3">
+templ catalogHeaderSearch() {
+	<div data-catalog-header-search data-catalog-platform-shortcut data-catalog-search-shortcut-visible="desktop" class="w-32 sm:w-48 lg:w-64">
 		@searchcomponent.SearchField(searchcomponent.Config{
 			ID: "catalog-search",
 			Label: "Search API...",
-			ShortcutText: "⌘ K",
+			ShortcutText: "Ctrl K",
 			GlobalShortcut: false,
 		})
 	</div>
@@ -426,34 +621,148 @@ templ catalogSidebarSearch() {
 
 templ catalogOverview(data CatalogPageData) {
 	<main data-catalog-overview="true" class="pb-16">
-		<div class="mb-8 flex flex-wrap items-start justify-between gap-5 border-b border-outline pb-8 dark:border-outline-dark">
-			<div>
-				<p class="mb-2 text-sm font-semibold uppercase tracking-wide text-primary dark:text-primary-dark">OpenAPI catalog</p>
-				<h1 class="font-title text-4xl font-bold text-on-surface-strong dark:text-on-surface-dark-strong">{ data.Directory.Title }</h1>
-				<p class="mt-3 max-w-3xl text-on-surface-muted dark:text-on-surface-dark-muted">Browse every captured API group and version from one immutable renderer snapshot.</p>
+		if data.OrganizationRoot {
+			@catalogOrganizationOverview(data)
+		} else {
+		<div class="mb-8 border-b border-outline pb-8 dark:border-outline-dark">
+			<div class="flex flex-col gap-5 md:flex-row md:items-start md:justify-between">
+				<div class="min-w-0">
+					<p class="mb-2 text-sm font-semibold uppercase tracking-wide text-primary dark:text-primary-dark">OpenAPI catalog</p>
+					<h1 class="font-title text-4xl font-bold text-on-surface-strong dark:text-on-surface-dark-strong">{ data.Directory.Title }</h1>
+				</div>
+				<a href={ templpkg.URL(data.DownloadHref) } class="inline-flex min-h-11 shrink-0 self-start items-center rounded-radius border border-outline px-4 font-semibold hover:bg-surface-alt dark:border-outline-dark dark:hover:bg-surface-dark-alt">Download catalog JSON</a>
 			</div>
-			<a href={ templpkg.URL(data.DownloadHref) } class="inline-flex min-h-11 items-center rounded-radius border border-outline px-4 font-semibold hover:bg-surface-alt dark:border-outline-dark dark:hover:bg-surface-dark-alt">Download catalog JSON</a>
 		</div>
-		<div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+		<div class="grid gap-4 sm:grid-cols-3">
 			@catalogMetric("Documents", fmt.Sprintf("%d", len(data.Directory.Documents)))
 			@catalogMetric("Operations", fmt.Sprintf("%d", catalogOperationCount(data.Directory)))
 			@catalogMetric("Schemas", fmt.Sprintf("%d", catalogSchemaCount(data.Directory)))
-			@catalogMetric("Profile", string(data.Directory.ProfileID))
 		</div>
-		<section class="mt-10" aria-labelledby="catalog-documents-heading">
-			<div class="mb-4 flex items-center justify-between gap-3">
+		<div class="mt-5">
+			@catalogProvenance(data, false)
+		</div>
+		if data.CatalogReadme != "" {
+			<section class="mt-8 max-w-3xl" aria-labelledby="catalog-readme-heading">
+				<h2 id="catalog-readme-heading" class="font-title text-xl font-bold text-on-surface-strong dark:text-on-surface-dark-strong">README</h2>
+				<p class="mt-2 whitespace-pre-line text-lg text-on-surface-muted dark:text-on-surface-dark-muted">{ data.CatalogReadme }</p>
+			</section>
+		}
+		if data.CatalogLicense.Name != "" {
+			<section class="mt-8" aria-labelledby="catalog-license-heading">
+				<h2 id="catalog-license-heading" class="font-title text-xl font-bold text-on-surface-strong dark:text-on-surface-dark-strong">License</h2>
+				<div class="mt-2 inline-flex min-h-10 items-center rounded-radius border border-outline bg-surface px-4 text-sm text-on-surface-strong dark:border-outline-dark dark:bg-surface-dark dark:text-on-surface-dark-strong">
+					if data.CatalogLicense.URL != "" {
+						<a href={ templpkg.URL(data.CatalogLicense.URL) } rel="noreferrer" class="font-semibold hover:text-primary dark:hover:text-primary-dark">{ data.CatalogLicense.Name }</a>
+					} else {
+						<span class="font-semibold">{ data.CatalogLicense.Name }</span>
+					}
+				</div>
+			</section>
+		}
+		<section class="mt-10 pb-12" aria-labelledby="catalog-documents-heading" x-data="{ filter: '' }">
+			<div class="mb-4">
 				<h2 id="catalog-documents-heading" class="font-title text-2xl font-bold text-on-surface-strong dark:text-on-surface-dark-strong">API groups and versions</h2>
-				<span class="text-sm text-on-surface-muted dark:text-on-surface-dark-muted">{ fmt.Sprintf("%d documents", len(data.Documents)) }</span>
 			</div>
-			<div class="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+			<label class="mb-3 block max-w-xl" for="catalog-document-filter">
+				<span class="sr-only">Filter API groups and versions</span>
+				<input id="catalog-document-filter" type="search" x-model="filter" placeholder="Filter by name or version" class="min-h-11 w-full rounded-radius border border-outline bg-surface px-4 text-on-surface-strong placeholder:text-on-surface-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary dark:border-outline-dark dark:bg-surface-dark dark:text-on-surface-dark-strong dark:placeholder:text-on-surface-dark-muted"/>
+			</label>
+			<div class="catalog-documents-mobile" aria-label="OpenAPI documents in this catalog">
 				for _, option := range data.Documents {
-					<a href={ templpkg.URL(option.Href) } class="group rounded-radius border border-outline bg-surface p-4 transition hover:border-primary hover:bg-surface-alt dark:border-outline-dark dark:bg-surface-dark dark:hover:border-primary-dark dark:hover:bg-surface-dark-alt">
-						<span class="block font-semibold text-on-surface-strong group-hover:text-primary dark:text-on-surface-dark-strong dark:group-hover:text-primary-dark">{ option.Label }</span>
+					<a
+						href={ templpkg.URL(option.Href) }
+						data-catalog-document-row="true"
+						data-catalog-document-card="true"
+						data-search-text={ option.SearchText }
+						x-show={ catalogDocumentFilterExpression(option.SearchText) }
+						class="grid min-w-0 gap-3 rounded-radius border border-outline bg-surface p-4 transition hover:bg-surface-alt focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary dark:border-outline-dark dark:bg-surface-dark dark:hover:bg-surface-dark-alt dark:focus-visible:outline-primary-dark"
+					>
+						<div class="min-w-0 overflow-hidden">@table.ImageCell(option.AvatarSrc, option.Label, "")</div>
+						<dl class="grid grid-cols-3 gap-3 border-t border-outline pt-3 text-sm dark:border-outline-dark">
+							<div class="min-w-0">
+								<dt class="text-xs font-semibold text-on-surface-muted dark:text-on-surface-dark-muted">Version</dt>
+								<dd class="mt-1 break-words font-mono text-on-surface-strong dark:text-on-surface-dark-strong">{ option.Version }</dd>
+							</div>
+							<div>
+								<dt class="text-xs font-semibold text-on-surface-muted dark:text-on-surface-dark-muted">Operations</dt>
+								<dd class="mt-1 font-mono text-on-surface-strong dark:text-on-surface-dark-strong">{ fmt.Sprintf("%d", option.Operations) }</dd>
+							</div>
+							<div>
+								<dt class="text-xs font-semibold text-on-surface-muted dark:text-on-surface-dark-muted">Schemas</dt>
+								<dd class="mt-1 font-mono text-on-surface-strong dark:text-on-surface-dark-strong">{ fmt.Sprintf("%d", option.Schemas) }</dd>
+							</div>
+						</dl>
 					</a>
 				}
 			</div>
+			<div class="catalog-documents-desktop">
+				@table.Table(catalogDocumentTableConfig(data))
+			</div>
+			<p x-show="filter.trim() !== '' && Array.from($root.querySelectorAll('[data-catalog-document-card]')).every(card => !(card.dataset.searchText || '').toLowerCase().includes(filter.trim().toLowerCase()))" class="rounded-b-radius border border-t-0 border-outline px-4 py-6 text-center text-on-surface-muted dark:border-outline-dark dark:text-on-surface-dark-muted">No matching API documents.</p>
 		</section>
+		}
 	</main>
+}
+
+templ CatalogDocumentTableFragment(data CatalogPageData) {
+	{{ config := catalogDocumentTableConfig(data) }}
+	@table.TableRows(config)
+	<template>
+		<thead
+			id={ config.TheadID() }
+			hx-swap-oob="innerHTML"
+			data-table-sort-by={ config.SortBy }
+			data-table-sort-dir={ string(config.SortDir) }
+		>
+			@table.TableHeadContent(config)
+		</thead>
+	</template>
+}
+
+templ catalogOrganizationOverview(data CatalogPageData) {
+	<div class="mb-8 border-b border-outline pb-8 dark:border-outline-dark">
+		<p class="mb-2 text-sm font-semibold uppercase tracking-wide text-primary dark:text-primary-dark">OpenAPI workspace</p>
+		<h1 class="font-title text-4xl font-bold text-on-surface-strong dark:text-on-surface-dark-strong">{ data.Organization.Title }</h1>
+	</div>
+	if data.Organization.Readme != "" {
+		<section aria-labelledby="organization-readme-heading">
+			<h2 id="organization-readme-heading" class="font-title text-2xl font-bold text-on-surface-strong dark:text-on-surface-dark-strong">About</h2>
+			<p class="mt-3 max-w-[75ch] whitespace-pre-line text-base leading-relaxed text-on-surface-muted dark:text-on-surface-dark-muted">{ data.Organization.Readme }</p>
+		</section>
+	}
+	if data.Organization.License.Name != "" {
+		<section class="mt-10" aria-labelledby="organization-license-heading">
+			<h2 id="organization-license-heading" class="font-title text-2xl font-bold text-on-surface-strong dark:text-on-surface-dark-strong">License</h2>
+			<div class="mt-3 inline-flex min-h-10 items-center rounded-radius border border-outline bg-surface px-4 text-sm text-on-surface-strong dark:border-outline-dark dark:bg-surface-dark dark:text-on-surface-dark-strong">
+				if data.Organization.License.URL != "" {
+					<a href={ templpkg.URL(data.Organization.License.URL) } rel="noreferrer" class="font-semibold hover:text-primary dark:hover:text-primary-dark">{ data.Organization.License.Name }</a>
+				} else {
+					<span class="font-semibold">{ data.Organization.License.Name }</span>
+				}
+			</div>
+		</section>
+	}
+	if len(data.Organization.Sources) > 0 {
+		<section class="mt-10 pb-12" aria-labelledby="organization-sources-heading">
+			<h2 id="organization-sources-heading" class="font-title text-2xl font-bold text-on-surface-strong dark:text-on-surface-dark-strong">Published sources</h2>
+			<p class="mt-2 max-w-2xl text-sm text-on-surface-muted dark:text-on-surface-dark-muted">Source locations explicitly shared by this organization.</p>
+			<ul class="mt-4 grid gap-3 sm:grid-cols-2">
+				for _, source := range data.Organization.Sources {
+					<li class="min-w-0 rounded-radius border border-outline bg-surface p-4 dark:border-outline-dark dark:bg-surface-dark">
+						<div class="flex min-w-0 items-center gap-2">
+							<span class="rounded-radius bg-surface-alt px-2 py-1 font-mono text-xs uppercase text-on-surface-muted dark:bg-surface-dark-alt dark:text-on-surface-dark-muted">{ source.Kind }</span>
+							if source.URL != "" {
+								<a href={ templpkg.URL(source.URL) } rel="noreferrer" class="min-w-0 truncate font-semibold text-on-surface-strong hover:text-primary dark:text-on-surface-dark-strong dark:hover:text-primary-dark">{ source.Name }</a>
+							} else {
+								<span class="min-w-0 truncate font-semibold text-on-surface-strong dark:text-on-surface-dark-strong">{ source.Name }</span>
+							}
+						</div>
+						<p class="mt-2 truncate font-mono text-xs text-on-surface-muted dark:text-on-surface-dark-muted" title={ source.Location }>{ source.Location }</p>
+					</li>
+				}
+			</ul>
+		</section>
+	}
 }
 
 templ catalogMetric(label string, value string) {
@@ -465,24 +774,109 @@ templ catalogMetric(label string, value string) {
 
 templ catalogDocument(data CatalogPageData) {
 	<main data-catalog-document={ data.Document.Key } class="pb-16">
-		<div class="mb-8 flex flex-wrap items-start justify-between gap-5 border-b border-outline pb-8 dark:border-outline-dark">
-			<div class="min-w-0">
-				<h1 class="font-title text-4xl font-bold text-on-surface-strong dark:text-on-surface-dark-strong">{ data.Document.Title }</h1>
-			</div>
-			<div class="flex min-w-0 flex-col items-start gap-2 sm:items-end">
-				<a href={ templpkg.URL(data.DownloadHref) } class="inline-flex min-h-11 items-center rounded-radius border border-outline px-4 font-semibold hover:bg-surface-alt dark:border-outline-dark dark:hover:bg-surface-dark-alt">Download source</a>
-				<p class="max-w-full break-all text-left font-mono text-sm text-on-surface-muted sm:text-right dark:text-on-surface-dark-muted">{ data.Document.SourcePath }</p>
-			</div>
-		</div>
 		if data.Selected == nil {
+			@catalogDocumentHeader(data)
+		}
+		if data.Selected == nil {
+			if catalogDocumentHasInfoLinks(*data.Document) {
+				<dl class="mb-8 grid gap-4 rounded-radius border border-outline bg-surface p-5 sm:grid-cols-2 xl:grid-cols-3 dark:border-outline-dark dark:bg-surface-dark" aria-label="OpenAPI information">
+					if catalogDocumentHasContact(*data.Document) {
+						<div class="min-w-0">
+							<dt class="text-xs font-semibold uppercase tracking-wide text-on-surface-muted dark:text-on-surface-dark-muted">Contact</dt>
+							<dd class="mt-2 grid min-w-0 gap-1 text-sm">
+								if data.Document.Overview.Contact.Name != "" {
+									<span class="font-semibold text-on-surface-strong dark:text-on-surface-dark-strong">{ data.Document.Overview.Contact.Name }</span>
+								}
+								if data.Document.Overview.Contact.URL != "" {
+									<a href={ templpkg.URL(data.Document.Overview.Contact.URL) } rel="noreferrer" class="min-w-0 truncate text-primary hover:underline dark:text-primary-dark" title={ data.Document.Overview.Contact.URL }>{ data.Document.Overview.Contact.URL }</a>
+								}
+								if data.Document.Overview.Contact.Email != "" {
+									<a href={ templpkg.URL("mailto:" + data.Document.Overview.Contact.Email) } class="min-w-0 truncate text-primary hover:underline dark:text-primary-dark" title={ data.Document.Overview.Contact.Email }>{ data.Document.Overview.Contact.Email }</a>
+								}
+							</dd>
+						</div>
+					}
+					if catalogDocumentHasLicense(*data.Document) {
+						<div class="min-w-0">
+							<dt class="text-xs font-semibold uppercase tracking-wide text-on-surface-muted dark:text-on-surface-dark-muted">License</dt>
+							<dd class="mt-2 grid min-w-0 gap-1 text-sm">
+								if data.Document.Overview.License.URL != "" {
+									<a href={ templpkg.URL(data.Document.Overview.License.URL) } rel="noreferrer" class="min-w-0 truncate font-semibold text-primary hover:underline dark:text-primary-dark" title={ data.Document.Overview.License.URL }>
+										if data.Document.Overview.License.Name != "" {
+											{ data.Document.Overview.License.Name }
+										} else {
+											View license
+										}
+									</a>
+								} else if data.Document.Overview.License.Name != "" {
+									<span class="font-semibold text-on-surface-strong dark:text-on-surface-dark-strong">{ data.Document.Overview.License.Name }</span>
+								}
+								if data.Document.Overview.License.Identifier != "" {
+									<code class="text-xs text-on-surface-muted dark:text-on-surface-dark-muted">{ data.Document.Overview.License.Identifier }</code>
+								}
+							</dd>
+						</div>
+					}
+					if data.Document.Overview.TermsOfService != "" {
+						<div class="min-w-0">
+							<dt class="text-xs font-semibold uppercase tracking-wide text-on-surface-muted dark:text-on-surface-dark-muted">Terms of service</dt>
+							<dd class="mt-2 min-w-0 text-sm">
+								<a href={ templpkg.URL(data.Document.Overview.TermsOfService) } rel="noreferrer" class="block min-w-0 truncate font-semibold text-primary hover:underline dark:text-primary-dark" title={ data.Document.Overview.TermsOfService }>View terms</a>
+							</dd>
+						</div>
+					}
+				</dl>
+			}
 			<div class="grid gap-4 sm:grid-cols-2">
 				@catalogMetric("Operations", fmt.Sprintf("%d", len(data.Document.Operations)))
 				@catalogMetric("Schemas", fmt.Sprintf("%d", len(data.Document.Schemas)))
 			</div>
-			<section class="mt-8 rounded-radius border border-outline p-6 dark:border-outline-dark">
-				<h2 class="font-title text-2xl font-bold text-on-surface-strong dark:text-on-surface-dark-strong">Choose an API section</h2>
-				<p class="mt-2 text-on-surface-muted dark:text-on-surface-dark-muted">Expand one sidebar group to load only its bounded operation or schema links.</p>
-			</section>
+			if len(data.Document.SecuritySchemes) > 0 {
+				<section class="mt-8" aria-labelledby="document-security-schemes">
+					<div class="mb-4 flex items-center gap-2">
+						@icon.Icon(icon.Config{SpriteURL: heroicons.SpriteURL, Symbol: heroicons.Icon16SolidLockClosed, Size: icon.SizeSM, Decorative: true})
+						<h2 id="document-security-schemes" class="font-title text-2xl font-bold text-on-surface-strong dark:text-on-surface-dark-strong">Security Schemes</h2>
+					</div>
+					<p class="mb-4 max-w-[70ch] text-sm text-on-surface-muted dark:text-on-surface-dark-muted">Read-only reference. Credentials are never accepted or stored on this documentation page.</p>
+					<div class="grid gap-4 lg:grid-cols-2">
+						for _, scheme := range data.Document.SecuritySchemes {
+							<article id={ scheme.Anchor } class="scroll-mt-24 rounded-radius border border-outline bg-surface p-5 dark:border-outline-dark dark:bg-surface-dark">
+								<div class="flex min-w-0 flex-wrap items-center gap-2">
+									<h3 class="min-w-0 break-words font-title text-lg font-bold text-on-surface-strong dark:text-on-surface-dark-strong">{ scheme.Name }</h3>
+									if scheme.Type != "" {
+										@badge.Badge(badge.Config{Label: scheme.Type, Tone: badge.ToneSecondary, Appearance: badge.AppearanceSoft, Size: badge.SizeSM})
+									}
+								</div>
+								if scheme.Description != "" {
+									<p class="mt-3 whitespace-pre-wrap text-sm leading-6 text-on-surface-muted dark:text-on-surface-dark-muted">{ scheme.Description }</p>
+								}
+								if scheme.ParameterName != "" || scheme.In != "" || scheme.Scheme != "" || scheme.BearerFormat != "" || scheme.OpenIDConnectURL != "" {
+									<dl class="mt-4 grid gap-3 text-sm sm:grid-cols-2">
+										if scheme.ParameterName != "" {
+											@catalogSecuritySchemeField(catalogSecurityParameterLabel(scheme.In), scheme.ParameterName)
+										}
+										if scheme.In != "" && scheme.ParameterName == "" {
+											@catalogSecuritySchemeField("Location", scheme.In)
+										}
+										if scheme.Scheme != "" {
+											@catalogSecuritySchemeField("Scheme", scheme.Scheme)
+										}
+										if scheme.BearerFormat != "" {
+											@catalogSecuritySchemeField("Bearer format", scheme.BearerFormat)
+										}
+										if scheme.OpenIDConnectURL != "" {
+											<div class="min-w-0 sm:col-span-2">
+												<dt class="text-xs font-semibold uppercase tracking-wide text-on-surface-muted dark:text-on-surface-dark-muted">OpenID Connect URL</dt>
+												<dd class="mt-1 min-w-0"><a href={ templpkg.URL(scheme.OpenIDConnectURL) } rel="noreferrer" class="block truncate text-primary hover:underline dark:text-primary-dark" title={ scheme.OpenIDConnectURL }>{ scheme.OpenIDConnectURL }</a></dd>
+											</div>
+										}
+									</dl>
+								}
+							</article>
+						}
+					</div>
+				</section>
+			}
 		} else if data.Selected.Operation != nil {
 			@catalogOperationDetail(data)
 		} else if data.Selected.Schema != nil {
@@ -491,25 +885,64 @@ templ catalogDocument(data CatalogPageData) {
 	</main>
 }
 
+templ catalogDocumentHeader(data CatalogPageData) {
+	<header data-catalog-document-header class="mb-8 grid min-w-0 gap-4 border-b border-outline pb-8 dark:border-outline-dark">
+		<div class="flex min-w-0 flex-wrap items-start justify-between gap-4">
+			<div class="min-w-0">
+				<p class="mb-2 text-sm font-semibold uppercase tracking-wide text-primary dark:text-primary-dark">OpenAPI document</p>
+				<div class="flex min-w-0 flex-wrap items-center gap-3">
+					<h1 class="manja-schema-title min-w-0 break-words font-title text-3xl font-bold text-on-surface-strong sm:text-4xl dark:text-on-surface-dark-strong" title={ catalogDocumentTitle(*data.Document) }>{ catalogDocumentTitle(*data.Document) }</h1>
+					if catalogDocumentVersionLabel(*data.Document) != "" {
+						@badge.Badge(badge.Config{Label: catalogDocumentVersionLabel(*data.Document), Tone: badge.ToneSecondary, Appearance: badge.AppearanceSoft, Size: badge.SizeSM, RootClass: "shrink-0"})
+					}
+				</div>
+			</div>
+			<nav aria-label="Specification actions" class="flex flex-wrap items-center gap-2">
+				<a href={ templpkg.URL(data.DownloadHref) } download class="inline-flex min-h-9 items-center justify-center gap-2 rounded-radius border border-outline px-3 text-sm font-semibold text-on-surface-strong transition hover:bg-surface-alt focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary dark:border-outline-dark dark:text-on-surface-dark-strong dark:hover:bg-surface-dark-alt dark:focus-visible:outline-primary-dark">
+					@icon.Icon(icon.Config{SpriteURL: heroicons.SpriteURL, Symbol: heroicons.Icon16SolidArrowDownTray, Size: icon.SizeSM, Decorative: true})
+					<span>Download source</span>
+				</a>
+			</nav>
+		</div>
+		if data.Document.Overview.Description != "" {
+			<p class="max-w-[70ch] whitespace-pre-wrap text-base leading-7 text-on-surface-muted dark:text-on-surface-dark-muted">{ data.Document.Overview.Description }</p>
+		}
+		@catalogSourceStatus(data)
+	</header>
+}
+
+templ catalogSecuritySchemeField(label string, value string) {
+	<div class="min-w-0">
+		<dt class="text-xs font-semibold uppercase tracking-wide text-on-surface-muted dark:text-on-surface-dark-muted">{ label }</dt>
+		<dd class="mt-1 break-words font-mono text-on-surface-strong dark:text-on-surface-dark-strong">{ value }</dd>
+	</div>
+}
+
+func catalogSecurityParameterLabel(location string) string {
+	switch strings.ToLower(strings.TrimSpace(location)) {
+	case "header":
+		return "Request header"
+	case "query":
+		return "Query parameter"
+	case "cookie":
+		return "Cookie"
+	default:
+		return "Parameter"
+	}
+}
+
 templ catalogOperationDetail(data CatalogPageData) {
 	if data.OperationView != nil {
 		{{ operation := *data.OperationView }}
 		<article data-catalog-detail="operation">
-			@pageheader.PageHeader(pageheader.Config{
-				Title: operationTitle(operation),
-				RootClass: "mb-8 min-w-0",
-				RootAttrs: templpkg.Attributes{
-					"data-public-page-header": "true",
-				},
-				TitleClass: "manja-doc-title",
-				TitleAttrs: templpkg.Attributes{
-					"id": operation.Anchor + "-heading",
-					"tabindex": "-1",
-					"data-public-doc-identity": operation.Anchor,
-					"data-manja-settled-focus": "true",
-				},
-			})
-			@endpointSection(operation, data.OperationServers, "", PublicDocsOptions{})
+			@catalogOperationHeader(operation, data)
+			@endpointSection(operation, data.OperationServers, "", PublicDocsOptions{
+				OperationIdentityInHeader: true,
+				SchemaLinks:      data.SchemaLinks,
+				SchemaLinkTarget: "#main-content",
+				SchemaLinkSelect: "#main-content",
+				SchemaLinkSwap:   "outerHTML show:#main-content:top",
+			}, data.OperationNavigation)
 		</article>
 	} else {
 		{{ operation := *data.Selected.Operation }}
@@ -520,7 +953,7 @@ templ catalogOperationDetail(data CatalogPageData) {
 		</div>
 		<h2 class="font-title text-3xl font-bold text-on-surface-strong dark:text-on-surface-dark-strong">{ operation.Heading }</h2>
 		if operation.Description != "" {
-			<p class="max-w-4xl whitespace-pre-wrap text-on-surface-muted dark:text-on-surface-dark-muted">{ operation.Description }</p>
+			<p class="max-w-4xl whitespace-pre-wrap break-words text-on-surface-muted dark:text-on-surface-dark-muted">{ operation.Description }</p>
 		}
 		if len(operation.Parameters) > 0 {
 			<section class="rounded-radius border border-outline p-5 dark:border-outline-dark">
@@ -549,71 +982,206 @@ templ catalogOperationDetail(data CatalogPageData) {
 	}
 }
 
+templ catalogOperationHeader(operation core.Operation, data CatalogPageData) {
+	<header class="mb-8 min-w-0 border-b border-outline pb-6 dark:border-outline-dark" data-public-page-header="true">
+		<div class="flex min-w-0 flex-wrap items-start justify-between gap-3">
+			<div class="flex min-w-0 flex-wrap items-center gap-2">
+				<h1
+					id={ operation.Anchor + "-heading" }
+					tabindex="-1"
+					data-public-doc-identity={ operation.Anchor }
+					data-manja-settled-focus="true"
+					class="manja-doc-title min-w-0 font-title text-2xl font-bold leading-tight text-on-surface-strong sm:text-3xl dark:text-on-surface-dark-strong"
+				>{ operationTitle(operation) }</h1>
+				if operation.Deprecated {
+					@badge.Badge(badge.Config{Label: "Deprecated", Tone: badge.ToneWarning, Appearance: badge.AppearanceSoft, Size: badge.SizeSM})
+				}
+			</div>
+			if data.PageMarkdownHref != "" {
+				@copyPageAction(operation.Anchor, data.PageMarkdownHref)
+			}
+		</div>
+		if operation.Description != "" {
+			<p class="mt-2 max-w-[70ch] text-sm leading-6 text-on-surface-muted sm:text-base dark:text-on-surface-dark-muted">{ operation.Description }</p>
+		}
+		<div class="mt-4 inline-flex max-w-full items-center gap-2">
+			<div class="inline-flex min-w-0 items-center gap-3 text-left">
+				@methodBadge(operation.Method)
+				<code class="min-w-0 break-all text-sm font-semibold text-on-surface-strong dark:text-on-surface-dark-strong">{ operation.Path }</code>
+			</div>
+		</div>
+		<div class="mt-4">
+			@catalogProvenance(data, true)
+		</div>
+	</header>
+}
+
+templ catalogOrganizationAvatar(item CatalogOrganizationItem) {
+	if item.AvatarSrc != "" {
+		<span x-data="{ imageError: false }" class="relative inline-flex size-8 shrink-0 items-center justify-center overflow-hidden rounded-full bg-surface-alt text-xs font-bold tracking-wider text-on-surface-strong dark:bg-surface-dark-alt dark:text-on-surface-dark-strong">
+			<span x-cloak x-show="imageError" aria-hidden="true" class="absolute inset-0 flex items-center justify-center">
+				if item.AvatarSymbol != "" {
+					@icon.Icon(icon.Config{SpriteURL: heroicons.SpriteURL, Symbol: icon.Symbol(item.AvatarSymbol), Size: icon.SizeSM, Decorative: true})
+				} else {
+					{ item.Initials }
+				}
+			</span>
+			<img
+				src={ templpkg.URL(item.AvatarSrc) }
+				alt={ item.AvatarAlt }
+				loading="lazy"
+				decoding="async"
+				x-init="if ($el.complete && $el.naturalWidth === 0) imageError = true"
+				x-show="!imageError"
+				x-on:error="imageError = true"
+				class="absolute inset-0 size-full object-cover"
+			/>
+		</span>
+	} else if item.AvatarSymbol != "" {
+		@avatar.Avatar(avatar.Config{Icon: icon.Icon(icon.Config{SpriteURL: heroicons.SpriteURL, Symbol: icon.Symbol(item.AvatarSymbol), Size: icon.SizeSM, Decorative: true}), Name: item.Label, Size: avatar.SizeXS, Shape: avatar.ShapeCircle, Tone: avatar.TonePrimary, RootClass: "shrink-0"})
+	} else {
+		@avatar.Avatar(avatar.Config{Name: item.Label, Initials: item.Initials, Size: avatar.SizeXS, Shape: avatar.ShapeCircle, Tone: avatar.TonePrimary, RootClass: "shrink-0"})
+	}
+}
+
 templ catalogSchemaDetail(data CatalogPageData) {
 	{{ schema := *data.Selected.Schema }}
 	<article id={ schema.Anchor } data-catalog-detail="schema" class="space-y-6">
-		@badge.Badge(badge.Config{Label: "Schema", Tone: badge.ToneSecondary, Appearance: badge.AppearanceSoft, Size: badge.SizeMD})
-		<h2 class="font-title text-3xl font-bold text-on-surface-strong dark:text-on-surface-dark-strong">{ schema.Heading }</h2>
-		if schema.Description != "" {
-			<p class="max-w-4xl whitespace-pre-wrap text-on-surface-muted dark:text-on-surface-dark-muted">{ schema.Description }</p>
-		}
-		if data.SchemaNode != nil {
-			@catalogSchemaNode(*data.SchemaNode)
-		}
-		if schema.ExampleSchemaJSON != "" {
-			<section class="rounded-radius border border-outline p-5 dark:border-outline-dark">
-				<h3 class="font-title text-xl font-bold">Schema</h3>
-				<pre class="mt-4 max-h-[32rem] overflow-auto rounded-radius bg-surface-alt p-4 text-sm dark:bg-surface-dark-alt"><code>{ schema.ExampleSchemaJSON }</code></pre>
-			</section>
+		<header class="grid min-w-0 gap-4">
+			<div class="flex flex-wrap items-center justify-between gap-3">
+				<div class="flex min-w-0 flex-wrap items-center gap-2">
+					@badge.Badge(badge.Config{Label: "Schema", Tone: badge.ToneSecondary, Appearance: badge.AppearanceSoft, Size: badge.SizeMD})
+					if catalogDocumentVersionLabel(*data.Document) != "" {
+						@badge.Badge(badge.Config{Label: catalogDocumentVersionLabel(*data.Document), Tone: badge.ToneDefault, Appearance: badge.AppearanceSoft, Size: badge.SizeSM})
+					}
+					if data.SchemaNode != nil && (data.SchemaNode.Type != "" || data.SchemaNode.Format != "") {
+						<code class="rounded-radius bg-surface-alt px-3 py-1.5 text-sm text-on-surface-strong dark:bg-surface-dark-alt dark:text-on-surface-dark-strong">{ strings.TrimSpace(data.SchemaNode.Type + " " + data.SchemaNode.Format) }</code>
+					}
+				</div>
+				<nav aria-label="Schema actions" class="flex flex-wrap items-center gap-2">
+					if data.PageMarkdownHref != "" {
+						@copyPageAction(schema.Anchor, data.PageMarkdownHref)
+					}
+					<a href={ templpkg.URL(data.DocumentHref) } class="inline-flex min-h-9 items-center justify-center gap-2 rounded-radius px-3 text-sm font-semibold text-on-surface-muted transition hover:bg-surface-alt hover:text-on-surface-strong focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary dark:text-on-surface-dark-muted dark:hover:bg-surface-dark-alt dark:hover:text-on-surface-dark-strong dark:focus-visible:outline-primary-dark">
+						@icon.Icon(icon.Config{SpriteURL: heroicons.SpriteURL, Symbol: heroicons.Icon16SolidBookOpen, Size: icon.SizeSM, Decorative: true})
+						<span>Spec overview</span>
+					</a>
+					<a href={ templpkg.URL(data.DownloadHref) } download class="inline-flex min-h-9 items-center justify-center gap-2 rounded-radius border border-outline px-3 text-sm font-semibold text-on-surface-strong transition hover:bg-surface-alt focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary dark:border-outline-dark dark:text-on-surface-dark-strong dark:hover:bg-surface-dark-alt dark:focus-visible:outline-primary-dark">
+						@icon.Icon(icon.Config{SpriteURL: heroicons.SpriteURL, Symbol: heroicons.Icon16SolidArrowDownTray, Size: icon.SizeSM, Decorative: true})
+						<span>Download source</span>
+					</a>
+				</nav>
+			</div>
+			<h1 class="manja-schema-title font-title text-2xl font-bold text-on-surface-strong sm:text-3xl dark:text-on-surface-dark-strong">{ schema.Heading }</h1>
+			if schema.Description != "" {
+				<p class="max-w-[70ch] whitespace-pre-wrap break-words text-on-surface-muted dark:text-on-surface-dark-muted">{ schema.Description }</p>
+			}
+			@catalogSourceStatus(data)
+		</header>
+		if data.SchemaNode != nil && schema.ExampleSchemaJSON != "" {
+			<div class="manja-schema-detail-layout">
+				<div class="manja-schema-tree-panel">
+					@catalogSchemaNode(*data.SchemaNode, schema.Heading)
+				</div>
+				<aside class="manja-schema-example-panel" aria-label="Root JSON Schema">
+					@codeExample("Root JSON Schema", "json", schema.ExampleSchemaJSON)
+				</aside>
+			</div>
+		} else {
+			if data.SchemaNode != nil {
+				@catalogSchemaNode(*data.SchemaNode, schema.Heading)
+			}
+			if schema.ExampleSchemaJSON != "" {
+				<section aria-label="Root JSON Schema">
+					@codeExample("Root JSON Schema", "json", schema.ExampleSchemaJSON)
+				</section>
+			}
 		}
 	</article>
 }
 
-templ catalogSchemaNode(node CatalogSchemaNodeData) {
-	<section id="schema-node-panel" aria-label={ node.Name + " schema node" } class="scroll-mt-24 rounded-radius border border-outline bg-surface p-5 dark:border-outline-dark dark:bg-surface-dark">
-		<div class="flex flex-wrap items-start justify-between gap-3 border-b border-outline pb-4 dark:border-outline-dark">
-			<div class="min-w-0">
-				<p class="text-xs font-semibold uppercase tracking-wide text-on-surface-muted dark:text-on-surface-dark-muted">Schema node { fmt.Sprintf("#%d", node.Ordinal) }</p>
-				<h3 class="mt-1 break-words font-title text-2xl font-bold text-on-surface-strong dark:text-on-surface-dark-strong">{ node.Name }</h3>
-			</div>
-			if node.Type != "" || node.Format != "" {
-				<code class="rounded-radius bg-surface-alt px-3 py-1.5 text-sm text-on-surface-strong dark:bg-surface-dark-alt dark:text-on-surface-dark-strong">{ strings.TrimSpace(node.Type + " " + node.Format) }</code>
-			}
+templ catalogSourceStatus(data CatalogPageData) {
+	@catalogProvenance(data, true)
+}
+
+templ catalogProvenance(data CatalogPageData, includeSource bool) {
+	<dl data-catalog-provenance class="flex min-w-0 flex-wrap items-center gap-x-5 gap-y-2 border-t border-outline pt-4 text-xs text-on-surface-muted dark:border-outline-dark dark:text-on-surface-dark-muted" aria-label={ catalogProvenanceLabel(includeSource) }>
+		if includeSource && data.Document != nil {
+		<div class="flex min-w-0 max-w-full items-center gap-2" title={ data.Document.SourcePath }>
+			@icon.Icon(icon.Config{SpriteURL: heroicons.SpriteURL, Symbol: heroicons.Icon16SolidDocumentText, Size: icon.SizeSM, Decorative: true})
+			<dt class="shrink-0 font-semibold">Source</dt>
+			<dd class="min-w-0 break-all sm:truncate"><code class="text-on-surface-strong dark:text-on-surface-dark-strong">{ data.Document.SourcePath }</code></dd>
 		</div>
-		if node.Description != "" {
-			<p class="mt-4 whitespace-pre-wrap text-on-surface-muted dark:text-on-surface-dark-muted">{ node.Description }</p>
 		}
-		if node.DefaultValue != "" || node.ExampleText != "" {
-			<div class="mt-4 grid gap-3 sm:grid-cols-2">
-				if node.DefaultValue != "" {
-					<div class="rounded-radius bg-surface-alt p-3 dark:bg-surface-dark-alt"><span class="text-xs font-semibold uppercase text-on-surface-muted dark:text-on-surface-dark-muted">Default</span><code class="mt-1 block break-all text-sm">{ node.DefaultValue }</code></div>
+		if !includeSource && strings.TrimSpace(string(data.Directory.ProfileID)) != "" {
+		<div class="flex items-center gap-2" title="Compatibility profile applied while compiling this catalog">
+			@icon.Icon(icon.Config{SpriteURL: heroicons.SpriteURL, Symbol: heroicons.Icon16SolidCog6Tooth, Size: icon.SizeSM, Decorative: true})
+			<dt class="font-semibold">Compatibility</dt>
+			<dd><code class="text-on-surface-strong dark:text-on-surface-dark-strong">{ string(data.Directory.ProfileID) }</code></dd>
+		</div>
+		}
+		if catalogRevisionValue(data) != "" {
+			<div class="flex items-center gap-2" title={ catalogRevisionTitle(data) }>
+				@icon.Icon(icon.Config{SpriteURL: heroicons.SpriteURL, Symbol: heroicons.Icon16SolidArrowPath, Size: icon.SizeSM, Decorative: true})
+				<dt class="font-semibold">{ catalogRevisionLabel(data) }</dt>
+				<dd><code class="text-on-surface-strong dark:text-on-surface-dark-strong">{ catalogRevisionValue(data) }</code></dd>
+			</div>
+		}
+		<div class="flex items-center gap-2" title={ string(data.SnapshotID) }>
+			@icon.Icon(icon.Config{SpriteURL: heroicons.SpriteURL, Symbol: heroicons.Icon16SolidShieldCheck, Size: icon.SizeSM, Decorative: true})
+			<dt class="font-semibold">Active snapshot</dt>
+			<dd><code class="text-on-surface-strong dark:text-on-surface-dark-strong">{ shortSnapshotID(data.SnapshotID) }</code></dd>
+		</div>
+	</dl>
+}
+
+templ catalogSchemaNode(node CatalogSchemaNodeData, rootHeading string) {
+	{{ rootNode := strings.TrimSpace(node.Name) == strings.TrimSpace(rootHeading) }}
+	<section id="schema-node-panel" aria-label={ node.Name + " schema node" } class="scroll-mt-24 rounded-radius border border-outline bg-surface p-5 dark:border-outline-dark dark:bg-surface-dark">
+		if !rootNode {
+			<div class="flex flex-wrap items-start justify-between gap-3 border-b border-outline pb-4 dark:border-outline-dark">
+				<div class="min-w-0">
+					<p class="text-xs font-semibold uppercase tracking-wide text-on-surface-muted dark:text-on-surface-dark-muted">Schema node { fmt.Sprintf("#%d", node.Ordinal) }</p>
+					<h2 tabindex="-1" data-catalog-schema-node-focus="true" class="manja-schema-title mt-1 font-title text-2xl font-bold text-on-surface-strong focus-visible:rounded-radius focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary dark:text-on-surface-dark-strong dark:focus-visible:outline-primary-dark">{ node.Name }</h2>
+				</div>
+				if node.Type != "" || node.Format != "" {
+					<code class="rounded-radius bg-surface-alt px-3 py-1.5 text-sm text-on-surface-strong dark:bg-surface-dark-alt dark:text-on-surface-dark-strong">{ strings.TrimSpace(node.Type + " " + node.Format) }</code>
 				}
-				if node.ExampleText != "" {
-					<div class="rounded-radius bg-surface-alt p-3 dark:bg-surface-dark-alt"><span class="text-xs font-semibold uppercase text-on-surface-muted dark:text-on-surface-dark-muted">Example</span><code class="mt-1 block break-all text-sm">{ node.ExampleText }</code></div>
-				}
+			</div>
+			if node.Description != "" {
+				<p class="mt-4 max-w-[70ch] whitespace-pre-wrap break-words text-on-surface-muted dark:text-on-surface-dark-muted">{ node.Description }</p>
+			}
+		}
+		if catalogSchemaHasMetadata(node.DefaultValue, node.ExampleText, node.EnumValues, node.Constraints, node.Nullable, node.Deprecated) {
+			<div class="mt-4">
+				@catalogSchemaMetadata(node.DefaultValue, node.ExampleText, node.EnumValues, node.Constraints, node.Nullable, node.Deprecated)
 			</div>
 		}
 		if len(node.Edges) > 0 {
-			<div class="mt-5 divide-y divide-outline border-l border-outline dark:divide-outline-dark dark:border-outline-dark">
+			<div class="mt-5 divide-y divide-outline dark:divide-outline-dark">
 				for _, edge := range node.Edges {
 					<a
+						data-catalog-schema-property={ edge.Name }
 						href={ templpkg.URL(edge.Href) }
 						hx-get={ edge.Href }
 						hx-target="#schema-node-panel"
 						hx-select="#schema-node-panel"
 						hx-swap="outerHTML show:#schema-node-panel:top"
 						hx-push-url="true"
-						class="block border-l-2 border-transparent px-4 py-4 transition hover:border-primary hover:bg-surface-alt dark:hover:border-primary-dark dark:hover:bg-surface-dark-alt"
+						class="group block px-1 py-3.5 transition-colors hover:bg-surface-alt focus-visible:rounded-radius focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary dark:hover:bg-surface-dark-alt dark:focus-visible:outline-primary-dark"
 					>
-						<div class="flex flex-wrap items-start justify-between gap-3">
-							<div class="min-w-0"><span class="break-words font-mono font-semibold text-on-surface-strong dark:text-on-surface-dark-strong">{ edge.Name }</span><span class="ml-3 break-all font-mono text-sm text-on-surface-muted dark:text-on-surface-dark-muted">{ edge.Type }</span></div>
-							if edge.Required {
-								<span class="shrink-0 text-xs font-semibold text-danger dark:text-danger-dark">required</span>
+						<div class="manja-schema-label">
+							<div class="manja-schema-heading">
+								@schemaPropertyIdentity(edge.Name, edge.Type)
+								@schemaPropertyStates(schemaPropertyStateLabel(edge.Required), edge.Nullable, edge.Deprecated)
+							</div>
+							if edge.Description != "" {
+								<p class="manja-schema-description whitespace-pre-wrap">{ edge.Description }</p>
+							}
+							if catalogSchemaHasMetadata(edge.DefaultValue, edge.ExampleText, edge.EnumValues, edge.Constraints, false, false) {
+								@catalogSchemaMetadata(edge.DefaultValue, edge.ExampleText, edge.EnumValues, edge.Constraints, false, false)
 							}
 						</div>
-						if edge.Description != "" {
-							<p class="mt-2 whitespace-pre-wrap text-sm text-on-surface-muted dark:text-on-surface-dark-muted">{ edge.Description }</p>
-						}
 					</a>
 				}
 			</div>
@@ -622,6 +1190,41 @@ templ catalogSchemaNode(node CatalogSchemaNodeData) {
 			<p class="mt-4 text-sm text-on-surface-muted dark:text-on-surface-dark-muted">Showing first 100 links from this node.</p>
 		}
 	</section>
+}
+
+templ catalogSchemaMetadata(defaultValue string, exampleText string, enumValues []string, constraints []CatalogSchemaConstraintData, nullable bool, deprecated bool) {
+	if defaultValue != "" {
+		<p class="manja-schema-metadata"><span>Default:</span><code>{ defaultValue }</code></p>
+	}
+	if exampleText != "" {
+		<p class="manja-schema-metadata"><span>Example:</span><code>{ exampleText }</code></p>
+	}
+	if len(enumValues) > 0 {
+		<p class="manja-schema-metadata">
+			<span>Allowed:</span>
+			for _, value := range enumValues {
+				<code>{ value }</code>
+			}
+		</p>
+	}
+	for _, constraint := range constraints {
+		<p class="manja-schema-metadata"><span>{ constraint.Name }:</span><code>{ constraint.Value }</code></p>
+	}
+	if nullable || deprecated {
+		<p class="manja-schema-metadata">
+			<span>Status:</span>
+			if nullable {
+				<code>nullable</code>
+			}
+			if deprecated {
+				<code>deprecated</code>
+			}
+		</p>
+	}
+}
+
+func catalogSchemaHasMetadata(defaultValue string, exampleText string, enumValues []string, constraints []CatalogSchemaConstraintData, nullable bool, deprecated bool) bool {
+	return defaultValue != "" || exampleText != "" || len(enumValues) > 0 || len(constraints) > 0 || nullable || deprecated
 }
 
 func catalogBranding(branding catalog.BrandingV1) core.DocsBranding {
@@ -634,15 +1237,60 @@ func catalogBrandName(data CatalogPageData) string {
 }
 
 func catalogPageTitle(data CatalogPageData) string {
-	if data.Selected != nil && data.Selected.Operation != nil { return data.Selected.Operation.Heading + " · " + data.Directory.Title }
-	if data.Selected != nil && data.Selected.Schema != nil { return data.Selected.Schema.Heading + " · " + data.Directory.Title }
-	if data.Search != nil { return "Search · " + data.Directory.Title }
-	if data.Document != nil { return data.Document.Title + " · " + data.Directory.Title }
-	return data.Directory.Title
+	if data.OrganizationRoot { return catalogPageTitleWithManja("Dashboard") }
+	if data.Selected != nil && data.Selected.Operation != nil { return catalogPageTitleWithManja(data.Selected.Operation.Heading) }
+	if data.Selected != nil && data.Selected.Schema != nil { return catalogPageTitleWithManja(data.Selected.Schema.Heading) }
+	if data.Search != nil { return catalogPageTitleWithManja("Search") }
+	if data.Document != nil { return catalogPageTitleWithManja(data.Document.Key) }
+	return catalogPageTitleWithManja(data.Directory.Title)
+}
+
+func catalogPageTitleWithManja(label string) string {
+	label = strings.TrimSpace(label)
+	if label == "" { label = "OpenAPI documentation" }
+	if strings.HasSuffix(label, " · Manja") { return label }
+	return label + " · Manja"
 }
 
 func shortSnapshotID(id catalog.SnapshotID) string {
 	value := strings.TrimPrefix(string(id), "snapshot-sha256-")
+	if len(value) > 12 { value = value[:12] }
+	return value
+}
+
+func catalogRevisionLabel(data CatalogPageData) string {
+	if strings.TrimSpace(data.CommitSHA) != "" {
+		return "Commit"
+	}
+	return "Revision"
+}
+
+func catalogProvenanceLabel(includeSource bool) string {
+	if includeSource {
+		return "Specification provenance"
+	}
+	return "Catalog provenance"
+}
+
+func catalogDocumentVersionLabel(document catalog.DocumentDirectoryV1) string {
+	value := strings.TrimSpace(document.APIVersion)
+	if strings.EqualFold(value, "unversioned") {
+		return ""
+	}
+	return value
+}
+
+func catalogRevisionTitle(data CatalogPageData) string {
+	if strings.TrimSpace(data.CommitSHA) != "" {
+		return data.CommitSHA
+	}
+	return data.RevisionID
+}
+
+func catalogRevisionValue(data CatalogPageData) string {
+	value := strings.TrimSpace(catalogRevisionTitle(data))
+	value = strings.TrimPrefix(value, "files-sha256-")
+	value = strings.TrimPrefix(value, "git-")
 	if len(value) > 12 { value = value[:12] }
 	return value
 }
@@ -662,14 +1310,30 @@ func catalogSchemaCount(directory catalog.CatalogArtifactV1) int {
 func catalogSidebarConfig(data CatalogPageData) sidebar.Config {
 	config := sidebar.Config{
 		DisableSkipLink: true,
-		SearchSlot: catalogSidebarSearch(),
 	}
-	config.Items = []sidebar.Item{{ID: "catalog-overview", Label: "Catalog overview", Href: data.Mount, Active: data.Document == nil}}
+	if data.Document == nil {
+		config.Items = []sidebar.Item{{ID: "catalog-overview", Label: "Catalog overview", Href: data.Mount, Active: true}}
+	} else {
+		backHref := data.Mount
+		backLabel := "Back to catalog"
+		if data.StandaloneSpec {
+			backHref = "/"
+			backLabel = "Back to organization"
+		}
+		config.Items = []sidebar.Item{
+			{ID: "back-to-catalog", Label: backLabel, Href: backHref, Icon: catalogSidebarIcon(heroicons.Icon16SolidChevronLeft)},
+			{ID: "spec-overview", Label: "Spec overview", Href: data.DocumentHref, Active: data.Selected == nil},
+		}
+	}
 	if data.Document == nil { return config }
-	items := make([]sidebar.Item, 0, len(data.Groups))
 	for _, group := range data.Groups {
 		children := make([]sidebar.Item, 0, len(group.Items))
 		for _, item := range group.Items {
+			method := strings.ToUpper(strings.TrimSpace(item.Method))
+			linkAttrs := templpkg.Attributes{
+				"data-catalog-sidebar-operation": "true",
+				"data-catalog-method":            method,
+			}
 			children = append(children, sidebar.Item{
 				ID:         item.ID,
 				Label:      item.Label,
@@ -677,7 +1341,7 @@ func catalogSidebarConfig(data CatalogPageData) sidebar.Config {
 				Active:     item.Active,
 				Badge:      item.Method,
 				BadgeClass: catalogMethodBadgeClass(item.Method),
-				LinkAttrs:  templpkg.Attributes{"data-catalog-sidebar-operation": "true"},
+				LinkAttrs:  linkAttrs,
 			})
 		}
 		linkAttrs := templpkg.Attributes{
@@ -689,18 +1353,36 @@ func catalogSidebarConfig(data CatalogPageData) sidebar.Config {
 			"hx-swap":                    "outerHTML",
 			"hx-push-url":                "true",
 		}
-		if !group.Open {
-			linkAttrs["aria-expanded"] = "false"
-			linkAttrs["aria-controls"] = "catalog-sidebar-groups"
-		}
-		items = append(items, sidebar.Item{
+		linkAttrs["aria-expanded"] = strconv.FormatBool(group.Open)
+		linkAttrs["aria-controls"] = "catalog-sidebar-groups"
+		config.Items = append(config.Items, sidebar.Item{
 			ID: group.ID, Label: group.Label, Href: group.Href, Badge: fmt.Sprintf("%d", group.Count),
+			Icon: func() templpkg.Component {
+				switch group.Kind {
+				case "schemas":
+					return catalogSidebarIcon(heroicons.Icon16SolidCube)
+				case "security-schemes":
+					return catalogSidebarIcon(heroicons.Icon16SolidLockClosed)
+				default:
+					return catalogSidebarIcon(heroicons.Icon16SolidCodeBracket)
+				}
+			}(),
 			Items: children, Collapsible: group.Open, Open: group.Open,
 			LinkAttrs: linkAttrs,
 		})
 	}
-	config.Sections = []sidebar.Section{{Title: data.Document.Title, Items: items, Collapsible: true}}
 	return config
+}
+
+func catalogHasSidebar(data CatalogPageData) bool {
+	return data.OrganizationRoot || data.OrganizationNav.Visible || data.Document != nil || data.Search != nil
+}
+
+func catalogSidebarComponent(data CatalogPageData) templpkg.Component {
+	if !catalogHasSidebar(data) {
+		return nil
+	}
+	return catalogSidebar(data)
 }
 
 templ catalogSidebarFocusRestoration() {
@@ -709,20 +1391,35 @@ templ catalogSidebarFocusRestoration() {
 			if (window.__manjaCatalogSidebarFocusBound) return;
 			window.__manjaCatalogSidebarFocusBound = true;
 			var pendingControlID = "";
+			var pendingSchemaNodeFocus = false;
 			document.body.addEventListener("htmx:beforeRequest", function (event) {
 				var trigger = event.detail && event.detail.elt;
 				var control = trigger && trigger.closest && trigger.closest("[data-catalog-group-control]");
 				pendingControlID = control && document.activeElement === control ? control.id : "";
+				var schemaLink = trigger && trigger.closest && trigger.closest("[data-catalog-schema-property]");
+				pendingSchemaNodeFocus = !!schemaLink;
 			});
 			document.body.addEventListener("htmx:afterSettle", function () {
-				if (!pendingControlID) return;
-				var control = document.getElementById(pendingControlID);
-				pendingControlID = "";
-				if (!control) return;
-				try { control.focus({ preventScroll: true }); } catch (error) { control.focus(); }
+				if (pendingControlID) {
+					var control = document.getElementById(pendingControlID);
+					pendingControlID = "";
+					if (control) {
+						try { control.focus({ preventScroll: true }); } catch (error) { control.focus(); }
+					}
+				}
+				if (pendingSchemaNodeFocus) {
+					pendingSchemaNodeFocus = false;
+					var schemaHeading = document.querySelector("#schema-node-panel [data-catalog-schema-node-focus]");
+					if (schemaHeading) {
+						try { schemaHeading.focus({ preventScroll: true }); } catch (error) { schemaHeading.focus(); }
+					}
+				}
 			});
 			["htmx:responseError", "htmx:sendError", "htmx:timeout"].forEach(function (name) {
-				document.body.addEventListener(name, function () { pendingControlID = ""; });
+				document.body.addEventListener(name, function () {
+					pendingControlID = "";
+					pendingSchemaNodeFocus = false;
+				});
 			});
 		})();
 	</script>

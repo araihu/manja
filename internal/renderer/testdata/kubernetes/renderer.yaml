@@ -1,14 +1,41 @@
 version: 1
+organization:
+  title: Manja
+  readme: >-
+    Manja turns OpenAPI catalogs and standalone specifications into fast,
+    search-first documentation. This demo publishes the Kubernetes API as a
+    precompiled catalog so browsing never depends on compiling the source on
+    the application server.
+  license:
+    name: No license declared
+  sources:
+    - name: Kubernetes OpenAPI definitions
+      kind: git
+      location: github.com/kubernetes/kubernetes/api/openapi-spec/v3
+      url: https://github.com/kubernetes/kubernetes/tree/master/api/openapi-spec/v3
+    - name: Precompiled Kubernetes catalog
+      kind: file
+      location: internal/renderer/testdata/kubernetes/specs
+  seo:
+    description: Explore OpenAPI catalogs and standalone specs with Manja.
+    canonicalBase: https://manja.araihu.com
+    socialImage: https://manja.araihu.com/manja-assets/manja-social.png
+    socialImageAlt: Manja OpenAPI workbench
 catalogs:
   - id: kubernetes
-    mount: /
+    mount: /catalogs/kubernetes
     title: Kubernetes
+    branding:
+      displayName: Kubernetes
+      logo:
+        src: https://raw.githubusercontent.com/kubernetes/kubernetes/a818af18fe29d999d6741234c8cd72709ef2f424/logo/logo.svg
+        alt: Kubernetes
     defaultDocument: core-v1
     profile: kubernetes-v3-v1
     compatibilityAllowlist: default-allowlist.json
     seo:
       description: Explore Kubernetes API operations, request bodies, response schemas, and examples in a fast OpenAPI renderer.
-      canonicalBase: https://manja.araihu.com
+      canonicalBase: https://manja.araihu.com/catalogs/kubernetes
       socialImage: https://manja.araihu.com/manja-assets/kubernetes-social.png
       socialImageAlt: Kubernetes OpenAPI reference rendered by Manja
     source:
