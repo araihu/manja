@@ -64,7 +64,9 @@ type OrganizationSourcePresentation struct {
 	URL      string
 }
 
-const maxCatalogPageBytes = 512 << 10
+// Keep full catalog documents bounded while accommodating deeply described
+// public API operations such as GitHub's.
+const maxCatalogPageBytes = 1 << 20
 
 var errCatalogPageTooLarge = errors.New("catalog representation exceeds byte limit")
 

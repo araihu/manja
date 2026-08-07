@@ -487,6 +487,7 @@ templ catalogHeader(data CatalogPageData) {
 					x-bind:aria-expanded="catalogNavOpen.toString()"
 					aria-controls="catalog-navigation"
 					aria-label={ "Open " + catalogNavigationLabel(data) }
+					data-catalog-navigation-trigger="true"
 					class="inline-flex size-10 shrink-0 items-center justify-center rounded-radius border border-outline hover:bg-surface-alt focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary lg:hidden dark:border-outline-dark dark:hover:bg-surface-dark-alt dark:focus-visible:outline-primary-dark"
 				>
 					<svg xmlns="http://www.w3.org/2000/svg" class="size-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
@@ -1333,8 +1334,13 @@ func catalogSidebarConfig(data CatalogPageData) sidebar.Config {
 		for _, item := range group.Items {
 			method := strings.ToUpper(strings.TrimSpace(item.Method))
 			linkAttrs := templpkg.Attributes{
+				"id":                              "catalog-sidebar-item-" + item.ID,
+				"data-catalog-sidebar-item":       "true",
 				"data-catalog-sidebar-operation": "true",
 				"data-catalog-method":            method,
+			}
+			if item.Active {
+				linkAttrs["data-catalog-sidebar-selected"] = "true"
 			}
 			children = append(children, sidebar.Item{
 				ID:         item.ID,
@@ -1404,6 +1410,43 @@ templ catalogSidebarFocusRestoration() {
 			window.__manjaCatalogSidebarFocusBound = true;
 			var pendingControlID = "";
 			var pendingSchemaNodeFocus = false;
+			var selectionScrollFrame = 0;
+
+			function scrollSidebarSelection() {
+				var selected = document.querySelector("#catalog-sidebar-groups [data-catalog-sidebar-selected]");
+				if (!selected) return;
+				var navigation = selected.closest("nav[aria-label='sidebar navigation']");
+				var panel = navigation && navigation.querySelector(".sidebar-scroll");
+				if (!panel || panel.clientHeight === 0) return;
+				var selectedBox = selected.getBoundingClientRect();
+				var panelBox = panel.getBoundingClientRect();
+				if (selectedBox.top >= panelBox.top && selectedBox.bottom <= panelBox.bottom) return;
+				var maxTop = Math.max(0, panel.scrollHeight - panel.clientHeight);
+				var targetTop = panel.scrollTop + selectedBox.top - panelBox.top - (panel.clientHeight - selectedBox.height) / 2;
+				panel.scrollTop = Math.max(0, Math.min(maxTop, targetTop));
+			}
+
+			function scheduleSidebarSelectionScroll() {
+				if (selectionScrollFrame) return;
+				selectionScrollFrame = window.requestAnimationFrame(function () {
+					selectionScrollFrame = window.requestAnimationFrame(function () {
+						selectionScrollFrame = 0;
+						scrollSidebarSelection();
+					});
+				});
+			}
+
+			window.manjaCatalogScrollSidebarSelection = scheduleSidebarSelectionScroll;
+			if (document.readyState === "loading") {
+				document.addEventListener("DOMContentLoaded", scheduleSidebarSelectionScroll, { once: true });
+			} else {
+				scheduleSidebarSelectionScroll();
+			}
+			document.body.addEventListener("click", function (event) {
+				var trigger = event.target && event.target.closest && event.target.closest("[data-catalog-navigation-trigger]");
+				if (trigger) scheduleSidebarSelectionScroll();
+			});
+			window.addEventListener("resize", scheduleSidebarSelectionScroll);
 			document.body.addEventListener("htmx:beforeRequest", function (event) {
 				var trigger = event.detail && event.detail.elt;
 				var control = trigger && trigger.closest && trigger.closest("[data-catalog-group-control]");
@@ -1411,7 +1454,7 @@ templ catalogSidebarFocusRestoration() {
 				var schemaLink = trigger && trigger.closest && trigger.closest("[data-catalog-schema-property]");
 				pendingSchemaNodeFocus = !!schemaLink;
 			});
-			document.body.addEventListener("htmx:afterSettle", function () {
+			document.body.addEventListener("htmx:afterSettle", function (event) {
 				if (pendingControlID) {
 					var control = document.getElementById(pendingControlID);
 					pendingControlID = "";
@@ -1425,6 +1468,10 @@ templ catalogSidebarFocusRestoration() {
 					if (schemaHeading) {
 						try { schemaHeading.focus({ preventScroll: true }); } catch (error) { schemaHeading.focus(); }
 					}
+				}
+				var target = event.detail && event.detail.target;
+				if (target && (target.id === "catalog-sidebar-groups" || (target.closest && target.closest("#catalog-sidebar-groups")))) {
+					scheduleSidebarSelectionScroll();
 				}
 			});
 			["htmx:responseError", "htmx:sendError", "htmx:timeout"].forEach(function (name) {

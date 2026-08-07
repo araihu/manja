@@ -517,6 +517,35 @@ func TestCatalogSidebarUsesMethodHierarchyAndOverflowHooks(t *testing.T) {
 	}
 }
 
+func TestCatalogSidebarSelectedItemHasDeterministicScrollTarget(t *testing.T) {
+	t.Parallel()
+
+	data := catalogTemplateFixture()
+	document := data.Directory.Documents[0]
+	data.Document = &document
+	data.Groups = []CatalogSidebarGroupData{{
+		ID: "group-pulls", Kind: "operations", Label: "pulls", Href: "/kubernetes/documents/core-v1/?group=group-pulls", Count: 1, Open: true,
+		Items: []CatalogSidebarItemData{{ID: "sidebar-selected-operation", Label: "Get pull request", Method: "GET", Href: "#selected", Active: true}},
+	}}
+	body := renderCatalogTemplate(t, data)
+	for _, want := range []string{
+		`data-catalog-navigation-trigger="true"`,
+		`id="catalog-sidebar-item-sidebar-selected-operation"`,
+		`data-catalog-sidebar-item="true"`,
+		`data-catalog-sidebar-selected="true"`,
+		`window.manjaCatalogScrollSidebarSelection`,
+		`navigation.querySelector(".sidebar-scroll")`,
+		`panel.scrollTop = Math.max(0, Math.min(maxTop, targetTop));`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("catalog sidebar selection behavior missing %q", want)
+		}
+	}
+	if got := strings.Count(body, `data-catalog-sidebar-selected="true"`); got != 1 {
+		t.Fatalf("selected sidebar markers = %d, want 1", got)
+	}
+}
+
 func TestCatalogSidebarGroupControlsExposeDisclosureState(t *testing.T) {
 	t.Parallel()
 
