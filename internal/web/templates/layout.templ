@@ -184,14 +184,21 @@ templ LayoutWithBrandingMetadata(metadata PageMetadata, branding core.DocsBrandi
 						}
 					}
 
+					function mainContentTarget(event) {
+						var target = event && event.detail && event.detail.target;
+						if (!target || target.id !== "main-content") return null;
+						if (target.isConnected) return target;
+						return document.getElementById("main-content");
+					}
+
 					document.addEventListener('htmx:beforeRequest', function (e) {
 						var link = sidebarLinkFromEvent(e);
 						if (link) pendingSidebarHref = link.getAttribute('href') || "";
 					});
 
 					document.addEventListener('htmx:afterSwap', function (e) {
-						var target = e && e.detail && e.detail.target;
-						if (!target || target.id !== 'main-content') return;
+						var target = mainContentTarget(e);
+						if (!target) return;
 						var content = target.querySelector('[data-public-docs-content="true"]');
 						if (content && content.dataset.selectedDoc) {
 							target.dataset.selectedDoc = content.dataset.selectedDoc;
@@ -202,11 +209,21 @@ templ LayoutWithBrandingMetadata(metadata PageMetadata, branding core.DocsBrandi
 						var shouldFocus = pendingSidebarHref !== "";
 						updateSidebarActiveLink(pendingSidebarHref || (window.location.pathname + window.location.search + window.location.hash));
 						pendingSidebarHref = "";
-						target.scrollTo({ top: 0 });
-						if (shouldFocus) {
+						target.dataset.manjaFocusAfterSettle = shouldFocus ? "true" : "";
+					});
+
+					document.addEventListener('htmx:afterSettle', function (e) {
+						var target = mainContentTarget(e);
+						if (!target) return;
+						var scrollTarget = target.querySelector('[data-manja-scroll-sentinel="true"]');
+						if (scrollTarget) {
+							scrollTarget.scrollIntoView({ block: "start", inline: "nearest" });
+						}
+						if (target.dataset.manjaFocusAfterSettle === "true") {
 							var focusTarget = target.querySelector('[data-manja-settled-focus="true"]');
 							if (focusTarget) focusTarget.focus({ preventScroll: true });
 						}
+						delete target.dataset.manjaFocusAfterSettle;
 					});
 				})();
 			</script>
