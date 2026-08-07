@@ -1063,10 +1063,6 @@ templ catalogSchemaDetail(data CatalogPageData) {
 					if data.PageMarkdownHref != "" {
 						@copyPageAction(schema.Anchor, data.PageMarkdownHref)
 					}
-					<a href={ templpkg.URL(data.DocumentHref) } class="inline-flex min-h-9 items-center justify-center gap-2 rounded-radius px-3 text-sm font-semibold text-on-surface-muted transition hover:bg-surface-alt hover:text-on-surface-strong focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary dark:text-on-surface-dark-muted dark:hover:bg-surface-dark-alt dark:hover:text-on-surface-dark-strong dark:focus-visible:outline-primary-dark">
-						@icon.Icon(icon.Config{SpriteURL: heroicons.SpriteURL, Symbol: heroicons.Icon16SolidBookOpen, Size: icon.SizeSM, Decorative: true})
-						<span>Spec overview</span>
-					</a>
 					<a href={ templpkg.URL(data.DownloadHref) } download class="inline-flex min-h-9 items-center justify-center gap-2 rounded-radius border border-outline px-3 text-sm font-semibold text-on-surface-strong transition hover:bg-surface-alt focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary dark:border-outline-dark dark:text-on-surface-dark-strong dark:hover:bg-surface-dark-alt dark:focus-visible:outline-primary-dark">
 						@icon.Icon(icon.Config{SpriteURL: heroicons.SpriteURL, Symbol: heroicons.Icon16SolidArrowDownTray, Size: icon.SizeSM, Decorative: true})
 						<span>Download source</span>
@@ -1323,7 +1319,7 @@ func catalogSidebarConfig(data CatalogPageData) sidebar.Config {
 		}
 		config.Items = []sidebar.Item{
 			{ID: "back-to-catalog", Label: backLabel, Href: backHref, Icon: catalogSidebarIcon(heroicons.Icon16SolidChevronLeft)},
-			{ID: "spec-overview", Label: "Spec overview", Href: data.DocumentHref, Active: data.Selected == nil},
+			{ID: "spec-overview", Label: "Spec overview", Href: data.DocumentHref, Active: data.Selected == nil, Icon: catalogSidebarIcon(heroicons.Icon16SolidBookOpen)},
 		}
 	}
 	if data.Document == nil { return config }

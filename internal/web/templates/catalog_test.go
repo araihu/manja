@@ -421,6 +421,10 @@ func TestCatalogDocumentSidebarGroupsOperationsUnderOnePathsItem(t *testing.T) {
 	if len(config.Items) != 4 {
 		t.Fatalf("sidebar item count = %d, want 4", len(config.Items))
 	}
+	specOverview := config.Items[1]
+	if specOverview.ID != "spec-overview" || specOverview.Icon == nil {
+		t.Fatalf("spec overview = %#v, want book icon in sidebar", specOverview)
+	}
 	paths := config.Items[2]
 	if paths.ID != "catalog-paths" || paths.Label != "Paths" || paths.Icon == nil {
 		t.Fatalf("paths parent = %#v, want visible Paths item with one icon", paths)
@@ -436,6 +440,7 @@ func TestCatalogDocumentSidebarGroupsOperationsUnderOnePathsItem(t *testing.T) {
 	body := renderCatalogTemplate(t, data)
 	for _, want := range []string{
 		`heroicons.svg#hi-16-solid-chevron-left`,
+		`heroicons.svg#hi-16-solid-book-open`,
 		`heroicons.svg#hi-16-solid-code-bracket`,
 		`heroicons.svg#hi-16-solid-cube`,
 	} {
