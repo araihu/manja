@@ -187,6 +187,9 @@ catalogs:
     title: GitHub REST API
     branding:
       displayName: GitHub
+      logo:
+        src: /manja-assets/github-mark.svg
+        alt: GitHub
     license:
       name: MIT License
       url: https://github.com/github/rest-api-description/blob/main/LICENSE.md
@@ -213,6 +216,9 @@ catalogs:
       stable public demo catalog.
     branding:
       displayName: Stripe
+      logo:
+        src: /manja-assets/stripe-mark.svg
+        alt: Stripe
     license:
       name: MIT License
       url: https://github.com/stripe/openapi/blob/master/LICENSE
