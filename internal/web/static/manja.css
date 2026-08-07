@@ -1206,12 +1206,33 @@ summary.manja-schema-row::marker {
   overflow-wrap: anywhere;
 }
 
+.manja-schema-reference {
+  color: var(--color-primary);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.75rem;
+  font-weight: 600;
+  line-height: 1.35;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
 .manja-schema-description {
   color: var(--color-on-surface-muted);
   line-height: 1.5;
   margin-top: 0.15rem;
   max-width: 70ch;
   overflow-wrap: anywhere;
+}
+
+.manja-schema-description-content:not([data-expanded="true"]) {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 4;
+  overflow: hidden;
+}
+
+.manja-schema-description-content[data-expanded="true"] {
+  display: block;
 }
 
 .manja-schema-property-state {
@@ -1481,6 +1502,10 @@ summary.manja-schema-row::marker {
 .dark .manja-schema-property-state,
 .dark .manja-schema-metadata {
   color: var(--color-on-surface-dark-muted);
+}
+
+.dark .manja-schema-reference {
+  color: var(--color-primary-dark);
 }
 
 .dark .manja-schema-property-state[data-required="true"] {

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"unicode/utf8"
 
 	templpkg "github.com/a-h/templ"
 	"github.com/araihu/goshtoso/components/appshell"
@@ -274,6 +275,7 @@ type CatalogSchemaConstraintData struct {
 type CatalogSchemaEdgeData struct {
 	Name string
 	Type string
+	Reference string
 	Description string
 	DefaultValue string
 	ExampleText string
@@ -282,7 +284,7 @@ type CatalogSchemaEdgeData struct {
 	Nullable bool
 	Deprecated bool
 	Required bool
-	Href string
+	ReferenceHref string
 }
 
 templ CatalogPage(data CatalogPageData) {
@@ -1138,8 +1140,7 @@ templ catalogSchemaNode(node CatalogSchemaNodeData, rootHeading string) {
 		if !rootNode {
 			<div class="flex flex-wrap items-start justify-between gap-3 border-b border-outline pb-4 dark:border-outline-dark">
 				<div class="min-w-0">
-					<p class="text-xs font-semibold uppercase tracking-wide text-on-surface-muted dark:text-on-surface-dark-muted">Schema node { fmt.Sprintf("#%d", node.Ordinal) }</p>
-					<h2 tabindex="-1" data-catalog-schema-node-focus="true" class="manja-schema-title mt-1 font-title text-2xl font-bold text-on-surface-strong focus-visible:rounded-radius focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary dark:text-on-surface-dark-strong dark:focus-visible:outline-primary-dark">{ node.Name }</h2>
+					<h2 tabindex="-1" data-catalog-schema-node-focus="true" class="manja-schema-title font-title text-2xl font-bold text-on-surface-strong focus-visible:rounded-radius focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary dark:text-on-surface-dark-strong dark:focus-visible:outline-primary-dark">{ node.Name }</h2>
 				</div>
 				if node.Type != "" || node.Format != "" {
 					<code class="rounded-radius bg-surface-alt px-3 py-1.5 text-sm text-on-surface-strong dark:bg-surface-dark-alt dark:text-on-surface-dark-strong">{ strings.TrimSpace(node.Type + " " + node.Format) }</code>
@@ -1155,31 +1156,25 @@ templ catalogSchemaNode(node CatalogSchemaNodeData, rootHeading string) {
 			</div>
 		}
 		if len(node.Edges) > 0 {
-			<div class="mt-5 divide-y divide-outline dark:divide-outline-dark">
+			<div class="mt-6 grid gap-4">
 				for _, edge := range node.Edges {
-					<a
+					<article
 						data-catalog-schema-property={ edge.Name }
-						href={ templpkg.URL(edge.Href) }
-						hx-get={ edge.Href }
-						hx-target="#schema-node-panel"
-						hx-select="#schema-node-panel"
-						hx-swap="outerHTML show:#schema-node-panel:top"
-						hx-push-url="true"
-						class="group block px-1 py-3.5 transition-colors hover:bg-surface-alt focus-visible:rounded-radius focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary dark:hover:bg-surface-dark-alt dark:focus-visible:outline-primary-dark"
+						class="min-w-0 border-b border-outline px-1 pb-4 last:border-b-0 last:pb-0 dark:border-outline-dark"
 					>
 						<div class="manja-schema-label">
 							<div class="manja-schema-heading">
-								@schemaPropertyIdentity(edge.Name, edge.Type)
+								@catalogSchemaPropertyIdentity(edge)
 								@schemaPropertyStates(schemaPropertyStateLabel(edge.Required), edge.Nullable, edge.Deprecated)
 							</div>
-							if edge.Description != "" {
-								<p class="manja-schema-description whitespace-pre-wrap">{ edge.Description }</p>
+							if catalogSchemaEdgeHasDescription(edge) {
+								@catalogSchemaEdgeDescription(node.Ordinal, edge)
 							}
 							if catalogSchemaHasMetadata(edge.DefaultValue, edge.ExampleText, edge.EnumValues, edge.Constraints, false, false) {
 								@catalogSchemaMetadata(edge.DefaultValue, edge.ExampleText, edge.EnumValues, edge.Constraints, false, false)
 							}
 						</div>
-					</a>
+					</article>
 				}
 			</div>
 		}
@@ -1187,6 +1182,65 @@ templ catalogSchemaNode(node CatalogSchemaNodeData, rootHeading string) {
 			<p class="mt-4 text-sm text-on-surface-muted dark:text-on-surface-dark-muted">Showing first 100 links from this node.</p>
 		}
 	</section>
+}
+
+templ catalogSchemaPropertyIdentity(edge CatalogSchemaEdgeData) {
+	<div class="manja-schema-identity">
+		<span class="manja-schema-name">{ edge.Name }</span>
+		if edge.Reference != "" {
+			if edge.ReferenceHref != "" {
+				<a
+					data-catalog-schema-reference="true"
+					href={ templpkg.URL(edge.ReferenceHref) }
+					hx-get={ edge.ReferenceHref }
+					hx-target="#schema-node-panel"
+					hx-select="#schema-node-panel"
+					hx-swap="outerHTML show:#schema-node-panel:top"
+					hx-push-url="true"
+					title={ "Open schema " + edge.Reference }
+					class="manja-schema-reference rounded-radius underline-offset-4 transition hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary dark:focus-visible:outline-primary-dark"
+				>{ edge.Reference }</a>
+			} else {
+				<span class="manja-schema-type">{ edge.Reference }</span>
+			}
+		}
+		if edge.Type != "" {
+			<span class="manja-schema-type">{ edge.Type }</span>
+		}
+	</div>
+}
+
+templ catalogSchemaEdgeDescription(nodeOrdinal uint32, edge CatalogSchemaEdgeData) {
+	{{ descriptionID := "catalog-schema-property-" + strconv.FormatUint(uint64(nodeOrdinal), 10) + "-" + anchorFragment(edge.Name) + "-description" }}
+	if catalogSchemaDescriptionNeedsCollapse(edge.Description) {
+		<div x-data="{ expanded: false }" class="manja-schema-description">
+			<p id={ descriptionID } data-catalog-schema-description-content="true" data-expanded="true" x-bind:data-expanded="expanded.toString()" class="manja-schema-description-content whitespace-pre-wrap">{ edge.Description }</p>
+			<button
+				type="button"
+				x-cloak
+				data-catalog-schema-description-toggle="true"
+				class="manja-description-toggle mt-1 text-xs font-medium text-primary underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary dark:text-primary-dark dark:focus-visible:outline-primary-dark"
+				x-bind:aria-expanded="expanded.toString()"
+				aria-controls={ descriptionID }
+				x-on:click="expanded = !expanded"
+				x-text="expanded ? 'Show less' : 'Show more'"
+			>
+				Show more
+			</button>
+		</div>
+	} else {
+		<p class="manja-schema-description whitespace-pre-wrap">{ edge.Description }</p>
+	}
+}
+
+func catalogSchemaDescriptionNeedsCollapse(description string) bool {
+	text := strings.TrimSpace(description)
+	return utf8.RuneCountInString(text) > 220 || strings.Count(text, "\n") >= 4
+}
+
+func catalogSchemaEdgeHasDescription(edge CatalogSchemaEdgeData) bool {
+	description := strings.TrimSpace(edge.Description)
+	return description != "" && !strings.EqualFold(description, strings.TrimSpace(edge.Reference))
 }
 
 templ catalogSchemaMetadata(defaultValue string, exampleText string, enumValues []string, constraints []CatalogSchemaConstraintData, nullable bool, deprecated bool) {

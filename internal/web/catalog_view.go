@@ -298,7 +298,11 @@ func (handler *CatalogHandler) catalogPageDataWithSidebarQuery(
 			if err != nil {
 				return templates.CatalogPageData{}, err
 			}
-			data.SchemaNode = catalogSchemaNodeData(node, shard, documentHref, selectedDetailID)
+			schemaNodeData, err := handler.catalogSchemaNodeData(ctx, snapshot, document, node, shard, documentHref, selectedDetailID)
+			if err != nil {
+				return templates.CatalogPageData{}, err
+			}
+			data.SchemaNode = schemaNodeData
 		} else if selectedNode != "" {
 			return templates.CatalogPageData{}, errCatalogPageNotFound
 		}
@@ -675,10 +679,31 @@ func (handler *CatalogHandler) loadCatalogSchemaNode(
 
 const maxCatalogSchemaEdges = 100
 
-func catalogSchemaNodeData(node projection.SchemaNode, shard catalog.SchemaNodeShardV1, documentHref string, detailID domain.DetailID) *templates.CatalogSchemaNodeData {
+func (handler *CatalogHandler) catalogSchemaNodeData(
+	ctx context.Context,
+	snapshot catalog.RuntimeSnapshot,
+	document catalog.DocumentDirectoryV1,
+	node projection.SchemaNode,
+	shard catalog.SchemaNodeShardV1,
+	documentHref string,
+	detailID domain.DetailID,
+) (*templates.CatalogSchemaNodeData, error) {
 	known := make(map[projection.SchemaRef]projection.SchemaNode, len(shard.Nodes))
 	for _, candidate := range shard.Nodes {
 		known[projection.SchemaRef(candidate.Ordinal)] = candidate
+	}
+	lookup := func(ref projection.SchemaRef) (projection.SchemaNode, error) {
+		if target, exists := known[ref]; exists {
+			return target, nil
+		}
+		target, targetShard, err := handler.loadCatalogSchemaNode(ctx, snapshot, document, uint32(ref))
+		if err != nil {
+			return projection.SchemaNode{}, err
+		}
+		for _, candidate := range targetShard.Nodes {
+			known[projection.SchemaRef(candidate.Ordinal)] = candidate
+		}
+		return target, nil
 	}
 	result := &templates.CatalogSchemaNodeData{
 		Ordinal: node.Ordinal, Name: firstNonEmpty(node.Name, "Schema node "+strconv.FormatUint(uint64(node.Ordinal), 10)),
@@ -687,44 +712,47 @@ func catalogSchemaNodeData(node projection.SchemaNode, shard catalog.SchemaNodeS
 		EnumValues: append([]string(nil), node.Enum...), Constraints: catalogSchemaConstraints(node.Constraints),
 		Nullable: node.Nullable, Deprecated: node.Deprecated,
 	}
-	appendEdge := func(name, description string, required bool, ref projection.SchemaRef) {
+	appendEdge := func(name, description string, required bool, ref projection.SchemaRef) error {
 		if len(result.Edges) == maxCatalogSchemaEdges {
 			result.Truncated = true
-			return
+			return nil
 		}
-		target, local := known[ref]
-		typeLabel := "schema #" + strconv.FormatUint(uint64(ref), 10)
-		if local {
-			typeLabel = catalogSchemaNodeType(target)
+		target, err := lookup(ref)
+		if err != nil {
+			return err
 		}
-		defaultValue := ""
-		exampleText := ""
-		enumValues := []string(nil)
-		constraints := []templates.CatalogSchemaConstraintData(nil)
-		nullable := false
-		deprecated := false
-		if local {
-			defaultValue = catalogSchemaText(target.DefaultValue)
-			exampleText = catalogSchemaText(target.ExampleText)
-			enumValues = append([]string(nil), target.Enum...)
-			constraints = catalogSchemaConstraints(target.Constraints)
-			nullable = target.Nullable
-			deprecated = target.Deprecated
+		reference := ""
+		referenceHref := ""
+		if catalogSchemaNodeReferenceNavigable(target) {
+			reference = strings.TrimSpace(target.Name)
+			referenceHref = catalogSchemaNodeHref(documentHref, detailID, uint32(ref))
 		}
 		result.Edges = append(result.Edges, templates.CatalogSchemaEdgeData{
 			Name: name, Description: catalogSchemaText(description), Required: required,
-			Type: typeLabel, DefaultValue: defaultValue, ExampleText: exampleText,
-			EnumValues: enumValues, Constraints: constraints, Nullable: nullable, Deprecated: deprecated,
-			Href: catalogSchemaNodeHref(documentHref, detailID, uint32(ref)),
+			Type: catalogSchemaNodeShapeType(target), Reference: reference, ReferenceHref: referenceHref,
+			DefaultValue: catalogSchemaText(target.DefaultValue), ExampleText: catalogSchemaText(target.ExampleText),
+			EnumValues: append([]string(nil), target.Enum...), Constraints: catalogSchemaConstraints(target.Constraints),
+			Nullable: target.Nullable, Deprecated: target.Deprecated,
 		})
+		return nil
 	}
 	for _, item := range node.Items {
-		appendEdge("items", "", false, item.SchemaRef)
+		if err := appendEdge("items", "", false, item.SchemaRef); err != nil {
+			return nil, err
+		}
+		if len(result.Edges) == maxCatalogSchemaEdges && result.Truncated {
+			break
+		}
 	}
 	for _, property := range node.Properties {
-		appendEdge(property.Name, property.Description, property.Required, property.SchemaRef)
+		if err := appendEdge(property.Name, property.Description, property.Required, property.SchemaRef); err != nil {
+			return nil, err
+		}
+		if len(result.Edges) == maxCatalogSchemaEdges && result.Truncated {
+			break
+		}
 	}
-	return result
+	return result, nil
 }
 
 func catalogSchemaConstraints(constraints []projection.SchemaConstraint) []templates.CatalogSchemaConstraintData {
@@ -739,11 +767,8 @@ func catalogSchemaNodeHref(documentHref string, detailID domain.DetailID, ordina
 	return documentHref + "?selected=" + url.QueryEscape(string(detailID)) + "&node=" + strconv.FormatUint(uint64(ordinal), 10) + "#schema-node-panel"
 }
 
-func catalogSchemaNodeType(node projection.SchemaNode) string {
-	parts := make([]string, 0, 3)
-	if node.Name != "" {
-		parts = append(parts, node.Name)
-	}
+func catalogSchemaNodeShapeType(node projection.SchemaNode) string {
+	parts := make([]string, 0, 2)
 	if node.Type != "" {
 		parts = append(parts, node.Type)
 	}
@@ -751,9 +776,20 @@ func catalogSchemaNodeType(node projection.SchemaNode) string {
 		parts = append(parts, "("+node.Format+")")
 	}
 	if len(parts) == 0 {
-		return "schema #" + strconv.FormatUint(uint64(node.Ordinal), 10)
+		return ""
 	}
 	return strings.Join(parts, " ")
+}
+
+func catalogSchemaNodeReferenceNavigable(node projection.SchemaNode) bool {
+	if strings.TrimSpace(node.Name) == "" {
+		return false
+	}
+	switch strings.ToLower(strings.TrimSpace(node.Type)) {
+	case "string", "number", "integer", "boolean", "null":
+		return false
+	}
+	return true
 }
 
 func catalogSchemaText(value string) string {
