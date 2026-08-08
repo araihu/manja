@@ -565,7 +565,7 @@ templ catalogOrganizationNav(data CatalogOrganizationNavData) {
 	<nav id="catalog-organization-navigation" aria-label="Catalogs and specs" class="flex min-h-0 flex-1 flex-col">
 		@scrollregion.ScrollRegion(scrollregion.Config{
 			RootClass:     "min-h-0 flex-1",
-			ViewportClass: "h-full overflow-y-auto px-3 pb-4",
+			ViewportClass: "h-full overflow-y-auto scrollbar-custom px-3 pb-4",
 			Content:       catalogOrganizationNavContent(data),
 		})
 	</nav>

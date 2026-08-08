@@ -1199,7 +1199,7 @@ func catalogOrganizationNav(data CatalogOrganizationNavData) templ.Component {
 		}
 		templ_7745c5c3_Err = scrollregion.ScrollRegion(scrollregion.Config{
 			RootClass:     "min-h-0 flex-1",
-			ViewportClass: "h-full overflow-y-auto px-3 pb-4",
+			ViewportClass: "h-full overflow-y-auto scrollbar-custom px-3 pb-4",
 			Content:       catalogOrganizationNavContent(data),
 		}).Render(ctx, templ_7745c5c3_Buffer)
 		if templ_7745c5c3_Err != nil {
