@@ -219,7 +219,7 @@
 #catalog-sidebar-groups :is(span, sup).catalog-method-get,
 #sidebar-nav-content :is(span, sup).catalog-method-get,
 #catalog-sidebar-groups a[data-catalog-sidebar-operation][aria-current="page"][data-catalog-method="GET"]::after {
-  border-color: var(--color-success);
+  border: 1px solid var(--color-success);
   background: color-mix(in oklch, var(--color-success) 12%, var(--color-surface));
   color: var(--color-on-surface-strong);
 }
@@ -227,7 +227,7 @@
 #catalog-sidebar-groups :is(span, sup).catalog-method-post,
 #sidebar-nav-content :is(span, sup).catalog-method-post,
 #catalog-sidebar-groups a[data-catalog-sidebar-operation][aria-current="page"][data-catalog-method="POST"]::after {
-  border-color: var(--color-primary);
+  border: 1px solid var(--color-primary);
   background: color-mix(in oklch, var(--color-primary) 12%, var(--color-surface));
   color: var(--color-on-surface-strong);
 }
@@ -235,7 +235,7 @@
 #catalog-sidebar-groups :is(span, sup).catalog-method-delete,
 #sidebar-nav-content :is(span, sup).catalog-method-delete,
 #catalog-sidebar-groups a[data-catalog-sidebar-operation][aria-current="page"][data-catalog-method="DELETE"]::after {
-  border-color: var(--color-danger);
+  border: 1px solid var(--color-danger);
   background: color-mix(in oklch, var(--color-danger) 12%, var(--color-surface));
   color: var(--color-on-surface-strong);
 }
@@ -244,7 +244,7 @@
 #sidebar-nav-content :is(span, sup).catalog-method-warning,
 #catalog-sidebar-groups a[data-catalog-sidebar-operation][aria-current="page"][data-catalog-method="PUT"]::after,
 #catalog-sidebar-groups a[data-catalog-sidebar-operation][aria-current="page"][data-catalog-method="PATCH"]::after {
-  border-color: var(--color-warning);
+  border: 1px solid var(--color-warning);
   background: color-mix(in oklch, var(--color-warning) 12%, var(--color-surface));
   color: var(--color-on-surface-strong);
 }
