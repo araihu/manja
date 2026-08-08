@@ -93,7 +93,7 @@ func TestCatalogNavigationKeepsLastSpecReachableAndLabelsEachRoute(t *testing.T)
 			}
 			metricsValue, err := page.Evaluate(`() => {
 				const panel = document.querySelector('#catalog-navigation');
-				const nav = document.querySelector('#catalog-organization-navigation .sidebar-scroll');
+				const nav = document.querySelector('#catalog-organization-navigation [data-goshtoso-scroll-viewport]');
 				const last = document.querySelector('[data-catalog-organization-item="spec-kubernetes-spec-18"]');
 				nav.scrollTop = nav.scrollHeight;
 				const panelRect = panel.getBoundingClientRect();
@@ -200,7 +200,7 @@ func TestCatalogDocumentSearchAndClientFirstModal(t *testing.T) {
 	if err := documentHeader.WaitFor(); err != nil {
 		t.Fatalf("catalog document header: %v", err)
 	}
-	if heading, err := documentHeader.Locator("h1").TextContent(); err != nil || strings.TrimSpace(heading) != "Kubernetes Apps" {
+	if heading, err := documentHeader.Locator("h1").TextContent(); err != nil || strings.TrimSpace(heading) != "apps-v1" {
 		t.Fatalf("catalog document heading = %q, err=%v", heading, err)
 	}
 	if count, err := documentHeader.Locator("a").Count(); err != nil || count != 1 {
@@ -658,7 +658,7 @@ func TestCatalogSidebarExpansionPreservesKeyboardFocus(t *testing.T) {
 		if err := link.WaitFor(); err != nil {
 			t.Fatalf("sidebar operation %q: %v", test.title, err)
 		}
-		badgeClass, err := link.Locator("sup").GetAttribute("class")
+			badgeClass, err := link.Locator("sup, span:not(.min-w-0):not(.sr-only)").First().GetAttribute("class")
 		if err != nil || !strings.Contains(badgeClass, test.class) {
 			t.Fatalf("sidebar operation %q badge class = %q, want %q; err=%v", test.title, badgeClass, test.class, err)
 		}

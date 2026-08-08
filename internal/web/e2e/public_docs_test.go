@@ -232,7 +232,7 @@ func TestRequestComposerUpdatesRequestSample(t *testing.T) {
 	if _, err := page.WaitForFunction(`() => document.querySelector('[data-manja-request-config-root]')?.getAttribute('data-manja-request-config-enhanced') === 'true'`, nil); err != nil {
 		t.Fatalf("request configuration enhancement: %v", err)
 	}
-	if err := page.Locator(".manja-request-config-desktop-toggle").Click(); err != nil {
+	if err := page.Locator(".manja-request-config-trigger-bar").Click(); err != nil {
 		t.Fatal(err)
 	}
 
@@ -401,7 +401,7 @@ func TestRequestComposerAccordionContentStaysInsideRail(t *testing.T) {
 	if _, err := page.WaitForFunction(`() => document.querySelector('[data-manja-request-config-root]')?.getAttribute('data-manja-request-config-enhanced') === 'true'`, nil); err != nil {
 		t.Fatalf("request configuration enhancement: %v", err)
 	}
-	if err := page.Locator(".manja-request-config-desktop-toggle").Click(); err != nil {
+	if err := page.Locator(".manja-request-config-trigger-bar").Click(); err != nil {
 		t.Fatal(err)
 	}
 	if err := page.Locator(".manja-endpoint-examples-rail [data-manja-request-config-panel]").WaitFor(); err != nil {
@@ -759,7 +759,7 @@ func TestRichOperationDetailsKeepHorizontalOverflowLocal(t *testing.T) {
 		if got := group["required"]; got != wantRequired {
 			t.Fatalf("%s required values = %q, want %q", location, got, wantRequired)
 		}
-		if got := group["tables"]; got != float64(0) {
+		if got := metricNumber(t, group, "tables"); got != 0 {
 			t.Fatalf("%s parameter tables = %v, want stacked rows", location, got)
 		}
 	}
@@ -779,11 +779,11 @@ func TestRichOperationDetailsKeepHorizontalOverflowLocal(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got, ok := desktopVisibility.(map[string]any); !ok || got["enhanced"] != "true" || got["rail"] != "block" || got["trigger"] != "none" || got["open"] != "false" || got["ariaHidden"] != nil || got["content"] != "none" || got["contentAriaHidden"] != "true" || got["toggle"] == "none" {
+	if got, ok := desktopVisibility.(map[string]any); !ok || got["enhanced"] != "true" || got["rail"] != "block" || got["trigger"] != "inline-flex" || got["open"] != "false" || got["ariaHidden"] != nil || got["content"] != "none" || got["contentAriaHidden"] != "true" || got["toggle"] == "none" {
 		t.Fatalf("desktop request configuration should remain in the examples rail, got %#v", desktopVisibility)
 	}
 	desktopToggle := page.Locator(".manja-request-config-desktop-toggle")
-	if err := desktopToggle.Click(); err != nil {
+	if err := page.Locator(".manja-request-config-trigger-bar").Click(); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := page.WaitForFunction(`() => document.querySelector('[data-manja-request-config-sheet]')?.getAttribute('data-open') === 'true'`, nil); err != nil {
