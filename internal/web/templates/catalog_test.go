@@ -192,7 +192,7 @@ func TestCatalogOverviewOmitsEmptySidebarAndKeepsSearchInHeader(t *testing.T) {
 	}
 }
 
-func TestCatalogShellProvidesClientFirstSearchModalWithServerFallback(t *testing.T) {
+func TestCatalogShellProvidesGlobalSearchModal(t *testing.T) {
 	t.Parallel()
 
 	body := renderCatalogTemplate(t, catalogTemplateFixture())
@@ -205,13 +205,15 @@ func TestCatalogShellProvidesClientFirstSearchModalWithServerFallback(t *testing
 		`Search API...`,
 		`data-catalog-platform-shortcut`,
 		`>Ctrl K</kbd>`,
-		`Search operations and schemas`,
+		`Search operations, specs, and schemas`,
 		`id="catalog-search-dialog"`,
 		`role="dialog"`,
 		`x-data="manjaCatalogSearch($el)"`,
 		`data-search-child-base="/kubernetes/snapshots/snapshot-sha256-`,
 		`/search-data/"`,
-		`data-search-mount="/kubernetes"`,
+		`data-search-mount="/"`,
+		`data-search-global="true"`,
+		`data-search-context-mount="/kubernetes"`,
 		`data-search-directory-path="search/directory.json"`,
 		`data-search-directory-sha256="`,
 		`data-search-fallback-url="/kubernetes/search.json"`,
@@ -307,7 +309,11 @@ func TestCatalogRootRendersStandaloneSpecsAndRootBreadcrumb(t *testing.T) {
 	data := catalogTemplateFixture()
 	data.OrganizationRoot = true
 	data.Mount = "/"
-	data.SearchMount = "/kubernetes"
+	data.SearchHref = "/"
+	data.SearchJSONHref = "/search.json"
+	data.SearchGlobal = true
+	data.SearchMount = "/"
+	data.SearchScopeLabel = "All catalogs"
 	data.OrganizationNav = CatalogOrganizationNavData{
 		Visible:  true,
 		Catalogs: []CatalogOrganizationItem{{ID: "catalog-kubernetes", Label: "Kubernetes", Description: "2 specs", Href: "/kubernetes/"}},
@@ -320,7 +326,7 @@ func TestCatalogRootRendersStandaloneSpecsAndRootBreadcrumb(t *testing.T) {
 		Sources: []CatalogOrganizationSourceData{{Name: "Kubernetes definitions", Kind: "git", Location: "github.com/kubernetes/kubernetes", URL: "https://github.com/kubernetes/kubernetes"}},
 	}
 	body := renderCatalogTemplate(t, data)
-	for _, want := range []string{"Manja", "About", "Fast, search-first OpenAPI documentation.", "License", "No license declared", "Published sources", "Kubernetes definitions", `data-search-mount="/kubernetes"`} {
+	for _, want := range []string{"Manja", "About", "Fast, search-first OpenAPI documentation.", "License", "No license declared", "Published sources", "Kubernetes definitions", `data-search-mount="/"`, `data-search-global="true"`, `data-search-fallback-url="/search.json"`} {
 		if !strings.Contains(body, want) {
 			t.Errorf("root overview missing %q", want)
 		}
@@ -693,7 +699,7 @@ func catalogTemplateFixture() CatalogPageData {
 	return CatalogPageData{
 		Mount: "/kubernetes", SnapshotID: catalog.SnapshotID("snapshot-sha256-" + strings.Repeat("b", 64)), Directory: directory,
 		Documents:    []CatalogDocumentOption{{Key: "core-v1", Label: "core-v1", Href: "/kubernetes/documents/core-v1/"}, {Key: "apps-v1", Label: "apps-v1", Href: "/kubernetes/documents/apps-v1/"}},
-		DownloadHref: "/kubernetes/catalog.json", SearchHref: "/kubernetes/search", SearchMount: "/kubernetes",
+		DownloadHref: "/kubernetes/catalog.json", SearchHref: "/kubernetes/search", SearchJSONHref: "/kubernetes/search.json", SearchGlobal: true, SearchContextMount: "/kubernetes", SearchMount: "/", SearchScopeLabel: "All catalogs",
 		SearchChildBase:     "/kubernetes/snapshots/snapshot-sha256-" + strings.Repeat("b", 64) + "/search-data/",
 		SearchDirectoryPath: "search/directory.json", SearchDirectoryLength: 42, SearchDirectorySHA256: strings.Repeat("c", 64),
 	}

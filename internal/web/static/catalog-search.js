@@ -240,6 +240,9 @@
     this.directoryLength = Number(root.dataset.searchDirectoryLength);
     this.directorySHA256 = root.dataset.searchDirectorySha256 || "";
     this.fallbackURL = root.dataset.searchFallbackUrl || "";
+    this.globalSearch = root.dataset.searchGlobal === "true";
+    this.contextMount = root.dataset.searchContextMount || "";
+    this.contextDocument = root.dataset.searchContextDocument || "";
     this.mount = root.dataset.searchMount || "/";
     this.cache = new Map();
     this.directoryPromise = null;
@@ -502,6 +505,8 @@
   SearchRouter.prototype.searchFallback = function (query) {
     var url = new URL(this.fallbackURL, window.location.origin);
     url.searchParams.set("q", query);
+    if (this.globalSearch && this.contextMount) url.searchParams.set("context_mount", this.contextMount);
+    if (this.globalSearch && this.contextDocument) url.searchParams.set("context_document", this.contextDocument);
     return fetch(url.toString(), { headers: { Accept: "application/json" } }).then(function (response) {
       if (!response.ok) throw new Error("Search is temporarily unavailable");
       return response.json();
@@ -511,13 +516,18 @@
         return {
           id: asString(record.detailId), title: asString(record.title), description: asString(record.description),
           href: asString(record.href), kind: asString(record.kind), method: asString(record.method).toUpperCase(),
-          path: asString(record.path), section: asString(record.documentKey),
+          path: asString(record.path), section: asString(record.section || record.documentKey),
         };
       });
     });
   };
 
   SearchRouter.prototype.search = function (query) {
+    if (this.globalSearch) {
+      return this.searchFallback(query).then(function (items) {
+        return { items: items, source: "Global search" };
+      });
+    }
     return this.searchClient(query).then(function (items) {
       return { items: items, source: "Browser index" };
     }).catch(function () {

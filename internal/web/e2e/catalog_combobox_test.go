@@ -145,7 +145,7 @@ func TestCatalogNavigationKeepsLastSpecReachableAndLabelsEachRoute(t *testing.T)
 	}
 }
 
-func TestCatalogDocumentSearchAndClientFirstModal(t *testing.T) {
+func TestCatalogDocumentSearchUsesGlobalModal(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping e2e test in short mode")
 	}
@@ -220,9 +220,6 @@ func TestCatalogDocumentSearchAndClientFirstModal(t *testing.T) {
 	}`, nil); err != nil || order != true {
 		t.Fatalf("catalog source path should follow download action: %v, err=%v", order, err)
 	}
-	if err := page.Route("**/search.json*", func(route playwright.Route) { _ = route.Abort() }); err != nil {
-		t.Fatal(err)
-	}
 	if _, err := page.Evaluate(`() => { window.__catalogSearchLoadMarker = "unchanged"; return true; }`, nil); err != nil {
 		t.Fatal(err)
 	}
@@ -273,8 +270,8 @@ func TestCatalogDocumentSearchAndClientFirstModal(t *testing.T) {
 	if _, err := input.Evaluate(`element => element.dispatchEvent(new Event('input', { bubbles: true }))`, nil); err != nil {
 		t.Fatal(err)
 	}
-	if err := modal.Locator(`[data-catalog-search-source]`).GetByText("Browser index", playwright.LocatorGetByTextOptions{Exact: playwright.Bool(false)}).WaitFor(); err != nil {
-		t.Fatalf("client search source: %v", err)
+	if err := modal.Locator(`[data-catalog-search-source]`).GetByText("Global search", playwright.LocatorGetByTextOptions{Exact: playwright.Bool(false)}).WaitFor(); err != nil {
+		t.Fatalf("global search source: %v", err)
 	}
 	if err := modal.GetByText("List app deployments", playwright.LocatorGetByTextOptions{Exact: playwright.Bool(true)}).WaitFor(); err != nil {
 		t.Fatalf("client search result with server fallback blocked: %v", err)
@@ -345,8 +342,8 @@ func TestCatalogDocumentSearchAndClientFirstModal(t *testing.T) {
 	if _, err := input.Evaluate(`element => element.dispatchEvent(new Event('input', { bubbles: true }))`, nil); err != nil {
 		t.Fatal(err)
 	}
-	if err := modal.Locator(`[data-catalog-search-source]`).GetByText("Browser index", playwright.LocatorGetByTextOptions{Exact: playwright.Bool(false)}).WaitFor(); err != nil {
-		t.Fatalf("fuzzy client search source: %v", err)
+	if err := modal.Locator(`[data-catalog-search-source]`).GetByText("Global search", playwright.LocatorGetByTextOptions{Exact: playwright.Bool(false)}).WaitFor(); err != nil {
+		t.Fatalf("fuzzy global search source: %v", err)
 	}
 	if err := modal.GetByText("List app deployments", playwright.LocatorGetByTextOptions{Exact: playwright.Bool(true)}).WaitFor(); err != nil {
 		t.Fatalf("fuzzy client search result: %v", err)
@@ -358,8 +355,8 @@ func TestCatalogDocumentSearchAndClientFirstModal(t *testing.T) {
 	if err != nil || (fuzzyHighlight != "dep" && fuzzyHighlight != "oym" && fuzzyHighlight != "nts") {
 		t.Fatalf("fuzzy result highlight = %q, err=%v", fuzzyHighlight, err)
 	}
-	if source, err := modal.Locator(`[data-catalog-search-source]`).TextContent(); err != nil || !strings.Contains(source, "Browser index") {
-		t.Fatalf("client search source = %q, err=%v", source, err)
+	if source, err := modal.Locator(`[data-catalog-search-source]`).TextContent(); err != nil || !strings.Contains(source, "Global search") {
+		t.Fatalf("global search source = %q, err=%v", source, err)
 	}
 	if err := page.Keyboard().Press("Escape"); err != nil {
 		t.Fatal(err)
@@ -474,8 +471,8 @@ func TestCatalogDocumentSearchAndClientFirstModal(t *testing.T) {
 	if err := fallbackModal.GetByText("List core pods", playwright.LocatorGetByTextOptions{Exact: playwright.Bool(true)}).WaitFor(); err != nil {
 		t.Fatalf("server fallback result: %v", err)
 	}
-	if source, err := fallbackModal.Locator(`[data-catalog-search-source]`).TextContent(); err != nil || !strings.Contains(source, "Server fallback") {
-		t.Fatalf("fallback search source = %q, err=%v", source, err)
+	if source, err := fallbackModal.Locator(`[data-catalog-search-source]`).TextContent(); err != nil || !strings.Contains(source, "Global search") {
+		t.Fatalf("global search source = %q, err=%v", source, err)
 	}
 }
 
@@ -532,8 +529,8 @@ func TestOrganizationRootSearchKeepsNestedCatalogMount(t *testing.T) {
 	if count, err := page.Locator(`#catalog-organization-section-specs`).Count(); err != nil || count != 1 {
 		t.Fatalf("root Specs heading count = %d, err=%v", count, err)
 	}
-	if count, err := page.Locator(`[data-search-mount="/catalogs/alpha"]`).Count(); err != nil || count != 1 {
-		t.Fatalf("root bounded search mount count = %d, err=%v", count, err)
+	if count, err := page.Locator(`[data-search-mount="/"]`).Count(); err != nil || count != 1 {
+		t.Fatalf("root global search mount count = %d, err=%v", count, err)
 	}
 	searchField := page.Locator(`[data-search-id="catalog-search"] button`)
 	if err := searchField.Click(); err != nil {
@@ -552,7 +549,7 @@ func TestOrganizationRootSearchKeepsNestedCatalogMount(t *testing.T) {
 	}
 	result := modal.GetByText("List Alpha things", playwright.LocatorGetByTextOptions{Exact: playwright.Bool(true)})
 	if err := result.WaitFor(); err != nil {
-		t.Fatalf("root browser-index result: %v", err)
+		t.Fatalf("root global search result: %v", err)
 	}
 	if err := result.Click(); err != nil {
 		t.Fatal(err)

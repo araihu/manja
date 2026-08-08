@@ -120,12 +120,13 @@ type CatalogPageData struct {
 	PageMarkdownHref string
 	CapabilityFooter CapabilityFooterData
 	SearchHref string
-	// SearchMount identifies the catalog whose bounded client index backs the
-	// search modal. The organization root itself uses "/" as its route mount,
-	// but its first search index still lives below that catalog's mount.
+	SearchJSONHref string
+	SearchGlobal bool
+	SearchContextMount string
+	SearchContextDocument string
+	// SearchMount is the href boundary used by the browser search modal. Global
+	// search always uses the workspace root so results may cross catalog mounts.
 	SearchMount string
-	// SearchScopeLabel makes the bounded root search source explicit while
-	// federation across multiple catalogs is not yet available.
 	SearchScopeLabel string
 	SearchChildBase string
 	SearchDirectoryPath string
@@ -376,7 +377,10 @@ templ catalogSearchModal(data CatalogPageData) {
 		data-search-directory-path={ data.SearchDirectoryPath }
 		data-search-directory-length={ fmt.Sprint(data.SearchDirectoryLength) }
 		data-search-directory-sha256={ data.SearchDirectorySHA256 }
-		data-search-fallback-url={ data.SearchHref + ".json" }
+		data-search-fallback-url={ data.SearchJSONHref }
+		data-search-global={ fmt.Sprint(data.SearchGlobal) }
+		data-search-context-mount={ data.SearchContextMount }
+		data-search-context-document={ data.SearchContextDocument }
 		data-search-mount={ data.SearchMount }
 		data-search-scope-label={ data.SearchScopeLabel }
 		data-search-catalog-id={ data.Directory.CatalogID }
@@ -389,7 +393,7 @@ templ catalogSearchModal(data CatalogPageData) {
 		<div x-show="open" x-transition:enter="transition ease-out duration-150" x-transition:enter-start="opacity-0 translate-y-1" x-transition:enter-end="opacity-100 translate-y-0" class="manja-catalog-search-panel relative flex w-full max-w-2xl flex-col text-on-surface dark:text-on-surface-dark">
 			<div class="relative flex items-center gap-3 rounded-t-radius border border-b-0 border-outline bg-surface px-4 py-3 dark:border-outline-dark dark:bg-surface-dark-alt">
 				<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" stroke="currentColor" fill="none" stroke-width="2" class="size-5 shrink-0 text-on-surface-muted dark:text-on-surface-dark-muted" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z"></path></svg>
-				<label id="catalog-search-label" class="sr-only" for="catalog-search-input">Search operations and schemas</label>
+				<label id="catalog-search-label" class="sr-only" for="catalog-search-input">Search operations, specs, and schemas</label>
 				<input x-ref="input" x-model="query" x-on:input="queueSearch()" x-on:keydown.down.prevent="move(1)" x-on:keydown.up.prevent="move(-1)" x-on:keydown.home.prevent="moveTo(0)" x-on:keydown.end.prevent="moveToEnd()" x-on:keydown.enter.prevent="choose()" x-on:keydown.escape.prevent="closeSearch()" x-bind:aria-expanded="open.toString()" x-bind:aria-activedescendant="activeOptionID()" id="catalog-search-input" type="text" role="combobox" aria-autocomplete="list" aria-controls="catalog-search-results" maxlength="256" class="min-w-0 flex-1 bg-transparent py-1 text-base text-on-surface-strong placeholder:text-on-surface-muted focus:outline-none dark:text-on-surface-dark-strong dark:placeholder:text-on-surface-dark-muted" placeholder="Operation, path, schema, or content" autocomplete="off" spellcheck="false"/>
 				<button type="button" x-cloak x-show="query.length > 0" x-on:click="clearQuery()" aria-label="Clear search" class="inline-flex size-11 items-center justify-center rounded-radius text-on-surface-muted hover:text-on-surface-strong dark:text-on-surface-dark-muted dark:hover:text-on-surface-dark-strong">×</button>
 				@kbd.Kbd("Esc", kbd.WithSize(kbd.SizeSM), kbd.WithRootClass("text-on-surface-muted dark:text-on-surface-dark-muted"))
@@ -401,7 +405,7 @@ templ catalogSearchModal(data CatalogPageData) {
 				</div>
 				<p x-show="query.trim().length > 0 && loading" class="px-4 py-4 text-on-surface-muted dark:text-on-surface-dark-muted">Searching…</p>
 				<p x-show="query.trim().length > 0 && !loading && error" x-text="error" class="px-4 py-4 text-danger"></p>
-				<p x-show="query.trim().length > 0 && !loading && !error && results.length === 0" class="px-4 py-4 text-on-surface-muted dark:text-on-surface-dark-muted">No matching operations or schemas.</p>
+				<p x-show="query.trim().length > 0 && !loading && !error && results.length === 0" class="px-4 py-4 text-on-surface-muted dark:text-on-surface-dark-muted">No matching operations, specs, or schemas.</p>
 				<div>
 					<template x-for="(item, index) in visibleItems()" x-bind:key="item.id || item.href">
 						<div role="presentation">
@@ -441,20 +445,20 @@ templ catalogSearch(data CatalogPageData) {
 			<p class="mb-2 text-sm font-semibold uppercase tracking-wide text-primary dark:text-primary-dark">Catalog search · { data.SearchScopeLabel }</p>
 			<h1 class="font-title text-4xl font-bold text-on-surface-strong dark:text-on-surface-dark-strong">Search { data.Directory.Title }</h1>
 			<form method="get" action={ data.SearchHref } class="mt-6 flex max-w-3xl gap-3">
-				<label for="catalog-search-query" class="sr-only">Search operations and schemas</label>
+			<label for="catalog-search-query" class="sr-only">Search operations, specs, and schemas</label>
 				<input id="catalog-search-query" name="q" value={ data.Search.Query } maxlength="256" autofocus placeholder="Operation, path, schema, or canonical detail ID" class="min-h-12 min-w-0 flex-1 rounded-radius border border-outline bg-surface px-4 text-on-surface-strong dark:border-outline-dark dark:bg-surface-dark dark:text-on-surface-dark-strong"/>
 				<button type="submit" class="min-h-12 rounded-radius bg-primary px-5 font-semibold text-on-primary dark:bg-primary-dark dark:text-on-primary-dark">Search</button>
 			</form>
 		</div>
 		if data.Search.Query == "" {
-			<p class="text-on-surface-muted dark:text-on-surface-dark-muted">Search across every operation and semantically deduplicated schema without loading the full catalog into the page.</p>
+				<p class="text-on-surface-muted dark:text-on-surface-dark-muted">Search globally across every catalog, operation, spec, and semantically deduplicated schema.</p>
 		} else {
 			<div class="mb-4 flex flex-wrap items-center justify-between gap-3">
 				<h2 class="font-title text-2xl font-bold text-on-surface-strong dark:text-on-surface-dark-strong">{ fmt.Sprintf("%d results", len(data.Search.Results)) }</h2>
 				<span class="font-mono text-xs text-on-surface-muted dark:text-on-surface-dark-muted">{ fmt.Sprintf("%d segments · %d postings · %d bytes", data.Search.SegmentsDecoded, data.Search.PostingsScanned, data.Search.BytesDecoded) }</span>
 			</div>
 			if len(data.Search.Results) == 0 {
-				<p class="rounded-radius border border-outline p-5 text-on-surface-muted dark:border-outline-dark dark:text-on-surface-dark-muted">No matching operations or schemas.</p>
+				<p class="rounded-radius border border-outline p-5 text-on-surface-muted dark:border-outline-dark dark:text-on-surface-dark-muted">No matching operations, specs, or schemas.</p>
 			} else {
 				<div class="space-y-3" id="catalog-search-results">
 					for _, result := range data.Search.Results {

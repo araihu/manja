@@ -168,7 +168,7 @@ func TestKubernetesCatalog(t *testing.T) {
 		if err := json.Unmarshal(response.Body.Bytes(), &result); err != nil {
 			t.Fatal(err)
 		}
-		if result.CatalogID != "kubernetes" || string(result.SnapshotID) != kubernetesSnapshotID || result.Version != 1 || len(result.Results) == 0 {
+		if result.CatalogID != "global" || string(result.SnapshotID) != "" || result.Version != 1 || len(result.Results) == 0 {
 			t.Fatalf("exact search %q identity/results = %#v", detailID, result)
 		}
 		if expected, exists := visible[result.Results[0].DetailID]; !exists || result.Results[0].Href != mountedCatalogPath(kubernetesMount, "/"+expected) {

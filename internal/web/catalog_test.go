@@ -102,6 +102,11 @@ func TestOrganizationRootCatalogCardNavigatesToCatalogOverview(t *testing.T) {
 	if strings.Contains(catalogRoot.Body.String(), `id="catalog-readme-heading"`) || strings.Contains(catalogRoot.Body.String(), `id="catalog-license-heading"`) {
 		t.Fatal("catalog overview rendered undeclared README or license")
 	}
+	globalSearch := httptest.NewRecorder()
+	handler.ServeHTTP(globalSearch, httptest.NewRequest(http.MethodGet, "/search.json?q=listCoreV1Pod", nil))
+	if globalSearch.Code != http.StatusOK || !strings.Contains(globalSearch.Body.String(), `"catalogId":"global"`) || !strings.Contains(globalSearch.Body.String(), `/kubernetes/documents/core-v1/?selected=`) {
+		t.Fatalf("organization root global search = %d body=%q", globalSearch.Code, globalSearch.Body.String())
+	}
 }
 
 func TestCatalogOverviewDocumentTableSortsThroughHTMXFragment(t *testing.T) {
@@ -166,7 +171,7 @@ func TestOrganizationRootRendersOnlyOptedInMetadata(t *testing.T) {
 	}
 }
 
-func TestCatalogSearchRendersMountAwareResultsAndBoundsFailures(t *testing.T) {
+func TestCatalogSearchRendersGlobalResultsAndBoundsFailures(t *testing.T) {
 	t.Parallel()
 
 	handler, _ := catalogHandlerFixture(t, "/kubernetes")
@@ -183,10 +188,10 @@ func TestCatalogSearchRendersMountAwareResultsAndBoundsFailures(t *testing.T) {
 	}
 }
 
-func TestCatalogSearchJSONReturnsVersionedMountAwareResults(t *testing.T) {
+func TestCatalogSearchJSONReturnsVersionedGlobalResults(t *testing.T) {
 	t.Parallel()
 
-	handler, snapshot := catalogHandlerFixture(t, "/kubernetes")
+	handler, _ := catalogHandlerFixture(t, "/kubernetes")
 	requestURL := "/kubernetes/search.json?q=listCoreV1Pod"
 	response := httptest.NewRecorder()
 	handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, requestURL, nil))
@@ -200,10 +205,10 @@ func TestCatalogSearchJSONReturnsVersionedMountAwareResults(t *testing.T) {
 	if err := json.Unmarshal(response.Body.Bytes(), &payload); err != nil {
 		t.Fatal(err)
 	}
-	if payload.CatalogID != "kubernetes" || payload.SnapshotID != snapshot.ID || payload.Version != 1 || payload.Query != "listcorev1pod" {
+	if payload.CatalogID != "global" || payload.SnapshotID != "" || payload.Version != 1 || payload.Query != "listcorev1pod" {
 		t.Fatalf("search JSON identity = %+v", payload)
 	}
-	if len(payload.Results) != 1 || payload.Results[0].Title != "List Pods" || !strings.HasPrefix(payload.Results[0].Href, "/kubernetes/documents/core-v1/?selected=") {
+	if len(payload.Results) != 1 || payload.Results[0].Title != "List Pods" || payload.Results[0].Section != "Kubernetes" || !strings.HasPrefix(payload.Results[0].Href, "/kubernetes/documents/core-v1/?selected=") {
 		t.Fatalf("search JSON results = %+v", payload.Results)
 	}
 
@@ -211,6 +216,43 @@ func TestCatalogSearchJSONReturnsVersionedMountAwareResults(t *testing.T) {
 	handler.ServeHTTP(head, httptest.NewRequest(http.MethodHead, requestURL, nil))
 	if head.Code != http.StatusOK || head.Body.Len() != 0 || head.Header().Get("ETag") != response.Header().Get("ETag") || head.Header().Get("Content-Length") != response.Header().Get("Content-Length") {
 		t.Fatalf("search JSON HEAD = %d bytes=%d headers=%v", head.Code, head.Body.Len(), head.Header())
+	}
+}
+
+func TestGlobalSearchRankingUsesKindAndPageContext(t *testing.T) {
+	t.Parallel()
+
+	candidates := []globalSearchCandidate{
+		{record: catalog.SearchRecordV1{DetailID: "schema-other", Kind: "schema", Title: "Shared schema"}, mount: "/other", localRank: 0},
+		{record: catalog.SearchRecordV1{DetailID: "operation-other", Kind: "operation", Title: "Other operation", DocumentKey: "other-v1"}, mount: "/other", localRank: 0},
+		{record: catalog.SearchRecordV1{DetailID: "schema-current", Kind: "schema", Title: "Current schema", DocumentKey: "current-v1"}, mount: "/current", localRank: 0},
+		{record: catalog.SearchRecordV1{DetailID: "document-current", Kind: "document", Title: "current-v1", DocumentKey: "current-v1"}, mount: "/current", localRank: 1},
+		{record: catalog.SearchRecordV1{DetailID: "operation-current", Kind: "operation", Title: "Current operation", DocumentKey: "current-v1"}, mount: "/current", localRank: 2},
+	}
+
+	rootResults := append([]globalSearchCandidate(nil), candidates...)
+	rankGlobalSearchCandidates(rootResults, "", "")
+	if rootResults[0].record.Kind != "operation" || rootResults[1].record.Kind != "operation" {
+		t.Fatalf("workspace ranking = %+v, want operations first", rootResults)
+	}
+
+	pageResults := append([]globalSearchCandidate(nil), candidates...)
+	rankGlobalSearchCandidates(pageResults, "/current", "current-v1")
+	if pageResults[0].record.DetailID != "operation-current" {
+		t.Fatalf("spec-page ranking first = %+v, want current operation", pageResults[0])
+	}
+	currentSchemaIndex := -1
+	otherSchemaIndex := -1
+	for index, candidate := range pageResults {
+		if candidate.record.DetailID == "schema-current" {
+			currentSchemaIndex = index
+		}
+		if candidate.record.DetailID == "schema-other" {
+			otherSchemaIndex = index
+		}
+	}
+	if currentSchemaIndex < 0 || otherSchemaIndex < 0 || currentSchemaIndex >= otherSchemaIndex {
+		t.Fatalf("spec-page schema context ranking = %+v", pageResults)
 	}
 }
 

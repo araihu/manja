@@ -71,14 +71,17 @@ func (handler *CatalogHandler) catalogPageDataWithSidebarQuery(
 		Name: strings.TrimSpace(presentation.License.Name),
 		URL:  strings.TrimSpace(presentation.License.URL),
 	}
-	data.SearchScopeLabel = strings.TrimSpace(snapshot.Directory.Title)
+	data.SearchGlobal = true
+	data.SearchScopeLabel = "All catalogs"
 	// The organization navigation is reserved for the synthetic Manja root.
 	// Catalog pages keep their sidebar focused on the selected spec's API
 	// sections so a large catalog never duplicates its entire directory in the
 	// browser.
 	data.OrganizationNav = handler.catalogOrganizationNav(mount, false)
-	data.SearchMount = mount
+	data.SearchMount = "/"
 	data.SearchHref, _ = catalogURL(mount, "search")
+	data.SearchJSONHref = data.SearchHref + ".json"
+	data.SearchContextMount = mount
 	data.DownloadHref, _ = catalogURL(mount, "catalog.json")
 	searchIdentity, exists := catalogChildIdentity(snapshot.Manifest, snapshot.Directory.SearchChild)
 	if !exists || searchIdentity.Kind != "search-directory" {
@@ -110,6 +113,7 @@ func (handler *CatalogHandler) catalogPageDataWithSidebarQuery(
 		return templates.CatalogPageData{}, errCatalogPageNotFound
 	}
 	data.Document = &document
+	data.SearchContextDocument = documentKey
 	data.OperationServers = catalogOperationServers(document.Overview.Servers)
 	extension := path.Ext(document.SourceChild)
 	data.DownloadHref, _ = catalogURL(mount, "openapi", document.Key+extension)

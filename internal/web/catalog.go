@@ -127,6 +127,19 @@ func (handler *CatalogHandler) ServeHTTP(response http.ResponseWriter, request *
 		handler.serveCatalogDocumentCombobox(response, request)
 		return
 	}
+	if request.URL.Path == "/search.json" && handler.servesOrganizationRoot() {
+		if request.Method != http.MethodGet && request.Method != http.MethodHead {
+			response.Header().Set("Allow", "GET, HEAD")
+			http.Error(response, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		if hasEncodedSeparator(request.URL.EscapedPath()) {
+			http.Error(response, "invalid path", http.StatusBadRequest)
+			return
+		}
+		handler.serveGlobalSearchJSON(response, request, request.URL.Query().Get("context_mount"), request.URL.Query().Get("context_document"))
+		return
+	}
 	// The root is an organization landing page only when every publication is
 	// mounted below it. A deliberate "/" catalog owns the root route and must
 	// retain its own overview instead of looping through a synthetic card.
@@ -207,6 +220,11 @@ func (handler *CatalogHandler) serveOrganizationRoot(response http.ResponseWrite
 	data := templates.CatalogPageData{
 		OrganizationRoot: true,
 		Mount:            "/",
+		SearchGlobal:     true,
+		SearchHref:       "/",
+		SearchJSONHref:   "/search.json",
+		SearchMount:      "/",
+		SearchScopeLabel: "All catalogs",
 		Directory: catalog.CatalogArtifactV1{
 			Title: title,
 			Branding: catalog.BrandingV1{
@@ -232,28 +250,12 @@ func (handler *CatalogHandler) serveOrganizationRoot(response http.ResponseWrite
 			Location: strings.TrimSpace(source.Location), URL: strings.TrimSpace(source.URL),
 		}
 	}
-	// Keep the root search affordance useful while cross-catalog search is
-	// being added: use the first admitted catalog as the bounded search source.
-	// The root itself still remains free of catalog selection state.
 	mounts := handler.runtime.MountNames()
 	sort.Strings(mounts)
 	for _, mount := range mounts {
 		admission, err := handler.runtime.Admit(mount)
 		if err != nil {
 			continue
-		}
-		if data.SearchHref == "" {
-			data.SearchMount = mount
-			data.SearchScopeLabel = strings.TrimSpace(admission.Snapshot.Directory.Title)
-			data.SearchHref, _ = catalogURL(mount, "search")
-			identity, exists := catalogChildIdentity(admission.Snapshot.Manifest, admission.Snapshot.Directory.SearchChild)
-			if exists && identity.Kind == "search-directory" {
-				data.SearchDirectoryPath = identity.Path
-				data.SearchDirectoryLength = identity.Length
-				data.SearchDirectorySHA256 = identity.SHA256
-				data.SearchChildBase, _ = catalogURL(mount, "snapshots", string(admission.Snapshot.ID), "search-data")
-				data.SearchChildBase += "/"
-			}
 		}
 		for _, document := range admission.Snapshot.Directory.Documents {
 			href, err := catalogURL(mount, "documents", document.Key)
@@ -268,6 +270,13 @@ func (handler *CatalogHandler) serveOrganizationRoot(response http.ResponseWrite
 			})
 		}
 		admission.Release()
+	}
+	if query := request.URL.Query().Get("q"); query != "" {
+		data.Search = &templates.CatalogSearchData{Query: query}
+		if err := handler.populateGlobalSearchData(request.Context(), &data, query, "", ""); err != nil {
+			writeCatalogSearchError(response, err)
+			return
+		}
 	}
 	handler.renderCatalogPage(response, request, data)
 }
@@ -349,20 +358,31 @@ func (handler *CatalogHandler) serveSearch(response http.ResponseWriter, request
 	query := request.URL.Query().Get("q")
 	data.Search = &templates.CatalogSearchData{Query: query}
 	if query != "" {
-		result, err := handler.searchCatalog(request.Context(), snapshot, mount, query)
-		if err != nil {
+		if err := handler.populateGlobalSearchData(request.Context(), &data, query, mount, request.URL.Query().Get("context_document")); err != nil {
 			writeCatalogSearchError(response, err)
 			return
 		}
-		data.Search.Query = result.Query
-		data.Search.PostingsScanned = result.PostingsScanned
-		data.Search.SegmentsDecoded = result.SegmentsDecoded
-		data.Search.BytesDecoded = result.BytesDecoded
-		for _, record := range result.Results {
-			data.Search.Results = append(data.Search.Results, templates.CatalogSearchResultData{Record: record, Href: record.Href})
-		}
 	}
 	handler.renderCatalogPage(response, request, data)
+}
+
+func (handler *CatalogHandler) populateGlobalSearchData(ctx context.Context, data *templates.CatalogPageData, query, contextMount, contextDocument string) error {
+	result, err := handler.searchGlobal(ctx, query, contextMount, contextDocument)
+	if err != nil {
+		return err
+	}
+	if data.Search == nil {
+		data.Search = &templates.CatalogSearchData{}
+	}
+	data.Search.Query = result.Query
+	data.Search.PostingsScanned = result.PostingsScanned
+	data.Search.SegmentsDecoded = result.SegmentsDecoded
+	data.Search.BytesDecoded = result.BytesDecoded
+	data.Search.Results = data.Search.Results[:0]
+	for _, candidate := range result.Results {
+		data.Search.Results = append(data.Search.Results, templates.CatalogSearchResultData{Record: candidate.record, Href: candidate.record.Href})
+	}
+	return nil
 }
 
 func (handler *CatalogHandler) serveOverview(response http.ResponseWriter, request *http.Request, snapshot catalog.RuntimeSnapshot, mount string) {

@@ -440,7 +440,7 @@ func (gateway *catalogGateway) ServeHTTP(response http.ResponseWriter, request *
 		delegate.ServeHTTP(response, request)
 		return
 	}
-	if request.URL.Path == "/" {
+	if request.URL.Path == "/" || request.URL.Path == "/search" || request.URL.Path == "/search.json" {
 		if runtime == nil {
 			http.Error(response, "catalog unavailable", http.StatusServiceUnavailable)
 			return
