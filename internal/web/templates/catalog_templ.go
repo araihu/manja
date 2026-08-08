@@ -4661,10 +4661,23 @@ func catalogSidebarConfig(data CatalogPageData) sidebar.Config {
 		config.Items = append(config.Items, sidebar.Item{
 			ID: "catalog-paths", Label: "Paths", Href: data.DocumentHref,
 			Icon: catalogSidebarIcon(heroicons.Icon16SolidCodeBracket), Items: operationGroups,
+			LinkAttrs: catalogPathsLinkAttrs(),
 		})
 	}
 	config.Items = append(config.Items, otherGroups...)
 	return config
+}
+
+func catalogPathsLinkAttrs() templpkg.Attributes {
+	return templpkg.Attributes{
+		"aria-controls":                   "catalog-paths-children",
+		"aria-expanded":                   "true",
+		"data-manja-catalog-paths-toggle": "true",
+		"x-bind:aria-expanded":            "open.toString()",
+		"x-data":                          "{ open: true }",
+		"x-init":                          "$el.nextElementSibling.id = 'catalog-paths-children'",
+		"x-on:click.prevent":              "open = !open",
+	}
 }
 
 func catalogHasSidebar(data CatalogPageData) bool {

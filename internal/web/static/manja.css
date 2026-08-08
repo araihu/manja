@@ -166,8 +166,29 @@
 	color: var(--color-primary);
 }
 
+[data-manja-catalog-paths-toggle]::after {
+  width: 0.45rem;
+  height: 0.45rem;
+  margin-left: 0.35rem;
+  border-right: 0.1rem solid currentColor;
+  border-bottom: 0.1rem solid currentColor;
+  content: "";
+  flex: 0 0 auto;
+  transform: rotate(45deg);
+  transition: transform 150ms ease;
+}
+
+[data-manja-catalog-paths-toggle][aria-expanded="false"] + div {
+  display: none;
+}
+
+[data-manja-catalog-paths-toggle][aria-expanded="false"]::after {
+  transform: rotate(-45deg);
+}
+
 @media (prefers-reduced-motion: reduce) {
-  #catalog-sidebar-groups a[data-catalog-group-control]::after {
+  #catalog-sidebar-groups a[data-catalog-group-control]::after,
+  [data-manja-catalog-paths-toggle]::after {
     transition: none;
   }
 }
