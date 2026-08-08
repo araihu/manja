@@ -93,7 +93,7 @@ func TestCatalogNavigationKeepsLastSpecReachableAndLabelsEachRoute(t *testing.T)
 			}
 			metricsValue, err := page.Evaluate(`() => {
 				const panel = document.querySelector('#catalog-navigation');
-				const nav = document.querySelector('#catalog-organization-navigation');
+				const nav = document.querySelector('#catalog-organization-navigation .sidebar-scroll');
 				const last = document.querySelector('[data-catalog-organization-item="spec-kubernetes-spec-18"]');
 				nav.scrollTop = nav.scrollHeight;
 				const panelRect = panel.getBoundingClientRect();
@@ -196,7 +196,7 @@ func TestCatalogDocumentSearchAndClientFirstModal(t *testing.T) {
 	if _, err := page.Goto(baseURL+"/documents/apps-v1/", playwright.PageGotoOptions{WaitUntil: playwright.WaitUntilStateLoad}); err != nil {
 		t.Fatalf("document navigation: %v", err)
 	}
-	documentHeader := page.Locator(`main[data-catalog-document] > div.mb-8`)
+	documentHeader := page.Locator(`main[data-catalog-document] > header[data-catalog-document-header]`)
 	if err := documentHeader.WaitFor(); err != nil {
 		t.Fatalf("catalog document header: %v", err)
 	}
@@ -525,7 +525,7 @@ func TestOrganizationRootSearchKeepsNestedCatalogMount(t *testing.T) {
 	if count, err := page.GetByText("Beta Catalog", playwright.PageGetByTextOptions{Exact: playwright.Bool(true)}).Count(); err != nil || count == 0 {
 		t.Fatalf("root Beta Catalog navigation count = %d, err=%v", count, err)
 	}
-	if count, err := page.Locator(`main[data-catalog-overview]`).GetByRole("heading", playwright.LocatorGetByRoleOptions{Name: "Specs", Exact: playwright.Bool(true)}).Count(); err != nil || count != 1 {
+	if count, err := page.Locator(`#catalog-organization-section-specs`).Count(); err != nil || count != 1 {
 		t.Fatalf("root Specs heading count = %d, err=%v", count, err)
 	}
 	if count, err := page.Locator(`[data-search-mount="/catalogs/alpha"]`).Count(); err != nil || count != 1 {
@@ -600,10 +600,26 @@ func TestCatalogSidebarExpansionPreservesKeyboardFocus(t *testing.T) {
 		t.Fatal(err)
 	}
 	control := page.Locator(`#catalog-sidebar-groups a[hx-target="#catalog-sidebar-groups"]`).First()
-	if expanded, err := control.GetAttribute("aria-expanded"); err != nil || expanded != "false" {
-		t.Fatalf("collapsed group aria-expanded = %q, err=%v", expanded, err)
+	if expanded, err := control.GetAttribute("aria-expanded"); err != nil || expanded != "true" {
+		t.Fatalf("initial group aria-expanded = %q, err=%v", expanded, err)
 	}
 	if err := control.Focus(); err != nil {
+		t.Fatal(err)
+	}
+	if err := page.Keyboard().Press("Enter"); err != nil {
+		t.Fatal(err)
+	}
+	collapsed := page.Locator(`#catalog-sidebar-groups a[hx-target="#catalog-sidebar-groups"]`).First()
+	if err := collapsed.WaitFor(); err != nil {
+		t.Fatalf("collapsed group control replacement: %v", err)
+	}
+	if err := collapsed.WaitFor(playwright.LocatorWaitForOptions{State: playwright.WaitForSelectorStateVisible}); err != nil {
+		t.Fatalf("collapsed group control visible: %v", err)
+	}
+	if expanded, err := collapsed.GetAttribute("aria-expanded"); err != nil || expanded != "false" {
+		t.Fatalf("collapsed group aria-expanded = %q, err=%v", expanded, err)
+	}
+	if err := collapsed.Focus(); err != nil {
 		t.Fatal(err)
 	}
 	if err := page.Keyboard().Press("Enter"); err != nil {

@@ -229,6 +229,9 @@ func TestRequestComposerUpdatesRequestSample(t *testing.T) {
 	if _, err := page.Goto(server + "/?selected=" + operationAnchor + "#" + operationAnchor); err != nil {
 		t.Fatal(err)
 	}
+	if _, err := page.WaitForFunction(`() => document.querySelector('[data-manja-request-config-root]')?.getAttribute('data-manja-request-config-enhanced') === 'true'`, nil); err != nil {
+		t.Fatalf("request configuration enhancement: %v", err)
+	}
 	if err := page.Locator(".manja-request-config-desktop-toggle").Click(); err != nil {
 		t.Fatal(err)
 	}
@@ -394,6 +397,9 @@ func TestRequestComposerAccordionContentStaysInsideRail(t *testing.T) {
 	}
 	if _, err := page.Goto(server + "/?selected=" + operationAnchor + "#" + operationAnchor); err != nil {
 		t.Fatal(err)
+	}
+	if _, err := page.WaitForFunction(`() => document.querySelector('[data-manja-request-config-root]')?.getAttribute('data-manja-request-config-enhanced') === 'true'`, nil); err != nil {
+		t.Fatalf("request configuration enhancement: %v", err)
 	}
 	if err := page.Locator(".manja-request-config-desktop-toggle").Click(); err != nil {
 		t.Fatal(err)
@@ -725,10 +731,12 @@ func TestRichOperationDetailsKeepHorizontalOverflowLocal(t *testing.T) {
 	}
 	parameterPresentation, err := page.Evaluate(`(operationAnchor) => {
 		const read = (location) => {
-			const table = document.getElementById(operationAnchor + '-' + location + '-parameters');
+			const group = document.getElementById(operationAnchor + '-' + location + '-parameters');
+			const rows = [...(group?.querySelectorAll('[data-manja-parameter-row]') || [])];
 			return {
-				headers: [...table.querySelectorAll('thead th')].map((cell) => cell.textContent.trim()).join('|'),
-				required: [...table.querySelectorAll('tbody tr')].map((row) => Boolean(row.querySelector('[aria-label="Required parameter"]'))).join('|'),
+				headers: [...(group?.querySelectorAll('thead th') || [])].map((cell) => cell.textContent.trim()).join('|'),
+				required: rows.map((row) => Boolean(row.querySelector('[data-required="true"]'))).join('|'),
+				tables: group?.querySelectorAll('table').length || 0,
 			};
 		};
 		return { path: read('path'), query: read('query') };
@@ -745,11 +753,14 @@ func TestRichOperationDetailsKeepHorizontalOverflowLocal(t *testing.T) {
 		if !ok {
 			t.Fatalf("%s parameter presentation should be a map, got %#v", location, presentation[location])
 		}
-		if got, want := group["headers"], "Name|Type|Description"; got != want {
-			t.Fatalf("%s parameter headers = %q, want %q", location, got, want)
+		if got, want := group["headers"], ""; got != want {
+			t.Fatalf("%s parameter headers = %q, want no table headers", location, got)
 		}
 		if got := group["required"]; got != wantRequired {
 			t.Fatalf("%s required values = %q, want %q", location, got, wantRequired)
+		}
+		if got := group["tables"]; got != float64(0) {
+			t.Fatalf("%s parameter tables = %v, want stacked rows", location, got)
 		}
 	}
 	if err := page.SetViewportSize(1280, 900); err != nil {
@@ -1356,6 +1367,9 @@ func TestPublicDocsSidebarNavigationSwapsMainContent(t *testing.T) {
 	if err := page.Locator("#operation-target:visible").WaitFor(); err != nil {
 		t.Fatal(err)
 	}
+	if _, err := page.WaitForFunction(`() => document.activeElement?.dataset.publicDocIdentity === 'operation-target'`, nil); err != nil {
+		t.Fatalf("selected operation focus sentinel: %v", err)
+	}
 	kept, err := page.Evaluate("() => window.__manjaReloadSentinel === 'kept'")
 	if err != nil {
 		t.Fatal(err)
@@ -1419,7 +1433,7 @@ func TestPublicDocsSidebarNavigationSwapsMainContent(t *testing.T) {
 		"content":  "operation-target",
 		"focus":    "operation-target",
 		"current":  []any{"/?selected=operation-target#operation-target"},
-		"title":    "Target operation · Petstore",
+		"title":    "Target operation · Manja",
 	}
 	if fmt.Sprint(identity) != fmt.Sprint(wantIdentity) {
 		t.Fatalf("HTMX selected identity = %#v, want %#v", identity, wantIdentity)

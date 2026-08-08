@@ -163,7 +163,7 @@ func TestPublicDocsRenderSearchAndOperations(t *testing.T) {
 		t.Fatalf("status = %d", rec.Code)
 	}
 	body := rec.Body.String()
-	for _, want := range []string{"Petstore", "GET", "/pets", "Search docs", "operation-listPets"} {
+	for _, want := range []string{"List pets", "GET", "/pets", "Search docs", "operation-listPets"} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("body missing %q:\n%s", want, body)
 		}
@@ -206,7 +206,7 @@ func TestPublicDocsRenderSearchAndOperations(t *testing.T) {
 	if !postMethodBadge.MatchString(body) {
 		t.Fatalf("operation sidebar link should associate its label with the POST method text:\n%s", body)
 	}
-	pageMethodBadge := regexp.MustCompile(`<div aria-label="Endpoint route"[^>]*>\s*<span[^>]*>GET</span>\s*<p[^>]*>/pets</p>`)
+	pageMethodBadge := regexp.MustCompile(`(?s)<div aria-label="Endpoint route"[^>]*>.*?>GET</span>.*?<p[^>]*>/pets</p>`)
 	if !pageMethodBadge.MatchString(body) {
 		t.Fatalf("selected endpoint should expose its method and path in the labelled native route group:\n%s", body)
 	}
@@ -1210,7 +1210,7 @@ func TestPublicDocsNavigationSyncUsesServerAuthoredIdentity(t *testing.T) {
 
 	for _, want := range []string{
 		`data-public-docs-content="true"`,
-		`data-document-title="List pets · Petstore"`,
+		`data-document-title="List pets · Manja"`,
 		`target.dataset.selectedDoc = content.dataset.selectedDoc`,
 	} {
 		if !strings.Contains(body, want) {
@@ -1235,10 +1235,11 @@ func TestPublicDocsRendersPoweredByFooterInFullPageAndFragments(t *testing.T) {
 
 	full := renderPublicDocs(t, srv, "/?selected=operation-listPets")
 	for _, want := range []string{
-		`<footer aria-label="Powered by Manja"`,
-		`Powered by`,
+		`<footer aria-label="Documentation capabilities"`,
+		`data-manja-capability="built-with"`,
 		`href="https://manja.araihu.com"`,
-		`>Manja</a>`,
+		`Built with <strong`,
+		`Manja</strong>`,
 	} {
 		if !strings.Contains(full, want) {
 			t.Fatalf("full page missing powered-by footer marker %q:\n%s", want, full)
@@ -1254,7 +1255,8 @@ func TestPublicDocsRendersPoweredByFooterInFullPageAndFragments(t *testing.T) {
 	}
 	fragment := rec.Body.String()
 	for _, want := range []string{
-		`<footer aria-label="Powered by Manja"`,
+		`<footer aria-label="Documentation capabilities"`,
+		`data-manja-capability="built-with"`,
 		`href="https://manja.araihu.com"`,
 	} {
 		if !strings.Contains(fragment, want) {
@@ -1821,11 +1823,11 @@ func TestPublicDocsRenderEndpointDetails(t *testing.T) {
 		`Updated todo.`,
 		`404`,
 		`Todo was not found.`,
-		`Security`,
+		`Authorization`,
 		`bearerAuth`,
 		`<aside id="operation-updatetodo-request-config" class="manja-endpoint-examples-rail manja-request-config-sheet" data-manja-request-config-sheet`,
 		`manja-endpoint-examples-rail-content`,
-		`aria-label="200"`,
+		`id="controls-operation-updatetodo-response-200"`,
 		`bg-success`,
 		`text-on-success`,
 		`border border-success bg-success text-on-success`,
@@ -1857,9 +1859,8 @@ func TestPublicDocsRenderEndpointDetails(t *testing.T) {
 		`class="manja-response-media-block border-t border-outline pt-6 pb-5 dark:border-outline-dark"><div class="manja-response-panel-layout">`,
 		`id="controls-operation-updatetodo-response-404"`,
 		`id="content-operation-updatetodo-response-404" role="region" aria-labelledby="controls-operation-updatetodo-response-404"`,
-		`caption class="sr-only">Path Parameters</caption>`,
 		`aria-label="Request body schema for application/json schema tree"`,
-		`aria-label="Response 404 schema for application/json schema tree"`,
+		`aria-label="Response body schema tree"`,
 		`class="manja-schema-root"`,
 		`data-schema-tree-row="message"`,
 	} {
@@ -2052,7 +2053,7 @@ func TestPublicDocsEndpointResponsesOnlyUsesSingleDetailColumn(t *testing.T) {
 	body := renderPublicDocs(t, NewPublicServer(idx), "/?selected=operation-root")
 	for _, want := range []string{
 		`<div class="manja-endpoint-detail-layout manja-endpoint-detail-layout-single">`,
-		`aria-label="200"`,
+		`id="controls-operation-root-response-200"`,
 		`bg-success`,
 		`text-on-success`,
 		`Request Sample: cURL`,
@@ -2137,11 +2138,11 @@ func TestPublicDocsResponseStatusBadgesUseStatusClassHierarchy(t *testing.T) {
 
 	body := renderPublicDocs(t, NewPublicServer(idx), "/?selected=operation-statuses")
 	for _, want := range []string{
-		`aria-label="102"`,
-		`aria-label="200"`,
-		`aria-label="302"`,
-		`aria-label="404"`,
-		`aria-label="500"`,
+		`id="controls-operation-statuses-response-102"`,
+		`id="controls-operation-statuses-response-200"`,
+		`id="controls-operation-statuses-response-302"`,
+		`id="controls-operation-statuses-response-404"`,
+		`id="controls-operation-statuses-response-500"`,
 		`border border-outline bg-surface-alt text-on-surface`,
 		`border border-success bg-success text-on-success`,
 		`border border-primary bg-primary text-on-primary`,
@@ -2218,17 +2219,19 @@ func TestPublicDocsMethodBadgesAssociateMethodsWithOperations(t *testing.T) {
 			t.Fatalf("sidebar operation %s should associate %q with method %s:\n%s", item.anchor, item.summary, item.method, body)
 		}
 		endpointBody := renderPublicDocs(t, NewPublicServer(idx), "/?selected="+item.anchor)
-		methodTone := map[string]string{
-			"GET":    `border border-success bg-success text-on-success`,
-			"POST":   `border border-primary bg-primary text-on-primary`,
-			"PUT":    `border border-warning bg-warning text-on-warning`,
-			"PATCH":  `border border-warning bg-warning text-on-warning`,
-			"DELETE": `border border-danger bg-danger text-on-danger`,
-		}[item.method]
-		if !strings.Contains(endpointBody, methodTone) {
-			t.Fatalf("endpoint %s missing method tone %q:\n%s", item.anchor, methodTone, endpointBody)
+		if strings.Contains(endpointBody, `border border-success bg-success text-on-success`) ||
+			strings.Contains(endpointBody, `border border-primary bg-primary text-on-primary`) ||
+			strings.Contains(endpointBody, `border border-warning bg-warning text-on-warning`) ||
+			strings.Contains(endpointBody, `border border-danger bg-danger text-on-danger`) {
+			t.Fatalf("endpoint %s should use soft method badges instead of solid fills:\n%s", item.anchor, endpointBody)
 		}
-		endpointPattern := regexp.MustCompile(`(?s)<section id="` + regexp.QuoteMeta(item.anchor) + `"[^>]*>.*?<div aria-label="Endpoint route"[^>]*>\s*<span[^>]*>` + regexp.QuoteMeta(item.method) + `</span>\s*<p[^>]*>/resource</p>`)
+		softTone := map[string]string{
+			"GET": "success", "POST": "primary", "PUT": "warning", "PATCH": "warning", "DELETE": "danger",
+		}[item.method]
+		if !strings.Contains(endpointBody, `bg-`+softTone+`/10`) {
+			t.Fatalf("endpoint %s missing soft method tone for %s:\n%s", item.anchor, item.method, endpointBody)
+		}
+		endpointPattern := regexp.MustCompile(`(?s)<section id="` + regexp.QuoteMeta(item.anchor) + `"[^>]*>.*?<div aria-label="Endpoint route"[^>]*>.*?>` + regexp.QuoteMeta(item.method) + `</span>.*?<p[^>]*>/resource</p>`)
 		if !endpointPattern.MatchString(endpointBody) {
 			t.Fatalf("endpoint %s should expose method %s and its path in the labelled route group:\n%s", item.anchor, item.method, endpointBody)
 		}
@@ -2331,7 +2334,7 @@ func TestPublicDocsEndpointShellCSSUsesResponsiveExamplesRail(t *testing.T) {
 	if largeRule == "" {
 		t.Fatalf("missing large-screen endpoint shell media rule")
 	}
-	if !strings.Contains(largeRule, `grid-template-columns: minmax(0, 1fr) minmax(20rem, 28rem);`) {
+	if !strings.Contains(largeRule, `grid-template-columns: minmax(0, 1fr) minmax(20rem, min(38%, 28rem));`) {
 		t.Fatalf("endpoint shell should split content and examples rail on large screens:\n%s", largeRule)
 	}
 	railRule := regexp.MustCompile(`(?s)\.manja-endpoint-examples-rail\s*\{[^}]*\}`).FindString(string(css))
@@ -2352,8 +2355,11 @@ func TestPublicDocsEndpointShellCSSUsesResponsiveExamplesRail(t *testing.T) {
 	if triggerRule == "" || !strings.Contains(triggerRule, `position: fixed;`) || !strings.Contains(triggerRule, `bottom: 0;`) {
 		t.Fatalf("enhanced mobile request configuration should use a fixed bottom trigger bar:\n%s", triggerRule)
 	}
-	if !regexp.MustCompile(`(?s)@media\s*\(min-width:\s*1280px\).*?:where\(\[data-manja-request-config-enhanced="true"\]\)\s*\.manja-request-config-backdrop,\s*:where\(\[data-manja-request-config-enhanced="true"\]\)\s*\.manja-request-config-trigger-bar\s*\{[^}]*display:\s*none;`).Match(css) {
-		t.Fatalf("mobile request configuration chrome should hide at the desktop breakpoint")
+	if !regexp.MustCompile(`(?s)@media\s*\(min-width:\s*1280px\).*?:where\(\[data-manja-request-config-enhanced="true"\]\)\s*\.manja-request-config-backdrop\s*,?\s*\{[^}]*display:\s*none;`).Match(css) {
+		t.Fatalf("request configuration backdrop should hide at the desktop breakpoint")
+	}
+	if !regexp.MustCompile(`(?s)@media\s*\(min-width:\s*1280px\).*?:where\(\[data-manja-request-config-enhanced="true"\]\)\s*\.manja-request-config-trigger-bar\s*\{[^}]*display:\s*inline-flex;`).Match(css) {
+		t.Fatalf("desktop request configuration should keep its thin trigger drawer visible")
 	}
 	sheetRule := regexp.MustCompile(`(?s)\.manja-request-config-sheet\s*\{[^}]*\}`).FindString(string(css))
 	if sheetRule == "" || !strings.Contains(sheetRule, `position: static;`) || !strings.Contains(sheetRule, `visibility: visible;`) {
@@ -2363,8 +2369,8 @@ func TestPublicDocsEndpointShellCSSUsesResponsiveExamplesRail(t *testing.T) {
 	if enhancedSheetRule == "" || !strings.Contains(enhancedSheetRule, `position: fixed;`) || !strings.Contains(enhancedSheetRule, `transform: translateY(100%);`) {
 		t.Fatalf("enhanced mobile request configuration should become a hidden bottom sheet:\n%s", enhancedSheetRule)
 	}
-	if !regexp.MustCompile(`(?s)@media\s*\(min-width:\s*1280px\).*?:where\(\[data-manja-request-config-enhanced="true"\]\)\s*\.manja-request-config-sheet\[data-open="false"\]\s*\.manja-endpoint-examples-rail-content\s*\{[^}]*display:\s*none;`).Match(css) {
-		t.Fatalf("enhanced desktop request configuration should support collapse")
+	if !regexp.MustCompile(`(?s)@media\s*\(min-width:\s*1280px\).*?:where\(\[data-manja-request-config-enhanced="true"\]\)\s*\.manja-request-config-sheet\[data-open="false"\]\s*\{[^}]*display:\s*none;`).Match(css) {
+		t.Fatalf("enhanced desktop request configuration should collapse the thin drawer")
 	}
 	railContentRule := regexp.MustCompile(`(?s)\.manja-endpoint-examples-rail-content\s*>\s*\*[^}]*\}`).FindString(string(css))
 	if railContentRule == "" {
@@ -2514,7 +2520,7 @@ func TestPublicDocsSchemaDetailCSSUsesResponsiveSplitLayout(t *testing.T) {
 	if largeRule == "" {
 		t.Fatalf("missing large-screen schema detail layout media rule")
 	}
-	if !strings.Contains(largeRule, `grid-template-columns: minmax(0, 1fr) minmax(20rem, 28rem);`) {
+	if !strings.Contains(largeRule, `grid-template-columns: minmax(0, 1fr) minmax(20rem, 24rem);`) {
 		t.Fatalf("schema detail layout should split tree and example into two columns on large screens:\n%s", largeRule)
 	}
 	if !strings.Contains(string(css), `.manja-schema-detail-layout .manja-schema-tree`) {

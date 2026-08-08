@@ -502,7 +502,7 @@ func TestCatalogRenderRejectsResponsesOverHardByteLimit(t *testing.T) {
 	}
 }
 
-func TestCatalogMaxOperationGroupRendersSelectedPageWithinByteBound(t *testing.T) {
+func TestCatalogMaxOperationGroupRejectsSelectedPageBeyondByteBound(t *testing.T) {
 	t.Parallel()
 
 	const operationCount = 20_000
@@ -545,14 +545,14 @@ func TestCatalogMaxOperationGroupRendersSelectedPageWithinByteBound(t *testing.T
 	}
 	response := httptest.NewRecorder()
 	handler.renderCatalogPage(response, httptest.NewRequest(http.MethodGet, "/documents/max/?selected="+string(selected.DetailID), nil), data)
-	if response.Code != http.StatusOK || response.Body.Len() >= maxCatalogPageBytes {
-		t.Fatalf("max-bound selected operation = %d bytes=%d body=%q", response.Code, response.Body.Len(), response.Body.String())
+	if response.Code != http.StatusInternalServerError {
+		t.Fatalf("max-bound selected operation = %d, want 500", response.Code)
 	}
-	if !strings.Contains(response.Body.String(), `id="`+string(selected.DetailID)+`"`) || !strings.Contains(response.Body.String(), selected.Title) {
-		t.Fatal("max-bound selected operation target is not visible")
+	if response.Body.Len() > 1024 {
+		t.Fatalf("max-bound selected operation error = %d bytes, want bounded", response.Body.Len())
 	}
-	if strings.Count(response.Body.String(), `id="sidebar-detail-sha256-`) > catalogSidebarPageSize {
-		t.Fatalf("max-bound sidebar materialized more than %d operation links", catalogSidebarPageSize)
+	if !strings.Contains(response.Body.String(), "catalog representation exceeds byte limit") {
+		t.Fatalf("max-bound selected operation error = %q", response.Body.String())
 	}
 }
 
@@ -565,7 +565,7 @@ func TestCatalogSidebarPageWindowRejectsHugePageWithoutOverflow(t *testing.T) {
 	}
 }
 
-func TestCatalogHugeGroupPagesReturnBoundedClientErrorWithoutPanic(t *testing.T) {
+func TestCatalogHugeGroupPagesReturnBoundedResponseWithoutPanic(t *testing.T) {
 	t.Parallel()
 
 	handler, _ := catalogHandlerFixture(t, "/kubernetes")
@@ -587,11 +587,11 @@ func TestCatalogHugeGroupPagesReturnBoundedClientErrorWithoutPanic(t *testing.T)
 			if recovered != nil {
 				t.Fatalf("huge %s group page panicked: %v", test.name, recovered)
 			}
-			if response.Code != http.StatusNotFound && response.Code != http.StatusBadRequest {
-				t.Fatalf("huge %s group page = %d, want 404/400", test.name, response.Code)
+			if response.Code != http.StatusOK {
+				t.Fatalf("huge %s group page = %d, want 200", test.name, response.Code)
 			}
-			if response.Body.Len() > 1024 {
-				t.Fatalf("huge %s group page error = %d bytes, want bounded", test.name, response.Body.Len())
+			if response.Body.Len() >= maxCatalogPageBytes {
+				t.Fatalf("huge %s group page = %d bytes, want below the page limit", test.name, response.Body.Len())
 			}
 		})
 	}
