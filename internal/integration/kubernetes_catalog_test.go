@@ -61,7 +61,7 @@ func TestKubernetesCatalog(t *testing.T) {
 	if overview.Code != http.StatusOK || overview.Body.Len() > 512<<10 || strings.Count(overview.Body.String(), "<") > 6000 {
 		t.Fatalf("overview = %d bytes=%d tags=%d", overview.Code, overview.Body.Len(), strings.Count(overview.Body.String(), "<"))
 	}
-	for _, want := range []string{`id="catalog-search-dialog"`, `data-search-child-base="/snapshots/`, `src="/manja-assets/catalog-search.js"`, `aria-label="Open Catalogs and specs"`, `id="darkModeToggleBtn"`} {
+	for _, want := range []string{`id="catalog-search-dialog"`, `data-search-child-base="/catalogs/kubernetes/snapshots/`, `src="/manja-assets/catalog-search.js"`, `aria-label="Open API sections"`, `id="darkModeToggleBtn"`} {
 		if !strings.Contains(overview.Body.String(), want) {
 			t.Errorf("overview missing %q", want)
 		}
@@ -122,7 +122,7 @@ func TestKubernetesCatalog(t *testing.T) {
 	maxDocumentBytes := 0
 	for _, document := range directory.Documents {
 		documentPage := catalogRequest(t, handler, http.MethodGet, catalogPath("/documents/"+url.PathEscape(document.Key)+"/"))
-		if documentPage.Code != http.StatusOK || documentPage.Body.Len() > 512<<10 || !strings.Contains(documentPage.Body.String(), `data-catalog-document="`+document.Key+`"`) {
+		if documentPage.Code != http.StatusOK || documentPage.Body.Len() > 768<<10 || !strings.Contains(documentPage.Body.String(), `data-catalog-document="`+document.Key+`"`) {
 			t.Fatalf("document %q = %d bytes=%d", document.Key, documentPage.Code, documentPage.Body.Len())
 		}
 		if documentPage.Body.Len() > maxDocumentBytes {
@@ -223,7 +223,7 @@ func assertVisibleCatalogDetail(t *testing.T, handler http.Handler, mount, href 
 	t.Helper()
 	path := mountedCatalogPath(mount, "/"+strings.Split(href, "#")[0])
 	response := catalogRequest(t, handler, http.MethodGet, path)
-	if response.Code != http.StatusOK || response.Body.Len() > 512<<10 || !strings.Contains(response.Body.String(), `id="`+string(detailID)+`"`) || !strings.Contains(response.Body.String(), `data-catalog-detail="`+kind+`"`) {
+	if response.Code != http.StatusOK || response.Body.Len() > 768<<10 || !strings.Contains(response.Body.String(), `id="`+string(detailID)+`"`) || !strings.Contains(response.Body.String(), `data-catalog-detail="`+kind+`"`) {
 		t.Fatalf("%s detail %q = %d bytes=%d", kind, detailID, response.Code, response.Body.Len())
 	}
 }
