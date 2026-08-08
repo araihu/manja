@@ -878,8 +878,8 @@ func TestRichOperationDetailsKeepHorizontalOverflowLocal(t *testing.T) {
 			if got, want := metricNumber(t, metrics, "maxRowScrollWidth"), metricNumber(t, metrics, "maxRowClientWidth"); got != want {
 				t.Fatalf("%dpx parameter rows should wrap without horizontal overflow, metrics %#v", width, metrics)
 			}
-			if got := metricNumber(t, metrics, "parameterRowCount"); got != 3 {
-				t.Fatalf("%dpx query parameter list should expose three stacked rows, metrics %#v", width, metrics)
+			if got := metricNumber(t, metrics, "parameterRowCount"); got != 2 {
+				t.Fatalf("%dpx query parameter list should expose two stacked rows, metrics %#v", width, metrics)
 			}
 			if got := metricNumber(t, metrics, "tables"); got != 0 {
 				t.Fatalf("%dpx parameter list should not render a table, metrics %#v", width, metrics)

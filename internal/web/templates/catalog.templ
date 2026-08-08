@@ -1577,11 +1577,14 @@ templ catalogSidebarFocusRestoration() {
 			});
 			document.body.addEventListener("htmx:afterSettle", function (event) {
 				if (pendingControlID) {
-					var control = document.getElementById(pendingControlID);
+					var controlID = pendingControlID;
 					pendingControlID = "";
-					if (control) {
+					var restoreControlFocus = function () {
+						var control = document.getElementById(controlID);
+						if (!control) return;
 						try { control.focus({ preventScroll: true }); } catch (error) { control.focus(); }
-					}
+					};
+					window.requestAnimationFrame(function () { window.requestAnimationFrame(restoreControlFocus); });
 				}
 				if (pendingSchemaNodeFocus) {
 					pendingSchemaNodeFocus = false;

@@ -427,10 +427,14 @@ func TestCatalogDocumentSearchAndClientFirstModal(t *testing.T) {
 		t.Fatal(err)
 	}
 	groupControl := fallbackPage.Locator(`#catalog-sidebar-groups a[data-catalog-group-control]`).First()
-	if err := groupControl.Click(); err != nil {
-		t.Fatalf("open core operation group: %v", err)
-	}
 	coreOperation := fallbackPage.Locator(`[data-catalog-sidebar-operation][title="List core pods"]`)
+	if count, err := coreOperation.Count(); err != nil {
+		t.Fatalf("core operation count: %v", err)
+	} else if count == 0 {
+		if err := groupControl.Click(); err != nil {
+			t.Fatalf("open core operation group: %v", err)
+		}
+	}
 	if err := coreOperation.WaitFor(); err != nil {
 		t.Fatalf("core operation link: %v", err)
 	}
