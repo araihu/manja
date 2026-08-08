@@ -6006,7 +6006,7 @@ func methodBadge(method string) templ.Component {
 			Tone:       methodBadgeTone(method),
 			Appearance: badge.AppearanceSoft,
 			Size:       badge.SizeSM,
-			RootClass:  "font-mono font-bold",
+			RootClass:  "shrink-0 font-mono font-bold",
 		}).Render(ctx, templ_7745c5c3_Buffer)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
