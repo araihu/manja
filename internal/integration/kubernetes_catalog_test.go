@@ -61,7 +61,7 @@ func TestKubernetesCatalog(t *testing.T) {
 	if overview.Code != http.StatusOK || overview.Body.Len() > 512<<10 || strings.Count(overview.Body.String(), "<") > 6000 {
 		t.Fatalf("overview = %d bytes=%d tags=%d", overview.Code, overview.Body.Len(), strings.Count(overview.Body.String(), "<"))
 	}
-	for _, want := range []string{`id="catalog-search-dialog"`, `data-search-child-base="/catalogs/kubernetes/snapshots/`, `src="/manja-assets/catalog-search.js"`, `aria-label="Open API sections"`, `id="darkModeToggleBtn"`} {
+	for _, want := range []string{`id="catalog-search-dialog"`, `data-search-child-base="/catalogs/kubernetes/snapshots/`, `src="/manja-assets/catalog-search.js"`, `aria-label="Open Catalogs and specs"`, `id="darkModeToggleBtn"`} {
 		if !strings.Contains(overview.Body.String(), want) {
 			t.Errorf("overview missing %q", want)
 		}
