@@ -2326,6 +2326,7 @@ templ methodBadge(method string) {
 	@badge.Badge(badge.Config{
 		Label:     strings.ToUpper(strings.TrimSpace(method)),
 		Tone:      methodBadgeTone(method),
+		Appearance: badge.AppearanceSoft,
 		Size:      badge.SizeSM,
 		RootClass: "font-mono font-bold",
 	})
