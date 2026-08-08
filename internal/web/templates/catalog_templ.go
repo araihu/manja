@@ -4639,7 +4639,7 @@ func catalogSidebarConfig(data CatalogPageData) sidebar.Config {
 		linkAttrs["aria-expanded"] = strconv.FormatBool(group.Open)
 		linkAttrs["aria-controls"] = "catalog-sidebar-groups"
 		sidebarGroup := sidebar.Item{
-			ID: group.ID, Label: group.Label, Href: group.Href, Badge: fmt.Sprintf("%d", group.Count),
+			ID: group.ID, Label: group.Label, Href: group.Href,
 			Items: children, Collapsible: group.Open, Open: group.Open,
 			LinkAttrs: linkAttrs,
 		}
