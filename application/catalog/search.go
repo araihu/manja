@@ -143,7 +143,7 @@ func (service *SearchService) Search(ctx context.Context, snapshot SnapshotID, q
 		return SearchResult{}, searchError(ctx, searchContext, err)
 	}
 
-	candidateIDs := make([]uint32, 0)
+	candidateIDs := make([]uint32, 0, len(exactMatches))
 	exactPriority := make(map[uint32]uint8)
 	if len(exactMatches) > 0 {
 		for _, match := range exactMatches {
@@ -152,14 +152,30 @@ func (service *SearchService) Search(ctx context.Context, snapshot SnapshotID, q
 		}
 		sort.Slice(candidateIDs, func(i, j int) bool { return candidateIDs[i] < candidateIDs[j] })
 		candidateIDs = deduplicateRecordIDs(candidateIDs)
-	} else {
-		normalized, normalizeErr := tokenizeNormalizedSearchExact(exact)
-		if normalizeErr != nil {
+	}
+	// A schema name can be an exact hit while an operation title is the more useful
+	// navigational result. Merge token candidates instead of letting exact schemas
+	// hide matching operations.
+	normalized, normalizeErr := tokenizeNormalizedSearchExact(exact)
+	if normalizeErr != nil {
+		if len(exactMatches) == 0 {
 			return SearchResult{}, normalizeErr
 		}
-		candidateIDs, _, _, err = service.loadRankedCandidateIDs(searchContext, normalized.Tokens, &receipt)
-		if err != nil {
-			return SearchResult{}, searchError(ctx, searchContext, err)
+	} else {
+		tokenCandidates, _, _, tokenErr := service.loadRankedCandidateIDs(searchContext, normalized.Tokens, &receipt)
+		if tokenErr != nil {
+			if len(exactMatches) == 0 || !errors.Is(tokenErr, ErrQueryTooBroad) {
+				return SearchResult{}, searchError(ctx, searchContext, tokenErr)
+			}
+		} else {
+			merged := unionRecordIDs(candidateIDs, tokenCandidates)
+			if len(merged) > maxSearchPostings {
+				if len(exactMatches) == 0 {
+					return SearchResult{}, fmt.Errorf("%w: candidate records", ErrQueryTooBroad)
+				}
+			} else {
+				candidateIDs = merged
+			}
 		}
 	}
 	if len(candidateIDs) > maxSearchPostings {
@@ -168,6 +184,7 @@ func (service *SearchService) Search(ctx context.Context, snapshot SnapshotID, q
 
 	type rankedSearchID struct {
 		recordID uint32
+		kind     uint8
 		priority uint8
 		title    bool
 	}
@@ -180,10 +197,18 @@ func (service *SearchService) Search(ctx context.Context, snapshot SnapshotID, q
 			return SearchResult{}, fmt.Errorf("search rank record ordinal %d is invalid", recordID)
 		}
 		title, _ := normalizeSearchExact(service.directory.Ranks[recordID].Title)
-		ranked = append(ranked, rankedSearchID{recordID: recordID, priority: exactPriority[recordID], title: title == exact})
+		ranked = append(ranked, rankedSearchID{
+			recordID: recordID,
+			kind:     searchKindPriority(service.directory.Ranks[recordID].Kind),
+			priority: exactPriority[recordID],
+			title:    title == exact,
+		})
 	}
 	sort.Slice(ranked, func(i, j int) bool {
 		left, right := ranked[i], ranked[j]
+		if left.kind != right.kind {
+			return left.kind < right.kind
+		}
 		if left.priority != right.priority {
 			if left.priority == 0 {
 				return false
@@ -219,6 +244,17 @@ func (service *SearchService) Search(ctx context.Context, snapshot SnapshotID, q
 		Query: exact, Results: results, PostingsScanned: receipt.postings,
 		SegmentsDecoded: receipt.segments, BytesDecoded: receipt.bytes, Duration: time.Since(started),
 	}, nil
+}
+
+func searchKindPriority(kind string) uint8 {
+	switch kind {
+	case "operation":
+		return 0
+	case "schema":
+		return 1
+	default:
+		return 2
+	}
 }
 
 type searchLoadReceipt struct {
@@ -609,6 +645,9 @@ func validateSearchDirectory(value SearchDirectoryV1) error {
 	for _, rank := range value.Ranks {
 		if rank.Title == "" {
 			return fmt.Errorf("search rank record title is empty")
+		}
+		if rank.Kind != "" && rank.Kind != "operation" && rank.Kind != "schema" {
+			return fmt.Errorf("search rank record kind is invalid")
 		}
 	}
 	return nil

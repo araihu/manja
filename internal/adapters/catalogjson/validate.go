@@ -175,6 +175,9 @@ func validateSearchDirectory(value catalog.SearchDirectoryV1) error {
 		if rank.Title == "" {
 			return fmt.Errorf("catalogjson: search rank record title is empty")
 		}
+		if rank.Kind != "" && rank.Kind != "operation" && rank.Kind != "schema" {
+			return fmt.Errorf("catalogjson: search rank record kind is invalid")
+		}
 	}
 	return nil
 }

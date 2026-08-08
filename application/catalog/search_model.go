@@ -121,7 +121,7 @@ func BuildSearchArtifacts(directory CatalogArtifactV1, bounds Bounds) (SearchArt
 	for index, builder := range builders {
 		recordID := uint32(index)
 		records[index] = builder.record
-		ranks[index] = SearchRankRecordV1{Title: builder.record.Title}
+		ranks[index] = SearchRankRecordV1{Title: builder.record.Title, Kind: builder.record.Kind}
 		for _, key := range builder.exact {
 			normalized, err := normalizeSearchExact(key.value)
 			if err != nil {

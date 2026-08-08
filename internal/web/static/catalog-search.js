@@ -50,6 +50,14 @@
     return new TextEncoder().encode(value).length;
   }
 
+  function searchKindPriority(kind) {
+    switch (asString(kind).toLowerCase()) {
+      case "operation": return 0;
+      case "schema": return 1;
+      default: return 2;
+    }
+  }
+
   function normalizeExact(input) {
     var value = asString(input);
     if (utf8Length(value) > 256 || /[\u0000-\u001f\u007f-\u009f]/.test(value)) {
@@ -432,22 +440,33 @@
     return this.loadDirectory().then(function (directory) {
       return this.loadExact(directory, exact, receipt).then(function (matches) {
         var priorities = new Map();
-        var candidatePromise;
-        if (matches.length) {
-          var ids = [];
-          matches.forEach(function (match) {
-            var record = Number(match.record);
-            ids.push(record);
-            var priority = Number(match.priority);
-            if (!priorities.has(record) || priority < priorities.get(record)) priorities.set(record, priority);
-          });
-          candidatePromise = Promise.resolve(Array.from(new Set(ids.sort(function (a, b) { return a - b; }))));
-        } else {
-          candidatePromise = this.loadCandidates(directory, tokenize(exact), receipt);
+        var exactIDs = [];
+        matches.forEach(function (match) {
+          var record = Number(match.record);
+          exactIDs.push(record);
+          var priority = Number(match.priority);
+          if (!priorities.has(record) || priority < priorities.get(record)) priorities.set(record, priority);
+        });
+        exactIDs = Array.from(new Set(exactIDs.sort(function (a, b) { return a - b; })));
+        var candidates;
+        try {
+          candidates = this.loadCandidates(directory, tokenize(exact), receipt);
+        } catch (error) {
+          candidates = exactIDs.length ? Promise.resolve([]) : Promise.reject(error);
         }
-        return candidatePromise.then(function (candidateIDs) {
-          if (candidateIDs.length > MAX_POSTINGS) throw new Error("Search query is too broad");
+        return candidates.catch(function (error) {
+          if (exactIDs.length) return [];
+          throw error;
+        }).then(function (tokenIDs) {
+          var candidateIDs = Array.from(new Set(exactIDs.concat(tokenIDs))).sort(function (left, right) { return left - right; });
+          if (candidateIDs.length > MAX_POSTINGS) {
+            if (exactIDs.length) candidateIDs = exactIDs;
+            else throw new Error("Search query is too broad");
+          }
           candidateIDs.sort(function (left, right) {
+            var leftKind = searchKindPriority(directory.ranks[left].k);
+            var rightKind = searchKindPriority(directory.ranks[right].k);
+            if (leftKind !== rightKind) return leftKind - rightKind;
             var leftPriority = priorities.get(left) || 0;
             var rightPriority = priorities.get(right) || 0;
             if (leftPriority !== rightPriority) {

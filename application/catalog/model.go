@@ -188,6 +188,7 @@ type SearchDirectoryV1 struct {
 
 type SearchRankRecordV1 struct {
 	Title string `json:"t"`
+	Kind  string `json:"k,omitempty"`
 }
 
 type SearchExactEntryV1 struct {
