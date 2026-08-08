@@ -454,7 +454,7 @@ func TestCatalogDocumentSearchAndClientFirstModal(t *testing.T) {
 	if count, err := operationHeader.Locator(".manja-doc-title + p").Count(); err != nil || count != 0 {
 		t.Fatalf("catalog operation duplicate route subtitle count = %d, err=%v", count, err)
 	}
-	if path, err := fallbackPage.Locator(`[data-catalog-detail="operation"] [aria-label="Endpoint route"] p`).TextContent(); err != nil || strings.TrimSpace(path) != "/api/v1/pods" {
+	if path, err := fallbackPage.Locator(`[data-catalog-detail="operation"] [aria-label="Endpoint route"] code`).TextContent(); err != nil || strings.TrimSpace(path) != "/api/v1/pods" {
 		t.Fatalf("catalog operation route badge = %q, err=%v", path, err)
 	}
 	if _, err := fallbackPage.Goto(baseURL+"/documents/core-v1/", playwright.PageGotoOptions{WaitUntil: playwright.WaitUntilStateLoad}); err != nil {

@@ -919,7 +919,9 @@ templ endpointSection(op core.Operation, servers []core.SpecServer, exampleSpecJ
 				}
 				this.requestConfigOpen = true;
 				this.$nextTick(() => {
-					if (this.$refs.requestConfigClose) this.$refs.requestConfigClose.focus({ preventScroll: true });
+					requestAnimationFrame(() => requestAnimationFrame(() => {
+						if (this.$refs.requestConfigClose) this.$refs.requestConfigClose.focus({ preventScroll: true });
+					}));
 				});
 			},
 			focusRequestConfigTrigger() {
