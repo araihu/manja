@@ -209,7 +209,7 @@ func TestCatalogDocumentSearchAndClientFirstModal(t *testing.T) {
 	if count, err := documentHeader.GetByRole("link", playwright.LocatorGetByRoleOptions{Name: "Download source", Exact: playwright.Bool(true)}).Count(); err != nil || count != 1 {
 		t.Fatalf("catalog source download links = %d, err=%v", count, err)
 	}
-	sourcePath := documentHeader.Locator("[data-catalog-provenance] dd code")
+	sourcePath := documentHeader.Locator("[data-catalog-provenance] > div").First().Locator("dd code")
 	if source, err := sourcePath.TextContent(); err != nil || strings.TrimSpace(source) != "apis/apps/v1.json" {
 		t.Fatalf("catalog source path = %q, err=%v", source, err)
 	}
