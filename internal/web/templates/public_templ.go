@@ -2464,7 +2464,7 @@ func endpointSection(op core.Operation, servers []core.SpecServer, exampleSpecJS
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = icon.Icon(icon.Config{SpriteURL: heroicons.SpriteURL, Symbol: heroicons.Icon16SolidQueueList, Size: icon.SizeSM, Decorative: true}).Render(ctx, templ_7745c5c3_Buffer)
+			templ_7745c5c3_Err = icon.Icon(icon.Config{SpriteURL: heroicons.SpriteURL, Symbol: heroicons.Icon16SolidChevronLeft, Size: icon.SizeSM, Decorative: true}).Render(ctx, templ_7745c5c3_Buffer)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
