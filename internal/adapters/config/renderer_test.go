@@ -184,16 +184,36 @@ func TestCommittedKubernetesRendererConfigUsesAuthorityDocumentKeys(t *testing.T
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(loaded.Catalogs) != 1 || loaded.Catalogs[0].DefaultDocumentKey != "core-v1" || len(loaded.Catalogs[0].Source.Documents) != 65 {
-		t.Fatalf("Kubernetes renderer config = %#v", loaded.Catalogs)
+	if len(loaded.Catalogs) != 3 {
+		t.Fatalf("Kubernetes renderer catalog count = %d, want 3", len(loaded.Catalogs))
 	}
-	if loaded.RuntimeConfig().Catalogs[0].SEO.CanonicalBase != "https://manja.araihu.com/catalogs/kubernetes" {
-		t.Fatalf("Kubernetes canonical base = %q", loaded.RuntimeConfig().Catalogs[0].SEO.CanonicalBase)
+	catalogIndex := make(map[string]int, len(loaded.Catalogs))
+	for index, catalog := range loaded.Catalogs {
+		catalogIndex[catalog.ID] = index
 	}
-	if loaded.RuntimeConfig().Organization.Title != "Manja" || len(loaded.RuntimeConfig().Organization.Sources) != 2 {
-		t.Fatalf("Kubernetes organization config = %#v", loaded.RuntimeConfig().Organization)
+	for id, mount := range map[string]string{
+		"kubernetes": "/catalogs/kubernetes",
+		"github":     "/catalogs/github",
+		"stripe":     "/catalogs/stripe",
+	} {
+		index, exists := catalogIndex[id]
+		if !exists || loaded.Catalogs[index].Mount != mount {
+			t.Fatalf("catalog %q mount = %#v, want %q", id, loaded.Catalogs[index], mount)
+		}
 	}
-	candidate, err := loaded.Sources()[0].Load(context.Background())
+	kubernetesIndex := catalogIndex["kubernetes"]
+	kubernetes := loaded.Catalogs[kubernetesIndex]
+	if kubernetes.DefaultDocumentKey != "core-v1" || len(kubernetes.Source.Documents) != 65 {
+		t.Fatalf("Kubernetes renderer config = %#v", kubernetes)
+	}
+	runtime := loaded.RuntimeConfig()
+	if runtime.Catalogs[kubernetesIndex].SEO.CanonicalBase != "https://manja.araihu.com/catalogs/kubernetes" {
+		t.Fatalf("Kubernetes canonical base = %q", runtime.Catalogs[kubernetesIndex].SEO.CanonicalBase)
+	}
+	if runtime.Organization.Title != "Manja" || len(runtime.Organization.Sources) != 4 {
+		t.Fatalf("Kubernetes organization config = %#v", runtime.Organization)
+	}
+	candidate, err := loaded.Sources()[kubernetesIndex].Load(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}

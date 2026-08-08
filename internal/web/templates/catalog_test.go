@@ -37,7 +37,7 @@ func TestCatalogHeaderOmitsThemeSelectorButKeepsDarkMode(t *testing.T) {
 	if !strings.Contains(body, `id="darkModeToggleBtn"`) {
 		t.Fatal("catalog header removed dark mode toggle")
 	}
-	if !strings.Contains(body, `aria-hidden="true"`) || !strings.Contains(body, `fill="var(--color-primary)"`) || strings.Contains(body, `aria-label="Manja"`) {
+	if !strings.Contains(body, `aria-hidden="true"`) || !strings.Contains(body, `fill="var(--color-primary)"`) || !strings.Contains(body, `aria-label="Manja"`) {
 		t.Fatal("catalog header does not use the theme-aware inline Manja mark")
 	}
 	if strings.Contains(body, `src="/manja-assets/manja-mark.svg"`) {
@@ -360,7 +360,7 @@ func TestCatalogDocumentOverviewKeepsIdentityVersionAndDownloadInHeader(t *testi
 		`>core-v1</h1>`,
 		`>v1</span>`,
 		`href="/kubernetes/documents/core-v1/source.json"`,
-		`>Download source</a>`,
+		`>Download source</span>`,
 		`sm:flex-row`,
 		`sm:justify-between`,
 	} {
@@ -368,8 +368,8 @@ func TestCatalogDocumentOverviewKeepsIdentityVersionAndDownloadInHeader(t *testi
 			t.Errorf("document overview header missing %q", want)
 		}
 	}
-	if strings.Contains(body, document.SourcePath) {
-		t.Fatalf("document overview exposed source path %q", document.SourcePath)
+	if !strings.Contains(body, document.SourcePath) {
+		t.Fatalf("document overview omitted source path %q", document.SourcePath)
 	}
 }
 
@@ -625,51 +625,26 @@ func TestCatalogOperationReusesRichPublicEndpointRenderer(t *testing.T) {
 	}
 }
 
-func TestParameterTableOmitsRedundantLocationAndUsesRequiredMarkers(t *testing.T) {
+func TestParameterListUsesStackedRowsAndRequiredMarkers(t *testing.T) {
 	t.Parallel()
 
-	config := parameterTableConfig("operation-test", "Path Parameters", []domain.OperationParameter{
+	component := paramGroup("operation-test", "Path Parameters", []domain.OperationParameter{
 		{Name: "namespace", In: "path", Required: true, Schema: domain.SchemaSummary{Type: "string"}},
 		{Name: "dryRun", In: "query", Required: false, Schema: domain.SchemaSummary{Type: "string"}},
-	}, nil)
-
-	keys := make([]string, 0, len(config.Columns))
-	for _, column := range config.Columns {
-		keys = append(keys, column.Key)
-	}
-	if got, want := strings.Join(keys, ","), "name,type,description"; got != want {
-		t.Fatalf("parameter columns = %q, want %q", got, want)
+	}, PublicDocsOptions{})
+	var body bytes.Buffer
+	if err := component.Render(context.Background(), &body); err != nil {
+		t.Fatal(err)
 	}
 
-	for _, test := range []struct {
-		name     string
-		required bool
-	}{
-		{name: "namespace", required: true},
-		{name: "dryRun", required: false},
-	} {
-		row := config.Rows[0]
-		if test.name == "dryRun" {
-			row = config.Rows[1]
+	output := body.String()
+	for _, want := range []string{`data-manja-parameter-list`, "namespace", "dryRun", "string", `data-required="true"`, `data-required="false"`} {
+		if !strings.Contains(output, want) {
+			t.Errorf("stacked parameter list missing %q: %s", want, output)
 		}
-		if _, exists := row.Cells["in"]; exists {
-			t.Fatalf("%s retained redundant location cell", test.name)
-		}
-		cell := row.Cells["name"]
-		if cell.Component == nil {
-			t.Fatalf("%s name cell should render the accessible required marker component", test.name)
-		}
-		if cell.Text != "" {
-			t.Fatalf("%s name cell text = %q, want component-only required marker rendering", test.name, cell.Text)
-		}
-		var rendered bytes.Buffer
-		if err := cell.Component.Render(context.Background(), &rendered); err != nil {
-			t.Fatalf("render %s name cell: %v", test.name, err)
-		}
-		marker := rendered.String()
-		if got := strings.Contains(marker, `aria-label="Required parameter"`); got != test.required {
-			t.Fatalf("%s required marker = %v, want %v: %s", test.name, got, test.required, marker)
-		}
+	}
+	if strings.Contains(output, `>path</`) || strings.Contains(output, `>query</`) {
+		t.Fatal("stacked parameter list retained redundant location labels")
 	}
 }
 

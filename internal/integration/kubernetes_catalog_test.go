@@ -30,11 +30,34 @@ func TestKubernetesCatalog(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(receipts) != 1 || receipts[0].CatalogID != "kubernetes" || receipts[0].Mount != "/" || receipts[0].SnapshotID == "" || receipts[0].StartupProcessBytes == 0 || receipts[0].StartupProcessBytes > 512<<20 {
+	if len(receipts) != 3 {
 		t.Fatalf("activation receipts = %#v", receipts)
 	}
+	receiptByCatalog := make(map[string]int, len(receipts))
+	for index, receipt := range receipts {
+		if receipt.SnapshotID == "" || receipt.StartupProcessBytes == 0 || receipt.StartupProcessBytes > 512<<20 {
+			t.Fatalf("activation receipt[%d] = %#v", index, receipt)
+		}
+		receiptByCatalog[receipt.CatalogID] = index
+	}
+	for catalogID, wantMount := range map[string]string{
+		"kubernetes": "/catalogs/kubernetes",
+		"github":     "/catalogs/github",
+		"stripe":     "/catalogs/stripe",
+	} {
+		index, ok := receiptByCatalog[catalogID]
+		if !ok || receipts[index].Mount != wantMount {
+			t.Fatalf("catalog %q receipt = %#v, want mount %q", catalogID, receipts[index], wantMount)
+		}
+	}
+	kubernetesReceipt := receipts[receiptByCatalog["kubernetes"]]
+	kubernetesMount := kubernetesReceipt.Mount
+	kubernetesSnapshotID := kubernetesReceipt.SnapshotID
+	catalogPath := func(relative string) string {
+		return mountedCatalogPath(kubernetesMount, relative)
+	}
 
-	overview := catalogRequest(t, handler, http.MethodGet, "/")
+	overview := catalogRequest(t, handler, http.MethodGet, catalogPath("/"))
 	if overview.Code != http.StatusOK || overview.Body.Len() > 512<<10 || strings.Count(overview.Body.String(), "<") > 2500 {
 		t.Fatalf("overview = %d bytes=%d tags=%d", overview.Code, overview.Body.Len(), strings.Count(overview.Body.String(), "<"))
 	}
@@ -43,18 +66,21 @@ func TestKubernetesCatalog(t *testing.T) {
 			t.Errorf("overview missing %q", want)
 		}
 	}
-	for _, want := range []string{`<link rel="canonical" href="https://manja.araihu.com/">`, `<meta property="og:url" content="https://manja.araihu.com/">`} {
+	for _, want := range []string{`<link rel="canonical" href="https://manja.araihu.com/catalogs/kubernetes/">`, `<meta property="og:url" content="https://manja.araihu.com/catalogs/kubernetes/">`} {
 		if !strings.Contains(overview.Body.String(), want) {
-			t.Errorf("overview missing production root metadata %q", want)
+			t.Errorf("overview missing Kubernetes production metadata %q", want)
 		}
 	}
 	if strings.Contains(overview.Body.String(), `https://manja.araihu.com/kubernetes/`) {
-		t.Fatal("root-mounted catalog emitted stale /kubernetes canonical URL")
+		t.Fatal("Kubernetes catalog emitted stale /kubernetes canonical URL")
+	}
+	if strings.Contains(overview.Body.String(), `https://manja.araihu.com/">`) {
+		t.Fatal("Kubernetes catalog emitted root canonical URL")
 	}
 	if strings.Contains(overview.Body.String(), `id="manja-theme-trigger"`) {
 		t.Fatal("overview contains removed theme selector")
 	}
-	searchDirectory := catalogRequest(t, handler, http.MethodGet, "/snapshots/"+receipts[0].SnapshotID+"/search-data/search/directory.json")
+	searchDirectory := catalogRequest(t, handler, http.MethodGet, catalogPath("/snapshots/"+kubernetesSnapshotID+"/search-data/search/directory.json"))
 	if searchDirectory.Code != http.StatusOK || searchDirectory.Header().Get("Cache-Control") != "public, max-age=31536000, immutable" || searchDirectory.Body.Len() > 4<<20 {
 		t.Fatalf("client search directory = %d bytes=%d headers=%v", searchDirectory.Code, searchDirectory.Body.Len(), searchDirectory.Header())
 	}
@@ -78,7 +104,7 @@ func TestKubernetesCatalog(t *testing.T) {
 		t.Fatalf("client search artifacts = %d bytes, want <= 4 MiB", clientSearchBytes)
 	}
 
-	stable := catalogRequest(t, handler, http.MethodGet, "/catalog.json")
+	stable := catalogRequest(t, handler, http.MethodGet, catalogPath("/catalog.json"))
 	if stable.Code != http.StatusTemporaryRedirect || stable.Header().Get("Location") == "" {
 		t.Fatalf("stable catalog = %d location=%q", stable.Code, stable.Header().Get("Location"))
 	}
@@ -95,7 +121,7 @@ func TestKubernetesCatalog(t *testing.T) {
 	visible := make(map[domain.DetailID]string, 3028)
 	maxDocumentBytes := 0
 	for _, document := range directory.Documents {
-		documentPage := catalogRequest(t, handler, http.MethodGet, "/documents/"+url.PathEscape(document.Key)+"/")
+		documentPage := catalogRequest(t, handler, http.MethodGet, catalogPath("/documents/"+url.PathEscape(document.Key)+"/"))
 		if documentPage.Code != http.StatusOK || documentPage.Body.Len() > 512<<10 || !strings.Contains(documentPage.Body.String(), `data-catalog-document="`+document.Key+`"`) {
 			t.Fatalf("document %q = %d bytes=%d", document.Key, documentPage.Code, documentPage.Body.Len())
 		}
@@ -111,10 +137,10 @@ func TestKubernetesCatalog(t *testing.T) {
 			assertCatalogDetailDirectory(t, document.Key, schema.DetailID, schema.Href, visible)
 		}
 		if len(document.Operations) > 0 {
-			assertVisibleCatalogDetail(t, handler, document.Operations[0].Href, document.Operations[0].DetailID, "operation")
+			assertVisibleCatalogDetail(t, handler, kubernetesMount, document.Operations[0].Href, document.Operations[0].DetailID, "operation")
 		}
 		if len(document.Schemas) > 0 {
-			assertVisibleCatalogDetail(t, handler, document.Schemas[0].Href, document.Schemas[0].DetailID, "schema")
+			assertVisibleCatalogDetail(t, handler, kubernetesMount, document.Schemas[0].Href, document.Schemas[0].DetailID, "schema")
 		}
 	}
 	if len(directory.Documents) != 65 || operationCount != 1202 || schemaCount != 1826 || len(visible) != operationCount+schemaCount {
@@ -123,7 +149,7 @@ func TestKubernetesCatalog(t *testing.T) {
 
 	maxSearchBytes := 0
 	for detailID := range visible {
-		response := catalogRequest(t, handler, http.MethodGet, "/search.json?q="+url.QueryEscape(string(detailID)))
+		response := catalogRequest(t, handler, http.MethodGet, catalogPath("/search.json?q="+url.QueryEscape(string(detailID))))
 		if response.Code != http.StatusOK || response.Body.Len() > 64<<10 {
 			t.Fatalf("exact search %q = %d bytes=%d", detailID, response.Code, response.Body.Len())
 		}
@@ -142,10 +168,10 @@ func TestKubernetesCatalog(t *testing.T) {
 		if err := json.Unmarshal(response.Body.Bytes(), &result); err != nil {
 			t.Fatal(err)
 		}
-		if result.CatalogID != "kubernetes" || string(result.SnapshotID) != receipts[0].SnapshotID || result.Version != 1 || len(result.Results) == 0 {
+		if result.CatalogID != "kubernetes" || string(result.SnapshotID) != kubernetesSnapshotID || result.Version != 1 || len(result.Results) == 0 {
 			t.Fatalf("exact search %q identity/results = %#v", detailID, result)
 		}
-		if expected, exists := visible[result.Results[0].DetailID]; !exists || result.Results[0].Href != "/"+expected {
+		if expected, exists := visible[result.Results[0].DetailID]; !exists || result.Results[0].Href != mountedCatalogPath(kubernetesMount, "/"+expected) {
 			t.Fatalf("exact search %q returned non-visible target %#v", detailID, result.Results[0])
 		}
 	}
@@ -163,7 +189,7 @@ func TestKubernetesCatalog(t *testing.T) {
 		{query: "apps v1 deployment", documentKey: "apps-v1", title: "Deployment"},
 		{query: "readAppsV1NamespacedDeployment", documentKey: "apps-v1", title: "Deployment"},
 	} {
-		assertKubernetesSearchResult(t, handler, searchCase.query, searchCase.documentKey, searchCase.title)
+		assertKubernetesSearchResult(t, handler, kubernetesMount, searchCase.query, searchCase.documentKey, searchCase.title)
 	}
 
 	for _, route := range []string{"/manage", "/manage/specs", "/api/specs"} {
@@ -171,7 +197,14 @@ func TestKubernetesCatalog(t *testing.T) {
 			t.Errorf("renderer-only route %q = %d, want 404", route, response.Code)
 		}
 	}
-	t.Logf("Kubernetes catalog receipt: snapshot=%s startup-process-bytes=%d documents=65 operations=1202 schemas=1826 client-search-directory=%d client-search-total=%d max-document-html=%d max-exact-search-json=%d", receipts[0].SnapshotID, receipts[0].StartupProcessBytes, searchDirectory.Body.Len(), clientSearchBytes, maxDocumentBytes, maxSearchBytes)
+	t.Logf("Kubernetes catalog receipt: snapshot=%s startup-process-bytes=%d documents=65 operations=1202 schemas=1826 client-search-directory=%d client-search-total=%d max-document-html=%d max-exact-search-json=%d", kubernetesSnapshotID, kubernetesReceipt.StartupProcessBytes, searchDirectory.Body.Len(), clientSearchBytes, maxDocumentBytes, maxSearchBytes)
+}
+
+func mountedCatalogPath(mount, relative string) string {
+	if mount == "/" {
+		return relative
+	}
+	return strings.TrimRight(mount, "/") + "/" + strings.TrimLeft(relative, "/")
 }
 
 func assertCatalogDetailDirectory(t *testing.T, documentKey string, detailID domain.DetailID, href string, visible map[domain.DetailID]string) {
@@ -186,18 +219,18 @@ func assertCatalogDetailDirectory(t *testing.T, documentKey string, detailID dom
 	visible[detailID] = href
 }
 
-func assertVisibleCatalogDetail(t *testing.T, handler http.Handler, href string, detailID domain.DetailID, kind string) {
+func assertVisibleCatalogDetail(t *testing.T, handler http.Handler, mount, href string, detailID domain.DetailID, kind string) {
 	t.Helper()
-	path := "/" + strings.Split(href, "#")[0]
+	path := mountedCatalogPath(mount, "/"+strings.Split(href, "#")[0])
 	response := catalogRequest(t, handler, http.MethodGet, path)
 	if response.Code != http.StatusOK || response.Body.Len() > 512<<10 || !strings.Contains(response.Body.String(), `id="`+string(detailID)+`"`) || !strings.Contains(response.Body.String(), `data-catalog-detail="`+kind+`"`) {
 		t.Fatalf("%s detail %q = %d bytes=%d", kind, detailID, response.Code, response.Body.Len())
 	}
 }
 
-func assertKubernetesSearchResult(t *testing.T, handler http.Handler, query, documentKey, title string) {
+func assertKubernetesSearchResult(t *testing.T, handler http.Handler, mount, query, documentKey, title string) {
 	t.Helper()
-	response := catalogRequest(t, handler, http.MethodGet, "/search.json?q="+url.QueryEscape(query))
+	response := catalogRequest(t, handler, http.MethodGet, mountedCatalogPath(mount, "/search.json?q="+url.QueryEscape(query)))
 	if response.Code != http.StatusOK {
 		t.Fatalf("search %q = %d %q", query, response.Code, response.Body.String())
 	}

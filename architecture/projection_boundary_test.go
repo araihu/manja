@@ -165,7 +165,11 @@ func projectionPublicAPI() map[string]map[string]projectionField {
 		"RequestBody": {"Description": f("string", "description"), "Required": f("bool", "required"), "MediaTypes": f("[]MediaType", "mediaTypes")},
 		"Response": {
 			"Ordinal": f("uint32", "ordinal"), "ID": f("string", "id"), "Status": f("string", "status"),
-			"Description": f("string", "description"), "MediaTypes": f("[]MediaType", "mediaTypes"),
+			"Description": f("string", "description"), "Headers": f("[]ResponseHeader", "headers"), "MediaTypes": f("[]MediaType", "mediaTypes"),
+		},
+		"ResponseHeader": {
+			"Ordinal": f("uint32", "ordinal"), "ID": f("string", "id"), "Name": f("string", "name"),
+			"Description": f("string", "description"), "SchemaRef": f("SchemaRef", "schemaRef"), "Examples": f("[]Example", "examples"),
 		},
 		"MediaType": {
 			"Ordinal": f("uint32", "ordinal"), "ID": f("string", "id"), "ContentType": f("string", "contentType"),
@@ -173,7 +177,12 @@ func projectionPublicAPI() map[string]map[string]projectionField {
 		},
 		"SecurityRequirement": {
 			"Ordinal": f("uint32", "ordinal"), "ID": f("string", "id"), "Name": f("string", "name"),
-			"Scopes": f("[]TextRecord", "scopes"),
+			"Scopes": f("[]TextRecord", "scopes"), "Definition": f("SecurityScheme", "definition"),
+		},
+		"SecurityScheme": {
+			"Name": f("string", "name"), "Type": f("string", "type"), "Description": f("string", "description"),
+			"ParameterName": f("string", "parameterName"), "In": f("string", "in"), "Scheme": f("string", "scheme"),
+			"BearerFormat": f("string", "bearerFormat"), "OpenIDConnectURL": f("string", "openIdConnectUrl"),
 		},
 		"CodeSample": {
 			"Ordinal": f("uint32", "ordinal"), "ID": f("string", "id"), "Label": f("string", "label"),
@@ -184,9 +193,12 @@ func projectionPublicAPI() map[string]map[string]projectionField {
 			"Ordinal": f("uint32", "ordinal"), "ID": f("string", "id"), "Name": f("string", "name"),
 			"Type": f("string", "type"), "Format": f("string", "format"), "Description": f("string", "description"),
 			"DefaultValue": f("string", "defaultValue"), "ExampleText": f("string", "exampleText"),
+			"Enum": f("[]string", "enum"), "Constraints": f("[]SchemaConstraint", "constraints"),
+			"Nullable": f("bool", "nullable"), "Deprecated": f("bool", "deprecated"),
 			"JSON": f("string", "json"), "Properties": f("[]SchemaNodeProperty", "properties"),
 			"Items": f("[]SchemaNodeItem", "items"),
 		},
+		"SchemaConstraint": {"Name": f("string", "name"), "Value": f("string", "value")},
 		"SchemaNodeProperty": {
 			"Ordinal": f("uint32", "ordinal"), "ID": f("string", "id"), "Name": f("string", "name"),
 			"Required": f("bool", "required"), "Description": f("string", "description"), "SchemaRef": f("SchemaRef", "schemaRef"),

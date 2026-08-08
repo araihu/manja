@@ -96,7 +96,7 @@ func TestPartitionSchemaNodesPreservesCyclesAndRecordBound(t *testing.T) {
 		t.Fatalf("schema-node shard count = %d, want 2", got)
 	}
 	var first SchemaNodeShardV1
-	if err := json.Unmarshal(schemaNodeChild(artifacts.Children).Bytes, &first); err != nil {
+	if err := json.Unmarshal(schemaNodeChild(artifacts.Children, 0).Bytes, &first); err != nil {
 		t.Fatal(err)
 	}
 	if first.Nodes[0].Items[0].SchemaRef != 1 || first.Nodes[1].Items[0].SchemaRef != 0 {
@@ -146,9 +146,13 @@ func detailChild(children []ChildArtifact) ChildArtifact {
 	return ChildArtifact{}
 }
 
-func schemaNodeChild(children []ChildArtifact) ChildArtifact {
+func schemaNodeChild(children []ChildArtifact, firstOrdinal uint32) ChildArtifact {
 	for _, child := range children {
-		if child.Kind == "schema-node" {
+		if child.Kind != "schema-node" {
+			continue
+		}
+		var shard SchemaNodeShardV1
+		if err := json.Unmarshal(child.Bytes, &shard); err == nil && shard.FirstOrdinal == firstOrdinal {
 			return child
 		}
 	}

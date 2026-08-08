@@ -21,7 +21,7 @@ const (
 	maxSchemaGraphEdges          = 100_000
 )
 
-var schemaNodeDomain = []byte("manja.projection.schema-node.v2\x00")
+var schemaNodeDomain = []byte("manja.projection.schema-node.v3\x00")
 
 func validateDocument(document projection.Document) error {
 	if document.FormatVersion != 2 {
@@ -230,6 +230,11 @@ func schemaRoots(document projection.Document) ([]projection.SchemaRef, error) {
 			}
 		}
 		for _, response := range operation.Responses {
+			for _, header := range response.Headers {
+				if err := appendRoot(header.SchemaRef); err != nil {
+					return nil, err
+				}
+			}
 			for _, media := range response.MediaTypes {
 				if err := appendRoot(media.SchemaRef); err != nil {
 					return nil, err
@@ -295,6 +300,14 @@ func schemaNodePreimage(nodes []projection.SchemaNode, node projection.SchemaNod
 	for _, value := range []string{node.Name, node.Type, node.Format, node.Description, node.DefaultValue, node.ExampleText, node.JSON} {
 		preimage = appendSchemaString(preimage, value)
 	}
+	preimage = appendSchemaStrings(preimage, node.Enum)
+	preimage = appendSchemaUint64(preimage, uint64(len(node.Constraints)))
+	for _, constraint := range node.Constraints {
+		preimage = appendSchemaString(preimage, constraint.Name)
+		preimage = appendSchemaString(preimage, constraint.Value)
+	}
+	preimage = appendSchemaBool(preimage, node.Nullable)
+	preimage = appendSchemaBool(preimage, node.Deprecated)
 	preimage = appendSchemaUint64(preimage, uint64(len(node.Properties)))
 	for _, property := range node.Properties {
 		preimage = appendSchemaUint32(preimage, property.Ordinal)
@@ -342,6 +355,21 @@ func schemaDigestFromID(id string) ([32]byte, error) {
 func appendSchemaString(target []byte, value string) []byte {
 	target = appendSchemaUint64(target, uint64(len([]byte(value))))
 	return append(target, value...)
+}
+
+func appendSchemaStrings(target []byte, values []string) []byte {
+	target = appendSchemaUint64(target, uint64(len(values)))
+	for _, value := range values {
+		target = appendSchemaString(target, value)
+	}
+	return target
+}
+
+func appendSchemaBool(target []byte, value bool) []byte {
+	if value {
+		return append(target, 1)
+	}
+	return append(target, 0)
 }
 
 func appendSchemaUint32(target []byte, value uint32) []byte {

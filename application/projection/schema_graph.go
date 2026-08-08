@@ -83,7 +83,7 @@ func (s *buildState) internSchema(source domain.SchemaSummary) (SchemaRef, error
 	node := SchemaNode{
 		Name: source.Name, Type: source.Type, Format: source.Format, Description: source.Description,
 		DefaultValue: source.Default, ExampleText: source.Example,
-		Enum: append([]string(nil), source.Enum...), Constraints: constraints,
+		Enum: append([]string{}, source.Enum...), Constraints: constraints,
 		Nullable: source.Nullable, Deprecated: source.Deprecated, JSON: canonicalJSON,
 		Properties: properties, Items: items,
 	}

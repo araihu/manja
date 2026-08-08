@@ -34,9 +34,9 @@ func TestUnmarshalRejectsUnknownFieldsAtEveryLayer(t *testing.T) {
 		`"name":"trace","in":"header"`,
 		`"contentType":"application/json"`,
 		`"headingId":"schema-error"`,
-		`"id":"schema-node-1b95a813fe35deaecad42f40861b466e943396285204d6967933edc4679fa3c1"`,
+		`"id":"schema-node-0ba5d39fa2f4445df8a6ca232e82dd59708d3f91edbe6bd8708b813a667faf27"`,
 		`"id":"id","name":"id"`,
-		`"id":"items","schemaRef":2`,
+		`"id":"items","schemaRef":4`,
 		`"resultId":"search-result-80ca9d5437c89af2e36d976fa2d1962fd6fe24841ed57b962f2389dc52f68db8"`,
 		`"ordinal":0,"path":"/"`,
 	}

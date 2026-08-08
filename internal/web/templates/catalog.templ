@@ -703,7 +703,7 @@ templ catalogOverview(data CatalogPageData) {
 			<div class="catalog-documents-desktop">
 				@table.Table(catalogDocumentTableConfig(data))
 			</div>
-			<p x-show="filter.trim() !== '' && Array.from($root.querySelectorAll('[data-catalog-document-card]')).every(card => !(card.dataset.searchText || '').toLowerCase().includes(filter.trim().toLowerCase()))" class="rounded-b-radius border border-t-0 border-outline px-4 py-6 text-center text-on-surface-muted dark:border-outline-dark dark:text-on-surface-dark-muted">No matching API documents.</p>
+			<p x-show="filter.trim() !== '' && Array.from($root.querySelectorAll('[data-catalog-document-card]')).every(card => !(card.dataset.searchText || '').toLowerCase().includes(filter.trim().toLowerCase()))" aria-live="polite" class="rounded-b-radius border border-t-0 border-outline px-4 py-6 text-center text-on-surface-muted dark:border-outline-dark dark:text-on-surface-dark-muted">No matching API documents.</p>
 		</section>
 		}
 	</main>

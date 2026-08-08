@@ -205,6 +205,7 @@ func fakeDepthDocument(t *testing.T, depth int) projection.Document {
 	for index := range document.SchemaNodes {
 		node := projection.SchemaNode{
 			Ordinal: uint32(index), ID: fmt.Sprintf("schema-node-%064x", index),
+			Enum: []string{}, Constraints: []projection.SchemaConstraint{},
 			Properties: []projection.SchemaNodeProperty{}, Items: []projection.SchemaNodeItem{},
 		}
 		if index+1 < depth {
