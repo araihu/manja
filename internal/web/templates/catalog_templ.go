@@ -4649,9 +4649,6 @@ func catalogSidebarConfig(data CatalogPageData) sidebar.Config {
 		case "schemas":
 			sidebarGroup.Icon = catalogSidebarIcon(heroicons.Icon16SolidCube)
 			otherGroups = append(otherGroups, sidebarGroup)
-		case "security-schemes":
-			sidebarGroup.Icon = catalogSidebarIcon(heroicons.Icon16SolidLockClosed)
-			otherGroups = append(otherGroups, sidebarGroup)
 		default:
 			sidebarGroup.Icon = catalogSidebarIcon(heroicons.Icon16SolidCodeBracket)
 			otherGroups = append(otherGroups, sidebarGroup)

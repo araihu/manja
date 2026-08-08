@@ -171,10 +171,7 @@ func (handler *CatalogHandler) catalogPageDataWithSidebarQuery(
 	if len(document.Schemas) > 0 {
 		validGroupIDs[catalogGroupID("schemas")] = struct{}{}
 	}
-	if len(document.SecuritySchemes) > 0 {
-		validGroupIDs[catalogGroupID("security-schemes")] = struct{}{}
-	}
-	sidebarItemCount := len(document.Schemas) + len(document.SecuritySchemes)
+	sidebarItemCount := len(document.Schemas)
 	for _, grouped := range operationGroups {
 		sidebarItemCount += len(grouped.operations)
 	}
@@ -236,22 +233,6 @@ func (handler *CatalogHandler) catalogPageDataWithSidebarQuery(
 				group.Items = append(group.Items, templates.CatalogSidebarItemData{
 					ID: "sidebar-" + string(schema.DetailID), Label: schema.Name,
 					Href: catalogDetailHref(documentHref, schema.DetailID), Active: schema.DetailID == selectedDetailID,
-				})
-			}
-		}
-		data.Groups = append(data.Groups, group)
-	}
-	if len(document.SecuritySchemes) > 0 {
-		groupID := catalogGroupID("security-schemes")
-		_, groupOpen := openGroups[groupID]
-		group := templates.CatalogSidebarGroupData{
-			ID: groupID, Kind: "security-schemes", Label: "Security Schemes", Count: len(document.SecuritySchemes), Open: groupOpen,
-			Href: catalogSidebarToggleHref(documentHref, selectedID, selectedNode, openGroups, groupPages, groupID),
-		}
-		if group.Open {
-			for _, scheme := range document.SecuritySchemes {
-				group.Items = append(group.Items, templates.CatalogSidebarItemData{
-					ID: "sidebar-" + scheme.Anchor, Label: scheme.Name, Href: documentHref + "#" + scheme.Anchor,
 				})
 			}
 		}
