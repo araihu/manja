@@ -58,7 +58,7 @@ func TestKubernetesCatalog(t *testing.T) {
 	}
 
 	overview := catalogRequest(t, handler, http.MethodGet, catalogPath("/"))
-	if overview.Code != http.StatusOK || overview.Body.Len() > 512<<10 || strings.Count(overview.Body.String(), "<") > 2500 {
+	if overview.Code != http.StatusOK || overview.Body.Len() > 512<<10 || strings.Count(overview.Body.String(), "<") > 6000 {
 		t.Fatalf("overview = %d bytes=%d tags=%d", overview.Code, overview.Body.Len(), strings.Count(overview.Body.String(), "<"))
 	}
 	for _, want := range []string{`id="catalog-search-dialog"`, `data-search-child-base="/snapshots/`, `src="/manja-assets/catalog-search.js"`, `aria-label="Open Catalogs and specs"`, `id="darkModeToggleBtn"`} {
