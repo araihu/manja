@@ -125,6 +125,44 @@ templ LayoutWithBrandingMetadata(metadata PageMetadata, branding core.DocsBrandi
 			<script>
 				(function () {
 					var pendingSidebarHref = "";
+					var catalogPathsStates = Object.create(null);
+
+					function catalogPathsStateKey(toggle) {
+						return toggle && toggle.getAttribute('data-manja-catalog-paths-state-key') || 'manja.catalog.paths.catalog';
+					}
+
+					function restoreCatalogPathsDisclosure(root) {
+						var scope = root && root.querySelector ? root : document;
+						var toggle = scope.querySelector('[data-manja-catalog-paths-toggle="true"]');
+						if (!toggle) return;
+						var children = toggle.nextElementSibling;
+						if (children) children.id = 'catalog-paths-children';
+						var key = catalogPathsStateKey(toggle);
+						var saved = Object.prototype.hasOwnProperty.call(catalogPathsStates, key)
+							? catalogPathsStates[key]
+							: null;
+						if (saved === null) {
+							try { saved = sessionStorage.getItem(key); } catch (e) {}
+						}
+						if (saved === 'true' || saved === 'false') toggle.setAttribute('aria-expanded', saved);
+					}
+
+					window.manjaToggleCatalogPaths = function (toggle) {
+						if (!toggle) return;
+						var expanded = toggle.getAttribute('aria-expanded') !== 'true';
+						toggle.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+						var key = catalogPathsStateKey(toggle);
+						catalogPathsStates[key] = expanded ? 'true' : 'false';
+						try { sessionStorage.setItem(key, catalogPathsStates[key]); } catch (e) {}
+					};
+
+					document.addEventListener('DOMContentLoaded', function () {
+						restoreCatalogPathsDisclosure(document);
+					});
+
+					document.addEventListener('htmx:afterSwap', function (event) {
+						restoreCatalogPathsDisclosure(event.target);
+					});
 
 					function sidebarLinkFromEvent(event) {
 						var detail = event && event.detail;
