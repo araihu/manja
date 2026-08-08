@@ -45,6 +45,7 @@ type globalSearchCandidate struct {
 	mount     string
 	section   string
 	localRank int
+	exactID   bool
 }
 
 type globalSearchResult struct {
@@ -105,6 +106,17 @@ func (handler *CatalogHandler) searchGlobal(ctx context.Context, query, contextM
 		for index, record := range local.Results {
 			result.Results = append(result.Results, globalSearchCandidate{
 				record: record, mount: mount, section: snapshot.Directory.Title, localRank: index,
+				exactID: globalSearchRecordMatchesDetailID(record, result.Query),
+			})
+		}
+		exactRecord, exactFound, exactErr := globalSearchExactRecord(snapshot.Directory, mount, result.Query)
+		if exactErr != nil {
+			admission.Release()
+			return globalSearchResult{}, exactErr
+		}
+		if exactFound && !globalSearchResultsContainDetail(local.Results, exactRecord.DetailID) {
+			result.Results = append(result.Results, globalSearchCandidate{
+				record: exactRecord, mount: mount, section: snapshot.Directory.Title, localRank: -1, exactID: true,
 			})
 		}
 		for index, document := range snapshot.Directory.Documents {
@@ -118,6 +130,7 @@ func (handler *CatalogHandler) searchGlobal(ctx context.Context, query, contextM
 			}
 			result.Results = append(result.Results, globalSearchCandidate{
 				record: record, mount: mount, section: snapshot.Directory.Title, localRank: len(local.Results) + index,
+				exactID: globalSearchRecordMatchesDetailID(record, result.Query),
 			})
 		}
 		admission.Release()
@@ -131,6 +144,54 @@ func (handler *CatalogHandler) searchGlobal(ctx context.Context, query, contextM
 		result.Results = result.Results[:maxGlobalSearchResults]
 	}
 	return result, nil
+}
+
+func globalSearchRecordMatchesDetailID(record catalog.SearchRecordV1, query string) bool {
+	return strings.EqualFold(strings.TrimSpace(query), string(record.DetailID))
+}
+
+func globalSearchResultsContainDetail(results []catalog.SearchRecordV1, detailID domain.DetailID) bool {
+	for _, record := range results {
+		if record.DetailID == detailID {
+			return true
+		}
+	}
+	return false
+}
+
+func globalSearchExactRecord(directory catalog.CatalogArtifactV1, mount, query string) (catalog.SearchRecordV1, bool, error) {
+	for _, document := range directory.Documents {
+		for _, operation := range document.Operations {
+			if !strings.EqualFold(strings.TrimSpace(query), string(operation.DetailID)) {
+				continue
+			}
+			href, err := catalogSearchHref(mount, operation.Href)
+			if err != nil {
+				return catalog.SearchRecordV1{}, false, err
+			}
+			return catalog.SearchRecordV1{
+				DetailID: operation.DetailID, DocumentKey: document.Key, Kind: "operation",
+				Title: operation.Title, Description: operation.Description, Href: href,
+				OperationID: operation.OperationID, Method: operation.Method, Path: operation.Path,
+				Occurrences: 1, Documents: []string{document.Key},
+			}, true, nil
+		}
+		for _, schema := range document.Schemas {
+			if !strings.EqualFold(strings.TrimSpace(query), string(schema.DetailID)) {
+				continue
+			}
+			href, err := catalogSearchHref(mount, schema.Href)
+			if err != nil {
+				return catalog.SearchRecordV1{}, false, err
+			}
+			return catalog.SearchRecordV1{
+				DetailID: schema.DetailID, DocumentKey: document.Key, Kind: "schema",
+				Title: schema.Name, Description: schema.Description, Href: href, SchemaName: schema.Name,
+				Occurrences: 1, Documents: []string{document.Key},
+			}, true, nil
+		}
+	}
+	return catalog.SearchRecordV1{}, false, nil
 }
 
 func globalDocumentSearchRecord(mount string, document catalog.DocumentDirectoryV1) (catalog.SearchRecordV1, error) {
@@ -207,6 +268,9 @@ func globalSearchCandidateBelongsToDocument(candidate globalSearchCandidate, doc
 
 func globalSearchScore(candidate globalSearchCandidate, contextMount, contextDocument string) int64 {
 	score := globalSearchKindWeight(candidate.record.Kind) * 1_000_000
+	if candidate.exactID {
+		score += 10_000_000
+	}
 	if contextMount != "" && candidate.mount == contextMount {
 		score += 100_000
 	}

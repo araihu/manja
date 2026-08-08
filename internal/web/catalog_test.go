@@ -254,6 +254,15 @@ func TestGlobalSearchRankingUsesKindAndPageContext(t *testing.T) {
 	if currentSchemaIndex < 0 || otherSchemaIndex < 0 || currentSchemaIndex >= otherSchemaIndex {
 		t.Fatalf("spec-page schema context ranking = %+v", pageResults)
 	}
+
+	exactResults := []globalSearchCandidate{
+		{record: catalog.SearchRecordV1{DetailID: "schema-exact", Kind: "schema", Title: "Exact schema"}, exactID: true},
+		{record: catalog.SearchRecordV1{DetailID: "operation-related", Kind: "operation", Title: "Related operation"}},
+	}
+	rankGlobalSearchCandidates(exactResults, "", "")
+	if exactResults[0].record.DetailID != "schema-exact" {
+		t.Fatalf("exact detail ranking = %+v, want exact detail first", exactResults)
+	}
 }
 
 func TestCatalogSearchErrorsHaveStableHTTPClasses(t *testing.T) {
