@@ -3164,7 +3164,7 @@ func catalogOperationHeader(operation core.Operation, data CatalogPageData) temp
 				return templ_7745c5c3_Err
 			}
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 246, "<div class=\"mt-4 inline-flex max-w-full items-center gap-2\"><div class=\"inline-flex min-w-0 items-center gap-3 text-left\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 246, "<div aria-label=\"Endpoint route\" class=\"mt-4 inline-flex max-w-full items-center gap-2\"><div class=\"inline-flex min-w-0 items-center gap-3 text-left\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
