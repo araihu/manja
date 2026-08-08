@@ -408,8 +408,8 @@ func TestCatalogDocumentSearchAndClientFirstModal(t *testing.T) {
 	if count, err := panel.Locator(`nav[aria-label="sidebar navigation"] > div.shrink-0.border-b`).Count(); err != nil || count != 0 {
 		t.Fatalf("mobile drawer sidebar logo headers = %d, err=%v", count, err)
 	}
-	if err := panel.Locator(`[data-catalog-sidebar-search]`).WaitFor(playwright.LocatorWaitForOptions{State: playwright.WaitForSelectorStateVisible}); err != nil {
-		t.Fatalf("mobile drawer search field: %v", err)
+	if count, err := panel.Locator(`[data-catalog-sidebar-search]`).Count(); err != nil || count != 0 {
+		t.Fatalf("mobile drawer should not duplicate the global search field: count=%d err=%v", count, err)
 	}
 	if err := panel.GetByRole("button", playwright.LocatorGetByRoleOptions{Name: "Close API sections", Exact: playwright.Bool(true)}).Click(); err != nil {
 		t.Fatal(err)

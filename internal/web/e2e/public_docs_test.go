@@ -725,8 +725,8 @@ func TestRichOperationDetailsKeepHorizontalOverflowLocal(t *testing.T) {
 	}`); err != nil {
 		t.Fatal(err)
 	}
-	parameterTableID := operationAnchor + "-query-parameters"
-	if err := page.Locator("#" + parameterTableID).WaitFor(); err != nil {
+	parameterListID := operationAnchor + "-query-parameters"
+	if err := page.Locator("#" + parameterListID).WaitFor(); err != nil {
 		t.Fatal(err)
 	}
 	parameterPresentation, err := page.Evaluate(`(operationAnchor) => {
@@ -830,25 +830,28 @@ func TestRichOperationDetailsKeepHorizontalOverflowLocal(t *testing.T) {
 				}
 				t.Fatalf("%dpx request configuration trigger should be visible", width)
 			}
-			result, err := page.Evaluate(`(parameterTableID) => {
-		const main = document.querySelector('#main-content');
-			const tableRoot = document.getElementById(parameterTableID);
-			const table = tableRoot?.tagName === 'TABLE' ? tableRoot : tableRoot?.querySelector('table');
-			const tableWrapper = table?.closest('.manja-parameter-table-wrapper') || table?.parentElement;
-			const tableBounds = table?.getBoundingClientRect();
+			result, err := page.Evaluate(`(parameterListID) => {
+				const main = document.querySelector('#main-content');
+			const list = document.getElementById(parameterListID);
+			const rows = [...(list?.querySelectorAll('[data-manja-parameter-row]') || [])];
+			const maxRowClientWidth = rows.reduce((width, row) => Math.max(width, row.clientWidth || 0), 0);
+			const maxRowScrollWidth = rows.reduce((width, row) => Math.max(width, row.scrollWidth || 0), 0);
 			const headerDescription = document.querySelector('[data-catalog-detail="operation"] [data-public-page-header] .manja-doc-title + p');
 			return {
 				mainClientWidth: main?.clientWidth || 0,
 				mainScrollWidth: main?.scrollWidth || 0,
 				headerDescriptionClientWidth: headerDescription?.clientWidth || 0,
 				headerDescriptionScrollWidth: headerDescription?.scrollWidth || 0,
-				tableClientWidth: tableWrapper?.clientWidth || 0,
-				tableScrollWidth: tableWrapper?.scrollWidth || 0,
-				columnRatios: tableBounds ? [...table.querySelectorAll('thead th')].map((cell) => cell.getBoundingClientRect().width / tableBounds.width) : [],
+				listClientWidth: list?.clientWidth || 0,
+				listScrollWidth: list?.scrollWidth || 0,
+				parameterRowCount: rows.length,
+				maxRowClientWidth,
+				maxRowScrollWidth,
+				tables: list?.querySelectorAll('table').length || 0,
 				hasRequestBody: Boolean(document.querySelector('[aria-label="Request body"]')),
 				hasRequestSample: Boolean(document.querySelector('[data-manja-request-sample]')),
 			};
-		}`, parameterTableID)
+		}`, parameterListID)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -856,7 +859,7 @@ func TestRichOperationDetailsKeepHorizontalOverflowLocal(t *testing.T) {
 			if !ok {
 				t.Fatalf("%dpx operation layout metrics should be a map, got %#v", width, result)
 			}
-			t.Logf("%dpx rich operation layout: main=%v/%v table=%v/%v", width, metrics["mainScrollWidth"], metrics["mainClientWidth"], metrics["tableScrollWidth"], metrics["tableClientWidth"])
+			t.Logf("%dpx rich operation layout: main=%v/%v list=%v/%v rows=%v", width, metrics["mainScrollWidth"], metrics["mainClientWidth"], metrics["listScrollWidth"], metrics["listClientWidth"], metrics["parameterRowCount"])
 			if metrics["hasRequestBody"] != true || metrics["hasRequestSample"] != true {
 				t.Fatalf("%dpx operation must preserve rich request content, got %#v", width, metrics)
 			}
@@ -866,28 +869,24 @@ func TestRichOperationDetailsKeepHorizontalOverflowLocal(t *testing.T) {
 			if got, want := metricNumber(t, metrics, "headerDescriptionScrollWidth"), metricNumber(t, metrics, "headerDescriptionClientWidth"); got != want {
 				t.Fatalf("%dpx catalog operation header must wrap its route description: scrollWidth=%v clientWidth=%v, metrics %#v", width, got, want, metrics)
 			}
-			if got, max := metricNumber(t, metrics, "tableClientWidth"), metricNumber(t, metrics, "mainClientWidth"); got > max {
-				t.Fatalf("%dpx parameter table container must stay inside main, metrics %#v", width, metrics)
+			if got, max := metricNumber(t, metrics, "listClientWidth"), metricNumber(t, metrics, "mainClientWidth"); got > max {
+				t.Fatalf("%dpx parameter list must stay inside main, metrics %#v", width, metrics)
 			}
-			if got, want := metricNumber(t, metrics, "tableScrollWidth"), metricNumber(t, metrics, "tableClientWidth"); got != want {
-				t.Fatalf("%dpx parameter table should not own horizontal overflow, metrics %#v", width, metrics)
+			if got, want := metricNumber(t, metrics, "listScrollWidth"), metricNumber(t, metrics, "listClientWidth"); got != want {
+				t.Fatalf("%dpx parameter list should not own horizontal overflow, metrics %#v", width, metrics)
 			}
-			columnRatios, ok := metrics["columnRatios"].([]any)
-			if !ok || len(columnRatios) != 3 {
-				t.Fatalf("%dpx parameter table should expose three columns, metrics %#v", width, metrics)
+			if got, want := metricNumber(t, metrics, "maxRowScrollWidth"), metricNumber(t, metrics, "maxRowClientWidth"); got != want {
+				t.Fatalf("%dpx parameter rows should wrap without horizontal overflow, metrics %#v", width, metrics)
 			}
-			for index, bounds := range [][2]float64{{0.35, 0.45}, {0.15, 0.25}, {0.35, 0.45}} {
-				got, ok := columnRatios[index].(float64)
-				if !ok {
-					t.Fatalf("%dpx parameter table column %d ratio should be numeric, got %#v", width, index+1, columnRatios[index])
-				}
-				if got < bounds[0] || got > bounds[1] {
-					t.Fatalf("%dpx parameter table column %d ratio = %v, want %.2f..%.2f, metrics %#v", width, index+1, got, bounds[0], bounds[1], metrics)
-				}
+			if got := metricNumber(t, metrics, "parameterRowCount"); got != 3 {
+				t.Fatalf("%dpx query parameter list should expose three stacked rows, metrics %#v", width, metrics)
+			}
+			if got := metricNumber(t, metrics, "tables"); got != 0 {
+				t.Fatalf("%dpx parameter list should not render a table, metrics %#v", width, metrics)
 			}
 
 			if width == 390 {
-				descriptionToggle := page.Locator("#" + parameterTableID + " .manja-description-toggle").First()
+				descriptionToggle := page.Locator("#" + parameterListID + " .manja-description-toggle").First()
 				if err := descriptionToggle.WaitFor(); err != nil {
 					t.Fatal(err)
 				}
