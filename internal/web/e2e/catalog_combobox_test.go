@@ -209,7 +209,7 @@ func TestCatalogDocumentSearchAndClientFirstModal(t *testing.T) {
 	if count, err := documentHeader.GetByRole("link", playwright.LocatorGetByRoleOptions{Name: "Download source", Exact: playwright.Bool(true)}).Count(); err != nil || count != 1 {
 		t.Fatalf("catalog source download links = %d, err=%v", count, err)
 	}
-	sourcePath := documentHeader.Locator("p.font-mono")
+	sourcePath := documentHeader.Locator("[data-catalog-provenance] dd code")
 	if source, err := sourcePath.TextContent(); err != nil || strings.TrimSpace(source) != "apis/apps/v1.json" {
 		t.Fatalf("catalog source path = %q, err=%v", source, err)
 	}
@@ -635,6 +635,12 @@ func TestCatalogSidebarExpansionPreservesKeyboardFocus(t *testing.T) {
 	if expanded, err := replacement.GetAttribute("aria-expanded"); err != nil || expanded != "true" {
 		t.Fatalf("expanded group aria-expanded = %q, err=%v", expanded, err)
 	}
+	if _, err := page.WaitForFunction(`() => {
+		const control = document.querySelector('#catalog-sidebar-groups a[hx-target="#catalog-sidebar-groups"][aria-expanded="true"]');
+		return control && document.activeElement === control;
+	}`, nil, playwright.PageWaitForFunctionOptions{Timeout: playwright.Float(5000)}); err != nil {
+		t.Fatalf("expanded group should retain focus: %v", err)
+	}
 	groupStyle, err := replacement.Evaluate(`element => { const style = getComputedStyle(element); return { borderLeftWidth: style.borderLeftWidth, fontWeight: style.fontWeight, fontSize: style.fontSize }; }`, nil)
 	if err != nil {
 		t.Fatal(err)
@@ -658,7 +664,7 @@ func TestCatalogSidebarExpansionPreservesKeyboardFocus(t *testing.T) {
 		if err := link.WaitFor(); err != nil {
 			t.Fatalf("sidebar operation %q: %v", test.title, err)
 		}
-			badgeClass, err := link.Locator("sup, span:not(.min-w-0):not(.sr-only)").First().GetAttribute("class")
+		badgeClass, err := link.Locator("sup, span:not(.min-w-0):not(.sr-only)").First().GetAttribute("class")
 		if err != nil || !strings.Contains(badgeClass, test.class) {
 			t.Fatalf("sidebar operation %q badge class = %q, want %q; err=%v", test.title, badgeClass, test.class, err)
 		}
@@ -683,9 +689,5 @@ func TestCatalogSidebarExpansionPreservesKeyboardFocus(t *testing.T) {
 	}
 	if describedBy, err := longLink.GetAttribute("aria-describedby"); err != nil || describedBy != "catalog-sidebar-overflow-tooltip" {
 		t.Fatalf("overflow tooltip aria-describedby = %q, err=%v", describedBy, err)
-	}
-	focused, err := replacement.Evaluate(`element => document.activeElement === element`, nil)
-	if err != nil || focused != true {
-		t.Fatalf("expanded group retained focus = %v, err=%v", focused, err)
 	}
 }

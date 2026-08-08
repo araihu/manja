@@ -779,8 +779,8 @@ func TestRichOperationDetailsKeepHorizontalOverflowLocal(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got, ok := desktopVisibility.(map[string]any); !ok || got["enhanced"] != "true" || got["rail"] != "block" || got["trigger"] != "inline-flex" || got["open"] != "false" || got["ariaHidden"] != nil || got["content"] != "none" || got["contentAriaHidden"] != "true" || got["toggle"] == "none" {
-		t.Fatalf("desktop request configuration should remain in the examples rail, got %#v", desktopVisibility)
+	if got, ok := desktopVisibility.(map[string]any); !ok || got["enhanced"] != "true" || got["rail"] != "none" || got["trigger"] != "inline-flex" || got["open"] != "false" || got["ariaHidden"] != nil || got["content"] != "none" || got["contentAriaHidden"] != "true" || got["toggle"] == "none" {
+		t.Fatalf("desktop request configuration should start collapsed behind its trigger, got %#v", desktopVisibility)
 	}
 	desktopToggle := page.Locator(".manja-request-config-desktop-toggle")
 	if err := page.Locator(".manja-request-config-trigger-bar").Click(); err != nil {

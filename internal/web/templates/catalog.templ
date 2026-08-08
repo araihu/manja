@@ -1571,7 +1571,7 @@ templ catalogSidebarFocusRestoration() {
 			document.body.addEventListener("htmx:beforeRequest", function (event) {
 				var trigger = event.detail && event.detail.elt;
 				var control = trigger && trigger.closest && trigger.closest("[data-catalog-group-control]");
-				pendingControlID = control && document.activeElement === control ? control.id : "";
+				pendingControlID = control ? control.id : "";
 				var schemaLink = trigger && trigger.closest && trigger.closest("[data-catalog-schema-property]");
 				pendingSchemaNodeFocus = !!schemaLink;
 			});
