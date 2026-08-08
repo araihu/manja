@@ -215,7 +215,7 @@ func TestCatalogDocumentSearchAndClientFirstModal(t *testing.T) {
 	}
 	if order, err := documentHeader.Evaluate(`element => {
 		const action = element.querySelector('a');
-		const source = element.querySelector('p.font-mono');
+		const source = element.querySelector('[data-catalog-provenance] > div:first-child dd code');
 		return Boolean(action && source && (action.compareDocumentPosition(source) & Node.DOCUMENT_POSITION_FOLLOWING));
 	}`, nil); err != nil || order != true {
 		t.Fatalf("catalog source path should follow download action: %v, err=%v", order, err)
@@ -609,6 +609,9 @@ func TestCatalogSidebarExpansionPreservesKeyboardFocus(t *testing.T) {
 	if err := page.Keyboard().Press("Enter"); err != nil {
 		t.Fatal(err)
 	}
+	if _, err := page.WaitForFunction(`() => document.querySelector('#catalog-sidebar-groups a[hx-target="#catalog-sidebar-groups"]')?.getAttribute('aria-expanded') === 'false'`, nil, playwright.PageWaitForFunctionOptions{Timeout: playwright.Float(5000)}); err != nil {
+		t.Fatalf("group should collapse after keyboard activation: %v", err)
+	}
 	collapsed := page.Locator(`#catalog-sidebar-groups a[hx-target="#catalog-sidebar-groups"]`).First()
 	if err := collapsed.WaitFor(); err != nil {
 		t.Fatalf("collapsed group control replacement: %v", err)
@@ -624,6 +627,9 @@ func TestCatalogSidebarExpansionPreservesKeyboardFocus(t *testing.T) {
 	}
 	if err := page.Keyboard().Press("Enter"); err != nil {
 		t.Fatal(err)
+	}
+	if _, err := page.WaitForFunction(`() => document.querySelector('#catalog-sidebar-groups a[hx-target="#catalog-sidebar-groups"]')?.getAttribute('aria-expanded') === 'true'`, nil, playwright.PageWaitForFunctionOptions{Timeout: playwright.Float(5000)}); err != nil {
+		t.Fatalf("group should expand after keyboard activation: %v", err)
 	}
 	replacement := page.Locator(`#catalog-sidebar-groups a[hx-target="#catalog-sidebar-groups"]`).First()
 	if err := replacement.WaitFor(); err != nil {
