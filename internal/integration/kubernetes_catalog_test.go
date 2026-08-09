@@ -149,7 +149,7 @@ func TestKubernetesCatalog(t *testing.T) {
 
 	maxSearchBytes := 0
 	for detailID := range visible {
-		response := catalogRequest(t, handler, http.MethodGet, catalogPath("/search.json?q="+url.QueryEscape(string(detailID))))
+		response := catalogSearchRequest(t, handler, catalogPath("/search.json?q="+url.QueryEscape(string(detailID))))
 		if response.Code != http.StatusOK || response.Body.Len() > 64<<10 {
 			t.Fatalf("exact search %q = %d bytes=%d", detailID, response.Code, response.Body.Len())
 		}
@@ -200,6 +200,27 @@ func TestKubernetesCatalog(t *testing.T) {
 	t.Logf("Kubernetes catalog receipt: snapshot=%s startup-process-bytes=%d documents=65 operations=1202 schemas=1826 client-search-directory=%d client-search-total=%d max-document-html=%d max-exact-search-json=%d", kubernetesSnapshotID, kubernetesReceipt.StartupProcessBytes, searchDirectory.Body.Len(), clientSearchBytes, maxDocumentBytes, maxSearchBytes)
 }
 
+func TestCatalogSearchRequestRetriesOneTemporaryDeadline(t *testing.T) {
+	attempts := 0
+	var waits []time.Duration
+	handler := http.HandlerFunc(func(response http.ResponseWriter, _ *http.Request) {
+		attempts++
+		if attempts == 1 {
+			response.Header().Set("Retry-After", "1")
+			http.Error(response, "search temporarily unavailable", http.StatusServiceUnavailable)
+			return
+		}
+		response.WriteHeader(http.StatusOK)
+	})
+
+	response := catalogSearchRequestWithWait(t, handler, "/search.json?q=Pod", func(delay time.Duration) {
+		waits = append(waits, delay)
+	})
+	if response.Code != http.StatusOK || attempts != 2 || len(waits) != 1 || waits[0] != time.Second {
+		t.Fatalf("search retry = status:%d attempts:%d waits:%v", response.Code, attempts, waits)
+	}
+}
+
 func mountedCatalogPath(mount, relative string) string {
 	if mount == "/" {
 		return relative
@@ -230,7 +251,7 @@ func assertVisibleCatalogDetail(t *testing.T, handler http.Handler, mount, href 
 
 func assertKubernetesSearchResult(t *testing.T, handler http.Handler, mount, query, documentKey, title string) {
 	t.Helper()
-	response := catalogRequest(t, handler, http.MethodGet, mountedCatalogPath(mount, "/search.json?q="+url.QueryEscape(query)))
+	response := catalogSearchRequest(t, handler, mountedCatalogPath(mount, "/search.json?q="+url.QueryEscape(query)))
 	if response.Code != http.StatusOK {
 		t.Fatalf("search %q = %d %q", query, response.Code, response.Body.String())
 	}
@@ -256,4 +277,19 @@ func catalogRequest(t *testing.T, handler http.Handler, method, target string) *
 	response := httptest.NewRecorder()
 	handler.ServeHTTP(response, httptest.NewRequest(method, target, nil))
 	return response
+}
+
+func catalogSearchRequest(t *testing.T, handler http.Handler, target string) *httptest.ResponseRecorder {
+	t.Helper()
+	return catalogSearchRequestWithWait(t, handler, target, time.Sleep)
+}
+
+func catalogSearchRequestWithWait(t *testing.T, handler http.Handler, target string, wait func(time.Duration)) *httptest.ResponseRecorder {
+	t.Helper()
+	response := catalogRequest(t, handler, http.MethodGet, target)
+	if response.Code != http.StatusServiceUnavailable || response.Header().Get("Retry-After") != "1" {
+		return response
+	}
+	wait(time.Second)
+	return catalogRequest(t, handler, http.MethodGet, target)
 }
