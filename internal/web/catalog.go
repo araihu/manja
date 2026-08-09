@@ -484,7 +484,12 @@ func (handler *CatalogHandler) renderCatalogPage(response http.ResponseWriter, r
 	data.CapabilityFooter = handler.catalogCapabilityFooter(data)
 	data.Metadata = handler.catalogPageMetadata(request, data)
 	var body catalogPageBuffer
-	err := templates.CatalogPage(data).Render(request.Context(), &body)
+	var err error
+	if isCatalogMainFragmentRequest(request) {
+		err = templates.CatalogMainFragment(data).Render(request.Context(), &body)
+	} else {
+		err = templates.CatalogPage(data).Render(request.Context(), &body)
+	}
 	if body.exceeded || errors.Is(err, errCatalogPageTooLarge) {
 		http.Error(response, "catalog representation exceeds byte limit", http.StatusInternalServerError)
 		return
@@ -494,6 +499,13 @@ func (handler *CatalogHandler) renderCatalogPage(response http.ResponseWriter, r
 		return
 	}
 	writeCatalogRepresentation(response, request, body.Bytes(), "text/html; charset=utf-8")
+}
+
+func isCatalogMainFragmentRequest(request *http.Request) bool {
+	return strings.EqualFold(strings.TrimSpace(request.Header.Get("HX-Request")), "true") &&
+		strings.TrimSpace(request.Header.Get("HX-Target")) == "catalog-main-content" &&
+		!strings.EqualFold(strings.TrimSpace(request.Header.Get("HX-Boosted")), "true") &&
+		!strings.EqualFold(strings.TrimSpace(request.Header.Get("HX-History-Restore-Request")), "true")
 }
 
 func (handler *CatalogHandler) catalogCapabilityFooter(data templates.CatalogPageData) templates.CapabilityFooterData {
@@ -538,7 +550,7 @@ func writeCatalogRepresentation(response http.ResponseWriter, request *http.Requ
 	response.Header().Set("Cache-Control", "private, no-cache")
 	response.Header().Set("Content-Type", contentType)
 	response.Header().Set("ETag", etag)
-	response.Header().Set("Vary", "HX-Request, HX-Boosted, Accept-Encoding")
+	response.Header().Set("Vary", "HX-Request, HX-Boosted, HX-Target, HX-History-Restore-Request, Accept-Encoding")
 	response.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; object-src 'none'; base-uri 'none'")
 	if request.Header.Get("If-None-Match") == etag {
 		response.WriteHeader(http.StatusNotModified)

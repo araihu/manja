@@ -137,6 +137,85 @@ func TestCatalogOverviewDocumentTableSortsThroughHTMXFragment(t *testing.T) {
 	}
 }
 
+func TestCatalogSelectedMainTargetReturnsOnlyMainFragment(t *testing.T) {
+	t.Parallel()
+
+	handler, _ := catalogHandlerFixture(t, "/kubernetes")
+	detailID := "detail-sha256-" + strings.Repeat("a", 64)
+	request := httptest.NewRequest(http.MethodGet, "/kubernetes/documents/core-v1/?selected="+detailID, nil)
+	request.Header.Set("HX-Request", "true")
+	request.Header.Set("HX-Target", "catalog-main-content")
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("catalog main fragment = %d body=%q", response.Code, response.Body.String())
+	}
+	body := response.Body.String()
+	for _, want := range []string{
+		`id="catalog-main-content"`,
+		`data-catalog-main-content="true"`,
+		`data-document-title="List Pods · Manja"`,
+		`data-catalog-detail="operation"`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("catalog main fragment missing %q:\n%s", want, body)
+		}
+	}
+	for _, reject := range []string{
+		`<!doctype html>`,
+		`<html`,
+		`id="main-content"`,
+		`id="catalog-navigation"`,
+		`id="catalog-sidebar-groups"`,
+		`/manja-assets/request-composer.js`,
+	} {
+		if strings.Contains(body, reject) {
+			t.Errorf("catalog main fragment retained shell marker %q:\n%s", reject, body)
+		}
+	}
+	for _, vary := range []string{"HX-Request", "HX-Boosted", "HX-Target", "HX-History-Restore-Request", "Accept-Encoding"} {
+		if !strings.Contains(response.Header().Get("Vary"), vary) {
+			t.Errorf("catalog fragment Vary = %q, missing %q", response.Header().Get("Vary"), vary)
+		}
+	}
+}
+
+func TestCatalogMainFragmentRequiresDirectNonRestoreRequest(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		headers map[string]string
+	}{
+		{name: "missing target", headers: map[string]string{"HX-Request": "true"}},
+		{name: "different target", headers: map[string]string{"HX-Request": "true", "HX-Target": "catalog-sidebar-groups"}},
+		{name: "boosted", headers: map[string]string{"HX-Request": "true", "HX-Target": "catalog-main-content", "HX-Boosted": "true"}},
+		{name: "history restore", headers: map[string]string{"HX-Request": "true", "HX-Target": "catalog-main-content", "HX-History-Restore-Request": "true"}},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			handler, _ := catalogHandlerFixture(t, "/kubernetes")
+			request := httptest.NewRequest(http.MethodGet, "/kubernetes/documents/core-v1/", nil)
+			for name, value := range test.headers {
+				request.Header.Set(name, value)
+			}
+			response := httptest.NewRecorder()
+			handler.ServeHTTP(response, request)
+
+			if response.Code != http.StatusOK {
+				t.Fatalf("catalog page = %d body=%q", response.Code, response.Body.String())
+			}
+			body := response.Body.String()
+			for _, want := range []string{`<!doctype html>`, `id="main-content"`, `id="catalog-navigation"`, `id="catalog-main-content"`} {
+				if !strings.Contains(body, want) {
+					t.Errorf("catalog fallback missing %q", want)
+				}
+			}
+		})
+	}
+}
+
 func TestCatalogOverviewDocumentTableRejectsInvalidSort(t *testing.T) {
 	t.Parallel()
 

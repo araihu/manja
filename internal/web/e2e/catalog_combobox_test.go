@@ -562,7 +562,7 @@ func TestOrganizationRootSearchKeepsNestedCatalogMount(t *testing.T) {
 	}
 }
 
-func TestCatalogSidebarExpansionPreservesKeyboardFocus(t *testing.T) {
+func TestCatalogSidebarExpansionAndNavigationPreserveContext(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping e2e test in short mode")
 	}
@@ -713,5 +713,56 @@ func TestCatalogSidebarExpansionPreservesKeyboardFocus(t *testing.T) {
 	}
 	if describedBy, err := longLink.GetAttribute("aria-describedby"); err != nil || describedBy != "catalog-sidebar-overflow-tooltip" {
 		t.Fatalf("overflow tooltip aria-describedby = %q, err=%v", describedBy, err)
+	}
+
+	target := page.Locator(`[data-catalog-sidebar-operation][title="Create widget"]`)
+	targetHref, err := target.GetAttribute("href")
+	if err != nil || targetHref == "" {
+		t.Fatalf("target operation href = %q, err=%v", targetHref, err)
+	}
+	if _, err := page.Evaluate(`() => {
+		window.__manjaCatalogNavigationSentinel = "kept";
+		window.__manjaCatalogNavigationSettled = false;
+		document.getElementById("catalog-sidebar-groups").dataset.navigationSentinel = "kept";
+		document.body.addEventListener("htmx:afterSettle", function onSettle(event) {
+			if (event.detail && event.detail.target && event.detail.target.id === "catalog-main-content") {
+				window.__manjaCatalogNavigationSettled = true;
+			}
+		}, { once: true });
+		return true;
+	}`); err != nil {
+		t.Fatal(err)
+	}
+	if err := target.Click(); err != nil {
+		t.Fatalf("catalog operation navigation: %v", err)
+	}
+	if err := page.Locator(`[data-catalog-detail="operation"] .manja-doc-title`).WaitFor(); err != nil {
+		t.Fatalf("catalog operation detail: %v", err)
+	}
+	if _, err := page.WaitForFunction(`() => window.__manjaCatalogNavigationSettled === true || window.__manjaCatalogNavigationSentinel !== "kept"`, nil, playwright.PageWaitForFunctionOptions{Timeout: playwright.Float(5000)}); err != nil {
+		t.Fatalf("catalog operation navigation settlement: %v", err)
+	}
+	kept, err := page.Evaluate(`() => window.__manjaCatalogNavigationSentinel === "kept" && document.getElementById("catalog-sidebar-groups")?.dataset.navigationSentinel === "kept"`, nil)
+	if err != nil || kept != true {
+		t.Fatalf("catalog operation navigation replaced persistent context: kept=%v err=%v", kept, err)
+	}
+	if got := page.URL(); got != baseURL+targetHref {
+		t.Fatalf("catalog operation URL = %q, want %q", got, baseURL+targetHref)
+	}
+	active := page.Locator(`[data-catalog-sidebar-operation][title="Create widget"][aria-current="page"][data-catalog-sidebar-selected="true"]`)
+	if count, err := active.Count(); err != nil || count != 1 {
+		t.Fatalf("active catalog operation count = %d, err=%v", count, err)
+	}
+	identity, err := page.Evaluate(`() => ({
+		title: document.title,
+		focused: document.activeElement?.hasAttribute("data-manja-settled-focus") === true,
+		mainTitle: document.getElementById("catalog-main-content")?.dataset.documentTitle,
+	})`, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantIdentity := map[string]any{"title": "Create widget · Manja", "focused": true, "mainTitle": "Create widget · Manja"}
+	if fmt.Sprint(identity) != fmt.Sprint(wantIdentity) {
+		t.Fatalf("catalog operation identity = %#v, want %#v", identity, wantIdentity)
 	}
 }
