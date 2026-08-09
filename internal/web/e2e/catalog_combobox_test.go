@@ -604,6 +604,17 @@ func TestCatalogSidebarExpansionPreservesKeyboardFocus(t *testing.T) {
 	if expanded, err := control.GetAttribute("aria-expanded"); err != nil || expanded != "true" {
 		t.Fatalf("initial group aria-expanded = %q, err=%v", expanded, err)
 	}
+	// aria-expanded changes before the sidebar outerHTML swap settles. Wait for
+	// the replacement control to finish HTMX processing before activating it.
+	if _, err := page.Evaluate(`() => {
+		window.__manjaCatalogSidebarSettleCount = 0;
+		document.body.addEventListener('htmx:afterSettle', () => {
+			window.__manjaCatalogSidebarSettleCount += 1;
+		});
+		return true;
+	}`); err != nil {
+		t.Fatal(err)
+	}
 	if err := control.Focus(); err != nil {
 		t.Fatal(err)
 	}
@@ -612,6 +623,9 @@ func TestCatalogSidebarExpansionPreservesKeyboardFocus(t *testing.T) {
 	}
 	if _, err := page.WaitForFunction(`() => document.querySelector('#catalog-sidebar-groups a[hx-target="#catalog-sidebar-groups"]')?.getAttribute('aria-expanded') === 'false'`, nil, playwright.PageWaitForFunctionOptions{Timeout: playwright.Float(5000)}); err != nil {
 		t.Fatalf("group should collapse after keyboard activation: %v", err)
+	}
+	if _, err := page.WaitForFunction(`() => window.__manjaCatalogSidebarSettleCount >= 1`, nil, playwright.PageWaitForFunctionOptions{Timeout: playwright.Float(5000)}); err != nil {
+		t.Fatalf("group collapse should finish HTMX settling: %v", err)
 	}
 	collapsed := page.Locator(`#catalog-sidebar-groups a[hx-target="#catalog-sidebar-groups"]`).First()
 	if err := collapsed.WaitFor(); err != nil {
@@ -631,6 +645,9 @@ func TestCatalogSidebarExpansionPreservesKeyboardFocus(t *testing.T) {
 	}
 	if _, err := page.WaitForFunction(`() => document.querySelector('#catalog-sidebar-groups a[hx-target="#catalog-sidebar-groups"]')?.getAttribute('aria-expanded') === 'true'`, nil, playwright.PageWaitForFunctionOptions{Timeout: playwright.Float(5000)}); err != nil {
 		t.Fatalf("group should expand after keyboard activation: %v", err)
+	}
+	if _, err := page.WaitForFunction(`() => window.__manjaCatalogSidebarSettleCount >= 2`, nil, playwright.PageWaitForFunctionOptions{Timeout: playwright.Float(5000)}); err != nil {
+		t.Fatalf("group expansion should finish HTMX settling: %v", err)
 	}
 	replacement := page.Locator(`#catalog-sidebar-groups a[hx-target="#catalog-sidebar-groups"]`).First()
 	if err := replacement.WaitFor(); err != nil {
