@@ -32,6 +32,23 @@ type moduleFile struct {
 	Go string
 }
 
+func TestCITestsSiteWithNormalizedScratchModfile(t *testing.T) {
+	workflow, err := os.ReadFile(filepath.Join(repositoryRoot(t), ".github", "workflows", "ci.yml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, contract := range []string{
+		`modfile=.manja-ci-site.mod`,
+		`trap 'rm -f "$modfile" "$sumfile"' EXIT`,
+		`go mod tidy -modfile="$modfile"`,
+		`go test -modfile="$modfile" ./...`,
+	} {
+		if !strings.Contains(string(workflow), contract) {
+			t.Errorf("CI site gate missing %q", contract)
+		}
+	}
+}
+
 func TestNormalizedConsumerModfileLeavesCommittedMetadataUntouched(t *testing.T) {
 	root := t.TempDir()
 	dependencyDir := filepath.Join(root, "dependency")

@@ -53,8 +53,17 @@ jobs:
       - run: git diff --exit-code
       - run: go run github.com/mxschmitt/playwright-go/cmd/playwright@v0.6100.0 install --with-deps chromium
       - run: go test ./...
-      - run: go test ./...
+      - name: Test site against candidate root graph
         working-directory: site
+        shell: bash
+        run: |
+          modfile=.manja-ci-site.mod
+          sumfile=.manja-ci-site.sum
+          trap 'rm -f "$modfile" "$sumfile"' EXIT
+          cp go.mod "$modfile"
+          cp go.sum "$sumfile"
+          go mod tidy -modfile="$modfile"
+          go test -modfile="$modfile" ./...
 
   integration:
     runs-on: >-
