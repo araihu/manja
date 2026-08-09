@@ -438,12 +438,12 @@ func TestCatalogDocumentSearchUsesGlobalModal(t *testing.T) {
 	if err := coreOperation.Click(); err != nil {
 		t.Fatalf("open core operation: %v", err)
 	}
-	if !strings.Contains(fallbackPage.URL(), "/documents/core-v1/?selected=") {
-		t.Fatalf("core operation navigation url = %s", fallbackPage.URL())
-	}
 	operationHeader := fallbackPage.Locator(`[data-catalog-detail="operation"] [data-public-page-header]`)
 	if err := operationHeader.WaitFor(); err != nil {
 		t.Fatalf("catalog operation header: %v", err)
+	}
+	if !strings.Contains(fallbackPage.URL(), "/documents/core-v1/?selected=") {
+		t.Fatalf("core operation navigation url = %s", fallbackPage.URL())
 	}
 	if heading, err := operationHeader.Locator(".manja-doc-title").TextContent(); err != nil || strings.TrimSpace(heading) != "List core pods" {
 		t.Fatalf("catalog operation heading = %q, err=%v", heading, err)
