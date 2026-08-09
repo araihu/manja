@@ -18,7 +18,7 @@ RUN /out/manja build \
 	-data-dir /out/renderer-data \
 	> /out/renderer-build-receipt.json
 
-FROM alpine:3.22
+FROM alpine:3.24
 
 LABEL org.opencontainers.image.source="https://github.com/araihu/manja"
 
