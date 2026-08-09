@@ -706,15 +706,32 @@ func TestCatalogSidebarExpansionAndNavigationPreserveContext(t *testing.T) {
 		t.Fatal(err)
 	}
 	directActive := directPage.Locator(`[data-catalog-sidebar-operation][title="List core pods in every namespace with a deliberately long title for overflow verification"][aria-current="page"]`)
-	badgeLayers, err := directActive.Evaluate(`element => {
+	badgeLayersScript := `element => {
 		const layers = Array.from(element.querySelectorAll(':scope > :is(span, sup)[class*="catalog-method-"]'))
 			.map(badge => badge.textContent.trim());
 		const pseudo = getComputedStyle(element, '::after').content;
 		if (pseudo !== 'none') layers.push(pseudo.replace(/^['"]|['"]$/g, ''));
 		return layers;
-	}`, nil)
+	}`
+	badgeLayers, err := directActive.Evaluate(badgeLayersScript, nil)
 	if err != nil || fmt.Sprint(badgeLayers) != "[GET]" {
 		t.Fatalf("direct active operation badge layers = %v, want [GET]; err=%v", badgeLayers, err)
+	}
+	directNext := directPage.Locator(`[data-catalog-sidebar-operation][title="Create widget"]`)
+	if err := directNext.Click(); err != nil {
+		t.Fatalf("direct operation transition: %v", err)
+	}
+	if _, err := directPage.WaitForFunction(`() => {
+		const previous = document.querySelector('[data-catalog-sidebar-operation][title="List core pods in every namespace with a deliberately long title for overflow verification"]');
+		const current = document.querySelector('[data-catalog-sidebar-operation][title="Create widget"]');
+		return previous && !previous.hasAttribute('aria-current') && current?.getAttribute('aria-current') === 'page';
+	}`, nil, playwright.PageWaitForFunctionOptions{Timeout: playwright.Float(5000)}); err != nil {
+		t.Fatalf("direct operation transition state: %v", err)
+	}
+	directPrevious := directPage.Locator(`[data-catalog-sidebar-operation][title="List core pods in every namespace with a deliberately long title for overflow verification"]`)
+	badgeLayers, err = directPrevious.Evaluate(badgeLayersScript, nil)
+	if err != nil || fmt.Sprint(badgeLayers) != "[GET]" {
+		t.Fatalf("previous active operation badge layers = %v, want [GET]; err=%v", badgeLayers, err)
 	}
 	if err := directPage.Close(); err != nil {
 		t.Fatal(err)
