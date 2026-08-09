@@ -694,6 +694,31 @@ func TestCatalogSidebarExpansionAndNavigationPreserveContext(t *testing.T) {
 		}
 	}
 	longLink := page.Locator(`[data-catalog-sidebar-operation][title="List core pods in every namespace with a deliberately long title for overflow verification"]`)
+	directHref, err := longLink.GetAttribute("href")
+	if err != nil || directHref == "" {
+		t.Fatalf("direct operation href = %q, err=%v", directHref, err)
+	}
+	directPage, err := browser.NewPage()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := directPage.Goto(baseURL+directHref, playwright.PageGotoOptions{WaitUntil: playwright.WaitUntilStateLoad}); err != nil {
+		t.Fatal(err)
+	}
+	directActive := directPage.Locator(`[data-catalog-sidebar-operation][title="List core pods in every namespace with a deliberately long title for overflow verification"][aria-current="page"]`)
+	badgeLayers, err := directActive.Evaluate(`element => {
+		const layers = Array.from(element.querySelectorAll(':scope > :is(span, sup)[class*="catalog-method-"]'))
+			.map(badge => badge.textContent.trim());
+		const pseudo = getComputedStyle(element, '::after').content;
+		if (pseudo !== 'none') layers.push(pseudo.replace(/^['"]|['"]$/g, ''));
+		return layers;
+	}`, nil)
+	if err != nil || fmt.Sprint(badgeLayers) != "[GET]" {
+		t.Fatalf("direct active operation badge layers = %v, want [GET]; err=%v", badgeLayers, err)
+	}
+	if err := directPage.Close(); err != nil {
+		t.Fatal(err)
+	}
 	overflow, err := longLink.Locator(".truncate").Evaluate(`element => element.scrollWidth > element.clientWidth`, nil)
 	if err != nil || overflow != true {
 		t.Fatalf("long sidebar label overflow = %v, err=%v", overflow, err)
