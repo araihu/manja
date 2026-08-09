@@ -753,6 +753,13 @@ func TestCatalogSidebarExpansionAndNavigationPreserveContext(t *testing.T) {
 	if count, err := active.Count(); err != nil || count != 1 {
 		t.Fatalf("active catalog operation count = %d, err=%v", count, err)
 	}
+	if count, err := active.Locator(".catalog-method-post").Count(); err != nil || count != 1 {
+		t.Fatalf("active catalog operation rendered badge count = %d, want 1; err=%v", count, err)
+	}
+	pseudoBadge, err := active.Evaluate(`element => getComputedStyle(element, "::after").content`, nil)
+	if err != nil || pseudoBadge != "none" {
+		t.Fatalf("active catalog operation pseudo badge = %#v, want none; err=%v", pseudoBadge, err)
+	}
 	identity, err := page.Evaluate(`() => ({
 		title: document.title,
 		focused: document.activeElement?.hasAttribute("data-manja-settled-focus") === true,
