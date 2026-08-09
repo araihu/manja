@@ -20,7 +20,10 @@ import (
 )
 
 func TestKubernetesCatalog(t *testing.T) {
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
+	// Activating three production-sized catalogs is CPU-bound and can exceed
+	// three minutes under CI contention. Keep a bounded deadline that still
+	// distinguishes a hung activation from normal shared-runner variance.
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
 	fixture := filepath.Join("..", "renderer", "testdata", "kubernetes")
 	handler, receipts, err := selfhosted.NewRenderer(ctx, selfhosted.RendererOptions{

@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/araihu/goshtoso/components/sidebar"
 	"github.com/araihu/manja/application/catalog"
 	"github.com/araihu/manja/application/projection"
 	"github.com/araihu/manja/domain"
@@ -525,6 +526,55 @@ func TestCatalogSidebarUsesMethodHierarchyAndOverflowHooks(t *testing.T) {
 	}
 	if got := strings.Count(body, `data-catalog-sidebar-operation="true"`); got != 6 {
 		t.Fatalf("catalog sidebar operation hooks = %d, want 6", got)
+	}
+}
+
+func TestCatalogSidebarItemsUseTargetedMainNavigation(t *testing.T) {
+	t.Parallel()
+
+	data := catalogTemplateFixture()
+	document := data.Directory.Documents[0]
+	data.Document = &document
+	detailID := document.Operations[0].DetailID
+	href := "/kubernetes/documents/core-v1/?selected=" + string(detailID) + "#" + string(detailID)
+	data.Groups = []CatalogSidebarGroupData{{
+		ID: "group-core", Kind: "operations", Label: "core/v1", Href: "/kubernetes/documents/core-v1/?group=group-core", Count: 1, Open: true,
+		Items: []CatalogSidebarItemData{{ID: "sidebar-list-pods", Label: "List Pods", Method: "GET", Href: href}},
+	}}
+
+	body := renderCatalogTemplate(t, data)
+	link := regexp.MustCompile(`<a[^>]*id="catalog-sidebar-item-sidebar-list-pods"[^>]*>`).FindString(body)
+	if link == "" {
+		t.Fatalf("catalog operation link missing:\n%s", body)
+	}
+	for _, want := range []string{
+		`href="` + href + `"`,
+		`hx-get="` + href + `"`,
+		`hx-target="#catalog-main-content"`,
+		`hx-select="#catalog-main-content"`,
+		`hx-swap="outerHTML show:#main-content:top"`,
+		`hx-push-url="true"`,
+		`data-manja-sidebar-nav="true"`,
+	} {
+		if !strings.Contains(link, want) {
+			t.Errorf("catalog operation link missing %q: %s", want, link)
+		}
+	}
+	config := catalogSidebarConfig(data)
+	var overview sidebar.Item
+	for _, item := range config.Items {
+		if item.ID == "spec-overview" {
+			overview = item
+			break
+		}
+	}
+	if overview.ID == "" {
+		t.Fatal("spec overview sidebar item missing")
+	}
+	for name, want := range catalogMainNavigationAttrs(data.DocumentHref) {
+		if got := overview.LinkAttrs[name]; got != want {
+			t.Errorf("spec overview %s = %#v, want %#v", name, got, want)
+		}
 	}
 }
 

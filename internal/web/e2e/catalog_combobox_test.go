@@ -438,12 +438,12 @@ func TestCatalogDocumentSearchUsesGlobalModal(t *testing.T) {
 	if err := coreOperation.Click(); err != nil {
 		t.Fatalf("open core operation: %v", err)
 	}
-	if !strings.Contains(fallbackPage.URL(), "/documents/core-v1/?selected=") {
-		t.Fatalf("core operation navigation url = %s", fallbackPage.URL())
-	}
 	operationHeader := fallbackPage.Locator(`[data-catalog-detail="operation"] [data-public-page-header]`)
 	if err := operationHeader.WaitFor(); err != nil {
 		t.Fatalf("catalog operation header: %v", err)
+	}
+	if !strings.Contains(fallbackPage.URL(), "/documents/core-v1/?selected=") {
+		t.Fatalf("core operation navigation url = %s", fallbackPage.URL())
 	}
 	if heading, err := operationHeader.Locator(".manja-doc-title").TextContent(); err != nil || strings.TrimSpace(heading) != "List core pods" {
 		t.Fatalf("catalog operation heading = %q, err=%v", heading, err)
@@ -562,7 +562,7 @@ func TestOrganizationRootSearchKeepsNestedCatalogMount(t *testing.T) {
 	}
 }
 
-func TestCatalogSidebarExpansionPreservesKeyboardFocus(t *testing.T) {
+func TestCatalogSidebarExpansionAndNavigationPreserveContext(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping e2e test in short mode")
 	}
@@ -694,6 +694,48 @@ func TestCatalogSidebarExpansionPreservesKeyboardFocus(t *testing.T) {
 		}
 	}
 	longLink := page.Locator(`[data-catalog-sidebar-operation][title="List core pods in every namespace with a deliberately long title for overflow verification"]`)
+	directHref, err := longLink.GetAttribute("href")
+	if err != nil || directHref == "" {
+		t.Fatalf("direct operation href = %q, err=%v", directHref, err)
+	}
+	directPage, err := browser.NewPage()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := directPage.Goto(baseURL+directHref, playwright.PageGotoOptions{WaitUntil: playwright.WaitUntilStateLoad}); err != nil {
+		t.Fatal(err)
+	}
+	directActive := directPage.Locator(`[data-catalog-sidebar-operation][title="List core pods in every namespace with a deliberately long title for overflow verification"][aria-current="page"]`)
+	badgeLayersScript := `element => {
+		const layers = Array.from(element.querySelectorAll(':scope > :is(span, sup)[class*="catalog-method-"]'))
+			.map(badge => badge.textContent.trim());
+		const pseudo = getComputedStyle(element, '::after').content;
+		if (pseudo !== 'none') layers.push(pseudo.replace(/^['"]|['"]$/g, ''));
+		return layers;
+	}`
+	badgeLayers, err := directActive.Evaluate(badgeLayersScript, nil)
+	if err != nil || fmt.Sprint(badgeLayers) != "[GET]" {
+		t.Fatalf("direct active operation badge layers = %v, want [GET]; err=%v", badgeLayers, err)
+	}
+	directNext := directPage.Locator(`[data-catalog-sidebar-operation][title="Create widget"]`)
+	if err := directNext.Click(); err != nil {
+		t.Fatalf("direct operation transition: %v", err)
+	}
+	if _, err := directPage.WaitForFunction(`() => {
+		const previous = document.querySelector('[data-catalog-sidebar-operation][title="List core pods in every namespace with a deliberately long title for overflow verification"]');
+		const current = document.querySelector('[data-catalog-sidebar-operation][title="Create widget"]');
+		return previous && !previous.hasAttribute('aria-current') && current?.getAttribute('aria-current') === 'page';
+	}`, nil, playwright.PageWaitForFunctionOptions{Timeout: playwright.Float(5000)}); err != nil {
+		t.Fatalf("direct operation transition state: %v", err)
+	}
+	directPrevious := directPage.Locator(`[data-catalog-sidebar-operation][title="List core pods in every namespace with a deliberately long title for overflow verification"]`)
+	badgeLayers, err = directPrevious.Evaluate(badgeLayersScript, nil)
+	if err != nil || fmt.Sprint(badgeLayers) != "[GET]" {
+		t.Fatalf("previous active operation badge layers = %v, want [GET]; err=%v", badgeLayers, err)
+	}
+	if err := directPage.Close(); err != nil {
+		t.Fatal(err)
+	}
 	overflow, err := longLink.Locator(".truncate").Evaluate(`element => element.scrollWidth > element.clientWidth`, nil)
 	if err != nil || overflow != true {
 		t.Fatalf("long sidebar label overflow = %v, err=%v", overflow, err)
@@ -713,5 +755,63 @@ func TestCatalogSidebarExpansionPreservesKeyboardFocus(t *testing.T) {
 	}
 	if describedBy, err := longLink.GetAttribute("aria-describedby"); err != nil || describedBy != "catalog-sidebar-overflow-tooltip" {
 		t.Fatalf("overflow tooltip aria-describedby = %q, err=%v", describedBy, err)
+	}
+
+	target := page.Locator(`[data-catalog-sidebar-operation][title="Create widget"]`)
+	targetHref, err := target.GetAttribute("href")
+	if err != nil || targetHref == "" {
+		t.Fatalf("target operation href = %q, err=%v", targetHref, err)
+	}
+	if _, err := page.Evaluate(`() => {
+		window.__manjaCatalogNavigationSentinel = "kept";
+		window.__manjaCatalogNavigationSettled = false;
+		document.getElementById("catalog-sidebar-groups").dataset.navigationSentinel = "kept";
+		document.body.addEventListener("htmx:afterSettle", function onSettle(event) {
+			if (event.detail && event.detail.target && event.detail.target.id === "catalog-main-content") {
+				window.__manjaCatalogNavigationSettled = true;
+			}
+		}, { once: true });
+		return true;
+	}`); err != nil {
+		t.Fatal(err)
+	}
+	if err := target.Click(); err != nil {
+		t.Fatalf("catalog operation navigation: %v", err)
+	}
+	if err := page.Locator(`[data-catalog-detail="operation"] .manja-doc-title`).WaitFor(); err != nil {
+		t.Fatalf("catalog operation detail: %v", err)
+	}
+	if _, err := page.WaitForFunction(`() => window.__manjaCatalogNavigationSettled === true || window.__manjaCatalogNavigationSentinel !== "kept"`, nil, playwright.PageWaitForFunctionOptions{Timeout: playwright.Float(5000)}); err != nil {
+		t.Fatalf("catalog operation navigation settlement: %v", err)
+	}
+	kept, err := page.Evaluate(`() => window.__manjaCatalogNavigationSentinel === "kept" && document.getElementById("catalog-sidebar-groups")?.dataset.navigationSentinel === "kept"`, nil)
+	if err != nil || kept != true {
+		t.Fatalf("catalog operation navigation replaced persistent context: kept=%v err=%v", kept, err)
+	}
+	if got := page.URL(); got != baseURL+targetHref {
+		t.Fatalf("catalog operation URL = %q, want %q", got, baseURL+targetHref)
+	}
+	active := page.Locator(`[data-catalog-sidebar-operation][title="Create widget"][aria-current="page"][data-catalog-sidebar-selected="true"]`)
+	if count, err := active.Count(); err != nil || count != 1 {
+		t.Fatalf("active catalog operation count = %d, err=%v", count, err)
+	}
+	if count, err := active.Locator(".catalog-method-post").Count(); err != nil || count != 1 {
+		t.Fatalf("active catalog operation rendered badge count = %d, want 1; err=%v", count, err)
+	}
+	pseudoBadge, err := active.Evaluate(`element => getComputedStyle(element, "::after").content`, nil)
+	if err != nil || pseudoBadge != "none" {
+		t.Fatalf("active catalog operation pseudo badge = %#v, want none; err=%v", pseudoBadge, err)
+	}
+	identity, err := page.Evaluate(`() => ({
+		title: document.title,
+		focused: document.activeElement?.hasAttribute("data-manja-settled-focus") === true,
+		mainTitle: document.getElementById("catalog-main-content")?.dataset.documentTitle,
+	})`, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantIdentity := map[string]any{"title": "Create widget · Manja", "focused": true, "mainTitle": "Create widget · Manja"}
+	if fmt.Sprint(identity) != fmt.Sprint(wantIdentity) {
+		t.Fatalf("catalog operation identity = %#v, want %#v", identity, wantIdentity)
 	}
 }

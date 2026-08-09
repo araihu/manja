@@ -191,6 +191,10 @@ templ LayoutWithBrandingMetadata(metadata PageMetadata, branding core.DocsBrandi
 					}
 
 					function setSidebarLinkActive(link, active) {
+						if (link.hasAttribute('data-catalog-sidebar-item')) {
+							if (active) link.setAttribute('data-catalog-sidebar-selected', 'true');
+							else link.removeAttribute('data-catalog-sidebar-selected');
+						}
 						if (active) {
 							link.setAttribute('aria-current', 'page');
 							if (!activeMarker(link)) {
@@ -224,9 +228,9 @@ templ LayoutWithBrandingMetadata(metadata PageMetadata, branding core.DocsBrandi
 
 					function mainContentTarget(event) {
 						var target = event && event.detail && event.detail.target;
-						if (!target || target.id !== "main-content") return null;
+						if (!target || (target.id !== "main-content" && target.id !== "catalog-main-content")) return null;
 						if (target.isConnected) return target;
-						return document.getElementById("main-content");
+						return document.getElementById(target.id);
 					}
 
 					document.addEventListener('htmx:beforeRequest', function (e) {
@@ -237,7 +241,8 @@ templ LayoutWithBrandingMetadata(metadata PageMetadata, branding core.DocsBrandi
 					document.addEventListener('htmx:afterSwap', function (e) {
 						var target = mainContentTarget(e);
 						if (!target) return;
-						var content = target.querySelector('[data-public-docs-content="true"]');
+						var contentSelector = '[data-public-docs-content="true"], [data-catalog-main-content="true"]';
+						var content = target.matches && target.matches(contentSelector) ? target : target.querySelector(contentSelector);
 						if (content && content.dataset.selectedDoc) {
 							target.dataset.selectedDoc = content.dataset.selectedDoc;
 						}

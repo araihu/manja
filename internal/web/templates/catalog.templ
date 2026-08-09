@@ -341,16 +341,7 @@ templ CatalogPage(data CatalogPageData) {
 				MainClass: "min-h-0 overflow-y-auto px-5 py-6 lg:px-10 lg:py-8",
 				MainAttrs: templpkg.Attributes{"data-manja-primary-scroll": "true"},
 			}) {
-				<div class="mx-auto flex min-h-full max-w-[100rem] flex-col">
-					if data.Search != nil {
-						@catalogSearch(data)
-					} else if data.Document == nil {
-						@catalogOverview(data)
-					} else {
-						@catalogDocument(data)
-					}
-					@capabilityFooter(data.CapabilityFooter)
-				</div>
+				@catalogMainContent(data)
 			}
 			@catalogSearchModal(data)
 			@catalogDocumentSelection()
@@ -358,6 +349,29 @@ templ CatalogPage(data CatalogPageData) {
 			@catalogSidebarOverflowTooltip()
 		</div>
 	}
+}
+
+templ CatalogMainFragment(data CatalogPageData) {
+	@catalogMainContent(data)
+}
+
+templ catalogMainContent(data CatalogPageData) {
+	<div
+		id="catalog-main-content"
+		data-catalog-main-content="true"
+		data-selected-doc={ catalogSelectedDoc(data) }
+		data-document-title={ catalogPageDocumentTitle(data) }
+		class="mx-auto flex min-h-full max-w-[100rem] flex-col"
+	>
+		if data.Search != nil {
+			@catalogSearch(data)
+		} else if data.Document == nil {
+			@catalogOverview(data)
+		} else {
+			@catalogDocument(data)
+		}
+		@capabilityFooter(data.CapabilityFooter)
+	</div>
 }
 
 templ catalogSearchModal(data CatalogPageData) {
@@ -900,7 +914,7 @@ templ catalogDocumentHeader(data CatalogPageData) {
 			<div class="min-w-0">
 				<p class="mb-2 text-sm font-semibold uppercase tracking-wide text-primary dark:text-primary-dark">OpenAPI document</p>
 				<div class="flex min-w-0 flex-wrap items-center gap-3">
-					<h1 class="manja-schema-title min-w-0 break-words font-title text-3xl font-bold text-on-surface-strong sm:text-4xl dark:text-on-surface-dark-strong" title={ catalogDocumentTitle(*data.Document) }>{ catalogDocumentTitle(*data.Document) }</h1>
+					<h1 tabindex="-1" data-manja-settled-focus="true" class="manja-schema-title min-w-0 break-words font-title text-3xl font-bold text-on-surface-strong sm:text-4xl dark:text-on-surface-dark-strong" title={ catalogDocumentTitle(*data.Document) }>{ catalogDocumentTitle(*data.Document) }</h1>
 					if catalogDocumentVersionLabel(*data.Document) != "" {
 						@badge.Badge(badge.Config{Label: catalogDocumentVersionLabel(*data.Document), Tone: badge.ToneSecondary, Appearance: badge.AppearanceSoft, Size: badge.SizeSM, RootClass: "shrink-0"})
 					}
@@ -1077,7 +1091,7 @@ templ catalogSchemaDetail(data CatalogPageData) {
 					</a>
 				</nav>
 			</div>
-			<h1 class="manja-schema-title font-title text-2xl font-bold text-on-surface-strong sm:text-3xl dark:text-on-surface-dark-strong">{ schema.Heading }</h1>
+			<h1 tabindex="-1" data-manja-settled-focus="true" class="manja-schema-title font-title text-2xl font-bold text-on-surface-strong sm:text-3xl dark:text-on-surface-dark-strong">{ schema.Heading }</h1>
 			if schema.Description != "" {
 				<p class="max-w-[70ch] whitespace-pre-wrap break-words text-on-surface-muted dark:text-on-surface-dark-muted">{ schema.Description }</p>
 			}
@@ -1359,6 +1373,18 @@ func catalogPageTitle(data CatalogPageData) string {
 	return catalogPageTitleWithManja(data.Directory.Title)
 }
 
+func catalogPageDocumentTitle(data CatalogPageData) string {
+	title := strings.TrimSpace(data.Metadata.Title)
+	if title != "" { return title }
+	return catalogPageTitle(data)
+}
+
+func catalogSelectedDoc(data CatalogPageData) string {
+	if data.Selected != nil { return string(data.Selected.ID) }
+	if data.Document != nil { return data.Document.Key }
+	return ""
+}
+
 func catalogPageTitleWithManja(label string) string {
 	label = strings.TrimSpace(label)
 	if label == "" { label = "OpenAPI documentation" }
@@ -1436,7 +1462,7 @@ func catalogSidebarConfig(data CatalogPageData) sidebar.Config {
 		}
 		config.Items = []sidebar.Item{
 			{ID: "back-to-catalog", Label: backLabel, Href: backHref, Icon: catalogSidebarIcon(heroicons.Icon16SolidChevronLeft)},
-			{ID: "spec-overview", Label: "Spec overview", Href: data.DocumentHref, Active: data.Selected == nil, Icon: catalogSidebarIcon(heroicons.Icon16SolidBookOpen)},
+			{ID: "spec-overview", Label: "Spec overview", Href: data.DocumentHref, Active: data.Selected == nil, Icon: catalogSidebarIcon(heroicons.Icon16SolidBookOpen), LinkAttrs: catalogMainNavigationAttrs(data.DocumentHref)},
 		}
 	}
 	if data.Document == nil { return config }
@@ -1446,12 +1472,12 @@ func catalogSidebarConfig(data CatalogPageData) sidebar.Config {
 		children := make([]sidebar.Item, 0, len(group.Items))
 		for _, item := range group.Items {
 			method := strings.ToUpper(strings.TrimSpace(item.Method))
-			linkAttrs := templpkg.Attributes{
-				"id":                              "catalog-sidebar-item-" + item.ID,
-				"data-catalog-sidebar-item":       "true",
-				"data-catalog-sidebar-operation": "true",
-				"data-catalog-method":            method,
-			}
+			linkAttrs := catalogMainNavigationAttrs(item.Href)
+			if linkAttrs == nil { linkAttrs = templpkg.Attributes{} }
+			linkAttrs["id"] = "catalog-sidebar-item-" + item.ID
+			linkAttrs["data-catalog-sidebar-item"] = "true"
+			linkAttrs["data-catalog-sidebar-operation"] = "true"
+			linkAttrs["data-catalog-method"] = method
 			if item.Active {
 				linkAttrs["data-catalog-sidebar-selected"] = "true"
 			}
@@ -1501,6 +1527,19 @@ func catalogSidebarConfig(data CatalogPageData) sidebar.Config {
 	}
 	config.Items = append(config.Items, otherGroups...)
 	return config
+}
+
+func catalogMainNavigationAttrs(href string) templpkg.Attributes {
+	href = strings.TrimSpace(href)
+	if href == "" || !strings.HasPrefix(href, "/") { return nil }
+	return templpkg.Attributes{
+		"hx-get": href,
+		"hx-target": "#catalog-main-content",
+		"hx-select": "#catalog-main-content",
+		"hx-swap": "outerHTML show:#main-content:top",
+		"hx-push-url": "true",
+		"data-manja-sidebar-nav": "true",
+	}
 }
 
 func catalogPathsLinkAttrs(stateKey string) templpkg.Attributes {
@@ -1598,7 +1637,7 @@ templ catalogSidebarFocusRestoration() {
 					}
 				}
 				var target = event.detail && event.detail.target;
-				if (target && (target.id === "catalog-sidebar-groups" || (target.closest && target.closest("#catalog-sidebar-groups")))) {
+				if (target && (target.id === "catalog-main-content" || target.id === "catalog-sidebar-groups" || (target.closest && target.closest("#catalog-sidebar-groups")))) {
 					scheduleSidebarSelectionScroll();
 				}
 			});
