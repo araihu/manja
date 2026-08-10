@@ -2996,8 +2996,8 @@ func catalogOperationDetail(data CatalogPageData) templ.Component {
 			templ_7745c5c3_Err = endpointSection(operation, data.OperationServers, "", PublicDocsOptions{
 				OperationIdentityInHeader: true,
 				SchemaLinks:               data.SchemaLinks,
-				SchemaLinkTarget:          "#main-content",
-				SchemaLinkSelect:          "#main-content",
+				SchemaLinkTarget:          "#catalog-main-content",
+				SchemaLinkSelect:          "#catalog-main-content",
 				SchemaLinkSwap:            "outerHTML show:#main-content:top",
 			}, data.OperationNavigation).Render(ctx, templ_7745c5c3_Buffer)
 			if templ_7745c5c3_Err != nil {
@@ -3398,12 +3398,12 @@ func catalogOrganizationAvatar(item CatalogOrganizationItem) templ.Component {
 				return templ_7745c5c3_Err
 			}
 		} else if item.AvatarSymbol != "" {
-			templ_7745c5c3_Err = avatar.Avatar(avatar.Config{Icon: icon.Icon(icon.Config{SpriteURL: heroicons.SpriteURL, Symbol: icon.Symbol(item.AvatarSymbol), Size: icon.SizeSM, Decorative: true}), Name: item.Label, Size: avatar.SizeXS, Shape: avatar.ShapeCircle, Tone: avatar.TonePrimary, RootClass: "shrink-0"}).Render(ctx, templ_7745c5c3_Buffer)
+			templ_7745c5c3_Err = avatar.Avatar(avatar.Config{Icon: icon.Icon(icon.Config{SpriteURL: heroicons.SpriteURL, Symbol: icon.Symbol(item.AvatarSymbol), Size: icon.SizeSM, Decorative: true}), Name: item.Label, Size: avatar.SizeXS, Shape: avatar.ShapeCircle, Tone: avatar.ToneDefault, RootClass: "shrink-0"}).Render(ctx, templ_7745c5c3_Buffer)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 		} else {
-			templ_7745c5c3_Err = avatar.Avatar(avatar.Config{Name: item.Label, Initials: item.Initials, Size: avatar.SizeXS, Shape: avatar.ShapeCircle, Tone: avatar.TonePrimary, RootClass: "shrink-0"}).Render(ctx, templ_7745c5c3_Buffer)
+			templ_7745c5c3_Err = avatar.Avatar(avatar.Config{Name: item.Label, Initials: item.Initials, Size: avatar.SizeXS, Shape: avatar.ShapeCircle, Tone: avatar.ToneDefault, RootClass: "shrink-0"}).Render(ctx, templ_7745c5c3_Buffer)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -4961,6 +4961,81 @@ func catalogDocumentSelection() templ.Component {
 		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 359, "<script data-catalog-document-selection=\"true\">\n\t\t(function () {\n\t\t\tif (window.__manjaCatalogDocumentSelectionBound) return;\n\t\t\twindow.__manjaCatalogDocumentSelectionBound = true;\n\t\t\tdocument.addEventListener(\"combobox:change\", function (event) {\n\t\t\t\tvar detail = event && event.detail;\n\t\t\t\tif (!detail || detail.id !== \"catalog-document\" || !Array.isArray(detail.values) || detail.values.length !== 1) return;\n\t\t\t\tvar value = detail.values[0];\n\t\t\t\tif (typeof value !== \"string\" || value.charAt(0) !== \"/\" || value.indexOf(\"//\") === 0) return;\n\t\t\t\twindow.location.assign(value);\n\t\t\t});\n\t\t})();\n\t</script>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
+		}
+		return nil
+	})
+}
+
+func CatalogSidebarGroupsFragment(data CatalogPageData) templ.Component {
+	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
+		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
+		if templ_7745c5c3_CtxErr := ctx.Err(); templ_7745c5c3_CtxErr != nil {
+			return templ_7745c5c3_CtxErr
+		}
+		templ_7745c5c3_Buffer, templ_7745c5c3_IsBuffer := templruntime.GetBuffer(templ_7745c5c3_W)
+		if !templ_7745c5c3_IsBuffer {
+			defer func() {
+				templ_7745c5c3_BufErr := templruntime.ReleaseBuffer(templ_7745c5c3_Buffer)
+				if templ_7745c5c3_Err == nil {
+					templ_7745c5c3_Err = templ_7745c5c3_BufErr
+				}
+			}()
+		}
+		ctx = templ.InitializeContext(ctx)
+		templ_7745c5c3_Var192 := templ.GetChildren(ctx)
+		if templ_7745c5c3_Var192 == nil {
+			templ_7745c5c3_Var192 = templ.NopComponent
+		}
+		ctx = templ.ClearChildren(ctx)
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 360, "<div id=\"catalog-sidebar-groups\" class=\"flex min-h-0 flex-1 flex-col\">")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		if data.OrganizationNav.Visible {
+			templ_7745c5c3_Err = catalogOrganizationNav(data.OrganizationNav).Render(ctx, templ_7745c5c3_Buffer)
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+		} else {
+			templ_7745c5c3_Err = sidebar.Sidebar(catalogSidebarConfig(data)).Render(ctx, templ_7745c5c3_Buffer)
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 361, "</div>")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		return nil
+	})
+}
+
+func CatalogSchemaNodeFragment(data CatalogPageData) templ.Component {
+	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
+		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
+		if templ_7745c5c3_CtxErr := ctx.Err(); templ_7745c5c3_CtxErr != nil {
+			return templ_7745c5c3_CtxErr
+		}
+		templ_7745c5c3_Buffer, templ_7745c5c3_IsBuffer := templruntime.GetBuffer(templ_7745c5c3_W)
+		if !templ_7745c5c3_IsBuffer {
+			defer func() {
+				templ_7745c5c3_BufErr := templruntime.ReleaseBuffer(templ_7745c5c3_Buffer)
+				if templ_7745c5c3_Err == nil {
+					templ_7745c5c3_Err = templ_7745c5c3_BufErr
+				}
+			}()
+		}
+		ctx = templ.InitializeContext(ctx)
+		templ_7745c5c3_Var193 := templ.GetChildren(ctx)
+		if templ_7745c5c3_Var193 == nil {
+			templ_7745c5c3_Var193 = templ.NopComponent
+		}
+		ctx = templ.ClearChildren(ctx)
+		if data.Selected != nil && data.Selected.Schema != nil && data.SchemaNode != nil {
+			templ_7745c5c3_Err = catalogSchemaNode(*data.SchemaNode, data.Selected.Schema.Heading).Render(ctx, templ_7745c5c3_Buffer)
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
 		}
 		return nil
 	})

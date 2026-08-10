@@ -962,8 +962,8 @@ templ catalogOperationDetail(data CatalogPageData) {
 			@endpointSection(operation, data.OperationServers, "", PublicDocsOptions{
 				OperationIdentityInHeader: true,
 				SchemaLinks:      data.SchemaLinks,
-				SchemaLinkTarget: "#main-content",
-				SchemaLinkSelect: "#main-content",
+				SchemaLinkTarget: "#catalog-main-content",
+				SchemaLinkSelect: "#catalog-main-content",
 				SchemaLinkSwap:   "outerHTML show:#main-content:top",
 			}, data.OperationNavigation)
 		</article>
@@ -1061,9 +1061,9 @@ templ catalogOrganizationAvatar(item CatalogOrganizationItem) {
 			/>
 		</span>
 	} else if item.AvatarSymbol != "" {
-		@avatar.Avatar(avatar.Config{Icon: icon.Icon(icon.Config{SpriteURL: heroicons.SpriteURL, Symbol: icon.Symbol(item.AvatarSymbol), Size: icon.SizeSM, Decorative: true}), Name: item.Label, Size: avatar.SizeXS, Shape: avatar.ShapeCircle, Tone: avatar.TonePrimary, RootClass: "shrink-0"})
+		@avatar.Avatar(avatar.Config{Icon: icon.Icon(icon.Config{SpriteURL: heroicons.SpriteURL, Symbol: icon.Symbol(item.AvatarSymbol), Size: icon.SizeSM, Decorative: true}), Name: item.Label, Size: avatar.SizeXS, Shape: avatar.ShapeCircle, Tone: avatar.ToneDefault, RootClass: "shrink-0"})
 	} else {
-		@avatar.Avatar(avatar.Config{Name: item.Label, Initials: item.Initials, Size: avatar.SizeXS, Shape: avatar.ShapeCircle, Tone: avatar.TonePrimary, RootClass: "shrink-0"})
+		@avatar.Avatar(avatar.Config{Name: item.Label, Initials: item.Initials, Size: avatar.SizeXS, Shape: avatar.ShapeCircle, Tone: avatar.ToneDefault, RootClass: "shrink-0"})
 	}
 }
 
@@ -1758,4 +1758,20 @@ templ catalogDocumentSelection() {
 			});
 		})();
 	</script>
+}
+
+templ CatalogSidebarGroupsFragment(data CatalogPageData) {
+	<div id="catalog-sidebar-groups" class="flex min-h-0 flex-1 flex-col">
+		if data.OrganizationNav.Visible {
+			@catalogOrganizationNav(data.OrganizationNav)
+		} else {
+			@sidebar.Sidebar(catalogSidebarConfig(data))
+		}
+	</div>
+}
+
+templ CatalogSchemaNodeFragment(data CatalogPageData) {
+	if data.Selected != nil && data.Selected.Schema != nil && data.SchemaNode != nil {
+		@catalogSchemaNode(*data.SchemaNode, data.Selected.Schema.Heading)
+	}
 }

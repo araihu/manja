@@ -485,9 +485,14 @@ func (handler *CatalogHandler) renderCatalogPage(response http.ResponseWriter, r
 	data.Metadata = handler.catalogPageMetadata(request, data)
 	var body catalogPageBuffer
 	var err error
-	if isCatalogMainFragmentRequest(request) {
+	switch catalogFragmentTarget(request) {
+	case "catalog-main-content":
 		err = templates.CatalogMainFragment(data).Render(request.Context(), &body)
-	} else {
+	case "catalog-sidebar-groups":
+		err = templates.CatalogSidebarGroupsFragment(data).Render(request.Context(), &body)
+	case "schema-node-panel":
+		err = templates.CatalogSchemaNodeFragment(data).Render(request.Context(), &body)
+	default:
 		err = templates.CatalogPage(data).Render(request.Context(), &body)
 	}
 	if body.exceeded || errors.Is(err, errCatalogPageTooLarge) {
@@ -501,11 +506,19 @@ func (handler *CatalogHandler) renderCatalogPage(response http.ResponseWriter, r
 	writeCatalogRepresentation(response, request, body.Bytes(), "text/html; charset=utf-8")
 }
 
-func isCatalogMainFragmentRequest(request *http.Request) bool {
-	return strings.EqualFold(strings.TrimSpace(request.Header.Get("HX-Request")), "true") &&
-		strings.TrimSpace(request.Header.Get("HX-Target")) == "catalog-main-content" &&
-		!strings.EqualFold(strings.TrimSpace(request.Header.Get("HX-Boosted")), "true") &&
-		!strings.EqualFold(strings.TrimSpace(request.Header.Get("HX-History-Restore-Request")), "true")
+func catalogFragmentTarget(request *http.Request) string {
+	if !strings.EqualFold(strings.TrimSpace(request.Header.Get("HX-Request")), "true") ||
+		strings.EqualFold(strings.TrimSpace(request.Header.Get("HX-Boosted")), "true") ||
+		strings.EqualFold(strings.TrimSpace(request.Header.Get("HX-History-Restore-Request")), "true") {
+		return ""
+	}
+	target := strings.TrimSpace(request.Header.Get("HX-Target"))
+	switch target {
+	case "catalog-main-content", "catalog-sidebar-groups", "schema-node-panel":
+		return target
+	default:
+		return ""
+	}
 }
 
 func (handler *CatalogHandler) catalogCapabilityFooter(data templates.CatalogPageData) templates.CapabilityFooterData {

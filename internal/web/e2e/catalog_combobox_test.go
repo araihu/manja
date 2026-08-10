@@ -85,6 +85,36 @@ func TestCatalogNavigationKeepsLastSpecReachableAndLabelsEachRoute(t *testing.T)
 			if err := panel.WaitFor(playwright.LocatorWaitForOptions{State: playwright.WaitForSelectorStateVisible}); err != nil {
 				t.Fatalf("%s root navigation panel: %v", viewport.name, err)
 			}
+			avatarPaletteValue, err := page.Locator(`[data-catalog-organization-item="spec-kubernetes-spec-01"]`).Evaluate(`element => {
+				const avatar = element.firstElementChild;
+				const resolveToken = (token) => {
+					const probe = document.createElement('span');
+					probe.style.backgroundColor = 'var(' + token + ')';
+					document.body.appendChild(probe);
+					const color = getComputedStyle(probe).backgroundColor;
+					probe.remove();
+					return color;
+				};
+				const dark = document.documentElement.classList.contains('dark');
+				return {
+					actual: getComputedStyle(avatar).backgroundColor,
+					neutral: resolveToken(dark ? '--color-surface-dark-alt' : '--color-surface-alt'),
+					primary: resolveToken(dark ? '--color-primary-dark' : '--color-primary'),
+				};
+			}`, nil)
+			if err != nil {
+				t.Fatalf("%s root spec avatar palette: %v", viewport.name, err)
+			}
+			avatarPalette, ok := avatarPaletteValue.(map[string]any)
+			if !ok {
+				t.Fatalf("%s root spec avatar palette = %#v", viewport.name, avatarPaletteValue)
+			}
+			actualAvatarColor := fmt.Sprint(avatarPalette["actual"])
+			neutralAvatarColor := fmt.Sprint(avatarPalette["neutral"])
+			primaryAvatarColor := fmt.Sprint(avatarPalette["primary"])
+			if actualAvatarColor != neutralAvatarColor || actualAvatarColor == primaryAvatarColor {
+				t.Fatalf("%s root spec avatar background = %q, want neutral %q and not primary %q", viewport.name, actualAvatarColor, neutralAvatarColor, primaryAvatarColor)
+			}
 			if label, err := panel.Locator(`[x-ref="catalogNavClose"]`).GetAttribute("aria-label"); err != nil || label != "Close Catalogs and specs" {
 				t.Errorf("%s root close label = %q, err=%v", viewport.name, label, err)
 			}
@@ -572,7 +602,7 @@ func TestCatalogSidebarExpansionAndNavigationPreserveContext(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	spec := []byte(`{"openapi":"3.0.3","info":{"title":"Kubernetes Core","version":"v1"},"paths":{"/api/v1/pods":{"get":{"operationId":"listCorePods","tags":["core_v1"],"summary":"List core pods in every namespace with a deliberately long title for overflow verification","responses":{"200":{"description":"OK"}}}},"/api/v1/widgets":{"post":{"operationId":"createCoreWidget","tags":["core_v1"],"summary":"Create widget","responses":{"201":{"description":"Created"}}}},"/api/v1/widgets/replace":{"put":{"operationId":"replaceCoreWidget","tags":["core_v1"],"summary":"Replace widget","responses":{"200":{"description":"OK"}}}},"/api/v1/widgets/status":{"patch":{"operationId":"patchCoreWidget","tags":["core_v1"],"summary":"Patch widget","responses":{"200":{"description":"OK"}}}},"/api/v1/widgets/archive":{"delete":{"operationId":"deleteCoreWidget","tags":["core_v1"],"summary":"Delete widget","responses":{"204":{"description":"Deleted"}}}},"/api/v1/widgets/options":{"options":{"operationId":"optionsCoreWidget","tags":["core_v1"],"summary":"Inspect widget options","responses":{"200":{"description":"OK"}}}}}}`)
+	spec := []byte(`{"openapi":"3.0.3","info":{"title":"Kubernetes Core","version":"v1"},"paths":{"/api/v1/pods":{"get":{"operationId":"listCorePods","tags":["core_v1"],"summary":"List core pods in every namespace with a deliberately long title for overflow verification","responses":{"200":{"description":"OK"}}}},"/api/v1/widgets":{"post":{"operationId":"createCoreWidget","tags":["core_v1"],"summary":"Create widget","responses":{"201":{"description":"Created"}}}},"/api/v1/widgets/replace":{"put":{"operationId":"replaceCoreWidget","tags":["core_v1"],"summary":"Replace widget","responses":{"200":{"description":"OK"}}}},"/api/v1/widgets/status":{"patch":{"operationId":"patchCoreWidget","tags":["core_v1"],"summary":"Patch widget","responses":{"200":{"description":"OK"}}}},"/api/v1/widgets/archive":{"delete":{"operationId":"deleteCoreWidget","tags":["core_v1"],"summary":"Delete widget","responses":{"204":{"description":"Deleted"}}}},"/api/v1/widgets/options":{"options":{"operationId":"optionsCoreWidget","tags":["core_v1"],"summary":"Inspect widget options","responses":{"200":{"description":"OK"}}}}},"components":{"schemas":{"CoreWidget":{"type":"object","description":"A core widget.","properties":{"name":{"type":"string"},"owner":{"$ref":"#/components/schemas/CoreOwner"}}},"CoreOwner":{"type":"object","description":"The widget owner.","properties":{"id":{"type":"string"}}}}}}`)
 	_, err = server.Activate(context.Background(), domain.CatalogCandidate{
 		ID: "kubernetes", Title: "Kubernetes", ProfileID: domain.CompatibilityProfileStrict,
 		Revision:  domain.CatalogRevision{Kind: domain.CatalogRevisionFiles, ID: "file-manifest-sidebar-focus", ManifestDigest: strings.Repeat("b", 64)},
@@ -813,5 +843,121 @@ func TestCatalogSidebarExpansionAndNavigationPreserveContext(t *testing.T) {
 	wantIdentity := map[string]any{"title": "Create widget · Manja", "focused": true, "mainTitle": "Create widget · Manja"}
 	if fmt.Sprint(identity) != fmt.Sprint(wantIdentity) {
 		t.Fatalf("catalog operation identity = %#v, want %#v", identity, wantIdentity)
+	}
+
+	schemaControl := page.Locator(`#catalog-sidebar-groups a[data-catalog-group-control]`).Filter(playwright.LocatorFilterOptions{HasText: "Schemas"})
+	toggleSchemaGroup := func(wantExpanded string) {
+		t.Helper()
+		if _, err := page.Evaluate(`() => window.__manjaSchemaGroupSettleBaseline = window.__manjaCatalogSidebarSettleCount`); err != nil {
+			t.Fatal(err)
+		}
+		control := page.Locator(`#catalog-sidebar-groups a[data-catalog-group-control]`).Filter(playwright.LocatorFilterOptions{HasText: "Schemas"})
+		if err := control.Click(); err != nil {
+			t.Fatalf("toggle schema group to %s: %v", wantExpanded, err)
+		}
+		waitExpression := fmt.Sprintf(`() => window.__manjaCatalogSidebarSettleCount > window.__manjaSchemaGroupSettleBaseline && Array.from(document.querySelectorAll('#catalog-sidebar-groups a[data-catalog-group-control]')).some((control) => control.textContent.includes('Schemas') && control.getAttribute('aria-expanded') === %q)`, wantExpanded)
+		if _, err := page.WaitForFunction(waitExpression, nil, playwright.PageWaitForFunctionOptions{Timeout: playwright.Float(5000)}); err != nil {
+			t.Fatalf("schema group should settle with aria-expanded=%s: %v", wantExpanded, err)
+		}
+	}
+	if expanded, err := schemaControl.GetAttribute("aria-expanded"); err != nil {
+		t.Fatalf("schema group aria-expanded: %v", err)
+	} else if expanded == "true" {
+		toggleSchemaGroup("false")
+	}
+	toggleSchemaGroup("true")
+	schema := page.Locator(`[data-catalog-sidebar-item][title="CoreWidget"]`)
+	if err := schema.WaitFor(); err != nil {
+		t.Fatalf("schema sidebar item: %v", err)
+	}
+	schemaHasBadge, err := schema.Evaluate(`element => {
+		const renderedBadge = element.querySelector(':scope > :is(span, sup)[class*="catalog-method-"]') !== null;
+		const pseudoBadge = getComputedStyle(element, '::after').content !== 'none';
+		return renderedBadge || pseudoBadge;
+	}`, nil)
+	if err != nil || schemaHasBadge != false {
+		t.Fatalf("schema sidebar has badge = %v, want false; err=%v", schemaHasBadge, err)
+	}
+	schemaHref, err := schema.GetAttribute("href")
+	if err != nil || schemaHref == "" {
+		t.Fatalf("schema href = %q, err=%v", schemaHref, err)
+	}
+	if _, err := page.Evaluate(`() => {
+		window.__manjaSchemaNavigationSentinel = "kept";
+		window.__manjaSchemaNavigationSettled = false;
+		document.getElementById("catalog-sidebar-groups").dataset.schemaNavigationSentinel = "kept";
+		document.body.addEventListener("htmx:afterSettle", function onSettle(event) {
+			if (event.detail && event.detail.target && event.detail.target.id === "catalog-main-content") {
+				window.__manjaSchemaNavigationSettled = true;
+			}
+		}, { once: true });
+		return true;
+	}`); err != nil {
+		t.Fatal(err)
+	}
+	if err := schema.Click(); err != nil {
+		t.Fatalf("catalog schema navigation: %v", err)
+	}
+	if _, err := page.WaitForFunction(`() => window.__manjaSchemaNavigationSettled === true || window.__manjaSchemaNavigationSentinel !== "kept"`, nil, playwright.PageWaitForFunctionOptions{Timeout: playwright.Float(5000)}); err != nil {
+		t.Fatalf("catalog schema navigation settlement: %v", err)
+	}
+	schemaContextKept, err := page.Evaluate(`() => window.__manjaSchemaNavigationSentinel === "kept" && document.getElementById("catalog-sidebar-groups")?.dataset.schemaNavigationSentinel === "kept"`, nil)
+	if err != nil || schemaContextKept != true {
+		t.Fatalf("catalog schema navigation replaced persistent context: kept=%v err=%v", schemaContextKept, err)
+	}
+	if err := page.Locator(`[data-catalog-detail="schema"] .manja-schema-title`).WaitFor(); err != nil {
+		t.Fatalf("catalog schema detail at %q: %v", page.URL(), err)
+	}
+	if got := page.URL(); got != baseURL+schemaHref {
+		t.Fatalf("catalog schema URL = %q, want %q", got, baseURL+schemaHref)
+	}
+	activeSchema := page.Locator(`[data-catalog-sidebar-item][title="CoreWidget"][aria-current="page"][data-catalog-sidebar-selected="true"]`)
+	if count, err := activeSchema.Count(); err != nil || count != 1 {
+		t.Fatalf("active catalog schema count = %d, want 1; err=%v", count, err)
+	}
+	previousOperation := page.Locator(`[data-catalog-sidebar-operation][title="Create widget"][aria-current="page"], [data-catalog-sidebar-operation][title="Create widget"][data-catalog-sidebar-selected="true"]`)
+	if count, err := previousOperation.Count(); err != nil || count != 0 {
+		t.Fatalf("previous operation active markers = %d, want 0; err=%v", count, err)
+	}
+
+	reference := page.Locator(`[data-catalog-schema-reference="true"][title="Open schema CoreOwner"]`)
+	if err := reference.WaitFor(); err != nil {
+		t.Fatalf("schema node reference: %v", err)
+	}
+	referenceHref, err := reference.GetAttribute("href")
+	if err != nil || referenceHref == "" {
+		t.Fatalf("schema node href = %q, err=%v", referenceHref, err)
+	}
+	if _, err := page.Evaluate(`() => {
+		window.__manjaSchemaNodeSentinel = "kept";
+		window.__manjaSchemaNodeSettled = false;
+		document.getElementById("catalog-main-content").dataset.schemaNodeSentinel = "kept";
+		document.body.addEventListener("htmx:afterSettle", function onSettle(event) {
+			if (event.detail && event.detail.target && event.detail.target.id === "schema-node-panel") {
+				window.__manjaSchemaNodeSettled = true;
+			}
+		}, { once: true });
+		return true;
+	}`); err != nil {
+		t.Fatal(err)
+	}
+	if err := reference.Click(); err != nil {
+		t.Fatalf("schema node navigation: %v", err)
+	}
+	if _, err := page.WaitForFunction(`() => window.__manjaSchemaNodeSettled === true || window.__manjaSchemaNodeSentinel !== "kept"`, nil, playwright.PageWaitForFunctionOptions{Timeout: playwright.Float(5000)}); err != nil {
+		t.Fatalf("schema node navigation settlement: %v", err)
+	}
+	nodeContextKept, err := page.Evaluate(`() => window.__manjaSchemaNodeSentinel === "kept" && document.getElementById("catalog-main-content")?.dataset.schemaNodeSentinel === "kept"`, nil)
+	if err != nil || nodeContextKept != true {
+		t.Fatalf("schema node navigation replaced persistent context: kept=%v err=%v", nodeContextKept, err)
+	}
+	if heading, err := page.Locator(`#schema-node-panel [data-catalog-schema-node-focus="true"]`).TextContent(); err != nil || strings.TrimSpace(heading) != "CoreOwner" {
+		t.Fatalf("schema node heading = %q, want CoreOwner; err=%v", heading, err)
+	}
+	if got := page.URL(); got != baseURL+referenceHref {
+		t.Fatalf("schema node URL = %q, want %q", got, baseURL+referenceHref)
+	}
+	if count, err := activeSchema.Count(); err != nil || count != 1 {
+		t.Fatalf("active catalog schema after node navigation = %d, want 1; err=%v", count, err)
 	}
 }
