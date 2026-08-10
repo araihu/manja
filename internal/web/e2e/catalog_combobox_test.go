@@ -911,6 +911,14 @@ func TestCatalogSidebarExpansionAndNavigationPreserveContext(t *testing.T) {
 	if got := page.URL(); got != baseURL+schemaHref {
 		t.Fatalf("catalog schema URL = %q, want %q", got, baseURL+schemaHref)
 	}
+	activeSchema := page.Locator(`[data-catalog-sidebar-item][title="CoreWidget"][aria-current="page"][data-catalog-sidebar-selected="true"]`)
+	if count, err := activeSchema.Count(); err != nil || count != 1 {
+		t.Fatalf("active catalog schema count = %d, want 1; err=%v", count, err)
+	}
+	previousOperation := page.Locator(`[data-catalog-sidebar-operation][title="Create widget"][aria-current="page"], [data-catalog-sidebar-operation][title="Create widget"][data-catalog-sidebar-selected="true"]`)
+	if count, err := previousOperation.Count(); err != nil || count != 0 {
+		t.Fatalf("previous operation active markers = %d, want 0; err=%v", count, err)
+	}
 
 	reference := page.Locator(`[data-catalog-schema-reference="true"][title="Open schema CoreOwner"]`)
 	if err := reference.WaitFor(); err != nil {
@@ -948,5 +956,8 @@ func TestCatalogSidebarExpansionAndNavigationPreserveContext(t *testing.T) {
 	}
 	if got := page.URL(); got != baseURL+referenceHref {
 		t.Fatalf("schema node URL = %q, want %q", got, baseURL+referenceHref)
+	}
+	if count, err := activeSchema.Count(); err != nil || count != 1 {
+		t.Fatalf("active catalog schema after node navigation = %d, want 1; err=%v", count, err)
 	}
 }
