@@ -157,6 +157,8 @@ func TestCatalogSelectedMainTargetReturnsOnlyMainFragment(t *testing.T) {
 		`data-catalog-main-content="true"`,
 		`data-document-title="List Pods · Manja"`,
 		`data-catalog-detail="operation"`,
+		`hx-target="#catalog-main-content"`,
+		`hx-select="#catalog-main-content"`,
 	} {
 		if !strings.Contains(body, want) {
 			t.Errorf("catalog main fragment missing %q:\n%s", want, body)
@@ -169,6 +171,8 @@ func TestCatalogSelectedMainTargetReturnsOnlyMainFragment(t *testing.T) {
 		`id="catalog-navigation"`,
 		`id="catalog-sidebar-groups"`,
 		`/manja-assets/request-composer.js`,
+		`hx-target="#main-content"`,
+		`hx-select="#main-content"`,
 	} {
 		if strings.Contains(body, reject) {
 			t.Errorf("catalog main fragment retained shell marker %q:\n%s", reject, body)
@@ -181,6 +185,57 @@ func TestCatalogSelectedMainTargetReturnsOnlyMainFragment(t *testing.T) {
 	}
 }
 
+func TestCatalogSidebarTargetReturnsOnlySidebarFragment(t *testing.T) {
+	t.Parallel()
+
+	handler, _ := catalogHandlerFixture(t, "/kubernetes")
+	request := httptest.NewRequest(http.MethodGet, "/kubernetes/documents/core-v1/?group=group-sidebar", nil)
+	request.Header.Set("HX-Request", "true")
+	request.Header.Set("HX-Target", "catalog-sidebar-groups")
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("catalog sidebar fragment = %d body=%q", response.Code, response.Body.String())
+	}
+	body := response.Body.String()
+	if !strings.Contains(body, `id="catalog-sidebar-groups"`) {
+		t.Fatalf("catalog sidebar fragment missing target:\n%s", body)
+	}
+	for _, reject := range []string{`<!doctype html>`, `<html`, `id="main-content"`, `id="catalog-navigation"`, `id="catalog-main-content"`, `/manja-assets/request-composer.js`} {
+		if strings.Contains(body, reject) {
+			t.Errorf("catalog sidebar fragment retained shell marker %q:\n%s", reject, body)
+		}
+	}
+}
+
+func TestCatalogSchemaNodeTargetReturnsOnlySchemaNodeFragment(t *testing.T) {
+	t.Parallel()
+
+	handler, _ := catalogHandlerFixture(t, "/kubernetes")
+	schemaID := "detail-sha256-" + strings.Repeat("c", 64)
+	request := httptest.NewRequest(http.MethodGet, "/kubernetes/documents/core-v1/?selected="+schemaID+"&node=1", nil)
+	request.Header.Set("HX-Request", "true")
+	request.Header.Set("HX-Target", "schema-node-panel")
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("catalog schema node fragment = %d body=%q", response.Code, response.Body.String())
+	}
+	body := response.Body.String()
+	for _, want := range []string{`id="schema-node-panel"`, `ObjectMeta`, `data-catalog-schema-node-focus="true"`} {
+		if !strings.Contains(body, want) {
+			t.Errorf("catalog schema node fragment missing %q:\n%s", want, body)
+		}
+	}
+	for _, reject := range []string{`<!doctype html>`, `<html`, `id="main-content"`, `id="catalog-navigation"`, `id="catalog-main-content"`, `id="catalog-sidebar-groups"`} {
+		if strings.Contains(body, reject) {
+			t.Errorf("catalog schema node fragment retained shell marker %q:\n%s", reject, body)
+		}
+	}
+}
+
 func TestCatalogMainFragmentRequiresDirectNonRestoreRequest(t *testing.T) {
 	t.Parallel()
 
@@ -189,7 +244,7 @@ func TestCatalogMainFragmentRequiresDirectNonRestoreRequest(t *testing.T) {
 		headers map[string]string
 	}{
 		{name: "missing target", headers: map[string]string{"HX-Request": "true"}},
-		{name: "different target", headers: map[string]string{"HX-Request": "true", "HX-Target": "catalog-sidebar-groups"}},
+		{name: "unknown target", headers: map[string]string{"HX-Request": "true", "HX-Target": "unknown-target"}},
 		{name: "boosted", headers: map[string]string{"HX-Request": "true", "HX-Target": "catalog-main-content", "HX-Boosted": "true"}},
 		{name: "history restore", headers: map[string]string{"HX-Request": "true", "HX-Target": "catalog-main-content", "HX-History-Restore-Request": "true"}},
 	}
