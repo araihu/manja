@@ -69,7 +69,17 @@ It directly reports these non-standard module bodies:
 
 - Kubernetes: 65 OpenAPI documents locked to upstream commit
   `a818af18fe29d999d6741234c8cd72709ef2f424`;
-- GitHub: tracked `github-v3-rest.json`, without immutable upstream byte pin;
+- GitHub: `github-v3-rest.provenance.json` binds the 3,319,366-byte tracked
+  `github-v3-rest.json` to `github/rest-api-description` commit
+  `6948cb04f5304188569c4bb4ae2190c08e7cbdba`, tree
+  `6270ed1bd31a741adf3c7143c39d9bdc57d2fbc1`, Git blob
+  `f0ddf34ad4398c319db0643e45a0908ca026b382`, and SHA-256
+  `dedfee9ad6a676c2f7186b8e2137d887d6449cad8b7af8253aecdaae24b27977`.
+  The receipt also records the 1,063-byte same-revision MIT `LICENSE.md` Git blob
+  `b50625eb63949013cae604b1cadd42cfa1eaf825` and SHA-256
+  `3243761cbac07e6d169a5a2f4e7c25cc544da85248e735df74c3672e055cc87b`.
+  Mechanical identification is resolved; compiled renderer data remains
+  **BLOCKED** pending reviewed attribution/notice placement in final artifacts;
 - Stripe: `openapi/spec3.json` fetched at commit
   `d70de345383dd818a0ce831f4e20d375c5a90cec`;
 - 416 final renderer-data files totaling about 67.6 MiB in the inspected image.
