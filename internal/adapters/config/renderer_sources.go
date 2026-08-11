@@ -37,6 +37,7 @@ func (file RendererFile) Sources() []renderer.CatalogSource {
 		case RendererSourceGit:
 			result[index] = sourceadapter.GitCatalogSource{
 				Repository: configured.Source.Repository, Ref: configured.Source.Ref, Manifest: manifest,
+				IntegrityReceiptPath: file.resolve(configured.Source.IntegrityReceipt),
 			}
 		}
 	}

@@ -15,13 +15,14 @@ import (
 )
 
 type GitCatalogSource struct {
-	Repository    string
-	Ref           string
-	Root          string
-	Username      string
-	Token         string
-	SSHPrivateKey string
-	Manifest      CatalogManifest
+	Repository           string
+	Ref                  string
+	Root                 string
+	Username             string
+	Token                string
+	SSHPrivateKey        string
+	Manifest             CatalogManifest
+	IntegrityReceiptPath string
 
 	afterResolve func(string)
 }
@@ -45,6 +46,11 @@ func (source GitCatalogSource) Load(ctx context.Context) (domain.CatalogCandidat
 	reference := source.Ref
 	if reference == "" {
 		reference = "HEAD"
+	}
+	if source.IntegrityReceiptPath != "" {
+		if _, err := loadGitSourceProvenanceReceipt(source.IntegrityReceiptPath); err != nil {
+			return domain.CatalogCandidate{}, err
+		}
 	}
 	gitSource := Git{
 		Repo: source.Repository, Username: source.Username, Token: source.Token, SSHPrivateKey: source.SSHPrivateKey,

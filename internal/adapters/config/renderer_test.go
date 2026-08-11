@@ -2,6 +2,7 @@ package config
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -198,6 +199,95 @@ func TestLoadRendererAdmitsCanonicalGitIntegrityReceiptOnly(t *testing.T) {
 			t.Parallel()
 			if _, err := LoadRenderer(writeRendererConfigWithAllowlist(t, data)); err == nil {
 				t.Fatal("invalid integrity receipt path was accepted")
+			}
+		})
+	}
+}
+
+func TestConfiguredGitIntegrityReceiptIsRejectedBeforeRepositoryAcquisition(t *testing.T) {
+	t.Parallel()
+
+	const validReceipt = `{
+  "schemaVersion": 2,
+  "catalogId": "payments",
+  "cloneRepository": "/missing/payments.git",
+  "provenanceUrl": "https://example.test/payments",
+  "objectFormat": "sha1",
+  "sourceRoot": ".",
+  "commitObjectId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "treeObjectId": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  "artifacts": [{
+    "path": "openapi.json",
+    "mode": "100644",
+    "size": 3,
+    "gitObjectId": "cccccccccccccccccccccccccccccccccccccccc",
+    "sha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+  }],
+  "license": {
+    "name": "MIT",
+    "spdx": "MIT",
+    "upstreamPath": "LICENSE",
+    "trackedLocally": false,
+    "size": 3,
+    "gitBlobSha": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+    "sha256": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+  }
+}`
+
+	for name, test := range map[string]struct {
+		receipt string
+		want    string
+	}{
+		"unknown field": {
+			receipt: strings.Replace(validReceipt, "\n}", ",\n  \"unexpected\": true\n}", 1),
+			want:    "decode Git integrity receipt",
+		},
+		"trailing value": {
+			receipt: validReceipt + "\n{}\n",
+			want:    "must contain exactly one JSON value",
+		},
+		"oversized": {
+			receipt: strings.Repeat(" ", 65537),
+			want:    "exceeds 65536 bytes",
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			root := t.TempDir()
+			repository := filepath.Join(root, "missing.git")
+			receipt := strings.Replace(test.receipt, "/missing/payments.git", repository, 1)
+			if err := os.WriteFile(filepath.Join(root, "receipt.json"), []byte(receipt), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			config := fmt.Sprintf(`
+version: 1
+catalogs:
+  - id: payments
+    mount: /
+    title: Payments
+    profile: strict-v1
+    source:
+      kind: git
+      repository: %q
+      ref: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+      integrityReceipt: receipt.json
+      include:
+        - openapi.json
+      documents:
+        - path: openapi.json
+          key: payments-v1
+`, repository)
+			configPath := filepath.Join(root, "renderer.yaml")
+			if err := os.WriteFile(configPath, []byte(config), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			loaded, err := LoadRenderer(configPath)
+			if err != nil {
+				t.Fatal(err)
+			}
+			_, err = loaded.Sources()[0].Load(context.Background())
+			if err == nil || !strings.Contains(err.Error(), test.want) {
+				t.Fatalf("configured integrity receipt error = %v, want %q", err, test.want)
 			}
 		})
 	}
