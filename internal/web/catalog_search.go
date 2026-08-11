@@ -79,10 +79,18 @@ func (handler *CatalogHandler) searchCatalog(ctx context.Context, snapshot catal
 }
 
 func (handler *CatalogHandler) searchGlobal(ctx context.Context, query, contextMount, contextDocument string) (globalSearchResult, error) {
-	result := globalSearchResult{SearchVersion: 1, Results: make([]globalSearchCandidate, 0)}
 	if contextMount != "" && !handler.runtime.HasMount(contextMount) {
 		contextMount = ""
 	}
+	// Published detail IDs are already bound by each admitted catalog
+	// directory, so resolve them before deadline-bound search child loading.
+	if exact, found, err := handler.searchGlobalExact(query, contextMount, contextDocument); err != nil {
+		return globalSearchResult{}, err
+	} else if found {
+		return exact, nil
+	}
+
+	result := globalSearchResult{SearchVersion: 1, Results: make([]globalSearchCandidate, 0)}
 
 	mounts := handler.runtime.MountNames()
 	sort.Strings(mounts)
@@ -144,6 +152,41 @@ func (handler *CatalogHandler) searchGlobal(ctx context.Context, query, contextM
 		result.Results = result.Results[:maxGlobalSearchResults]
 	}
 	return result, nil
+}
+
+func (handler *CatalogHandler) searchGlobalExact(query, contextMount, contextDocument string) (globalSearchResult, bool, error) {
+	result := globalSearchResult{
+		Query:         strings.ToLower(strings.TrimSpace(query)),
+		SearchVersion: 1,
+		Results:       make([]globalSearchCandidate, 0),
+	}
+	mounts := handler.runtime.MountNames()
+	sort.Strings(mounts)
+	for _, mount := range mounts {
+		admission, err := handler.runtime.Admit(mount)
+		if err != nil {
+			continue
+		}
+		record, found, exactErr := globalSearchExactRecord(admission.Snapshot.Directory, mount, result.Query)
+		if exactErr != nil {
+			admission.Release()
+			return globalSearchResult{}, false, exactErr
+		}
+		if found {
+			result.Results = append(result.Results, globalSearchCandidate{
+				record: record, mount: mount, section: admission.Snapshot.Directory.Title, localRank: -1, exactID: true,
+			})
+		}
+		admission.Release()
+	}
+	if len(result.Results) == 0 {
+		return globalSearchResult{}, false, nil
+	}
+	rankGlobalSearchCandidates(result.Results, contextMount, contextDocument)
+	if len(result.Results) > maxGlobalSearchResults {
+		result.Results = result.Results[:maxGlobalSearchResults]
+	}
+	return result, true, nil
 }
 
 func globalSearchRecordMatchesDetailID(record catalog.SearchRecordV1, query string) bool {

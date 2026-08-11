@@ -353,6 +353,35 @@ func TestCatalogSearchJSONReturnsVersionedGlobalResults(t *testing.T) {
 	}
 }
 
+func TestCatalogExactDetailSearchDoesNotDependOnSearchChildren(t *testing.T) {
+	handler, snapshot := catalogHandlerFixture(t, "/kubernetes")
+	catalogHandler := handler.(*CatalogHandler)
+	searchChildReads := 0
+	catalogHandler.children = deadlineSearchCatalogChildren{
+		fallback: catalogHandler.children,
+		reads:    &searchChildReads,
+	}
+
+	detailID := snapshot.Directory.Documents[1].Operations[0].DetailID
+	exact := httptest.NewRecorder()
+	handler.ServeHTTP(exact, httptest.NewRequest(http.MethodGet, "/kubernetes/search.json?q="+string(detailID), nil))
+	if exact.Code != http.StatusOK || !strings.Contains(exact.Body.String(), `"detailId":"`+string(detailID)+`"`) {
+		t.Fatalf("exact detail search = %d body=%q", exact.Code, exact.Body.String())
+	}
+	if searchChildReads != 0 {
+		t.Fatalf("exact detail search read %d search children, want directory-only lookup", searchChildReads)
+	}
+
+	nonExact := httptest.NewRecorder()
+	handler.ServeHTTP(nonExact, httptest.NewRequest(http.MethodGet, "/kubernetes/search.json?q=listCoreV1Pod", nil))
+	if nonExact.Code != http.StatusServiceUnavailable || nonExact.Header().Get("Retry-After") != "1" {
+		t.Fatalf("non-exact search with unavailable children = %d retry=%q body=%q", nonExact.Code, nonExact.Header().Get("Retry-After"), nonExact.Body.String())
+	}
+	if searchChildReads == 0 {
+		t.Fatal("non-exact search did not exercise unavailable search children")
+	}
+}
+
 func TestGlobalSearchRankingUsesKindAndPageContext(t *testing.T) {
 	t.Parallel()
 
@@ -895,6 +924,20 @@ func (children memoryCatalogChildren) ReadChild(_ context.Context, snapshot cata
 		}
 	}
 	return nil, catalog.ChildIdentityV1{}, io.ErrUnexpectedEOF
+}
+
+type deadlineSearchCatalogChildren struct {
+	fallback catalogChildReader
+	reads    *int
+}
+
+func (children deadlineSearchCatalogChildren) ReadChild(ctx context.Context, snapshot catalog.RuntimeSnapshot, path string) ([]byte, catalog.ChildIdentityV1, error) {
+	if strings.HasPrefix(path, "search/") {
+		*children.reads = *children.reads + 1
+		<-ctx.Done()
+		return nil, catalog.ChildIdentityV1{}, ctx.Err()
+	}
+	return children.fallback.ReadChild(ctx, snapshot, path)
 }
 
 func catalogHandlerFixture(t *testing.T, mount string) (http.Handler, catalog.RuntimeSnapshot) {

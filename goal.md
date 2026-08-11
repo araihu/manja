@@ -51,9 +51,9 @@ not implement hosted product behavior speculatively.
 - Task: `019fef17-2fad-73d2-b004-d3706d36ea82`
 - Worktree label: dedicated Open Core developer worktree
 - Initial lane base: `39d65ade21c080ee2102f53da5ed741f000d6dd7`
-- Current checkpoint base: `52c7598c4ea1f0b5f0f5e27e363320866b49f789`
-- Current checkpoint base tree: `cef5aa1ce775095d1e7cd8d156c9f9249f8b2901`
-- Branch: `codex/oc01-oci-inspection-trust-boundary`
+- Current checkpoint base: `a0d1c4e0622b91a070ff96abbeda0ac5d874e82a`
+- Current checkpoint base tree: `d580a55a59972032e578a9f38e5287341517ed71`
+- Branch: `codex/oc01-kubernetes-search-ci`
 - Owns only bounded Open Core implementation checkpoints assigned here.
 - Must commit each coherent checkpoint with a meaningful message.
 - Must not implement deferred SaaS behavior or edit the active Arai Hû theme
@@ -159,9 +159,29 @@ not implement hosted product behavior speculatively.
   `52c7598c4ea1f0b5f0f5e27e363320866b49f789` substantively. Independent verdict:
   `VALID` and material. The inline digest/publication facet and outside-diff
   no-execution facet are one OCI inspection trust-boundary finding, not two.
-  This bounded correction marks OCI distribution inspection blocked and records
-  prospective fail-closed Task-8 invariants. It awaits independent review; its
-  moving child commit and tree remain external.
+  Candidate `59f6df7de70f7b41d3d53c911307192c5c2fe7ef`, tree
+  `6ea9a541e6ddfbf9b8b6cf11a72e54a1c312c171`, marked OCI distribution
+  inspection blocked and recorded prospective fail-closed Task-8 invariants,
+  but was rejected because it falsely said no published release artifact
+  existed. Child `a0d1c4e0622b91a070ff96abbeda0ac5d874e82a`, tree
+  `d580a55a59972032e578a9f38e5287341517ed71`, corrected that claim, received
+  acceptance, then was fast-forward integrated and pushed unchanged.
+- CI runs `31485230010` at `52c7598c4ea1f0b5f0f5e27e363320866b49f789`
+  and `31487572347` at `a0d1c4e0622b91a070ff96abbeda0ac5d874e82a`
+  reproduce one narrow failure. `TestKubernetesCatalog` exhaustively checks all
+  3,028 published detail IDs through global exact search; changing late IDs
+  returned the bounded 31-byte temporary-unavailability 503 after both the
+  initial request and its one documented retry. Activation, public and private
+  Forgejo paths, the retry-helper test, root tests, and CodeQL passed in both
+  runs. The test is not racing renderer readiness: its catalog, directory, and
+  detail checks have already succeeded before the exhaustive search loop.
+- This bounded correction resolves the production ordering defect: an exact
+  published detail ID is now resolved from the admitted immutable catalog
+  directory before loading deadline-bound search children. Non-exact queries
+  retain the existing search path and persistent 503 behavior. Local controlled
+  RED/GREEN proof and the full 3,028-ID Kubernetes integration acceptance pass;
+  the moving candidate commit and tree remain external pending independent
+  review.
 - Full root tests, strict Muamba verification, architecture, unrelated external
   module, generation, browser, API, and templ gates passed for the OC-01
   evidence. Local OCI inventory observations supplied baseline evidence only;
@@ -184,10 +204,11 @@ not implement hosted product behavior speculatively.
 ### OC-01: Current Open Core provenance and artifact baseline
 
 Status: accepted baseline and mechanical checkpoints, OC-01M5, strict Stripe
-Dockerfile-binding correction, first final-head correction, root-gate truth
-correction, and goal-ledger corrections are integrated/pushed through exact
-`52c7598c4ea1f0b5f0f5e27e363320866b49f789`. The bounded OCI inspection
-trust-boundary correction is active locally and awaits independent review.
+Dockerfile-binding correction, final-head corrections, root-gate truth,
+goal-ledger corrections, and the OCI inspection trust-boundary correction are
+integrated/pushed through exact
+`a0d1c4e0622b91a070ff96abbeda0ac5d874e82a`. The bounded Kubernetes exact-search
+correction is active locally and awaits independent review.
 
 Accepted source identity:
 
@@ -206,10 +227,10 @@ Reviewed PR-transition identity:
 
 Current integrated/pushed product-manager checkpoint:
 
-- head: `52c7598c4ea1f0b5f0f5e27e363320866b49f789`;
-- tree: `cef5aa1ce775095d1e7cd8d156c9f9249f8b2901`;
+- head: `a0d1c4e0622b91a070ff96abbeda0ac5d874e82a`;
+- tree: `d580a55a59972032e578a9f38e5287341517ed71`;
 - disposition: accepted; fast-forward integrated and pushed unchanged; preserved
-  as immutable parent for this OCI inspection correction.
+  as immutable parent for this Kubernetes exact-search correction.
 
 The final moving candidate head and tree are bound by the immutable external
 review packet and control plane. A commit cannot embed its own final commit and
@@ -259,21 +280,21 @@ the complete runtime.
 Current PR: [#94](https://github.com/araihu/manja/pull/94),
 `coord/opencore-product` into `main`.
 
-Snapshot at `2026-08-11T11:27:57Z`: PR #94 remains open at pushed head
-`52c7598c4ea1f0b5f0f5e27e363320866b49f789`. CodeQL `actions`, `go`,
-`javascript-typescript`, and its summary pass. CI run `31485230010` completed
+Snapshot at `2026-08-11T12:07:13Z`: PR #94 remains open at pushed head
+`a0d1c4e0622b91a070ff96abbeda0ac5d874e82a`. CodeQL `actions`, `go`,
+`javascript-typescript`, and its summary pass. CI run `31487572347` completed
 with failure: root `test` passed, while `integration` failed only
-`TestKubernetesCatalog` after 247.38s when exact search
-`detail-sha256-674e48dbf74f258a2cf294bdf69f20494d91cb67b2ad1b916f9decdadb26c3ee`
+`TestKubernetesCatalog` after 289.11s when exact search
+`detail-sha256-b4fc061c5abcf63b6476bf0d438474dda10cd053cfc9e0954cc859942e4fa526`
 returned HTTP 503, `bytes=31`. Forgejo start, public fetch, private HTTPS, and
-private SSH tests passed. Build/publish and deploy were skipped. No code changed
-between prior green `e3d6bb977c096dc13933068369f46d3cf8decd3c` and goal-only
-`52c7598c4ea1f0b5f0f5e27e363320866b49f789`; record this as a failed exact-head
-gate requiring a successful rerun at the eventual correction head, without a
-runtime-code diagnosis in this docs checkpoint. CodeRabbit review `4905658559`,
-run `d5161f3c-d4aa-41e6-af99-3f76ba07eeb0`, is substantive with the one
-independently validated material OCI inspection trust-boundary finding. Merge
-remains blocked.
+private SSH tests passed, as did
+`TestCatalogSearchRequestRetriesOneTemporaryDeadline`. Run `31485230010` at
+`52c7598c4ea1f0b5f0f5e27e363320866b49f789` had the same sole integration
+failure after 247.38s for exact ID
+`detail-sha256-674e48dbf74f258a2cf294bdf69f20494d91cb67b2ad1b916f9decdadb26c3ee`.
+No runtime bytes changed across those docs-only heads. The exact-search
+correction remains local and requires an exact-head CI rerun and independent
+review before any lifecycle action. Merge remains blocked.
 
 Before merge:
 
@@ -289,11 +310,11 @@ Before merge:
 
 ## Next Action
 
-Freeze this OCI inspection trust-boundary correction's moving commit/tree in the
+Freeze this Kubernetes exact-search correction's moving commit/tree in the
 immutable external reviewer packet and control plane and obtain fresh independent
-review. Rerun CI at the eventual correction head and require `test` and
-`integration` success. Then request one exact-head substantive CodeRabbit review
-and fix only independently validated material findings. Do not merge. A failed
-CI gate, absent review, or rate-limited no-review keeps merge blocked.
+review. Rerun CI at the correction head and require `test` and `integration`
+success. Then request one exact-head substantive CodeRabbit review and fix only
+independently validated material findings. Do not merge. A failed CI gate,
+absent review, or rate-limited no-review keeps merge blocked.
 Deferred SaaS behavior and the active Arai Hû theme remain excluded; OC-04
 remains Open Core; licensing/package-generation Task 8 remains stopped.
