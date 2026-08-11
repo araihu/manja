@@ -51,9 +51,9 @@ not implement hosted product behavior speculatively.
 - Task: `019fef17-2fad-73d2-b004-d3706d36ea82`
 - Worktree label: dedicated Open Core developer worktree
 - Initial lane base: `39d65ade21c080ee2102f53da5ed741f000d6dd7`
-- Current checkpoint base: `f185838ab5fcb1eb6ca9c2a75e0f54c56e164c9a`
-- Current checkpoint base tree: `7c6a60757fbad01f8fc5d62db65952af06dda98d`
-- Branch: `codex/oc01-exact-query-traversal-gate`
+- Current checkpoint base: `4578206bec2d28d2ca51e9b25f6823078c56e333`
+- Current checkpoint base tree: `6c5077ed6e570fa92c2d9e5149a9a2eaf363e7bb`
+- Branch: `codex/oc01-final-gate-ledger`
 - Owns only bounded Open Core implementation checkpoints assigned here.
 - Must commit each coherent checkpoint with a meaningful message.
 - Must not implement deferred SaaS behavior or edit the active Arai Hû theme
@@ -200,13 +200,51 @@ not implement hosted product behavior speculatively.
   identity is added. Its unconditional exact-directory preflight finding is
   `VALID` and material: ordinary global queries compare against all 4,872
   current demo details before the existing child-search deadline.
-- This bounded correction keeps canonical validation first, then permits exact
-  directory traversal only for canonical `detail-sha256-` plus 64-lowercase-hex
-  queries. Controlled decoy receipts prove wrong-prefix, wrong-length, non-hex,
-  suffixed, and ordinary queries enter bounded `SearchService` instead. Exact
-  lowercase, uppercase-normalized, and NFKC-equivalent IDs remain
-  directory-only and collect across catalogs. The moving candidate identity
-  remains external pending fresh independent review.
+- Exact-query traversal correction
+  `4578206bec2d28d2ca51e9b25f6823078c56e333`, tree
+  `6c5077ed6e570fa92c2d9e5149a9a2eaf363e7bb`, keeps canonical validation first,
+  then permits exact directory traversal only for canonical
+  `detail-sha256-` plus 64-lowercase-hex queries. Controlled decoy receipts
+  prove wrong-prefix, wrong-length, non-hex, suffixed, and ordinary queries
+  enter bounded `SearchService` instead. Exact lowercase,
+  uppercase-normalized, and NFKC-equivalent IDs remain directory-only and
+  collect across catalogs. It received independent `ACCEPT` with no findings,
+  then was fast-forward integrated and pushed unchanged.
+- The first automatic CodeRabbit status at `2026-08-11T13:20:54Z` for exact
+  `4578206bec2d28d2ca51e9b25f6823078c56e333` was rate-limited and insufficient.
+  After exact-head revalidation, the product manager retriggered review at
+  `2026-08-11T13:52:18Z` with [request comment
+  `5254090894`](https://github.com/araihu/manja/pull/94#issuecomment-5254090894),
+  invocation `aaedd82e-3e68-47f6-b28c-2fd7da1f4ad7`. The [bot reply
+  `5254092288`](https://github.com/araihu/manja/pull/94#issuecomment-5254092288)
+  was updated to `Review finished` at `2026-08-11T13:55:39Z`; the exact-head
+  CodeRabbit context moved from `Review in progress` to successful
+  `Review completed`.
+- The [CodeRabbit standing
+  summary](https://github.com/araihu/manja/pull/94#issuecomment-5249207465) was
+  updated at `2026-08-11T13:55:36Z`. Run
+  `048fe19f-1f5f-466e-844c-9f1f6b23cdce` reviewed exact range
+  `f185838ab5fcb1eb6ca9c2a75e0f54c56e164c9a...4578206bec2d28d2ca51e9b25f6823078c56e333`,
+  selected exactly `goal.md`, `internal/web/catalog_search.go`, and
+  `internal/web/catalog_test.go`, and generated no actionable comments. It
+  processed `internal/web/catalog_test.go` and disclosed that
+  `internal/web/catalog_search.go` and `goal.md` were skipped as similar to
+  earlier changes; independent exact-byte review covers those skipped files.
+- The independent final-gate audit chose `ACCEPT` option A: this successful
+  exact-head incremental review/check is substantive and has zero findings.
+  The absence of a new pull-review object does not block this immutable
+  identity because the retrigger, invocation, status transition, run, exact
+  range, selected/skipped files, and standing-summary result form the stronger
+  evidence chain. The generic docstring warning is non-material: the change
+  adds only an unexported helper and conventional Go `Test*` functions, with no
+  undocumented exported production API.
+- The final PR gate is satisfied only for immutable
+  `4578206bec2d28d2ca51e9b25f6823078c56e333`, tree
+  `6c5077ed6e570fa92c2d9e5149a9a2eaf363e7bb`. Any child or other head movement
+  restarts exact-head independent review, CI, CodeQL, and substantive
+  CodeRabbit gates. This goal-only ledger child adds no product decision; its
+  moving commit and tree identity remain external to avoid recursive
+  self-reference.
 - Full root tests, strict Muamba verification, architecture, unrelated external
   module, generation, browser, API, and templ gates passed for the OC-01
   evidence. Local OCI inventory observations supplied baseline evidence only;
@@ -232,10 +270,12 @@ Status: accepted baseline and mechanical checkpoints, OC-01M5, strict Stripe
 Dockerfile-binding correction, final-head corrections, root-gate truth,
 goal-ledger corrections, and the OCI inspection trust-boundary correction are
 integrated/pushed through exact
-`f185838ab5fcb1eb6ca9c2a75e0f54c56e164c9a`. CodeRabbit's unconditional
-exact-directory preflight finding at that identity is independently valid and
-material. Its narrow traversal-gate correction is active locally and awaits
-fresh independent review.
+`4578206bec2d28d2ca51e9b25f6823078c56e333`, tree
+`6c5077ed6e570fa92c2d9e5149a9a2eaf363e7bb`. The exact-query traversal
+correction received independent `ACCEPT`, was fast-forward integrated and
+pushed unchanged, and satisfied its immutable exact-head PR gate. This
+goal-only durable-ledger checkpoint is active locally and requires fresh
+independent review.
 
 Accepted source identity:
 
@@ -254,10 +294,12 @@ Reviewed PR-transition identity:
 
 Current integrated/pushed product-manager checkpoint:
 
-- head: `f185838ab5fcb1eb6ca9c2a75e0f54c56e164c9a`;
-- tree: `7c6a60757fbad01f8fc5d62db65952af06dda98d`;
-- disposition: accepted; fast-forward integrated and pushed unchanged; preserved
-  as immutable parent for this exact-query traversal correction.
+- head: `4578206bec2d28d2ca51e9b25f6823078c56e333`;
+- tree: `6c5077ed6e570fa92c2d9e5149a9a2eaf363e7bb`;
+- disposition: independently accepted with no findings; fast-forward integrated
+  and pushed unchanged; exact-head CI, CodeQL, substantive CodeRabbit, and final
+  independent gate audit satisfied for this immutable identity only; preserved
+  as the parent of this goal-only ledger checkpoint.
 
 The final moving candidate head and tree are bound by the immutable external
 review packet and control plane. A commit cannot embed its own final commit and
@@ -307,14 +349,27 @@ the complete runtime.
 Current PR: [#94](https://github.com/araihu/manja/pull/94),
 `coord/opencore-product` into `main`.
 
-Snapshot at `2026-08-11T13:04:59Z`: PR #94 remains open at pushed head
-`f185838ab5fcb1eb6ca9c2a75e0f54c56e164c9a`. CI `test` and `integration`
-succeed. CodeQL `actions`, `go`, `javascript-typescript`, and its summary
-succeed. Build/publish and deploy are skipped. CodeRabbit review `4906397511`,
-run `03263440-726a-4661-bd9e-b2d52654deb9`, is substantive at that exact head,
-but its independently validated material exact-directory traversal finding
-blocks merge. The local correction requires exact-head CI and fresh independent
-review before any lifecycle action.
+Snapshot at `2026-08-11T14:04:43Z`: PR #94 remains open at exact pushed head
+`4578206bec2d28d2ca51e9b25f6823078c56e333`. CodeQL run
+[`31495654112`](https://github.com/araihu/manja/actions/runs/31495654112)
+succeeded for `actions`, `go`, and `javascript-typescript`; its summary reports
+no new alerts. CI run
+[`31495658551`](https://github.com/araihu/manja/actions/runs/31495658551)
+succeeded: `integration` completed in 13m41s and `test` completed in 22m54s;
+build/publish and deploy were skipped as expected for the PR.
+
+The first exact-head automatic CodeRabbit status at `2026-08-11T13:20:54Z`
+was rate-limited and insufficient. The product-manager retrigger at
+`2026-08-11T13:52:18Z`, after exact-head revalidation, completed successfully at
+`2026-08-11T13:55:39Z`. Standing-summary run
+`048fe19f-1f5f-466e-844c-9f1f6b23cdce` covers exact range
+`f185838ab5fcb1eb6ca9c2a75e0f54c56e164c9a...4578206bec2d28d2ca51e9b25f6823078c56e333`
+and reports no actionable comments. Independent final-gate audit `ACCEPT`
+option A treats that incremental exact-head result as substantive despite no
+new pull-review object. Therefore the final PR gate is satisfied for
+`4578206bec2d28d2ca51e9b25f6823078c56e333`, tree
+`6c5077ed6e570fa92c2d9e5149a9a2eaf363e7bb`, and no other identity. The PR
+remains unmerged. No release, deployment, or cleanup is authorized.
 
 Before merge:
 
@@ -330,11 +385,12 @@ Before merge:
 
 ## Next Action
 
-Freeze this exact-query traversal correction's moving commit/tree in the
-immutable external reviewer packet and control plane and obtain fresh independent
-review. Rerun CI at the correction head and require `test` and `integration`
-success. Then request one exact-head substantive CodeRabbit review and fix only
-independently validated material findings. Do not merge. A failed CI gate,
-absent review, or rate-limited no-review keeps merge blocked.
-Deferred SaaS behavior and the active Arai Hû theme remain excluded; OC-04
-remains Open Core; licensing/package-generation Task 8 remains stopped.
+Freeze this goal-only ledger checkpoint's moving commit and tree in the
+immutable external reviewer packet and control plane, then obtain fresh
+independent review. If the accepted child is integrated and pushed, its head
+movement restarts exact-head CI, CodeQL, and substantive CodeRabbit gates; all
+must succeed at that same identity before any merge decision. Do not merge.
+The PR remains open, provenance remains `BLOCKED`, and
+licensing/package-generation Task 8 remains stopped. Deferred SaaS behavior
+and the active Arai Hû theme remain excluded; OC-04 remains Open Core. No
+release, deployment, or cleanup is authorized.
