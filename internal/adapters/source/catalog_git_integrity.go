@@ -109,9 +109,27 @@ func loadGitSourceProvenanceReceipt(rootDirectory, filename string) (gitSourcePr
 }
 
 func validateGitIntegrityReceiptJSON(contents []byte) error {
+	artifactShape := &gitIntegrityReceiptJSONShape{objectFields: map[string]*gitIntegrityReceiptJSONShape{
+		"path":        nil,
+		"mode":        nil,
+		"size":        nil,
+		"gitObjectId": nil,
+		"sha256":      nil,
+	}}
+	receiptShape := &gitIntegrityReceiptJSONShape{objectFields: map[string]*gitIntegrityReceiptJSONShape{
+		"schemaVersion":   nil,
+		"catalogId":       nil,
+		"cloneRepository": nil,
+		"provenanceUrl":   nil,
+		"objectFormat":    nil,
+		"sourceRoot":      nil,
+		"commitObjectId":  nil,
+		"treeObjectId":    nil,
+		"artifacts":       {arrayItem: artifactShape},
+	}}
 	decoder := json.NewDecoder(bytes.NewReader(contents))
 	decoder.UseNumber()
-	if err := validateGitIntegrityReceiptJSONValue(decoder); err != nil {
+	if err := validateGitIntegrityReceiptJSONValue(decoder, receiptShape); err != nil {
 		return err
 	}
 	var trailing any
@@ -124,7 +142,12 @@ func validateGitIntegrityReceiptJSON(contents []byte) error {
 	return nil
 }
 
-func validateGitIntegrityReceiptJSONValue(decoder *json.Decoder) error {
+type gitIntegrityReceiptJSONShape struct {
+	objectFields map[string]*gitIntegrityReceiptJSONShape
+	arrayItem    *gitIntegrityReceiptJSONShape
+}
+
+func validateGitIntegrityReceiptJSONValue(decoder *json.Decoder, shape *gitIntegrityReceiptJSONShape) error {
 	token, err := decoder.Token()
 	if err != nil {
 		return fmt.Errorf("decode Git integrity receipt: %w", err)
@@ -149,7 +172,15 @@ func validateGitIntegrityReceiptJSONValue(decoder *json.Decoder) error {
 				return fmt.Errorf("Git integrity receipt contains duplicate key %q", key)
 			}
 			seen[key] = struct{}{}
-			if err := validateGitIntegrityReceiptJSONValue(decoder); err != nil {
+			var childShape *gitIntegrityReceiptJSONShape
+			if shape != nil && shape.objectFields != nil {
+				var known bool
+				childShape, known = shape.objectFields[key]
+				if !known {
+					return fmt.Errorf("decode Git integrity receipt: json: unknown field %q", key)
+				}
+			}
+			if err := validateGitIntegrityReceiptJSONValue(decoder, childShape); err != nil {
 				return err
 			}
 		}
@@ -158,8 +189,12 @@ func validateGitIntegrityReceiptJSONValue(decoder *json.Decoder) error {
 			return fmt.Errorf("decode Git integrity receipt object")
 		}
 	case '[':
+		var itemShape *gitIntegrityReceiptJSONShape
+		if shape != nil {
+			itemShape = shape.arrayItem
+		}
 		for decoder.More() {
-			if err := validateGitIntegrityReceiptJSONValue(decoder); err != nil {
+			if err := validateGitIntegrityReceiptJSONValue(decoder, itemShape); err != nil {
 				return err
 			}
 		}

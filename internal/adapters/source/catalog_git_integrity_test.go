@@ -105,6 +105,77 @@ func TestLoadGitSourceProvenanceReceiptRejectsDuplicateJSONKeys(t *testing.T) {
 	}
 }
 
+func TestLoadGitSourceProvenanceReceiptRejectsCaseInsensitiveAliases(t *testing.T) {
+	t.Parallel()
+
+	contents, err := json.Marshal(validTestGitSourceReceipt("sha1"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, key := range []string{
+		"schemaVersion",
+		"catalogId",
+		"cloneRepository",
+		"provenanceUrl",
+		"objectFormat",
+		"sourceRoot",
+		"commitObjectId",
+		"treeObjectId",
+		"artifacts",
+		"path",
+		"mode",
+		"size",
+		"gitObjectId",
+		"sha256",
+	} {
+		key := key
+		t.Run(key, func(t *testing.T) {
+			t.Parallel()
+			alias := strings.ToUpper(key)
+			mutated := bytesReplaceOnce(t, contents, `"`+key+`":`, `"`+alias+`":`)
+			filename := writeTestGitSourceReceiptBytes(t, mutated)
+			_, err := loadGitSourceProvenanceReceipt(filepath.Dir(filename), filepath.Base(filename))
+			assertCatalogIntegrityCheck(t, err, "receipt-schema")
+			if want := fmt.Sprintf("unknown field %q", alias); !strings.Contains(err.Error(), want) {
+				t.Fatalf("case-alias error = %v, want %q", err, want)
+			}
+		})
+	}
+}
+
+func TestLoadGitSourceProvenanceReceiptRejectsConflictingCaseAliases(t *testing.T) {
+	t.Parallel()
+
+	contents, err := json.Marshal(validTestGitSourceReceipt("sha1"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, mutated := range map[string][]byte{
+		"top level": bytesReplaceOnce(
+			t,
+			contents,
+			`"schemaVersion":2`,
+			`"schemaVersion":1,"SCHEMAVERSION":2`,
+		),
+		"artifact entry": bytesReplaceOnce(
+			t,
+			contents,
+			`"path":"openapi.json"`,
+			`"path":"wrong.json","PATH":"openapi.json"`,
+		),
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			filename := writeTestGitSourceReceiptBytes(t, mutated)
+			_, err := loadGitSourceProvenanceReceipt(filepath.Dir(filename), filepath.Base(filename))
+			assertCatalogIntegrityCheck(t, err, "receipt-schema")
+			if !strings.Contains(err.Error(), "unknown field") {
+				t.Fatalf("conflicting-alias error = %v", err)
+			}
+		})
+	}
+}
+
 func TestLoadGitSourceProvenanceReceiptRejectsLicenseMetadata(t *testing.T) {
 	t.Parallel()
 
