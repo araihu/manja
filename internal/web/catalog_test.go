@@ -11,6 +11,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 
@@ -350,6 +351,174 @@ func TestCatalogSearchJSONReturnsVersionedGlobalResults(t *testing.T) {
 	handler.ServeHTTP(head, httptest.NewRequest(http.MethodHead, requestURL, nil))
 	if head.Code != http.StatusOK || head.Body.Len() != 0 || head.Header().Get("ETag") != response.Header().Get("ETag") || head.Header().Get("Content-Length") != response.Header().Get("Content-Length") {
 		t.Fatalf("search JSON HEAD = %d bytes=%d headers=%v", head.Code, head.Body.Len(), head.Header())
+	}
+}
+
+func TestCatalogExactDetailSearchDoesNotDependOnSearchChildren(t *testing.T) {
+	handler, snapshot := catalogHandlerFixture(t, "/kubernetes")
+	catalogHandler := handler.(*CatalogHandler)
+	searchChildReads := 0
+	catalogHandler.children = deadlineSearchCatalogChildren{
+		fallback: catalogHandler.children,
+		reads:    &searchChildReads,
+	}
+
+	detailID := snapshot.Directory.Documents[1].Operations[0].DetailID
+	exact := httptest.NewRecorder()
+	handler.ServeHTTP(exact, httptest.NewRequest(http.MethodGet, "/kubernetes/search.json?q="+string(detailID), nil))
+	if exact.Code != http.StatusOK || !strings.Contains(exact.Body.String(), `"detailId":"`+string(detailID)+`"`) {
+		t.Fatalf("exact detail search = %d body=%q", exact.Code, exact.Body.String())
+	}
+	if searchChildReads != 0 {
+		t.Fatalf("exact detail search read %d search children, want directory-only lookup", searchChildReads)
+	}
+
+	nonExact := httptest.NewRecorder()
+	handler.ServeHTTP(nonExact, httptest.NewRequest(http.MethodGet, "/kubernetes/search.json?q=listCoreV1Pod", nil))
+	if nonExact.Code != http.StatusServiceUnavailable || nonExact.Header().Get("Retry-After") != "1" {
+		t.Fatalf("non-exact search with unavailable children = %d retry=%q body=%q", nonExact.Code, nonExact.Header().Get("Retry-After"), nonExact.Body.String())
+	}
+	if searchChildReads == 0 {
+		t.Fatal("non-exact search did not exercise unavailable search children")
+	}
+}
+
+func TestCatalogExactDetailSearchUsesCanonicalValidation(t *testing.T) {
+	detailID := "detail-sha256-" + strings.Repeat("a", 64)
+	tests := []struct {
+		name       string
+		query      string
+		wantStatus int
+		wantDetail bool
+	}{
+		{
+			name:       "lowercase exact",
+			query:      detailID,
+			wantStatus: http.StatusOK,
+			wantDetail: true,
+		},
+		{
+			name:       "uppercase normalized exact",
+			query:      strings.ToUpper(detailID),
+			wantStatus: http.StatusOK,
+			wantDetail: true,
+		},
+		{
+			name:       "over byte limit after trim",
+			query:      strings.Repeat(" ", 257-len(detailID)) + detailID,
+			wantStatus: http.StatusBadRequest,
+		},
+		{
+			name:       "control wrapped",
+			query:      "\n" + detailID + "\n",
+			wantStatus: http.StatusBadRequest,
+		},
+		{
+			name:       "NFKC equivalent",
+			query:      fullWidthASCII(detailID),
+			wantStatus: http.StatusOK,
+			wantDetail: true,
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			handler, _ := catalogHandlerFixture(t, "/kubernetes")
+			catalogHandler := handler.(*CatalogHandler)
+			searchChildReads := 0
+			catalogHandler.children = deadlineSearchCatalogChildren{
+				fallback: catalogHandler.children,
+				reads:    &searchChildReads,
+			}
+
+			response := httptest.NewRecorder()
+			target := "/kubernetes/search.json?q=" + url.QueryEscape(test.query)
+			handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, target, nil))
+			if response.Code != test.wantStatus {
+				t.Fatalf("canonical exact search = %d body=%q, want %d", response.Code, response.Body.String(), test.wantStatus)
+			}
+			if test.wantDetail && !strings.Contains(response.Body.String(), `"detailId":"`+detailID+`"`) {
+				t.Fatalf("canonical exact search body=%q, want detail %q", response.Body.String(), detailID)
+			}
+			if searchChildReads != 0 {
+				t.Fatalf("canonical exact search read %d search children, want none", searchChildReads)
+			}
+		})
+	}
+}
+
+func TestCatalogMalformedDetailQueriesSkipExactDirectoryTraversal(t *testing.T) {
+	validDetailID := "detail-sha256-" + strings.Repeat("a", 64)
+	for _, test := range []struct {
+		name  string
+		query string
+	}{
+		{name: "wrong prefix", query: "details-sha256-" + strings.Repeat("a", 64)},
+		{name: "wrong length", query: "detail-sha256-" + strings.Repeat("a", 63)},
+		{name: "non-hex", query: "detail-sha256-" + strings.Repeat("a", 63) + "g"},
+		{name: "suffix", query: validDetailID + "-extra"},
+		{name: "ordinary text", query: "pod"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			handler, snapshot := catalogHandlerFixture(t, "/kubernetes")
+			catalogHandler := handler.(*CatalogHandler)
+
+			decoy := snapshot
+			decoy.ID = "snapshot-sha256-" + catalog.SnapshotID(strings.Repeat("d", 64))
+			decoy.Directory.Documents[1].Operations[0].DetailID = domain.DetailID(test.query)
+			search, err := catalog.BuildSearchArtifacts(decoy.Directory, catalog.DefaultBounds())
+			if err != nil {
+				t.Fatal(err)
+			}
+			decoy.Search = search.Directory
+			if _, err := catalogHandler.runtime.ActivateMount("/kubernetes", snapshot.ID, 1, decoy); err != nil {
+				t.Fatal(err)
+			}
+
+			searchChildReads := 0
+			catalogHandler.children = deadlineSearchCatalogChildren{
+				fallback: catalogHandler.children,
+				reads:    &searchChildReads,
+			}
+			response := httptest.NewRecorder()
+			target := "/kubernetes/search.json?q=" + url.QueryEscape(test.query)
+			handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, target, nil))
+			if response.Code != http.StatusServiceUnavailable || response.Header().Get("Retry-After") != "1" {
+				t.Fatalf("non-detail query = %d retry=%q body=%q, want bounded search 503", response.Code, response.Header().Get("Retry-After"), response.Body.String())
+			}
+			if searchChildReads == 0 {
+				t.Fatal("non-detail query did not reach bounded search children")
+			}
+		})
+	}
+}
+
+func TestCatalogExactDetailSearchCollectsAndRanksAcrossMounts(t *testing.T) {
+	handler, snapshot := catalogHandlerFixture(t, "/kubernetes")
+	catalogHandler := handler.(*CatalogHandler)
+	second := snapshot
+	second.ID = "snapshot-sha256-" + catalog.SnapshotID(strings.Repeat("d", 64))
+	second.Directory.CatalogID = "other"
+	second.Directory.Title = "Other"
+	if _, err := catalogHandler.runtime.ActivateMount("/other", "", 1, second); err != nil {
+		t.Fatal(err)
+	}
+
+	detailID := snapshot.Directory.Documents[1].Operations[0].DetailID
+	response := httptest.NewRecorder()
+	target := "/kubernetes/search.json?q=" + url.QueryEscape(string(detailID))
+	handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, target, nil))
+	if response.Code != http.StatusOK {
+		t.Fatalf("cross-catalog exact search = %d body=%q", response.Code, response.Body.String())
+	}
+	var payload catalogSearchResponse
+	if err := json.Unmarshal(response.Body.Bytes(), &payload); err != nil {
+		t.Fatal(err)
+	}
+	if len(payload.Results) != 2 || payload.Results[0].DetailID != detailID || payload.Results[1].DetailID != detailID {
+		t.Fatalf("cross-catalog exact results = %#v, want both detail matches", payload.Results)
+	}
+	if payload.Results[0].Section != "Kubernetes" || !strings.HasPrefix(payload.Results[0].Href, "/kubernetes/") || payload.Results[1].Section != "Other" || !strings.HasPrefix(payload.Results[1].Href, "/other/") {
+		t.Fatalf("cross-catalog exact ranking = %#v, want context mount first", payload.Results)
 	}
 }
 
@@ -895,6 +1064,32 @@ func (children memoryCatalogChildren) ReadChild(_ context.Context, snapshot cata
 		}
 	}
 	return nil, catalog.ChildIdentityV1{}, io.ErrUnexpectedEOF
+}
+
+type deadlineSearchCatalogChildren struct {
+	fallback catalogChildReader
+	reads    *int
+}
+
+func fullWidthASCII(value string) string {
+	var result strings.Builder
+	for _, character := range value {
+		if character >= '!' && character <= '~' {
+			result.WriteRune(character + 0xfee0)
+			continue
+		}
+		result.WriteRune(character)
+	}
+	return result.String()
+}
+
+func (children deadlineSearchCatalogChildren) ReadChild(ctx context.Context, snapshot catalog.RuntimeSnapshot, path string) ([]byte, catalog.ChildIdentityV1, error) {
+	if strings.HasPrefix(path, "search/") {
+		*children.reads = *children.reads + 1
+		<-ctx.Done()
+		return nil, catalog.ChildIdentityV1{}, ctx.Err()
+	}
+	return children.fallback.ReadChild(ctx, snapshot, path)
 }
 
 func catalogHandlerFixture(t *testing.T, mount string) (http.Handler, catalog.RuntimeSnapshot) {

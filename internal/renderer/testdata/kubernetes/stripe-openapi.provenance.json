@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 1,
+  "repository": "https://github.com/stripe/openapi",
+  "commitSha": "d70de345383dd818a0ce831f4e20d375c5a90cec",
+  "commitTreeSha": "a7e155600c10dcfab91a94070b0e954419255862",
+  "artifact": {
+    "upstreamPath": "openapi/spec3.json",
+    "trackedLocally": false,
+    "size": 3840021,
+    "gitBlobSha": "058edc82a247c71f05b94dfa6b9cef0a794a1358",
+    "sha256": "8b608cba7129d121f12358a7092574e176833fe8cb4c9fcead178c71c545f870"
+  },
+  "license": {
+    "name": "The MIT License",
+    "spdx": "MIT",
+    "upstreamPath": "LICENSE",
+    "trackedLocally": false,
+    "size": 1095,
+    "gitBlobSha": "edf2d132d8bb95146e05585c3a782d059298b46b",
+    "sha256": "8c1ce883f4eee7b531e0b7872dbfc72d410ced87dfff9501305de05ca8d203e5"
+  }
+}

@@ -19,11 +19,11 @@ organization:
     - name: GitHub REST API OpenAPI description
       kind: file
       location: internal/adapters/openapi/testdata/github-v3-rest.json
-      url: https://github.com/github/rest-api-description
+      url: https://github.com/github/rest-api-description/blob/6948cb04f5304188569c4bb4ae2190c08e7cbdba/descriptions/ghes-3.0/ghes-3.0.json
     - name: Stripe OpenAPI specification
       kind: git
       location: github.com/stripe/openapi
-      url: https://github.com/stripe/openapi
+      url: https://github.com/stripe/openapi/blob/d70de345383dd818a0ce831f4e20d375c5a90cec/openapi/spec3.json
   seo:
     description: Explore OpenAPI catalogs and standalone specs with Manja.
     canonicalBase: https://manja.araihu.com
@@ -192,7 +192,7 @@ catalogs:
         alt: GitHub
     license:
       name: MIT License
-      url: https://github.com/github/rest-api-description/blob/main/LICENSE.md
+      url: https://github.com/github/rest-api-description/blob/6948cb04f5304188569c4bb4ae2190c08e7cbdba/LICENSE.md
     defaultDocument: github-v3-rest
     profile: strict-v1
     seo:
@@ -221,7 +221,7 @@ catalogs:
         alt: Stripe
     license:
       name: MIT License
-      url: https://github.com/stripe/openapi/blob/master/LICENSE
+      url: https://github.com/stripe/openapi/blob/d70de345383dd818a0ce831f4e20d375c5a90cec/LICENSE
     defaultDocument: stripe-v1
     profile: strict-v1
     seo:

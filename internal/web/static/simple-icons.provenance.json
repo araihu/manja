@@ -1,0 +1,65 @@
+{
+  "schemaVersion": 1,
+  "repository": "https://github.com/simple-icons/simple-icons",
+  "version": "16.28.0",
+  "commitSha": "fc91ef03ec113d06627b2d47c1f9644ca202b6f9",
+  "commitTreeSha": "4c01339d8cafffdd7a6a59837b2fc0bbc5ad6e92",
+  "github": {
+    "name": "GitHub",
+    "localPath": "internal/web/static/github-mark.svg",
+    "upstreamPath": "icons/github.svg",
+    "upstreamSize": 822,
+    "upstreamGitBlobSha": "538ec5bf2a9a5724899daf728577cd0b8beaae90",
+    "upstreamSha256": "3bf8cceead820aec50d4ee825a3fd02c5a1cd6665cc9cf4cbf3d9c8861a204bb",
+    "localSize": 1025,
+    "localGitBlobSha": "01c98d26266049dee2c5e609f21ebd6019871c90",
+    "localSha256": "792df8d190df379b0a81e35d95b6ca107653bd59b012e25e9b9f67f5c6adfb21",
+    "adaptation": {
+      "sourceViewBox": "0 0 24 24",
+      "localViewBox": "0 0 64 64",
+      "pathDataComparison": "exact",
+      "pathDataSha256": "d82e21f6c9bfbfd889fed4b8d8604121be1d364ef75b7fe42cc9c0b8737ae529",
+      "localPathTransform": "translate(14 14) scale(1.5)",
+      "localPathFill": "#fff",
+      "localBackgroundCircle": {
+        "cx": "32",
+        "cy": "32",
+        "r": "32",
+        "fill": "#24292f"
+      }
+    }
+  },
+  "stripe": {
+    "name": "Stripe",
+    "localPath": "internal/web/static/stripe-mark.svg",
+    "upstreamPath": "icons/stripe.svg",
+    "upstreamSize": 588,
+    "upstreamGitBlobSha": "8ebadf74d367a5a9bd7deb45a53f1844fc08a095",
+    "upstreamSha256": "130c6d957b8977f5eda2928267b9df531ca038a400a801765d263801bb1bd870",
+    "localSize": 791,
+    "localGitBlobSha": "60ed70bccc80a4855d082890d5b24f6a544a6602",
+    "localSha256": "1952f7e5560c4b818dd640c5ee17dc05623aec45747cce5396516c7537a37790",
+    "adaptation": {
+      "sourceViewBox": "0 0 24 24",
+      "localViewBox": "0 0 64 64",
+      "pathDataComparison": "exact",
+      "pathDataSha256": "e3b2e90079bcdca94a620b4a871c4ad4f39a448b23b25066340531ce3d701d71",
+      "localPathTransform": "translate(14 14) scale(1.5)",
+      "localPathFill": "#fff",
+      "localBackgroundCircle": {
+        "cx": "32",
+        "cy": "32",
+        "r": "32",
+        "fill": "#635bff"
+      }
+    }
+  },
+  "license": {
+    "name": "CC0 1.0 Universal",
+    "spdx": "CC0-1.0",
+    "upstreamPath": "LICENSE.md",
+    "size": 6569,
+    "gitBlobSha": "70d4a7b6740c5d9b594ff2fc27d3ea7e89413185",
+    "sha256": "9046848b63a5c92bff14e4accca80bd987e0623b74adf9226ce5198d312b79d5"
+  }
+}

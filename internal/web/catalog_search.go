@@ -57,14 +57,14 @@ type globalSearchResult struct {
 	BytesDecoded    uint64
 }
 
-func (handler *CatalogHandler) searchCatalog(ctx context.Context, snapshot catalog.RuntimeSnapshot, mount, query string) (catalog.SearchResult, error) {
+func (handler *CatalogHandler) searchCatalog(ctx context.Context, snapshot catalog.RuntimeSnapshot, mount string, query catalog.CanonicalSearchQuery) (catalog.SearchResult, error) {
 	service, err := catalog.NewRuntimeSearchService(snapshot, handler.search, func(loadContext context.Context, childPath string) ([]byte, catalog.ChildIdentityV1, error) {
 		return handler.children.ReadChild(loadContext, snapshot, childPath)
 	})
 	if err != nil {
 		return catalog.SearchResult{}, err
 	}
-	result, err := service.Search(ctx, snapshot.ID, query)
+	result, err := service.SearchCanonical(ctx, snapshot.ID, query)
 	if err != nil {
 		return catalog.SearchResult{}, err
 	}
@@ -79,10 +79,25 @@ func (handler *CatalogHandler) searchCatalog(ctx context.Context, snapshot catal
 }
 
 func (handler *CatalogHandler) searchGlobal(ctx context.Context, query, contextMount, contextDocument string) (globalSearchResult, error) {
-	result := globalSearchResult{SearchVersion: 1, Results: make([]globalSearchCandidate, 0)}
+	canonical, err := catalog.CanonicalizeSearchQuery(query)
+	if err != nil {
+		return globalSearchResult{}, err
+	}
 	if contextMount != "" && !handler.runtime.HasMount(contextMount) {
 		contextMount = ""
 	}
+	exactDetailID := canonicalDetailIDQuery(canonical)
+	// Published detail IDs are already bound by each admitted catalog
+	// directory, so resolve them before deadline-bound search child loading.
+	if exactDetailID {
+		if exact, found, err := handler.searchGlobalExact(canonical, contextMount, contextDocument); err != nil {
+			return globalSearchResult{}, err
+		} else if found {
+			return exact, nil
+		}
+	}
+
+	result := globalSearchResult{SearchVersion: 1, Results: make([]globalSearchCandidate, 0)}
 
 	mounts := handler.runtime.MountNames()
 	sort.Strings(mounts)
@@ -92,7 +107,7 @@ func (handler *CatalogHandler) searchGlobal(ctx context.Context, query, contextM
 			continue
 		}
 		snapshot := admission.Snapshot
-		local, searchErr := handler.searchCatalog(ctx, snapshot, mount, query)
+		local, searchErr := handler.searchCatalog(ctx, snapshot, mount, canonical)
 		if searchErr != nil {
 			admission.Release()
 			return globalSearchResult{}, searchErr
@@ -109,15 +124,17 @@ func (handler *CatalogHandler) searchGlobal(ctx context.Context, query, contextM
 				exactID: globalSearchRecordMatchesDetailID(record, result.Query),
 			})
 		}
-		exactRecord, exactFound, exactErr := globalSearchExactRecord(snapshot.Directory, mount, result.Query)
-		if exactErr != nil {
-			admission.Release()
-			return globalSearchResult{}, exactErr
-		}
-		if exactFound && !globalSearchResultsContainDetail(local.Results, exactRecord.DetailID) {
-			result.Results = append(result.Results, globalSearchCandidate{
-				record: exactRecord, mount: mount, section: snapshot.Directory.Title, localRank: -1, exactID: true,
-			})
+		if exactDetailID {
+			exactRecord, exactFound, exactErr := globalSearchExactRecord(snapshot.Directory, mount, result.Query)
+			if exactErr != nil {
+				admission.Release()
+				return globalSearchResult{}, exactErr
+			}
+			if exactFound && !globalSearchResultsContainDetail(local.Results, exactRecord.DetailID) {
+				result.Results = append(result.Results, globalSearchCandidate{
+					record: exactRecord, mount: mount, section: snapshot.Directory.Title, localRank: -1, exactID: true,
+				})
+			}
 		}
 		for index, document := range snapshot.Directory.Documents {
 			if !globalDocumentMatches(result.Query, snapshot.Directory.Title, document) {
@@ -137,7 +154,7 @@ func (handler *CatalogHandler) searchGlobal(ctx context.Context, query, contextM
 	}
 
 	if result.Query == "" {
-		result.Query = strings.ToLower(strings.TrimSpace(query))
+		result.Query = canonical.String()
 	}
 	rankGlobalSearchCandidates(result.Results, contextMount, contextDocument)
 	if len(result.Results) > maxGlobalSearchResults {
@@ -146,8 +163,57 @@ func (handler *CatalogHandler) searchGlobal(ctx context.Context, query, contextM
 	return result, nil
 }
 
+func canonicalDetailIDQuery(query catalog.CanonicalSearchQuery) bool {
+	const prefix = "detail-sha256-"
+	value := query.String()
+	if len(value) != len(prefix)+64 || !strings.HasPrefix(value, prefix) {
+		return false
+	}
+	for _, character := range value[len(prefix):] {
+		if (character < '0' || character > '9') && (character < 'a' || character > 'f') {
+			return false
+		}
+	}
+	return true
+}
+
+func (handler *CatalogHandler) searchGlobalExact(query catalog.CanonicalSearchQuery, contextMount, contextDocument string) (globalSearchResult, bool, error) {
+	result := globalSearchResult{
+		Query:         query.String(),
+		SearchVersion: 1,
+		Results:       make([]globalSearchCandidate, 0),
+	}
+	mounts := handler.runtime.MountNames()
+	sort.Strings(mounts)
+	for _, mount := range mounts {
+		admission, err := handler.runtime.Admit(mount)
+		if err != nil {
+			continue
+		}
+		record, found, exactErr := globalSearchExactRecord(admission.Snapshot.Directory, mount, result.Query)
+		if exactErr != nil {
+			admission.Release()
+			return globalSearchResult{}, false, exactErr
+		}
+		if found {
+			result.Results = append(result.Results, globalSearchCandidate{
+				record: record, mount: mount, section: admission.Snapshot.Directory.Title, localRank: -1, exactID: true,
+			})
+		}
+		admission.Release()
+	}
+	if len(result.Results) == 0 {
+		return globalSearchResult{}, false, nil
+	}
+	rankGlobalSearchCandidates(result.Results, contextMount, contextDocument)
+	if len(result.Results) > maxGlobalSearchResults {
+		result.Results = result.Results[:maxGlobalSearchResults]
+	}
+	return result, true, nil
+}
+
 func globalSearchRecordMatchesDetailID(record catalog.SearchRecordV1, query string) bool {
-	return strings.EqualFold(strings.TrimSpace(query), string(record.DetailID))
+	return query == string(record.DetailID)
 }
 
 func globalSearchResultsContainDetail(results []catalog.SearchRecordV1, detailID domain.DetailID) bool {
@@ -162,7 +228,7 @@ func globalSearchResultsContainDetail(results []catalog.SearchRecordV1, detailID
 func globalSearchExactRecord(directory catalog.CatalogArtifactV1, mount, query string) (catalog.SearchRecordV1, bool, error) {
 	for _, document := range directory.Documents {
 		for _, operation := range document.Operations {
-			if !strings.EqualFold(strings.TrimSpace(query), string(operation.DetailID)) {
+			if query != string(operation.DetailID) {
 				continue
 			}
 			href, err := catalogSearchHref(mount, operation.Href)
@@ -177,7 +243,7 @@ func globalSearchExactRecord(directory catalog.CatalogArtifactV1, mount, query s
 			}, true, nil
 		}
 		for _, schema := range document.Schemas {
-			if !strings.EqualFold(strings.TrimSpace(query), string(schema.DetailID)) {
+			if query != string(schema.DetailID) {
 				continue
 			}
 			href, err := catalogSearchHref(mount, schema.Href)

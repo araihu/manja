@@ -31,6 +31,26 @@ type SearchResult struct {
 	Duration        time.Duration
 }
 
+// CanonicalSearchQuery is a validated query normalized with the search
+// service's canonical UTF-8, bounds, control-character, and NFKC rules.
+type CanonicalSearchQuery struct {
+	exact string
+}
+
+// CanonicalizeSearchQuery validates and normalizes one caller-supplied query.
+func CanonicalizeSearchQuery(input string) (CanonicalSearchQuery, error) {
+	exact, err := normalizeSearchExact(input)
+	if err != nil {
+		return CanonicalSearchQuery{}, err
+	}
+	return CanonicalSearchQuery{exact: exact}, nil
+}
+
+// String returns the validated canonical query value.
+func (query CanonicalSearchQuery) String() string {
+	return query.exact
+}
+
 type SearchService struct {
 	catalogID  string
 	snapshotID SnapshotID
@@ -123,6 +143,22 @@ func newSearchService(catalogID string, snapshotID SnapshotID, directory SearchD
 }
 
 func (service *SearchService) Search(ctx context.Context, snapshot SnapshotID, query string) (SearchResult, error) {
+	if err := ctx.Err(); err != nil {
+		return SearchResult{}, err
+	}
+	if snapshot != service.snapshotID {
+		return SearchResult{}, fmt.Errorf("search snapshot %q is not active", snapshot)
+	}
+	canonical, err := CanonicalizeSearchQuery(query)
+	if err != nil {
+		return SearchResult{}, err
+	}
+	return service.SearchCanonical(ctx, snapshot, canonical)
+}
+
+// SearchCanonical searches with a query already produced by
+// CanonicalizeSearchQuery, avoiding a second normalization pass.
+func (service *SearchService) SearchCanonical(ctx context.Context, snapshot SnapshotID, query CanonicalSearchQuery) (SearchResult, error) {
 	started := time.Now()
 	if err := ctx.Err(); err != nil {
 		return SearchResult{}, err
@@ -130,9 +166,9 @@ func (service *SearchService) Search(ctx context.Context, snapshot SnapshotID, q
 	if snapshot != service.snapshotID {
 		return SearchResult{}, fmt.Errorf("search snapshot %q is not active", snapshot)
 	}
-	exact, err := normalizeSearchExact(query)
-	if err != nil {
-		return SearchResult{}, err
+	exact := query.String()
+	if exact == "" {
+		return SearchResult{}, fmt.Errorf("%w: canonical query is empty", ErrInvalidQuery)
 	}
 	searchContext, cancel := context.WithTimeout(ctx, service.deadline)
 	defer cancel()
