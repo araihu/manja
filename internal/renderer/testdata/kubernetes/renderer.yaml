@@ -23,7 +23,7 @@ organization:
     - name: Stripe OpenAPI specification
       kind: git
       location: github.com/stripe/openapi
-      url: https://github.com/stripe/openapi
+      url: https://github.com/stripe/openapi/blob/d70de345383dd818a0ce831f4e20d375c5a90cec/openapi/spec3.json
   seo:
     description: Explore OpenAPI catalogs and standalone specs with Manja.
     canonicalBase: https://manja.araihu.com
@@ -221,7 +221,7 @@ catalogs:
         alt: Stripe
     license:
       name: MIT License
-      url: https://github.com/stripe/openapi/blob/master/LICENSE
+      url: https://github.com/stripe/openapi/blob/d70de345383dd818a0ce831f4e20d375c5a90cec/LICENSE
     defaultDocument: stripe-v1
     profile: strict-v1
     seo:
