@@ -252,9 +252,22 @@ func TestStaticAssetsRender(t *testing.T) {
 		t.Fatalf("site.css did not map its accent to the canonical theme token")
 	}
 	theme := get(t, srv.URL+"/static/araihu.css", http.StatusOK)
-	for _, want := range []string{`[data-theme="araihu"]`, `--color-primary: #173b72`, `--color-primary-dark: #c7ff4a`} {
+	for _, want := range []string{
+		`[data-theme="araihu"]`,
+		`Modern geometry with the Arai Hû organization palette`,
+		`--font-body: "Lato", ui-sans-serif, system-ui, sans-serif;`,
+		`--font-title: "Lato", ui-sans-serif, system-ui, sans-serif;`,
+		`--color-primary: #173b72`,
+		`--color-primary-dark: #c7ff4a`,
+		`--radius-radius: var(--radius-sm);`,
+	} {
 		if !strings.Contains(theme, want) {
 			t.Fatalf("araihu.css missing canonical token %q", want)
+		}
+	}
+	for _, stale := range []string{`"Instrument Sans"`, `--radius-radius: var(--radius-lg);`} {
+		if strings.Contains(theme, stale) {
+			t.Fatalf("araihu.css retained pre-Modern token %q", stale)
 		}
 	}
 	for _, want := range []string{
