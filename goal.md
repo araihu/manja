@@ -51,9 +51,9 @@ not implement hosted product behavior speculatively.
 - Task: `019fef17-2fad-73d2-b004-d3706d36ea82`
 - Worktree label: dedicated Open Core developer worktree
 - Initial lane base: `39d65ade21c080ee2102f53da5ed741f000d6dd7`
-- Current checkpoint base: `d5ede512ebb784c7c695948616fb209ac182db1e`
-- Current checkpoint base tree: `c5e43f4336690bea451088cb023f654bd572aeb6`
-- Branch: `codex/oc01-final-coderabbit-fixes`
+- Current checkpoint base: `2bd9114ec7c2a6d034c66a56692b3141da2a769a`
+- Current checkpoint base tree: `b9b1fae0b0875938de84f55668a205478c947410`
+- Branch: `codex/oc01-final-root-gate-truth`
 - Owns only bounded Open Core implementation checkpoints assigned here.
 - Must commit each coherent checkpoint with a meaningful message.
 - Must not implement deferred SaaS behavior or edit the active Arai Hû theme
@@ -126,9 +126,19 @@ not implement hosted product behavior speculatively.
   Independent classification confirms the complete browser-test-source artifact
   scan as material. Strict receipt decoding, corrected module prose, stable
   worktree labels, effective-build-command failure wording, and retained
-  Dockerfile parse diagnostics are valid minor corrections. This bounded local
-  checkpoint implements those findings and awaits independent review; its
-  moving candidate commit and tree remain external.
+  Dockerfile parse diagnostics are valid minor corrections. Candidate
+  `2bd9114ec7c2a6d034c66a56692b3141da2a769a`, tree
+  `b9b1fae0b0875938de84f55668a205478c947410`, implemented those findings and
+  was integrated and pushed.
+- CodeRabbit review `4905151932`, run
+  `fde28eb6-45b5-4def-945e-4efe262617dd`, thread
+  `PRRT_kwDOSzGXLc6YMCp7`, comment `PRRC_kwDOSzGXLc7f8HHp`, reviewed exact
+  `2bd9114ec7c2a6d034c66a56692b3141da2a769a`. Independent verdict:
+  `VALID` and material. A caller-selected clean subdirectory could pass while
+  prohibited source remained elsewhere, so that exact parent is rejected for
+  merge. This bounded docs correction removes the false host-archive success
+  claim and leaves the host archive gate blocked under Task 8. It awaits fresh
+  independent review; the moving child commit and tree remain external.
 - Full root tests, strict Muamba verification, architecture, unrelated external
   module, generation, browser, API, templ, and OCI inspection gates passed for
   the OC-01 evidence. Direct standalone `site` testing still fails because its
@@ -148,10 +158,12 @@ not implement hosted product behavior speculatively.
 
 ### OC-01: Current Open Core provenance and artifact baseline
 
-Status: accepted baseline and mechanical checkpoints, OC-01M5, and the strict
-Stripe Dockerfile-binding correction are integrated/pushed through exact
-`d5ede512ebb784c7c695948616fb209ac182db1e`. The bounded final-head CodeRabbit
-correction is active locally and awaits independent review.
+Status: accepted baseline and mechanical checkpoints, OC-01M5, the strict Stripe
+Dockerfile-binding correction, and the first final-head correction are
+integrated/pushed through exact `2bd9114ec7c2a6d034c66a56692b3141da2a769a`.
+That exact head is rejected for merge by the material selected-subdirectory
+finding. The bounded docs correction is active locally and awaits independent
+review.
 
 Accepted source identity:
 
@@ -170,10 +182,10 @@ Reviewed PR-transition identity:
 
 Current integrated/pushed product-manager checkpoint:
 
-- head: `d5ede512ebb784c7c695948616fb209ac182db1e`;
-- tree: `c5e43f4336690bea451088cb023f654bd572aeb6`;
-- disposition: immutable parent for the bounded final-head CodeRabbit correction;
-  preserve it unchanged.
+- head: `2bd9114ec7c2a6d034c66a56692b3141da2a769a`;
+- tree: `b9b1fae0b0875938de84f55668a205478c947410`;
+- disposition: rejected for merge and preserved unchanged as immutable parent
+  for the bounded root-gate truth correction.
 
 The final moving candidate head and tree are bound by the immutable external
 review packet and control plane. A commit cannot embed its own final commit and
@@ -223,14 +235,14 @@ the complete runtime.
 Current PR: [#94](https://github.com/araihu/manja/pull/94),
 `coord/opencore-product` into `main`.
 
-Snapshot at `2026-08-11T09:20:38Z`: PR #94 remains open at pushed head
-`d5ede512ebb784c7c695948616fb209ac182db1e`. CI `test` and `integration` pass;
+Snapshot at `2026-08-11T10:20:42Z`: PR #94 remains open at pushed head
+`2bd9114ec7c2a6d034c66a56692b3141da2a769a`. CI `test` and `integration` pass;
 CodeQL `actions`, `go`, `javascript-typescript`, and its summary pass. CodeRabbit
-review `4904696726`, run `05b3efe6-5170-4f07-bb67-59f5121f6772`, completed
-substantively at that exact head with one independently material artifact-scan
-finding and five valid minor corrections. The remote checks are green, but the
-actionable review findings keep the merge gate blocked pending correction and
-fresh final-head review.
+review `4905151932`, run `fde28eb6-45b5-4def-945e-4efe262617dd`, completed
+substantively at that exact head. Thread `PRRT_kwDOSzGXLc6YMCp7`, comment
+`PRRC_kwDOSzGXLc7f8HHp`, is independently `VALID` and material. The remote checks
+are green, but the caller-selected-root finding rejects that head for merge
+pending correction and fresh final-head review.
 
 Before merge:
 
@@ -246,7 +258,7 @@ Before merge:
 
 ## Next Action
 
-Freeze the bounded final-head CodeRabbit correction's moving commit/tree in the
+Freeze the bounded root-gate truth correction's moving commit/tree in the
 immutable external reviewer packet and control plane, obtain fresh independent
 review, and let the product manager integrate only an accepted identity. Then
 obtain a substantive successful CodeRabbit review/check for the final moving
