@@ -169,6 +169,192 @@ func TestStripeOpenAPIProvenanceRejectsControlledDrift(t *testing.T) {
 	})
 }
 
+func TestStripeOpenAPIProvenanceRejectsDockerfileDecoys(t *testing.T) {
+	t.Parallel()
+
+	const approvedPath = "/src/internal/renderer/testdata/kubernetes/renderer.yaml"
+	tests := []struct {
+		name       string
+		dockerfile string
+		wantValid  bool
+	}{
+		{
+			name: "baseline",
+			dockerfile: `# syntax=docker/dockerfile:1
+
+FROM golang:1.26.5-alpine AS build
+RUN /out/manja build \
+	-renderer-config /src/internal/renderer/testdata/kubernetes/renderer.yaml \
+	-data-dir /out/renderer-data
+FROM alpine:3.24
+`,
+			wantValid: true,
+		},
+		{
+			name: "approved path comment decoy with wrong effective path",
+			dockerfile: `FROM golang:1.26.5-alpine AS build
+# RUN /out/manja build -renderer-config /src/internal/renderer/testdata/kubernetes/renderer.yaml
+RUN /out/manja build -renderer-config /wrong/renderer.yaml
+FROM alpine:3.24
+`,
+		},
+		{
+			name: "unrelated RUN decoy",
+			dockerfile: `FROM golang:1.26.5-alpine AS build
+RUN echo -renderer-config /src/internal/renderer/testdata/kubernetes/renderer.yaml
+RUN /out/manja build -renderer-config /wrong/renderer.yaml
+FROM alpine:3.24
+`,
+		},
+		{
+			name: "CMD decoy",
+			dockerfile: `FROM golang:1.26.5-alpine AS build
+CMD echo -renderer-config /src/internal/renderer/testdata/kubernetes/renderer.yaml
+RUN /out/manja build -renderer-config /wrong/renderer.yaml
+FROM alpine:3.24
+`,
+		},
+		{
+			name: "ENTRYPOINT decoy",
+			dockerfile: `FROM golang:1.26.5-alpine AS build
+ENTRYPOINT echo -renderer-config /src/internal/renderer/testdata/kubernetes/renderer.yaml
+RUN /out/manja build -renderer-config /wrong/renderer.yaml
+FROM alpine:3.24
+`,
+		},
+		{
+			name: "approved then wrong duplicate flags",
+			dockerfile: `FROM golang:1.26.5-alpine AS build
+RUN /out/manja build -renderer-config /src/internal/renderer/testdata/kubernetes/renderer.yaml -renderer-config /wrong/renderer.yaml
+FROM alpine:3.24
+`,
+		},
+		{
+			name: "wrong then approved duplicate flags",
+			dockerfile: `FROM golang:1.26.5-alpine AS build
+RUN /out/manja build -renderer-config /wrong/renderer.yaml -renderer-config /src/internal/renderer/testdata/kubernetes/renderer.yaml
+FROM alpine:3.24
+`,
+		},
+		{
+			name: "two build commands",
+			dockerfile: `FROM golang:1.26.5-alpine AS build
+RUN /out/manja build -renderer-config /wrong/renderer.yaml
+RUN /out/manja build -renderer-config /src/internal/renderer/testdata/kubernetes/renderer.yaml
+FROM alpine:3.24
+`,
+		},
+		{
+			name: "changed build alias",
+			dockerfile: `FROM golang:1.26.5-alpine AS builder
+RUN /out/manja build -renderer-config /src/internal/renderer/testdata/kubernetes/renderer.yaml
+FROM alpine:3.24
+`,
+		},
+		{
+			name: "duplicate build alias",
+			dockerfile: `FROM golang:1.26.5-alpine AS build
+RUN /out/manja build -renderer-config /src/internal/renderer/testdata/kubernetes/renderer.yaml
+FROM golang:1.26.5-alpine AS build
+FROM alpine:3.24
+`,
+		},
+		{
+			name: "ambiguous build alias",
+			dockerfile: `FROM golang:1.26.5-alpine AS compiler AS build
+RUN /out/manja build -renderer-config /src/internal/renderer/testdata/kubernetes/renderer.yaml
+FROM alpine:3.24
+`,
+		},
+		{
+			name: "missing build alias",
+			dockerfile: `FROM golang:1.26.5-alpine
+RUN /out/manja build -renderer-config /src/internal/renderer/testdata/kubernetes/renderer.yaml
+FROM alpine:3.24
+`,
+		},
+		{
+			name: "build command only in another stage",
+			dockerfile: `FROM golang:1.26.5-alpine AS build
+RUN echo compiler
+FROM alpine:3.24
+RUN /out/manja build -renderer-config /src/internal/renderer/testdata/kubernetes/renderer.yaml
+`,
+		},
+		{
+			name: "quoted config path",
+			dockerfile: `FROM golang:1.26.5-alpine AS build
+RUN /out/manja build -renderer-config "/src/internal/renderer/testdata/kubernetes/renderer.yaml"
+FROM alpine:3.24
+`,
+		},
+		{
+			name: "quoted command",
+			dockerfile: `FROM golang:1.26.5-alpine AS build
+RUN "/out/manja" build -renderer-config /src/internal/renderer/testdata/kubernetes/renderer.yaml
+FROM alpine:3.24
+`,
+		},
+		{
+			name: "single-dash equals config form",
+			dockerfile: `FROM golang:1.26.5-alpine AS build
+RUN /out/manja build -renderer-config=/src/internal/renderer/testdata/kubernetes/renderer.yaml
+FROM alpine:3.24
+`,
+		},
+		{
+			name: "double-dash equals config form",
+			dockerfile: `FROM golang:1.26.5-alpine AS build
+RUN /out/manja build --renderer-config=/src/internal/renderer/testdata/kubernetes/renderer.yaml
+FROM alpine:3.24
+`,
+		},
+		{
+			name: "wrong config path",
+			dockerfile: `FROM golang:1.26.5-alpine AS build
+RUN /out/manja build -renderer-config /wrong/renderer.yaml
+FROM alpine:3.24
+`,
+		},
+		{
+			name: "missing config path",
+			dockerfile: `FROM golang:1.26.5-alpine AS build
+RUN /out/manja build -data-dir /out/renderer-data
+FROM alpine:3.24
+`,
+		},
+	}
+
+	committedConfigDir, err := filepath.Abs(filepath.Join("..", "..", "..", "internal", "renderer", "testdata", "kubernetes"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			root := t.TempDir()
+			configDir := filepath.Join(root, "internal", "renderer", "testdata", "kubernetes")
+			if err := os.MkdirAll(filepath.Dir(configDir), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.Symlink(committedConfigDir, configDir); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(filepath.Join(root, "Dockerfile"), []byte(test.dockerfile), 0o600); err != nil {
+				t.Fatal(err)
+			}
+
+			source := loadCommittedStripeRendererBuildSource(t, root)
+			err := validateStripeOpenAPIProvenance(approvedStripeOpenAPIProvenance, source)
+			if test.wantValid && err != nil {
+				t.Fatalf("valid Dockerfile rejected: %v", err)
+			}
+			if !test.wantValid && err == nil {
+				t.Fatalf("unsafe Dockerfile accepted; approved path %q need not bind effective build command", approvedPath)
+			}
+		})
+	}
+}
+
 func loadCommittedStripeRendererBuildSource(t *testing.T, root string) stripeRendererBuildSource {
 	t.Helper()
 
@@ -207,10 +393,133 @@ func loadCommittedStripeRendererBuildSource(t *testing.T, root string) stripeRen
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Contains(string(dockerfile), "-renderer-config "+approvedStripeRendererBuildSource.DockerConfigPath) {
-		source.DockerConfigPath = approvedStripeRendererBuildSource.DockerConfigPath
+	if configPath, err := strictStripeDockerConfigPath(dockerfile); err == nil {
+		source.DockerConfigPath = configPath
 	}
 	return source
+}
+
+func strictStripeDockerConfigPath(dockerfile []byte) (string, error) {
+	instructions, err := logicalDockerfileInstructions(dockerfile)
+	if err != nil {
+		return "", err
+	}
+
+	buildStageCount := 0
+	buildCommandCount := 0
+	configPath := ""
+	inBuildStage := false
+	for _, instruction := range instructions {
+		fields := strings.Fields(instruction)
+		if len(fields) == 0 {
+			continue
+		}
+		keyword := strings.ToUpper(fields[0])
+		arguments := strings.TrimSpace(instruction[len(fields[0]):])
+		switch keyword {
+		case "FROM":
+			inBuildStage = false
+			fromFields := strings.Fields(arguments)
+			asIndex := -1
+			for index, field := range fromFields {
+				if !strings.EqualFold(field, "AS") {
+					continue
+				}
+				if asIndex >= 0 {
+					return "", fmt.Errorf("Dockerfile FROM instruction has ambiguous stage aliases")
+				}
+				asIndex = index
+			}
+			if asIndex >= 0 && (asIndex == 0 || asIndex != len(fromFields)-2) {
+				return "", fmt.Errorf("Dockerfile FROM stage alias has unsupported syntax")
+			}
+			if asIndex >= 0 && fromFields[asIndex+1] == "build" {
+				buildStageCount++
+				inBuildStage = true
+			}
+		case "RUN":
+			if !inBuildStage {
+				continue
+			}
+			path, isBuildCommand, err := strictStripeBuildCommandConfigPath(arguments)
+			if err != nil {
+				return "", err
+			}
+			if isBuildCommand {
+				buildCommandCount++
+				configPath = path
+			}
+		}
+	}
+
+	if buildStageCount != 1 {
+		return "", fmt.Errorf("Dockerfile build stage count = %d, want 1", buildStageCount)
+	}
+	if buildCommandCount != 1 {
+		return "", fmt.Errorf("Dockerfile /out/manja build command count = %d, want 1", buildCommandCount)
+	}
+	return configPath, nil
+}
+
+func logicalDockerfileInstructions(dockerfile []byte) ([]string, error) {
+	lines := strings.Split(strings.ReplaceAll(string(dockerfile), "\r\n", "\n"), "\n")
+	instructions := make([]string, 0, len(lines))
+	pending := ""
+	continued := false
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" || strings.HasPrefix(trimmed, "#") {
+			continue
+		}
+
+		continued = strings.HasSuffix(trimmed, "\\")
+		if continued {
+			trimmed = strings.TrimSpace(strings.TrimSuffix(trimmed, "\\"))
+		}
+		if pending == "" {
+			pending = trimmed
+		} else {
+			pending += " " + trimmed
+		}
+		if !continued {
+			instructions = append(instructions, pending)
+			pending = ""
+		}
+	}
+	if pending != "" || continued {
+		return nil, fmt.Errorf("Dockerfile ends during a line continuation")
+	}
+	return instructions, nil
+}
+
+func strictStripeBuildCommandConfigPath(command string) (string, bool, error) {
+	fields := strings.Fields(command)
+	if len(fields) < 2 || fields[0] != "/out/manja" || fields[1] != "build" {
+		return "", false, nil
+	}
+	if strings.ContainsAny(command, "'\"") {
+		return "", true, fmt.Errorf("quoted /out/manja build command is outside the strict Dockerfile contract")
+	}
+
+	configFlagCount := 0
+	configPath := ""
+	for index, field := range fields {
+		if field != "-renderer-config" {
+			continue
+		}
+		configFlagCount++
+		if index+1 >= len(fields) {
+			return "", true, fmt.Errorf("Dockerfile -renderer-config flag has no value")
+		}
+		configPath = fields[index+1]
+	}
+	if configFlagCount != 1 {
+		return "", true, fmt.Errorf("Dockerfile -renderer-config flag count = %d, want 1", configFlagCount)
+	}
+	if configPath != approvedStripeRendererBuildSource.DockerConfigPath {
+		return "", true, fmt.Errorf("Dockerfile renderer config path = %q, want %q", configPath, approvedStripeRendererBuildSource.DockerConfigPath)
+	}
+	return configPath, true, nil
 }
 
 func validateStripeOpenAPIProvenance(receipt stripeOpenAPIProvenance, source stripeRendererBuildSource) error {

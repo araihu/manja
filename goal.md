@@ -50,9 +50,9 @@ not implement hosted product behavior speculatively.
 - Task: `019fef17-2fad-73d2-b004-d3706d36ea82`
 - Worktree: `/Users/guilhermecastro/.codex/worktrees/e1bf/manja`
 - Initial lane base: `39d65ade21c080ee2102f53da5ed741f000d6dd7`
-- Current checkpoint base: `7eb7d58c8bb936d2ca3813b90f91884a2f9fdb29`
-- Current checkpoint base tree: `f234bf311c2a6a03e3cde4bf126a07c6d1e30182`
-- Branch: `codex/oc01-manja-social-repro`
+- Current checkpoint base: `dd1a9e5d41422cb400d99a407500562c70ab21a0`
+- Current checkpoint base tree: `7ac46daea42ab9215231475f215becbf539de9fc`
+- Branch: `codex/oc01-stripe-dockerfile-binding`
 - Owns only bounded Open Core implementation checkpoints assigned here.
 - Must commit each coherent checkpoint with a meaningful message.
 - Must not implement deferred SaaS behavior or edit the active Arai Hû theme
@@ -109,12 +109,14 @@ not implement hosted product behavior speculatively.
   `be132353-6da0-4b99-a5ab-5b9785ed2126`, completed substantively at exact
   `7eb7d58c8bb936d2ca3813b90f91884a2f9fdb29`. Discussion `3756311030` is
   independently `VALID` and material: comment, unrelated-`RUN`, and duplicate
-  build-command decoys were reproduced against the Stripe provenance test. A
-  separate bounded fail-closed correction is required after OC-01M5 review.
-- OC-01M5 is active to resolve the narrow mechanical reproducibility gap for
-  the shipped Manja social preview without changing its artwork. Its moving
-  candidate commit/tree remain in the immutable external review packet and
-  control plane.
+  build-command decoys were reproduced against the Stripe provenance test. The
+  separate bounded fail-closed correction is implemented locally and awaits
+  independent review; its moving candidate identity remains external.
+- OC-01M5's exact observed Manja social-rendering checkpoint and goal correction
+  are preserved at accepted local product-manager head
+  `dd1a9e5d41422cb400d99a407500562c70ab21a0`, tree
+  `7ac46daea42ab9215231475f215becbf539de9fc`. The remote PR remains at the
+  separately timestamped `7eb7d58c8bb936d2ca3813b90f91884a2f9fdb29` snapshot.
 - Full root tests, strict Muamba verification, architecture, unrelated external
   module, generation, browser, API, templ, and OCI inspection gates passed for
   the OC-01 evidence. Direct standalone `site` testing still fails because its
@@ -135,7 +137,8 @@ not implement hosted product behavior speculatively.
 ### OC-01: Current Open Core provenance and artifact baseline
 
 Status: accepted baseline and mechanical checkpoints integrated/pushed through
-the Simple Icons evidence checkpoint; OC-01M5 is active.
+the Simple Icons evidence checkpoint; OC-01M5 is accepted locally, and the
+validated Stripe Dockerfile-binding correction awaits independent review.
 
 Accepted source identity:
 
@@ -152,14 +155,14 @@ Reviewed PR-transition identity:
 - parent tree: `e9ec53bd10e5255db449e7eb1bed9a14075ab760`;
 - independent verdict: `ACCEPT`, no findings.
 
-Latest accepted mechanical checkpoint:
+Latest accepted local product-manager checkpoint:
 
-- accepted Simple Icons provenance head:
-  `7eb7d58c8bb936d2ca3813b90f91884a2f9fdb29`;
-- accepted Simple Icons provenance tree:
-  `f234bf311c2a6a03e3cde4bf126a07c6d1e30182`;
-- independent verdict: `ACCEPT`;
-- product-manager disposition: fast-forward integrated and pushed.
+- accepted OC-01M5 local head:
+  `dd1a9e5d41422cb400d99a407500562c70ab21a0`;
+- accepted OC-01M5 local tree:
+  `7ac46daea42ab9215231475f215becbf539de9fc`;
+- product-manager disposition: accepted local base for the separate Stripe
+  correction; remote PR head remains `7eb7d58c8bb936d2ca3813b90f91884a2f9fdb29`.
 
 The final moving candidate head and tree are bound by the immutable external
 review packet and control plane. A commit cannot embed its own final commit and
@@ -231,14 +234,11 @@ Before merge:
 
 ## Next Action
 
-Complete OC-01M5's exact observed Manja social-rendering receipt, offline drift
-verifier, and truthful portable-reproduction blocker; freeze its moving
-commit/tree in the immutable external reviewer packet and control plane; obtain
-independent review; and let the product manager integrate only an accepted
-identity. Then implement the validated Stripe provenance-test correction in a
-separate bounded fail-closed checkpoint, obtain its independent review, and
-obtain a substantive successful CodeRabbit review/check for the final moving
-head after CI and CodeQL complete. Absence or a rate-limited no-review blocks
-merge.
+Freeze the implemented Stripe Dockerfile-binding correction's moving
+commit/tree in the immutable external reviewer packet and control plane, obtain
+independent review, and let the product manager integrate only an accepted
+identity. Then obtain a substantive successful CodeRabbit review/check for the
+final moving head after CI and CodeQL complete. Absence or a rate-limited
+no-review blocks merge.
 Deferred SaaS behavior and the active Arai Hû theme remain excluded; OC-04
 remains Open Core; licensing/package-generation Task 8 remains stopped.
