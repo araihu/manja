@@ -175,13 +175,20 @@ not implement hosted product behavior speculatively.
   Forgejo paths, the retry-helper test, root tests, and CodeQL passed in both
   runs. The test is not racing renderer readiness: its catalog, directory, and
   detail checks have already succeeded before the exhaustive search loop.
-- This bounded correction resolves the production ordering defect: an exact
-  published detail ID is now resolved from the admitted immutable catalog
-  directory before loading deadline-bound search children. Non-exact queries
-  retain the existing search path and persistent 503 behavior. Local controlled
-  RED/GREEN proof and the full 3,028-ID Kubernetes integration acceptance pass;
-  the moving candidate commit and tree remain external pending independent
-  review.
+- Candidate `1866412c67650a413f6e2340f728a278ef8b685c`, tree
+  `b1622cdf413945ab98c2b03a4ad313d2f217faa0`, resolved the production ordering
+  defect by looking up published detail IDs in the admitted immutable catalog
+  directory before deadline-bound search-child loading, but independent review
+  rejected it. Its early path bypassed canonical `SearchService` validation:
+  over-limit and control-wrapped exact IDs returned 200, while an
+  NFKC-equivalent exact ID remained deadline-bound and could return 503.
+- This correction child canonicalizes and validates the caller query exactly
+  once, then passes the same opaque canonical value to both directory lookup
+  and subsequent search. Controlled RED reproduced all three rejected cases;
+  GREEN returns 400 without child reads for invalid queries, resolves the NFKC
+  exact query directory-only, and preserves non-exact persistent 503 plus
+  `Retry-After: 1`. The moving child commit and tree remain external pending
+  fresh independent review.
 - Full root tests, strict Muamba verification, architecture, unrelated external
   module, generation, browser, API, and templ gates passed for the OC-01
   evidence. Local OCI inventory observations supplied baseline evidence only;
@@ -208,7 +215,9 @@ Dockerfile-binding correction, final-head corrections, root-gate truth,
 goal-ledger corrections, and the OCI inspection trust-boundary correction are
 integrated/pushed through exact
 `a0d1c4e0622b91a070ff96abbeda0ac5d874e82a`. The bounded Kubernetes exact-search
-correction is active locally and awaits independent review.
+candidate `1866412c67650a413f6e2340f728a278ef8b685c` was rejected for bypassing
+canonical query validation. Its narrow correction child is active locally and
+awaits fresh independent review.
 
 Accepted source identity:
 
@@ -292,9 +301,10 @@ private SSH tests passed, as did
 `52c7598c4ea1f0b5f0f5e27e363320866b49f789` had the same sole integration
 failure after 247.38s for exact ID
 `detail-sha256-674e48dbf74f258a2cf294bdf69f20494d91cb67b2ad1b916f9decdadb26c3ee`.
-No runtime bytes changed across those docs-only heads. The exact-search
-correction remains local and requires an exact-head CI rerun and independent
-review before any lifecycle action. Merge remains blocked.
+No runtime bytes changed across those docs-only heads. The first local
+exact-search correction was rejected for bypassing canonical query validation;
+its correction child requires an exact-head CI rerun and independent review
+before any lifecycle action. Merge remains blocked.
 
 Before merge:
 
@@ -310,7 +320,7 @@ Before merge:
 
 ## Next Action
 
-Freeze this Kubernetes exact-search correction's moving commit/tree in the
+Freeze this canonical-validation correction child's moving commit/tree in the
 immutable external reviewer packet and control plane and obtain fresh independent
 review. Rerun CI at the correction head and require `test` and `integration`
 success. Then request one exact-head substantive CodeRabbit review and fix only

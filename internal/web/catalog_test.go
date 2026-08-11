@@ -11,6 +11,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 
@@ -379,6 +380,57 @@ func TestCatalogExactDetailSearchDoesNotDependOnSearchChildren(t *testing.T) {
 	}
 	if searchChildReads == 0 {
 		t.Fatal("non-exact search did not exercise unavailable search children")
+	}
+}
+
+func TestCatalogExactDetailSearchUsesCanonicalValidation(t *testing.T) {
+	detailID := "detail-sha256-" + strings.Repeat("a", 64)
+	tests := []struct {
+		name       string
+		query      string
+		wantStatus int
+		wantDetail bool
+	}{
+		{
+			name:       "over byte limit after trim",
+			query:      strings.Repeat(" ", 257-len(detailID)) + detailID,
+			wantStatus: http.StatusBadRequest,
+		},
+		{
+			name:       "control wrapped",
+			query:      "\n" + detailID + "\n",
+			wantStatus: http.StatusBadRequest,
+		},
+		{
+			name:       "NFKC equivalent",
+			query:      fullWidthASCII(detailID),
+			wantStatus: http.StatusOK,
+			wantDetail: true,
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			handler, _ := catalogHandlerFixture(t, "/kubernetes")
+			catalogHandler := handler.(*CatalogHandler)
+			searchChildReads := 0
+			catalogHandler.children = deadlineSearchCatalogChildren{
+				fallback: catalogHandler.children,
+				reads:    &searchChildReads,
+			}
+
+			response := httptest.NewRecorder()
+			target := "/kubernetes/search.json?q=" + url.QueryEscape(test.query)
+			handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, target, nil))
+			if response.Code != test.wantStatus {
+				t.Fatalf("canonical exact search = %d body=%q, want %d", response.Code, response.Body.String(), test.wantStatus)
+			}
+			if test.wantDetail && !strings.Contains(response.Body.String(), `"detailId":"`+detailID+`"`) {
+				t.Fatalf("canonical exact search body=%q, want detail %q", response.Body.String(), detailID)
+			}
+			if searchChildReads != 0 {
+				t.Fatalf("canonical exact search read %d search children, want none", searchChildReads)
+			}
+		})
 	}
 }
 
@@ -929,6 +981,18 @@ func (children memoryCatalogChildren) ReadChild(_ context.Context, snapshot cata
 type deadlineSearchCatalogChildren struct {
 	fallback catalogChildReader
 	reads    *int
+}
+
+func fullWidthASCII(value string) string {
+	var result strings.Builder
+	for _, character := range value {
+		if character >= '!' && character <= '~' {
+			result.WriteRune(character + 0xfee0)
+			continue
+		}
+		result.WriteRune(character)
+	}
+	return result.String()
 }
 
 func (children deadlineSearchCatalogChildren) ReadChild(ctx context.Context, snapshot catalog.RuntimeSnapshot, path string) ([]byte, catalog.ChildIdentityV1, error) {
