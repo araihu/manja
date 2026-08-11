@@ -50,8 +50,7 @@ not implement hosted product behavior speculatively.
 - Task: `019fef17-2fad-73d2-b004-d3706d36ea82`
 - Worktree: `/Users/guilhermecastro/.codex/worktrees/e1bf/manja`
 - Base: `39d65ade21c080ee2102f53da5ed741f000d6dd7`
-- Own branch: developer will report after creating it from the verified detached
-  base.
+- Branch: `codex/oc01-provenance-baseline`
 - Owns only bounded Open Core implementation checkpoints assigned here.
 - Must commit each coherent checkpoint with a meaningful message.
 - Must not implement deferred SaaS behavior or edit the active Arai Hû theme
@@ -97,6 +96,10 @@ not implement hosted product behavior speculatively.
 - `docs/legal/provenance.md` remains `BLOCKED`; root `LICENSE`, `NOTICE`,
   `THIRD_PARTY_NOTICES.md`, deterministic SBOM generation, and verified release
   packaging remain absent.
+- Independent developer and reviewer baseline audits agree that the July legal
+  inventory is stale: current history, Muamba/browser inputs, Kubernetes
+  renderer artifacts, social preview images, Go/Alpine versions, and OCI
+  contents require fresh evidence.
 - Active Arai Hû Modern-theme rollout belongs to task
   `019fef01-b65f-7980-a360-83e48f8a6345`; this control plane must avoid its
   files and refs.
