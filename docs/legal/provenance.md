@@ -8,35 +8,43 @@ This inventory is an engineering release gate, not a legal conclusion. Manja
 must not claim Apache-2.0, publish a root `LICENSE` or `NOTICE`, or add Apache
 package metadata until every blocking item below is resolved with evidence.
 
-## Current Snapshot And Evidence
+## Audited Base Snapshot And Evidence
 
-This inventory binds the clean base and current tree below:
+The history counts and command receipts below were collected from a clean
+checkout of this exact audited base:
 
-- branch: `codex/oc01-provenance-baseline`;
-- base and pre-edit `HEAD`: `39d65ade21c080ee2102f53da5ed741f000d6dd7`;
-- worktree: `/Users/guilhermecastro/.codex/worktrees/e1bf/manja`;
+- audited base commit: `39d65ade21c080ee2102f53da5ed741f000d6dd7`;
+- audited base tree: `64cee6ab67060d1d8c4734fc5f54f6dbe6d272f6`;
 - history: 280 commits from 2026-06-06 through 2026-08-10;
 - toolchain: Go 1.26.5.
 
-The evidence commands included:
+The candidate commit and tree for a review of this document are supplied by the
+immutable external review packet and control plane. This file cannot embed its
+own candidate commit or tree without changing that identity and creating a
+self-reference.
+
+The audited-base evidence commands included:
 
 ```bash
-git shortlog -sne HEAD
-git log --reverse --format='%ad %H %an <%ae>' --date=short HEAD
+AUDITED_BASE=39d65ade21c080ee2102f53da5ed741f000d6dd7
+test "$(git rev-parse HEAD)" = "$AUDITED_BASE"
+git status --short --branch --untracked-files=all
+git shortlog -sne "$AUDITED_BASE"
+git log --reverse --format='%ad %H %an <%ae>' --date=short "$AUDITED_BASE"
 rg -n 'Copyright|SPDX-License-Identifier|Licensed under|generated|DO NOT EDIT' .
 go list -m all
 GOWORK=off go list -deps -tags=manja_runtime ./cmd/manja-runtime
 go tool muamba verify --strict
 go run ./cmd/webassets check
 go test ./cmd/kubernetes-openapi-lock -count=1
-git archive --format=tar HEAD | tar -tf -
+git archive --format=tar "$AUDITED_BASE" | tar -tf -
 docker build --pull=false -t manja:provenance .
 docker history --no-trunc manja:provenance
 docker image inspect manja:provenance
 docker run --rm --entrypoint /bin/sh manja:provenance -c 'apk info -vv'
 ```
 
-`git shortlog -sne HEAD` reports 275 commits by
+`git shortlog -sne "$AUDITED_BASE"` reports 275 commits by
 `Guilherme de Castro <guilherme.castro@totvs.com.br>`, three by Dependabot,
 and two by the AraiHu asset-distribution bot. Git authorship and bot identity
 show who recorded changes; neither establishes copyright ownership, employment
@@ -53,7 +61,7 @@ artifact inspection determines redistribution scope.
 
 | Body of work | Repository evidence | Authority result | Required decision |
 | --- | --- | --- | --- |
-| Go, JavaScript, templ, YAML, CSS, documentation, configuration, generated inputs, and product copy | Current history is predominantly the maintainer identity above, with automated dependency and asset updates. The maintainer address is on the `totvs.com.br` domain. | **BLOCKED**. Commit authorship does not decide whether the individual, an employer, another entity, or several parties own the work. | The rights holder must provide durable written evidence naming the owner, confirming authority over the complete first-party work, and resolving employment or assignment rights. |
+| Go, JavaScript, templ, YAML, CSS, documentation, configuration, generated inputs, and product copy | Audited-base history is predominantly the maintainer identity above, with automated dependency and asset updates. The maintainer address is on the `totvs.com.br` domain. | **BLOCKED**. Commit authorship does not decide whether the individual, an employer, another entity, or several parties own the work. | The rights holder must provide durable written evidence naming the owner, confirming authority over the complete first-party work, and resolving employment or assignment rights. |
 | Manja marks, logos, and favicons | [`rights-holder-confirmation.md`](rights-holder-confirmation.md) names Guilherme de Castro as individual rights holder for those visual assets and scopes their MIT redistribution to `github.com/araihu/assets`. | Cleared only within that named visual-asset scope. It does not establish authority over Manja source, docs, product copy, social-preview compositions, or third-party material. | Keep this narrow confirmation; do not use it as repository-wide authority. |
 | Proposed `NOTICE` holder and year range | History proves activity in 2026, but no evidence names the holder for the complete first-party body of work. | **BLOCKED**. No holder or year range may be placed in `NOTICE`. | Rights holder must approve the exact holder and evidence-supported year range after the complete authority question is resolved. |
 
@@ -63,15 +71,15 @@ maintainer. Resolution must attach or link evidence; it must not replace
 
 ## Copied, Generated, Browser, And Static Material
 
-| Item | Current evidence and shipped disposition | Result |
+| Item | Audited-base evidence and shipped disposition | Result |
 | --- | --- | --- |
 | Kubernetes OpenAPI v3 catalog | `catalog-source.json` pins 65 upstream files and the upstream `LICENSE` to Kubernetes commit `a818af18fe29d999d6741234c8cd72709ef2f424`, including every Git blob SHA. `receipt.json` adds SHA-256 values and counts. Muamba verification and `go test ./cmd/kubernetes-openapi-lock -count=1` pass. The OCI build compiles these inputs into renderer snapshot data. | Mechanical source-byte provenance is resolved. Redistribution remains **BLOCKED** because the final image contains derived snapshot data but not the retained Kubernetes license or project notice set. Task 8 must place and verify required notices after the project authority gate passes. |
-| `internal/adapters/openapi/testdata/github-v3-rest.json` | The file identifies GitHub's REST API and declares MIT. Current renderer configuration records the GitHub source repository and license URL. The exact upstream commit/blob for these bytes is still absent. The Docker build compiles the file into a shipped renderer snapshot even though the source JSON is not copied into the final image. | **BLOCKED** pending immutable upstream revision/blob evidence and reviewed attribution/notice disposition for the exact bytes. |
+| `internal/adapters/openapi/testdata/github-v3-rest.json` | The file identifies GitHub's REST API and declares MIT. Audited-base renderer configuration records the GitHub source repository and license URL. The exact upstream commit/blob for these bytes is still absent. The Docker build compiles the file into a shipped renderer snapshot even though the source JSON is not copied into the final image. | **BLOCKED** pending immutable upstream revision/blob evidence and reviewed attribution/notice disposition for the exact bytes. |
 | Stripe OpenAPI input | The Docker build fetches `https://github.com/stripe/openapi.git` at commit `d70de345383dd818a0ce831f4e20d375c5a90cec`, compiles `openapi/spec3.json`, and ships only the derived snapshot. Renderer configuration links to the repository's MIT license on a mutable branch; no locked license bytes or hash are retained beside the pin. | Source revision is mechanically pinned. **BLOCKED** pending immutable license evidence for that revision and reviewed notice placement in final artifacts. |
 | Other OpenAPI/config fixtures | Manja-specific fixtures and review/config inputs are tracked in the first-party history. | **BLOCKED** with the unresolved first-party authority item unless a fixture separately identifies an upstream source. |
-| `internal/web/api.gen.go` | Header says `oapi-codegen` v2.7.1 generated it from the ignored `api/dist/openapi.yaml`; split `api/` sources are tracked. Current `go.mod` pins `oapi-codegen` v2.8.0. | Input path is known, but generator version and current module pin differ. Record as a reproducibility gap; do not claim current-pinned byte reproduction until regeneration/drift proof is reviewed. |
+| `internal/web/api.gen.go` | Header says `oapi-codegen` v2.7.1 generated it from the ignored `api/dist/openapi.yaml`; split `api/` sources are tracked. Audited-base `go.mod` pins `oapi-codegen` v2.8.0. | Input path is known, but generator version and audited-base module pin differ. Record as a reproducibility gap; do not claim pinned byte reproduction until regeneration/drift proof is reviewed. |
 | `internal/web/templates/*_templ.go` | Headers identify templ-generated output; `.templ` inputs are tracked. | Generated source is attributable to tracked inputs. Final disposition remains **BLOCKED** with first-party authority and dependency-license classification. |
-| Browser bundles | `schema-example.js` and `request-composer.js` are generated by `cmd/webassets`. Muamba verifies 31 exact npm-registry archives and retained license bytes. [`browser-bundles.md`](browser-bundles.md) records bundle membership from esbuild metafiles, SPDX labels, hashes, sources, licenses, and included files. `go run ./cmd/webassets check` passes. | Mechanical browser provenance is current. Broader release clearance remains blocked by first-party authority and final-artifact notice/SBOM work. |
+| Browser bundles | `schema-example.js` and `request-composer.js` are generated by `cmd/webassets`. Muamba verifies 31 exact npm-registry archives and retained license bytes. [`browser-bundles.md`](browser-bundles.md) records bundle membership from esbuild metafiles, SPDX labels, hashes, sources, licenses, and included files. `go run ./cmd/webassets check` passes at the audited base. | Mechanical browser provenance is verified at the audited base. Broader release clearance remains blocked by first-party authority and final-artifact notice/SBOM work. |
 | GitHub and Stripe catalog marks | The SVGs state that their paths were adapted from Simple Icons under CC0-1.0. They do not record the exact Simple Icons version, upstream file hash, or source URL. The OCI image copies both SVGs. | **BLOCKED** pending immutable upstream evidence for the adapted paths and confirmation that the recorded CC0 source applies to those exact bytes. |
 | `manja-social.svg` and `manja-social.png` | The tracked SVG is editable source; PNG is 1280x640 and SHA-256 `7234c9a20fc3a4a44364b8f9d544ddae5aba8c2b6a418b26ad5a930d2d0ab0bd`. No committed conversion command or distinct rights statement covers the complete social composition. Both ship in the OCI static tree. | **BLOCKED** with first-party authority; add reproducible SVG-to-PNG evidence before release packaging. |
 | `kubernetes-social.png` | PNG is 1280x640, 48,705 bytes, and SHA-256 `a7cf0baba81cf79fdbe8a0487bd30ed1b6a34dc816ec8345a50591a99a2db423`. No editable source, generator receipt, generation terms, or Kubernetes visual-asset attribution accompanies it. It ships in the OCI static tree. | **BLOCKED** pending source/generation provenance and an explicit redistribution/trademark disposition from the responsible rights holder. |
@@ -87,7 +95,7 @@ modules used by `manja build`, Playwright, Testcontainers, Forgejo, code
 generators, and their transitive graphs are not in that runtime closure merely
 because they occur in `go.mod`.
 
-A local `manja:provenance` image built successfully from the current
+A local `manja:provenance` image built successfully from the audited-base
 Dockerfile. The inspected arm64 image was 35,242,561 bytes and used:
 
 - build base `golang:1.26.5-alpine` at digest
@@ -114,9 +122,9 @@ The gate remains **BLOCKED** for independent reasons:
    established;
 2. GitHub, Stripe-license, Simple Icons, and social-preview evidence remains
    incomplete;
-3. generated API output is not proven byte-reproducible with the current
+3. generated API output is not proven byte-reproducible with the audited-base
    pinned generator; and
-4. current source/OCI artifacts do not carry a complete project license,
+4. audited-base source/OCI artifacts do not carry a complete project license,
    notices, or SBOM set.
 
 Accordingly, this checkpoint creates no root `LICENSE`, `NOTICE`,
