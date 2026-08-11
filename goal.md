@@ -47,8 +47,11 @@ not implement hosted product behavior speculatively.
 
 ### Developer
 
-- Task: pending creation
-- Own branch/worktree: pending creation
+- Task: `019fef17-2fad-73d2-b004-d3706d36ea82`
+- Worktree: `/Users/guilhermecastro/.codex/worktrees/e1bf/manja`
+- Base: `39d65ade21c080ee2102f53da5ed741f000d6dd7`
+- Own branch: developer will report after creating it from the verified detached
+  base.
 - Owns only bounded Open Core implementation checkpoints assigned here.
 - Must commit each coherent checkpoint with a meaningful message.
 - Must not implement deferred SaaS behavior or edit the active Arai Hû theme
@@ -56,7 +59,9 @@ not implement hosted product behavior speculatively.
 
 ### Independent reviewer
 
-- Task: pending creation
+- Task: `019fef17-2faa-7620-b95c-ba6dc0343094`
+- Read-only worktree: `/Users/guilhermecastro/.codex/worktrees/2106/manja`
+- Base: `39d65ade21c080ee2102f53da5ed741f000d6dd7`
 - Read-only unless the product manager explicitly assigns a separate correction
   checkpoint.
 - Reviews exact base/head identities, behavior, tests, scope, provenance, and
@@ -102,7 +107,7 @@ not implement hosted product behavior speculatively.
 
 ### OC-01: Current Open Core provenance and artifact baseline
 
-Status: ready for developer assignment.
+Status: developer active; reviewer preparing independent baseline.
 
 Goal: reconcile the approved Open Core plan with current `origin/main` and
 produce current, behavior-backed provenance and shipped-artifact evidence
@@ -157,5 +162,6 @@ Before merge:
 
 ## Next Action
 
-Create developer and reviewer tasks, record their identities here, then dispatch
-OC-01 to the developer. Reviewer waits for the first frozen developer commit.
+Wait for the developer's first coherent OC-01 commit. Freeze its identity and
+send only that candidate to the independent reviewer. Integrate promptly after
+an identity-bound acceptance.
