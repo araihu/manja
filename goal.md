@@ -9,7 +9,8 @@ publisher. Coordinate three independent Codex tasks: this product-management
 task, one implementation task, and one read-only review task.
 
 This file is the repository-visible recovery summary. External control-plane
-YAML remains the lifecycle and ownership authority.
+YAML remains the lifecycle and ownership authority. Machine-specific worktree
+paths stay in that external ledger rather than this committed record.
 
 ## Product Boundary
 
@@ -40,7 +41,7 @@ not implement hosted product behavior speculatively.
 
 - Task: `019fef00-0495-7841-b442-031451ebb185`
 - Branch: `coord/opencore-product`
-- Worktree: `/private/tmp/manja-opencore-product`
+- Worktree label: product-manager integration worktree
 - Base: `39d65ade21c080ee2102f53da5ed741f000d6dd7`
 - Owns scope, priorities, checkpoint acceptance, integration order, PR state,
   CodeQL/CodeRabbit triage, and durable recovery updates.
@@ -48,11 +49,11 @@ not implement hosted product behavior speculatively.
 ### Developer
 
 - Task: `019fef17-2fad-73d2-b004-d3706d36ea82`
-- Worktree: `/Users/guilhermecastro/.codex/worktrees/e1bf/manja`
+- Worktree label: dedicated Open Core developer worktree
 - Initial lane base: `39d65ade21c080ee2102f53da5ed741f000d6dd7`
-- Current checkpoint base: `051ef67bfb7dd49c7052fe7ee743fd1a88fad1ab`
-- Current checkpoint base tree: `abf63a77c74228e019a1e39dc4016b156ab05389`
-- Branch: `codex/oc01-stripe-dockerfile-binding`
+- Current checkpoint base: `d5ede512ebb784c7c695948616fb209ac182db1e`
+- Current checkpoint base tree: `c5e43f4336690bea451088cb023f654bd572aeb6`
+- Branch: `codex/oc01-final-coderabbit-fixes`
 - Owns only bounded Open Core implementation checkpoints assigned here.
 - Must commit each coherent checkpoint with a meaningful message.
 - Must not implement deferred SaaS behavior or edit the active Arai Hû theme
@@ -61,7 +62,7 @@ not implement hosted product behavior speculatively.
 ### Independent reviewer
 
 - Task: `019fef17-2faa-7620-b95c-ba6dc0343094`
-- Read-only worktree: `/Users/guilhermecastro/.codex/worktrees/2106/manja`
+- Worktree label: independent read-only review worktree
 - Base: `39d65ade21c080ee2102f53da5ed741f000d6dd7`
 - Read-only unless the product manager explicitly assigns a separate correction
   checkpoint.
@@ -108,17 +109,26 @@ not implement hosted product behavior speculatively.
 - CodeRabbit review `4904235223`, run
   `be132353-6da0-4b99-a5ab-5b9785ed2126`, completed substantively at exact
   `7eb7d58c8bb936d2ca3813b90f91884a2f9fdb29`. Discussion `3756311030` is
-  independently `VALID` and material. First correction candidate
+  independently `VALID` and material. The first correction candidate
   `051ef67bfb7dd49c7052fe7ee743fd1a88fad1ab`, tree
   `abf63a77c74228e019a1e39dc4016b156ab05389`, was rejected because same-`RUN`
-  tails and Go flag aliases could bypass its exact-flag scan. Its child replaces
-  flag scanning with a strict canonical full-command token comparison and
-  awaits fresh independent review; the moving child identity remains external.
+  tails and Go flag aliases could bypass its exact-flag scan. Child
+  `d5ede512ebb784c7c695948616fb209ac182db1e`, tree
+  `c5e43f4336690bea451088cb023f654bd572aeb6`, replaced flag scanning with a
+  strict canonical full-command token comparison and is integrated and pushed
+  on the product-manager branch.
 - OC-01M5's exact observed Manja social-rendering checkpoint and goal correction
-  are preserved at accepted local product-manager head
-  `dd1a9e5d41422cb400d99a407500562c70ab21a0`, tree
-  `7ac46daea42ab9215231475f215becbf539de9fc`. The remote PR remains at the
-  separately timestamped `7eb7d58c8bb936d2ca3813b90f91884a2f9fdb29` snapshot.
+  remain in that history at `dd1a9e5d41422cb400d99a407500562c70ab21a0`, tree
+  `7ac46daea42ab9215231475f215becbf539de9fc`.
+- Final-head CodeRabbit review `4904696726`, run
+  `05b3efe6-5170-4f07-bb67-59f5121f6772`, reviewed exact
+  `d5ede512ebb784c7c695948616fb209ac182db1e` and produced a material rejection.
+  Independent classification confirms the complete browser-test-source artifact
+  scan as material. Strict receipt decoding, corrected module prose, stable
+  worktree labels, effective-build-command failure wording, and retained
+  Dockerfile parse diagnostics are valid minor corrections. This bounded local
+  checkpoint implements those findings and awaits independent review; its
+  moving candidate commit and tree remain external.
 - Full root tests, strict Muamba verification, architecture, unrelated external
   module, generation, browser, API, templ, and OCI inspection gates passed for
   the OC-01 evidence. Direct standalone `site` testing still fails because its
@@ -138,9 +148,10 @@ not implement hosted product behavior speculatively.
 
 ### OC-01: Current Open Core provenance and artifact baseline
 
-Status: accepted baseline and mechanical checkpoints integrated/pushed through
-the Simple Icons evidence checkpoint; OC-01M5 is accepted locally, and the
-corrected Stripe Dockerfile-binding child awaits fresh independent review.
+Status: accepted baseline and mechanical checkpoints, OC-01M5, and the strict
+Stripe Dockerfile-binding correction are integrated/pushed through exact
+`d5ede512ebb784c7c695948616fb209ac182db1e`. The bounded final-head CodeRabbit
+correction is active locally and awaits independent review.
 
 Accepted source identity:
 
@@ -157,14 +168,12 @@ Reviewed PR-transition identity:
 - parent tree: `e9ec53bd10e5255db449e7eb1bed9a14075ab760`;
 - independent verdict: `ACCEPT`, no findings.
 
-Latest accepted local product-manager checkpoint:
+Current integrated/pushed product-manager checkpoint:
 
-- accepted OC-01M5 local head:
-  `dd1a9e5d41422cb400d99a407500562c70ab21a0`;
-- accepted OC-01M5 local tree:
-  `7ac46daea42ab9215231475f215becbf539de9fc`;
-- product-manager disposition: accepted local base for the separate Stripe
-  correction; remote PR head remains `7eb7d58c8bb936d2ca3813b90f91884a2f9fdb29`.
+- head: `d5ede512ebb784c7c695948616fb209ac182db1e`;
+- tree: `c5e43f4336690bea451088cb023f654bd572aeb6`;
+- disposition: immutable parent for the bounded final-head CodeRabbit correction;
+  preserve it unchanged.
 
 The final moving candidate head and tree are bound by the immutable external
 review packet and control plane. A commit cannot embed its own final commit and
@@ -214,13 +223,14 @@ the complete runtime.
 Current PR: [#94](https://github.com/araihu/manja/pull/94),
 `coord/opencore-product` into `main`.
 
-Snapshot at `2026-08-11T08:34:54Z`: PR #94 remains open at pushed head
-`7eb7d58c8bb936d2ca3813b90f91884a2f9fdb29`. CodeQL
-`actions/go/javascript` and its summary pass. Integration passes in 13m33s
-after one transient Forgejo 401 on the first attempt and a successful retry.
-CI test is pending. CodeRabbit review `4904235223`, run
-`be132353-6da0-4b99-a5ab-5b9785ed2126`, completed substantively at that exact
-head, and discussion `3756311030` is independently `VALID` and material.
+Snapshot at `2026-08-11T09:20:38Z`: PR #94 remains open at pushed head
+`d5ede512ebb784c7c695948616fb209ac182db1e`. CI `test` and `integration` pass;
+CodeQL `actions`, `go`, `javascript-typescript`, and its summary pass. CodeRabbit
+review `4904696726`, run `05b3efe6-5170-4f07-bb67-59f5121f6772`, completed
+substantively at that exact head with one independently material artifact-scan
+finding and five valid minor corrections. The remote checks are green, but the
+actionable review findings keep the merge gate blocked pending correction and
+fresh final-head review.
 
 Before merge:
 
@@ -236,11 +246,11 @@ Before merge:
 
 ## Next Action
 
-Freeze the strict canonical-command Stripe correction child's moving commit/tree
-in the immutable external reviewer packet and control plane, obtain fresh
-independent review, and let the product manager integrate only an accepted
-identity. Then obtain a substantive successful CodeRabbit review/check for the
-final moving head after CI and CodeQL complete. Absence or a rate-limited
-no-review blocks merge.
+Freeze the bounded final-head CodeRabbit correction's moving commit/tree in the
+immutable external reviewer packet and control plane, obtain fresh independent
+review, and let the product manager integrate only an accepted identity. Then
+obtain a substantive successful CodeRabbit review/check for the final moving
+head after CI and CodeQL complete. Absence or a rate-limited no-review blocks
+merge.
 Deferred SaaS behavior and the active Arai Hû theme remain excluded; OC-04
 remains Open Core; licensing/package-generation Task 8 remains stopped.

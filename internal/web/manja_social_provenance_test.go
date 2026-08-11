@@ -10,6 +10,7 @@ import (
 	"encoding/xml"
 	"fmt"
 	"image/png"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -127,13 +128,74 @@ func TestManjaSocialPreviewMatchesReproductionReceipt(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var receipt manjaSocialProvenance
-	if err := json.Unmarshal(receiptBytes, &receipt); err != nil {
+	receipt, err := decodeManjaSocialProvenance(receiptBytes)
+	if err != nil {
 		t.Fatal(err)
 	}
 	source, artifact := readManjaSocialAssets(t)
 	if err := validateManjaSocialProvenance(receipt, source, artifact); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func decodeManjaSocialProvenance(data []byte) (manjaSocialProvenance, error) {
+	var receipt manjaSocialProvenance
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&receipt); err != nil {
+		return receipt, fmt.Errorf("decode receipt: %w", err)
+	}
+	var trailing any
+	if err := decoder.Decode(&trailing); err != io.EOF {
+		if err == nil {
+			return receipt, fmt.Errorf("decode receipt: trailing JSON value")
+		}
+		return receipt, fmt.Errorf("decode receipt trailing data: %w", err)
+	}
+	return receipt, nil
+}
+
+func TestManjaSocialPreviewRejectsMalformedReceiptJSON(t *testing.T) {
+	t.Parallel()
+
+	baseline, err := os.ReadFile("static/manja-social.provenance.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	topLevelUnknown := bytes.Replace(
+		baseline,
+		[]byte("{"),
+		[]byte("{\n  \"unexpected\": true,"),
+		1,
+	)
+	nestedUnknown := bytes.Replace(
+		baseline,
+		[]byte("\"source\": {"),
+		[]byte("\"source\": {\n    \"unexpected\": true,"),
+		1,
+	)
+	trailingValue := append(append([]byte(nil), baseline...), []byte("\n{}\n")...)
+
+	tests := []struct {
+		name      string
+		data      []byte
+		wantValid bool
+	}{
+		{name: "committed baseline", data: baseline, wantValid: true},
+		{name: "top-level unknown field", data: topLevelUnknown},
+		{name: "nested unknown field", data: nestedUnknown},
+		{name: "trailing second value", data: trailingValue},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			_, err := decodeManjaSocialProvenance(test.data)
+			if test.wantValid && err != nil {
+				t.Fatalf("committed receipt rejected: %v", err)
+			}
+			if !test.wantValid && err == nil {
+				t.Fatal("malformed receipt accepted")
+			}
+		})
 	}
 }
 

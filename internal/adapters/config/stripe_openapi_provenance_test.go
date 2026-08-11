@@ -441,7 +441,7 @@ FROM alpine:3.24
 				t.Fatalf("valid Dockerfile rejected: %v", err)
 			}
 			if !test.wantValid && err == nil {
-				t.Fatalf("unsafe Dockerfile accepted; approved path %q need not bind effective build command", approvedPath)
+				t.Fatalf("unsafe Dockerfile accepted; approved path %q must bind the effective build command", approvedPath)
 			}
 		})
 	}
@@ -485,8 +485,11 @@ func loadCommittedStripeRendererBuildSource(t *testing.T, root string) stripeRen
 	if err != nil {
 		t.Fatal(err)
 	}
-	if configPath, err := strictStripeDockerConfigPath(dockerfile); err == nil {
-		source.DockerConfigPath = configPath
+	dockerConfigPath, dockerErr := strictStripeDockerConfigPath(dockerfile)
+	if dockerErr != nil {
+		t.Logf("Dockerfile binding rejected: %v", dockerErr)
+	} else {
+		source.DockerConfigPath = dockerConfigPath
 	}
 	return source
 }

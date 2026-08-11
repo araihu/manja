@@ -44,15 +44,27 @@ GOWORK=off go list -deps -tags=manja_runtime \
   LC_ALL=C sort -u
 ```
 
-It directly reports these non-standard module bodies:
+It directly reports exactly these six external module/version pairs:
 
 - `github.com/a-h/templ v0.3.1020`;
 - `github.com/alecthomas/chroma/v2 v2.24.1`;
 - `github.com/araihu/goshtoso v0.1.8`;
 - `github.com/dlclark/regexp2 v1.12.0`;
 - `golang.org/x/text v0.40.0`;
-- `gopkg.in/yaml.v3 v3.0.1`;
-- first-party `github.com/araihu/manja` packages.
+- `gopkg.in/yaml.v3 v3.0.1`.
+
+The 264-package-path query also includes 14 first-party Manja package paths.
+They are deliberately absent from the external module/version receipt because
+the `.Main` filter excludes the main module. Reproduce that count directly:
+
+```bash
+GOWORK=off go list -deps -tags=manja_runtime \
+  -f '{{if .Module}}{{if .Module.Main}}{{.ImportPath}}{{end}}{{end}}' \
+  ./cmd/manja-runtime |
+  awk 'NF' |
+  LC_ALL=C sort -u |
+  wc -l
+```
 
 ### Browser and static bytes in the current OCI image
 
@@ -140,18 +152,54 @@ route-specific title, description, canonical URL, `og:url`, required Open Graph
 metadata, explicit X Card tags, or a validated social-preview image.
 
 By default, the distribution gate must also fail if either browser-test source
-is present in runtime/binary-package or OCI bytes. Raw source archives are not
-subject to this exclusion:
+is present anywhere in runtime/binary-package or OCI bytes. Raw source archives
+are not subject to this exclusion. `RUNTIME_ARTIFACT_ROOT` must name an existing,
+freshly extracted, complete runtime/package root; a selected subdirectory is not
+sufficient. The OCI check runs as root and scans the complete image root
+filesystem rather than selected `/app` paths:
 
 ```bash
 set -euo pipefail
 : "${RUNTIME_ARTIFACT_ROOT:?set RUNTIME_ARTIFACT_ROOT}"
 : "${IMAGE:?set IMAGE}"
-test ! -e "$RUNTIME_ARTIFACT_ROOT/internal/web/static/request_composer_browser_test.go"
-test ! -e "$RUNTIME_ARTIFACT_ROOT/internal/web/static/schema_example_browser_test.go"
-docker run --rm --entrypoint /bin/sh "$IMAGE" -ec '
-  test ! -e /app/internal/web/static/request_composer_browser_test.go
-  test ! -e /app/internal/web/static/schema_example_browser_test.go
+
+scan_browser_test_sources() {
+  local root=$1 match
+  if [[ ! -d "$root" ]]; then
+    printf 'runtime artifact root is not a directory: %s\n' "$root" >&2
+    return 1
+  fi
+  if ! match=$(
+    find "$root" -type f \
+      \( -name request_composer_browser_test.go \
+         -o -name schema_example_browser_test.go \) \
+      -print -quit
+  ); then
+    printf 'browser-test source scan failed: %s\n' "$root" >&2
+    return 1
+  fi
+  if [[ -n "$match" ]]; then
+    printf 'forbidden browser-test source: %s\n' "$match" >&2
+    return 1
+  fi
+}
+
+scan_browser_test_sources "$RUNTIME_ARTIFACT_ROOT"
+
+docker run --rm --read-only --user 0:0 --entrypoint /bin/sh "$IMAGE" -ec '
+  if ! match=$(
+    find / -xdev -type f \
+      \( -name request_composer_browser_test.go \
+         -o -name schema_example_browser_test.go \) \
+      -print -quit
+  ); then
+    printf "browser-test source scan failed: /\n" >&2
+    exit 1
+  fi
+  if [ -n "$match" ]; then
+    printf "forbidden browser-test source: %s\n" "$match" >&2
+    exit 1
+  fi
 '
 ```
 
@@ -159,4 +207,8 @@ This exclusion may be changed only if shipping those source files in a runtime
 artifact is an intentional redistribution decision and an explicit notice/SBOM
 policy review clears and inventories them. Their accidental presence under a
 blanket static copy is not clearance. Task 8 remains blocked until this test is
-implemented in the future packager; OC-01 does not change the Dockerfile.
+implemented in the future packager; OC-01 does not change the Dockerfile. No
+separate binary archive exists today. If Task 8 later produces one, its bytes
+must be extracted to their own complete root and passed through the same
+`scan_browser_test_sources` function; this text is a prospective gate, not a
+current binary-archive receipt.
