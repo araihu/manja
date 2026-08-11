@@ -91,8 +91,13 @@ not implement hosted product behavior speculatively.
 
 ## Current Evidence
 
-- Live `origin/main`: `39d65ade21c080ee2102f53da5ed741f000d6dd7`.
-- Main CI and CodeQL passed for that identity.
+- Audited OC-01 and PR #94 base:
+  `39d65ade21c080ee2102f53da5ed741f000d6dd7`.
+- Main CI and CodeQL passed for that audited-base identity.
+- At the read-only `2026-08-11T11:03:29Z` observation, live `origin/main` is
+  `c0216011b52c72677a05396d13a7552f23eca6f2`. It advanced through merged active
+  theme PR #95 at `2026-08-11T08:25:35Z`. That remote advancement is excluded
+  active-theme work; this lane does not absorb, rebase onto, or edit its bytes.
 - No open Manja PR or issue existed when this control plane started.
 - Public domain/application/port packages, adapter contract tests, external
   module proof, architecture gates, and self-hosted composition already exist.
