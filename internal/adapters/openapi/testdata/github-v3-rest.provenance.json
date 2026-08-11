@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "repository": "https://github.com/github/rest-api-description",
+  "commitSha": "6948cb04f5304188569c4bb4ae2190c08e7cbdba",
+  "commitTreeSha": "6270ed1bd31a741adf3c7143c39d9bdc57d2fbc1",
+  "artifact": {
+    "localPath": "internal/adapters/openapi/testdata/github-v3-rest.json",
+    "upstreamPath": "descriptions/ghes-3.0/ghes-3.0.json",
+    "size": 3319366,
+    "gitBlobSha": "f0ddf34ad4398c319db0643e45a0908ca026b382",
+    "sha256": "dedfee9ad6a676c2f7186b8e2137d887d6449cad8b7af8253aecdaae24b27977"
+  },
+  "license": {
+    "name": "MIT License",
+    "spdx": "MIT",
+    "upstreamPath": "LICENSE.md",
+    "size": 1063,
+    "gitBlobSha": "b50625eb63949013cae604b1cadd42cfa1eaf825",
+    "sha256": "3243761cbac07e6d169a5a2f4e7c25cc544da85248e735df74c3672e055cc87b"
+  }
+}

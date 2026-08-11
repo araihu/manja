@@ -19,7 +19,7 @@ organization:
     - name: GitHub REST API OpenAPI description
       kind: file
       location: internal/adapters/openapi/testdata/github-v3-rest.json
-      url: https://github.com/github/rest-api-description
+      url: https://github.com/github/rest-api-description/blob/6948cb04f5304188569c4bb4ae2190c08e7cbdba/descriptions/ghes-3.0/ghes-3.0.json
     - name: Stripe OpenAPI specification
       kind: git
       location: github.com/stripe/openapi
@@ -192,7 +192,7 @@ catalogs:
         alt: GitHub
     license:
       name: MIT License
-      url: https://github.com/github/rest-api-description/blob/main/LICENSE.md
+      url: https://github.com/github/rest-api-description/blob/6948cb04f5304188569c4bb4ae2190c08e7cbdba/LICENSE.md
     defaultDocument: github-v3-rest
     profile: strict-v1
     seo:
