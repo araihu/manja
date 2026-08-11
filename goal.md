@@ -105,11 +105,12 @@ not implement hosted product behavior speculatively.
 - Simple Icons provenance checkpoint `7eb7d58c8bb936d2ca3813b90f91884a2f9fdb29`
   / tree `f234bf311c2a6a03e3cde4bf126a07c6d1e30182` received independent
   `ACCEPT`, then was fast-forward integrated and pushed by the product manager.
-- Exact-head CI and CodeQL are running for that pushed identity. Exact-head
-  CodeRabbit review `4904235223` completed substantively and raised one
-  apparently material Stripe provenance-test finding in discussion
-  `3756311030`; independent validation is pending, and any correction belongs
-  to a separate checkpoint after product-manager/reviewer direction.
+- CodeRabbit review `4904235223`, run
+  `be132353-6da0-4b99-a5ab-5b9785ed2126`, completed substantively at exact
+  `7eb7d58c8bb936d2ca3813b90f91884a2f9fdb29`. Discussion `3756311030` is
+  independently `VALID` and material: comment, unrelated-`RUN`, and duplicate
+  build-command decoys were reproduced against the Stripe provenance test. A
+  separate bounded fail-closed correction is required after OC-01M5 review.
 - OC-01M5 is active to resolve the narrow mechanical reproducibility gap for
   the shipped Manja social preview without changing its artwork. Its moving
   candidate commit/tree remain in the immutable external review packet and
@@ -208,13 +209,13 @@ the complete runtime.
 Current PR: [#94](https://github.com/araihu/manja/pull/94),
 `coord/opencore-product` into `main`.
 
-At reviewed PR-transition parent `98b6218e4f78236e68708ef4332975ee5292badc`,
-the CodeQL, CI test, and integration checks passed. The accepted Simple Icons
-checkpoint now at the pushed PR head is
-`7eb7d58c8bb936d2ca3813b90f91884a2f9fdb29`; exact-head CI and CodeQL are
-running. Exact-head CodeRabbit review `4904235223` completed substantively;
-discussion `3756311030` raised an apparently material Stripe provenance-test
-finding that is pending independent validation and is outside OC-01M5.
+Snapshot at `2026-08-11T08:34:54Z`: PR #94 remains open at pushed head
+`7eb7d58c8bb936d2ca3813b90f91884a2f9fdb29`. CodeQL
+`actions/go/javascript` and its summary pass. Integration passes in 13m33s
+after one transient Forgejo 401 on the first attempt and a successful retry.
+CI test is pending. CodeRabbit review `4904235223`, run
+`be132353-6da0-4b99-a5ab-5b9785ed2126`, completed substantively at that exact
+head, and discussion `3756311030` is independently `VALID` and material.
 
 Before merge:
 
@@ -234,9 +235,10 @@ Complete OC-01M5's exact observed Manja social-rendering receipt, offline drift
 verifier, and truthful portable-reproduction blocker; freeze its moving
 commit/tree in the immutable external reviewer packet and control plane; obtain
 independent review; and let the product manager integrate only an accepted
-identity. Resolve any independently validated Stripe finding in a separate
-bounded checkpoint, then obtain a substantive successful CodeRabbit
-review/check for the final moving head after CI and CodeQL complete. Absence or
-a rate-limited no-review blocks merge.
+identity. Then implement the validated Stripe provenance-test correction in a
+separate bounded fail-closed checkpoint, obtain its independent review, and
+obtain a substantive successful CodeRabbit review/check for the final moving
+head after CI and CodeQL complete. Absence or a rate-limited no-review blocks
+merge.
 Deferred SaaS behavior and the active Arai Hû theme remain excluded; OC-04
 remains Open Core; licensing/package-generation Task 8 remains stopped.
