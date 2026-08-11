@@ -1,85 +1,125 @@
 # Provenance And Licensing Authority Gate
 
-Date: 2026-07-25
+Date: 2026-08-11
 
 Result: **BLOCKED**
 
 This inventory is an engineering release gate, not a legal conclusion. Manja
-must not claim Apache-2.0, publish `LICENSE` or `NOTICE`, or add Apache package
-metadata until every blocking item below is resolved with evidence.
+must not claim Apache-2.0, publish a root `LICENSE` or `NOTICE`, or add Apache
+package metadata until every blocking item below is resolved with evidence.
 
-## Snapshot And Evidence
+## Current Snapshot And Evidence
 
-The inventory was taken from branch `codex/open-core-extension-surface` after
-fetching `origin/main` at `58fb3ddbb2ee47d20d5daa5c13acfbf7b6c9fa85` and
-cherry-picking the approved design and plan commits. The evidence commands were:
+This inventory binds the clean base and current tree below:
+
+- branch: `codex/oc01-provenance-baseline`;
+- base and pre-edit `HEAD`: `39d65ade21c080ee2102f53da5ed741f000d6dd7`;
+- worktree: `/Users/guilhermecastro/.codex/worktrees/e1bf/manja`;
+- history: 280 commits from 2026-06-06 through 2026-08-10;
+- toolchain: Go 1.26.5.
+
+The evidence commands included:
 
 ```bash
-git shortlog -sne --all
-git log --reverse --format='%ad %H %an <%ae>' --date=short
-git remote -v
-rg -n -i 'Copyright|SPDX-License-Identifier|Licensed under|generated|DO NOT EDIT' .
-go list -m -json all
-go list -deps ./cmd/manja
+git shortlog -sne HEAD
+git log --reverse --format='%ad %H %an <%ae>' --date=short HEAD
+rg -n 'Copyright|SPDX-License-Identifier|Licensed under|generated|DO NOT EDIT' .
+go list -m all
+GOWORK=off go list -deps -tags=manja_runtime ./cmd/manja-runtime
 go tool muamba verify --strict
 go run ./cmd/webassets check
-git ls-files
+go test ./cmd/kubernetes-openapi-lock -count=1
+git archive --format=tar HEAD | tar -tf -
+docker build --pull=false -t manja:provenance .
+docker history --no-trunc manja:provenance
+docker image inspect manja:provenance
+docker run --rm --entrypoint /bin/sh manja:provenance -c 'apk info -vv'
 ```
 
-The history spans 2026-06-06 through 2026-07-25. `git shortlog -sne --all`
-reports 128 commits under one author identity:
-`Guilherme de Castro <guilherme.castro@totvs.com.br>`. Git authorship establishes
-who recorded the commits; it does not establish copyright ownership or the
-right to relicense work created in an employment context. Some commits were
-committed by GitHub's merge machinery, but retain the same author identity.
+`git shortlog -sne HEAD` reports 275 commits by
+`Guilherme de Castro <guilherme.castro@totvs.com.br>`, three by Dependabot,
+and two by the AraiHu asset-distribution bot. Git authorship and bot identity
+show who recorded changes; neither establishes copyright ownership, employment
+rights, assignment, or authority to license the resulting repository.
 
-No tracked root `LICENSE`, `NOTICE`, `COPYING`, SPDX declaration, copyright
-assignment, employer waiver, DCO policy, CLA, or other licensing-authority
-record exists at this snapshot.
+No tracked root `LICENSE`, `NOTICE`, `THIRD_PARTY_NOTICES.md`, copyright
+assignment, employer waiver, CLA, or repository-wide licensing-authority
+record exists. The root has no npm manifest or lockfile; `npm ls --all --json`
+returns an empty object. Browser inputs are instead acquired and locked by
+Muamba. The root Go acquisition graph contains 147 modules, but only final
+artifact inspection determines redistribution scope.
 
 ## First-Party Authority
 
-| Body of work | Repository evidence | Authority result | Required resolution |
+| Body of work | Repository evidence | Authority result | Required decision |
 | --- | --- | --- | --- |
-| Go, JavaScript, templ, YAML, CSS, documentation, and product copy | All reachable commits use the author identity above. The address is on the `totvs.com.br` domain. | **BLOCKED**. The actual owner may be the individual, an employer, another entity, or a combination; Git metadata does not decide this. | The rights holder must provide a durable written confirmation that names the owner, confirms authority to license the complete work, and resolves any employment or assignment rights. |
-| Proposed `NOTICE` holder and year range | The Git history supplies a 2026 activity range but no holder evidence. | **BLOCKED**. No holder or year may be placed in `NOTICE`. | After authority is established, record the exact holder and supported year range here before creating `NOTICE`. |
-| Contributions after licensing | No inbound contribution policy is active. | **BLOCKED** until the project license exists. | Activate the DCO policy in `docs/legal/inbound-contributions.md` together with the verified project license and sign-off enforcement. |
+| Go, JavaScript, templ, YAML, CSS, documentation, configuration, generated inputs, and product copy | Current history is predominantly the maintainer identity above, with automated dependency and asset updates. The maintainer address is on the `totvs.com.br` domain. | **BLOCKED**. Commit authorship does not decide whether the individual, an employer, another entity, or several parties own the work. | The rights holder must provide durable written evidence naming the owner, confirming authority over the complete first-party work, and resolving employment or assignment rights. |
+| Manja marks, logos, and favicons | [`rights-holder-confirmation.md`](rights-holder-confirmation.md) names Guilherme de Castro as individual rights holder for those visual assets and scopes their MIT redistribution to `github.com/araihu/assets`. | Cleared only within that named visual-asset scope. It does not establish authority over Manja source, docs, product copy, social-preview compositions, or third-party material. | Keep this narrow confirmation; do not use it as repository-wide authority. |
+| Proposed `NOTICE` holder and year range | History proves activity in 2026, but no evidence names the holder for the complete first-party body of work. | **BLOCKED**. No holder or year range may be placed in `NOTICE`. | Rights holder must approve the exact holder and evidence-supported year range after the complete authority question is resolved. |
 
-Resolution owner (not a copyright conclusion): Guilherme de Castro, repository
-maintainer. Resolution must attach or link evidence rather than replacing
+Resolution owner, not a copyright conclusion: Guilherme de Castro, repository
+maintainer. Resolution must attach or link evidence; it must not replace
 `BLOCKED` with an assumption.
 
-## Copied, Generated, And Static Material
+## Copied, Generated, Browser, And Static Material
 
-| Item | Evidence and current disposition | Result |
+| Item | Current evidence and shipped disposition | Result |
 | --- | --- | --- |
-| `internal/adapters/openapi/testdata/github-v3-rest.json` | Added in commit `ea330c2`; the file identifies itself as GitHub's v3 REST API and contains an `info.license` value of MIT, but the repository records neither the source URL/revision nor evidence that the API-description license covers redistribution of this exact file. The OCI image currently copies it into the final filesystem. | **BLOCKED** pending source, immutable upstream revision, applicable license, and attribution evidence. |
-| `internal/adapters/openapi/testdata/petstore.yaml` and review/config fixtures | Created from tracked Manja plans and commits. They fall under the unresolved first-party authority item. | **BLOCKED** with the first-party body of work; no separate upstream claim found. |
-| `internal/web/api.gen.go` | Header says it was generated by `oapi-codegen` v2.7.1 from `api/dist/openapi.yaml`; the split `api/` sources are tracked and the bundle is ignored. | Generator/input path is reproducible. Final disposition remains **BLOCKED** with first-party authority and the dependency-license inventory. |
-| `internal/web/templates/*_templ.go` | Headers identify templ-generated code; `.templ` inputs are tracked and `templ generate` reports zero baseline updates. | Reproducible generated output. **BLOCKED** with first-party authority and generator-license review. |
-| `internal/web/static/schema-example.js` | Generated by `cmd/webassets` from the SHA-384-locked `openapi-sampler` archive plus the Manja hydrator. | Exact included files, archive hash, SPDX label, source, and retained license are generated in [`browser-bundles.md`](browser-bundles.md). |
-| `internal/web/static/request-composer.js` | Generated by Go esbuild from 30 SHA-384-locked npm-registry package archives plus the Manja hydrator. | Exact included files, archive hashes, SPDX labels, sources, and retained licenses are generated in [`browser-bundles.md`](browser-bundles.md). |
-| Three PNG logo concepts under `docs/brand/logo-concepts/2026-06-08/` | Commit `d7f66a4` and the accompanying README call them generated concepts and retain prompts, but do not record the generator, account, model, generation terms, or an ownership/redistribution decision. | **BLOCKED**. Keep as non-release reference material until generation provenance and terms are documented, or remove them from distributed archives. |
-| Manja SVG marks, logos, and favicons under `internal/web/static` and `site/internal/site/static` | Added in the product-site lineage and visibly derived from the generated logo direction. Individual rights-holder authority and MIT redistribution confirmation is recorded in `docs/legal/rights-holder-confirmation.md`. | Cleared for publication in `github.com/araihu/assets`; generated PNG concepts remain blocked pending their own generator provenance. |
-| CSS and first-party JavaScript hydrators | Tracked as Manja source with no external header. No font files are tracked; CSS uses system/font-family references rather than redistributing font binaries. | **BLOCKED** only by first-party authority, except for generated vendor bundles listed separately. |
-| Go modules | `go list -deps ./cmd/manja` shows the production binary uses Manja plus templ, Goshtoso, kin-openapi, goldmark, chroma, YAML/schema helpers, and transitive modules. Testcontainers and Playwright are direct module requirements but are test/tool dependencies, not imported by the production binary. | Exact licenses and notice obligations remain to be classified before distribution. |
-| Browser package provenance | Muamba retains 31 exact npm-registry archives and readable upstream licenses. `cmd/webassets` derives bundle membership from the esbuild metafile and fails on undeclared, unused, or unlicensed packages. Redocly remains external build/lint tooling. | Bundle-aware evidence is generated in [`browser-bundles.md`](browser-bundles.md); the broader release gate remains blocked by the independent first-party and copied-artifact items in this document. |
-| Container base and packages | `Dockerfile` uses `golang:1.26.1-alpine` to build and `alpine:3.22` at runtime, installs `ca-certificates` and `git`, and copies the binary, web static directory, and GitHub fixture. | **BLOCKED** pending final-image package/license inventory. Local image inspection was not performed because no approved rootless Docker provider was configured. Colima Docker was reachable only through explicit host-socket settings used for integration verification; that does not complete or approve the licensing inspection. |
+| Kubernetes OpenAPI v3 catalog | `catalog-source.json` pins 65 upstream files and the upstream `LICENSE` to Kubernetes commit `a818af18fe29d999d6741234c8cd72709ef2f424`, including every Git blob SHA. `receipt.json` adds SHA-256 values and counts. Muamba verification and `go test ./cmd/kubernetes-openapi-lock -count=1` pass. The OCI build compiles these inputs into renderer snapshot data. | Mechanical source-byte provenance is resolved. Redistribution remains **BLOCKED** because the final image contains derived snapshot data but not the retained Kubernetes license or project notice set. Task 8 must place and verify required notices after the project authority gate passes. |
+| `internal/adapters/openapi/testdata/github-v3-rest.json` | The file identifies GitHub's REST API and declares MIT. Current renderer configuration records the GitHub source repository and license URL. The exact upstream commit/blob for these bytes is still absent. The Docker build compiles the file into a shipped renderer snapshot even though the source JSON is not copied into the final image. | **BLOCKED** pending immutable upstream revision/blob evidence and reviewed attribution/notice disposition for the exact bytes. |
+| Stripe OpenAPI input | The Docker build fetches `https://github.com/stripe/openapi.git` at commit `d70de345383dd818a0ce831f4e20d375c5a90cec`, compiles `openapi/spec3.json`, and ships only the derived snapshot. Renderer configuration links to the repository's MIT license on a mutable branch; no locked license bytes or hash are retained beside the pin. | Source revision is mechanically pinned. **BLOCKED** pending immutable license evidence for that revision and reviewed notice placement in final artifacts. |
+| Other OpenAPI/config fixtures | Manja-specific fixtures and review/config inputs are tracked in the first-party history. | **BLOCKED** with the unresolved first-party authority item unless a fixture separately identifies an upstream source. |
+| `internal/web/api.gen.go` | Header says `oapi-codegen` v2.7.1 generated it from the ignored `api/dist/openapi.yaml`; split `api/` sources are tracked. Current `go.mod` pins `oapi-codegen` v2.8.0. | Input path is known, but generator version and current module pin differ. Record as a reproducibility gap; do not claim current-pinned byte reproduction until regeneration/drift proof is reviewed. |
+| `internal/web/templates/*_templ.go` | Headers identify templ-generated output; `.templ` inputs are tracked. | Generated source is attributable to tracked inputs. Final disposition remains **BLOCKED** with first-party authority and dependency-license classification. |
+| Browser bundles | `schema-example.js` and `request-composer.js` are generated by `cmd/webassets`. Muamba verifies 31 exact npm-registry archives and retained license bytes. [`browser-bundles.md`](browser-bundles.md) records bundle membership from esbuild metafiles, SPDX labels, hashes, sources, licenses, and included files. `go run ./cmd/webassets check` passes. | Mechanical browser provenance is current. Broader release clearance remains blocked by first-party authority and final-artifact notice/SBOM work. |
+| GitHub and Stripe catalog marks | The SVGs state that their paths were adapted from Simple Icons under CC0-1.0. They do not record the exact Simple Icons version, upstream file hash, or source URL. The OCI image copies both SVGs. | **BLOCKED** pending immutable upstream evidence for the adapted paths and confirmation that the recorded CC0 source applies to those exact bytes. |
+| `manja-social.svg` and `manja-social.png` | The tracked SVG is editable source; PNG is 1280x640 and SHA-256 `7234c9a20fc3a4a44364b8f9d544ddae5aba8c2b6a418b26ad5a930d2d0ab0bd`. No committed conversion command or distinct rights statement covers the complete social composition. Both ship in the OCI static tree. | **BLOCKED** with first-party authority; add reproducible SVG-to-PNG evidence before release packaging. |
+| `kubernetes-social.png` | PNG is 1280x640, 48,705 bytes, and SHA-256 `a7cf0baba81cf79fdbe8a0487bd30ed1b6a34dc816ec8345a50591a99a2db423`. No editable source, generator receipt, generation terms, or Kubernetes visual-asset attribution accompanies it. It ships in the OCI static tree. | **BLOCKED** pending source/generation provenance and an explicit redistribution/trademark disposition from the responsible rights holder. |
+| Three PNG concepts under `docs/brand/logo-concepts/2026-06-08/` | Commit history and the adjacent README describe generated concepts and retain prompts, but do not name the generator, account, model, generation terms, or redistribution decision. They enter a raw source archive but not the OCI image. | **BLOCKED**. Exclude from a distributed source archive or document generator provenance and rights before distribution. |
+| First-party CSS and JavaScript | Tracked source has no external copyright header. No font binaries or tracked screenshots were found. | **BLOCKED** only by first-party authority, except for generated browser/vendor inputs listed separately. |
 
-Tracked screenshots were not found. The only tracked raster images are the
-three generated logo-concept PNGs listed above.
+## Go And Container Inputs
+
+`GOWORK=off go list -deps -tags=manja_runtime ./cmd/manja-runtime` shows the
+runtime binary contains Manja plus six external module bodies: templ, Goshtoso,
+Chroma, regexp2, `golang.org/x/text`, and `gopkg.in/yaml.v3`. Parser/compiler
+modules used by `manja build`, Playwright, Testcontainers, Forgejo, code
+generators, and their transitive graphs are not in that runtime closure merely
+because they occur in `go.mod`.
+
+A local `manja:provenance` image built successfully from the current
+Dockerfile. The inspected arm64 image was 35,242,561 bytes and used:
+
+- build base `golang:1.26.5-alpine` at digest
+  `sha256:0178a641fbb4858c5f1b48e34bdaabe0350a330a1b1149aabd498d0699ff5fb2`;
+- runtime base `alpine:3.24` at digest
+  `sha256:28bd5fe8b56d1bd048e5babf5b10710ebe0bae67db86916198a6eec434943f8b`;
+- 17 final APK packages, including Alpine base packages and
+  `ca-certificates`; no final-stage `git`;
+- `/usr/local/bin/manja`, 416 renderer-data files across Kubernetes, GitHub,
+  and Stripe snapshots, renderer configuration/allowlist, and the complete
+  `internal/web/static` tree.
+
+The final image contains no project `LICENSE`, `NOTICE`, third-party notices,
+SBOM, or retained Kubernetes/Stripe/GitHub license path. It also copies the two
+browser-test `.go` source files found under `internal/web/static`; those files
+are shipped bytes even though their Go dependencies are not part of the
+runtime binary.
 
 ## Gate Decision
 
-The Apache-2.0 gate is **BLOCKED** for two independent reasons:
+The gate remains **BLOCKED** for independent reasons:
 
-1. the actual first-party rights holder and their licensing authority are not
-   established; and
-2. copied, generated, bundled, and image/container material still has unresolved
-   provenance or redistribution obligations.
+1. repository-wide first-party ownership and licensing authority are not
+   established;
+2. GitHub, Stripe-license, Simple Icons, and social-preview evidence remains
+   incomplete;
+3. generated API output is not proven byte-reproducible with the current
+   pinned generator; and
+4. current source/OCI artifacts do not carry a complete project license,
+   notices, or SBOM set.
 
-Accordingly, this checkpoint deliberately does not create `LICENSE`, `NOTICE`,
-`THIRD_PARTY_NOTICES.md`, Apache badges/metadata, SBOM claims, or release
-packaging that implies the audit passed. Safe public package-boundary work may
-continue. Task 8 of the Open Core plan remains blocked until this document is
-changed to `PASS` using concrete evidence and review.
+Accordingly, this checkpoint creates no root `LICENSE`, `NOTICE`,
+`THIRD_PARTY_NOTICES.md`, Apache badge/metadata, SBOM, or release packager.
+Task 8 of the Open Core plan remains stopped until this document is changed to
+`PASS` from concrete rights-holder and redistribution evidence.
