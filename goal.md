@@ -51,9 +51,9 @@ not implement hosted product behavior speculatively.
 - Task: `019fef17-2fad-73d2-b004-d3706d36ea82`
 - Worktree label: dedicated Open Core developer worktree
 - Initial lane base: `39d65ade21c080ee2102f53da5ed741f000d6dd7`
-- Current checkpoint base: `e3d6bb977c096dc13933068369f46d3cf8decd3c`
-- Current checkpoint base tree: `d867bfd01430196aad29e97b67636564958c1b17`
-- Branch: `codex/oc01-goal-ledger-correction`
+- Current checkpoint base: `52c7598c4ea1f0b5f0f5e27e363320866b49f789`
+- Current checkpoint base tree: `cef5aa1ce775095d1e7cd8d156c9f9249f8b2901`
+- Branch: `codex/oc01-oci-inspection-trust-boundary`
 - Owns only bounded Open Core implementation checkpoints assigned here.
 - Must commit each coherent checkpoint with a meaningful message.
 - Must not implement deferred SaaS behavior or edit the active Arai Hû theme
@@ -150,13 +150,25 @@ not implement hosted product behavior speculatively.
   `84e96e2d-bec2-45ef-9ef6-925155c9f783` at `e3d6bb977c096dc13933068369f46d3cf8decd3c`
   was rate-limited and produced no substantive review object. A successful
   status context is not review evidence, so the CodeRabbit merge gate remains
-  open. This bounded goal-ledger correction records that durable truth and
-  awaits independent review; its moving child commit and tree remain external.
+  open. Goal-ledger correction `52c7598c4ea1f0b5f0f5e27e363320866b49f789`,
+  tree `cef5aa1ce775095d1e7cd8d156c9f9249f8b2901`, received acceptance, then was
+  fast-forward integrated and pushed unchanged.
+- CodeRabbit review `4905658559`, run
+  `d5161f3c-d4aa-41e6-af99-3f76ba07eeb0`, invocation
+  `f2f1fbc0-de97-4c29-9fe0-365880fb74cc`, reviewed exact
+  `52c7598c4ea1f0b5f0f5e27e363320866b49f789` substantively. Independent verdict:
+  `VALID` and material. The inline digest/publication facet and outside-diff
+  no-execution facet are one OCI inspection trust-boundary finding, not two.
+  This bounded correction marks OCI distribution inspection blocked and records
+  prospective fail-closed Task-8 invariants. It awaits independent review; its
+  moving child commit and tree remain external.
 - Full root tests, strict Muamba verification, architecture, unrelated external
-  module, generation, browser, API, templ, and OCI inspection gates passed for
-  the OC-01 evidence. Direct standalone `site` testing still fails because its
-  committed module files need indirect dependency updates; OC-01 did not widen
-  scope to change them.
+  module, generation, browser, API, and templ gates passed for the OC-01
+  evidence. Local OCI inventory observations supplied baseline evidence only;
+  they are not a digest-bound distribution gate, which remains blocked under
+  Task 8. Direct standalone `site` testing still fails because its committed
+  module files need indirect dependency updates; OC-01 did not widen scope to
+  change them.
 - Renderer/catalog initial HTML and preview-image checks pass the social-ready
   metadata gate. The public product site lacks canonical, Open Graph, explicit
   X Card, and preview-image metadata; this is a recorded Open Core artifact gap,
@@ -172,10 +184,10 @@ not implement hosted product behavior speculatively.
 ### OC-01: Current Open Core provenance and artifact baseline
 
 Status: accepted baseline and mechanical checkpoints, OC-01M5, strict Stripe
-Dockerfile-binding correction, first final-head correction, and root-gate truth
-correction are integrated/pushed through exact
-`e3d6bb977c096dc13933068369f46d3cf8decd3c`. The bounded goal-ledger correction
-is active locally and awaits independent review.
+Dockerfile-binding correction, first final-head correction, root-gate truth
+correction, and goal-ledger corrections are integrated/pushed through exact
+`52c7598c4ea1f0b5f0f5e27e363320866b49f789`. The bounded OCI inspection
+trust-boundary correction is active locally and awaits independent review.
 
 Accepted source identity:
 
@@ -194,10 +206,10 @@ Reviewed PR-transition identity:
 
 Current integrated/pushed product-manager checkpoint:
 
-- head: `e3d6bb977c096dc13933068369f46d3cf8decd3c`;
-- tree: `d867bfd01430196aad29e97b67636564958c1b17`;
-- disposition: independent `ACCEPT` with no findings; fast-forward integrated
-  and pushed unchanged; preserved as immutable parent for this ledger correction.
+- head: `52c7598c4ea1f0b5f0f5e27e363320866b49f789`;
+- tree: `cef5aa1ce775095d1e7cd8d156c9f9249f8b2901`;
+- disposition: accepted; fast-forward integrated and pushed unchanged; preserved
+  as immutable parent for this OCI inspection correction.
 
 The final moving candidate head and tree are bound by the immutable external
 review packet and control plane. A commit cannot embed its own final commit and
@@ -247,13 +259,21 @@ the complete runtime.
 Current PR: [#94](https://github.com/araihu/manja/pull/94),
 `coord/opencore-product` into `main`.
 
-Snapshot at `2026-08-11T10:56:39Z`: PR #94 remains open at pushed head
-`e3d6bb977c096dc13933068369f46d3cf8decd3c`. CI `test` and `integration` pass;
-CodeQL `actions`, `go`, `javascript-typescript`, and its summary pass. Exact-head
-CodeRabbit invocation `84e96e2d-bec2-45ef-9ef6-925155c9f783` was rate-limited
-and produced no substantive review object. The CodeRabbit status context does
-not satisfy the substantive-review requirement; that merge gate remains open
-and merge remains blocked.
+Snapshot at `2026-08-11T11:27:57Z`: PR #94 remains open at pushed head
+`52c7598c4ea1f0b5f0f5e27e363320866b49f789`. CodeQL `actions`, `go`,
+`javascript-typescript`, and its summary pass. CI run `31485230010` completed
+with failure: root `test` passed, while `integration` failed only
+`TestKubernetesCatalog` after 247.38s when exact search
+`detail-sha256-674e48dbf74f258a2cf294bdf69f20494d91cb67b2ad1b916f9decdadb26c3ee`
+returned HTTP 503, `bytes=31`. Forgejo start, public fetch, private HTTPS, and
+private SSH tests passed. Build/publish and deploy were skipped. No code changed
+between prior green `e3d6bb977c096dc13933068369f46d3cf8decd3c` and goal-only
+`52c7598c4ea1f0b5f0f5e27e363320866b49f789`; record this as a failed exact-head
+gate requiring a successful rerun at the eventual correction head, without a
+runtime-code diagnosis in this docs checkpoint. CodeRabbit review `4905658559`,
+run `d5161f3c-d4aa-41e6-af99-3f76ba07eeb0`, is substantive with the one
+independently validated material OCI inspection trust-boundary finding. Merge
+remains blocked.
 
 Before merge:
 
@@ -269,11 +289,11 @@ Before merge:
 
 ## Next Action
 
-Freeze this goal-ledger correction's moving commit/tree in the immutable external
-reviewer packet and control plane and obtain fresh independent review. Once the
-hourly safety window has elapsed, after `2026-08-11T11:17Z`, request one exact-head
-substantive CodeRabbit review. Fix only independently validated material
-findings. Do not merge. Absence or another rate-limited no-review keeps the merge
-gate open.
+Freeze this OCI inspection trust-boundary correction's moving commit/tree in the
+immutable external reviewer packet and control plane and obtain fresh independent
+review. Rerun CI at the eventual correction head and require `test` and
+`integration` success. Then request one exact-head substantive CodeRabbit review
+and fix only independently validated material findings. Do not merge. A failed
+CI gate, absent review, or rate-limited no-review keeps merge blocked.
 Deferred SaaS behavior and the active Arai Hû theme remain excluded; OC-04
 remains Open Core; licensing/package-generation Task 8 remains stopped.

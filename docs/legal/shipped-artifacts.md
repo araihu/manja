@@ -175,36 +175,48 @@ remain elsewhere. A sibling checksum file or marker inside the extracted root
 is not independent authority. This is a future invariant, not a current archive,
 digest, command, layout, marker, or receipt.
 
-The current OCI gate remains concrete. It runs read-only as root and scans the
-complete image root filesystem rather than selected `/app` paths:
+OCI distribution inspection is also **BLOCKED** until stopped Task 8 implements
+digest-bound inspection and promotion. No current release digest, published
+release artifact, passing OCI inspection receipt, or promotion proof exists.
+Prior local inspection found the prohibited sources under
+`/app/internal/web/static`, but that observation is not a digest-bound release
+gate and cannot authorize publication.
 
-```bash
-set -euo pipefail
-: "${IMAGE:?set IMAGE}"
+Prospective Task-8 OCI inspection must fail closed under all these invariants:
 
-docker run --rm --read-only --user 0:0 --entrypoint /bin/sh "$IMAGE" -ec '
-  if ! match=$(
-    find / -xdev -type f \
-      \( -name request_composer_browser_test.go \
-         -o -name schema_example_browser_test.go \) \
-      -print -quit
-  ); then
-    printf "browser-test source scan failed: /\n" >&2
-    exit 1
-  fi
-  if [ -n "$match" ]; then
-    printf "forbidden browser-test source: %s\n" "$match" >&2
-    exit 1
-  fi
-'
-```
+- a trusted release definition supplies the exact image reference, matching
+  `^ghcr\.io/araihu/manja@sha256:[0-9a-f]{64}$`; tags and unrelated
+  caller-selected digests are rejected;
+- every platform manifest published by that digest is inspected, rather than
+  treating one local platform as multi-platform coverage;
+- each inspection container is created with `docker create --network none` and
+  is never started; image-supplied programs, shells, entrypoints, and commands
+  are never executed;
+- declared volumes are rejected unless their contents are separately and fully
+  inspected, because `docker export` omits volume contents;
+- `docker export` streams directly into a trusted host scanner without
+  root-owned extraction. Export failure, archive parse failure, unsafe path or
+  link, duplicate entry, special file, permission error, or incomplete scan all
+  fail the gate;
+- pipeline failure propagation and cleanup preserve the scanner result; neither
+  a missing `pipefail` equivalent nor cleanup status may mask rejection;
+- tag promotion and deployment consume successful inspection for the same exact
+  digest, with no tag re-resolution or digest substitution between inspection
+  and promotion.
+
+Under those constraints, create/export inspection is sufficient only for this
+flattened-filesystem filename exclusion. It does not cover declared volumes,
+image metadata, SBOM provenance, or multi-platform publication by itself. A
+scanner that reads saved OCI layers instead must implement layer-aware whiteout
+and opaque-directory semantics before it can claim the equivalent final
+filesystem view. These are prospective invariants, not implemented commands or
+a current passing receipt.
 
 This exclusion may be changed only if shipping those source files in a runtime
 artifact is an intentional redistribution decision and an explicit notice/SBOM
 policy review clears and inventories them. Their accidental presence under a
 blanket static copy is not clearance. Task 8 remains blocked until archive-owned
-extraction/scanning and the other final packager gates are implemented; OC-01
-does not change the Dockerfile. The current OCI scan fails on the browser-test
-sources already recorded under `/app/internal/web/static`; that failure remains
-truthful until separately authorized packaging work removes or explicitly
-clears them.
+extraction/scanning, digest-bound OCI inspection, and the other final packager
+gates are implemented; OC-01 does not change the Dockerfile. The recorded current
+OCI source presence remains a blocker until separately authorized packaging work
+removes or explicitly clears it.
