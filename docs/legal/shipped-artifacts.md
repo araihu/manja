@@ -176,8 +176,9 @@ is not independent authority. This is a future invariant, not a current archive,
 digest, command, layout, marker, or receipt.
 
 OCI distribution inspection is also **BLOCKED** until stopped Task 8 implements
-digest-bound inspection and promotion. No current release digest, published
-release artifact, passing OCI inspection receipt, or promotion proof exists.
+digest-bound inspection and promotion. Existing CI-published OCI artifacts
+remain uninspected and uncleared. No independently trusted release digest,
+passing inspection receipt, or same-digest promotion proof is recorded.
 Prior local inspection found the prohibited sources under
 `/app/internal/web/static`, but that observation is not a digest-bound release
 gate and cannot authorize publication.
