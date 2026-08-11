@@ -51,9 +51,9 @@ not implement hosted product behavior speculatively.
 - Task: `019fef17-2fad-73d2-b004-d3706d36ea82`
 - Worktree label: dedicated Open Core developer worktree
 - Initial lane base: `39d65ade21c080ee2102f53da5ed741f000d6dd7`
-- Current checkpoint base: `2bd9114ec7c2a6d034c66a56692b3141da2a769a`
-- Current checkpoint base tree: `b9b1fae0b0875938de84f55668a205478c947410`
-- Branch: `codex/oc01-final-root-gate-truth`
+- Current checkpoint base: `e3d6bb977c096dc13933068369f46d3cf8decd3c`
+- Current checkpoint base tree: `d867bfd01430196aad29e97b67636564958c1b17`
+- Branch: `codex/oc01-goal-ledger-correction`
 - Owns only bounded Open Core implementation checkpoints assigned here.
 - Must commit each coherent checkpoint with a meaningful message.
 - Must not implement deferred SaaS behavior or edit the active Arai Hû theme
@@ -137,8 +137,16 @@ not implement hosted product behavior speculatively.
   `VALID` and material. A caller-selected clean subdirectory could pass while
   prohibited source remained elsewhere, so that exact parent is rejected for
   merge. This bounded docs correction removes the false host-archive success
-  claim and leaves the host archive gate blocked under Task 8. It awaits fresh
-  independent review; the moving child commit and tree remain external.
+  claim and leaves the host archive gate blocked under Task 8. Exact correction
+  `e3d6bb977c096dc13933068369f46d3cf8decd3c`, tree
+  `d867bfd01430196aad29e97b67636564958c1b17`, received independent `ACCEPT`
+  with no findings, then was fast-forward integrated and pushed unchanged.
+- Exact-head CodeRabbit invocation
+  `84e96e2d-bec2-45ef-9ef6-925155c9f783` at `e3d6bb977c096dc13933068369f46d3cf8decd3c`
+  was rate-limited and produced no substantive review object. A successful
+  status context is not review evidence, so the CodeRabbit merge gate remains
+  open. This bounded goal-ledger correction records that durable truth and
+  awaits independent review; its moving child commit and tree remain external.
 - Full root tests, strict Muamba verification, architecture, unrelated external
   module, generation, browser, API, templ, and OCI inspection gates passed for
   the OC-01 evidence. Direct standalone `site` testing still fails because its
@@ -158,12 +166,11 @@ not implement hosted product behavior speculatively.
 
 ### OC-01: Current Open Core provenance and artifact baseline
 
-Status: accepted baseline and mechanical checkpoints, OC-01M5, the strict Stripe
-Dockerfile-binding correction, and the first final-head correction are
-integrated/pushed through exact `2bd9114ec7c2a6d034c66a56692b3141da2a769a`.
-That exact head is rejected for merge by the material selected-subdirectory
-finding. The bounded docs correction is active locally and awaits independent
-review.
+Status: accepted baseline and mechanical checkpoints, OC-01M5, strict Stripe
+Dockerfile-binding correction, first final-head correction, and root-gate truth
+correction are integrated/pushed through exact
+`e3d6bb977c096dc13933068369f46d3cf8decd3c`. The bounded goal-ledger correction
+is active locally and awaits independent review.
 
 Accepted source identity:
 
@@ -182,10 +189,10 @@ Reviewed PR-transition identity:
 
 Current integrated/pushed product-manager checkpoint:
 
-- head: `2bd9114ec7c2a6d034c66a56692b3141da2a769a`;
-- tree: `b9b1fae0b0875938de84f55668a205478c947410`;
-- disposition: rejected for merge and preserved unchanged as immutable parent
-  for the bounded root-gate truth correction.
+- head: `e3d6bb977c096dc13933068369f46d3cf8decd3c`;
+- tree: `d867bfd01430196aad29e97b67636564958c1b17`;
+- disposition: independent `ACCEPT` with no findings; fast-forward integrated
+  and pushed unchanged; preserved as immutable parent for this ledger correction.
 
 The final moving candidate head and tree are bound by the immutable external
 review packet and control plane. A commit cannot embed its own final commit and
@@ -235,14 +242,13 @@ the complete runtime.
 Current PR: [#94](https://github.com/araihu/manja/pull/94),
 `coord/opencore-product` into `main`.
 
-Snapshot at `2026-08-11T10:20:42Z`: PR #94 remains open at pushed head
-`2bd9114ec7c2a6d034c66a56692b3141da2a769a`. CI `test` and `integration` pass;
-CodeQL `actions`, `go`, `javascript-typescript`, and its summary pass. CodeRabbit
-review `4905151932`, run `fde28eb6-45b5-4def-945e-4efe262617dd`, completed
-substantively at that exact head. Thread `PRRT_kwDOSzGXLc6YMCp7`, comment
-`PRRC_kwDOSzGXLc7f8HHp`, is independently `VALID` and material. The remote checks
-are green, but the caller-selected-root finding rejects that head for merge
-pending correction and fresh final-head review.
+Snapshot at `2026-08-11T10:56:39Z`: PR #94 remains open at pushed head
+`e3d6bb977c096dc13933068369f46d3cf8decd3c`. CI `test` and `integration` pass;
+CodeQL `actions`, `go`, `javascript-typescript`, and its summary pass. Exact-head
+CodeRabbit invocation `84e96e2d-bec2-45ef-9ef6-925155c9f783` was rate-limited
+and produced no substantive review object. The CodeRabbit status context does
+not satisfy the substantive-review requirement; that merge gate remains open
+and merge remains blocked.
 
 Before merge:
 
@@ -258,11 +264,11 @@ Before merge:
 
 ## Next Action
 
-Freeze the bounded root-gate truth correction's moving commit/tree in the
-immutable external reviewer packet and control plane, obtain fresh independent
-review, and let the product manager integrate only an accepted identity. Then
-obtain a substantive successful CodeRabbit review/check for the final moving
-head after CI and CodeQL complete. Absence or a rate-limited no-review blocks
-merge.
+Freeze this goal-ledger correction's moving commit/tree in the immutable external
+reviewer packet and control plane and obtain fresh independent review. Once the
+hourly safety window has elapsed, after `2026-08-11T11:17Z`, request one exact-head
+substantive CodeRabbit review. Fix only independently validated material
+findings. Do not merge. Absence or another rate-limited no-review keeps the merge
+gate open.
 Deferred SaaS behavior and the active Arai Hû theme remain excluded; OC-04
 remains Open Core; licensing/package-generation Task 8 remains stopped.
