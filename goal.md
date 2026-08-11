@@ -96,10 +96,19 @@ not implement hosted product behavior speculatively.
 - `docs/legal/provenance.md` remains `BLOCKED`; root `LICENSE`, `NOTICE`,
   `THIRD_PARTY_NOTICES.md`, deterministic SBOM generation, and verified release
   packaging remain absent.
-- Independent developer and reviewer baseline audits agree that the July legal
-  inventory is stale: current history, Muamba/browser inputs, Kubernetes
-  renderer artifacts, social preview images, Go/Alpine versions, and OCI
-  contents require fresh evidence.
+- OC-01 refreshed the stale July legal inventory with current Muamba/browser,
+  Kubernetes renderer, social preview, Go/Alpine, source-archive, site, and OCI
+  evidence. Provenance remains `BLOCKED`, and licensing/package-generation Task
+  8 remains stopped.
+- Full root tests, strict Muamba verification, architecture, unrelated external
+  module, generation, browser, API, templ, and OCI inspection gates passed for
+  the OC-01 evidence. Direct standalone `site` testing still fails because its
+  committed module files need indirect dependency updates; OC-01 did not widen
+  scope to change them.
+- Renderer/catalog initial HTML and preview-image checks pass the social-ready
+  metadata gate. The public product site lacks canonical, Open Graph, explicit
+  X Card, and preview-image metadata; this is a recorded Open Core artifact gap,
+  not an OC-01 page change.
 - Active Arai Hû Modern-theme rollout belongs to task
   `019fef01-b65f-7980-a360-83e48f8a6345`; this control plane must avoid its
   files and refs.
@@ -110,7 +119,16 @@ not implement hosted product behavior speculatively.
 
 ### OC-01: Current Open Core provenance and artifact baseline
 
-Status: developer active; reviewer preparing independent baseline.
+Status: accepted and integrated locally.
+
+Accepted source identity:
+
+- base: `39d65ade21c080ee2102f53da5ed741f000d6dd7`;
+- rejected candidate preserved: `bcb8bcf455d380f4c35787fc3671f512c917ca7d`;
+- accepted corrected head: `f4a9f48080902e0f6e390589e9f8662b525131f1`;
+- accepted corrected tree: `9324262e34a2db5596300aa3f74cf77eaabada28`;
+- independent verdict: `ACCEPT`, no findings;
+- PM integration commits: `f5b2f6d` and `17f7d2e`.
 
 Goal: reconcile the approved Open Core plan with current `origin/main` and
 produce current, behavior-backed provenance and shipped-artifact evidence
@@ -165,6 +183,8 @@ Before merge:
 
 ## Next Action
 
-Wait for the developer's first coherent OC-01 commit. Freeze its identity and
-send only that candidate to the independent reviewer. Integrate promptly after
-an identity-bound acceptance.
+Verify the combined PM tree, publish the Open Core coordination branch as a PR,
+and confirm CodeQL and CodeRabbit are both present. Fix only findings that apply
+to the current behavior and rereview every changed identity. Then select the
+next bounded Open Core checkpoint from the accepted OC-01 gaps while licensing
+Task 8 remains stopped.
