@@ -51,9 +51,9 @@ not implement hosted product behavior speculatively.
 - Task: `019fef17-2fad-73d2-b004-d3706d36ea82`
 - Worktree label: dedicated Open Core developer worktree
 - Initial lane base: `39d65ade21c080ee2102f53da5ed741f000d6dd7`
-- Current checkpoint base: `a0d1c4e0622b91a070ff96abbeda0ac5d874e82a`
-- Current checkpoint base tree: `d580a55a59972032e578a9f38e5287341517ed71`
-- Branch: `codex/oc01-kubernetes-search-ci`
+- Current checkpoint base: `f185838ab5fcb1eb6ca9c2a75e0f54c56e164c9a`
+- Current checkpoint base tree: `7c6a60757fbad01f8fc5d62db65952af06dda98d`
+- Branch: `codex/oc01-exact-query-traversal-gate`
 - Owns only bounded Open Core implementation checkpoints assigned here.
 - Must commit each coherent checkpoint with a meaningful message.
 - Must not implement deferred SaaS behavior or edit the active Arai Hû theme
@@ -182,13 +182,31 @@ not implement hosted product behavior speculatively.
   rejected it. Its early path bypassed canonical `SearchService` validation:
   over-limit and control-wrapped exact IDs returned 200, while an
   NFKC-equivalent exact ID remained deadline-bound and could return 503.
-- This correction child canonicalizes and validates the caller query exactly
-  once, then passes the same opaque canonical value to both directory lookup
-  and subsequent search. Controlled RED reproduced all three rejected cases;
+- Correction `f185838ab5fcb1eb6ca9c2a75e0f54c56e164c9a`, tree
+  `7c6a60757fbad01f8fc5d62db65952af06dda98d`, canonicalizes and validates the
+  caller query exactly once, then passes the same opaque canonical value to
+  both directory lookup and subsequent search. Controlled RED reproduced all
+  three rejected cases;
   GREEN returns 400 without child reads for invalid queries, resolves the NFKC
   exact query directory-only, and preserves non-exact persistent 503 plus
-  `Retry-After: 1`. The moving child commit and tree remain external pending
-  fresh independent review.
+  `Retry-After: 1`. It received independent acceptance, then was fast-forward
+  integrated and pushed unchanged.
+- CodeRabbit review `4906397511`, run
+  `03263440-726a-4661-bd9e-b2d52654deb9`, reviewed exact
+  `f185838ab5fcb1eb6ca9c2a75e0f54c56e164c9a` and was submitted at
+  `2026-08-11T12:51:50Z`. Independent classification marks its final-head-loop
+  wording `DUPLICATE`: existing external identity, review, CI, CodeQL, and
+  substantive CodeRabbit gates already fail closed, so no recursive candidate
+  identity is added. Its unconditional exact-directory preflight finding is
+  `VALID` and material: ordinary global queries compare against all 4,872
+  current demo details before the existing child-search deadline.
+- This bounded correction keeps canonical validation first, then permits exact
+  directory traversal only for canonical `detail-sha256-` plus 64-lowercase-hex
+  queries. Controlled decoy receipts prove wrong-prefix, wrong-length, non-hex,
+  suffixed, and ordinary queries enter bounded `SearchService` instead. Exact
+  lowercase, uppercase-normalized, and NFKC-equivalent IDs remain
+  directory-only and collect across catalogs. The moving candidate identity
+  remains external pending fresh independent review.
 - Full root tests, strict Muamba verification, architecture, unrelated external
   module, generation, browser, API, and templ gates passed for the OC-01
   evidence. Local OCI inventory observations supplied baseline evidence only;
@@ -214,10 +232,10 @@ Status: accepted baseline and mechanical checkpoints, OC-01M5, strict Stripe
 Dockerfile-binding correction, final-head corrections, root-gate truth,
 goal-ledger corrections, and the OCI inspection trust-boundary correction are
 integrated/pushed through exact
-`a0d1c4e0622b91a070ff96abbeda0ac5d874e82a`. The bounded Kubernetes exact-search
-candidate `1866412c67650a413f6e2340f728a278ef8b685c` was rejected for bypassing
-canonical query validation. Its narrow correction child is active locally and
-awaits fresh independent review.
+`f185838ab5fcb1eb6ca9c2a75e0f54c56e164c9a`. CodeRabbit's unconditional
+exact-directory preflight finding at that identity is independently valid and
+material. Its narrow traversal-gate correction is active locally and awaits
+fresh independent review.
 
 Accepted source identity:
 
@@ -236,10 +254,10 @@ Reviewed PR-transition identity:
 
 Current integrated/pushed product-manager checkpoint:
 
-- head: `a0d1c4e0622b91a070ff96abbeda0ac5d874e82a`;
-- tree: `d580a55a59972032e578a9f38e5287341517ed71`;
+- head: `f185838ab5fcb1eb6ca9c2a75e0f54c56e164c9a`;
+- tree: `7c6a60757fbad01f8fc5d62db65952af06dda98d`;
 - disposition: accepted; fast-forward integrated and pushed unchanged; preserved
-  as immutable parent for this Kubernetes exact-search correction.
+  as immutable parent for this exact-query traversal correction.
 
 The final moving candidate head and tree are bound by the immutable external
 review packet and control plane. A commit cannot embed its own final commit and
@@ -289,22 +307,14 @@ the complete runtime.
 Current PR: [#94](https://github.com/araihu/manja/pull/94),
 `coord/opencore-product` into `main`.
 
-Snapshot at `2026-08-11T12:07:13Z`: PR #94 remains open at pushed head
-`a0d1c4e0622b91a070ff96abbeda0ac5d874e82a`. CodeQL `actions`, `go`,
-`javascript-typescript`, and its summary pass. CI run `31487572347` completed
-with failure: root `test` passed, while `integration` failed only
-`TestKubernetesCatalog` after 289.11s when exact search
-`detail-sha256-b4fc061c5abcf63b6476bf0d438474dda10cd053cfc9e0954cc859942e4fa526`
-returned HTTP 503, `bytes=31`. Forgejo start, public fetch, private HTTPS, and
-private SSH tests passed, as did
-`TestCatalogSearchRequestRetriesOneTemporaryDeadline`. Run `31485230010` at
-`52c7598c4ea1f0b5f0f5e27e363320866b49f789` had the same sole integration
-failure after 247.38s for exact ID
-`detail-sha256-674e48dbf74f258a2cf294bdf69f20494d91cb67b2ad1b916f9decdadb26c3ee`.
-No runtime bytes changed across those docs-only heads. The first local
-exact-search correction was rejected for bypassing canonical query validation;
-its correction child requires an exact-head CI rerun and independent review
-before any lifecycle action. Merge remains blocked.
+Snapshot at `2026-08-11T13:04:59Z`: PR #94 remains open at pushed head
+`f185838ab5fcb1eb6ca9c2a75e0f54c56e164c9a`. CI `test` and `integration`
+succeed. CodeQL `actions`, `go`, `javascript-typescript`, and its summary
+succeed. Build/publish and deploy are skipped. CodeRabbit review `4906397511`,
+run `03263440-726a-4661-bd9e-b2d52654deb9`, is substantive at that exact head,
+but its independently validated material exact-directory traversal finding
+blocks merge. The local correction requires exact-head CI and fresh independent
+review before any lifecycle action.
 
 Before merge:
 
@@ -320,7 +330,7 @@ Before merge:
 
 ## Next Action
 
-Freeze this canonical-validation correction child's moving commit/tree in the
+Freeze this exact-query traversal correction's moving commit/tree in the
 immutable external reviewer packet and control plane and obtain fresh independent
 review. Rerun CI at the correction head and require `test` and `integration`
 success. Then request one exact-head substantive CodeRabbit review and fix only

@@ -86,12 +86,15 @@ func (handler *CatalogHandler) searchGlobal(ctx context.Context, query, contextM
 	if contextMount != "" && !handler.runtime.HasMount(contextMount) {
 		contextMount = ""
 	}
+	exactDetailID := canonicalDetailIDQuery(canonical)
 	// Published detail IDs are already bound by each admitted catalog
 	// directory, so resolve them before deadline-bound search child loading.
-	if exact, found, err := handler.searchGlobalExact(canonical, contextMount, contextDocument); err != nil {
-		return globalSearchResult{}, err
-	} else if found {
-		return exact, nil
+	if exactDetailID {
+		if exact, found, err := handler.searchGlobalExact(canonical, contextMount, contextDocument); err != nil {
+			return globalSearchResult{}, err
+		} else if found {
+			return exact, nil
+		}
 	}
 
 	result := globalSearchResult{SearchVersion: 1, Results: make([]globalSearchCandidate, 0)}
@@ -121,15 +124,17 @@ func (handler *CatalogHandler) searchGlobal(ctx context.Context, query, contextM
 				exactID: globalSearchRecordMatchesDetailID(record, result.Query),
 			})
 		}
-		exactRecord, exactFound, exactErr := globalSearchExactRecord(snapshot.Directory, mount, result.Query)
-		if exactErr != nil {
-			admission.Release()
-			return globalSearchResult{}, exactErr
-		}
-		if exactFound && !globalSearchResultsContainDetail(local.Results, exactRecord.DetailID) {
-			result.Results = append(result.Results, globalSearchCandidate{
-				record: exactRecord, mount: mount, section: snapshot.Directory.Title, localRank: -1, exactID: true,
-			})
+		if exactDetailID {
+			exactRecord, exactFound, exactErr := globalSearchExactRecord(snapshot.Directory, mount, result.Query)
+			if exactErr != nil {
+				admission.Release()
+				return globalSearchResult{}, exactErr
+			}
+			if exactFound && !globalSearchResultsContainDetail(local.Results, exactRecord.DetailID) {
+				result.Results = append(result.Results, globalSearchCandidate{
+					record: exactRecord, mount: mount, section: snapshot.Directory.Title, localRank: -1, exactID: true,
+				})
+			}
 		}
 		for index, document := range snapshot.Directory.Documents {
 			if !globalDocumentMatches(result.Query, snapshot.Directory.Title, document) {
@@ -156,6 +161,20 @@ func (handler *CatalogHandler) searchGlobal(ctx context.Context, query, contextM
 		result.Results = result.Results[:maxGlobalSearchResults]
 	}
 	return result, nil
+}
+
+func canonicalDetailIDQuery(query catalog.CanonicalSearchQuery) bool {
+	const prefix = "detail-sha256-"
+	value := query.String()
+	if len(value) != len(prefix)+64 || !strings.HasPrefix(value, prefix) {
+		return false
+	}
+	for _, character := range value[len(prefix):] {
+		if (character < '0' || character > '9') && (character < 'a' || character > 'f') {
+			return false
+		}
+	}
+	return true
 }
 
 func (handler *CatalogHandler) searchGlobalExact(query catalog.CanonicalSearchQuery, contextMount, contextDocument string) (globalSearchResult, bool, error) {
