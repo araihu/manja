@@ -92,12 +92,13 @@ type RendererSEOConfig struct {
 }
 
 type RendererSourceConfig struct {
-	Kind       string                   `yaml:"kind"`
-	Root       string                   `yaml:"root"`
-	Include    []string                 `yaml:"include"`
-	Documents  []RendererSourceDocument `yaml:"documents"`
-	Repository string                   `yaml:"repository"`
-	Ref        string                   `yaml:"ref"`
+	Kind             string                   `yaml:"kind"`
+	Root             string                   `yaml:"root"`
+	Include          []string                 `yaml:"include"`
+	Documents        []RendererSourceDocument `yaml:"documents"`
+	Repository       string                   `yaml:"repository"`
+	Ref              string                   `yaml:"ref"`
+	IntegrityReceipt string                   `yaml:"integrityReceipt"`
 }
 
 type RendererSourceDocument struct {
@@ -235,7 +236,7 @@ func (source RendererSourceConfig) validate() error {
 		if strings.TrimSpace(source.Root) == "" {
 			return fmt.Errorf("file root is required")
 		}
-		if source.Repository != "" || source.Ref != "" {
+		if source.Repository != "" || source.Ref != "" || source.IntegrityReceipt != "" {
 			return fmt.Errorf("file source must not contain Git fields")
 		}
 	case RendererSourceGit:
@@ -244,6 +245,9 @@ func (source RendererSourceConfig) validate() error {
 		}
 		if source.Root != "" {
 			return fmt.Errorf("Git source must not contain a file root")
+		}
+		if receipt := source.IntegrityReceipt; receipt != "" && (strings.HasPrefix(receipt, "/") || strings.Contains(receipt, `\`) || strings.ContainsRune(receipt, 0) || receipt == "." || path.Clean(receipt) != receipt || strings.HasPrefix(receipt, "../")) {
+			return fmt.Errorf("Git integrity receipt %q is not a clean relative slash path", receipt)
 		}
 		repository, err := url.Parse(source.Repository)
 		if err != nil || repository.User != nil || repository.RawQuery != "" || repository.Fragment != "" {

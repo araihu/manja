@@ -164,6 +164,45 @@ func TestLoadRendererRejectsInvalidSourceConfiguration(t *testing.T) {
 	}
 }
 
+func TestLoadRendererAdmitsCanonicalGitIntegrityReceiptOnly(t *testing.T) {
+	t.Parallel()
+
+	withReceipt := strings.Replace(
+		validRendererConfig,
+		"      ref: refs/heads/main\n",
+		"      ref: refs/heads/main\n      integrityReceipt: payments.provenance.json\n",
+		1,
+	)
+	if _, err := LoadRenderer(writeRendererConfigWithAllowlist(t, withReceipt)); err != nil {
+		t.Fatalf("canonical Git integrity receipt rejected: %v", err)
+	}
+
+	for name, data := range map[string]string{
+		"file source": strings.Replace(
+			validRendererConfig,
+			"      root: internal/renderer/testdata/kubernetes/specs\n",
+			"      root: internal/renderer/testdata/kubernetes/specs\n      integrityReceipt: kubernetes.provenance.json\n",
+			1,
+		),
+		"absolute": strings.Replace(withReceipt, "payments.provenance.json", "/tmp/payments.provenance.json", 1),
+		"escape":   strings.Replace(withReceipt, "payments.provenance.json", "../payments.provenance.json", 1),
+		"backslash": strings.Replace(
+			withReceipt,
+			"payments.provenance.json",
+			`receipts\payments.provenance.json`,
+			1,
+		),
+		"non-canonical": strings.Replace(withReceipt, "payments.provenance.json", "receipts/../payments.provenance.json", 1),
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			if _, err := LoadRenderer(writeRendererConfigWithAllowlist(t, data)); err == nil {
+				t.Fatal("invalid integrity receipt path was accepted")
+			}
+		})
+	}
+}
+
 func TestCommittedRendererConfigLoads(t *testing.T) {
 	t.Parallel()
 
@@ -231,6 +270,22 @@ func TestCommittedKubernetesRendererConfigUsesAuthorityDocumentKeys(t *testing.T
 func writeRendererConfig(t *testing.T, data string) string {
 	t.Helper()
 	filename := filepath.Join(t.TempDir(), "renderer.yaml")
+	if err := os.WriteFile(filename, []byte(data), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return filename
+}
+
+func writeRendererConfigWithAllowlist(t *testing.T, data string) string {
+	t.Helper()
+	root := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(root, "allowlists"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "allowlists", "kubernetes.json"), []byte(`{"schemaVersion":1,"diagnostics":[]}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	filename := filepath.Join(root, "renderer.yaml")
 	if err := os.WriteFile(filename, []byte(data), 0o600); err != nil {
 		t.Fatal(err)
 	}
