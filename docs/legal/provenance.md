@@ -96,17 +96,76 @@ generators, and their transitive graphs are not in that runtime closure merely
 because they occur in `go.mod`.
 
 A local `manja:provenance` image built successfully from the audited-base
-Dockerfile. The inspected arm64 image was 35,242,561 bytes and used:
+Dockerfile. This prior observation used the audited command
+`docker build --pull=false -t manja:provenance .`; it did not pass an explicit
+`--platform` argument. Inspection identified the resulting image as
+`linux/arm64`, 35,242,561 bytes, using:
 
-- build base `golang:1.26.5-alpine` at digest
+- build base `golang:1.26.5-alpine` at image-config digest
   `sha256:0178a641fbb4858c5f1b48e34bdaabe0350a330a1b1149aabd498d0699ff5fb2`;
-- runtime base `alpine:3.24` at digest
+- runtime base `alpine:3.24` at image-config digest
   `sha256:28bd5fe8b56d1bd048e5babf5b10710ebe0bae67db86916198a6eec434943f8b`;
 - 17 final APK packages, including Alpine base packages and
   `ca-certificates`; no final-stage `git`;
 - `/usr/local/bin/manja`, 416 renderer-data files across Kubernetes, GitHub,
   and Stripe snapshots, renderer configuration/allowlist, and the complete
   `internal/web/static` tree.
+
+A future reproduction must make the platform explicit and validate the
+mutable base tags before building. The expected values for this audited
+receipt can be checked with:
+
+```bash
+set -euo pipefail
+
+resolve_linux_arm64_manifest_digest() {
+  docker buildx imagetools inspect --raw "$1" |
+    jq -er '[.manifests[] |
+      select(.platform.os == "linux" and .platform.architecture == "arm64") |
+      .digest] |
+      if length == 1 then .[0] else error("expected one linux/arm64 manifest") end'
+}
+
+resolve_config_digest() {
+  docker buildx imagetools inspect --raw "${1}@${2}" | jq -er '.config.digest'
+}
+
+GOLANG_IMAGE=docker.io/library/golang:1.26.5-alpine
+ALPINE_IMAGE=docker.io/library/alpine:3.24
+GOLANG_MANIFEST=$(resolve_linux_arm64_manifest_digest "$GOLANG_IMAGE")
+ALPINE_MANIFEST=$(resolve_linux_arm64_manifest_digest "$ALPINE_IMAGE")
+
+test "$(resolve_config_digest "$GOLANG_IMAGE" "$GOLANG_MANIFEST")" = \
+  'sha256:0178a641fbb4858c5f1b48e34bdaabe0350a330a1b1149aabd498d0699ff5fb2'
+test "$(resolve_config_digest "$ALPINE_IMAGE" "$ALPINE_MANIFEST")" = \
+  'sha256:28bd5fe8b56d1bd048e5babf5b10710ebe0bae67db86916198a6eec434943f8b'
+docker build --platform=linux/arm64 --pull=true -t manja:provenance .
+test "$(docker image inspect --format '{{.Os}}/{{.Architecture}}' \
+  manja:provenance)" = 'linux/arm64'
+```
+
+This is a future reproduction command, not a claim about the command used for
+the prior observed image. Because both `FROM` references remain mutable tags,
+Task 8 packaging remains **BLOCKED** until the Dockerfile digest-pins them or
+the release gate compares their resolved platform digests with reviewed
+expected values immediately before every build and verifies the built
+platform.
+
+The read-only resolver probe at this checkpoint selected these current tag
+values:
+
+- `golang:1.26.5-alpine`: `linux/arm64` manifest
+  `sha256:787328cefd7937073af18fc4b3a725f47e011ffdde9c2908239a25cae6b2f02b`,
+  config
+  `sha256:766c0063a18bd23eff1d68216dd04832370d5f356af68c8b7683923c4c279f5f`;
+- `alpine:3.24`: `linux/arm64` manifest
+  `sha256:e7a1a92a5bfeee40966aea60f0796b0e7917cc35591542701834f03a68fa3d18`,
+  config
+  `sha256:1991bd789d7184290c3cce84fd6af068b8b745e9bddf178661ce7f5ecf68135c`.
+
+Both config digests differ from the prior observed receipt, so the expected
+value checks above currently stop before the build. No replacement image was
+built for this correction checkpoint.
 
 The final image contains no project `LICENSE`, `NOTICE`, third-party notices,
 SBOM, or retained Kubernetes/Stripe/GitHub license path. It also copies the two

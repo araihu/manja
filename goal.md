@@ -49,8 +49,10 @@ not implement hosted product behavior speculatively.
 
 - Task: `019fef17-2fad-73d2-b004-d3706d36ea82`
 - Worktree: `/Users/guilhermecastro/.codex/worktrees/e1bf/manja`
-- Base: `39d65ade21c080ee2102f53da5ed741f000d6dd7`
-- Branch: `codex/oc01-provenance-baseline`
+- Initial lane base: `39d65ade21c080ee2102f53da5ed741f000d6dd7`
+- Current checkpoint base: `98b6218e4f78236e68708ef4332975ee5292badc`
+- Current checkpoint base tree: `e9ec53bd10e5255db449e7eb1bed9a14075ab760`
+- Branch: `codex/oc01-pr-review-fixes`
 - Owns only bounded Open Core implementation checkpoints assigned here.
 - Must commit each coherent checkpoint with a meaningful message.
 - Must not implement deferred SaaS behavior or edit the active Arai Hû theme
@@ -130,6 +132,16 @@ Accepted source identity:
 - independent verdict: `ACCEPT`, no findings;
 - PM integration commits: `f5b2f6d` and `17f7d2e`.
 
+Reviewed PR-transition identity:
+
+- parent commit: `98b6218e4f78236e68708ef4332975ee5292badc`;
+- parent tree: `e9ec53bd10e5255db449e7eb1bed9a14075ab760`;
+- independent verdict: `ACCEPT`, no findings.
+
+The final moving candidate head and tree are bound by the immutable external
+review packet and control plane. A commit cannot embed its own final commit and
+tree identity without changing that identity recursively.
+
 Goal: reconcile the approved Open Core plan with current `origin/main` and
 produce current, behavior-backed provenance and shipped-artifact evidence
 without making an Apache-2.0 claim while authority remains blocked.
@@ -174,10 +186,12 @@ the complete runtime.
 Current PR: [#94](https://github.com/araihu/manja/pull/94),
 `coord/opencore-product` into `main`.
 
-At PR creation, GitHub reported three CodeQL jobs (`go`,
-`javascript-typescript`, and `actions`) in progress and a `CodeRabbit` status
-present and pending. These are presence receipts only; completion and any
-findings still require exact-head verification.
+At reviewed PR-transition parent `98b6218e4f78236e68708ef4332975ee5292badc`,
+the CodeQL, CI test, and integration checks passed. CodeRabbit performed a
+substantive review on parent `ea0b60a6c4c7b49d43df2b36055f5177edffed59`
+and reported five comments. Its incremental review of `98b6218` was
+rate-limited, so that attempt is not a successful substantive review of the
+moving candidate.
 
 Before merge:
 
@@ -185,13 +199,17 @@ Before merge:
 - worktree status includes staged, unstaged, and untracked state;
 - relevant root, site, architecture, generation, and artifact gates pass;
 - CodeQL check exists and succeeds;
-- CodeRabbit review/check exists or its absence is explicitly recorded;
+- CodeRabbit is present and completes a substantive successful review/check
+  for the final moving candidate; absence, a rate-limited no-review, or a
+  presence-only status blocks merge;
 - every actionable finding is fixed and rereviewed;
 - final PR scope contains Open Core work only.
 
 ## Next Action
 
-Wait for PR #94 CodeQL, CI, and CodeRabbit results at the exact head. Fix only
-findings that apply to current behavior and rereview every changed identity.
-Then select the next bounded Open Core checkpoint from the accepted OC-01 gaps
-while licensing Task 8 remains stopped.
+Four applicable CodeRabbit corrections are implemented in this candidate; the
+fifth finding was already fixed in `98b6218`. Freeze the final candidate
+identity in the immutable external reviewer packet and control plane, obtain
+independent review and a substantive successful final-head CodeRabbit
+review/check, then let the PM integrate only an accepted identity. Absence or a
+rate-limited no-review blocks merge. Licensing Task 8 remains stopped.
