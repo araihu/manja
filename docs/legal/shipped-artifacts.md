@@ -89,6 +89,10 @@ It directly reports these non-standard module bodies:
 - `cmd/manja` parser/compiler dependency closure;
 - `oapi-codegen` and templ CLIs;
 - esbuild as generator rather than its generated output;
+- the receipt-only macOS/arm64 `rsvg-convert` 2.62.1 environment and system
+  Arial fonts used to reproduce the tracked Manja social PNG exactly; those
+  tool/font bytes are not tracked, run by CI, copied into the OCI image, or
+  authorized for redistribution by this evidence;
 - Playwright and browser payload;
 - Testcontainers, Forgejo module, and their container/client closure;
 - Go toolchain and Docker build-stage packages.
@@ -101,9 +105,20 @@ two static-tree browser-test source files named above.
 Renderer/catalog initial HTML passes the current route-specific metadata tests
 for title, description, canonical URL, `og:url`, Open Graph type/title/
 description/site/image/type/width/height/alt, and explicit X Card tags. The
-asset handler test proves the Kubernetes preview is HTTP `image/png`, 48,705
-bytes, and 1280x640; `file` confirms the Manja preview is also 1280x640 PNG.
-Both images are copied into the OCI image with matching SHA-256 values.
+asset handler tests prove the Kubernetes preview is HTTP `image/png`, 48,705
+bytes, and 1280x640, and the Manja preview is HTTP `image/png`, 21,500 bytes,
+1280x640, under 1 MiB, and byte-identical to the tracked artifact. The Manja
+offline receipt test also fixes the SVG/PNG hashes and observed renderer/font
+environment without invoking that renderer in CI. On 2026-08-11, the public
+catalog routes emitted the required route-specific tags exactly once and the
+absolute HTTPS Manja preview returned HTTP 200, `image/png`, the tracked 21,500
+bytes, 1280x640 dimensions, and matching SHA-256. Both images are copied into
+the OCI image with matching SHA-256 values.
+
+This does not establish portable Manja preview regeneration: CI and the release
+build do not have a durable lawful pin for the exact macOS renderer and system
+Arial font bytes. That acquisition gate, the complete composition's first-party
+authority, and the separate Kubernetes preview provenance remain blocked.
 
 The public product site is not social-ready at this snapshot. `/` and `/docs`
 render route-specific title and description in initial HTML, but emit no

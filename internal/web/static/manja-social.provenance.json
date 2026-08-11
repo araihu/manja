@@ -1,0 +1,47 @@
+{
+  "schemaVersion": 1,
+  "introducedCommitSha": "b2df3a5f0d67c6a04539f96c804b404a5236c1d4",
+  "introducedTreeSha": "12b20134b059f2fce38041597f021a36ecd7f61a",
+  "source": {
+    "localPath": "internal/web/static/manja-social.svg",
+    "size": 2198,
+    "gitBlobSha": "5cb2fda632e511e4eeccec6412858f6f630bc6c9",
+    "sha256": "002b05823a870f28ff28d12fe0b793cee979418435bb4ff4c4a634affc7b2fe2",
+    "mimeType": "image/svg+xml",
+    "width": 1280,
+    "height": 640
+  },
+  "artifact": {
+    "localPath": "internal/web/static/manja-social.png",
+    "size": 21500,
+    "gitBlobSha": "9260d190361cceeef611f3a2178f14c613b0f533",
+    "sha256": "7234c9a20fc3a4a44364b8f9d544ddae5aba8c2b6a418b26ad5a930d2d0ab0bd",
+    "mimeType": "image/png",
+    "width": 1280,
+    "height": 640,
+    "bitDepth": 8,
+    "colorType": 2,
+    "interlaceMethod": 0,
+    "underOneMiB": true
+  },
+  "renderer": {
+    "tool": "rsvg-convert",
+    "version": "2.62.1",
+    "executableSha256": "f9a4aa5e7d66f8e61ebbc5f7df3f0966d7d9a5c43d1a691969092c86ebebeb2e",
+    "options": "--format=png --width=1280 --height=640",
+    "checkCommand": "LC_ALL=C.UTF-8 rsvg-convert --format=png --width=1280 --height=640 internal/web/static/manja-social.svg | cmp - internal/web/static/manja-social.png",
+    "operatingSystem": "macOS",
+    "operatingSystemVersion": "26.5.2",
+    "operatingSystemBuild": "25F84",
+    "architecture": "arm64",
+    "locale": "C.UTF-8",
+    "libraries": "cairo 1.18.4; fontconfig 2.18.2; freetype 2.14.3; glib 2.88.3; harfbuzz 14.3.0; libpng 1.6.58; pango 1.58.0",
+    "regularFontPath": "/System/Library/Fonts/Supplemental/Arial.ttf",
+    "regularFontSize": 773236,
+    "regularFontSha256": "525979822591a3447cfc49d943d6f7683508e25543407871c0ed8fed05fd2bd9",
+    "boldFontPath": "/System/Library/Fonts/Supplemental/Arial Bold.ttf",
+    "boldFontSize": 750984,
+    "boldFontSha256": "d72db21f9242aedd6b917d8549ad5921766b24d5f8d0becfda2ff4c620b3c2e0",
+    "exactRuns": 2
+  }
+}

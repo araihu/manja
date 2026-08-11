@@ -50,9 +50,9 @@ not implement hosted product behavior speculatively.
 - Task: `019fef17-2fad-73d2-b004-d3706d36ea82`
 - Worktree: `/Users/guilhermecastro/.codex/worktrees/e1bf/manja`
 - Initial lane base: `39d65ade21c080ee2102f53da5ed741f000d6dd7`
-- Current checkpoint base: `15ab1ad97a1843334c775a6071e11c7db20034f5`
-- Current checkpoint base tree: `bceadff26bd4108327eb8f82b85801f031fc6911`
-- Branch: `codex/oc01-simple-icons-provenance`
+- Current checkpoint base: `7eb7d58c8bb936d2ca3813b90f91884a2f9fdb29`
+- Current checkpoint base tree: `f234bf311c2a6a03e3cde4bf126a07c6d1e30182`
+- Branch: `codex/oc01-manja-social-repro`
 - Owns only bounded Open Core implementation checkpoints assigned here.
 - Must commit each coherent checkpoint with a meaningful message.
 - Must not implement deferred SaaS behavior or edit the active Arai Hû theme
@@ -102,15 +102,18 @@ not implement hosted product behavior speculatively.
   Kubernetes renderer, social preview, Go/Alpine, source-archive, site, and OCI
   evidence. Provenance remains `BLOCKED`, and licensing/package-generation Task
   8 remains stopped.
-- Stripe same-revision source/license checkpoint `15ab1ad97a1843334c775a6071e11c7db20034f5`
-  / tree `bceadff26bd4108327eb8f82b85801f031fc6911` received independent
+- Simple Icons provenance checkpoint `7eb7d58c8bb936d2ca3813b90f91884a2f9fdb29`
+  / tree `f234bf311c2a6a03e3cde4bf126a07c6d1e30182` received independent
   `ACCEPT`, then was fast-forward integrated and pushed by the product manager.
 - Exact-head CI and CodeQL are running for that pushed identity. Exact-head
-  CodeRabbit was rate-limited, so its presence is not a substantive successful
-  review and does not satisfy the merge gate.
-- OC-01M4 is active to resolve immutable Simple Icons provenance for the
-  shipped GitHub and Stripe marks. Its moving candidate commit/tree remain in
-  the immutable external review packet and control plane.
+  CodeRabbit review `4904235223` completed substantively and raised one
+  apparently material Stripe provenance-test finding in discussion
+  `3756311030`; independent validation is pending, and any correction belongs
+  to a separate checkpoint after product-manager/reviewer direction.
+- OC-01M5 is active to resolve the narrow mechanical reproducibility gap for
+  the shipped Manja social preview without changing its artwork. Its moving
+  candidate commit/tree remain in the immutable external review packet and
+  control plane.
 - Full root tests, strict Muamba verification, architecture, unrelated external
   module, generation, browser, API, templ, and OCI inspection gates passed for
   the OC-01 evidence. Direct standalone `site` testing still fails because its
@@ -131,7 +134,7 @@ not implement hosted product behavior speculatively.
 ### OC-01: Current Open Core provenance and artifact baseline
 
 Status: accepted baseline and mechanical checkpoints integrated/pushed through
-the Stripe evidence checkpoint; OC-01M4 is active.
+the Simple Icons evidence checkpoint; OC-01M5 is active.
 
 Accepted source identity:
 
@@ -150,10 +153,10 @@ Reviewed PR-transition identity:
 
 Latest accepted mechanical checkpoint:
 
-- accepted Stripe provenance head:
-  `15ab1ad97a1843334c775a6071e11c7db20034f5`;
-- accepted Stripe provenance tree:
-  `bceadff26bd4108327eb8f82b85801f031fc6911`;
+- accepted Simple Icons provenance head:
+  `7eb7d58c8bb936d2ca3813b90f91884a2f9fdb29`;
+- accepted Simple Icons provenance tree:
+  `f234bf311c2a6a03e3cde4bf126a07c6d1e30182`;
 - independent verdict: `ACCEPT`;
 - product-manager disposition: fast-forward integrated and pushed.
 
@@ -206,11 +209,12 @@ Current PR: [#94](https://github.com/araihu/manja/pull/94),
 `coord/opencore-product` into `main`.
 
 At reviewed PR-transition parent `98b6218e4f78236e68708ef4332975ee5292badc`,
-the CodeQL, CI test, and integration checks passed. The accepted Stripe
+the CodeQL, CI test, and integration checks passed. The accepted Simple Icons
 checkpoint now at the pushed PR head is
-`15ab1ad97a1843334c775a6071e11c7db20034f5`; exact-head CI and CodeQL are
-running. Exact-head CodeRabbit was rate-limited, so that attempt is not a
-successful substantive review of the pushed head or moving candidate.
+`7eb7d58c8bb936d2ca3813b90f91884a2f9fdb29`; exact-head CI and CodeQL are
+running. Exact-head CodeRabbit review `4904235223` completed substantively;
+discussion `3756311030` raised an apparently material Stripe provenance-test
+finding that is pending independent validation and is outside OC-01M5.
 
 Before merge:
 
@@ -226,11 +230,13 @@ Before merge:
 
 ## Next Action
 
-Complete OC-01M4's immutable Simple Icons receipt, offline drift verifier, and
-truthful provenance correction; freeze its moving commit/tree in the immutable
-external reviewer packet and control plane; obtain independent review; and let
-the product manager integrate only an accepted identity. Then obtain a
-substantive successful CodeRabbit review/check for the final pushed head after
-CI and CodeQL complete. Absence or a rate-limited no-review blocks merge.
+Complete OC-01M5's exact observed Manja social-rendering receipt, offline drift
+verifier, and truthful portable-reproduction blocker; freeze its moving
+commit/tree in the immutable external reviewer packet and control plane; obtain
+independent review; and let the product manager integrate only an accepted
+identity. Resolve any independently validated Stripe finding in a separate
+bounded checkpoint, then obtain a substantive successful CodeRabbit
+review/check for the final moving head after CI and CodeQL complete. Absence or
+a rate-limited no-review blocks merge.
 Deferred SaaS behavior and the active Arai Hû theme remain excluded; OC-04
 remains Open Core; licensing/package-generation Task 8 remains stopped.
