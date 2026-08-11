@@ -49,6 +49,12 @@ jobs:
       - run: go run ./cmd/webassets check
       - run: scripts/redocly bundle api/openapi.yaml -o api/dist/openapi.yaml
       - run: scripts/redocly lint api/openapi.yaml
+      - run: |
+          go run github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen \
+            -generate types,strict-server \
+            -package web \
+            -o internal/web/api.gen.go \
+            api/dist/openapi.yaml
       - run: go run github.com/a-h/templ/cmd/templ generate
       - run: git diff --exit-code
       - run: go run github.com/mxschmitt/playwright-go/cmd/playwright@v0.6100.0 install --with-deps chromium
