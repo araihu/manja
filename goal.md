@@ -99,10 +99,12 @@ not implement hosted product behavior speculatively.
 - At the `2026-08-11T18:54:35Z` observation, PR #94 is `MERGED` via squash at
   `9733949b8dde9eb0fe1ef285ceb3ecbeb88f5d06`; fetched `origin/main` is that exact
   commit with tree `10c75d6c0fa3e945093bc47e46df0d33e0ad40de`.
-- Preserved branch `coord/opencore-product` remains exact
+- Local PM ref and worktree `coord/opencore-product` remain preserved at exact
   `d520edd5b6115904fbed247729dcf997716e2d03`, tree
-  `eb9c05086b0f6d0380fc5da593ef96c8e3febd2d`. No branch deletion or cleanup
-  occurred.
+  `eb9c05086b0f6d0380fc5da593ef96c8e3febd2d`. At the
+  `2026-08-11T19:02:25Z` observation, remote
+  `refs/heads/coord/opencore-product` is absent after the authorized squash
+  merge. It is not recreated or pushed by this checkpoint.
 - The fresh-main Stripe captured-byte checkpoint uses exact base and merge-base
   `9733949b8dde9eb0fe1ef285ceb3ecbeb88f5d06`, tree
   `10c75d6c0fa3e945093bc47e46df0d33e0ad40de`. Accepted local implementation head
@@ -351,11 +353,13 @@ Reviewed PR-transition identity:
 - parent tree: `e9ec53bd10e5255db449e7eb1bed9a14075ab760`;
 - independent verdict: `ACCEPT`, no findings.
 
-Preserved product-manager branch after PR #94 merge:
+Preserved local product-manager ref and worktree after PR #94 merge:
 
 - head: `d520edd5b6115904fbed247729dcf997716e2d03`;
 - tree: `eb9c05086b0f6d0380fc5da593ef96c8e3febd2d`;
-- disposition: preserved unchanged after squash merge; branch not deleted.
+- disposition: local ref and worktree preserved unchanged; remote
+  `refs/heads/coord/opencore-product` is absent after the authorized squash
+  merge and is not recreated or pushed.
 
 Fresh-main Stripe captured-byte checkpoint:
 
@@ -415,9 +419,12 @@ the complete runtime.
 At `2026-08-11T18:54:35Z`, [PR
 #94](https://github.com/araihu/manja/pull/94) is `MERGED` via squash at exact
 `9733949b8dde9eb0fe1ef285ceb3ecbeb88f5d06`, tree
-`10c75d6c0fa3e945093bc47e46df0d33e0ad40de`. Preserved source branch
-`coord/opencore-product` remains `d520edd5b6115904fbed247729dcf997716e2d03`,
-tree `eb9c05086b0f6d0380fc5da593ef96c8e3febd2d`; no branch deletion occurred.
+`10c75d6c0fa3e945093bc47e46df0d33e0ad40de`. Local PM ref and worktree
+`coord/opencore-product` remain preserved at
+`d520edd5b6115904fbed247729dcf997716e2d03`, tree
+`eb9c05086b0f6d0380fc5da593ef96c8e3febd2d`. Remote
+`refs/heads/coord/opencore-product` is absent after the authorized squash merge;
+this checkpoint does not recreate or push it.
 
 Fresh-main Stripe captured-byte head
 `b4d7562e7a97903726234a3d8d8a8d2130bf4481`, tree
