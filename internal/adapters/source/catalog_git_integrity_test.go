@@ -25,7 +25,6 @@ type testGitSourceReceipt struct {
 	CommitObjectID  string                    `json:"commitObjectId"`
 	TreeObjectID    string                    `json:"treeObjectId"`
 	Artifacts       []testGitArtifactEvidence `json:"artifacts"`
-	License         testGitLicenseEvidence    `json:"license"`
 }
 
 type testGitArtifactEvidence struct {
@@ -34,16 +33,6 @@ type testGitArtifactEvidence struct {
 	Size        int64  `json:"size"`
 	GitObjectID string `json:"gitObjectId"`
 	SHA256      string `json:"sha256"`
-}
-
-type testGitLicenseEvidence struct {
-	Name           string `json:"name"`
-	SPDX           string `json:"spdx"`
-	UpstreamPath   string `json:"upstreamPath"`
-	TrackedLocally bool   `json:"trackedLocally"`
-	Size           int64  `json:"size"`
-	GitBlobSHA     string `json:"gitBlobSha"`
-	SHA256         string `json:"sha256"`
 }
 
 func TestLoadGitSourceProvenanceReceiptRejectsInvalidExpectations(t *testing.T) {
@@ -77,10 +66,6 @@ func TestLoadGitSourceProvenanceReceiptRejectsInvalidExpectations(t *testing.T) 
 		{name: "artifact oversized", check: "size", mutate: func(got *testGitSourceReceipt) { got.Artifacts[0].Size = maxCatalogSourceFileBytes + 1 }},
 		{name: "artifact object uppercase", check: "git-object-id", mutate: func(got *testGitSourceReceipt) { got.Artifacts[0].GitObjectID = strings.Repeat("C", 40) }},
 		{name: "artifact SHA-256 length", check: "sha256", mutate: func(got *testGitSourceReceipt) { got.Artifacts[0].SHA256 = strings.Repeat("d", 63) }},
-		{name: "license path", check: "license-path", mutate: func(got *testGitSourceReceipt) { got.License.UpstreamPath = "../LICENSE" }},
-		{name: "license size", check: "license-size", mutate: func(got *testGitSourceReceipt) { got.License.Size = 0 }},
-		{name: "license object format", check: "license-git-object-id", mutate: func(got *testGitSourceReceipt) { got.License.GitBlobSHA = strings.Repeat("e", 64) }},
-		{name: "license SHA-256", check: "license-sha256", mutate: func(got *testGitSourceReceipt) { got.License.SHA256 = strings.Repeat("F", 64) }},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -88,12 +73,51 @@ func TestLoadGitSourceProvenanceReceiptRejectsInvalidExpectations(t *testing.T) 
 			receipt := validTestGitSourceReceipt("sha1")
 			test.mutate(&receipt)
 			filename := writeTestGitSourceReceipt(t, receipt)
-			_, err := loadGitSourceProvenanceReceipt(filename)
+			_, err := loadGitSourceProvenanceReceipt(filepath.Dir(filename), filepath.Base(filename))
 			var integrityErr *CatalogIntegrityError
 			if !errors.As(err, &integrityErr) || integrityErr.Check != test.check || !errors.Is(err, ErrCatalogIntegrity) {
 				t.Fatalf("invalid receipt error = %#v, want integrity check %q", err, test.check)
 			}
 		})
+	}
+}
+
+func TestLoadGitSourceProvenanceReceiptRejectsDuplicateJSONKeys(t *testing.T) {
+	t.Parallel()
+
+	contents, err := json.Marshal(validTestGitSourceReceipt("sha1"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, mutated := range map[string][]byte{
+		"top level":      bytesReplaceOnce(t, contents, `"schemaVersion":2`, `"schemaVersion":2,"schemaVersion":2`),
+		"artifact entry": bytesReplaceOnce(t, contents, `"path":"openapi.json"`, `"path":"openapi.json","path":"openapi.json"`),
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			filename := writeTestGitSourceReceiptBytes(t, mutated)
+			_, err := loadGitSourceProvenanceReceipt(filepath.Dir(filename), filepath.Base(filename))
+			assertCatalogIntegrityCheck(t, err, "receipt-schema")
+			if !strings.Contains(err.Error(), "duplicate") {
+				t.Fatalf("duplicate-key error = %v", err)
+			}
+		})
+	}
+}
+
+func TestLoadGitSourceProvenanceReceiptRejectsLicenseMetadata(t *testing.T) {
+	t.Parallel()
+
+	contents, err := json.Marshal(validTestGitSourceReceipt("sha1"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	contents = append(contents[:len(contents)-1], []byte(`,"license":{"name":"MIT","spdx":"MIT","upstreamPath":"LICENSE","trackedLocally":false,"size":3,"gitBlobSha":"eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee","sha256":"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"}}`)...)
+	filename := writeTestGitSourceReceiptBytes(t, contents)
+	_, err = loadGitSourceProvenanceReceipt(filepath.Dir(filename), filepath.Base(filename))
+	assertCatalogIntegrityCheck(t, err, "receipt-schema")
+	if !strings.Contains(err.Error(), `unknown field "license"`) {
+		t.Fatalf("license metadata error = %v", err)
 	}
 }
 
@@ -120,7 +144,7 @@ func TestCatalogGitIntegrityAdmitsRemoteSHA1AndSHA256Fixtures(t *testing.T) {
 			receipt := cloneTestGitSourceReceipt(fixture.receipt)
 			receipt.CloneRepository = remote
 			fixture.source.Repository = remote
-			fixture.source.IntegrityReceiptPath = writeTestGitSourceReceipt(t, receipt)
+			configureTestGitIntegrityReceipt(&fixture.source, writeTestGitSourceReceipt(t, receipt))
 			candidate, err := fixture.source.Load(t.Context())
 			if err != nil {
 				t.Fatal(err)
@@ -146,7 +170,6 @@ func TestCatalogGitIntegrityRejectsRepositoryAndObjectDrift(t *testing.T) {
 			receipt.CommitObjectID = strings.Repeat("1", 64)
 			receipt.TreeObjectID = strings.Repeat("2", 64)
 			receipt.Artifacts[0].GitObjectID = strings.Repeat("3", 64)
-			receipt.License.GitBlobSHA = strings.Repeat("4", 64)
 			source.Ref = receipt.CommitObjectID
 		}},
 		{name: "configured ref", check: "ref", mutate: func(receipt *testGitSourceReceipt, _ *GitCatalogSource) {
@@ -170,7 +193,7 @@ func TestCatalogGitIntegrityRejectsRepositoryAndObjectDrift(t *testing.T) {
 			receipt := cloneTestGitSourceReceipt(fixture.receipt)
 			source := fixture.source
 			test.mutate(&receipt, &source)
-			source.IntegrityReceiptPath = writeTestGitSourceReceipt(t, receipt)
+			configureTestGitIntegrityReceipt(&source, writeTestGitSourceReceipt(t, receipt))
 			_, err := source.Load(t.Context())
 			assertCatalogIntegrityCheck(t, err, test.check)
 		})
@@ -276,7 +299,7 @@ func TestCatalogGitIntegrityPreservesOperationalErrorClassification(t *testing.T
 		receipt := cloneTestGitSourceReceipt(fixture.receipt)
 		receipt.CloneRepository = missing
 		fixture.source.Repository = missing
-		fixture.source.IntegrityReceiptPath = writeTestGitSourceReceipt(t, receipt)
+		configureTestGitIntegrityReceipt(&fixture.source, writeTestGitSourceReceipt(t, receipt))
 		_, err := fixture.source.Load(t.Context())
 		if err == nil || errors.Is(err, ErrCatalogIntegrity) {
 			t.Fatalf("Git process error = %#v", err)
@@ -302,10 +325,6 @@ func validTestGitSourceReceipt(objectFormat string) testGitSourceReceipt {
 			Path: "openapi.json", Mode: "100644", Size: 3,
 			GitObjectID: strings.Repeat("c", objectLength), SHA256: strings.Repeat("d", 64),
 		}},
-		License: testGitLicenseEvidence{
-			Name: "MIT", SPDX: "MIT", UpstreamPath: "LICENSE", Size: 3,
-			GitBlobSHA: strings.Repeat("e", objectLength), SHA256: strings.Repeat("f", 64),
-		},
 	}
 }
 
@@ -315,11 +334,25 @@ func writeTestGitSourceReceipt(t *testing.T, receipt testGitSourceReceipt) strin
 	if err != nil {
 		t.Fatal(err)
 	}
+	return writeTestGitSourceReceiptBytes(t, contents)
+}
+
+func writeTestGitSourceReceiptBytes(t *testing.T, contents []byte) string {
+	t.Helper()
 	filename := filepath.Join(t.TempDir(), "receipt.json")
 	if err := os.WriteFile(filename, contents, 0o600); err != nil {
 		t.Fatal(err)
 	}
 	return filename
+}
+
+func bytesReplaceOnce(t *testing.T, input []byte, old, replacement string) []byte {
+	t.Helper()
+	result := []byte(strings.Replace(string(input), old, replacement, 1))
+	if string(result) == string(input) {
+		t.Fatalf("fixture does not contain %q", old)
+	}
+	return result
 }
 
 type testGitIntegrityFixture struct {
@@ -344,10 +377,8 @@ func newTestGitIntegrityFixtureWithFiles(t *testing.T, objectFormat string, docu
 	if documentBytes == nil {
 		documentBytes = []byte(`{"openapi":"3.0.3","info":{"title":"Payments","version":"v1"},"paths":{}}`)
 	}
-	licenseBytes := []byte("MIT\n")
 	writeCatalogFile(t, repository, "openapi.json", string(documentBytes))
-	writeCatalogFile(t, repository, "LICENSE", string(licenseBytes))
-	files := map[string][]byte{"openapi.json": documentBytes, "LICENSE": licenseBytes}
+	files := map[string][]byte{"openapi.json": documentBytes}
 	for filename, contents := range extraFiles {
 		writeCatalogFile(t, repository, filename, string(contents))
 		files[filename] = contents
@@ -356,7 +387,6 @@ func newTestGitIntegrityFixtureWithFiles(t *testing.T, objectFormat string, docu
 	runGitTestCommand(t, repository, "commit", "-qm", "fixture")
 	commit := runGitTestCommand(t, repository, "rev-parse", "HEAD")
 	tree := runGitTestCommand(t, repository, "rev-parse", "HEAD^{tree}")
-	licenseObject := runGitTestCommand(t, repository, "rev-parse", "HEAD:LICENSE")
 	artifacts := make([]testGitArtifactEvidence, 0, len(artifactPaths))
 	for _, artifactPath := range artifactPaths {
 		contents, exists := files[artifactPath]
@@ -380,19 +410,21 @@ func newTestGitIntegrityFixtureWithFiles(t *testing.T, objectFormat string, docu
 		CommitObjectID:  commit,
 		TreeObjectID:    tree,
 		Artifacts:       artifacts,
-		License: testGitLicenseEvidence{
-			Name: "MIT", SPDX: "MIT", UpstreamPath: "LICENSE", Size: int64(len(licenseBytes)), GitBlobSHA: licenseObject,
-			SHA256: fmt.Sprintf("%x", sha256.Sum256(licenseBytes)),
-		},
 	}
 	receiptPath := writeTestGitSourceReceipt(t, receipt)
+	source := GitCatalogSource{
+		Repository: repository, Ref: commit, Manifest: testCatalogManifest("strict-v1", "openapi.json"),
+	}
+	configureTestGitIntegrityReceipt(&source, receiptPath)
 	return testGitIntegrityFixture{
 		repository: repository, receipt: receipt, documentBytes: documentBytes,
-		source: GitCatalogSource{
-			Repository: repository, Ref: commit, Manifest: testCatalogManifest("strict-v1", "openapi.json"),
-			IntegrityReceiptPath: receiptPath,
-		},
+		source: source,
 	}
+}
+
+func configureTestGitIntegrityReceipt(source *GitCatalogSource, filename string) {
+	source.IntegrityReceiptRoot = filepath.Dir(filename)
+	source.IntegrityReceiptPath = filepath.Base(filename)
 }
 
 func cloneTestGitSourceReceipt(receipt testGitSourceReceipt) testGitSourceReceipt {

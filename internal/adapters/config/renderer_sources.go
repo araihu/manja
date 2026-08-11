@@ -35,9 +35,15 @@ func (file RendererFile) Sources() []renderer.CatalogSource {
 		case RendererSourceFiles:
 			result[index] = sourceadapter.FileCatalogSource{Root: file.resolve(configured.Source.Root), Manifest: manifest}
 		case RendererSourceGit:
+			integrityReceiptRoot := ""
+			integrityReceipt := ""
+			if configured.Source.IntegrityReceipt != nil {
+				integrityReceiptRoot = file.baseDir
+				integrityReceipt = *configured.Source.IntegrityReceipt
+			}
 			result[index] = sourceadapter.GitCatalogSource{
 				Repository: configured.Source.Repository, Ref: configured.Source.Ref, Manifest: manifest,
-				IntegrityReceiptPath: file.resolve(configured.Source.IntegrityReceipt),
+				IntegrityReceiptRoot: integrityReceiptRoot, IntegrityReceiptPath: integrityReceipt,
 			}
 		}
 	}

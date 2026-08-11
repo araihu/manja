@@ -9,6 +9,8 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path"
+	"path/filepath"
 	"strconv"
 	"strings"
 
@@ -53,7 +55,6 @@ type gitSourceProvenanceReceipt struct {
 	CommitObjectID  string                `json:"commitObjectId"`
 	TreeObjectID    string                `json:"treeObjectId"`
 	Artifacts       []gitArtifactEvidence `json:"artifacts"`
-	License         gitLicenseEvidence    `json:"license"`
 }
 
 type gitArtifactEvidence struct {
@@ -64,26 +65,16 @@ type gitArtifactEvidence struct {
 	SHA256      string `json:"sha256"`
 }
 
-type gitLicenseEvidence struct {
-	Name           string `json:"name"`
-	SPDX           string `json:"spdx"`
-	UpstreamPath   string `json:"upstreamPath"`
-	TrackedLocally bool   `json:"trackedLocally"`
-	Size           int64  `json:"size"`
-	GitBlobSHA     string `json:"gitBlobSha"`
-	SHA256         string `json:"sha256"`
-}
-
 type gitCatalogIntegrity struct {
 	receipt     gitSourceProvenanceReceipt
 	expectation map[string]gitArtifactEvidence
 	used        map[string]struct{}
 }
 
-func loadGitSourceProvenanceReceipt(filename string) (gitSourceProvenanceReceipt, error) {
-	input, err := os.Open(filename)
+func loadGitSourceProvenanceReceipt(rootDirectory, filename string) (gitSourceProvenanceReceipt, error) {
+	input, err := openGitSourceProvenanceReceipt(rootDirectory, filename)
 	if err != nil {
-		return gitSourceProvenanceReceipt{}, catalogIntegrityError("receipt-open", filename, err)
+		return gitSourceProvenanceReceipt{}, err
 	}
 	defer input.Close()
 
@@ -93,6 +84,9 @@ func loadGitSourceProvenanceReceipt(filename string) (gitSourceProvenanceReceipt
 	}
 	if len(contents) > maxGitIntegrityReceiptBytes {
 		return gitSourceProvenanceReceipt{}, catalogIntegrityError("receipt-size", filename, fmt.Errorf("Git integrity receipt exceeds %d bytes", maxGitIntegrityReceiptBytes))
+	}
+	if err := validateGitIntegrityReceiptJSON(contents); err != nil {
+		return gitSourceProvenanceReceipt{}, catalogIntegrityError("receipt-schema", filename, err)
 	}
 
 	decoder := json.NewDecoder(bytes.NewReader(contents))
@@ -112,6 +106,150 @@ func loadGitSourceProvenanceReceipt(filename string) (gitSourceProvenanceReceipt
 		return gitSourceProvenanceReceipt{}, err
 	}
 	return receipt, nil
+}
+
+func validateGitIntegrityReceiptJSON(contents []byte) error {
+	decoder := json.NewDecoder(bytes.NewReader(contents))
+	decoder.UseNumber()
+	if err := validateGitIntegrityReceiptJSONValue(decoder); err != nil {
+		return err
+	}
+	var trailing any
+	if err := decoder.Decode(&trailing); err != io.EOF {
+		if err == nil {
+			return fmt.Errorf("Git integrity receipt must contain exactly one JSON value")
+		}
+		return fmt.Errorf("decode Git integrity receipt: %w", err)
+	}
+	return nil
+}
+
+func validateGitIntegrityReceiptJSONValue(decoder *json.Decoder) error {
+	token, err := decoder.Token()
+	if err != nil {
+		return fmt.Errorf("decode Git integrity receipt: %w", err)
+	}
+	delimiter, composite := token.(json.Delim)
+	if !composite {
+		return nil
+	}
+	switch delimiter {
+	case '{':
+		seen := make(map[string]struct{})
+		for decoder.More() {
+			keyToken, err := decoder.Token()
+			if err != nil {
+				return fmt.Errorf("decode Git integrity receipt object key: %w", err)
+			}
+			key, ok := keyToken.(string)
+			if !ok {
+				return fmt.Errorf("Git integrity receipt object key is not a string")
+			}
+			if _, duplicate := seen[key]; duplicate {
+				return fmt.Errorf("Git integrity receipt contains duplicate key %q", key)
+			}
+			seen[key] = struct{}{}
+			if err := validateGitIntegrityReceiptJSONValue(decoder); err != nil {
+				return err
+			}
+		}
+		closing, err := decoder.Token()
+		if err != nil || closing != json.Delim('}') {
+			return fmt.Errorf("decode Git integrity receipt object")
+		}
+	case '[':
+		for decoder.More() {
+			if err := validateGitIntegrityReceiptJSONValue(decoder); err != nil {
+				return err
+			}
+		}
+		closing, err := decoder.Token()
+		if err != nil || closing != json.Delim(']') {
+			return fmt.Errorf("decode Git integrity receipt array")
+		}
+	default:
+		return fmt.Errorf("decode Git integrity receipt delimiter %q", delimiter)
+	}
+	return nil
+}
+
+func openGitSourceProvenanceReceipt(rootDirectory, filename string) (*os.File, error) {
+	if !filepath.IsAbs(rootDirectory) {
+		return nil, catalogIntegrityError("receipt-root", rootDirectory, fmt.Errorf("receipt root must be absolute"))
+	}
+	if err := validateGitIntegrityReceiptPath(filename); err != nil {
+		return nil, err
+	}
+	root, err := os.OpenRoot(rootDirectory)
+	if err != nil {
+		return nil, catalogIntegrityError("receipt-root", rootDirectory, err)
+	}
+	components := strings.Split(filename, "/")
+	for _, component := range components[:len(components)-1] {
+		info, statErr := root.Lstat(component)
+		if statErr != nil {
+			root.Close()
+			return nil, catalogIntegrityError("receipt-file", filename, statErr)
+		}
+		if info.Mode()&os.ModeSymlink != 0 || !info.IsDir() {
+			root.Close()
+			return nil, catalogIntegrityError("receipt-file", filename, fmt.Errorf("receipt parent %q must be a non-symlink directory", component))
+		}
+		next, openErr := root.OpenRoot(component)
+		if openErr != nil {
+			root.Close()
+			return nil, catalogIntegrityError("receipt-file", filename, openErr)
+		}
+		openedInfo, openedStatErr := next.Stat(".")
+		if openedStatErr != nil || !os.SameFile(info, openedInfo) {
+			next.Close()
+			root.Close()
+			if openedStatErr != nil {
+				return nil, catalogIntegrityError("receipt-file", filename, openedStatErr)
+			}
+			return nil, catalogIntegrityError("receipt-file", filename, fmt.Errorf("receipt parent %q changed during open", component))
+		}
+		root.Close()
+		root = next
+	}
+	defer root.Close()
+
+	leaf := components[len(components)-1]
+	leafInfo, err := root.Lstat(leaf)
+	if err != nil {
+		return nil, catalogIntegrityError("receipt-file", filename, err)
+	}
+	if leafInfo.Mode()&os.ModeSymlink != 0 || !leafInfo.Mode().IsRegular() {
+		return nil, catalogIntegrityError("receipt-file", filename, fmt.Errorf("receipt leaf must be a non-symlink regular file"))
+	}
+	input, err := root.Open(leaf)
+	if err != nil {
+		return nil, catalogIntegrityError("receipt-file", filename, err)
+	}
+	openedInfo, err := input.Stat()
+	if err != nil {
+		input.Close()
+		return nil, catalogIntegrityError("receipt-file", filename, err)
+	}
+	if !openedInfo.Mode().IsRegular() || !os.SameFile(leafInfo, openedInfo) {
+		input.Close()
+		return nil, catalogIntegrityError("receipt-file", filename, fmt.Errorf("receipt leaf changed during open"))
+	}
+	return input, nil
+}
+
+func validateGitIntegrityReceiptPath(filename string) error {
+	if filename == "" || strings.TrimSpace(filename) != filename || strings.HasPrefix(filename, "/") || strings.Contains(filename, `\`) || strings.ContainsRune(filename, 0) || hasGitWindowsDrivePrefix(filename) || filename == "." || path.Clean(filename) != filename || strings.HasPrefix(filename, "../") {
+		return catalogIntegrityError("receipt-path", filename, fmt.Errorf("receipt path must be a canonical relative slash path"))
+	}
+	return nil
+}
+
+func hasGitWindowsDrivePrefix(filename string) bool {
+	if len(filename) < 2 || filename[1] != ':' {
+		return false
+	}
+	return filename[0] >= 'a' && filename[0] <= 'z' || filename[0] >= 'A' && filename[0] <= 'Z'
 }
 
 func validateGitSourceProvenanceReceipt(receipt gitSourceProvenanceReceipt) error {
@@ -174,18 +312,6 @@ func validateGitSourceProvenanceReceipt(receipt gitSourceProvenanceReceipt) erro
 		if !isLowerHexLength(artifact.SHA256, 64) {
 			return catalogIntegrityError("sha256", artifact.Path, fmt.Errorf("raw-byte SHA-256 must be 64 lowercase hexadecimal characters"))
 		}
-	}
-	if err := validateSourcePath("Git integrity license path", receipt.License.UpstreamPath); err != nil {
-		return catalogIntegrityError("license-path", receipt.License.UpstreamPath, err)
-	}
-	if receipt.License.Size <= 0 || receipt.License.Size > maxCatalogSourceFileBytes {
-		return catalogIntegrityError("license-size", receipt.License.UpstreamPath, fmt.Errorf("size %d is outside 1..%d", receipt.License.Size, maxCatalogSourceFileBytes))
-	}
-	if !isLowerHexLength(receipt.License.GitBlobSHA, objectLength) {
-		return catalogIntegrityError("license-git-object-id", receipt.License.UpstreamPath, fmt.Errorf("Git object ID must be %d lowercase hexadecimal characters", objectLength))
-	}
-	if !isLowerHexLength(receipt.License.SHA256, 64) {
-		return catalogIntegrityError("license-sha256", receipt.License.UpstreamPath, fmt.Errorf("raw-byte SHA-256 must be 64 lowercase hexadecimal characters"))
 	}
 	return nil
 }

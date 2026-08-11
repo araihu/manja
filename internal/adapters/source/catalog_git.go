@@ -15,13 +15,16 @@ import (
 )
 
 type GitCatalogSource struct {
-	Repository           string
-	Ref                  string
-	Root                 string
-	Username             string
-	Token                string
-	SSHPrivateKey        string
-	Manifest             CatalogManifest
+	Repository    string
+	Ref           string
+	Root          string
+	Username      string
+	Token         string
+	SSHPrivateKey string
+	Manifest      CatalogManifest
+	// IntegrityReceiptRoot and IntegrityReceiptPath identify an optional receipt
+	// beneath a trusted root. Receipt paths never follow symlinks.
+	IntegrityReceiptRoot string
 	IntegrityReceiptPath string
 
 	afterResolve func(string)
@@ -48,8 +51,8 @@ func (source GitCatalogSource) Load(ctx context.Context) (domain.CatalogCandidat
 		reference = "HEAD"
 	}
 	var integrity *gitCatalogIntegrity
-	if source.IntegrityReceiptPath != "" {
-		receipt, err := loadGitSourceProvenanceReceipt(source.IntegrityReceiptPath)
+	if source.IntegrityReceiptRoot != "" || source.IntegrityReceiptPath != "" {
+		receipt, err := loadGitSourceProvenanceReceipt(source.IntegrityReceiptRoot, source.IntegrityReceiptPath)
 		if err != nil {
 			return domain.CatalogCandidate{}, err
 		}

@@ -2,11 +2,15 @@ package config
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/araihu/manja/domain"
 	sourceadapter "github.com/araihu/manja/internal/adapters/source"
@@ -66,6 +70,24 @@ catalogs:
       include:
         - openapi.yaml
 `
+
+const validConfiguredGitIntegrityReceipt = `{
+  "schemaVersion": 2,
+  "catalogId": "payments",
+  "cloneRepository": "/missing/payments.git",
+  "provenanceUrl": "https://example.test/payments",
+  "objectFormat": "sha1",
+  "sourceRoot": ".",
+  "commitObjectId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "treeObjectId": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  "artifacts": [{
+    "path": "openapi.json",
+    "mode": "100644",
+    "size": 3,
+    "gitObjectId": "cccccccccccccccccccccccccccccccccccccccc",
+    "sha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+  }]
+}`
 
 func TestLoadRendererBuildsRuntimeAndSourceConfiguration(t *testing.T) {
 	root := t.TempDir()
@@ -185,8 +207,13 @@ func TestLoadRendererAdmitsCanonicalGitIntegrityReceiptOnly(t *testing.T) {
 			"      root: internal/renderer/testdata/kubernetes/specs\n      integrityReceipt: kubernetes.provenance.json\n",
 			1,
 		),
-		"absolute": strings.Replace(withReceipt, "payments.provenance.json", "/tmp/payments.provenance.json", 1),
-		"escape":   strings.Replace(withReceipt, "payments.provenance.json", "../payments.provenance.json", 1),
+		"empty":                  strings.Replace(withReceipt, "payments.provenance.json", `""`, 1),
+		"whitespace only":        strings.Replace(withReceipt, "payments.provenance.json", `"   "`, 1),
+		"surrounding whitespace": strings.Replace(withReceipt, "payments.provenance.json", `" payments.provenance.json "`, 1),
+		"absolute":               strings.Replace(withReceipt, "payments.provenance.json", "/tmp/payments.provenance.json", 1),
+		"Windows drive":          strings.Replace(withReceipt, "payments.provenance.json", `"C:/receipts/payments.provenance.json"`, 1),
+		"UNC":                    strings.Replace(withReceipt, "payments.provenance.json", `"//server/receipts/payments.provenance.json"`, 1),
+		"escape":                 strings.Replace(withReceipt, "payments.provenance.json", "../payments.provenance.json", 1),
 		"backslash": strings.Replace(
 			withReceipt,
 			"payments.provenance.json",
@@ -207,43 +234,16 @@ func TestLoadRendererAdmitsCanonicalGitIntegrityReceiptOnly(t *testing.T) {
 func TestConfiguredGitIntegrityReceiptIsRejectedBeforeRepositoryAcquisition(t *testing.T) {
 	t.Parallel()
 
-	const validReceipt = `{
-  "schemaVersion": 2,
-  "catalogId": "payments",
-  "cloneRepository": "/missing/payments.git",
-  "provenanceUrl": "https://example.test/payments",
-  "objectFormat": "sha1",
-  "sourceRoot": ".",
-  "commitObjectId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-  "treeObjectId": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
-  "artifacts": [{
-    "path": "openapi.json",
-    "mode": "100644",
-    "size": 3,
-    "gitObjectId": "cccccccccccccccccccccccccccccccccccccccc",
-    "sha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
-  }],
-  "license": {
-    "name": "MIT",
-    "spdx": "MIT",
-    "upstreamPath": "LICENSE",
-    "trackedLocally": false,
-    "size": 3,
-    "gitBlobSha": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
-    "sha256": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
-  }
-}`
-
 	for name, test := range map[string]struct {
 		receipt string
 		want    string
 	}{
 		"unknown field": {
-			receipt: strings.Replace(validReceipt, "\n}", ",\n  \"unexpected\": true\n}", 1),
+			receipt: strings.Replace(validConfiguredGitIntegrityReceipt, "\n}", ",\n  \"unexpected\": true\n}", 1),
 			want:    "decode Git integrity receipt",
 		},
 		"trailing value": {
-			receipt: validReceipt + "\n{}\n",
+			receipt: validConfiguredGitIntegrityReceipt + "\n{}\n",
 			want:    "must contain exactly one JSON value",
 		},
 		"oversized": {
@@ -291,6 +291,115 @@ catalogs:
 			}
 		})
 	}
+}
+
+func TestConfiguredGitIntegrityReceiptRequiresRegularNonSymlinkFileUnderRendererRoot(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("named-pipe fixture requires a Unix-like host")
+	}
+
+	tests := []struct {
+		name       string
+		receipt    string
+		setup      func(*testing.T, string, string)
+		wantUnsafe bool
+	}{
+		{name: "regular file", receipt: "receipt.json", setup: func(t *testing.T, root, _ string) {
+			writeConfiguredGitIntegrityReceipt(t, filepath.Join(root, "receipt.json"), root)
+		}},
+		{name: "leaf symlink", receipt: "receipt.json", wantUnsafe: true, setup: func(t *testing.T, root, outside string) {
+			target := filepath.Join(outside, "receipt.json")
+			writeConfiguredGitIntegrityReceipt(t, target, root)
+			if err := os.Symlink(target, filepath.Join(root, "receipt.json")); err != nil {
+				t.Fatal(err)
+			}
+		}},
+		{name: "parent symlink", receipt: "receipts/receipt.json", wantUnsafe: true, setup: func(t *testing.T, root, outside string) {
+			writeConfiguredGitIntegrityReceipt(t, filepath.Join(outside, "receipt.json"), root)
+			if err := os.Symlink(outside, filepath.Join(root, "receipts")); err != nil {
+				t.Fatal(err)
+			}
+		}},
+		{name: "directory", receipt: "receipt.json", wantUnsafe: true, setup: func(t *testing.T, root, _ string) {
+			if err := os.Mkdir(filepath.Join(root, "receipt.json"), 0o700); err != nil {
+				t.Fatal(err)
+			}
+		}},
+		{name: "FIFO", receipt: "receipt.json", wantUnsafe: true, setup: func(t *testing.T, root, _ string) {
+			if output, err := exec.Command("mkfifo", filepath.Join(root, "receipt.json")).CombinedOutput(); err != nil {
+				t.Fatalf("mkfifo: %v: %s", err, output)
+			}
+		}},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			root := t.TempDir()
+			outside := t.TempDir()
+			test.setup(t, root, outside)
+			repository := filepath.Join(root, "missing.git")
+			configPath := writeConfiguredGitIntegrityRenderer(t, root, repository, test.receipt)
+			loaded, err := LoadRenderer(configPath)
+			if err != nil {
+				t.Fatal(err)
+			}
+			result := make(chan error, 1)
+			go func() {
+				_, loadErr := loaded.Sources()[0].Load(context.Background())
+				result <- loadErr
+			}()
+			select {
+			case err := <-result:
+				if !test.wantUnsafe {
+					if err == nil || errors.Is(err, sourceadapter.ErrCatalogIntegrity) {
+						t.Fatalf("regular receipt error = %v, want later Git acquisition error", err)
+					}
+					return
+				}
+				var integrityErr *sourceadapter.CatalogIntegrityError
+				if !errors.As(err, &integrityErr) || integrityErr.Check != "receipt-file" {
+					t.Fatalf("unsafe receipt error = %#v, want receipt-file integrity error", err)
+				}
+			case <-time.After(time.Second):
+				t.Fatal("unsafe receipt read blocked instead of failing closed")
+			}
+		})
+	}
+}
+
+func writeConfiguredGitIntegrityReceipt(t *testing.T, filename, rendererRoot string) {
+	t.Helper()
+	repository := filepath.Join(rendererRoot, "missing.git")
+	receipt := strings.Replace(validConfiguredGitIntegrityReceipt, "/missing/payments.git", repository, 1)
+	if err := os.WriteFile(filename, []byte(receipt), 0o600); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func writeConfiguredGitIntegrityRenderer(t *testing.T, root, repository, receipt string) string {
+	t.Helper()
+	config := fmt.Sprintf(`
+version: 1
+catalogs:
+  - id: payments
+    mount: /
+    title: Payments
+    profile: strict-v1
+    source:
+      kind: git
+      repository: %q
+      ref: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+      integrityReceipt: %q
+      include:
+        - openapi.json
+      documents:
+        - path: openapi.json
+          key: payments-v1
+`, repository, receipt)
+	filename := filepath.Join(root, "renderer.yaml")
+	if err := os.WriteFile(filename, []byte(config), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return filename
 }
 
 func TestCommittedRendererConfigLoads(t *testing.T) {
