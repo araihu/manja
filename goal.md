@@ -171,6 +171,14 @@ the complete runtime.
 
 ## PR Gate
 
+Current PR: [#94](https://github.com/araihu/manja/pull/94),
+`coord/opencore-product` into `main`.
+
+At PR creation, GitHub reported three CodeQL jobs (`go`,
+`javascript-typescript`, and `actions`) in progress and a `CodeRabbit` status
+present and pending. These are presence receipts only; completion and any
+findings still require exact-head verification.
+
 Before merge:
 
 - head SHA and tree match reviewed candidate;
@@ -183,8 +191,7 @@ Before merge:
 
 ## Next Action
 
-Verify the combined PM tree, publish the Open Core coordination branch as a PR,
-and confirm CodeQL and CodeRabbit are both present. Fix only findings that apply
-to the current behavior and rereview every changed identity. Then select the
-next bounded Open Core checkpoint from the accepted OC-01 gaps while licensing
-Task 8 remains stopped.
+Wait for PR #94 CodeQL, CI, and CodeRabbit results at the exact head. Fix only
+findings that apply to current behavior and rereview every changed identity.
+Then select the next bounded Open Core checkpoint from the accepted OC-01 gaps
+while licensing Task 8 remains stopped.
