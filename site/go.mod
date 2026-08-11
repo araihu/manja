@@ -6,12 +6,12 @@ require github.com/araihu/manja v0.0.0
 
 require (
 	github.com/a-h/templ v0.3.1020 // indirect
-	github.com/alecthomas/chroma/v2 v2.24.1 // indirect
-	github.com/araihu/goshtoso v0.1.8 // indirect
-	github.com/dlclark/regexp2 v1.12.0 // indirect
+	github.com/alecthomas/chroma/v2 v2.27.0 // indirect
+	github.com/araihu/goshtoso v0.1.13 // indirect
+	github.com/dlclark/regexp2/v2 v2.2.1 // indirect
 	github.com/getkin/kin-openapi v0.146.0 // indirect
-	github.com/go-openapi/jsonpointer v0.22.5 // indirect
-	github.com/go-openapi/swag/jsonname v0.25.5 // indirect
+	github.com/go-openapi/jsonpointer v0.23.1 // indirect
+	github.com/go-openapi/swag/jsonname v0.26.0 // indirect
 	github.com/kr/pretty v0.3.1 // indirect
 	github.com/oasdiff/yaml v0.1.1 // indirect
 	github.com/oasdiff/yaml3 v0.0.14 // indirect

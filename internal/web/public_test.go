@@ -132,7 +132,23 @@ func TestPublicDocsUsesCanonicalAraiHuThemeAfterGoshtoso(t *testing.T) {
 	if asset.Code != http.StatusOK {
 		t.Fatalf("GET /manja-assets/araihu.css status = %d, want %d", asset.Code, http.StatusOK)
 	}
-	if got := fmt.Sprintf("%x", sha256.Sum256(asset.Body.Bytes())); got != "9e7756cea751aa95bcf2f0b6545dc32ab9037a47a08a91287502dae52829d265" {
+	theme := asset.Body.String()
+	for _, want := range []string{
+		`Modern geometry with the Arai Hû organization palette`,
+		`--font-body: "Lato", ui-sans-serif, system-ui, sans-serif;`,
+		`--font-title: "Lato", ui-sans-serif, system-ui, sans-serif;`,
+		`--radius-radius: var(--radius-sm);`,
+	} {
+		if !strings.Contains(theme, want) {
+			t.Fatalf("Arai Hu CSS missing Modern-derived token %q", want)
+		}
+	}
+	for _, stale := range []string{`"Instrument Sans"`, `--radius-radius: var(--radius-lg);`} {
+		if strings.Contains(theme, stale) {
+			t.Fatalf("Arai Hu CSS retained pre-Modern token %q", stale)
+		}
+	}
+	if got := fmt.Sprintf("%x", sha256.Sum256(asset.Body.Bytes())); got != "9ec3f3187b736252b18f3aefef4737ba2025ef1c637611c3d0ecf58748043f1b" {
 		t.Fatalf("Arai Hu CSS SHA-256 = %s, want canonical content hash", got)
 	}
 }

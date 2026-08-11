@@ -417,8 +417,8 @@ func loadReleaseCatalog(root *os.Root, document releaseDocument, inventory map[s
 	if err := requireJSONEOF(decoder); err != nil {
 		return catalogDocument{}, fmt.Errorf("decode catalog.json: %w", err)
 	}
-	if catalog.SchemaVersion != 1 {
-		return catalogDocument{}, fmt.Errorf("catalog schemaVersion = %d, want 1", catalog.SchemaVersion)
+	if catalog.SchemaVersion != 1 && catalog.SchemaVersion != 2 {
+		return catalogDocument{}, fmt.Errorf("catalog schemaVersion = %d, want 1 or 2", catalog.SchemaVersion)
 	}
 	if catalog.Release != release {
 		return catalogDocument{}, fmt.Errorf("catalog release = %q, want %q", catalog.Release, release)
