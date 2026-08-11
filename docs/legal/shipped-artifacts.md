@@ -105,6 +105,9 @@ is present in runtime/binary-package or OCI bytes. Raw source archives are not
 subject to this exclusion:
 
 ```bash
+set -euo pipefail
+: "${RUNTIME_ARTIFACT_ROOT:?set RUNTIME_ARTIFACT_ROOT}"
+: "${IMAGE:?set IMAGE}"
 test ! -e "$RUNTIME_ARTIFACT_ROOT/internal/web/static/request_composer_browser_test.go"
 test ! -e "$RUNTIME_ARTIFACT_ROOT/internal/web/static/schema_example_browser_test.go"
 docker run --rm --entrypoint /bin/sh "$IMAGE" -ec '
