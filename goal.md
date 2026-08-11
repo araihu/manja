@@ -51,9 +51,9 @@ not implement hosted product behavior speculatively.
 - Task: `019fef17-2fad-73d2-b004-d3706d36ea82`
 - Worktree label: dedicated Open Core developer worktree
 - Initial lane base: `39d65ade21c080ee2102f53da5ed741f000d6dd7`
-- Current checkpoint base: `4578206bec2d28d2ca51e9b25f6823078c56e333`
-- Current checkpoint base tree: `6c5077ed6e570fa92c2d9e5149a9a2eaf363e7bb`
-- Branch: `codex/oc01-final-gate-ledger`
+- Current checkpoint base: `811b34b311c29dd60a70d6c88b0c0ec155ffbf12`
+- Current checkpoint base tree: `d947f03358248aeb51c851ac0d9da93045f7a047`
+- Branch: `codex/oc01-final-merge-gate-cleanliness`
 - Owns only bounded Open Core implementation checkpoints assigned here.
 - Must commit each coherent checkpoint with a meaningful message.
 - Must not implement deferred SaaS behavior or edit the active Arai Hû theme
@@ -245,6 +245,39 @@ not implement hosted product behavior speculatively.
   CodeRabbit gates. This goal-only ledger child adds no product decision; its
   moving commit and tree identity remain external to avoid recursive
   self-reference.
+- Goal-only ledger checkpoint
+  `811b34b311c29dd60a70d6c88b0c0ec155ffbf12`, tree
+  `d947f03358248aeb51c851ac0d9da93045f7a047`, is the current pushed PR head.
+  CodeRabbit review
+  [`4907614755`](https://github.com/araihu/manja/pull/94#pullrequestreview-4907614755),
+  run `8fda1015-1268-4df3-af8e-afc302d9b7d2`, reviewed exact range
+  `4578206bec2d28d2ca51e9b25f6823078c56e333...811b34b311c29dd60a70d6c88b0c0ec155ffbf12`
+  after [request
+  `5254855031`](https://github.com/araihu/manja/pull/94#issuecomment-5254855031),
+  invocation `a837d3db-c790-4712-9e36-804a1d2af553`, and [finished reply
+  `5254857274`](https://github.com/araihu/manja/pull/94#issuecomment-5254857274).
+  It selected and processed the only changed file, `goal.md`. Independent
+  classification is `REJECT` for merge only because the durable merge gate did
+  not explicitly require a clean worktree.
+- Discussion
+  [`3759102440`](https://github.com/araihu/manja/pull/94#discussion_r3759102440)
+  is a false positive and non-material: the referenced lane-base entries are
+  historical lineage. Operating Rule 1 still requires every new unit from
+  current `origin/main`; this correction does not rebase, absorb active-theme
+  bytes, or change that scope rule. Discussion
+  [`3759102445`](https://github.com/araihu/manja/pull/94#discussion_r3759102445)
+  is duplicate, superseded, and non-material: the current exact-811 review
+  selected and processed `goal.md`, while the prior exact-457 skip remains
+  truthfully disclosed. Discussion
+  [`3759102451`](https://github.com/araihu/manja/pull/94#discussion_r3759102451)
+  is duplicate and non-material: the prior immutable-identity `ACCEPT` remains
+  applicable after unchanged fast-forward integration and push; fresh review is
+  already required only when bytes or identity move.
+- The outside-diff clean-worktree finding is `VALID` and material. This
+  correction makes an empty staged, unstaged, and untracked state an explicit
+  merge condition. The generic 0% docstring warning is a false positive and
+  non-material because the reviewed delta is Markdown-only. This correction's
+  moving head and tree stay external to avoid recursive self-reference.
 - Full root tests, strict Muamba verification, architecture, unrelated external
   module, generation, browser, API, and templ gates passed for the OC-01
   evidence. Local OCI inventory observations supplied baseline evidence only;
@@ -270,12 +303,14 @@ Status: accepted baseline and mechanical checkpoints, OC-01M5, strict Stripe
 Dockerfile-binding correction, final-head corrections, root-gate truth,
 goal-ledger corrections, and the OCI inspection trust-boundary correction are
 integrated/pushed through exact
-`4578206bec2d28d2ca51e9b25f6823078c56e333`, tree
-`6c5077ed6e570fa92c2d9e5149a9a2eaf363e7bb`. The exact-query traversal
+`811b34b311c29dd60a70d6c88b0c0ec155ffbf12`, tree
+`d947f03358248aeb51c851ac0d9da93045f7a047`. The exact-query traversal
 correction received independent `ACCEPT`, was fast-forward integrated and
-pushed unchanged, and satisfied its immutable exact-head PR gate. This
-goal-only durable-ledger checkpoint is active locally and requires fresh
-independent review.
+pushed unchanged, and satisfied its immutable exact-head PR gate. The subsequent
+goal-only ledger checkpoint is the current pushed PR head; independent review
+rejects it for merge only because its durable gate did not explicitly require a
+clean worktree. This bounded correction child addresses that single finding and
+requires fresh exact-identity independent review.
 
 Accepted source identity:
 
@@ -294,12 +329,11 @@ Reviewed PR-transition identity:
 
 Current integrated/pushed product-manager checkpoint:
 
-- head: `4578206bec2d28d2ca51e9b25f6823078c56e333`;
-- tree: `6c5077ed6e570fa92c2d9e5149a9a2eaf363e7bb`;
-- disposition: independently accepted with no findings; fast-forward integrated
-  and pushed unchanged; exact-head CI, CodeQL, substantive CodeRabbit, and final
-  independent gate audit satisfied for this immutable identity only; preserved
-  as the parent of this goal-only ledger checkpoint.
+- head: `811b34b311c29dd60a70d6c88b0c0ec155ffbf12`;
+- tree: `d947f03358248aeb51c851ac0d9da93045f7a047`;
+- disposition: current pushed PR head; independently rejected for merge only
+  because the durable merge gate did not explicitly require an empty worktree;
+  preserved as the parent of this bounded correction child.
 
 The final moving candidate head and tree are bound by the immutable external
 review packet and control plane. A commit cannot embed its own final commit and
@@ -349,7 +383,7 @@ the complete runtime.
 Current PR: [#94](https://github.com/araihu/manja/pull/94),
 `coord/opencore-product` into `main`.
 
-Snapshot at `2026-08-11T14:04:43Z`: PR #94 remains open at exact pushed head
+Prior immutable snapshot at `2026-08-11T14:04:43Z`: PR #94 was open at pushed head
 `4578206bec2d28d2ca51e9b25f6823078c56e333`. CodeQL run
 [`31495654112`](https://github.com/araihu/manja/actions/runs/31495654112)
 succeeded for `actions`, `go`, and `javascript-typescript`; its summary reports
@@ -371,10 +405,20 @@ new pull-review object. Therefore the final PR gate is satisfied for
 `6c5077ed6e570fa92c2d9e5149a9a2eaf363e7bb`, and no other identity. The PR
 remains unmerged. No release, deployment, or cleanup is authorized.
 
+Current snapshot at `2026-08-11T15:00:19Z`: PR #94 remains open at exact pushed
+head `811b34b311c29dd60a70d6c88b0c0ec155ffbf12`. CodeRabbit review
+`4907614755`, run `8fda1015-1268-4df3-af8e-afc302d9b7d2`, selected and
+processed `goal.md`. Independent classification rejects that immutable head for
+merge only because the gate did not require a clean worktree. The three inline
+discussions are non-material under the classifications recorded above; the
+outside-diff clean-worktree finding is valid and corrected by this child. The
+PR remains unmerged, and no release, deployment, or cleanup is authorized.
+
 Before merge:
 
 - head SHA and tree match reviewed candidate;
-- worktree status includes staged, unstaged, and untracked state;
+- worktree is clean: `git status --porcelain=v1 --untracked-files=all` emits no
+  output, so staged, unstaged, and untracked state are all empty;
 - relevant root, site, architecture, generation, and artifact gates pass;
 - CodeQL check exists and succeeds;
 - CodeRabbit is present and completes a substantive successful review/check
@@ -385,8 +429,8 @@ Before merge:
 
 ## Next Action
 
-Freeze this goal-only ledger checkpoint's moving commit and tree in the
-immutable external reviewer packet and control plane, then obtain fresh
+Freeze this bounded correction child's moving commit and tree in the immutable
+external reviewer packet and control plane, then obtain fresh exact-identity
 independent review. If the accepted child is integrated and pushed, its head
 movement restarts exact-head CI, CodeQL, and substantive CodeRabbit gates; all
 must succeed at that same identity before any merge decision. Do not merge.
