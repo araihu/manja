@@ -185,7 +185,8 @@ func TestStripeOpenAPIProvenanceRejectsDockerfileDecoys(t *testing.T) {
 FROM golang:1.26.5-alpine AS build
 RUN /out/manja build \
 	-renderer-config /src/internal/renderer/testdata/kubernetes/renderer.yaml \
-	-data-dir /out/renderer-data
+	-data-dir /out/renderer-data \
+	> /out/renderer-build-receipt.json
 FROM alpine:3.24
 `,
 			wantValid: true,
@@ -320,6 +321,97 @@ FROM alpine:3.24
 			name: "missing config path",
 			dockerfile: `FROM golang:1.26.5-alpine AS build
 RUN /out/manja build -data-dir /out/renderer-data
+FROM alpine:3.24
+`,
+		},
+		{
+			name: "inline comment after canonical command",
+			dockerfile: `FROM golang:1.26.5-alpine AS build
+RUN /out/manja build -renderer-config /src/internal/renderer/testdata/kubernetes/renderer.yaml -data-dir /out/renderer-data > /out/renderer-build-receipt.json # decoy
+FROM alpine:3.24
+`,
+		},
+		{
+			name: "semicolon tail after canonical command",
+			dockerfile: `FROM golang:1.26.5-alpine AS build
+RUN /out/manja build -renderer-config /src/internal/renderer/testdata/kubernetes/renderer.yaml -data-dir /out/renderer-data > /out/renderer-build-receipt.json ; echo decoy
+FROM alpine:3.24
+`,
+		},
+		{
+			name: "approved plus wrong double-dash equals flag",
+			dockerfile: `FROM golang:1.26.5-alpine AS build
+RUN /out/manja build -renderer-config /src/internal/renderer/testdata/kubernetes/renderer.yaml -data-dir /out/renderer-data > /out/renderer-build-receipt.json --renderer-config=/wrong/renderer.yaml
+FROM alpine:3.24
+`,
+		},
+		{
+			name: "approved plus wrong double-dash flag",
+			dockerfile: `FROM golang:1.26.5-alpine AS build
+RUN /out/manja build -renderer-config /src/internal/renderer/testdata/kubernetes/renderer.yaml -data-dir /out/renderer-data > /out/renderer-build-receipt.json --renderer-config /wrong/renderer.yaml
+FROM alpine:3.24
+`,
+		},
+		{
+			name: "wrong double-dash flag then approved",
+			dockerfile: `FROM golang:1.26.5-alpine AS build
+RUN /out/manja build --renderer-config /wrong/renderer.yaml -renderer-config /src/internal/renderer/testdata/kubernetes/renderer.yaml -data-dir /out/renderer-data > /out/renderer-build-receipt.json
+FROM alpine:3.24
+`,
+		},
+		{
+			name: "terminator before approved flag",
+			dockerfile: `FROM golang:1.26.5-alpine AS build
+RUN /out/manja build -- -renderer-config /src/internal/renderer/testdata/kubernetes/renderer.yaml -data-dir /out/renderer-data > /out/renderer-build-receipt.json
+FROM alpine:3.24
+`,
+		},
+		{
+			name: "positional before approved flag",
+			dockerfile: `FROM golang:1.26.5-alpine AS build
+RUN /out/manja build positional -renderer-config /src/internal/renderer/testdata/kubernetes/renderer.yaml -data-dir /out/renderer-data > /out/renderer-build-receipt.json
+FROM alpine:3.24
+`,
+		},
+		{
+			name: "chained second build",
+			dockerfile: `FROM golang:1.26.5-alpine AS build
+RUN /out/manja build -renderer-config /src/internal/renderer/testdata/kubernetes/renderer.yaml -data-dir /out/renderer-data > /out/renderer-build-receipt.json && /out/manja build --renderer-config=/wrong/renderer.yaml
+FROM alpine:3.24
+`,
+		},
+		{
+			name: "missing data dir",
+			dockerfile: `FROM golang:1.26.5-alpine AS build
+RUN /out/manja build -renderer-config /src/internal/renderer/testdata/kubernetes/renderer.yaml > /out/renderer-build-receipt.json
+FROM alpine:3.24
+`,
+		},
+		{
+			name: "reordered canonical flags",
+			dockerfile: `FROM golang:1.26.5-alpine AS build
+RUN /out/manja build -data-dir /out/renderer-data -renderer-config /src/internal/renderer/testdata/kubernetes/renderer.yaml > /out/renderer-build-receipt.json
+FROM alpine:3.24
+`,
+		},
+		{
+			name: "wrong data dir",
+			dockerfile: `FROM golang:1.26.5-alpine AS build
+RUN /out/manja build -renderer-config /src/internal/renderer/testdata/kubernetes/renderer.yaml -data-dir /wrong/renderer-data > /out/renderer-build-receipt.json
+FROM alpine:3.24
+`,
+		},
+		{
+			name: "missing receipt redirection",
+			dockerfile: `FROM golang:1.26.5-alpine AS build
+RUN /out/manja build -renderer-config /src/internal/renderer/testdata/kubernetes/renderer.yaml -data-dir /out/renderer-data
+FROM alpine:3.24
+`,
+		},
+		{
+			name: "wrong receipt path",
+			dockerfile: `FROM golang:1.26.5-alpine AS build
+RUN /out/manja build -renderer-config /src/internal/renderer/testdata/kubernetes/renderer.yaml -data-dir /out/renderer-data > /wrong/receipt.json
 FROM alpine:3.24
 `,
 		},
@@ -497,29 +589,25 @@ func strictStripeBuildCommandConfigPath(command string) (string, bool, error) {
 	if len(fields) < 2 || fields[0] != "/out/manja" || fields[1] != "build" {
 		return "", false, nil
 	}
-	if strings.ContainsAny(command, "'\"") {
-		return "", true, fmt.Errorf("quoted /out/manja build command is outside the strict Dockerfile contract")
+	want := []string{
+		"/out/manja",
+		"build",
+		"-renderer-config",
+		approvedStripeRendererBuildSource.DockerConfigPath,
+		"-data-dir",
+		"/out/renderer-data",
+		">",
+		"/out/renderer-build-receipt.json",
 	}
-
-	configFlagCount := 0
-	configPath := ""
-	for index, field := range fields {
-		if field != "-renderer-config" {
-			continue
+	if len(fields) != len(want) {
+		return "", true, fmt.Errorf("Dockerfile /out/manja build token count = %d, want %d", len(fields), len(want))
+	}
+	for index := range want {
+		if fields[index] != want[index] {
+			return "", true, fmt.Errorf("Dockerfile /out/manja build token %d = %q, want %q", index, fields[index], want[index])
 		}
-		configFlagCount++
-		if index+1 >= len(fields) {
-			return "", true, fmt.Errorf("Dockerfile -renderer-config flag has no value")
-		}
-		configPath = fields[index+1]
 	}
-	if configFlagCount != 1 {
-		return "", true, fmt.Errorf("Dockerfile -renderer-config flag count = %d, want 1", configFlagCount)
-	}
-	if configPath != approvedStripeRendererBuildSource.DockerConfigPath {
-		return "", true, fmt.Errorf("Dockerfile renderer config path = %q, want %q", configPath, approvedStripeRendererBuildSource.DockerConfigPath)
-	}
-	return configPath, true, nil
+	return approvedStripeRendererBuildSource.DockerConfigPath, true, nil
 }
 
 func validateStripeOpenAPIProvenance(receipt stripeOpenAPIProvenance, source stripeRendererBuildSource) error {

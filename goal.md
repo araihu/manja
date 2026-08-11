@@ -50,8 +50,8 @@ not implement hosted product behavior speculatively.
 - Task: `019fef17-2fad-73d2-b004-d3706d36ea82`
 - Worktree: `/Users/guilhermecastro/.codex/worktrees/e1bf/manja`
 - Initial lane base: `39d65ade21c080ee2102f53da5ed741f000d6dd7`
-- Current checkpoint base: `dd1a9e5d41422cb400d99a407500562c70ab21a0`
-- Current checkpoint base tree: `7ac46daea42ab9215231475f215becbf539de9fc`
+- Current checkpoint base: `051ef67bfb7dd49c7052fe7ee743fd1a88fad1ab`
+- Current checkpoint base tree: `abf63a77c74228e019a1e39dc4016b156ab05389`
 - Branch: `codex/oc01-stripe-dockerfile-binding`
 - Owns only bounded Open Core implementation checkpoints assigned here.
 - Must commit each coherent checkpoint with a meaningful message.
@@ -108,10 +108,12 @@ not implement hosted product behavior speculatively.
 - CodeRabbit review `4904235223`, run
   `be132353-6da0-4b99-a5ab-5b9785ed2126`, completed substantively at exact
   `7eb7d58c8bb936d2ca3813b90f91884a2f9fdb29`. Discussion `3756311030` is
-  independently `VALID` and material: comment, unrelated-`RUN`, and duplicate
-  build-command decoys were reproduced against the Stripe provenance test. The
-  separate bounded fail-closed correction is implemented locally and awaits
-  independent review; its moving candidate identity remains external.
+  independently `VALID` and material. First correction candidate
+  `051ef67bfb7dd49c7052fe7ee743fd1a88fad1ab`, tree
+  `abf63a77c74228e019a1e39dc4016b156ab05389`, was rejected because same-`RUN`
+  tails and Go flag aliases could bypass its exact-flag scan. Its child replaces
+  flag scanning with a strict canonical full-command token comparison and
+  awaits fresh independent review; the moving child identity remains external.
 - OC-01M5's exact observed Manja social-rendering checkpoint and goal correction
   are preserved at accepted local product-manager head
   `dd1a9e5d41422cb400d99a407500562c70ab21a0`, tree
@@ -138,7 +140,7 @@ not implement hosted product behavior speculatively.
 
 Status: accepted baseline and mechanical checkpoints integrated/pushed through
 the Simple Icons evidence checkpoint; OC-01M5 is accepted locally, and the
-validated Stripe Dockerfile-binding correction awaits independent review.
+corrected Stripe Dockerfile-binding child awaits fresh independent review.
 
 Accepted source identity:
 
@@ -234,8 +236,8 @@ Before merge:
 
 ## Next Action
 
-Freeze the implemented Stripe Dockerfile-binding correction's moving
-commit/tree in the immutable external reviewer packet and control plane, obtain
+Freeze the strict canonical-command Stripe correction child's moving commit/tree
+in the immutable external reviewer packet and control plane, obtain fresh
 independent review, and let the product manager integrate only an accepted
 identity. Then obtain a substantive successful CodeRabbit review/check for the
 final moving head after CI and CodeQL complete. Absence or a rate-limited
