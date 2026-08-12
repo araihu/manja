@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/binary"
 	"encoding/hex"
+	"fmt"
 	"regexp"
 	"strings"
 	"testing"
@@ -774,68 +775,64 @@ func TestPreparedOperationHeaderMatchesCatalogSSRBytes(t *testing.T) {
 func TestPreparedOperationParametersMatchCatalogSSRBytes(t *testing.T) {
 	t.Parallel()
 
-	detailID := domain.DetailID("detail-sha256-" + strings.Repeat("a", 64))
-	operation := domain.Operation{
-		Anchor: string(detailID), Title: "List Pods", Method: "GET", Path: "/api/v1/pods",
-		Parameters: []domain.OperationParameter{
-			{Name: "namespace", In: "path", Required: true, Description: "Namespace.", Schema: parameterSummary("string", "")},
-			{Name: "labels", In: "query", Description: strings.Repeat("Filter labels. ", 20), Schema: domain.SchemaSummary{Type: "array", Constraints: []domain.SchemaConstraint{}, Items: parameterSummaryPointer(parameterSummary("string", ""))}},
-			{Name: "X-Trace", In: "header", Example: "trace-1", Schema: parameterSummary("string", "uuid")},
-			{Name: "session", In: "cookie", Schema: parameterSummary("boolean", "")},
-		},
-	}
-	detail := catalog.DetailRecordV1{ID: detailID, Kind: "operation", Operation: &projection.OperationDetail{
-		ID: string(detailID), Anchor: string(detailID), HeadingID: string(detailID), Heading: "List Pods", HeadingLevel: 2,
-		Method: "GET", Path: "/api/v1/pods",
-		Parameters: []projection.Parameter{
-			{Ordinal: 0, ID: parameterProjectionID("path", "namespace"), Name: "namespace", In: "path", Required: true, Description: "Namespace.", SchemaRef: 0},
-			{Ordinal: 1, ID: parameterProjectionID("query", "labels"), Name: "labels", In: "query", Description: strings.Repeat("Filter labels. ", 20), SchemaRef: 1},
-			{Ordinal: 2, ID: parameterProjectionID("header", "X-Trace"), Name: "X-Trace", In: "header", SchemaRef: 3, Examples: []projection.Example{{Ordinal: 0, ID: "primary", Text: "trace-1", Provided: true}}},
-			{Ordinal: 3, ID: parameterProjectionID("cookie", "session"), Name: "session", In: "cookie", SchemaRef: 4},
-		},
-	}}
-	nodes := []projection.SchemaNode{
-		{Ordinal: 0, ID: "node-namespace", Type: "string"},
-		{Ordinal: 1, ID: "node-labels", Type: "array", Items: []projection.SchemaNodeItem{{Ordinal: 0, ID: "item", SchemaRef: 2}}},
-		{Ordinal: 2, ID: "node-label", Type: "string"},
-		{Ordinal: 3, ID: "node-trace", Type: "string", Format: "uuid"},
-		{Ordinal: 4, ID: "node-session", Type: "boolean"},
-	}
-	fragment, err := localrender.PrepareOperationParameters(detail, operation, nodes)
-	if err != nil {
-		t.Fatal(err)
-	}
-	shared, err := fragment.Bytes(context.Background())
-	if err != nil {
-		t.Fatal(err)
-	}
+	for mask := 0; mask < 8; mask++ {
+		mask := mask
+		t.Run(fmt.Sprintf("path=%t/query=%t/header=%t", mask&4 != 0, mask&2 != 0, mask&1 != 0), func(t *testing.T) {
+			t.Parallel()
 
-	var legacy bytes.Buffer
-	for index, group := range []struct {
-		title    string
-		location string
-	}{{"Path Parameters", "path"}, {"Query Parameters", "query"}, {"Header Parameters", "header"}} {
-		if index > 0 {
-			legacy.WriteByte(' ')
-		}
-		if err := paramGroup(string(detailID), group.title, parametersIn(operation.Parameters, group.location), PublicDocsOptions{}).Render(context.Background(), &legacy); err != nil {
-			t.Fatal(err)
-		}
-	}
-	if !bytes.Equal(shared, legacy.Bytes()) {
-		t.Fatalf("prepared and SSR parameter groups differ:\nprepared=%s\nSSR=%s", shared, legacy.Bytes())
-	}
+			detailID := domain.DetailID("detail-sha256-" + strings.Repeat("a", 64))
+			operation := domain.Operation{Anchor: string(detailID), Title: "List Pods", Method: "GET", Path: "/api/v1/pods"}
+			detail := catalog.DetailRecordV1{ID: detailID, Kind: "operation", Operation: &projection.OperationDetail{
+				ID: string(detailID), Anchor: string(detailID), HeadingID: string(detailID), Heading: "List Pods", HeadingLevel: 2,
+				Method: "GET", Path: "/api/v1/pods",
+			}}
+			var nodes []projection.SchemaNode
+			addParameter := func(name, location, description, example, schemaType, format string, required bool) {
+				ordinal := uint32(len(operation.Parameters))
+				operation.Parameters = append(operation.Parameters, domain.OperationParameter{
+					Name: name, In: location, Required: required, Description: description, Example: example,
+					Schema: parameterSummary(schemaType, format),
+				})
+				projected := projection.Parameter{
+					Ordinal: ordinal, ID: parameterProjectionID(location, name), Name: name, In: location,
+					Required: required, Description: description, SchemaRef: projection.SchemaRef(ordinal),
+				}
+				if example != "" {
+					projected.Examples = []projection.Example{{Ordinal: 0, ID: "primary", Text: example, Provided: true}}
+				}
+				detail.Operation.Parameters = append(detail.Operation.Parameters, projected)
+				nodes = append(nodes, projection.SchemaNode{Ordinal: ordinal, ID: "node-" + strings.ToLower(name), Type: schemaType, Format: format})
+			}
 
-	var originalPage, delegatedPage bytes.Buffer
-	if err := endpointSection(operation, nil, "", PublicDocsOptions{}, OperationNavigationData{}).Render(context.Background(), &originalPage); err != nil {
-		t.Fatal(err)
-	}
-	if err := endpointSection(operation, nil, "", PublicDocsOptions{OperationParameters: &fragment}, OperationNavigationData{}).Render(context.Background(), &delegatedPage); err != nil {
-		t.Fatal(err)
-	}
-	if !bytes.Equal(originalPage.Bytes(), delegatedPage.Bytes()) {
-		index := firstDifferentByte(originalPage.Bytes(), delegatedPage.Bytes())
-		t.Fatalf("delegated parameter fragment changed complete SSR endpoint bytes at byte %d:\noriginal=%q\ndelegated=%q", index, nearbyBytes(originalPage.Bytes(), index), nearbyBytes(delegatedPage.Bytes(), index))
+			if mask&4 != 0 {
+				addParameter("namespace", "path", "Namespace.", "", "string", "", true)
+			}
+			if mask&2 != 0 {
+				addParameter("labels", "query", strings.Repeat("Filter labels. ", 20), "", "string", "", false)
+			}
+			if mask&1 != 0 {
+				addParameter("X-Trace", "header", "", "trace-1", "string", "uuid", false)
+			}
+			// Cookie parameters keep the endpoint request renderable while remaining
+			// deliberately outside this Path/Query/Header fragment contract.
+			addParameter("session", "cookie", "", "", "boolean", "", false)
+
+			fragment, err := localrender.PrepareOperationParameters(detail, operation, nodes)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var originalPage, delegatedPage bytes.Buffer
+			if err := endpointSection(operation, nil, "", PublicDocsOptions{}, OperationNavigationData{}).Render(context.Background(), &originalPage); err != nil {
+				t.Fatal(err)
+			}
+			if err := endpointSection(operation, nil, "", PublicDocsOptions{OperationParameters: &fragment}, OperationNavigationData{}).Render(context.Background(), &delegatedPage); err != nil {
+				t.Fatal(err)
+			}
+			if !bytes.Equal(originalPage.Bytes(), delegatedPage.Bytes()) {
+				index := firstDifferentByte(originalPage.Bytes(), delegatedPage.Bytes())
+				t.Fatalf("delegated parameter fragment changed complete SSR endpoint bytes at byte %d:\noriginal=%q\ndelegated=%q", index, nearbyBytes(originalPage.Bytes(), index), nearbyBytes(delegatedPage.Bytes(), index))
+			}
+		})
 	}
 }
 

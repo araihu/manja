@@ -103,9 +103,7 @@ func PrepareOperationParameters(detail catalog.DetailRecordV1, operation domain.
 				Description: parameter.Description, Example: parameter.Example,
 			})
 		}
-		if len(data.Parameters) > 0 {
-			fragment.groups = append(fragment.groups, data)
-		}
+		fragment.groups = append(fragment.groups, data)
 	}
 	return fragment, nil
 }
@@ -327,6 +325,9 @@ func (fragment OperationParametersFragment) Render(ctx context.Context, writer i
 			if _, err := output.Write([]byte(" ")); err != nil {
 				return err
 			}
+		}
+		if len(group.Parameters) == 0 {
+			continue
 		}
 		if err := operationParameterGroup(group).Render(ctx, &output); err != nil {
 			return err

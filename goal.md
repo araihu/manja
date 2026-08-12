@@ -51,10 +51,12 @@ not implement hosted product behavior speculatively.
 - Task: `019fef17-2fad-73d2-b004-d3706d36ea82`
 - Worktree label: dedicated Open Core developer worktree
 - Initial lane base: `39d65ade21c080ee2102f53da5ed741f000d6dd7`
-- OC-04G accepted base and direct parent:
+- OC-04G accepted lineage base:
   `a901b008164227d8b480124bafb59ae1d9903df0`
-- Current checkpoint base tree:
-  `3287ec7c5dbd81da23dacb66ffd496c13d3a8861`
+- OC-04G rejected correction parent:
+  `52f99958a9a326e653b771f3d5624a15a06113ee`
+- Current checkpoint parent tree:
+  `748d84df049c1a6a2eb54be42e14c71be751710c`
 - Fresh-main merge-base:
   `43f96dfbf9d18eee2364f14778e6b94312c8abac`, tree
   `959f199e145c316b4b76e40a561413c0e6d57134`
@@ -390,6 +392,22 @@ not implement hosted product behavior speculatively.
   dependency/build gates, and diff check. Full root tests passed with
   self-hosted 194.923s and E2E 188.570s. The moving final goal-child identity
   remains external for fresh review.
+- OC-04G goal child `52f99958a9a326e653b771f3d5624a15a06113ee`,
+  tree `748d84df049c1a6a2eb54be42e14c71be751710c`, is preserved unchanged as the
+  rejected parent for this correction. Independent technical review found one
+  P1: the prepared renderer retained separators only between nonempty groups,
+  while legacy SSR retains the fixed Path/Query/Header slot boundaries even
+  when a slot is empty.
+- The bounded correction retains all three ordered slots, renders HTML only for
+  populated groups, and preserves the two literal slot separators. A RED parity
+  matrix failed seven of eight Path/Query/Header presence combinations; GREEN
+  proves all eight complete endpoint byte streams, including a request kept
+  renderable only by an unsupported cookie parameter. Focused, affected, race,
+  vet, strict Muamba, stable templ generation, architecture and `js/wasm` gates
+  pass. The first root run exposed one transient pre-existing catalog-focus E2E
+  failure; its exact isolated rerun passed in 2.90s, and a complete root rerun
+  passed with self-hosted 190.049s and E2E 189.365s. The moving correction-child
+  identity remains external for fresh review.
 - At `2026-08-12T03:34:23Z`, the confirmed public preview URL
   `https://manja.araihu.com/manja-assets/manja-social.png` returned HTTP 200,
   `image/png`, 21,500 bytes, 1280x640, and SHA-256
@@ -868,8 +886,9 @@ Before merge:
 
 ## Next Action
 
-Submit the frozen OC-04G identity, clean status, parameter inventory/schema
-validation RED/GREEN receipts, exact legacy-group and whole-endpoint SSR parity,
+Submit the frozen OC-04G correction identity, clean status, the preserved
+rejected-parent identity, eight-case fixed-slot RED/GREEN receipts, exact
+legacy-group and whole-endpoint SSR parity,
 preserved OC-04A/B/C/D/E/F behavior, Wasm boundary, race, and root-suite
 receipts for fresh independent technical and design review. PM chooses and
 separately authorizes any integration path.
