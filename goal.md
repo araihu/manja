@@ -110,7 +110,12 @@ not implement hosted product behavior speculatively.
   `10c75d6c0fa3e945093bc47e46df0d33e0ad40de`. Accepted local implementation head
   `b4d7562e7a97903726234a3d8d8a8d2130bf4481`, tree
   `ef6f22e9842d233ccde7acfd93c1563941d1290a`, received independent `ACCEPT`
-  with no findings. It is not pushed, attached to a PR update, or integrated.
+  with no findings. Accepted ledger head
+  `2ba674e4b7b8000a32ea47ce8896b9d741681b7f`, tree
+  `b86fcf32d882d5baefd8ced024da2cd261ade191`, accurately distinguishes preserved
+  local PM state from the absent remote PM ref. Authorized push opened [PR
+  #96](https://github.com/araihu/manja/pull/96) at that exact ledger head against
+  base `main` `9733949b8dde9eb0fe1ef285ceb3ecbeb88f5d06`.
 - Its direct ancestry after the fresh-main base is `bd4a96fbaa898142845d8eeab051a45b504cff3a`,
   `87fe9e8d1bb3b3824b1aa3ecbbc2cb01e2fb1ff9`, rejected candidate
   `2da4be9420def8c24356ebc3e08b4e662a4b4244` / tree
@@ -333,10 +338,12 @@ not implement hosted product behavior speculatively.
 Status: PR #94's accepted OC-01 baseline and mechanical corrections were squash
 merged at exact `9733949b8dde9eb0fe1ef285ceb3ecbeb88f5d06`, tree
 `10c75d6c0fa3e945093bc47e46df0d33e0ad40de`. The subsequent fresh-main Stripe
-captured-byte integrity line remains local. Exact implementation head
+captured-byte integrity line is under review in PR #96. Exact implementation head
 `b4d7562e7a97903726234a3d8d8a8d2130bf4481`, tree
 `ef6f22e9842d233ccde7acfd93c1563941d1290a`, is independently accepted with no
-findings, but has not been pushed, attached to a PR update, or integrated.
+findings. Accepted ledger head `2ba674e4b7b8000a32ea47ce8896b9d741681b7f`,
+tree `b86fcf32d882d5baefd8ced024da2cd261ade191`, is pushed as PR #96 head. Neither
+the implementation line nor its ledger is integrated.
 
 Accepted source identity:
 
@@ -368,8 +375,10 @@ Fresh-main Stripe captured-byte checkpoint:
 - accepted local head: `b4d7562e7a97903726234a3d8d8a8d2130bf4481`;
 - accepted local tree: `ef6f22e9842d233ccde7acfd93c1563941d1290a`;
 - immediate parent: `f10e16b05e7ff69fc13c70cabaff5f17c57eafd0`;
-- disposition: independent `ACCEPT`, no findings; not pushed, PR-updated, or
-  integrated.
+- accepted ledger head: `2ba674e4b7b8000a32ea47ce8896b9d741681b7f`;
+- accepted ledger tree: `b86fcf32d882d5baefd8ced024da2cd261ade191`;
+- disposition: implementation and ledger accepted; authorized push opened PR
+  #96 at exact ledger head; not integrated.
 
 The final moving candidate head and tree are bound by the immutable external
 review packet and control plane. A commit cannot embed its own final commit and
@@ -426,13 +435,18 @@ At `2026-08-11T18:54:35Z`, [PR
 `refs/heads/coord/opencore-product` is absent after the authorized squash merge;
 this checkpoint does not recreate or push it.
 
-Fresh-main Stripe captured-byte head
+Accepted fresh-main Stripe captured-byte implementation head
 `b4d7562e7a97903726234a3d8d8a8d2130bf4481`, tree
-`ef6f22e9842d233ccde7acfd93c1563941d1290a`, is independently accepted locally
-with no findings. It is not pushed, attached to a PR update, or integrated, so
-no remote exact-head gate is claimed for it.
+`ef6f22e9842d233ccde7acfd93c1563941d1290a`, is independently accepted with no
+findings. Authorized push opened [PR
+#96](https://github.com/araihu/manja/pull/96) against base `main`
+`9733949b8dde9eb0fe1ef285ceb3ecbeb88f5d06` at exact accepted ledger head
+`2ba674e4b7b8000a32ea47ce8896b9d741681b7f`, tree
+`b86fcf32d882d5baefd8ced024da2cd261ade191`. At the
+`2026-08-12T01:06:56Z` snapshot, CI, CodeQL, and CodeRabbit are queued or
+pending. No successful exact-head remote gate is claimed.
 
-After any authorized push or PR movement:
+Before merge:
 
 - head SHA and tree match reviewed candidate;
 - worktree is clean: `git status --porcelain=v1 --untracked-files=all` emits no
@@ -447,12 +461,12 @@ After any authorized push or PR movement:
 
 ## Next Action
 
-PM decides and authorizes the integration path for independently accepted local
-head `b4d7562e7a97903726234a3d8d8a8d2130bf4481` from fresh `origin/main`. Any
-push, PR update, or other head movement requires exact-head CI, CodeQL, and a
-substantive successful CodeRabbit review/check before integration. This
-goal-only child's moving identity remains in the immutable external review
-packet to avoid recursive self-reference. Overall provenance remains `BLOCKED`;
+Freeze this goal-only child's moving identity in the immutable external review
+packet and obtain fresh independent review. After any authorized push or PR-head
+movement, exact-head CI, CodeQL, reviewer, and substantive CodeRabbit gates must
+pass before merge. Repository-supported integration method is squash merge with
+match-head protection against the exact reviewed PR head. Overall provenance
+remains `BLOCKED`; legal provenance stays separate and
 licensing/package-generation Task 8 remains stopped. Hosted SaaS stays deferred,
 active-theme work stays excluded, and OC-04 hybrid SSR/Wasm/offline remains Open
 Core. No release, deployment, cleanup, or other lifecycle action is authorized.
