@@ -51,15 +51,15 @@ not implement hosted product behavior speculatively.
 - Task: `019fef17-2fad-73d2-b004-d3706d36ea82`
 - Worktree label: dedicated Open Core developer worktree
 - Initial lane base: `39d65ade21c080ee2102f53da5ed741f000d6dd7`
-- OC-04B correction base and direct parent:
-  `f02469c39e09576963b9de4d98807abfc542b792`
+- OC-04C accepted base and direct parent:
+  `c7a3e89d82c7ad47e7e436ed4a0ddb065365a20a`
 - Current checkpoint base tree:
-  `f6400357ebfefcc4571b4bd3246a3176df797e99`
+  `6020165a3bfbab00bae1910a197b2d4dc9bf57b3`
 - Fresh-main merge-base:
   `43f96dfbf9d18eee2364f14778e6b94312c8abac`, tree
   `959f199e145c316b4b76e40a561413c0e6d57134`
-- Branch: `codex/oc04b-public-eligibility-descriptor-correction`
-- Worktree label: OC-04B publication-key correction worktree
+- Branch: `codex/oc04c-projection-activation-admission`
+- Worktree label: OC-04C projection-activation admission worktree
 - Owns only bounded Open Core implementation checkpoints assigned here.
 - Must commit each coherent checkpoint with a meaningful message.
 - Must not implement deferred SaaS behavior or edit the active Arai Hû theme
@@ -242,6 +242,33 @@ not implement hosted product behavior speculatively.
   and root `go test ./... -count=1` passed. Root receipts include self-hosted
   202.962s and E2E 189.132s. No other OC-04B/OC-04A behavior or scope changed;
   final moving identity remains external for fresh review.
+- OC-04B correction child
+  `c7a3e89d82c7ad47e7e436ed4a0ddb065365a20a`, tree
+  `6020165a3bfbab00bae1910a197b2d4dc9bf57b3`, received independent technical
+  and design `ACCEPT` and is the immutable direct parent for OC-04C.
+- OC-04C starts from that accepted parent. Commit
+  `97f89034d8c2d3f9c77e12e162d77ae0b542af0f` adds a pure, network-free and
+  filesystem-free activation admission core. It strictly decodes canonical
+  manifest bytes, binds the snapshot/revision/projection digest and exact
+  same-origin snapshot paths, admits only declared detail and schema-node
+  entries, sorts them, and returns defensive copies only after every check
+  succeeds. Commit `13a919b1a91559fa6b36269b77b50c5e847e9c71`
+  exposes canonical `manifest.json` bytes under root and nested immutable
+  snapshot routes with GET, HEAD, conditional 304, fixed size/SHA-256 ETag,
+  JSON MIME, and immutable cache headers, and adds its exact URL to the existing
+  eligible descriptor. Commit `efd3f7c66bf93af0b4194fac29825e98195dcc9b`
+  closes the defensive-copy contract and expands mutation coverage for strict
+  JSON, missing/extra inventory, encoded traversal, and coordinated path/kind
+  drift. Failure returns zero activation state, while SSR/no-JS and OC-04A/B
+  behavior remain authoritative.
+- OC-04C RED receipts captured missing admission types, empty descriptor URL and
+  manifest-route 404s, accepted encoded-traversal/query-like bases, and exposed
+  mutable inventory. GREEN receipts include localdocs race 1.334s, web race
+  3.298s, architecture 9.066s, vet, strict Muamba, stable templ regeneration,
+  and focused projection/enhancement tests. The first root run failed only the
+  pre-existing catalog-search focus E2E once; its exact rerun passed in 3.06s.
+  A complete fresh root rerun then passed with self-hosted 178.553s and E2E
+  186.989s. The final moving goal-child identity remains external for review.
 - At `2026-08-12T03:34:23Z`, the confirmed public preview URL
   `https://manja.araihu.com/manja-assets/manja-social.png` returned HTTP 200,
   `image/png`, 21,500 bytes, 1280x640, and SHA-256
@@ -670,7 +697,9 @@ Status: Open Core and active as bounded checkpoints. OC-04A adds immutable HTTP
 transport for deterministic projection-v2 detail and schema-node shards. OC-04B
 adds explicit anonymous-public eligibility, strict immutable descriptor
 admission, and the self-hosted composition kill switch while leaving SSR/no-JS
-authoritative. These checkpoints are groundwork, not proof of a Wasm renderer,
+authoritative. OC-04C adds the descriptor-bound immutable manifest transport and
+a Wasm-compatible admission prerequisite, but does not activate or render in a
+browser. These checkpoints are groundwork, not proof of a full Wasm renderer,
 Service Worker, offline storage, rollback, tombstones, parity, or performance
 acceptance.
 
@@ -710,16 +739,17 @@ Before merge:
 
 ## Next Action
 
-Submit the frozen OC-04B correction identity, clean status, publication-key
-grammar/limit/duplicate RED/GREEN receipts, no-descriptor/HTTP-200 fail-closed
-proof, preserved descriptor/SSR/OC-04A transport behavior, race, and root-suite
-receipts for fresh independent technical and design review. PM chooses and
-separately authorizes any integration path.
+Submit the frozen OC-04C identity, clean status, strict admission and immutable
+manifest transport RED/GREEN receipts, defensive-copy proof, preserved
+SSR/OC-04A/OC-04B behavior, race, and root-suite receipts for fresh independent
+technical and design review. PM chooses and separately authorizes any
+integration path.
 Any push, PR, or head movement restarts exact-head CI, CodeQL, independent
 review, and substantive CodeRabbit gates; absence or failure blocks integration.
 Overall provenance remains `BLOCKED`; legal authority and final-artifact
 notices stay separate, and licensing/package-generation Task 8 remains stopped.
 Hosted SaaS stays deferred, active-theme work stays excluded, and OC-04 hybrid
-SSR/Wasm/offline remains Open Core; Wasm and offline runtime activation stay
-separate from this descriptor-only checkpoint. No push, merge, release,
+SSR/Wasm/offline remains Open Core; full Wasm rendering, Service Worker,
+offline storage, rollback, tombstones, and UI activation stay separate from
+this admission-only checkpoint. No push, merge, release,
 deployment, cleanup, or other lifecycle action is authorized here.
