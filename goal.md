@@ -52,14 +52,14 @@ not implement hosted product behavior speculatively.
 - Worktree label: dedicated Open Core developer worktree
 - Initial lane base: `39d65ade21c080ee2102f53da5ed741f000d6dd7`
 - Current checkpoint base and direct parent:
-  `fd2f16f36a423a8fea2f4273695aaad39525614f`
+  `cb3c2ac9df78482472a3929476ec77e0a885a2f1`
 - Current checkpoint base tree:
-  `dc411a51a9e6674c21f5bfc187d455ecc26c9f26`
+  `9011e5def2caf30c40f18c9737f43bb2b2d8976c`
 - Fresh-main merge-base:
   `43f96dfbf9d18eee2364f14778e6b94312c8abac`, tree
   `959f199e145c316b4b76e40a561413c0e6d57134`
-- Branch: `codex/oc01m8-public-docs-social`
-- Worktree label: OC-01M8 standalone-public-docs social-metadata worktree
+- Branch: `codex/oc01m9-catalog-search-focus`
+- Worktree label: OC-01M9 catalog-search focus-indicator worktree
 - Owns only bounded Open Core implementation checkpoints assigned here.
 - Must commit each coherent checkpoint with a meaningful message.
 - Must not implement deferred SaaS behavior or edit the active Arai Hû theme
@@ -173,9 +173,22 @@ not implement hosted product behavior speculatively.
   resolve selection once before metadata and rendering. The existing approved
   Manja preview asset and rendered plain-text descriptions remain unchanged.
   Root tests, E2E, affected race/vet, Muamba, webassets, templ drift, preview
-  bytes, and adversarial HTTP receipts pass locally. The final moving candidate
-  identity stays in the immutable external review packet to avoid recursive
-  self-reference.
+  bytes, and adversarial HTTP receipts passed locally. Exact correction head
+  `cb3c2ac9df78482472a3929476ec77e0a885a2f1`, tree
+  `9011e5def2caf30c40f18c9737f43bb2b2d8976c`, received independent `ACCEPT`
+  from technical and design reviewers and remains clean, preserved, unpushed,
+  and unintegrated.
+- OC-01M9 starts from that accepted OC-01M8 head as its exact direct parent.
+  Implementation commit `d1b464b23bd47b45dfe537b4c7333562f35a0684`
+  restores a keyboard-only focus indicator on the catalog-search combobox with
+  the existing `primary` and `primary-dark` semantic tokens. A rendered-template
+  regression rejects missing focus-visible or layout-shifting focus classes;
+  the focused browser test proves `Ctrl+K` focus, a solid 2 px outline with 2 px
+  offset, token-color binding, and at least 3:1 contrast in both palettes. Full
+  root tests passed, including E2E in 195.961s; focused template, catalog web,
+  race, vet, Muamba, templ-drift, and catalog E2E gates also passed. The final
+  moving candidate identity stays in the immutable external review packet to
+  avoid recursive self-reference.
 - At `2026-08-12T03:34:23Z`, the confirmed public preview URL
   `https://manja.araihu.com/manja-assets/manja-social.png` returned HTTP 200,
   `image/png`, 21,500 bytes, 1280x640, and SHA-256
@@ -398,9 +411,10 @@ not implement hosted product behavior speculatively.
   failure without changing site module files.
 - Renderer/catalog initial HTML and preview-image checks pass the social-ready
   metadata gate. OC-01M7's equivalent product-site contract is independently
-  accepted. OC-01M8 now adds route-specific canonical/Open Graph/explicit X
-  Card metadata and the preview response contract to the standalone public docs
-  locally, pending final freeze and independent review.
+  accepted. OC-01M8's route-specific canonical/Open Graph/explicit X Card
+  metadata and preview response contract for standalone public docs is also
+  independently accepted. OC-01M9 is the separate bounded catalog-search
+  keyboard-focus correction awaiting exact-identity independent review.
 - Active Arai Hû Modern-theme rollout belongs to task
   `019fef01-b65f-7980-a360-83e48f8a6345`; this control plane must avoid its
   files and refs.
@@ -526,11 +540,32 @@ OC-01M8 standalone public-docs social metadata checkpoint:
   existing approved Manja preview asset; remote canonical/image authority is
   operator-configured through `-public-origin`, Host/forwarded headers remain
   untrusted, and loopback HTTP is development-only;
-- exclusions: product-site shell, catalog focus CSS, active theme, hosted SaaS,
+- exclusions: product-site shell, catalog focus, active theme, hosted SaaS,
   hybrid SSR/Wasm/offline runtime, packaging, and lifecycle actions;
-- disposition: P1 corrections implemented locally after technical rejection;
-  final clean freeze and fresh technical/design review required. The moving
-  final head/tree remain external.
+- accepted candidate: `cb3c2ac9df78482472a3929476ec77e0a885a2f1`,
+  tree `9011e5def2caf30c40f18c9737f43bb2b2d8976c`;
+- disposition: independently accepted by technical and design reviewers, clean
+  and preserved locally; no push or integration is authorized.
+
+OC-01M9 catalog-search focus-indicator checkpoint:
+
+- direct parent: accepted OC-01M8 candidate
+  `cb3c2ac9df78482472a3929476ec77e0a885a2f1`, tree
+  `9011e5def2caf30c40f18c9737f43bb2b2d8976c`;
+- fresh-main merge-base: `43f96dfbf9d18eee2364f14778e6b94312c8abac`,
+  tree `959f199e145c316b4b76e40a561413c0e6d57134`;
+- branch: `codex/oc01m9-catalog-search-focus`;
+- implementation commit: `d1b464b23bd47b45dfe537b4c7333562f35a0684`;
+- scope: visible `:focus-visible` outline on the catalog-search combobox only,
+  using existing light/dark primary tokens, with no box-model change;
+- tests: rendered focus-class and no-layout-shift contract, computed browser
+  outline/token/contrast proof, focused catalog/template/race/vet gates, strict
+  Muamba, stable templ regeneration, catalog E2E, and full root suite;
+- exclusions: active-theme redesign, standalone/social metadata changes,
+  hosted SaaS, hybrid SSR/Wasm/offline runtime, legal/runtime bytes, packaging,
+  and lifecycle actions;
+- disposition: implementation committed locally; final clean freeze and fresh
+  technical/design review required. The moving final head/tree remain external.
 
 The final moving candidate head and tree are bound by the immutable external
 review packet and control plane. A commit cannot embed its own final commit and
@@ -611,15 +646,15 @@ Before merge:
 
 ## Next Action
 
-Submit the frozen OC-01M8 correction identity, clean status, root/E2E gates,
-trusted/untrusted authority receipts, non-root publication receipts, canonical
-selection receipts, and preview proof for fresh independent technical and
+Submit the frozen OC-01M9 identity, clean status, rendered focus contract,
+computed browser outline/token/contrast proof, templ drift receipt, focused
+catalog gates, and full root/E2E result for fresh independent technical and
 design review. PM chooses and separately authorizes any integration path. Any
 push, PR, or head movement restarts exact-head CI, CodeQL, independent review,
 and substantive CodeRabbit gates; absence or failure blocks integration.
 Overall provenance remains `BLOCKED`; legal authority and final-artifact
 notices stay separate, and licensing/package-generation Task 8 remains stopped.
 Hosted SaaS stays deferred, active-theme work stays excluded, and OC-04 hybrid
-SSR/Wasm/offline remains Open Core. Catalog-search visible focus and the hybrid
-runtime remain separate future bounded checkpoints. No push, merge, release,
-deployment, cleanup, or other lifecycle action is authorized here.
+SSR/Wasm/offline remains Open Core and separate from this correction. No push,
+merge, release, deployment, cleanup, or other lifecycle action is authorized
+here.
