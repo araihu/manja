@@ -20,6 +20,7 @@ import (
 	"github.com/araihu/goshtoso/components/tooltip"
 	"github.com/araihu/manja/application/catalog"
 	core "github.com/araihu/manja/domain"
+	"github.com/araihu/manja/internal/localdocs"
 )
 
 type CatalogDocumentOption struct {
@@ -291,16 +292,7 @@ type CatalogSchemaEdgeData struct {
 	ReferenceIsEnumAlias bool
 }
 
-type CatalogEnhancementDescriptorData struct {
-	SchemaVersion uint32 `json:"schemaVersion"`
-	PublicationKey string `json:"publicationKey"`
-	PublicationBase string `json:"publicationBase"`
-	SnapshotID string `json:"snapshotId"`
-	RevisionID string `json:"revisionId"`
-	ProjectionFormat string `json:"projectionFormat"`
-	ProjectionDigest string `json:"projectionDigest"`
-	ProjectionDataBase string `json:"projectionDataBase"`
-}
+type CatalogEnhancementDescriptorData = localdocs.DescriptorV1
 
 templ CatalogPage(data CatalogPageData) {
 	{{ metadata := data.Metadata }}

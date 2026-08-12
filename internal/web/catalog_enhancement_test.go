@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"sort"
 	"strings"
 	"testing"
 
@@ -13,14 +14,15 @@ import (
 )
 
 type catalogEnhancementDescriptorReceipt struct {
-	SchemaVersion      uint32 `json:"schemaVersion"`
-	PublicationKey     string `json:"publicationKey"`
-	PublicationBase    string `json:"publicationBase"`
-	SnapshotID         string `json:"snapshotId"`
-	RevisionID         string `json:"revisionId"`
-	ProjectionFormat   string `json:"projectionFormat"`
-	ProjectionDigest   string `json:"projectionDigest"`
-	ProjectionDataBase string `json:"projectionDataBase"`
+	SchemaVersion         uint32 `json:"schemaVersion"`
+	PublicationKey        string `json:"publicationKey"`
+	PublicationBase       string `json:"publicationBase"`
+	SnapshotID            string `json:"snapshotId"`
+	RevisionID            string `json:"revisionId"`
+	ProjectionFormat      string `json:"projectionFormat"`
+	ProjectionDigest      string `json:"projectionDigest"`
+	ProjectionManifestURL string `json:"projectionManifestUrl"`
+	ProjectionDataBase    string `json:"projectionDataBase"`
 }
 
 func TestCatalogEnhancementDescriptorRequiresPublicAnonymousImmutableSnapshot(t *testing.T) {
@@ -57,8 +59,9 @@ func TestCatalogEnhancementDescriptorRequiresPublicAnonymousImmutableSnapshot(t 
 				wantBase += "/"
 			}
 			wantProjectionBase := wantBase + "snapshots/" + string(snapshot.ID) + "/projection-data/"
+			wantManifestURL := wantBase + "snapshots/" + string(snapshot.ID) + "/manifest.json"
 			wantDigest := strings.TrimPrefix(string(snapshot.ID), "snapshot-sha256-")
-			if descriptor.SchemaVersion != 1 || descriptor.PublicationKey != "public-kubernetes" || descriptor.PublicationBase != wantBase || descriptor.SnapshotID != string(snapshot.ID) || descriptor.RevisionID != snapshot.Manifest.Identity.RevisionID || descriptor.ProjectionFormat != "projection-v2" || descriptor.ProjectionDigest != wantDigest || descriptor.ProjectionDataBase != wantProjectionBase {
+			if descriptor.SchemaVersion != 1 || descriptor.PublicationKey != "public-kubernetes" || descriptor.PublicationBase != wantBase || descriptor.SnapshotID != string(snapshot.ID) || descriptor.RevisionID != snapshot.Manifest.Identity.RevisionID || descriptor.ProjectionFormat != "projection-v2" || descriptor.ProjectionDigest != wantDigest || descriptor.ProjectionManifestURL != wantManifestURL || descriptor.ProjectionDataBase != wantProjectionBase {
 				t.Fatalf("descriptor = %#v", descriptor)
 			}
 			if !strings.Contains(response.Body.String(), `data-manja-catalog-shell="true"`) {
@@ -208,6 +211,8 @@ func eligibleCatalogEnhancementPolicy(snapshot catalog.RuntimeSnapshot) CatalogE
 
 func catalogEnhancementSnapshot(t *testing.T, snapshot catalog.RuntimeSnapshot) catalog.RuntimeSnapshot {
 	t.Helper()
+	children := append([]catalog.ChildIdentityV1(nil), snapshot.Manifest.Children...)
+	sort.Slice(children, func(left, right int) bool { return children[left].Path < children[right].Path })
 	identity := catalog.SnapshotIdentityV1{
 		SchemaVersion:        1,
 		CatalogID:            snapshot.Directory.CatalogID,
@@ -215,7 +220,7 @@ func catalogEnhancementSnapshot(t *testing.T, snapshot catalog.RuntimeSnapshot) 
 		RevisionID:           "revision-immutable-1",
 		SourceManifestSHA256: strings.Repeat("a", 64),
 		Versions:             catalog.CompilerVersions{ProjectionFormat: "projection-v2"},
-		Children:             append([]catalog.ChildIdentityV1(nil), snapshot.Manifest.Children...),
+		Children:             append([]catalog.ChildIdentityV1(nil), children...),
 	}
 	encoded, err := json.Marshal(identity)
 	if err != nil {
@@ -223,7 +228,7 @@ func catalogEnhancementSnapshot(t *testing.T, snapshot catalog.RuntimeSnapshot) 
 	}
 	digest := sha256.Sum256(encoded)
 	snapshot.ID = catalog.SnapshotID("snapshot-sha256-" + hex.EncodeToString(digest[:]))
-	snapshot.Manifest = catalog.ManifestV1{SchemaVersion: 1, SnapshotID: snapshot.ID, Identity: identity, Children: append([]catalog.ChildIdentityV1(nil), snapshot.Manifest.Children...)}
+	snapshot.Manifest = catalog.ManifestV1{SchemaVersion: 1, SnapshotID: snapshot.ID, Identity: identity, Children: children}
 	return snapshot
 }
 

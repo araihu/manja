@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/araihu/manja/application/catalog"
+	"github.com/araihu/manja/internal/adapters/catalogjson"
 )
 
 func (handler *CatalogHandler) redirectStable(response http.ResponseWriter, request *http.Request, snapshot catalog.RuntimeSnapshot, mount string, segments ...string) {
@@ -34,6 +35,10 @@ func (handler *CatalogHandler) serveStableSource(response http.ResponseWriter, r
 
 func (handler *CatalogHandler) serveSnapshotResource(response http.ResponseWriter, request *http.Request, snapshot catalog.RuntimeSnapshot, mount, relative string) {
 	parts := strings.Split(relative, "/")
+	if len(parts) == 3 && parts[0] == "snapshots" && parts[1] == string(snapshot.ID) && parts[2] == "manifest.json" {
+		handler.serveProjectionManifest(response, request, snapshot)
+		return
+	}
 	if len(parts) == 3 && parts[0] == "snapshots" && parts[1] == string(snapshot.ID) && parts[2] == "catalog.json" {
 		handler.serveExactChild(response, request, snapshot, "catalog.json", "catalog.json")
 		return
@@ -72,6 +77,28 @@ func (handler *CatalogHandler) serveSnapshotResource(response http.ResponseWrite
 		return
 	}
 	http.NotFound(response, request)
+}
+
+func (handler *CatalogHandler) serveProjectionManifest(response http.ResponseWriter, request *http.Request, snapshot catalog.RuntimeSnapshot) {
+	data, err := catalogjson.EncodeManifest(snapshot.Manifest)
+	if err != nil {
+		http.Error(response, "catalog temporarily unavailable", http.StatusServiceUnavailable)
+		return
+	}
+	digest := sha256.Sum256(data)
+	etag := `"sha256-` + hex.EncodeToString(digest[:]) + `"`
+	response.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+	response.Header().Set("Content-Type", "application/json")
+	response.Header().Set("Content-Length", fmt.Sprintf("%d", len(data)))
+	response.Header().Set("ETag", etag)
+	if request.Header.Get("If-None-Match") == etag {
+		response.WriteHeader(http.StatusNotModified)
+		return
+	}
+	response.WriteHeader(http.StatusOK)
+	if request.Method != http.MethodHead {
+		_, _ = response.Write(data)
+	}
 }
 
 func isProjectionChildPath(childPath, kind string) bool {

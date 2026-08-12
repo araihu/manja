@@ -82,11 +82,15 @@ func (handler *CatalogHandler) catalogEnhancementDescriptor(snapshot catalog.Run
 	if err != nil {
 		return nil
 	}
+	projectionManifestURL, err := catalogURL(mount, "snapshots", string(snapshot.ID), "manifest.json")
+	if err != nil {
+		return nil
+	}
 	return &templates.CatalogEnhancementDescriptorData{
 		SchemaVersion: 1, PublicationKey: eligibility.PublicationKey, PublicationBase: publicationBase,
 		SnapshotID: string(snapshot.ID), RevisionID: identity.RevisionID,
 		ProjectionFormat: identity.Versions.ProjectionFormat, ProjectionDigest: projectionDigest,
-		ProjectionDataBase: projectionDataBase + "/",
+		ProjectionManifestURL: projectionManifestURL, ProjectionDataBase: projectionDataBase + "/",
 	}
 }
 

@@ -1046,6 +1046,93 @@ func TestCatalogProjectionTransportServesDeclaredImmutableShards(t *testing.T) {
 	}
 }
 
+func TestCatalogProjectionManifestTransportServesCanonicalSnapshotInventory(t *testing.T) {
+	for _, mount := range []string{"/", "/kubernetes"} {
+		t.Run(mount, func(t *testing.T) {
+			baseHandler, snapshot := catalogHandlerFixture(t, mount)
+			base := baseHandler.(*CatalogHandler)
+			snapshot = catalogEnhancementSnapshot(t, snapshot)
+			runtime := catalog.NewRuntime(1)
+			if _, err := runtime.ActivateMount(mount, "", 1, snapshot); err != nil {
+				t.Fatal(err)
+			}
+			handler := NewCatalogHandler(runtime, base.children)
+			publicationBase := mount
+			if publicationBase != "/" {
+				publicationBase += "/"
+			}
+			requestPath := publicationBase + "snapshots/" + string(snapshot.ID) + "/manifest.json"
+			wantBytes, err := json.Marshal(snapshot.Manifest)
+			if err != nil {
+				t.Fatal(err)
+			}
+			wantDigest := sha256.Sum256(wantBytes)
+			wantETag := `"sha256-` + hex.EncodeToString(wantDigest[:]) + `"`
+
+			get := httptest.NewRecorder()
+			handler.ServeHTTP(get, httptest.NewRequest(http.MethodGet, requestPath, nil))
+			if get.Code != http.StatusOK || !bytes.Equal(get.Body.Bytes(), wantBytes) {
+				t.Fatalf("GET %s = %d body=%q, want canonical manifest", requestPath, get.Code, get.Body.String())
+			}
+			if get.Header().Get("Content-Type") != "application/json" || get.Header().Get("Content-Length") != fmt.Sprintf("%d", len(wantBytes)) || get.Header().Get("ETag") != wantETag || get.Header().Get("Cache-Control") != "public, max-age=31536000, immutable" || get.Header().Get("Content-Encoding") != "" {
+				t.Errorf("GET %s headers=%v", requestPath, get.Header())
+			}
+
+			head := httptest.NewRecorder()
+			handler.ServeHTTP(head, httptest.NewRequest(http.MethodHead, requestPath, nil))
+			if head.Code != http.StatusOK || head.Body.Len() != 0 || head.Header().Get("Content-Length") != get.Header().Get("Content-Length") || head.Header().Get("ETag") != wantETag {
+				t.Errorf("HEAD %s = %d bytes=%d headers=%v", requestPath, head.Code, head.Body.Len(), head.Header())
+			}
+
+			conditional := httptest.NewRequest(http.MethodGet, requestPath, nil)
+			conditional.Header.Set("If-None-Match", wantETag)
+			notModified := httptest.NewRecorder()
+			handler.ServeHTTP(notModified, conditional)
+			if notModified.Code != http.StatusNotModified || notModified.Body.Len() != 0 || notModified.Header().Get("ETag") != wantETag {
+				t.Errorf("conditional GET %s = %d bytes=%d headers=%v", requestPath, notModified.Code, notModified.Body.Len(), notModified.Header())
+			}
+
+			post := httptest.NewRecorder()
+			handler.ServeHTTP(post, httptest.NewRequest(http.MethodPost, requestPath, nil))
+			if post.Code != http.StatusMethodNotAllowed || post.Header().Get("Allow") != "GET, HEAD" {
+				t.Errorf("POST %s = %d allow=%q", requestPath, post.Code, post.Header().Get("Allow"))
+			}
+		})
+	}
+}
+
+func TestCatalogProjectionManifestTransportFailsClosed(t *testing.T) {
+	baseHandler, snapshot := catalogHandlerFixture(t, "/kubernetes")
+	base := baseHandler.(*CatalogHandler)
+	snapshot = catalogEnhancementSnapshot(t, snapshot)
+	requestBase := "/kubernetes/snapshots/" + string(snapshot.ID)
+
+	for _, requestPath := range []string{
+		"/kubernetes/snapshots/snapshot-sha256-" + strings.Repeat("f", 64) + "/manifest.json",
+		requestBase + "/../manifest.json",
+		requestBase + "/%2e%2e/manifest.json",
+		requestBase + "/projection-data/../manifest.json",
+	} {
+		response := httptest.NewRecorder()
+		baseHandler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, requestPath, nil))
+		if response.Code != http.StatusNotFound && response.Code != http.StatusBadRequest {
+			t.Errorf("unsafe manifest path %q = %d, want 404/400", requestPath, response.Code)
+		}
+	}
+
+	corrupt := snapshot
+	corrupt.Manifest.Identity.RevisionID = "revision-corrupt"
+	runtime := catalog.NewRuntime(1)
+	if _, err := runtime.ActivateMount("/kubernetes", "", 1, corrupt); err != nil {
+		t.Fatal(err)
+	}
+	response := httptest.NewRecorder()
+	NewCatalogHandler(runtime, base.children).ServeHTTP(response, httptest.NewRequest(http.MethodGet, requestBase+"/manifest.json", nil))
+	if response.Code != http.StatusServiceUnavailable || response.Header().Get("Cache-Control") != "" || response.Header().Get("ETag") != "" {
+		t.Errorf("corrupt manifest = %d headers=%v body=%q, want fail-closed 503", response.Code, response.Header(), response.Body.String())
+	}
+}
+
 func TestCatalogProjectionTransportRejectsUnsafeOrNonProjectionChildren(t *testing.T) {
 	t.Parallel()
 
