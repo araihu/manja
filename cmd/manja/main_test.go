@@ -56,6 +56,7 @@ func TestRunServerPreservesExistingFlagsAndStartsServer(t *testing.T) {
 		"-git-repo", "https://example.test/acme/payments.git",
 		"-git-ref", "release/v2",
 		"-data-dir", "/tmp/manja-data",
+		"-public-origin", "https://docs.example.test",
 		"-endpoint-sidebar-label", string(app.EndpointSidebarLabelPath),
 		"-brand-name", "Acme",
 		"-brand-logo", "https://example.test/logo.svg",
@@ -75,6 +76,7 @@ func TestRunServerPreservesExistingFlagsAndStartsServer(t *testing.T) {
 			GitRepo:              "https://example.test/acme/payments.git",
 			GitRef:               "release/v2",
 			DataDir:              "/tmp/manja-data",
+			PublicOrigin:         "https://docs.example.test",
 			EndpointSidebarLabel: app.EndpointSidebarLabelPath,
 			Branding: core.DocsBranding{
 				DisplayName: "Acme",

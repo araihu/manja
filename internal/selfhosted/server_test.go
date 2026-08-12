@@ -22,6 +22,20 @@ import (
 	"github.com/araihu/manja/internal/web"
 )
 
+func TestNewServerRejectsInvalidPublicOriginBeforeSourceAccess(t *testing.T) {
+	t.Parallel()
+
+	options := Options{
+		SpecPath:     filepath.Join(t.TempDir(), "missing.yaml"),
+		PublicOrigin: "http://docs.example.test",
+	}
+
+	_, err := NewServer(context.Background(), options)
+	if err == nil || !strings.Contains(err.Error(), "public origin") || strings.Contains(err.Error(), "missing.yaml") {
+		t.Fatalf("NewServer invalid public origin error = %v, want pre-source validation", err)
+	}
+}
+
 func TestNewWithOptionsSyncsSpecBeforeServingPublicDocs(t *testing.T) {
 	ctx := context.Background()
 	dataDir := t.TempDir()

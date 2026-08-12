@@ -123,6 +123,7 @@ func configFromArgs(args []string) (cliConfig, error) {
 	gitRepo := fs.String("git-repo", "", "Git repository URL or local path")
 	gitRef := fs.String("git-ref", "", "Git ref to publish")
 	dataDir := fs.String("data-dir", ".manja/data", "local Manja data directory")
+	publicOrigin := fs.String("public-origin", "", "trusted public docs origin (HTTPS; HTTP allowed only for loopback development)")
 	rendererConfig := fs.String("renderer-config", "", "renderer-only catalog YAML config")
 	endpointSidebarLabel := fs.String("endpoint-sidebar-label", string(app.EndpointSidebarLabelAuto), "endpoint sidebar label mode: auto or path")
 	brandName := fs.String("brand-name", "", "public docs brand name")
@@ -142,6 +143,7 @@ func configFromArgs(args []string) (cliConfig, error) {
 			GitRepo:              *gitRepo,
 			GitRef:               *gitRef,
 			DataDir:              *dataDir,
+			PublicOrigin:         *publicOrigin,
 			EndpointSidebarLabel: app.EndpointSidebarLabelMode(*endpointSidebarLabel),
 			Branding: core.DocsBranding{
 				DisplayName: *brandName,
