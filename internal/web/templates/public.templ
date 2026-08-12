@@ -87,6 +87,7 @@ type PublicDocsOptions struct {
 	OperationRequestBodyMedia *localrender.OperationRequestBodyMediaFragment
 	OperationResponseMedia    *localrender.OperationResponseMediaFragment
 	OperationResponseDetails  *localrender.OperationResponseDetailsFragment
+	OperationExamples         *localrender.OperationExamplesFragment
 	Selection                 *PublicDocsSelection
 	SchemaLinks               map[string]string
 	SchemaLinkTarget          string
@@ -1114,7 +1115,7 @@ templ endpointSection(op core.Operation, servers []core.SpecServer, exampleSpecJ
 						</button>
 					</header>
 					<div id={ requestConfigContentID } class="manja-endpoint-examples-rail-content" x-bind:aria-hidden="(requestConfigDesktop ? !requestConfigDesktopVisible : !requestConfigOpen).toString()">
-						@endpointExamplesContent(opID, op, servers, exampleSpecJSON)
+						@endpointExamplesContent(opID, op, servers, exampleSpecJSON, opts)
 					</div>
 				</aside>
 			}
@@ -1217,13 +1218,17 @@ templ requestConfigCloseIcon() {
 	</svg>
 }
 
-templ endpointExamplesContent(opID string, op core.Operation, servers []core.SpecServer, exampleSpecJSON string) {
+templ endpointExamplesContent(opID string, op core.Operation, servers []core.SpecServer, exampleSpecJSON string, opts PublicDocsOptions) {
 	if requestConfigHasContent(op, servers) {
-		@requestComposer(opID, op, servers, exampleSpecJSON)
+		@requestComposer(opID, op, servers, exampleSpecJSON, opts)
 	}
-	for _, snippet := range op.Snippets {
+	for snippetIndex, snippet := range op.Snippets {
 		if !requestComposerOwnsSnippet(op, servers, snippet) {
-			@codeExample("Request Sample: "+snippet.Label, snippet.Language, snippet.Code)
+			if opts.OperationExamples != nil {
+				@localrender.OperationCodeSample(*opts.OperationExamples, snippetIndex, "Request Sample: "+snippet.Label)
+			} else {
+				@codeExample("Request Sample: "+snippet.Label, snippet.Language, snippet.Code)
+			}
 		}
 	}
 	if op.RequestBody != nil && !requestConfigHasBody(op, exampleSpecJSON) {
@@ -1236,10 +1241,11 @@ templ endpointExamplesContent(opID string, op core.Operation, servers []core.Spe
 	}
 }
 
-templ requestComposer(opID string, op core.Operation, servers []core.SpecServer, exampleSpecJSON string) {
+templ requestComposer(opID string, op core.Operation, servers []core.SpecServer, exampleSpecJSON string, opts PublicDocsOptions) {
 	{{ server := primarySpecServer(servers) }}
 	{{ body := requestConfigBodyFor(op, opID, exampleSpecJSON) }}
 	{{ snippet := requestComposerSnippet(op.Snippets) }}
+	{{ snippetIndex := requestComposerSnippetIndex(op.Snippets) }}
 	{{ items := requestConfigAccordionItems(opID, op, server, body) }}
 	<div data-manja-request-composer class="grid min-w-0 gap-6">
 		if len(items) > 0 {
@@ -1256,7 +1262,11 @@ templ requestComposer(opID string, op core.Operation, servers []core.SpecServer,
 		}
 		<div data-manja-request-sample class="min-w-0">
 			@requestSampleTargetSelect(opID)
-			@codeExample("Request Sample: "+requestSampleTargets()[0].Label, requestSampleTargets()[0].Language, snippet.Code)
+			if opts.OperationExamples != nil {
+				@localrender.OperationCodeSample(*opts.OperationExamples, snippetIndex, "Request Sample: "+requestSampleTargets()[0].Label)
+			} else {
+				@codeExample("Request Sample: "+requestSampleTargets()[0].Label, requestSampleTargets()[0].Language, snippet.Code)
+			}
 		</div>
 		@templpkg.JSONScript(opID+"-request-composer-payload", requestComposerPayload(op, server, body))
 	</div>
@@ -1574,7 +1584,11 @@ templ responseMediaTypeBlock(opID string, responseIndex int, response core.Opera
 				}
 				@schemaProperties(mediaTypeTableID(idPrefix, media), "Response body", media.Schema, opts)
 			</div>
-			if hasResponseExample(media) {
+			if opts.OperationExamples != nil && opts.OperationExamples.HasResponseExample(responseIndex, mediaIndex) {
+				<aside class="manja-response-panel-example" aria-label={ "Response " + response.Status + " " + media.ContentType + " example" }>
+					@localrender.OperationResponseExample(*opts.OperationExamples, responseIndex, mediaIndex, opID)
+				</aside>
+			} else if opts.OperationExamples == nil && hasResponseExample(media) {
 				<aside class="manja-response-panel-example" aria-label={ "Response " + response.Status + " " + media.ContentType + " example" }>
 					@schemaExample(cfg)
 				</aside>
@@ -2975,6 +2989,15 @@ func requestComposerSnippet(snippets []core.RequestSnippet) core.RequestSnippet 
 		}
 	}
 	return core.RequestSnippet{}
+}
+
+func requestComposerSnippetIndex(snippets []core.RequestSnippet) int {
+	for index, snippet := range snippets {
+		if strings.EqualFold(snippet.Label, "curl") || strings.EqualFold(snippet.Language, "shell") || strings.EqualFold(snippet.Language, "bash") {
+			return index
+		}
+	}
+	return -1
 }
 
 func requestComposerOwnsSnippet(op core.Operation, servers []core.SpecServer, snippet core.RequestSnippet) bool {

@@ -970,6 +970,10 @@ func TestPreparedOperationResponseMediaMatchesCatalogSSRBytes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	operationExamples, err := localrender.PrepareOperationExamples(detail, operation, nodes[:5])
+	if err != nil {
+		t.Fatal(err)
+	}
 	baseOptions := PublicDocsOptions{SchemaLinks: schemaLinks, SchemaLinkTarget: "#catalog-main-content", SchemaLinkSelect: "#catalog-main-content", SchemaLinkSwap: "outerHTML show:#main-content:top"}
 	var legacy, delegated bytes.Buffer
 	if err := endpointSection(operation, nil, "", baseOptions, OperationNavigationData{}).Render(context.Background(), &legacy); err != nil {
@@ -977,12 +981,44 @@ func TestPreparedOperationResponseMediaMatchesCatalogSSRBytes(t *testing.T) {
 	}
 	baseOptions.OperationResponseMedia = &fragment
 	baseOptions.OperationResponseDetails = &responseDetails
+	baseOptions.OperationExamples = &operationExamples
 	if err := endpointSection(operation, nil, "", baseOptions, OperationNavigationData{}).Render(context.Background(), &delegated); err != nil {
 		t.Fatal(err)
 	}
 	if !bytes.Equal(legacy.Bytes(), delegated.Bytes()) {
 		index := firstDifferentByte(legacy.Bytes(), delegated.Bytes())
 		t.Fatalf("delegated response-media summary changed complete SSR endpoint bytes at byte %d:\nlegacy=%q\ndelegated=%q", index, nearbyBytes(legacy.Bytes(), index), nearbyBytes(delegated.Bytes(), index))
+	}
+}
+
+func TestPreparedOperationCodeSamplesMatchCatalogSSRBytes(t *testing.T) {
+	t.Parallel()
+
+	detailID := domain.DetailID("detail-sha256-" + strings.Repeat("b", 64))
+	operation := domain.Operation{Anchor: string(detailID), Title: "List Pods", Method: "GET", Path: "/pods", Snippets: []domain.RequestSnippet{
+		{Label: "cURL", Language: "shell", Code: "curl <pods>"},
+		{Label: "JavaScript", Language: "javascript", Code: "fetch('/pods')"},
+	}}
+	detail := catalog.DetailRecordV1{ID: detailID, Kind: "operation", Operation: &projection.OperationDetail{
+		ID: string(detailID), Anchor: string(detailID), CodeSamples: []projection.CodeSample{
+			{Ordinal: 0, ID: codeSampleProjectionID("shell", "cURL"), Label: "cURL", Language: "shell", Code: "curl <pods>"},
+			{Ordinal: 1, ID: codeSampleProjectionID("javascript", "JavaScript"), Label: "JavaScript", Language: "javascript", Code: "fetch('/pods')"},
+		},
+	}}
+	fragment, err := localrender.PrepareOperationExamples(detail, operation, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var legacy, delegated bytes.Buffer
+	if err := endpointSection(operation, nil, "", PublicDocsOptions{}, OperationNavigationData{}).Render(context.Background(), &legacy); err != nil {
+		t.Fatal(err)
+	}
+	if err := endpointSection(operation, nil, "", PublicDocsOptions{OperationExamples: &fragment}, OperationNavigationData{}).Render(context.Background(), &delegated); err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(legacy.Bytes(), delegated.Bytes()) {
+		index := firstDifferentByte(legacy.Bytes(), delegated.Bytes())
+		t.Fatalf("delegated code samples changed complete SSR endpoint bytes at byte %d:\nlegacy=%q\ndelegated=%q", index, nearbyBytes(legacy.Bytes(), index), nearbyBytes(delegated.Bytes(), index))
 	}
 }
 
@@ -1025,6 +1061,19 @@ func responseHeaderProjectionID(name string) string {
 	hash.Write(length[:])
 	hash.Write([]byte(value))
 	return "response-header-" + hex.EncodeToString(hash.Sum(nil))
+}
+
+func codeSampleProjectionID(language, label string) string {
+	hash := sha256.New()
+	hash.Write([]byte("code-sample"))
+	hash.Write([]byte{0})
+	var length [8]byte
+	for _, value := range []string{language, label} {
+		binary.BigEndian.PutUint64(length[:], uint64(len([]byte(value))))
+		hash.Write(length[:])
+		hash.Write([]byte(value))
+	}
+	return "code-sample-" + hex.EncodeToString(hash.Sum(nil))
 }
 
 func parameterSummary(typeName, format string) domain.SchemaSummary {

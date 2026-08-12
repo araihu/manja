@@ -1,0 +1,30 @@
+package render
+
+import (
+	"github.com/araihu/goshtoso/components/codeblock"
+	templpkg "github.com/a-h/templ"
+)
+
+templ operationResponseExample(data operationResponseExampleData, operationID string) {
+	{{ id := operationID + "-response-" + anchorFragment(data.Status) + "-" + anchorFragment(data.ContentType) + "-example" }}
+	<div id={ id } data-manja-example>
+		@codeblock.CodeBlock(codeblock.Config{
+			ID: id+"-code",
+			Label: "Response Example: "+data.Status+" "+data.ContentType,
+			Language: "json",
+			Code: data.Example,
+			MaxHeight: "24rem",
+		})
+		@templpkg.JSONScript(id+"-payload", operationResponseExamplePayload(data))
+		<p data-manja-example-status class="sr-only" aria-live="polite"></p>
+	</div>
+}
+
+templ operationCodeSample(data operationCodeSampleData, displayLabel string) {
+	@codeblock.CodeBlock(codeblock.Config{
+		Label: displayLabel,
+		Language: data.Language,
+		Code: data.Code,
+		MaxHeight: "24rem",
+	})
+}

@@ -782,6 +782,13 @@ func TestCatalogSelectedOperationPreparesResponseMediaSummary(t *testing.T) {
 			if data.OperationResponseDetails == nil {
 				t.Fatal("selected operation did not prepare response details")
 			}
+			if data.OperationExamples == nil {
+				t.Fatal("selected operation did not prepare response examples and code samples")
+			}
+			codeSample, err := data.OperationExamples.CodeSampleBytes(context.Background(), 0, "Request Sample: cURL")
+			if err != nil || !strings.Contains(string(codeSample), "curl --request GET /api/v1/pods") {
+				t.Fatalf("prepared catalog code sample = %q, %v", codeSample, err)
+			}
 			body, err := data.OperationResponseMedia.MediaBytes(context.Background(), 0, 0)
 			if err != nil {
 				t.Fatal(err)
@@ -1627,7 +1634,7 @@ func catalogHandlerFixtureWithOrganization(t *testing.T, mount string, presentat
 				MediaTypes: []projection.MediaType{{ID: "application/json", ContentType: "application/json", SchemaRef: 0}},
 			}},
 			Security:    []projection.SecurityRequirement{{ID: "BearerToken", Name: "BearerToken"}},
-			CodeSamples: []projection.CodeSample{{ID: "curl", Label: "cURL", Language: "shell", Code: "curl --request GET /api/v1/pods"}},
+			CodeSamples: []projection.CodeSample{{ID: catalogCodeSampleProjectionID("shell", "cURL"), Label: "cURL", Language: "shell", Code: "curl --request GET /api/v1/pods"}},
 		},
 	}}})
 	if err != nil {
@@ -1698,4 +1705,17 @@ func catalogResponseHeaderProjectionID(name string) string {
 	hash.Write(length[:])
 	hash.Write([]byte(value))
 	return "response-header-" + hex.EncodeToString(hash.Sum(nil))
+}
+
+func catalogCodeSampleProjectionID(language, label string) string {
+	hash := sha256.New()
+	hash.Write([]byte("code-sample"))
+	hash.Write([]byte{0})
+	var length [8]byte
+	for _, value := range []string{language, label} {
+		binary.BigEndian.PutUint64(length[:], uint64(len([]byte(value))))
+		hash.Write(length[:])
+		hash.Write([]byte(value))
+	}
+	return "code-sample-" + hex.EncodeToString(hash.Sum(nil))
 }

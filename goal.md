@@ -916,6 +916,13 @@ header location/required semantics, descriptions, schema root fields, and all
 already-rendered Items/property chains. Response media, examples, request
 composition, browser activation, Service Worker, offline storage, lifecycle
 actions, SaaS, and theme work remain outside this checkpoint.
+OC-04K prepares and renders response examples and operation code samples through
+one parser-free templ-escaped component shared byte-for-byte with catalog SSR.
+Its admission binds ordered response, header, media, example, and code-sample
+inventories to copied prepared values, rejects invalid UTF-8 and bounded-output
+violations, and preserves explicit-example payload semantics. Parser work,
+request composition changes, browser activation, Service Worker, offline
+storage, lifecycle actions, SaaS, and theme work remain outside this checkpoint.
 These checkpoints are groundwork, not proof of a complete operation body/main
 Wasm HTML renderer, browser activation, Service Worker, offline storage,
 rollback, tombstones, recursive request-body rendering, response rendering,
