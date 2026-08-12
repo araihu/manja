@@ -65,6 +65,7 @@ type PublicDocsOptions struct {
 	MarkdownRenderer          port.MarkdownRenderer
 	ManageDefaultLogo         bool
 	ManageDefaultFavicon      bool
+	Metadata                  PageMetadata
 	OperationIdentityInHeader bool
 	SchemaLinks               map[string]string
 	SchemaLinkTarget          string
@@ -144,7 +145,7 @@ templ PublicDocsWithOptions(idx core.SpecIndex, selectedID string, opts PublicDo
 	{{ opts = opts.withDefaults() }}
 	{{ opts.SchemaLinks = schemaLinksForIndex(idx, opts.SchemaLinks) }}
 	{{ selected := selectedDocsItemFor(idx, selectedID) }}
-	@LayoutWithBranding(publicDocsDocumentTitle(idx, selected), idx.Branding, true, opts.ManageDefaultFavicon) {
+	@LayoutWithBrandingMetadata(publicDocsPageMetadata(idx, selected, opts.Metadata), idx.Branding, true, opts.ManageDefaultFavicon) {
 		<div hx-history="false" class="fixed inset-0 overflow-clip bg-surface text-on-surface dark:bg-surface-dark dark:text-on-surface-dark">
 			@appshell.AppShell(appshell.Config{
 				Header:       publicApplicationHeader(idx, selected, opts),
@@ -2143,6 +2144,45 @@ func publicDocsDocumentTitle(idx core.SpecIndex, selected selectedDocsItem) stri
 		return pageTitle
 	}
 	return pageTitle + " · Manja"
+}
+
+func PublicDocsMetadataDescription(idx core.SpecIndex, selectedID string) string {
+	return publicDocsMetadataDescription(idx, selectedDocsItemFor(idx, selectedID))
+}
+
+func publicDocsMetadataDescription(idx core.SpecIndex, selected selectedDocsItem) string {
+	switch selected.Kind {
+	case "operation":
+		return firstNonEmpty(
+			selected.Operation.Description,
+			selected.Operation.Summary,
+			strings.TrimSpace(strings.ToUpper(selected.Operation.Method)+" "+selected.Operation.Path),
+		)
+	case "schema":
+		return firstNonEmpty(
+			selected.Schema.Description,
+			selected.Schema.Summary.Description,
+			"Schema reference for "+selected.Schema.Name+".",
+		)
+	case "missing":
+		return "The requested documentation is not part of this contract."
+	default:
+		return firstNonEmpty(
+			idx.Overview.Description,
+			"Browse OpenAPI operations and schemas for "+firstNonEmpty(idx.Title, "this contract")+".",
+		)
+	}
+}
+
+func publicDocsPageMetadata(idx core.SpecIndex, selected selectedDocsItem, metadata PageMetadata) PageMetadata {
+	metadata.Title = publicDocsDocumentTitle(idx, selected)
+	if strings.TrimSpace(metadata.Description) == "" {
+		metadata.Description = publicDocsMetadataDescription(idx, selected)
+	}
+	if selected.Kind == "missing" {
+		metadata.Robots = "noindex,follow"
+	}
+	return metadata
 }
 
 func operationBreadcrumbItems(idx core.SpecIndex, op core.Operation, fallbackAnchor string) []breadcrumbs.Item {

@@ -4,11 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"encoding/xml"
+	"html"
 	"log/slog"
 	"mime"
 	"net"
 	"net/http"
 	"net/url"
+	"regexp"
 	"strings"
 
 	"github.com/araihu/goshtoso/assets"
@@ -173,6 +175,23 @@ func markdownPlainText(ctx context.Context, renderer port.MarkdownRenderer, valu
 	return result.Plain, nil
 }
 
+var renderedHTMLTag = regexp.MustCompile(`<[^>]*>`)
+
+func metadataMarkdownPlainText(ctx context.Context, renderer port.MarkdownRenderer, value string) (string, error) {
+	if renderer == nil || strings.TrimSpace(value) == "" {
+		return strings.Join(strings.Fields(value), " "), nil
+	}
+	result, err := renderer.Render(ctx, value)
+	if err != nil {
+		return "", err
+	}
+	plain := result.Plain
+	if strings.TrimSpace(result.HTML) != "" {
+		plain = html.UnescapeString(renderedHTMLTag.ReplaceAllString(result.HTML, " "))
+	}
+	return strings.Join(strings.Fields(plain), " "), nil
+}
+
 func NewPublicServer(idx core.SpecIndex) http.Handler {
 	return NewPublicServerWithOptions(idx, PublicOptions{})
 }
@@ -286,12 +305,21 @@ func NewPublicServerWithOptions(idx core.SpecIndex, opts PublicOptions) http.Han
 			writePageMarkdown(w, r, document)
 			return
 		}
+		metadata := publicDocsRequestMetadata(r)
+		description, err := metadataMarkdownPlainText(r.Context(), opts.MarkdownRenderer, templates.PublicDocsMetadataDescription(idx, selected))
+		if err != nil {
+			slog.ErrorContext(r.Context(), "render public docs metadata markdown", "error", err)
+			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+			return
+		}
+		metadata.Description = strings.TrimSpace(description)
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		renderOpts := templates.PublicDocsOptions{
 			EndpointSidebarLabel: opts.EndpointSidebarLabel,
 			MarkdownRenderer:     opts.MarkdownRenderer,
 			ManageDefaultLogo:    manageDefaultLogo,
 			ManageDefaultFavicon: manageDefaultFavicon,
+			Metadata:             metadata,
 		}
 		component := templates.PublicDocsWithOptions(idx, selected, renderOpts)
 		if r.Header.Get("HX-Request") == "true" &&
@@ -305,6 +333,30 @@ func NewPublicServerWithOptions(idx core.SpecIndex, opts PublicOptions) http.Han
 		}
 	})
 	return mux
+}
+
+func publicDocsRequestMetadata(request *http.Request) templates.PageMetadata {
+	canonical, ok := sitemapLoc(request, request.URL.EscapedPath())
+	if !ok {
+		return templates.PageMetadata{}
+	}
+	selected := strings.TrimSpace(request.URL.Query().Get("selected"))
+	if selected != "" && selected != "overview" {
+		query := url.Values{}
+		query.Set("selected", selected)
+		canonical += "?" + query.Encode()
+	}
+	origin, ok := absoluteOrigin(canonical)
+	if !ok {
+		return templates.PageMetadata{}
+	}
+	return templates.PageMetadata{
+		CanonicalURL:        canonical,
+		SocialImageURL:      origin + "/manja-assets/manja-social.png",
+		SocialImageMIMEType: "image/png",
+		SocialImageAlt:      "Manja OpenAPI documentation preview",
+		Robots:              "index,follow",
+	}
 }
 
 func docsBranding(specBranding core.DocsBranding, optionBranding core.DocsBranding) core.DocsBranding {
