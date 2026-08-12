@@ -40,6 +40,21 @@ type selectedDocsItem struct {
 	Schema    core.Schema
 }
 
+// PublicDocsSelection binds one normalized route selection across metadata and rendering.
+type PublicDocsSelection struct {
+	item selectedDocsItem
+}
+
+// CanonicalSelectedID returns the only selection value admitted to canonical URLs.
+func (selected PublicDocsSelection) CanonicalSelectedID() string {
+	switch selected.item.Kind {
+	case "operation", "schema":
+		return selected.item.Anchor
+	default:
+		return ""
+	}
+}
+
 type OperationNavigationItem struct {
 	Title  string
 	Method string
@@ -67,6 +82,7 @@ type PublicDocsOptions struct {
 	ManageDefaultFavicon      bool
 	Metadata                  PageMetadata
 	OperationIdentityInHeader bool
+	Selection                 *PublicDocsSelection
 	SchemaLinks               map[string]string
 	SchemaLinkTarget          string
 	SchemaLinkSelect          string
@@ -104,6 +120,13 @@ func (opts PublicDocsOptions) withDefaults() PublicDocsOptions {
 		opts.EndpointSidebarLabel = EndpointSidebarLabelAuto
 		return opts
 	}
+}
+
+func (opts PublicDocsOptions) selectedFor(idx core.SpecIndex, selectedID string) selectedDocsItem {
+	if opts.Selection != nil {
+		return opts.Selection.item
+	}
+	return selectedDocsItemFor(idx, selectedID)
 }
 
 type ExampleOptions struct {
@@ -144,7 +167,7 @@ templ PublicDocs(idx core.SpecIndex, selectedID string) {
 templ PublicDocsWithOptions(idx core.SpecIndex, selectedID string, opts PublicDocsOptions) {
 	{{ opts = opts.withDefaults() }}
 	{{ opts.SchemaLinks = schemaLinksForIndex(idx, opts.SchemaLinks) }}
-	{{ selected := selectedDocsItemFor(idx, selectedID) }}
+	{{ selected := opts.selectedFor(idx, selectedID) }}
 	@LayoutWithBrandingMetadata(publicDocsPageMetadata(idx, selected, opts.Metadata), idx.Branding, true, opts.ManageDefaultFavicon) {
 		<div hx-history="false" class="fixed inset-0 overflow-clip bg-surface text-on-surface dark:bg-surface-dark dark:text-on-surface-dark">
 			@appshell.AppShell(appshell.Config{
@@ -329,7 +352,7 @@ templ PublicDocsFragmentWithOptions(idx core.SpecIndex, selectedID string, opts 
 }
 
 templ PublicDocsFragmentContent(idx core.SpecIndex, selectedID string, opts PublicDocsOptions) {
-	{{ selected := selectedDocsItemFor(idx, selectedID) }}
+	{{ selected := opts.selectedFor(idx, selectedID) }}
 	@publicDocsLoading(selected)
 	<div data-public-docs-content="true" data-selected-doc={ selected.Anchor } data-document-title={ publicDocsDocumentTitle(idx, selected) }>
 		@publicDocsPageHeader(idx, selected)
@@ -2146,8 +2169,14 @@ func publicDocsDocumentTitle(idx core.SpecIndex, selected selectedDocsItem) stri
 	return pageTitle + " · Manja"
 }
 
-func PublicDocsMetadataDescription(idx core.SpecIndex, selectedID string) string {
-	return publicDocsMetadataDescription(idx, selectedDocsItemFor(idx, selectedID))
+// ResolvePublicDocsSelection normalizes and resolves a request selection once.
+func ResolvePublicDocsSelection(idx core.SpecIndex, selectedID string) PublicDocsSelection {
+	return PublicDocsSelection{item: selectedDocsItemFor(idx, selectedID)}
+}
+
+// PublicDocsMetadataDescription returns the resolved route's source description.
+func PublicDocsMetadataDescription(idx core.SpecIndex, selected PublicDocsSelection) string {
+	return publicDocsMetadataDescription(idx, selected.item)
 }
 
 func publicDocsMetadataDescription(idx core.SpecIndex, selected selectedDocsItem) string {

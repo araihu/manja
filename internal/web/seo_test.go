@@ -50,10 +50,11 @@ components:
 	if err != nil {
 		t.Fatal(err)
 	}
-	srv := NewPublicServer(idx)
+	srv := NewPublicServerWithOptions(idx, PublicOptions{PublicOrigin: "https://docs.example.test"})
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/sitemap.xml", nil)
-	req.Host = "docs.example.test"
+	req.Host = "attacker.example"
+	req.Header.Set("Forwarded", "proto=http;host=forwarded-attacker.example")
 
 	srv.ServeHTTP(rec, req)
 
@@ -90,5 +91,22 @@ components:
 		if loc != "https://docs.example.test/" {
 			t.Fatalf("sitemap loc is not a canonical docs URL: %q", loc)
 		}
+	}
+}
+
+func TestSitemapFailsClosedWithoutTrustedRemoteOrigin(t *testing.T) {
+	t.Parallel()
+
+	srv := NewPublicServer(core.SpecIndex{PublicRoutes: []core.PublicRoute{{Path: "/", Title: "Overview"}}})
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/sitemap.xml", nil)
+	req.Host = "attacker.example"
+	srv.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusServiceUnavailable)
+	}
+	if strings.Contains(rec.Body.String(), "attacker.example") {
+		t.Fatalf("untrusted request Host reached sitemap: %s", rec.Body.String())
 	}
 }
