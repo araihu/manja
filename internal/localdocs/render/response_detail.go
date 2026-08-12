@@ -21,11 +21,13 @@ import (
 
 var errInvalidOperationResponseDetailsFragment = errors.New("local docs operation response-details fragment is invalid")
 
-// OperationResponseDetailsFragment holds admitted SSR-equivalent response descriptions and headers.
-// Response media, examples, and body schema trees remain outside this fragment.
+// OperationResponseDetailsFragment holds admitted SSR-equivalent response descriptions and headers,
+// including header example fallbacks and canonical schema hrefs. Response media, body examples, and
+// body schema trees remain outside this fragment.
 type OperationResponseDetailsFragment struct {
-	responses []operationResponseDetailData
-	valid     bool
+	responses   []operationResponseDetailData
+	schemaLinks map[string]string
+	valid       bool
 }
 
 type operationResponseDetailData struct {
@@ -39,6 +41,7 @@ type operationResponseHeaderData struct {
 	Location    string
 	Required    bool
 	Description string
+	Example     string
 	Schema      domain.SchemaSummary
 }
 
@@ -70,7 +73,10 @@ func PrepareOperationResponseDetails(
 		return OperationResponseDetailsFragment{}, err
 	}
 	links := cloneResponseDetailSchemaLinks(schemaLinks)
-	fragment := OperationResponseDetailsFragment{responses: make([]operationResponseDetailData, 0, len(projected)), valid: true}
+	fragment := OperationResponseDetailsFragment{
+		responses: make([]operationResponseDetailData, 0, len(projected)),
+		valid:     true,
+	}
 	responseIDs := make(map[string]struct{}, len(projected))
 	for responseIndex, response := range projected {
 		preparedResponse := prepared[responseIndex]
@@ -88,12 +94,13 @@ func PrepareOperationResponseDetails(
 			if err := validateOperationResponseHeaderDetail(headerIndex, header, preparedHeader, schema, headerIDs); err != nil {
 				return OperationResponseDetailsFragment{}, err
 			}
-			if err := validateOperationResponseDetailSchemaLinks(preparedHeader.Schema, documentHref, links); err != nil {
+			if err := admitOperationResponseDetailSchemaLinks(preparedHeader.Schema, documentHref, links, &fragment.schemaLinks); err != nil {
 				return OperationResponseDetailsFragment{}, err
 			}
 			data.Headers = append(data.Headers, operationResponseHeaderData{
 				ID: header.ID, Name: preparedHeader.Name, Location: "header", Required: false,
-				Description: preparedHeader.Description, Schema: cloneResponseDetailSchema(preparedHeader.Schema),
+				Description: preparedHeader.Description, Example: preparedHeader.Example,
+				Schema: cloneResponseDetailSchema(preparedHeader.Schema),
 			})
 		}
 		fragment.responses = append(fragment.responses, data)
@@ -268,20 +275,27 @@ func cloneResponseDetailSchemaLinks(source map[string]string) map[string]string 
 	return result
 }
 
-func validateOperationResponseDetailSchemaLinks(schema domain.SchemaSummary, documentHref string, links map[string]string) error {
+func admitOperationResponseDetailSchemaLinks(schema domain.SchemaSummary, documentHref string, links map[string]string, admitted *map[string]string) error {
 	if responseDetailSchemaIsNamedPrimitiveEnumAlias(schema) {
-		href := links[strings.TrimSpace(schema.Name)]
+		name := strings.TrimSpace(schema.Name)
+		href := links[name]
 		if href != strings.TrimSpace(href) || (href != "" && !validResponseSchemaHref(documentHref, href)) {
 			return invalidOperationResponseDetailsField("schema href")
 		}
+		if href != "" {
+			if *admitted == nil {
+				*admitted = make(map[string]string)
+			}
+			(*admitted)[name] = href
+		}
 	}
 	for _, property := range schema.Properties {
-		if err := validateOperationResponseDetailSchemaLinks(property.Schema, documentHref, links); err != nil {
+		if err := admitOperationResponseDetailSchemaLinks(property.Schema, documentHref, links, admitted); err != nil {
 			return err
 		}
 	}
 	if schema.Items != nil {
-		return validateOperationResponseDetailSchemaLinks(*schema.Items, documentHref, links)
+		return admitOperationResponseDetailSchemaLinks(*schema.Items, documentHref, links, admitted)
 	}
 	return nil
 }
@@ -306,13 +320,13 @@ func cloneResponseDetailSchema(source domain.SchemaSummary) domain.SchemaSummary
 	return result
 }
 
-func OperationResponseDetails(fragment OperationResponseDetailsFragment, responseIndex int, scope string, schemaLinks map[string]string) templ.Component {
+func OperationResponseDetails(fragment OperationResponseDetailsFragment, responseIndex int, scope string) templ.Component {
 	return templ.ComponentFunc(func(ctx context.Context, writer io.Writer) error {
 		if !fragment.valid || responseIndex < 0 || responseIndex >= len(fragment.responses) {
 			return errInvalidOperationResponseDetailsFragment
 		}
 		var output boundedBuffer
-		if err := operationResponseDetails(fragment.responses[responseIndex], scope, cloneResponseDetailSchemaLinks(schemaLinks)).Render(ctx, &output); err != nil {
+		if err := operationResponseDetails(fragment.responses[responseIndex], scope, cloneResponseDetailSchemaLinks(fragment.schemaLinks)).Render(ctx, &output); err != nil {
 			return err
 		}
 		_, err := writer.Write(output.Bytes())
@@ -320,9 +334,9 @@ func OperationResponseDetails(fragment OperationResponseDetailsFragment, respons
 	})
 }
 
-func (fragment OperationResponseDetailsFragment) ResponseBytes(ctx context.Context, responseIndex int, scope string, schemaLinks map[string]string) ([]byte, error) {
+func (fragment OperationResponseDetailsFragment) ResponseBytes(ctx context.Context, responseIndex int, scope string) ([]byte, error) {
 	var output bytes.Buffer
-	if err := OperationResponseDetails(fragment, responseIndex, scope, schemaLinks).Render(ctx, &output); err != nil {
+	if err := OperationResponseDetails(fragment, responseIndex, scope).Render(ctx, &output); err != nil {
 		return nil, err
 	}
 	return append([]byte(nil), output.Bytes()...), nil

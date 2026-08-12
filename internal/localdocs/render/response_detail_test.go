@@ -11,15 +11,18 @@ import (
 	"github.com/araihu/manja/domain"
 )
 
-func TestPreparedOperationResponseDetailsRendersDescriptionAndHeaders(t *testing.T) {
+func TestPreparedOperationResponseDetailsPreservesProjectedHeaderExampleFallbackWithEmptySchemaExample(t *testing.T) {
 	t.Parallel()
 
 	detail, operation, nodes := operationResponseDetailFixture()
+	if operation.Responses[0].Headers[0].Schema.Example != "" {
+		t.Fatal("fixture must prove response-header fallback from an empty schema example")
+	}
 	fragment, err := PrepareOperationResponseDetails(detail, operation, nodes, "/documents/core-v1/", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	body, err := fragment.ResponseBytes(context.Background(), 0, operation.Anchor+"-201-headers", nil)
+	body, err := fragment.ResponseBytes(context.Background(), 0, operation.Anchor+"-201-headers")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -33,10 +36,37 @@ func TestPreparedOperationResponseDetailsRendersDescriptionAndHeaders(t *testing
 		`>X-Rate-Limit</span>`,
 		`>array[array[string&lt;uuid&gt;]]</span>`,
 		`>Header quota.</p>`,
+		`<span>Example:</span> <code>17</code>`,
 	} {
 		if !strings.Contains(string(body), want) {
 			t.Errorf("response detail missing %q in %s", want, body)
 		}
+	}
+}
+
+func TestPreparedOperationResponseDetailsRejectsPostPrepareCrossDocumentSchemaLinkMutation(t *testing.T) {
+	t.Parallel()
+
+	detail, operation, nodes := operationResponseDetailFixture()
+	detail.Operation.Responses[0].Headers[0].SchemaRef = 7
+	detail.Operation.Responses[0].Headers[0].Examples = nil
+	operation.Responses[0].Headers[0].Example = ""
+	operation.Responses[0].Headers[0].Schema = domain.SchemaSummary{Name: "Quota", Type: "string", Enum: []string{"low", "high"}}
+	nodes = []projection.SchemaNode{{Ordinal: 7, ID: "node-header-root", Name: "Quota", Type: "string", Enum: []string{"low", "high"}}}
+	schemaID := "detail-sha256-" + strings.Repeat("e", 64)
+	admittedHref := "/documents/core-v1/?selected=" + schemaID + "#" + schemaID
+	schemaLinks := map[string]string{"Quota": admittedHref}
+	fragment, err := PrepareOperationResponseDetails(detail, operation, nodes, "/documents/core-v1/", schemaLinks)
+	if err != nil {
+		t.Fatal(err)
+	}
+	schemaLinks["Quota"] = "/documents/other-v1/?selected=" + schemaID + "#" + schemaID
+	body, err := fragment.ResponseBytes(context.Background(), 0, operation.Anchor+"-201-headers")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(body), `href="`+admittedHref+`"`) || strings.Contains(string(body), "/documents/other-v1/") {
+		t.Fatalf("prepared response details did not retain admitted schema href: %s", body)
 	}
 }
 
@@ -111,18 +141,18 @@ func TestPreparedOperationResponseDetailsCopiesInputsAndPreservesOrder(t *testin
 	if err != nil {
 		t.Fatal(err)
 	}
-	first, err := fragment.ResponseBytes(context.Background(), 0, operation.Anchor+"-201-headers", nil)
+	first, err := fragment.ResponseBytes(context.Background(), 0, operation.Anchor+"-201-headers")
 	if err != nil {
 		t.Fatal(err)
 	}
-	second, err := fragment.ResponseBytes(context.Background(), 1, operation.Anchor+"-400-headers", nil)
+	second, err := fragment.ResponseBytes(context.Background(), 1, operation.Anchor+"-400-headers")
 	if err != nil {
 		t.Fatal(err)
 	}
 	detail.Operation.Responses[0].Description = "Changed."
 	operation.Responses[0].Headers[0].Name = "X-Changed"
 	nodes[0].Type = "string"
-	again, err := fragment.ResponseBytes(context.Background(), 0, operation.Anchor+"-201-headers", nil)
+	again, err := fragment.ResponseBytes(context.Background(), 0, operation.Anchor+"-201-headers")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -139,12 +169,13 @@ func operationResponseDetailFixture() (catalog.DetailRecordV1, domain.Operation,
 		Method: "POST", Path: "/api/v1/pods", Responses: []projection.Response{{
 			Ordinal: 0, ID: "201", Status: "201", Description: "Created resource.", Headers: []projection.ResponseHeader{{
 				Ordinal: 0, ID: headerID, Name: "X-Rate-Limit", Description: "Header quota.", SchemaRef: 7,
+				Examples: []projection.Example{{Ordinal: 0, ID: "primary", Text: "17", Provided: true}},
 			}},
 		}},
 	}}
 	operation := domain.Operation{Anchor: string(detailID), Title: "Create Pod", Method: "POST", Path: "/api/v1/pods", Responses: []domain.OperationResponse{{
 		Status: "201", Description: "Created resource.", Headers: []domain.OperationResponseHeader{{
-			Name: "X-Rate-Limit", Description: "Header quota.", Schema: domain.SchemaSummary{Type: "array", Items: &domain.SchemaSummary{Type: "array", Items: &domain.SchemaSummary{Type: "string", Format: "uuid"}}},
+			Name: "X-Rate-Limit", Description: "Header quota.", Example: "17", Schema: domain.SchemaSummary{Type: "array", Items: &domain.SchemaSummary{Type: "array", Items: &domain.SchemaSummary{Type: "string", Format: "uuid"}}},
 		}},
 	}}}
 	nodes := []projection.SchemaNode{

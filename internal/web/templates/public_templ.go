@@ -3643,7 +3643,7 @@ func responsePanel(opID string, responseIndex int, response core.OperationRespon
 		}
 		if len(response.MediaTypes) == 0 {
 			if opts.OperationResponseDetails != nil {
-				templ_7745c5c3_Err = localrender.OperationResponseDetails(*opts.OperationResponseDetails, responseIndex, opID+"-"+anchorFragment(response.Status)+"-headers", opts.SchemaLinks).Render(ctx, templ_7745c5c3_Buffer)
+				templ_7745c5c3_Err = localrender.OperationResponseDetails(*opts.OperationResponseDetails, responseIndex, opID+"-"+anchorFragment(response.Status)+"-headers").Render(ctx, templ_7745c5c3_Buffer)
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
@@ -4031,7 +4031,7 @@ func responseMediaTypeBlock(opID string, responseIndex int, response core.Operat
 			return templ_7745c5c3_Err
 		}
 		if opts.OperationResponseDetails != nil {
-			templ_7745c5c3_Err = localrender.OperationResponseDetails(*opts.OperationResponseDetails, responseIndex, idPrefix+"-"+anchorFragment(media.ContentType)+"-headers", opts.SchemaLinks).Render(ctx, templ_7745c5c3_Buffer)
+			templ_7745c5c3_Err = localrender.OperationResponseDetails(*opts.OperationResponseDetails, responseIndex, idPrefix+"-"+anchorFragment(media.ContentType)+"-headers").Render(ctx, templ_7745c5c3_Buffer)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}

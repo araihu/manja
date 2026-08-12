@@ -1441,7 +1441,7 @@ templ responsePanel(opID string, responseIndex int, response core.OperationRespo
 	<section class="grid gap-4">
 	if len(response.MediaTypes) == 0 {
 		if opts.OperationResponseDetails != nil {
-			@localrender.OperationResponseDetails(*opts.OperationResponseDetails, responseIndex, opID+"-"+anchorFragment(response.Status)+"-headers", opts.SchemaLinks)
+			@localrender.OperationResponseDetails(*opts.OperationResponseDetails, responseIndex, opID+"-"+anchorFragment(response.Status)+"-headers")
 		} else {
 			@responseDescription(response.Description, opts)
 			@responseHeaders(response.Headers, opID+"-"+anchorFragment(response.Status)+"-headers", opts)
@@ -1567,7 +1567,7 @@ templ responseMediaTypeBlock(opID string, responseIndex int, response core.Opera
 					}
 				</div>
 				if opts.OperationResponseDetails != nil {
-					@localrender.OperationResponseDetails(*opts.OperationResponseDetails, responseIndex, idPrefix+"-"+anchorFragment(media.ContentType)+"-headers", opts.SchemaLinks)
+					@localrender.OperationResponseDetails(*opts.OperationResponseDetails, responseIndex, idPrefix+"-"+anchorFragment(media.ContentType)+"-headers")
 				} else {
 					@responseDescription(response.Description, opts)
 					@responseHeaders(response.Headers, idPrefix+"-"+anchorFragment(media.ContentType)+"-headers", opts)

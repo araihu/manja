@@ -46,6 +46,9 @@ func operationResponseDetailHeaderSummary(header operationResponseHeaderData) do
 	if strings.TrimSpace(summary.Description) == "" {
 		summary.Description = header.Description
 	}
+	if strings.TrimSpace(summary.Example) == "" {
+		summary.Example = header.Example
+	}
 	return summary
 }
 
@@ -105,9 +108,15 @@ templ operationResponseDetailSchemaTreeLabel(name string, propertyState string, 
 		}
 		if schema.Example != "" {
 			if operationResponseDetailSchemaTreeExampleBlock(schema.Example) {
-				<div class="manja-schema-example manja-schema-example-block"><span>Example:</span><pre><code>{ schema.Example }</code></pre></div>
+				<div class="manja-schema-example manja-schema-example-block">
+					<span>Example:</span>
+					<pre><code>{ schema.Example }</code></pre>
+				</div>
 			} else {
-				<p class="manja-schema-example manja-schema-example-inline"><span>Example:</span><code>{ schema.Example }</code></p>
+				<p class="manja-schema-example manja-schema-example-inline">
+					<span>Example:</span>
+					<code>{ schema.Example }</code>
+				</p>
 			}
 		}
 		if len(schema.Enum) > 0 {

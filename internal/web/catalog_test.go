@@ -748,7 +748,7 @@ func TestCatalogSelectedOperationPreparesRequestBodyMediaSummary(t *testing.T) {
 					t.Errorf("prepared catalog request-body media summary missing %q in %s", want, body)
 				}
 			}
-			responseDetail, err := data.OperationResponseDetails.ResponseBytes(context.Background(), 0, string(data.Selected.ID)+"-200-application-json-headers", data.SchemaLinks)
+			responseDetail, err := data.OperationResponseDetails.ResponseBytes(context.Background(), 0, string(data.Selected.ID)+"-200-application-json-headers")
 			if err != nil {
 				t.Fatal(err)
 			}
