@@ -52,14 +52,14 @@ not implement hosted product behavior speculatively.
 - Worktree label: dedicated Open Core developer worktree
 - Initial lane base: `39d65ade21c080ee2102f53da5ed741f000d6dd7`
 - Current checkpoint base and direct parent:
-  `dab2b8f24552f89cc2b1d705181a1ac4a2b97847`
+  `fd2f16f36a423a8fea2f4273695aaad39525614f`
 - Current checkpoint base tree:
-  `1abee072de1fce813731bfc3e02706c31cd0eb6d`
+  `dc411a51a9e6674c21f5bfc187d455ecc26c9f26`
 - Fresh-main merge-base:
   `43f96dfbf9d18eee2364f14778e6b94312c8abac`, tree
   `959f199e145c316b4b76e40a561413c0e6d57134`
-- Branch: `codex/oc01m7-product-site-social`
-- Worktree label: OC-01M7 product-site social-metadata worktree
+- Branch: `codex/oc01m8-public-docs-social`
+- Worktree label: OC-01M8 standalone-public-docs social-metadata worktree
 - Owns only bounded Open Core implementation checkpoints assigned here.
 - Must commit each coherent checkpoint with a meaningful message.
 - Must not implement deferred SaaS behavior or edit the active Arai Hû theme
@@ -152,8 +152,20 @@ not implement hosted product behavior speculatively.
   commit `e342c68fff9abc9be1d744da8fb7c3c73f6e6c81`, tree
   `f1aba174a207b6db02afbcee6a3f9892d18f14fa`, adds initial-HTML metadata for
   the product homepage and `/docs`, plus an exact product-site route to the
-  existing embedded Manja preview bytes. The final moving candidate identity
-  stays in the immutable external review packet to avoid recursive
+  existing embedded Manja preview bytes. Exact final head
+  `fd2f16f36a423a8fea2f4273695aaad39525614f`, tree
+  `dc411a51a9e6674c21f5bfc187d455ecc26c9f26`, received independent `ACCEPT`
+  from technical and design reviewers and remains clean, preserved, unpushed,
+  and unintegrated.
+- OC-01M8 starts from that accepted OC-01M7 head as its exact direct parent.
+  Implementation commit `5e0b3cfd3f2e4f79a84fb81c072f0b016db06b16`,
+  tree `61e5620116aacdd3c19f4694fa079bd3e57fc7b3`, adds the complete initial-HTML
+  social metadata contract to the standalone root public-docs overview,
+  operation, and schema routes. It uses request-derived canonical HTTPS URLs,
+  the existing approved Manja preview asset, and rendered plain text rather
+  than raw Markdown for descriptions. Focused package, race, vet, templ-drift,
+  preview-byte, and diff checks pass locally. The final moving candidate
+  identity stays in the immutable external review packet to avoid recursive
   self-reference.
 - At `2026-08-12T03:34:23Z`, the confirmed public preview URL
   `https://manja.araihu.com/manja-assets/manja-social.png` returned HTTP 200,
@@ -376,10 +388,10 @@ not implement hosted product behavior speculatively.
   with `GOWORK=off`; this supersedes the earlier historical dependency-graph
   failure without changing site module files.
 - Renderer/catalog initial HTML and preview-image checks pass the social-ready
-  metadata gate. The accepted parent still lacks equivalent product-site
-  metadata; OC-01M7 locally adds route-specific canonical/Open Graph/explicit X
-  Card metadata and the preview response contract for `/` and `/docs`, pending
-  final freeze and independent review.
+  metadata gate. OC-01M7's equivalent product-site contract is independently
+  accepted. OC-01M8 now adds route-specific canonical/Open Graph/explicit X
+  Card metadata and the preview response contract to the standalone public docs
+  locally, pending final freeze and independent review.
 - Active Arai Hû Modern-theme rollout belongs to task
   `019fef01-b65f-7980-a360-83e48f8a6345`; this control plane must avoid its
   files and refs.
@@ -474,8 +486,29 @@ OC-01M7 product-site social metadata checkpoint:
   structure/alt, explicit X Card tags, and the existing Manja preview asset;
 - exclusions: standalone renderer metadata, catalog focus, active theme, hosted
   SaaS, hybrid SSR/Wasm/offline runtime, packaging, and lifecycle actions;
-- disposition: local candidate requires final clean freeze and fresh independent
-  review. The moving head/tree remain external.
+- accepted candidate: `fd2f16f36a423a8fea2f4273695aaad39525614f`,
+  tree `dc411a51a9e6674c21f5bfc187d455ecc26c9f26`;
+- disposition: independently accepted by technical and design reviewers, clean
+  and preserved locally; no push or integration is authorized.
+
+OC-01M8 standalone public-docs social metadata checkpoint:
+
+- direct parent: accepted OC-01M7 candidate
+  `fd2f16f36a423a8fea2f4273695aaad39525614f`, tree
+  `dc411a51a9e6674c21f5bfc187d455ecc26c9f26`;
+- fresh-main merge-base: `43f96dfbf9d18eee2364f14778e6b94312c8abac`,
+  tree `959f199e145c316b4b76e40a561413c0e6d57134`;
+- branch: `codex/oc01m8-public-docs-social`;
+- implementation commit: `5e0b3cfd3f2e4f79a84fb81c072f0b016db06b16`,
+  tree `61e5620116aacdd3c19f4694fa079bd3e57fc7b3`;
+- scope: standalone public docs overview, operation, and schema initial HTML,
+  with route-specific title, plain-text description, canonical URL, `og:url`,
+  complete Open Graph image structure/alt, explicit X Card tags, and the
+  existing approved Manja preview asset;
+- exclusions: product-site shell, catalog focus CSS, active theme, hosted SaaS,
+  hybrid SSR/Wasm/offline runtime, packaging, and lifecycle actions;
+- disposition: local implementation awaits final clean freeze and fresh
+  technical/design review. The moving final head/tree remain external.
 
 The final moving candidate head and tree are bound by the immutable external
 review packet and control plane. A commit cannot embed its own final commit and
@@ -556,15 +589,16 @@ Before merge:
 
 ## Next Action
 
-Freeze OC-01M7 with exact identity, complete staged/unstaged/untracked status,
-initial-HTML and preview receipts, standalone site tests/race/vet, and diff
-checks, then obtain fresh independent developer and designer review. PM chooses
-and separately authorizes any integration path. Any push, PR, or head movement
-restarts exact-head CI, CodeQL, independent review, and substantive CodeRabbit
-gates; absence or failure blocks integration. Overall provenance remains
-`BLOCKED`; legal authority and final-artifact notices stay separate, and
-licensing/package-generation Task 8 remains stopped. Hosted SaaS stays deferred,
-active-theme work stays excluded, and OC-04 hybrid SSR/Wasm/offline remains Open
-Core. Standalone public-doc metadata, catalog-search visible focus, and the
-hybrid runtime remain separate future bounded checkpoints. No push, merge,
-release, deployment, cleanup, or other lifecycle action is authorized here.
+Freeze OC-01M8 with exact identity, complete staged/unstaged/untracked status,
+representative standalone-public-doc initial-HTML and preview receipts, root web
+tests/race/vet, generated-templ drift, and diff checks, then obtain fresh
+independent technical and design review. PM chooses and separately authorizes
+any integration path. Any push, PR, or head movement restarts exact-head CI,
+CodeQL, independent review, and substantive CodeRabbit gates; absence or
+failure blocks integration. Overall provenance remains `BLOCKED`; legal
+authority and final-artifact notices stay separate, and licensing/package-
+generation Task 8 remains stopped. Hosted SaaS stays deferred, active-theme
+work stays excluded, and OC-04 hybrid SSR/Wasm/offline remains Open Core.
+Catalog-search visible focus and the hybrid runtime remain separate future
+bounded checkpoints. No push, merge, release, deployment, cleanup, or other
+lifecycle action is authorized here.
