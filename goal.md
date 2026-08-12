@@ -51,15 +51,15 @@ not implement hosted product behavior speculatively.
 - Task: `019fef17-2fad-73d2-b004-d3706d36ea82`
 - Worktree label: dedicated Open Core developer worktree
 - Initial lane base: `39d65ade21c080ee2102f53da5ed741f000d6dd7`
-- OC-04C accepted base and direct parent:
-  `c7a3e89d82c7ad47e7e436ed4a0ddb065365a20a`
+- OC-04D accepted base and direct parent:
+  `b98f00d63d78a66e27d31fa19e9f8024fc6d2e00`
 - Current checkpoint base tree:
-  `6020165a3bfbab00bae1910a197b2d4dc9bf57b3`
+  `d8221d003eecbc2a360bf74cb1ea50aabcd8e188`
 - Fresh-main merge-base:
   `43f96dfbf9d18eee2364f14778e6b94312c8abac`, tree
   `959f199e145c316b4b76e40a561413c0e6d57134`
-- Branch: `codex/oc04c-projection-activation-admission`
-- Worktree label: OC-04C projection-activation admission worktree
+- Branch: `codex/oc04d-projection-shard-preparation`
+- Worktree label: OC-04D projection-shard preparation worktree
 - Owns only bounded Open Core implementation checkpoints assigned here.
 - Must commit each coherent checkpoint with a meaningful message.
 - Must not implement deferred SaaS behavior or edit the active Arai Hû theme
@@ -269,6 +269,26 @@ not implement hosted product behavior speculatively.
   pre-existing catalog-search focus E2E once; its exact rerun passed in 3.06s.
   A complete fresh root rerun then passed with self-hosted 178.553s and E2E
   186.989s. The final moving goal-child identity remains external for review.
+- OC-04C goal child `b98f00d63d78a66e27d31fa19e9f8024fc6d2e00`,
+  tree `d8221d003eecbc2a360bf74cb1ea50aabcd8e188`, received independent
+  `ACCEPT` and is the immutable direct parent for OC-04D.
+- OC-04D implementation commit
+  `a7ebe1578cba30211c9810301304565d5b43d6e9`, tree
+  `3e449e3d9b84e62599afafeeb68ebdde5878951c`, adds parser-free shard
+  preparation after OC-04C admission. `SelectDetail` and `SelectSchemaNode`
+  require the exact admitted path and kind, verify size and SHA-256 before the
+  strict canonical codec, bind the exact document key, and select only the
+  requested detail ID or schema-node ordinal. Every failure returns a zero
+  value. Successful results retain no input or activation-state aliases. The
+  package performs no network, filesystem, parser, template, or HTML work.
+- OC-04D RED captured both absent selection methods. GREEN and mutation proofs
+  cover operation/schema details, schema nodes, unknown and cross-kind paths,
+  changed size, same-length substitution, duplicate/unknown/trailing/
+  noncanonical JSON, wrong document, missing ID/ordinal, and input/result
+  mutation. Focused web OC-04A/B/C tests passed in 0.457s, localdocs race in
+  1.353s, architecture/Wasm in 6.991s, plus vet and strict Muamba. Full root
+  tests passed with self-hosted 164.053s and E2E 189.850s. The moving final
+  goal-child identity remains external for review.
 - At `2026-08-12T03:34:23Z`, the confirmed public preview URL
   `https://manja.araihu.com/manja-assets/manja-social.png` returned HTTP 200,
   `image/png`, 21,500 bytes, 1280x640, and SHA-256
@@ -698,8 +718,10 @@ transport for deterministic projection-v2 detail and schema-node shards. OC-04B
 adds explicit anonymous-public eligibility, strict immutable descriptor
 admission, and the self-hosted composition kill switch while leaving SSR/no-JS
 authoritative. OC-04C adds the descriptor-bound immutable manifest transport and
-a Wasm-compatible admission prerequisite, but does not activate or render in a
-browser. These checkpoints are groundwork, not proof of a full Wasm renderer,
+a Wasm-compatible admission prerequisite. OC-04D verifies and strictly decodes
+admitted detail/schema-node bytes into exact selected projection records without
+parser, network, filesystem, template, or HTML dependencies. These checkpoints
+are groundwork, not proof of a full Wasm HTML renderer, browser activation,
 Service Worker, offline storage, rollback, tombstones, parity, or performance
 acceptance.
 
@@ -739,17 +761,16 @@ Before merge:
 
 ## Next Action
 
-Submit the frozen OC-04C identity, clean status, strict admission and immutable
-manifest transport RED/GREEN receipts, defensive-copy proof, preserved
-SSR/OC-04A/OC-04B behavior, race, and root-suite receipts for fresh independent
-technical and design review. PM chooses and separately authorizes any
-integration path.
+Submit the frozen OC-04D identity, clean status, shard-selection RED/GREEN and
+mutation receipts, preserved SSR/OC-04A/OC-04B/OC-04C behavior, Wasm boundary,
+race, and root-suite receipts for fresh independent technical and design
+review. PM chooses and separately authorizes any integration path.
 Any push, PR, or head movement restarts exact-head CI, CodeQL, independent
 review, and substantive CodeRabbit gates; absence or failure blocks integration.
 Overall provenance remains `BLOCKED`; legal authority and final-artifact
 notices stay separate, and licensing/package-generation Task 8 remains stopped.
 Hosted SaaS stays deferred, active-theme work stays excluded, and OC-04 hybrid
-SSR/Wasm/offline remains Open Core; full Wasm rendering, Service Worker,
-offline storage, rollback, tombstones, and UI activation stay separate from
-this admission-only checkpoint. No push, merge, release,
+SSR/Wasm/offline remains Open Core; full Wasm HTML rendering, browser ABI,
+Service Worker, offline storage, rollback, tombstones, and UI activation stay
+separate from this shard-preparation checkpoint. No push, merge, release,
 deployment, cleanup, or other lifecycle action is authorized here.
