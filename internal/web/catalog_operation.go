@@ -31,7 +31,7 @@ func (handler *CatalogHandler) catalogOperationView(
 	snapshot catalog.RuntimeSnapshot,
 	document catalog.DocumentDirectoryV1,
 	detail projection.OperationDetail,
-) (*domain.Operation, []projection.SchemaNode, []projection.SchemaNode, error) {
+) (*domain.Operation, []projection.SchemaNode, []projection.SchemaNode, []projection.SchemaNode, error) {
 	resolver := catalogOperationSchemaResolver{
 		handler: handler, ctx: ctx, snapshot: snapshot, document: document,
 		active: make(map[projection.SchemaRef]bool), selected: make(map[projection.SchemaRef]projection.SchemaNode),
@@ -54,7 +54,7 @@ func (handler *CatalogHandler) catalogOperationView(
 	for _, parameter := range detail.Parameters {
 		schema, err := resolver.schema(parameter.SchemaRef, 0)
 		if err != nil {
-			return nil, nil, nil, err
+			return nil, nil, nil, nil, err
 		}
 		operation.Parameters = append(operation.Parameters, domain.OperationParameter{
 			Name: parameter.Name, In: parameter.In, Required: parameter.Required,
@@ -66,11 +66,11 @@ func (handler *CatalogHandler) catalogOperationView(
 	if detail.HasRequestBody {
 		mediaTypes, err := resolver.mediaTypes(detail.RequestBody.MediaTypes)
 		if err != nil {
-			return nil, nil, nil, err
+			return nil, nil, nil, nil, err
 		}
 		requestBodyNodes, err = resolver.selectedMediaLabelNodes(detail.RequestBody.MediaTypes, mediaTypes)
 		if err != nil {
-			return nil, nil, nil, err
+			return nil, nil, nil, nil, err
 		}
 		operation.RequestBody = &domain.OperationRequestBody{
 			Description: detail.RequestBody.Description,
@@ -79,12 +79,14 @@ func (handler *CatalogHandler) catalogOperationView(
 		}
 	}
 	operation.Responses = make([]domain.OperationResponse, 0, len(detail.Responses))
+	responseMediaTypes := make([]projection.MediaType, 0)
+	preparedResponseMediaTypes := make([]domain.OperationMediaType, 0)
 	for _, response := range detail.Responses {
 		headers := make([]domain.OperationResponseHeader, 0, len(response.Headers))
 		for _, header := range response.Headers {
 			schema, err := resolver.schema(header.SchemaRef, 0)
 			if err != nil {
-				return nil, nil, nil, err
+				return nil, nil, nil, nil, err
 			}
 			headers = append(headers, domain.OperationResponseHeader{
 				Name: header.Name, Description: header.Description,
@@ -93,11 +95,17 @@ func (handler *CatalogHandler) catalogOperationView(
 		}
 		mediaTypes, err := resolver.mediaTypes(response.MediaTypes)
 		if err != nil {
-			return nil, nil, nil, err
+			return nil, nil, nil, nil, err
 		}
 		operation.Responses = append(operation.Responses, domain.OperationResponse{
 			Status: response.Status, Description: response.Description, Headers: headers, MediaTypes: mediaTypes,
 		})
+		responseMediaTypes = append(responseMediaTypes, response.MediaTypes...)
+		preparedResponseMediaTypes = append(preparedResponseMediaTypes, mediaTypes...)
+	}
+	responseMediaNodes, err := resolver.selectedMediaLabelNodes(responseMediaTypes, preparedResponseMediaTypes)
+	if err != nil {
+		return nil, nil, nil, nil, err
 	}
 	operation.Security = make([]domain.OperationSecurity, 0, len(detail.Security))
 	for _, security := range detail.Security {
@@ -122,7 +130,7 @@ func (handler *CatalogHandler) catalogOperationView(
 			Label: "cURL", Language: "shell", Code: catalogOperationCurl(*operation),
 		}}
 	}
-	return operation, parameterNodes, requestBodyNodes, nil
+	return operation, parameterNodes, requestBodyNodes, responseMediaNodes, nil
 }
 
 func (handler *CatalogHandler) catalogSchemaView(

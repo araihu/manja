@@ -921,6 +921,61 @@ func TestPreparedOperationRequestBodyMediaMatchesCatalogSSRBytes(t *testing.T) {
 	}
 }
 
+func TestPreparedOperationResponseMediaMatchesCatalogSSRBytes(t *testing.T) {
+	t.Parallel()
+
+	detailID := domain.DetailID("detail-sha256-" + strings.Repeat("f", 64))
+	documentHref := "/kubernetes/documents/core-v1/"
+	schemaID := "detail-sha256-" + strings.Repeat("e", 64)
+	operation := domain.Operation{Anchor: string(detailID), Title: "Create Pod", Method: "POST", Path: "/api/v1/pods", Responses: []domain.OperationResponse{
+		{Status: "200", MediaTypes: []domain.OperationMediaType{
+			{ContentType: "application/json", Schema: domain.SchemaSummary{Name: "Pod", Type: "object"}, Example: `{"kind":"Pod"}`, ExampleProvided: true},
+			{ContentType: "application/problem+json", Schema: domain.SchemaSummary{Type: "array", Items: &domain.SchemaSummary{Type: "array", Items: &domain.SchemaSummary{Name: "Status", Type: "string", Format: "uuid", Enum: []string{"ready", "pending"}}}}},
+		}},
+		{Status: "404", MediaTypes: []domain.OperationMediaType{{ContentType: "text/plain", Schema: domain.SchemaSummary{Type: "string"}}}},
+		{Status: "204"},
+	}}
+	detail := catalog.DetailRecordV1{ID: detailID, Kind: "operation", Operation: &projection.OperationDetail{
+		ID: string(detailID), Anchor: string(detailID), HeadingID: string(detailID), Heading: "Create Pod", HeadingLevel: 2, Method: "POST", Path: "/api/v1/pods",
+		Responses: []projection.Response{
+			{Ordinal: 0, ID: "200", Status: "200", MediaTypes: []projection.MediaType{
+				{Ordinal: 0, ID: "application/json", ContentType: "application/json", SchemaRef: 7, Examples: []projection.Example{{Ordinal: 0, ID: "primary", Text: `{"kind":"Pod"}`, Provided: true}}},
+				{Ordinal: 1, ID: "application/problem+json", ContentType: "application/problem+json", SchemaRef: 8},
+			}},
+			{Ordinal: 1, ID: "404", Status: "404", MediaTypes: []projection.MediaType{{Ordinal: 0, ID: "text/plain", ContentType: "text/plain", SchemaRef: 11}}},
+			{Ordinal: 2, ID: "204", Status: "204"},
+		},
+	}}
+	nodes := []projection.SchemaNode{
+		{Ordinal: 7, ID: "node-pod", Name: "Pod", Type: "object"},
+		{Ordinal: 8, ID: "node-array-root", Type: "array", Items: []projection.SchemaNodeItem{{Ordinal: 0, ID: "items", SchemaRef: 9}}},
+		{Ordinal: 9, ID: "node-array-nested", Type: "array", Items: []projection.SchemaNodeItem{{Ordinal: 0, ID: "items", SchemaRef: 10}}},
+		{Ordinal: 10, ID: "node-status", Name: "Status", Type: "string", Format: "uuid", Enum: []string{"ready", "pending"}},
+		{Ordinal: 11, ID: "node-text", Type: "string"},
+	}
+	schemaLinks := map[string]string{
+		"Pod":    documentHref + "?selected=" + schemaID + "#" + schemaID,
+		"Status": documentHref + "?selected=" + schemaID + "#" + schemaID,
+	}
+	fragment, err := localrender.PrepareOperationResponseMedia(detail, operation, nodes, documentHref, schemaLinks)
+	if err != nil {
+		t.Fatal(err)
+	}
+	baseOptions := PublicDocsOptions{SchemaLinks: schemaLinks, SchemaLinkTarget: "#catalog-main-content", SchemaLinkSelect: "#catalog-main-content", SchemaLinkSwap: "outerHTML show:#main-content:top"}
+	var legacy, delegated bytes.Buffer
+	if err := endpointSection(operation, nil, "", baseOptions, OperationNavigationData{}).Render(context.Background(), &legacy); err != nil {
+		t.Fatal(err)
+	}
+	baseOptions.OperationResponseMedia = &fragment
+	if err := endpointSection(operation, nil, "", baseOptions, OperationNavigationData{}).Render(context.Background(), &delegated); err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(legacy.Bytes(), delegated.Bytes()) {
+		index := firstDifferentByte(legacy.Bytes(), delegated.Bytes())
+		t.Fatalf("delegated response-media summary changed complete SSR endpoint bytes at byte %d:\nlegacy=%q\ndelegated=%q", index, nearbyBytes(legacy.Bytes(), index), nearbyBytes(delegated.Bytes(), index))
+	}
+}
+
 func firstDifferentByte(left, right []byte) int {
 	limit := min(len(left), len(right))
 	for index := range limit {

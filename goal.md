@@ -901,6 +901,14 @@ through one bounded templ-escaped component shared byte-for-byte with SSR.
 OC-04H prepares and renders request-body media badges, bounded recursive
 Items-chain schema labels, and optional schema links through one templ-escaped
 component shared byte-for-byte with SSR.
+OC-04I prepares and renders response-media content-type and shallow schema
+labels, including canonical same-document schema links, through one
+templ-escaped component shared byte-for-byte with catalog SSR. Its admission
+binds ordered response status and media identity, examples, root schema fields,
+and the complete rendered Items chain. Response descriptions, headers, example
+panels, schema trees, request composition, browser activation, Service Worker,
+offline storage, lifecycle actions, SaaS, and theme work remain outside this
+checkpoint.
 These checkpoints are groundwork, not proof of a complete operation body/main
 Wasm HTML renderer, browser activation, Service Worker, offline storage,
 rollback, tombstones, recursive request-body rendering, response rendering,

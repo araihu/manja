@@ -752,6 +752,46 @@ func TestCatalogSelectedOperationPreparesRequestBodyMediaSummary(t *testing.T) {
 	}
 }
 
+func TestCatalogSelectedOperationPreparesResponseMediaSummary(t *testing.T) {
+	t.Parallel()
+
+	for _, mount := range []string{"/", "/kubernetes"} {
+		mount := mount
+		t.Run(mount, func(t *testing.T) {
+			t.Parallel()
+			handler, snapshot := catalogHandlerFixture(t, mount)
+			detailID := "detail-sha256-" + strings.Repeat("a", 64)
+			data, err := handler.(*CatalogHandler).catalogPageData(
+				context.Background(), snapshot, mount, "core-v1", detailID, "", "", "",
+			)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if data.OperationResponseMedia == nil {
+				t.Fatal("selected operation did not prepare response-media summary")
+			}
+			body, err := data.OperationResponseMedia.MediaBytes(context.Background(), 0, 0)
+			if err != nil {
+				t.Fatal(err)
+			}
+			documentHref := "/documents/core-v1/"
+			if mount != "/" {
+				documentHref = mount + documentHref
+			}
+			for _, want := range []string{
+				"application/json",
+				`href="` + documentHref + `?selected=detail-sha256-` + strings.Repeat("c", 64),
+				`hx-target="#catalog-main-content"`,
+				">Pod object<",
+			} {
+				if !strings.Contains(string(body), want) {
+					t.Errorf("prepared catalog response-media summary missing %q in %s", want, body)
+				}
+			}
+		})
+	}
+}
+
 func TestCatalogOperationSelectsCompleteRequestBodyItemsChain(t *testing.T) {
 	t.Parallel()
 
