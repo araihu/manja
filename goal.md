@@ -51,17 +51,15 @@ not implement hosted product behavior speculatively.
 - Task: `019fef17-2fad-73d2-b004-d3706d36ea82`
 - Worktree label: dedicated Open Core developer worktree
 - Initial lane base: `39d65ade21c080ee2102f53da5ed741f000d6dd7`
-- OC-04G accepted lineage base:
-  `a901b008164227d8b480124bafb59ae1d9903df0`
-- OC-04G rejected correction parent:
-  `52f99958a9a326e653b771f3d5624a15a06113ee`
-- Current checkpoint parent tree:
-  `748d84df049c1a6a2eb54be42e14c71be751710c`
+- OC-04H accepted direct parent:
+  `fb9381f4b04821f322d128da3c7a50ce827af7d6`
+- Current checkpoint base tree:
+  `35fa43dfc56375e8af37b52438614ea4b3d3260e`
 - Fresh-main merge-base:
   `43f96dfbf9d18eee2364f14778e6b94312c8abac`, tree
   `959f199e145c316b4b76e40a561413c0e6d57134`
-- Branch: `codex/oc04g-operation-parameters-fragment`
-- Worktree label: OC-04G operation-parameters fragment worktree
+- Branch: `codex/oc04h-request-body-media-summary`
+- Worktree label: OC-04H request-body media-summary worktree
 - Owns only bounded Open Core implementation checkpoints assigned here.
 - Must commit each coherent checkpoint with a meaningful message.
 - Must not implement deferred SaaS behavior or edit the active Arai Hû theme
@@ -408,6 +406,40 @@ not implement hosted product behavior speculatively.
   failure; its exact isolated rerun passed in 2.90s, and a complete root rerun
   passed with self-hosted 190.049s and E2E 189.365s. The moving correction-child
   identity remains external for fresh review.
+- OC-04G correction head `fb9381f4b04821f322d128da3c7a50ce827af7d6`,
+  tree `35fa43dfc56375e8af37b52438614ea4b3d3260e`, received independent
+  `ACCEPT` and is the immutable direct parent for OC-04H.
+- OC-04H renderer commit `b9e8e6e3f985e37430f9a0f06eb9af4f99ac7dbf`,
+  tree `ee6af5c4336f02a531c4cc9115b7ef3e674fbf09`, adds one bounded,
+  parser-free request-body media-summary fragment. It validates exact
+  request-body declaration, description, required state, ordered media
+  ordinals/IDs/content types/examples, unique referenced root schema-node
+  inventory, root name/type/format/enum identity, canonical same-document
+  schema hrefs, defensive copies, media index, and the 2 MiB output limit.
+  Invalid, missing, duplicate, extra, reordered, inconsistent, malformed, or
+  oversized input fails without partial bytes. Rendering uses templ escaping
+  and public Goshtoso badge/icon APIs, with no parser, network, filesystem,
+  HTTP, browser API, or `templ.Raw` dependency.
+- OC-04H delegation commit `5a64e3814a1889d952de4a9ddfb1ef6ba6062494`,
+  tree `df62c0ee3f6f2c7008e10284827aaf3bda23f66a`, captures the already-read
+  unique request-body root nodes without a second child read and makes catalog
+  SSR share the media badge, shallow schema label, and optional same-document
+  schema link. Recursive schema properties, request-body description, examples,
+  request composer, responses, and standalone fallback remain server-owned and
+  unchanged. Full endpoint parity covers zero, one, and multiple media types;
+  root and nested mounts preserve href, HTMX, ARIA, focus, responsive, theme,
+  canonical, and no-JS behavior. Operations without a request body retain a nil
+  fragment rather than failing catalog rendering.
+- OC-04H RED receipts captured the absent preparation API; permissive example,
+  media whitespace, enum, and href validation; absent `PublicDocsOptions` seam;
+  absent catalog preparation; and the real no-request-body failure. GREEN
+  receipts include focused and full localdocs/web/template packages, root and
+  nested real-handler proof, exact zero/one/multiple complete-endpoint bytes,
+  affected race and vet, architecture and `js/wasm`, strict Muamba verification
+  and generation, webassets, stable templ generation, and diff check. Full root
+  tests passed with self-hosted 206.767s and E2E 189.169s. No new Goshtoso
+  source-lookup snag occurred; existing public badge/icon APIs were sufficient.
+  The moving final goal-child identity remains external for fresh review.
 - At `2026-08-12T03:34:23Z`, the confirmed public preview URL
   `https://manja.araihu.com/manja-assets/manja-social.png` returned HTTP 200,
   `image/png`, 21,500 bytes, 1280x640, and SHA-256
@@ -845,9 +877,13 @@ shared byte-for-byte with SSR. OC-04F prepares and renders the operation identit
 header through one bounded templ-escaped component shared byte-for-byte with
 SSR. OC-04G prepares and renders the Path, Query, and Header parameter groups
 through one bounded templ-escaped component shared byte-for-byte with SSR.
+OC-04H prepares and renders request-body media badges, shallow schema labels,
+and optional schema links through one bounded templ-escaped component shared
+byte-for-byte with SSR.
 These checkpoints are groundwork, not proof of a complete operation body/main
 Wasm HTML renderer, browser activation, Service Worker, offline storage,
-rollback, tombstones, parity beyond the three bounded fragments, or performance
+rollback, tombstones, recursive request-body rendering, response rendering,
+parity beyond the four bounded operation fragments, or performance
 acceptance.
 
 ## PR Gate
@@ -886,10 +922,10 @@ Before merge:
 
 ## Next Action
 
-Submit the frozen OC-04G correction identity, clean status, the preserved
-rejected-parent identity, eight-case fixed-slot RED/GREEN receipts, exact
-legacy-group and whole-endpoint SSR parity,
-preserved OC-04A/B/C/D/E/F behavior, Wasm boundary, race, and root-suite
+Submit the frozen OC-04H identity, clean status, the accepted OC-04G parent,
+strict media/root-node/href RED/GREEN receipts, exact zero/one/multiple
+whole-endpoint SSR parity, root/nested real-handler proof, preserved
+OC-04A/B/C/D/E/F/G behavior, Wasm boundary, race, and root-suite
 receipts for fresh independent technical and design review. PM chooses and
 separately authorizes any integration path.
 Any push, PR, or head movement restarts exact-head CI, CodeQL, independent
