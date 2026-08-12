@@ -18,33 +18,32 @@ func TestAdmitProjectionInventoryCopiesCanonicalManifestState(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := Activation{
-		PublicationKey: "public-kubernetes",
-		SnapshotID:     descriptor.SnapshotID,
-		RevisionID:     "git-0123456789abcdef",
-		Inventory: []ProjectionArtifact{
-			{Path: "details/core.json", Kind: "detail", Length: 137, SHA256: strings.Repeat("a", 64)},
-			{Path: "schema-nodes/core-000000.json", Kind: "schema-node", Length: 251, SHA256: strings.Repeat("b", 64)},
-		},
+	wantInventory := []ProjectionArtifact{
+		{Path: "details/core.json", Kind: "detail", Length: 137, SHA256: strings.Repeat("a", 64)},
+		{Path: "schema-nodes/core-000000.json", Kind: "schema-node", Length: 251, SHA256: strings.Repeat("b", 64)},
 	}
-	if !reflect.DeepEqual(activation, want) {
-		t.Fatalf("activation = %#v, want %#v", activation, want)
+	if activation.PublicationKey() != "public-kubernetes" || activation.SnapshotID() != descriptor.SnapshotID || activation.RevisionID() != "git-0123456789abcdef" || !reflect.DeepEqual(activation.Inventory(), wantInventory) {
+		t.Fatalf("activation = key=%q snapshot=%q revision=%q inventory=%#v", activation.PublicationKey(), activation.SnapshotID(), activation.RevisionID(), activation.Inventory())
 	}
 
 	for index := range manifestBytes {
 		manifestBytes[index] = 'x'
 	}
-	if !reflect.DeepEqual(activation, want) {
-		t.Fatalf("activation aliases manifest bytes: %#v", activation)
+	if !reflect.DeepEqual(activation.Inventory(), wantInventory) {
+		t.Fatalf("activation aliases manifest bytes: %#v", activation.Inventory())
 	}
-	activation.Inventory[0].Path = "changed"
+	mutableCopy := activation.Inventory()
+	mutableCopy[0].Path = "changed"
+	if !reflect.DeepEqual(activation.Inventory(), wantInventory) {
+		t.Fatalf("activation returned mutable inventory: %#v", activation.Inventory())
+	}
 	freshDescriptor, freshManifest := activationFixture(t, "/kubernetes/")
 	fresh, err := Admit(freshDescriptor, freshManifest)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if fresh.Inventory[0].Path != "details/core.json" {
-		t.Fatalf("fresh activation aliases prior result: %#v", fresh.Inventory)
+	if fresh.Inventory()[0].Path != "details/core.json" {
+		t.Fatalf("fresh activation aliases prior result: %#v", fresh.Inventory())
 	}
 }
 
@@ -75,11 +74,21 @@ func TestAdmitProjectionInventoryFailsClosed(t *testing.T) {
 		{name: "wrong data base", mutate: func(descriptor *DescriptorV1, _ *[]byte) {
 			descriptor.ProjectionDataBase = "/other/snapshots/" + descriptor.SnapshotID + "/projection-data/"
 		}},
+		{name: "wrong descriptor version", mutate: func(descriptor *DescriptorV1, _ *[]byte) { descriptor.SchemaVersion = 2 }},
 		{name: "corrupt JSON", mutate: func(_ *DescriptorV1, manifest *[]byte) { (*manifest)[0] = '[' }},
 		{name: "trailing JSON", mutate: func(_ *DescriptorV1, manifest *[]byte) { *manifest = append(*manifest, []byte(`{}`)...) }},
 		{name: "unknown JSON field", mutate: func(_ *DescriptorV1, manifest *[]byte) {
 			*manifest = append((*manifest)[:len(*manifest)-1], []byte(`,"unknown":true}`)...)
 		}},
+		{name: "duplicate top-level JSON key", mutate: func(_ *DescriptorV1, manifest *[]byte) {
+			*manifest = append([]byte(`{"schemaVersion":1,`), (*manifest)[1:]...)
+		}},
+		{name: "missing inventory entry", mutate: mutateManifestEnvelope(func(manifest *catalog.ManifestV1) {
+			manifest.Children = append(manifest.Children[:1], manifest.Children[2:]...)
+		})},
+		{name: "extra inventory entry", mutate: mutateManifestEnvelope(func(manifest *catalog.ManifestV1) {
+			manifest.Children = append(manifest.Children, catalog.ChildIdentityV1{Path: "zz-extra.json", Kind: "source", Length: 1, SHA256: strings.Repeat("d", 64)})
+		})},
 		{name: "changed inventory path", mutate: mutateManifestChild(func(child *catalog.ChildIdentityV1) { child.Path = "details/other.json" })},
 		{name: "changed inventory kind", mutate: mutateManifestChild(func(child *catalog.ChildIdentityV1) { child.Kind = "source" })},
 		{name: "changed inventory size", mutate: mutateManifestChild(func(child *catalog.ChildIdentityV1) { child.Length++ })},
@@ -109,7 +118,7 @@ func TestAdmitProjectionInventoryAcceptsRootMount(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if activation.PublicationKey != "public-kubernetes" || len(activation.Inventory) != 2 {
+	if activation.PublicationKey() != "public-kubernetes" || len(activation.Inventory()) != 2 {
 		t.Fatalf("root activation = %#v", activation)
 	}
 }
@@ -202,6 +211,21 @@ func mutateManifestAndDescriptor(mutate func(*catalog.ChildIdentityV1)) func(*De
 		descriptor.ProjectionManifestURL = descriptor.PublicationBase + "snapshots/" + descriptor.SnapshotID + "/manifest.json"
 		descriptor.ProjectionDataBase = descriptor.PublicationBase + "snapshots/" + descriptor.SnapshotID + "/projection-data/"
 		manifest.SnapshotID = catalog.SnapshotID(descriptor.SnapshotID)
+		encoded, err := json.Marshal(manifest)
+		if err != nil {
+			panic(err)
+		}
+		*manifestBytes = encoded
+	}
+}
+
+func mutateManifestEnvelope(mutate func(*catalog.ManifestV1)) func(*DescriptorV1, *[]byte) {
+	return func(_ *DescriptorV1, manifestBytes *[]byte) {
+		var manifest catalog.ManifestV1
+		if err := json.Unmarshal(*manifestBytes, &manifest); err != nil {
+			panic(err)
+		}
+		mutate(&manifest)
 		encoded, err := json.Marshal(manifest)
 		if err != nil {
 			panic(err)

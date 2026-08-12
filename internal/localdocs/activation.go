@@ -24,10 +24,20 @@ type ProjectionArtifact struct {
 }
 
 type Activation struct {
-	PublicationKey string
-	SnapshotID     string
-	RevisionID     string
-	Inventory      []ProjectionArtifact
+	publicationKey string
+	snapshotID     string
+	revisionID     string
+	inventory      []ProjectionArtifact
+}
+
+func (activation Activation) PublicationKey() string { return activation.publicationKey }
+
+func (activation Activation) SnapshotID() string { return activation.snapshotID }
+
+func (activation Activation) RevisionID() string { return activation.revisionID }
+
+func (activation Activation) Inventory() []ProjectionArtifact {
+	return append([]ProjectionArtifact(nil), activation.inventory...)
 }
 
 // Admit validates the complete immutable activation envelope without reading
@@ -76,10 +86,10 @@ func Admit(descriptor DescriptorV1, manifestBytes []byte) (Activation, error) {
 	}
 	sort.Slice(inventory, func(left, right int) bool { return inventory[left].Path < inventory[right].Path })
 	return Activation{
-		PublicationKey: descriptor.PublicationKey,
-		SnapshotID:     descriptor.SnapshotID,
-		RevisionID:     descriptor.RevisionID,
-		Inventory:      inventory,
+		publicationKey: descriptor.PublicationKey,
+		snapshotID:     descriptor.SnapshotID,
+		revisionID:     descriptor.RevisionID,
+		inventory:      inventory,
 	}, nil
 }
 
