@@ -11,6 +11,7 @@ import (
 	"github.com/araihu/manja/application/catalog"
 	"github.com/araihu/manja/application/projection"
 	"github.com/araihu/manja/domain"
+	localrender "github.com/araihu/manja/internal/localdocs/render"
 )
 
 func TestCatalogPageRendersOverviewCountsAndMountAwareDocuments(t *testing.T) {
@@ -673,10 +674,12 @@ func TestCatalogOperationReusesRichPublicEndpointRenderer(t *testing.T) {
 	data.Document = &document
 	detailID := document.Operations[0].DetailID
 	data.Selected = &catalog.DetailRecordV1{ID: detailID, Kind: "operation", Operation: &projection.OperationDetail{
-		ID: string(detailID), Anchor: string(detailID), HeadingID: string(detailID), Heading: "Create Pod", Method: "POST", Path: "/api/v1/namespaces/{namespace}/pods",
+		ID: string(detailID), Anchor: string(detailID), Href: "documents/core-v1/?selected=" + string(detailID) + "#" + string(detailID),
+		HeadingID: string(detailID), Heading: "Create Pod", HeadingLevel: 2, Method: "POST", Path: "/api/v1/namespaces/{namespace}/pods",
+		Summary: "Create Pod", Description: "Creates a Pod.",
 	}}
 	data.OperationView = &domain.Operation{
-		ID: string(detailID), Anchor: string(detailID), Summary: "Create Pod", Description: "Creates a Pod.", Method: "POST", Path: "/api/v1/namespaces/{namespace}/pods",
+		ID: string(detailID), Anchor: string(detailID), Title: "Create Pod", Summary: "Create Pod", Description: "Creates a Pod.", Method: "POST", Path: "/api/v1/namespaces/{namespace}/pods",
 		Parameters: []domain.OperationParameter{
 			{Name: "namespace", In: "path", Required: true, Description: "Namespace name.", Schema: domain.SchemaSummary{Type: "string"}},
 			{Name: "dryRun", In: "query", Description: "Dry-run directive.", Schema: domain.SchemaSummary{Type: "string"}},
@@ -690,6 +693,7 @@ func TestCatalogOperationReusesRichPublicEndpointRenderer(t *testing.T) {
 		Security:  []domain.OperationSecurity{{Name: "BearerToken"}},
 		Snippets:  []domain.RequestSnippet{{Label: "cURL", Language: "shell", Code: "curl --request POST /api/v1/namespaces/default/pods"}},
 	}
+	prepareCatalogOperationHeader(t, &data)
 
 	body := renderCatalogTemplate(t, data)
 	for _, want := range []string{
@@ -708,6 +712,59 @@ func TestCatalogOperationReusesRichPublicEndpointRenderer(t *testing.T) {
 		if !strings.Contains(body, want) {
 			t.Errorf("rich catalog operation missing %q", want)
 		}
+	}
+}
+
+func TestPreparedOperationHeaderMatchesCatalogSSRBytes(t *testing.T) {
+	t.Parallel()
+
+	data := catalogTemplateFixture()
+	document := data.Directory.Documents[0]
+	data.Document = &document
+	data.PageMarkdownHref = "/kubernetes/documents/core-v1/page.md?selected=operation"
+	detailID := document.Operations[0].DetailID
+	detail := catalog.DetailRecordV1{ID: detailID, Kind: "operation", Operation: &projection.OperationDetail{
+		ID: string(detailID), Anchor: string(detailID),
+		Href:      "documents/core-v1/?selected=" + string(detailID) + "#" + string(detailID),
+		HeadingID: string(detailID), Heading: "Create Pod", HeadingLevel: 2,
+		Method: "POST", Path: "/api/v1/namespaces/{namespace}/pods", Summary: "Create Pod",
+		Description: "Creates a Pod.", Deprecated: true,
+	}}
+	operation := domain.Operation{
+		ID: "createCoreV1NamespacedPod", Anchor: string(detailID), Title: "Create Pod",
+		Method: "POST", Path: "/api/v1/namespaces/{namespace}/pods", Summary: "Create Pod",
+		Description: "Creates a Pod.", Deprecated: true,
+	}
+	fragment, err := localrender.PrepareOperationHeader(detail, operation, "/kubernetes/documents/core-v1/")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	data.Selected = &detail
+	data.OperationView = &operation
+	data.OperationHeader = &fragment
+	var rendered bytes.Buffer
+	if err := catalogOperationDetail(data).Render(context.Background(), &rendered); err != nil {
+		t.Fatal(err)
+	}
+	legacy := rendered.Bytes()
+	start := bytes.Index(legacy, []byte(`<header class="mb-8 min-w-0 border-b border-outline pb-6 dark:border-outline-dark" data-public-page-header="true">`))
+	if start < 0 {
+		t.Fatalf("SSR operation header absent: %s", legacy)
+	}
+	end := bytes.Index(legacy[start:], []byte(`</header>`))
+	if end < 0 {
+		t.Fatalf("SSR operation header unclosed: %s", legacy[start:])
+	}
+	legacy = legacy[start : start+end+len(`</header>`)]
+	actions := copyPageAction(operation.Anchor, data.PageMarkdownHref)
+	provenance := catalogProvenance(data, true)
+	shared, err := fragment.Bytes(context.Background(), actions, provenance)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(shared, legacy) {
+		t.Fatalf("prepared and SSR operation headers differ:\nprepared=%s\nSSR=%s", shared, legacy)
 	}
 }
 
@@ -742,11 +799,13 @@ func TestCatalogSummarylessOperationUsesSemanticVisibleHeading(t *testing.T) {
 	data.Document = &document
 	detailID := document.Operations[0].DetailID
 	data.Selected = &catalog.DetailRecordV1{ID: detailID, Kind: "operation", Operation: &projection.OperationDetail{
-		ID: string(detailID), Anchor: string(detailID), HeadingID: string(detailID), Heading: "listCoreV1NamespacedPod", Method: "GET", Path: "/api/v1/namespaces/{namespace}/pods",
+		ID: string(detailID), Anchor: string(detailID), Href: "documents/core-v1/?selected=" + string(detailID) + "#" + string(detailID),
+		HeadingID: string(detailID), Heading: "listCoreV1NamespacedPod", HeadingLevel: 2, Method: "GET", Path: "/api/v1/namespaces/{namespace}/pods",
 	}}
 	data.OperationView = &domain.Operation{
 		ID: string(detailID), Anchor: string(detailID), Title: "listCoreV1NamespacedPod", Method: "GET", Path: "/api/v1/namespaces/{namespace}/pods",
 	}
+	prepareCatalogOperationHeader(t, &data)
 
 	body := renderCatalogTemplate(t, data)
 	if !strings.Contains(body, ">listCoreV1NamespacedPod</h1>") {
@@ -755,6 +814,18 @@ func TestCatalogSummarylessOperationUsesSemanticVisibleHeading(t *testing.T) {
 	if strings.Contains(body, ">"+string(detailID)+"</h1>") {
 		t.Fatalf("summary-less operation exposed immutable detail hash as heading: %s", body)
 	}
+}
+
+func prepareCatalogOperationHeader(t *testing.T, data *CatalogPageData) {
+	t.Helper()
+	if data.Selected == nil || data.OperationView == nil {
+		t.Fatal("operation fixture is incomplete")
+	}
+	fragment, err := localrender.PrepareOperationHeader(*data.Selected, *data.OperationView, "/kubernetes/documents/core-v1/")
+	if err != nil {
+		t.Fatal(err)
+	}
+	data.OperationHeader = &fragment
 }
 
 func renderCatalogTemplate(t *testing.T, data CatalogPageData) string {

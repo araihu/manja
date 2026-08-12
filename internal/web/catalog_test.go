@@ -911,7 +911,7 @@ func TestCatalogMaxOperationGroupRejectsSelectedPageBeyondByteBound(t *testing.T
 	selected := operations[len(operations)-1]
 	detailBytes, err := catalogjson.EncodeDetailShard(catalog.DetailShardV1{SchemaVersion: 1, DocumentKey: "max", Records: []catalog.DetailRecordV1{{
 		ID: selected.DetailID, Kind: "operation", Operation: &projection.OperationDetail{
-			ID: string(selected.DetailID), Anchor: string(selected.DetailID), Href: "?selected=" + string(selected.DetailID),
+			ID: string(selected.DetailID), Anchor: string(selected.DetailID), Href: "documents/max/?selected=" + string(selected.DetailID) + "#" + string(selected.DetailID),
 			HeadingID: string(selected.DetailID), Heading: selected.Title, HeadingLevel: 2,
 			Method: selected.Method, Path: selected.Path,
 		},
@@ -1454,7 +1454,7 @@ func catalogHandlerFixtureWithOrganization(t *testing.T, mount string, presentat
 	sourceBytes := []byte(`{"openapi":"3.0.3","info":{"title":"Kubernetes Core v1","version":"v1"},"paths":{}}`)
 	detailBytes, err := catalogjson.EncodeDetailShard(catalog.DetailShardV1{SchemaVersion: 1, DocumentKey: "core-v1", Records: []catalog.DetailRecordV1{{
 		ID: detailID, Kind: "operation", Operation: &projection.OperationDetail{
-			ID: string(detailID), Anchor: string(detailID), Href: "?selected=" + string(detailID), HeadingID: string(detailID), Heading: "List Pods", HeadingLevel: 2, Method: "GET", Path: "/api/v1/pods", Summary: "List Pods", Description: "Lists Pods.",
+			ID: string(detailID), Anchor: string(detailID), Href: "documents/core-v1/?selected=" + string(detailID) + "#" + string(detailID), HeadingID: string(detailID), Heading: "List Pods", HeadingLevel: 2, Method: "GET", Path: "/api/v1/pods", Summary: "List Pods", Description: "Lists Pods.",
 			Parameters:     []projection.Parameter{{ID: "query-watch", Name: "watch", In: "query", Description: "Watch for changes.", SchemaRef: 2}},
 			HasRequestBody: true,
 			RequestBody:    projection.RequestBody{Required: true, MediaTypes: []projection.MediaType{{ID: "application/json", ContentType: "application/json", SchemaRef: 0, Examples: []projection.Example{{ID: "primary", Text: `{\"kind\":\"Pod\"}`, Provided: true}}}}},

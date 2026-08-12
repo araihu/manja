@@ -255,7 +255,12 @@ func (handler *CatalogHandler) catalogPageDataWithSidebarQuery(
 			if err != nil {
 				return templates.CatalogPageData{}, err
 			}
+			operationHeader, err := localrender.PrepareOperationHeader(detail, *operation, documentHref)
+			if err != nil {
+				return templates.CatalogPageData{}, err
+			}
 			data.OperationView = operation
+			data.OperationHeader = &operationHeader
 			data.OperationNavigation = catalogOperationNavigation(documentHref, document.Operations, detail.ID, openGroups, groupPages)
 			data.CurrentVisit = &templates.CatalogSearchItemData{
 				ID: string(detail.ID), Title: detail.Operation.Heading, Description: detail.Operation.Description,

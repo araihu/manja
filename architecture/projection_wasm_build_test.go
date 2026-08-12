@@ -79,6 +79,21 @@ func TestSchemaNodeFragmentUsesOneCanonicalComponent(t *testing.T) {
 	}
 }
 
+func TestOperationHeaderFragmentUsesOneCanonicalComponent(t *testing.T) {
+	root := repositoryRoot(t)
+	source, err := os.ReadFile(filepath.Join(root, "internal", "web", "templates", "catalog.templ"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(source)
+	if strings.Contains(text, "templ catalogOperationHeader(") {
+		t.Fatal("catalog template retains a second operation-header renderer")
+	}
+	if !strings.Contains(text, "@localrender.OperationHeader(*data.OperationHeader") {
+		t.Fatal("catalog template does not delegate to canonical operation-header renderer")
+	}
+}
+
 func TestLocalDocsActivationWasmBuildAndBoundary(t *testing.T) {
 	list := command(repositoryRoot(t), "go", "list", "-deps", "./internal/localdocs")
 	list.Env = append(list.Env, "GOOS=js", "GOARCH=wasm", "GOWORK=off")
