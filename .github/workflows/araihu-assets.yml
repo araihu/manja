@@ -55,21 +55,23 @@ jobs:
         run: bash .github/scripts/setup-dagger.sh
 
       - name: Materialize provider payload as JSON
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
         env:
           CLIENT_PAYLOAD: ${{ toJSON(github.event.client_payload) }}
           EVENT_NAME: ${{ github.event_name }}
           INPUTS: ${{ toJSON(inputs) }}
-        run: |
-          python3 - <<'PY'
-          import json
-          import os
-
-          source = os.environ["CLIENT_PAYLOAD"] if os.environ["EVENT_NAME"] == "repository_dispatch" else os.environ["INPUTS"]
-          payload = json.loads(source)
-          os.makedirs(os.path.dirname(os.environ["MANJA_ASSETS_METADATA"]), exist_ok=True)
-          with open(os.environ["MANJA_ASSETS_METADATA"], "x", encoding="utf-8") as output:
-              json.dump(payload, output, separators=(",", ":"), sort_keys=True)
-          PY
+        with:
+          github-token: unused
+          script: |
+            const fs = require("fs")
+            const path = require("path")
+            const source = process.env.EVENT_NAME === "repository_dispatch"
+              ? process.env.CLIENT_PAYLOAD
+              : process.env.INPUTS
+            const payload = JSON.parse(source)
+            const output = process.env.MANJA_ASSETS_METADATA
+            fs.mkdirSync(path.dirname(output), {recursive: true})
+            fs.writeFileSync(output, JSON.stringify(payload), {encoding: "utf8", flag: "wx", mode: 0o600})
 
       - name: Verify immutable release and update allowlisted assets with Dagger
         env:
@@ -85,16 +87,26 @@ jobs:
 
       - name: Read Dagger-validated provenance for PR adapter
         id: event
-        run: |
-          python3 - <<'PY' >> "$GITHUB_OUTPUT"
-          import json
-          import os
-
-          with open(os.environ["MANJA_ASSETS_METADATA"], encoding="utf-8") as source:
-              payload = json.load(source)
-          for key in sorted(payload):
-              print(f"{key}={payload[key]}")
-          PY
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
+        with:
+          github-token: unused
+          script: |
+            const fs = require("fs")
+            const expected = [
+              "assets_repository", "assets_revision", "release",
+              "release_json_sha256", "release_sha256", "release_url",
+            ]
+            const payload = JSON.parse(fs.readFileSync(process.env.MANJA_ASSETS_METADATA, "utf8"))
+            const actual = Object.keys(payload).sort()
+            if (actual.length !== expected.length || actual.some((key, index) => key !== expected[index])) {
+              throw new Error("Dagger-validated metadata fields changed before PR adaptation")
+            }
+            for (const key of expected) {
+              if (typeof payload[key] !== "string") {
+                throw new Error(`Dagger-validated metadata field ${key} is not a string`)
+              }
+              core.setOutput(key, payload[key])
+            }
 
       - name: Create selected-repository App token
         id: app-token
@@ -110,23 +122,18 @@ jobs:
 
       - name: Select existing labels only
         id: labels
-        env:
-          GH_TOKEN: ${{ steps.app-token.outputs.token }}
-        run: |
-          set -euo pipefail
-          available=$(gh label list --repo "$GITHUB_REPOSITORY" --limit 1000 \
-            --json name --jq '.[].name')
-          selected=""
-          for label in assets dependencies enhancement; do
-            if grep --fixed-strings --line-regexp --quiet "$label" <<< "$available"; then
-              selected+="${selected:+$'\n'}$label"
-            fi
-          done
-          {
-            echo 'labels<<EOF'
-            printf '%s\n' "$selected"
-            echo 'EOF'
-          } >> "$GITHUB_OUTPUT"
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
+        with:
+          github-token: ${{ steps.app-token.outputs.token }}
+          script: |
+            const labels = await github.paginate(github.rest.issues.listLabelsForRepo, {
+              ...context.repo,
+              per_page: 100,
+            })
+            const available = new Set(labels.map(({name}) => name))
+            const selected = ["assets", "dependencies", "enhancement"]
+              .filter((label) => available.has(label))
+            core.setOutput("labels", selected.join("\n"))
 
       - name: Create or update fallback asset PR
         uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1 # v8

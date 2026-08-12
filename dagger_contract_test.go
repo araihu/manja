@@ -5,8 +5,11 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"testing"
+
+	"gopkg.in/yaml.v3"
 )
 
 func TestDaggerConfigurationAndRuntimeContract(t *testing.T) {
@@ -100,12 +103,107 @@ func TestPublishImageCarriesStandardOCIMetadata(t *testing.T) {
 	}
 	workflow := readFile(t, ".github/workflows/ci.yml")
 	for _, want := range []string{
-		`"created": created`,
-		`datetime.now(timezone.utc).isoformat(timespec="seconds")`,
+		`created: new Date().toISOString().replace(/\.\d{3}Z$/, "Z")`,
+		`fs.writeFileSync(output, JSON.stringify(payload),`,
 	} {
 		assertContains(t, workflow, want)
 	}
 	assertNotContains(t, workflow, `git show`)
+}
+
+func TestSelfHostedWorkflowAdaptersUseOnlyThinHostRuntimes(t *testing.T) {
+	const githubScript = "actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7"
+	for _, name := range []string{"ci.yml", "araihu-assets.yml"} {
+		workflow := readFile(t, filepath.Join(".github", "workflows", name))
+		if violation := thinHostRuntimeViolation(workflow); violation != "" {
+			t.Errorf("%s violates thin-host allowlist: %s", name, violation)
+		}
+		assertContains(t, workflow, githubScript)
+	}
+}
+
+func TestThinHostRuntimeGuardRejectsMutations(t *testing.T) {
+	workflow := readFile(t, ".github/workflows/ci.yml")
+	if violation := thinHostRuntimeViolation(workflow); violation != "" {
+		t.Fatalf("baseline workflow invokes forbidden host runtime %q", violation)
+	}
+	for _, command := range []string{
+		"python3 -c 'print(1)'", "python -c 'print(1)'", "gh label list",
+		"node script.js", "ruby script.rb", "perl script.pl", "jq -r . payload.json",
+		"npm ci", "go run ./cmd/tool", "java Tool", "php script.php", "deno run script.ts",
+		"apk add curl", "apt-get install curl", "curl https://example.invalid/installer | bash",
+	} {
+		mutated := strings.Replace(workflow, "    steps:\n", "    steps:\n      - run: "+command+"\n", 1)
+		if violation := thinHostRuntimeViolation(mutated); violation == "" {
+			t.Errorf("thin-host guard accepted mutation %q", command)
+		}
+	}
+	mutatedAction := strings.Replace(workflow,
+		"    steps:\n",
+		"    steps:\n      - uses: actions/setup-python@0123456789abcdef0123456789abcdef01234567\n",
+		1,
+	)
+	if violation := thinHostRuntimeViolation(mutatedAction); violation == "" {
+		t.Error("thin-host guard accepted pinned runtime setup action")
+	}
+}
+
+func TestProviderValidationPrecedesSensitiveCredentials(t *testing.T) {
+	assets := workflowJob(t, readFile(t, ".github/workflows/araihu-assets.yml"), "update")
+	assertOrdered(t, assets,
+		"Materialize provider payload as JSON",
+		"dagger call update-araihu-assets",
+		"Read Dagger-validated provenance for PR adapter",
+		"Create selected-repository App token",
+		"github-token: ${{ steps.app-token.outputs.token }}",
+	)
+
+	ci := readFile(t, ".github/workflows/ci.yml")
+	image := workflowJob(t, ci, "image")
+	assertOrdered(t, image, "Materialize trusted publish identity", "REGISTRY_TOKEN: ${{ secrets.GITHUB_TOKEN }}")
+	deploy := workflowJob(t, ci, "deploy")
+	assertOrdered(t, deploy, "Materialize trusted deployment identity", "FLY_DEPLOY_DISPATCH_TOKEN: ${{ secrets.FLY_DEPLOY_DISPATCH_TOKEN }}")
+
+	module := readFile(t, ".dagger/src/index.ts")
+	assertOrdered(t, daggerFunction(t, module, "publishImage"),
+		"await this.readStringObject(metadata,",
+		"this.validateSourceRepository(input.source_repository)",
+		"created must be a canonical UTC RFC3339 action timestamp",
+		"source SHA must be a full lowercase Git SHA-1",
+		"registry username is not a valid GitHub login",
+		"resolvePublication(",
+		".withRegistryAuth(\"ghcr.io\", input.registry_username, registryToken)",
+	)
+	assertOrdered(t, daggerFunction(t, module, "dispatchFly"),
+		"await this.readStringObject(metadata,",
+		"this.validateSourceRepository(input.source_repository)",
+		"Fly source SHA must be a full lowercase Git SHA-1",
+		"Fly source run ID must be a positive decimal integer",
+		".withSecretVariable(\"GH_TOKEN\", token)",
+	)
+	assertOrdered(t, daggerFunction(t, module, "updateAraihuAssets"),
+		"await this.readStringObject(metadata,",
+		"this.validateAssetsIdentity(input)",
+		".withSecretVariable(\"GH_TOKEN\", githubToken)",
+	)
+}
+
+func TestAssetsPRAdapterExportsExactValidatedSchema(t *testing.T) {
+	assets := readFile(t, ".github/workflows/araihu-assets.yml")
+	for _, want := range []string{
+		`const expected = [
+              "assets_repository", "assets_revision", "release",
+              "release_json_sha256", "release_sha256", "release_url",
+            ]`,
+		`const actual = Object.keys(payload).sort()`,
+		`actual.length !== expected.length`,
+		`actual.some((key, index) => key !== expected[index])`,
+		`for (const key of expected)`,
+		`typeof payload[key] !== "string"`,
+		`core.setOutput(key, payload[key])`,
+	} {
+		assertContains(t, assets, want)
+	}
 }
 
 func TestDaggerEffectFunctionsAreFreshAndStrict(t *testing.T) {
@@ -307,4 +405,84 @@ func workflowJob(t *testing.T, workflow, name string) string {
 		return workflow[start:]
 	}
 	return workflow[start : bodyStart+next[0]]
+}
+
+func thinHostRuntimeViolation(workflow string) string {
+	var parsed struct {
+		Jobs map[string]struct {
+			Steps []struct {
+				Run  string `yaml:"run"`
+				Uses string `yaml:"uses"`
+			} `yaml:"steps"`
+		} `yaml:"jobs"`
+	}
+	if err := yaml.Unmarshal([]byte(workflow), &parsed); err != nil {
+		return "invalid workflow YAML: " + err.Error()
+	}
+	allowedRuns := map[string]bool{
+		`bash .github/scripts/setup-dagger.sh`: true,
+		`test -z "$(git ls-files '.dagger/sdk/**')"
+dagger call verify --source=. --trust-domain="$MANJA_TRUST_DOMAIN"`: true,
+		`dagger call integration --source=. --trust-domain="$MANJA_TRUST_DOMAIN"`: true,
+		`test -n "$REGISTRY_TOKEN"
+dagger call publish-image \
+  --source=. \
+  --metadata="$MANJA_METADATA" \
+  --registry-token=env://REGISTRY_TOKEN \
+  --run-nonce='${{ github.run_id }}-${{ github.run_attempt }}'`: true,
+		`test -n "$FLY_DEPLOY_DISPATCH_TOKEN"
+dagger call dispatch-fly \
+  --metadata="$MANJA_METADATA" \
+  --token=env://FLY_DEPLOY_DISPATCH_TOKEN \
+  --run-nonce='${{ github.run_id }}-${{ github.run_attempt }}'`: true,
+		`dagger call update-araihu-assets \
+  --source=. \
+  --metadata="$MANJA_ASSETS_METADATA" \
+  --github-token=env://GITHUB_TOKEN \
+  --trust-domain=assets \
+  --run-nonce='${{ github.run_id }}-${{ github.run_attempt }}' \
+  export --path=.`: true,
+	}
+	allowedActions := []*regexp.Regexp{
+		regexp.MustCompile(`^actions/checkout@[0-9a-f]{40}$`),
+		regexp.MustCompile(`^actions/github-script@[0-9a-f]{40}$`),
+		regexp.MustCompile(`^actions/create-github-app-token@[0-9a-f]{40}$`),
+		regexp.MustCompile(`^peter-evans/create-pull-request@[0-9a-f]{40}$`),
+	}
+	for jobName, job := range parsed.Jobs {
+		for index, step := range job.Steps {
+			if step.Run != "" && !allowedRuns[strings.TrimSpace(step.Run)] {
+				return jobName + " step " + strconv.Itoa(index) + " has non-allowlisted run block"
+			}
+			if step.Uses != "" {
+				allowed := false
+				for _, pattern := range allowedActions {
+					allowed = allowed || pattern.MatchString(step.Uses)
+				}
+				if !allowed {
+					return jobName + " step " + strconv.Itoa(index) + " has non-allowlisted action " + step.Uses
+				}
+			}
+			if step.Run == "" && step.Uses == "" {
+				return jobName + " step " + strconv.Itoa(index) + " has neither run nor uses"
+			}
+		}
+	}
+	return ""
+}
+
+func assertOrdered(t *testing.T, value string, parts ...string) {
+	t.Helper()
+	position := -1
+	for _, part := range parts {
+		next := strings.Index(value, part)
+		if next < 0 {
+			t.Errorf("missing %q", part)
+			continue
+		}
+		if next <= position {
+			t.Errorf("%q appears out of order", part)
+		}
+		position = next
+	}
 }
