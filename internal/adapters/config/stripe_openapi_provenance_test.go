@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	sourceadapter "github.com/araihu/manja/internal/adapters/source"
 )
 
 type stripeOpenAPIProvenance struct {
@@ -47,6 +49,7 @@ type stripeRendererBuildSource struct {
 	DocumentKey          string
 	LicenseName          string
 	LicenseURL           string
+	IntegrityReceiptPath string
 	DockerConfigPath     string
 }
 
@@ -84,6 +87,7 @@ var approvedStripeRendererBuildSource = stripeRendererBuildSource{
 	DocumentKey:          "stripe-v1",
 	LicenseName:          "MIT License",
 	LicenseURL:           "https://github.com/stripe/openapi/blob/d70de345383dd818a0ce831f4e20d375c5a90cec/LICENSE",
+	IntegrityReceiptPath: "stripe-openapi.integrity.json",
 	DockerConfigPath:     "/src/internal/renderer/testdata/kubernetes/renderer.yaml",
 }
 
@@ -103,6 +107,33 @@ func TestStripeOpenAPIProvenanceMatchesRendererBuildSource(t *testing.T) {
 	if err := validateStripeOpenAPIProvenance(receipt, buildSource); err != nil {
 		t.Fatal(err)
 	}
+}
+
+func TestStripeOpenAPIIntegrityReceiptReachesBuildSource(t *testing.T) {
+	t.Parallel()
+
+	configPath, err := filepath.Abs(filepath.Join("..", "..", "..", "internal", "renderer", "testdata", "kubernetes", "renderer.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	loaded, err := LoadRenderer(configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, configuredSource := range loaded.Sources() {
+		gitSource, ok := configuredSource.(sourceadapter.GitCatalogSource)
+		if !ok || gitSource.Manifest.ID != "stripe" {
+			continue
+		}
+		if gitSource.IntegrityReceiptRoot != filepath.Dir(configPath) {
+			t.Fatalf("Stripe integrity receipt root = %q, want %q", gitSource.IntegrityReceiptRoot, filepath.Dir(configPath))
+		}
+		if gitSource.IntegrityReceiptPath != approvedStripeRendererBuildSource.IntegrityReceiptPath {
+			t.Fatalf("Stripe integrity receipt path = %q, want %q", gitSource.IntegrityReceiptPath, approvedStripeRendererBuildSource.IntegrityReceiptPath)
+		}
+		return
+	}
+	t.Fatal("configured Stripe Git source was not materialized")
 }
 
 func TestStripeOpenAPIProvenanceRejectsControlledDrift(t *testing.T) {
@@ -152,6 +183,14 @@ func TestStripeOpenAPIProvenanceRejectsControlledDrift(t *testing.T) {
 		changedSource.LicenseURL = changedReceipt.Repository + "/blob/" + changedReceipt.CommitSHA + "/" + changedReceipt.License.UpstreamPath
 		if err := validateStripeOpenAPIProvenance(changedReceipt, changedSource); err == nil {
 			t.Fatal("coordinated receipt and renderer source drift was accepted")
+		}
+	})
+
+	t.Run("runtime integrity receipt path drift", func(t *testing.T) {
+		changedSource := approvedSource
+		changedSource.IntegrityReceiptPath = "changed.integrity.json"
+		if err := validateStripeOpenAPIProvenance(approvedReceipt, changedSource); err == nil {
+			t.Fatal("runtime integrity receipt path drift was accepted")
 		}
 	})
 
@@ -479,6 +518,9 @@ func loadCommittedStripeRendererBuildSource(t *testing.T, root string) stripeRen
 		}
 		source.LicenseName = catalog.License.Name
 		source.LicenseURL = catalog.License.URL
+		if catalog.Source.IntegrityReceipt != nil {
+			source.IntegrityReceiptPath = *catalog.Source.IntegrityReceipt
+		}
 		break
 	}
 	dockerfile, err := os.ReadFile(filepath.Join(root, "Dockerfile"))

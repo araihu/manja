@@ -233,6 +233,7 @@ catalogs:
       kind: git
       repository: https://github.com/stripe/openapi.git
       ref: d70de345383dd818a0ce831f4e20d375c5a90cec
+      integrityReceipt: stripe-openapi.integrity.json
       include:
         - openapi/spec3.json
       documents:
