@@ -239,6 +239,36 @@ func TestCatalogShellProvidesGlobalSearchModal(t *testing.T) {
 	}
 }
 
+func TestCatalogSearchInputHasVisibleKeyboardFocusIndicator(t *testing.T) {
+	t.Parallel()
+
+	body := renderCatalogTemplate(t, catalogTemplateFixture())
+	input := regexp.MustCompile(`<input\b[^>]*id="catalog-search-input"[^>]*>`).FindString(body)
+	if input == "" {
+		t.Fatal("catalog search input not rendered")
+	}
+	for _, want := range []string{
+		"focus-visible:rounded-radius",
+		"focus-visible:outline-2",
+		"focus-visible:outline-offset-2",
+		"focus-visible:outline-primary",
+		"dark:focus-visible:outline-primary-dark",
+	} {
+		if !strings.Contains(input, want) {
+			t.Errorf("catalog search input missing keyboard-focus class %q: %s", want, input)
+		}
+	}
+	for _, reject := range []string{
+		"focus-visible:border-",
+		"focus-visible:m-",
+		"focus-visible:p-",
+	} {
+		if strings.Contains(input, reject) {
+			t.Errorf("catalog search focus indicator uses layout-shifting class %q: %s", reject, input)
+		}
+	}
+}
+
 func TestCatalogOverviewUsesFilterableDocumentTable(t *testing.T) {
 	t.Parallel()
 

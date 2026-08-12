@@ -412,6 +412,58 @@ func TestCatalogDocumentSearchUsesGlobalModal(t *testing.T) {
 	if expanded, err := searchField.Evaluate(`element => element.getAttribute('aria-expanded')`, nil); err != nil || expanded != "true" {
 		t.Fatalf("Ctrl+K sidebar search state = %v, err=%v", expanded, err)
 	}
+	focusIndicatorValue, err := input.Evaluate(`element => {
+		const probe = document.createElement('span');
+		document.body.appendChild(probe);
+		const resolveColor = (token) => {
+			probe.style.color = 'var(' + token + ')';
+			return getComputedStyle(probe).color;
+		};
+		const contrast = (foreground, background) => {
+			const luminance = (color) => {
+				const channels = color.match(/[\d.]+/g).slice(0, 3).map(Number).map(value => {
+					value /= 255;
+					return value <= 0.04045 ? value / 12.92 : Math.pow((value + 0.055) / 1.055, 2.4);
+				});
+				return 0.2126 * channels[0] + 0.7152 * channels[1] + 0.0722 * channels[2];
+			};
+			const first = luminance(foreground);
+			const second = luminance(background);
+			return (Math.max(first, second) + 0.05) / (Math.min(first, second) + 0.05);
+		};
+		const primary = resolveColor('--color-primary');
+		const primaryDark = resolveColor('--color-primary-dark');
+		const surface = resolveColor('--color-surface-alt');
+		const surfaceDark = resolveColor('--color-surface-dark-alt');
+		probe.remove();
+		const style = getComputedStyle(element);
+		return {
+			focusVisible: element.matches(':focus-visible'),
+			outlineStyle: style.outlineStyle,
+			outlineWidth: style.outlineWidth,
+			outlineOffset: style.outlineOffset,
+			outlineColor: style.outlineColor,
+			primary,
+			lightContrast: contrast(primary, surface),
+			darkContrast: contrast(primaryDark, surfaceDark),
+		};
+	}`, nil)
+	if err != nil {
+		t.Fatalf("catalog search keyboard focus indicator: %v", err)
+	}
+	focusIndicator, ok := focusIndicatorValue.(map[string]any)
+	if !ok {
+		t.Fatalf("catalog search keyboard focus indicator = %#v", focusIndicatorValue)
+	}
+	if focusIndicator["focusVisible"] != true || focusIndicator["outlineStyle"] != "solid" || focusIndicator["outlineWidth"] != "2px" || focusIndicator["outlineOffset"] != "2px" || focusIndicator["outlineColor"] != focusIndicator["primary"] {
+		t.Fatalf("catalog search keyboard focus indicator = %#v", focusIndicator)
+	}
+	if lightContrast, ok := focusIndicator["lightContrast"].(float64); !ok || lightContrast < 3 {
+		t.Fatalf("catalog search light focus contrast = %#v, want >= 3:1; indicator=%#v", focusIndicator["lightContrast"], focusIndicator)
+	}
+	if darkContrast, ok := focusIndicator["darkContrast"].(float64); !ok || darkContrast < 3 {
+		t.Fatalf("catalog search dark focus contrast = %#v, want >= 3:1; indicator=%#v", focusIndicator["darkContrast"], focusIndicator)
+	}
 	if err := page.Keyboard().Press("Escape"); err != nil {
 		t.Fatal(err)
 	}
