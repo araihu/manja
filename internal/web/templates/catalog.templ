@@ -112,6 +112,7 @@ type CatalogPageData struct {
 	Selected *catalog.DetailRecordV1
 	OperationView *core.Operation
 	OperationHeader *localrender.OperationHeaderFragment
+	OperationParameters *localrender.OperationParametersFragment
 	OperationNavigation OperationNavigationData
 	SchemaView *core.Schema
 	OperationServers []core.SpecServer
@@ -932,6 +933,7 @@ templ catalogOperationDetail(data CatalogPageData) {
 			}
 			@endpointSection(operation, data.OperationServers, "", PublicDocsOptions{
 				OperationIdentityInHeader: true,
+				OperationParameters: data.OperationParameters,
 				SchemaLinks:      data.SchemaLinks,
 				SchemaLinkTarget: "#catalog-main-content",
 				SchemaLinkSelect: "#catalog-main-content",

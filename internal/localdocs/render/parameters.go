@@ -322,8 +322,15 @@ func (fragment OperationParametersFragment) Render(ctx context.Context, writer i
 		return errInvalidOperationParametersFragment
 	}
 	var output boundedBuffer
-	if err := operationParameters(fragment.groups).Render(ctx, &output); err != nil {
-		return err
+	for index, group := range fragment.groups {
+		if index > 0 {
+			if _, err := output.Write([]byte(" ")); err != nil {
+				return err
+			}
+		}
+		if err := operationParameterGroup(group).Render(ctx, &output); err != nil {
+			return err
+		}
 	}
 	_, err := writer.Write(output.Bytes())
 	return err

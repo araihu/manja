@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
+	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -1455,7 +1456,7 @@ func catalogHandlerFixtureWithOrganization(t *testing.T, mount string, presentat
 	detailBytes, err := catalogjson.EncodeDetailShard(catalog.DetailShardV1{SchemaVersion: 1, DocumentKey: "core-v1", Records: []catalog.DetailRecordV1{{
 		ID: detailID, Kind: "operation", Operation: &projection.OperationDetail{
 			ID: string(detailID), Anchor: string(detailID), Href: "documents/core-v1/?selected=" + string(detailID) + "#" + string(detailID), HeadingID: string(detailID), Heading: "List Pods", HeadingLevel: 2, Method: "GET", Path: "/api/v1/pods", Summary: "List Pods", Description: "Lists Pods.",
-			Parameters:     []projection.Parameter{{ID: "query-watch", Name: "watch", In: "query", Description: "Watch for changes.", SchemaRef: 2}},
+			Parameters:     []projection.Parameter{{ID: catalogParameterProjectionID("query", "watch"), Name: "watch", In: "query", Description: "Watch for changes.", SchemaRef: 2}},
 			HasRequestBody: true,
 			RequestBody:    projection.RequestBody{Required: true, MediaTypes: []projection.MediaType{{ID: "application/json", ContentType: "application/json", SchemaRef: 0, Examples: []projection.Example{{ID: "primary", Text: `{\"kind\":\"Pod\"}`, Provided: true}}}}},
 			Responses:      []projection.Response{{ID: "200", Status: "200", Description: "OK", MediaTypes: []projection.MediaType{{ID: "application/json", ContentType: "application/json", SchemaRef: 0}}}},
@@ -1506,4 +1507,17 @@ func catalogHandlerFixtureWithOrganization(t *testing.T, mount string, presentat
 		t.Fatal(err)
 	}
 	return NewCatalogHandlerWithOrganization(runtime, children, presentation, organization), snapshot
+}
+
+func catalogParameterProjectionID(location, name string) string {
+	hash := sha256.New()
+	hash.Write([]byte("parameter"))
+	hash.Write([]byte{0})
+	var length [8]byte
+	for _, value := range []string{strings.ToLower(location), name} {
+		binary.BigEndian.PutUint64(length[:], uint64(len([]byte(value))))
+		hash.Write(length[:])
+		hash.Write([]byte(value))
+	}
+	return "parameter-" + hex.EncodeToString(hash.Sum(nil))
 }

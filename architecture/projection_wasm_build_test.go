@@ -94,6 +94,21 @@ func TestOperationHeaderFragmentUsesOneCanonicalComponent(t *testing.T) {
 	}
 }
 
+func TestOperationParametersFragmentUsesOneCanonicalCatalogComponent(t *testing.T) {
+	root := repositoryRoot(t)
+	source, err := os.ReadFile(filepath.Join(root, "internal", "web", "templates", "public.templ"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(source)
+	if !strings.Contains(text, "if opts.OperationParameters != nil") {
+		t.Fatal("shared operation-parameter renderer is not gated on prepared catalog data")
+	}
+	if !strings.Contains(text, "@localrender.OperationParameters(*opts.OperationParameters)") {
+		t.Fatal("catalog operation body does not delegate to the canonical local renderer")
+	}
+}
+
 func TestLocalDocsActivationWasmBuildAndBoundary(t *testing.T) {
 	list := command(repositoryRoot(t), "go", "list", "-deps", "./internal/localdocs")
 	list.Env = append(list.Env, "GOOS=js", "GOARCH=wasm", "GOWORK=off")

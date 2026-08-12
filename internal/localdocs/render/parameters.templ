@@ -5,17 +5,15 @@ import (
 	"unicode/utf8"
 )
 
-templ operationParameters(groups []operationParameterGroupData) {
-	for _, group := range groups {
-		<section class="grid min-w-0 gap-4" aria-labelledby={ group.ID + "-heading" }>
-			<h5 id={ group.ID + "-heading" } class="font-title text-lg font-bold text-on-surface-strong dark:text-on-surface-dark-strong">{ group.Title }</h5>
-			<dl id={ group.ID } data-manja-parameter-list class="divide-y divide-outline border-y border-outline dark:divide-outline-dark dark:border-outline-dark">
-				for _, parameter := range group.Parameters {
-					@operationParameterRow(parameter)
-				}
-			</dl>
-		</section>
-	}
+templ operationParameterGroup(group operationParameterGroupData) {
+	<section class="grid min-w-0 gap-4" aria-labelledby={ group.ID + "-heading" }>
+		<h5 id={ group.ID + "-heading" } class="font-title text-lg font-bold text-on-surface-strong dark:text-on-surface-dark-strong">{ group.Title }</h5>
+		<dl id={ group.ID } data-manja-parameter-list class="divide-y divide-outline border-y border-outline dark:divide-outline-dark dark:border-outline-dark">
+			for _, parameter := range group.Parameters {
+				@operationParameterRow(parameter)
+			}
+		</dl>
+	</section>
 }
 
 templ operationParameterRow(parameter operationParameterData) {

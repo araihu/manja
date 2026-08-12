@@ -3,6 +3,7 @@ package web
 import (
 	"context"
 	"fmt"
+	"sort"
 	"strings"
 
 	"github.com/araihu/manja/application/catalog"
@@ -21,6 +22,7 @@ type catalogOperationSchemaResolver struct {
 	snapshot catalog.RuntimeSnapshot
 	document catalog.DocumentDirectoryV1
 	active   map[projection.SchemaRef]bool
+	selected map[projection.SchemaRef]projection.SchemaNode
 	loaded   int
 }
 
@@ -29,10 +31,10 @@ func (handler *CatalogHandler) catalogOperationView(
 	snapshot catalog.RuntimeSnapshot,
 	document catalog.DocumentDirectoryV1,
 	detail projection.OperationDetail,
-) (*domain.Operation, error) {
+) (*domain.Operation, []projection.SchemaNode, error) {
 	resolver := catalogOperationSchemaResolver{
 		handler: handler, ctx: ctx, snapshot: snapshot, document: document,
-		active: make(map[projection.SchemaRef]bool),
+		active: make(map[projection.SchemaRef]bool), selected: make(map[projection.SchemaRef]projection.SchemaNode),
 	}
 	operationID := string(detail.ID)
 	for _, directoryOperation := range document.Operations {
@@ -52,17 +54,18 @@ func (handler *CatalogHandler) catalogOperationView(
 	for _, parameter := range detail.Parameters {
 		schema, err := resolver.schema(parameter.SchemaRef, 0)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		operation.Parameters = append(operation.Parameters, domain.OperationParameter{
 			Name: parameter.Name, In: parameter.In, Required: parameter.Required,
 			Description: parameter.Description, Schema: schema, Example: firstProjectionExample(parameter.Examples),
 		})
 	}
+	parameterNodes := resolver.selectedNodes()
 	if detail.HasRequestBody {
 		mediaTypes, err := resolver.mediaTypes(detail.RequestBody.MediaTypes)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		operation.RequestBody = &domain.OperationRequestBody{
 			Description: detail.RequestBody.Description,
@@ -76,7 +79,7 @@ func (handler *CatalogHandler) catalogOperationView(
 		for _, header := range response.Headers {
 			schema, err := resolver.schema(header.SchemaRef, 0)
 			if err != nil {
-				return nil, err
+				return nil, nil, err
 			}
 			headers = append(headers, domain.OperationResponseHeader{
 				Name: header.Name, Description: header.Description,
@@ -85,7 +88,7 @@ func (handler *CatalogHandler) catalogOperationView(
 		}
 		mediaTypes, err := resolver.mediaTypes(response.MediaTypes)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		operation.Responses = append(operation.Responses, domain.OperationResponse{
 			Status: response.Status, Description: response.Description, Headers: headers, MediaTypes: mediaTypes,
@@ -114,7 +117,7 @@ func (handler *CatalogHandler) catalogOperationView(
 			Label: "cURL", Language: "shell", Code: catalogOperationCurl(*operation),
 		}}
 	}
-	return operation, nil
+	return operation, parameterNodes, nil
 }
 
 func (handler *CatalogHandler) catalogSchemaView(
@@ -178,6 +181,9 @@ func (resolver *catalogOperationSchemaResolver) schema(ref projection.SchemaRef,
 	if err != nil {
 		return domain.SchemaSummary{}, err
 	}
+	if resolver.selected != nil {
+		resolver.selected[ref] = cloneProjectionSchemaNode(node)
+	}
 	summary := domain.SchemaSummary{
 		Name: node.Name, Type: node.Type, Format: node.Format, Description: node.Description,
 		Default: node.DefaultValue, Example: node.ExampleText,
@@ -214,6 +220,24 @@ func (resolver *catalogOperationSchemaResolver) schema(ref projection.SchemaRef,
 		summary.Items = &items
 	}
 	return summary, nil
+}
+
+func (resolver *catalogOperationSchemaResolver) selectedNodes() []projection.SchemaNode {
+	result := make([]projection.SchemaNode, 0, len(resolver.selected))
+	for _, node := range resolver.selected {
+		result = append(result, cloneProjectionSchemaNode(node))
+	}
+	sort.Slice(result, func(left, right int) bool { return result[left].Ordinal < result[right].Ordinal })
+	return result
+}
+
+func cloneProjectionSchemaNode(node projection.SchemaNode) projection.SchemaNode {
+	clone := node
+	clone.Enum = append([]string(nil), node.Enum...)
+	clone.Constraints = append([]projection.SchemaConstraint(nil), node.Constraints...)
+	clone.Properties = append([]projection.SchemaNodeProperty(nil), node.Properties...)
+	clone.Items = append([]projection.SchemaNodeItem(nil), node.Items...)
+	return clone
 }
 
 func domainSchemaConstraints(constraints []projection.SchemaConstraint) []domain.SchemaConstraint {

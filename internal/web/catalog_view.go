@@ -251,7 +251,7 @@ func (handler *CatalogHandler) catalogPageDataWithSidebarQuery(
 		}
 		data.Selected = &detail
 		if detail.Operation != nil {
-			operation, err := handler.catalogOperationView(ctx, snapshot, document, *detail.Operation)
+			operation, parameterNodes, err := handler.catalogOperationView(ctx, snapshot, document, *detail.Operation)
 			if err != nil {
 				return templates.CatalogPageData{}, err
 			}
@@ -259,8 +259,13 @@ func (handler *CatalogHandler) catalogPageDataWithSidebarQuery(
 			if err != nil {
 				return templates.CatalogPageData{}, err
 			}
+			operationParameters, err := localrender.PrepareOperationParameters(detail, *operation, parameterNodes)
+			if err != nil {
+				return templates.CatalogPageData{}, err
+			}
 			data.OperationView = operation
 			data.OperationHeader = &operationHeader
+			data.OperationParameters = &operationParameters
 			data.OperationNavigation = catalogOperationNavigation(documentHref, document.Operations, detail.ID, openGroups, groupPages)
 			data.CurrentVisit = &templates.CatalogSearchItemData{
 				ID: string(detail.ID), Title: detail.Operation.Heading, Description: detail.Operation.Description,

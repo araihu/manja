@@ -3,6 +3,9 @@ package templates
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/binary"
+	"encoding/hex"
 	"regexp"
 	"strings"
 	"testing"
@@ -767,6 +770,109 @@ func TestPreparedOperationHeaderMatchesCatalogSSRBytes(t *testing.T) {
 		t.Fatalf("prepared and SSR operation headers differ:\nprepared=%s\nSSR=%s", shared, legacy)
 	}
 }
+
+func TestPreparedOperationParametersMatchCatalogSSRBytes(t *testing.T) {
+	t.Parallel()
+
+	detailID := domain.DetailID("detail-sha256-" + strings.Repeat("a", 64))
+	operation := domain.Operation{
+		Anchor: string(detailID), Title: "List Pods", Method: "GET", Path: "/api/v1/pods",
+		Parameters: []domain.OperationParameter{
+			{Name: "namespace", In: "path", Required: true, Description: "Namespace.", Schema: parameterSummary("string", "")},
+			{Name: "labels", In: "query", Description: strings.Repeat("Filter labels. ", 20), Schema: domain.SchemaSummary{Type: "array", Constraints: []domain.SchemaConstraint{}, Items: parameterSummaryPointer(parameterSummary("string", ""))}},
+			{Name: "X-Trace", In: "header", Example: "trace-1", Schema: parameterSummary("string", "uuid")},
+			{Name: "session", In: "cookie", Schema: parameterSummary("boolean", "")},
+		},
+	}
+	detail := catalog.DetailRecordV1{ID: detailID, Kind: "operation", Operation: &projection.OperationDetail{
+		ID: string(detailID), Anchor: string(detailID), HeadingID: string(detailID), Heading: "List Pods", HeadingLevel: 2,
+		Method: "GET", Path: "/api/v1/pods",
+		Parameters: []projection.Parameter{
+			{Ordinal: 0, ID: parameterProjectionID("path", "namespace"), Name: "namespace", In: "path", Required: true, Description: "Namespace.", SchemaRef: 0},
+			{Ordinal: 1, ID: parameterProjectionID("query", "labels"), Name: "labels", In: "query", Description: strings.Repeat("Filter labels. ", 20), SchemaRef: 1},
+			{Ordinal: 2, ID: parameterProjectionID("header", "X-Trace"), Name: "X-Trace", In: "header", SchemaRef: 3, Examples: []projection.Example{{Ordinal: 0, ID: "primary", Text: "trace-1", Provided: true}}},
+			{Ordinal: 3, ID: parameterProjectionID("cookie", "session"), Name: "session", In: "cookie", SchemaRef: 4},
+		},
+	}}
+	nodes := []projection.SchemaNode{
+		{Ordinal: 0, ID: "node-namespace", Type: "string"},
+		{Ordinal: 1, ID: "node-labels", Type: "array", Items: []projection.SchemaNodeItem{{Ordinal: 0, ID: "item", SchemaRef: 2}}},
+		{Ordinal: 2, ID: "node-label", Type: "string"},
+		{Ordinal: 3, ID: "node-trace", Type: "string", Format: "uuid"},
+		{Ordinal: 4, ID: "node-session", Type: "boolean"},
+	}
+	fragment, err := localrender.PrepareOperationParameters(detail, operation, nodes)
+	if err != nil {
+		t.Fatal(err)
+	}
+	shared, err := fragment.Bytes(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var legacy bytes.Buffer
+	for index, group := range []struct {
+		title    string
+		location string
+	}{{"Path Parameters", "path"}, {"Query Parameters", "query"}, {"Header Parameters", "header"}} {
+		if index > 0 {
+			legacy.WriteByte(' ')
+		}
+		if err := paramGroup(string(detailID), group.title, parametersIn(operation.Parameters, group.location), PublicDocsOptions{}).Render(context.Background(), &legacy); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if !bytes.Equal(shared, legacy.Bytes()) {
+		t.Fatalf("prepared and SSR parameter groups differ:\nprepared=%s\nSSR=%s", shared, legacy.Bytes())
+	}
+
+	var originalPage, delegatedPage bytes.Buffer
+	if err := endpointSection(operation, nil, "", PublicDocsOptions{}, OperationNavigationData{}).Render(context.Background(), &originalPage); err != nil {
+		t.Fatal(err)
+	}
+	if err := endpointSection(operation, nil, "", PublicDocsOptions{OperationParameters: &fragment}, OperationNavigationData{}).Render(context.Background(), &delegatedPage); err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(originalPage.Bytes(), delegatedPage.Bytes()) {
+		index := firstDifferentByte(originalPage.Bytes(), delegatedPage.Bytes())
+		t.Fatalf("delegated parameter fragment changed complete SSR endpoint bytes at byte %d:\noriginal=%q\ndelegated=%q", index, nearbyBytes(originalPage.Bytes(), index), nearbyBytes(delegatedPage.Bytes(), index))
+	}
+}
+
+func firstDifferentByte(left, right []byte) int {
+	limit := min(len(left), len(right))
+	for index := range limit {
+		if left[index] != right[index] {
+			return index
+		}
+	}
+	return limit
+}
+
+func nearbyBytes(value []byte, index int) []byte {
+	start := max(0, index-80)
+	end := min(len(value), index+80)
+	return value[start:end]
+}
+
+func parameterProjectionID(location, name string) string {
+	hash := sha256.New()
+	hash.Write([]byte("parameter"))
+	hash.Write([]byte{0})
+	var length [8]byte
+	for _, value := range []string{strings.ToLower(location), name} {
+		binary.BigEndian.PutUint64(length[:], uint64(len([]byte(value))))
+		hash.Write(length[:])
+		hash.Write([]byte(value))
+	}
+	return "parameter-" + hex.EncodeToString(hash.Sum(nil))
+}
+
+func parameterSummary(typeName, format string) domain.SchemaSummary {
+	return domain.SchemaSummary{Type: typeName, Format: format, Constraints: []domain.SchemaConstraint{}}
+}
+
+func parameterSummaryPointer(value domain.SchemaSummary) *domain.SchemaSummary { return &value }
 
 func TestParameterListUsesStackedRowsAndRequiredMarkers(t *testing.T) {
 	t.Parallel()
