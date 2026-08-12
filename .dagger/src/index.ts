@@ -10,6 +10,7 @@ import {
 } from "@dagger.io/dagger"
 
 import { resolvePublication } from "./publication.js"
+import { resolveCachePartition } from "./cache.js"
 
 const GO_IMAGE =
   "golang:1.26.5-bookworm@sha256:53eeac89074db483fdf0ab3be1df32bf6e47562263d2d0d6baa7f26acb4957dd"
@@ -70,7 +71,10 @@ export class Manja {
   ): Promise<string> {
     const project = this.browserProject(source, trustDomain)
       .withWorkdir("/work/.dagger")
-      .withExec(["node", "--test", "--experimental-strip-types", "test/publication.test.ts"])
+      .withExec([
+        "node", "--test", "--experimental-strip-types",
+        "test/publication.test.ts", "test/cache.test.ts",
+      ])
       .withExec(["npm", "audit", "--package-lock-only", "--omit=dev", "--audit-level=high"])
       .withWorkdir("/work")
       .withExec(["go", "mod", "tidy"])
@@ -356,12 +360,9 @@ tar --extract --gzip --file /tmp/araihu-assets-release.tar.gz \
   }
 
   private browserProject(source: Directory, trustDomain: string): Container {
-    const partition = this.validateTrustDomain(trustDomain)
-    let project = this.project(source, partition)
+    const partition = resolveCachePartition(trustDomain)
+    const project = this.project(source, trustDomain)
       .withEnvVariable("PLAYWRIGHT_BROWSERS_PATH", "/ms-playwright")
-    if (this.isUntrustedPartition(partition)) {
-      return project
-    }
     return project
       .withMountedCache(
         "/ms-playwright",
@@ -370,7 +371,7 @@ tar --extract --gzip --file /tmp/araihu-assets-release.tar.gz \
   }
 
   private project(source: Directory, trustDomain: string): Container {
-    const partition = this.validateTrustDomain(trustDomain)
+    const partition = resolveCachePartition(trustDomain)
     const goDistribution = dag.container().from(GO_IMAGE).directory("/usr/local/go")
     let project = dag.container()
       .from(NODE_IMAGE)
@@ -387,8 +388,7 @@ tar --extract --gzip --file /tmp/araihu-assets-release.tar.gz \
       .withEnvVariable("GOMODCACHE", "/go/pkg/mod")
       .withEnvVariable("GOCACHE", "/root/.cache/go-build")
       .withEnvVariable("PATH", "/usr/local/go/bin:$PATH", { expand: true })
-    if (!this.isUntrustedPartition(partition)) {
-      project = project
+    project = project
       .withMountedCache("/go/pkg/mod", dag.cacheVolume(`manja-${partition}-go-mod-v1`))
       .withMountedCache(
         "/root/.cache/go-build",
@@ -399,7 +399,6 @@ tar --extract --gzip --file /tmp/araihu-assets-release.tar.gz \
         dag.cacheVolume(`manja-${partition}-muamba-v1`),
       )
       .withMountedCache("/root/.npm", dag.cacheVolume(`manja-${partition}-npm-v1`))
-    }
     return project
       .withExec([
         "bash", "-euo", "pipefail", "-c",
@@ -409,17 +408,6 @@ tar --extract --gzip --file /tmp/araihu-assets-release.tar.gz \
         "bash", "-euo", "pipefail", "-c",
         "test -z \"$(git ls-files '.dagger/sdk/**')\"",
       ])
-  }
-
-  private validateTrustDomain(value: string): string {
-    if (!/^(fork|internal|main|release|assets|local)$/.test(value)) {
-      throw new Error(`unsafe trust domain: ${value}`)
-    }
-    return value
-  }
-
-  private isUntrustedPartition(value: string): boolean {
-    return value === "fork" || value === "internal"
   }
 
   private validateRunNonce(value: string): void {

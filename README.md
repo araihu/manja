@@ -33,9 +33,19 @@ dagger call image --source=. --version=dev
 `verify` covers generated drift, Muamba, Redocly, oapi-codegen, templ, root
 tests, Playwright, and the standalone `site/` module with `GOWORK=off`.
 `integration` provisions its own isolated Docker service for testcontainers.
-Mutable Go, npm, Muamba, and browser caches are partitioned by trust domain;
-fork, internal PR, main, release, Assets, and local executions never share
-those volumes.
+Mutable Go, npm, Muamba, and browser caches are partitioned by the runner trust
+boundary. Admitted pull requests run on `hostinger-vps-pr`; protected main,
+tag, publication, deployment, and Assets jobs run on
+`hostinger-vps-trusted`. Host configuration isolates the two labels' Dagger
+Engines, sockets, data roots, and ACLs.
+
+Fork and same-repository PR domains both resolve to the stable `pr` cache
+namespace inside PR Engines. They cannot read or populate `main`, `release`,
+or `assets` volumes. GitHub-hosted fallback PRs use the same logical namespace
+on an ephemeral Engine. Persistent volumes contain only Go module/build data,
+npm downloads, Muamba's verified download cache, and Playwright browser tools;
+source, generated outputs, publication artifacts, application state, metadata
+files, and secrets remain outside them.
 
 `publish-image`, `dispatch-fly`, and `update-araihu-assets` are uncached
 effect/freshness functions. They require strict JSON `File` inputs, typed

@@ -48,7 +48,6 @@ func TestDaggerModulePreservesPipelineBoundaries(t *testing.T) {
 		`manja-${partition}-muamba-v1`,
 		`manja-${partition}-npm-v1`,
 		`manja-${partition}-playwright-${PLAYWRIGHT_VERSION}`,
-		`/^(fork|internal|main|release|assets|local)$/`,
 		`@func({ cache: "never" })`,
 		`runNonce: string`,
 		`Secret`,
@@ -59,7 +58,8 @@ func TestDaggerModulePreservesPipelineBoundaries(t *testing.T) {
 		`"go", "test", "-tags=integration", "./internal/integration", "-v", "-count=1"`,
 		`"scripts/redocly", "bundle", "api/openapi.yaml", "-o", "api/dist/openapi.yaml"`,
 		`"go", "tool", "muamba", "verify", "--strict"`,
-		`"node", "--test", "--experimental-strip-types", "test/publication.test.ts"`,
+		`"node", "--test", "--experimental-strip-types",`,
+		`"test/publication.test.ts", "test/cache.test.ts"`,
 		`"npm", "audit", "--package-lock-only", "--omit=dev", "--audit-level=high"`,
 		`git ls-files '.dagger/sdk/**'`,
 		`.dockerBuild({`,
@@ -69,6 +69,13 @@ func TestDaggerModulePreservesPipelineBoundaries(t *testing.T) {
 		`dag.http(releaseUrl`,
 	} {
 		assertContains(t, module, want)
+	}
+	cachePolicy := readFile(t, ".dagger/src/cache.ts")
+	for _, want := range []string{
+		`/^(fork|internal|main|release|assets|local)$/`,
+		`value === "fork" || value === "internal" ? "pr" : value`,
+	} {
+		assertContains(t, cachePolicy, want)
 	}
 	for _, forbidden := range []string{"CodeRabbit", "coderabbit", "dagger/dagger-for-github", "@latest"} {
 		assertNotContains(t, module, forbidden)
@@ -113,21 +120,28 @@ func TestDaggerEffectFunctionsAreFreshAndStrict(t *testing.T) {
 	assertContains(t, module, `source repository must be araihu/manja`)
 }
 
-func TestPullRequestTrustDomainsNeverMountPersistentCaches(t *testing.T) {
+func TestPullRequestTrustDomainsMountOnlyIsolatedPersistentCaches(t *testing.T) {
 	module := readFile(t, ".dagger/src/index.ts")
 	for _, want := range []string{
-		`return value === "fork" || value === "internal"`,
-		`if (this.isUntrustedPartition(partition))`,
-		`if (!this.isUntrustedPartition(partition))`,
+		`resolveCachePartition(trustDomain)`,
+		`manja-${partition}-go-mod-v1`,
+		`manja-${partition}-go-build-v1`,
+		`manja-${partition}-muamba-v1`,
+		`manja-${partition}-npm-v1`,
+		`manja-${partition}-playwright-${PLAYWRIGHT_VERSION}`,
 	} {
 		assertContains(t, module, want)
 	}
-	for _, workflow := range []string{
-		readFile(t, ".github/workflows/ci.yml"),
-		readFile(t, ".github/workflows/araihu-assets.yml"),
-	} {
-		assertNotContains(t, workflow, "dag.cacheVolume")
+	assertNotContains(t, module, "isUntrustedPartition")
+
+	ci := readFile(t, ".github/workflows/ci.yml")
+	for _, label := range []string{"hostinger-vps-pr", "hostinger-vps-trusted"} {
+		assertContains(t, ci, label)
 	}
+	assertNotContains(t, ci, `"hostinger-vps"]`)
+	assets := readFile(t, ".github/workflows/araihu-assets.yml")
+	assertContains(t, assets, "hostinger-vps-trusted")
+	assertNotContains(t, assets, `"hostinger-vps"]`)
 }
 
 func TestWorkflowAdaptersUseExactDaggerCLIAndDirectCalls(t *testing.T) {
