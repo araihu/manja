@@ -298,6 +298,13 @@ func (handler *CatalogHandler) catalogPageDataWithSidebarQuery(
 				return templates.CatalogPageData{}, err
 			}
 			data.OperationSchemaTrees = &operationSchemaTrees
+			if detail.Operation.HasRequestBody {
+				operationRequestBody, err := localrender.PrepareOperationRequestBody(detail, *operation, *data.OperationRequestBodyMedia, operationSchemaTrees)
+				if err != nil {
+					return templates.CatalogPageData{}, err
+				}
+				data.OperationRequestBody = &operationRequestBody
+			}
 			data.OperationNavigation = catalogOperationNavigation(documentHref, document.Operations, detail.ID, openGroups, groupPages)
 			data.CurrentVisit = &templates.CatalogSearchItemData{
 				ID: string(detail.ID), Title: detail.Operation.Heading, Description: detail.Operation.Description,

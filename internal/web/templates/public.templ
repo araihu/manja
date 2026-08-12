@@ -85,6 +85,7 @@ type PublicDocsOptions struct {
 	OperationIdentityInHeader bool
 	OperationAuthorization    *localrender.OperationAuthorizationFragment
 	OperationParameters       *localrender.OperationParametersFragment
+	OperationRequestBody      *localrender.OperationRequestBodyFragment
 	OperationRequestBodyMedia *localrender.OperationRequestBodyMediaFragment
 	OperationResponseMedia    *localrender.OperationResponseMediaFragment
 	OperationResponseDetails  *localrender.OperationResponseDetailsFragment
@@ -1042,7 +1043,9 @@ templ endpointSection(op core.Operation, servers []core.SpecServer, exampleSpecJ
 									@paramGroup(opID, "Query Parameters", parametersIn(op.Parameters, "query"), opts)
 									@paramGroup(opID, "Header Parameters", parametersIn(op.Parameters, "header"), opts)
 								}
-								if op.RequestBody != nil {
+								if op.RequestBody != nil && opts.OperationRequestBody != nil {
+									@localrender.OperationRequestBody(*opts.OperationRequestBody)
+								} else if op.RequestBody != nil {
 									<section data-manja-request-body class="grid min-w-0 gap-4 rounded-radius border border-outline p-4 dark:border-outline-dark" aria-label="Request body">
 										<div class="flex flex-wrap items-center justify-between gap-3">
 											<h5 class="font-title text-lg font-bold text-on-surface-strong dark:text-on-surface-dark-strong">Body Params</h5>

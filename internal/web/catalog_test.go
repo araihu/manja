@@ -730,6 +730,9 @@ func TestCatalogSelectedOperationPreparesRequestBodyMediaSummary(t *testing.T) {
 			if data.OperationRequestBodyMedia == nil {
 				t.Fatal("selected operation did not prepare request-body media summary")
 			}
+			if data.OperationRequestBody == nil {
+				t.Fatal("selected operation did not prepare complete request-body section")
+			}
 			if data.OperationSchemaTrees == nil {
 				t.Fatal("selected operation did not prepare request/response schema trees")
 			}
@@ -749,6 +752,15 @@ func TestCatalogSelectedOperationPreparesRequestBodyMediaSummary(t *testing.T) {
 			} {
 				if !strings.Contains(string(body), want) {
 					t.Errorf("prepared catalog request-body media summary missing %q in %s", want, body)
+				}
+			}
+			requestBody, err := data.OperationRequestBody.Bytes(context.Background())
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, want := range []string{`aria-label="Request body"`, `data-required="true">required</span>`, `data-manja-request-body-media="application/json"`, `aria-label="Request body schema for application/json schema tree"`} {
+				if !strings.Contains(string(requestBody), want) {
+					t.Errorf("prepared complete request-body section missing %q in %s", want, requestBody)
 				}
 			}
 			schemaTree, err := data.OperationSchemaTrees.RequestBodyBytes(context.Background(), 0)

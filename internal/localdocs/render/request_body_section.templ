@@ -1,0 +1,27 @@
+package render
+
+templ operationRequestBody(body operationRequestBodyData) {
+	<section data-manja-request-body class="grid min-w-0 gap-4 rounded-radius border border-outline p-4 dark:border-outline-dark" aria-label="Request body">
+		<div class="flex flex-wrap items-center justify-between gap-3">
+			<h5 class="font-title text-lg font-bold text-on-surface-strong dark:text-on-surface-dark-strong">Body Params</h5>
+			if body.Required {
+				<span class="manja-schema-property-state" data-required="true">required</span>
+			} else {
+				<span class="manja-schema-property-state" data-required="false">optional</span>
+			}
+		</div>
+		if body.Description != "" {
+			<p class="text-sm text-on-surface-muted dark:text-on-surface-dark-muted">{ body.Description }</p>
+		}
+		if len(body.Media) > 0 {
+			<div class="grid gap-3">
+				for _, media := range body.Media {
+					<div data-manja-request-body-media={ media.ContentType } class="min-w-0 border-t border-outline pt-4 dark:border-outline-dark">
+						@operationRequestBodyMedia(media.Summary)
+						@operationSchemaProperties(media.Tree)
+					</div>
+				}
+			</div>
+		}
+	</section>
+}

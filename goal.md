@@ -923,6 +923,9 @@ inventories to copied prepared values, rejects invalid UTF-8 and bounded-output
 violations, and preserves explicit-example payload semantics. Parser work,
 request composition changes, browser activation, Service Worker, offline
 storage, lifecycle actions, SaaS, and theme work remain outside this checkpoint.
+OC-04L prepares complete bounded request/response schema-property trees from
+copied projection/domain values and shares their exact templ-escaped bytes with
+catalog SSR without adding a parser or browser runtime.
 OC-04M prepares and renders operation authorization documentation through one
 bounded parser-free templ-escaped component shared byte-for-byte with catalog
 SSR. Its admission binds ordered requirement and scope identities to copied
@@ -931,9 +934,22 @@ record-limit, and output-limit input, and remains read-only: it never accepts or
 stores credentials. Request composition changes, browser activation, Service
 Worker, offline storage, lifecycle actions, SaaS, theme, legal, packaging, and
 complete operation-body/main rendering remain outside this checkpoint.
+OC-04N starts from exact accepted OC-04M parent
+`2404f45319b9af67df32492eab8af2ac0a001c38`, tree
+`1f20fd04c343813ff4901896098c2cd42bc1e2e6`. It prepares the remaining direct
+SSR request-body section as one bounded parser-free fragment: heading,
+required/optional state, UTF-8 description, ordered media summaries, and
+schema-property trees are fully bound to projection/domain inputs and copied
+before rendering. Catalog SSR/no-JS bytes remain exact, including existing
+ARIA, responsive/light-dark classes, focusable schema links, and HTMX
+attributes. Existing prepared components were sufficient; no new Goshtoso
+component or source-lookup snag occurred. Browser activation, Wasm runtime
+wiring, request-composer behavior,
+Service Worker, offline/storage, SaaS, theme, legal, packaging, and lifecycle
+actions remain outside this checkpoint. Open Core remains incomplete.
 These checkpoints are groundwork, not proof of a complete operation body/main
 Wasm HTML renderer, browser activation, Service Worker, offline storage,
-rollback, tombstones, recursive request-body rendering, response rendering,
+rollback, tombstones, response rendering,
 parity beyond these bounded operation fragments, or performance
 acceptance.
 
@@ -973,20 +989,20 @@ Before merge:
 
 ## Next Action
 
-Submit the frozen OC-04H correction child, clean status, rejected parent
-`699613e2cb1c171af11743ee5749441d50d288a7`, complete Items-chain mutation
-receipts, exact zero/one/multiple/nested-array whole-endpoint SSR parity,
-root/nested real-handler proof, preserved
-OC-04A/B/C/D/E/F/G behavior, Wasm boundary, race, and root-suite
-receipts for fresh independent technical and design review. PM chooses and
-separately authorizes any integration path.
+Submit the frozen OC-04N child of exact accepted OC-04M parent
+`2404f45319b9af67df32492eab8af2ac0a001c38`, with clean status, fail-closed
+mutation receipts, exact whole-endpoint SSR/no-JS parity, root/nested
+real-handler proof, preserved OC-04A-M behavior, architecture/Wasm-boundary,
+race, vet, generation, Muamba, webassets, and uncached standalone root-suite
+receipts for fresh independent review. PM chooses and separately authorizes any
+integration path.
 Any push, PR, or head movement restarts exact-head CI, CodeQL, independent
 review, and substantive CodeRabbit gates; absence or failure blocks integration.
 Overall provenance remains `BLOCKED`; legal authority and final-artifact
 notices stay separate, and licensing/package-generation Task 8 remains stopped.
 Hosted SaaS stays deferred, active-theme work stays excluded, and OC-04 hybrid
-SSR/Wasm/offline remains Open Core; complete operation body/main rendering, browser ABI
+SSR/Wasm/offline remains Open Core; complete operation main/response rendering, browser ABI
 and activation, Service Worker, offline storage, rollback, tombstones,
 kill-switch lifecycle, and UI work stay separate from these operation-header
-and operation-parameters fragment checkpoints. No push, merge, release,
+and prepared operation-fragment checkpoints. No push, merge, release,
 deployment, cleanup, or other lifecycle action is authorized here.

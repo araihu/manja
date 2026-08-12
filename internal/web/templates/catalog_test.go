@@ -1082,6 +1082,14 @@ func TestPreparedOperationSchemaTreesMatchCompleteCatalogSSRBytes(t *testing.T) 
 	if err != nil {
 		t.Fatal(err)
 	}
+	requestMedia, err := localrender.PrepareOperationRequestBodyMedia(detail, operation, nodes[:1], documentHref, schemaLinks)
+	if err != nil {
+		t.Fatal(err)
+	}
+	requestBody, err := localrender.PrepareOperationRequestBody(detail, operation, requestMedia, fragment)
+	if err != nil {
+		t.Fatal(err)
+	}
 	baseOptions := PublicDocsOptions{SchemaLinks: schemaLinks, SchemaLinkTarget: "#catalog-main-content", SchemaLinkSelect: "#catalog-main-content", SchemaLinkSwap: "outerHTML show:#main-content:top"}
 	var legacy, delegated bytes.Buffer
 	if err := endpointSection(operation, nil, "", baseOptions, OperationNavigationData{}).Render(context.Background(), &legacy); err != nil {
@@ -1094,6 +1102,16 @@ func TestPreparedOperationSchemaTreesMatchCompleteCatalogSSRBytes(t *testing.T) 
 	if !bytes.Equal(legacy.Bytes(), delegated.Bytes()) {
 		index := firstDifferentByte(legacy.Bytes(), delegated.Bytes())
 		t.Fatalf("delegated operation schema trees changed complete SSR endpoint bytes at byte %d:\nlegacy=%q\ndelegated=%q", index, nearbyBytes(legacy.Bytes(), index), nearbyBytes(delegated.Bytes(), index))
+	}
+	delegated.Reset()
+	baseOptions.OperationRequestBodyMedia = &requestMedia
+	baseOptions.OperationRequestBody = &requestBody
+	if err := endpointSection(operation, nil, "", baseOptions, OperationNavigationData{}).Render(context.Background(), &delegated); err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(legacy.Bytes(), delegated.Bytes()) {
+		index := firstDifferentByte(legacy.Bytes(), delegated.Bytes())
+		t.Fatalf("prepared complete request-body changed SSR/no-JS endpoint bytes at byte %d:\nlegacy=%q\nprepared=%q", index, nearbyBytes(legacy.Bytes(), index), nearbyBytes(delegated.Bytes(), index))
 	}
 }
 

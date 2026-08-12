@@ -114,6 +114,7 @@ type CatalogPageData struct {
 	OperationHeader *localrender.OperationHeaderFragment
 	OperationAuthorization *localrender.OperationAuthorizationFragment
 	OperationParameters *localrender.OperationParametersFragment
+	OperationRequestBody *localrender.OperationRequestBodyFragment
 	OperationRequestBodyMedia *localrender.OperationRequestBodyMediaFragment
 	OperationResponseMedia *localrender.OperationResponseMediaFragment
 	OperationResponseDetails *localrender.OperationResponseDetailsFragment
@@ -941,6 +942,7 @@ templ catalogOperationDetail(data CatalogPageData) {
 				OperationIdentityInHeader: true,
 				OperationAuthorization: data.OperationAuthorization,
 				OperationParameters: data.OperationParameters,
+				OperationRequestBody: data.OperationRequestBody,
 				OperationRequestBodyMedia: data.OperationRequestBodyMedia,
 				OperationResponseMedia: data.OperationResponseMedia,
 				OperationResponseDetails: data.OperationResponseDetails,
