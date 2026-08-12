@@ -92,12 +92,13 @@ type RendererSEOConfig struct {
 }
 
 type RendererSourceConfig struct {
-	Kind       string                   `yaml:"kind"`
-	Root       string                   `yaml:"root"`
-	Include    []string                 `yaml:"include"`
-	Documents  []RendererSourceDocument `yaml:"documents"`
-	Repository string                   `yaml:"repository"`
-	Ref        string                   `yaml:"ref"`
+	Kind             string                   `yaml:"kind"`
+	Root             string                   `yaml:"root"`
+	Include          []string                 `yaml:"include"`
+	Documents        []RendererSourceDocument `yaml:"documents"`
+	Repository       string                   `yaml:"repository"`
+	Ref              string                   `yaml:"ref"`
+	IntegrityReceipt *string                  `yaml:"integrityReceipt"`
 }
 
 type RendererSourceDocument struct {
@@ -235,7 +236,7 @@ func (source RendererSourceConfig) validate() error {
 		if strings.TrimSpace(source.Root) == "" {
 			return fmt.Errorf("file root is required")
 		}
-		if source.Repository != "" || source.Ref != "" {
+		if source.Repository != "" || source.Ref != "" || source.IntegrityReceipt != nil {
 			return fmt.Errorf("file source must not contain Git fields")
 		}
 	case RendererSourceGit:
@@ -245,6 +246,11 @@ func (source RendererSourceConfig) validate() error {
 		if source.Root != "" {
 			return fmt.Errorf("Git source must not contain a file root")
 		}
+		if source.IntegrityReceipt != nil {
+			if err := validateRendererIntegrityReceiptPath(*source.IntegrityReceipt); err != nil {
+				return err
+			}
+		}
 		repository, err := url.Parse(source.Repository)
 		if err != nil || repository.User != nil || repository.RawQuery != "" || repository.Fragment != "" {
 			return fmt.Errorf("Git repository must not contain embedded credentials, query, or fragment")
@@ -253,4 +259,18 @@ func (source RendererSourceConfig) validate() error {
 		return fmt.Errorf("source kind %q is unsupported", source.Kind)
 	}
 	return nil
+}
+
+func validateRendererIntegrityReceiptPath(receipt string) error {
+	if receipt == "" || strings.TrimSpace(receipt) != receipt || strings.HasPrefix(receipt, "/") || strings.Contains(receipt, `\`) || strings.ContainsRune(receipt, 0) || hasWindowsDrivePrefix(receipt) || receipt == "." || path.Clean(receipt) != receipt || strings.HasPrefix(receipt, "../") {
+		return fmt.Errorf("Git integrity receipt %q is not a clean relative slash path", receipt)
+	}
+	return nil
+}
+
+func hasWindowsDrivePrefix(value string) bool {
+	if len(value) < 2 || value[1] != ':' {
+		return false
+	}
+	return value[0] >= 'a' && value[0] <= 'z' || value[0] >= 'A' && value[0] <= 'Z'
 }

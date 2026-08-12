@@ -315,6 +315,10 @@ func parseGitObjectSize(output []byte) (uint64, error) {
 }
 
 func gitCatalogRepository(ctx context.Context, repo, reference, sshPrivateKey string) (string, string, func(), error) {
+	return gitCatalogRepositoryWithObjectFormat(ctx, repo, reference, sshPrivateKey, "")
+}
+
+func gitCatalogRepositoryWithObjectFormat(ctx context.Context, repo, reference, sshPrivateKey string, objectFormat gitObjectFormat) (string, string, func(), error) {
 	if info, err := os.Stat(repo); err == nil && info.IsDir() {
 		return repo, reference, func() {}, nil
 	}
@@ -330,7 +334,12 @@ func gitCatalogRepository(ctx context.Context, repo, reference, sshPrivateKey st
 		return "", "", func() {}, err
 	}
 	defer envCleanup()
-	if _, err := gitOutputBytesRedactedLimit(ctx, "", env, []string{"init", "-q", directory}, maxGitDiagnosticBytes, "", "init", "-q", directory); err != nil {
+	initArgs := []string{"init", "-q"}
+	if objectFormat != "" {
+		initArgs = append(initArgs, "--object-format="+string(objectFormat))
+	}
+	initArgs = append(initArgs, directory)
+	if _, err := gitOutputBytesRedactedLimit(ctx, "", env, initArgs, maxGitDiagnosticBytes, "", initArgs...); err != nil {
 		cleanup()
 		return "", "", func() {}, fmt.Errorf("initialize Git catalog checkout: %w", err)
 	}

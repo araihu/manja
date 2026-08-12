@@ -22,6 +22,10 @@ type GitCatalogSource struct {
 	Token         string
 	SSHPrivateKey string
 	Manifest      CatalogManifest
+	// IntegrityReceiptRoot and IntegrityReceiptPath identify an optional receipt
+	// beneath a trusted root. Receipt paths never follow symlinks.
+	IntegrityReceiptRoot string
+	IntegrityReceiptPath string
 
 	afterResolve func(string)
 }
@@ -46,6 +50,17 @@ func (source GitCatalogSource) Load(ctx context.Context) (domain.CatalogCandidat
 	if reference == "" {
 		reference = "HEAD"
 	}
+	var integrity *gitCatalogIntegrity
+	if source.IntegrityReceiptRoot != "" || source.IntegrityReceiptPath != "" {
+		receipt, err := loadGitSourceProvenanceReceipt(source.IntegrityReceiptRoot, source.IntegrityReceiptPath)
+		if err != nil {
+			return domain.CatalogCandidate{}, err
+		}
+		integrity, err = newGitCatalogIntegrity(receipt, source, root, reference)
+		if err != nil {
+			return domain.CatalogCandidate{}, err
+		}
+	}
 	gitSource := Git{
 		Repo: source.Repository, Username: source.Username, Token: source.Token, SSHPrivateKey: source.SSHPrivateKey,
 	}
@@ -53,17 +68,42 @@ func (source GitCatalogSource) Load(ctx context.Context) (domain.CatalogCandidat
 	if info, statErr := os.Stat(gitSource.cloneURL()); statErr == nil && info.IsDir() {
 		remoteCatalog = false
 	}
-	repository, resolvedRef, cleanup, err := gitCatalogRepository(ctx, gitSource.cloneURL(), reference, source.SSHPrivateKey)
+	objectFormat := gitObjectFormat("")
+	if integrity != nil {
+		objectFormat = integrity.receipt.ObjectFormat
+	}
+	repository, resolvedRef, cleanup, err := gitCatalogRepositoryWithObjectFormat(ctx, gitSource.cloneURL(), reference, source.SSHPrivateKey, objectFormat)
 	if err != nil {
 		return domain.CatalogCandidate{}, err
 	}
 	defer cleanup()
+	if integrity != nil {
+		resolvedObjectFormat, err := gitOutputLimit(ctx, repository, 16, "rev-parse", "--show-object-format=storage")
+		if err != nil {
+			return domain.CatalogCandidate{}, fmt.Errorf("inspect Git catalog object format: %w", err)
+		}
+		if err := integrity.verifyObjectFormat(resolvedObjectFormat); err != nil {
+			return domain.CatalogCandidate{}, err
+		}
+	}
 	commit, err := gitOutputLimit(ctx, repository, 128, "rev-parse", "--verify", resolvedRef+"^{commit}")
 	if err != nil {
 		return domain.CatalogCandidate{}, fmt.Errorf("resolve Git catalog ref %q: %w", reference, err)
 	}
 	if !isFullGitObjectID(commit) {
 		return domain.CatalogCandidate{}, fmt.Errorf("resolved Git catalog ref %q is not a full commit object ID", reference)
+	}
+	if integrity != nil {
+		tree, err := gitOutputLimit(ctx, repository, 128, "rev-parse", "--verify", commit+"^{tree}")
+		if err != nil {
+			return domain.CatalogCandidate{}, fmt.Errorf("resolve Git catalog tree at %q: %w", commit, err)
+		}
+		if !isFullGitObjectID(tree) {
+			return domain.CatalogCandidate{}, fmt.Errorf("resolved Git catalog tree at %q is not a full object ID", commit)
+		}
+		if err := integrity.verifyRepository(commit, tree); err != nil {
+			return domain.CatalogCandidate{}, err
+		}
 	}
 	if source.afterResolve != nil {
 		source.afterResolve(commit)
@@ -90,6 +130,11 @@ func (source GitCatalogSource) Load(ctx context.Context) (domain.CatalogCandidat
 		if entry.objectID == "" {
 			return 0, fmt.Errorf("Git catalog object ID is missing for %q", entry.path)
 		}
+		if integrity != nil {
+			if _, err := integrity.verifyMetadata(entry, -1); err != nil {
+				return 0, err
+			}
+		}
 		if _, missing := missingObjects[entry.objectID]; missing {
 			return 0, fmt.Errorf("captured file %q exceeds %d bytes", entry.path, maxCatalogSourceFileBytes)
 		}
@@ -105,6 +150,11 @@ func (source GitCatalogSource) Load(ctx context.Context) (domain.CatalogCandidat
 		if size > maxCatalogSourceFileBytes {
 			return 0, fmt.Errorf("captured file %q exceeds %d bytes", entry.path, maxCatalogSourceFileBytes)
 		}
+		if integrity != nil {
+			if _, err := integrity.verifyMetadata(entry, size); err != nil {
+				return 0, err
+			}
+		}
 		return size, nil
 	}
 	reader := func(ctx context.Context, entry catalogInventoryEntry) (capturedCatalogFile, error) {
@@ -118,9 +168,23 @@ func (source GitCatalogSource) Load(ctx context.Context) (domain.CatalogCandidat
 		if int64(len(data)) != entry.size {
 			return capturedCatalogFile{}, fmt.Errorf("Git catalog object %q changed length", entry.path)
 		}
+		if integrity != nil {
+			if err := integrity.verifyBytes(entry, data); err != nil {
+				return capturedCatalogFile{}, err
+			}
+		}
 		return capturedCatalogFile{path: entry.path, mode: entry.mode, data: data}, nil
 	}
-	return captureCatalogCandidate(ctx, source.Manifest, inventory, sizer, reader, domain.CatalogRevisionGit, commit)
+	candidate, err := captureCatalogCandidate(ctx, source.Manifest, inventory, sizer, reader, domain.CatalogRevisionGit, commit)
+	if err != nil {
+		return domain.CatalogCandidate{}, err
+	}
+	if integrity != nil {
+		if err := integrity.verifyComplete(); err != nil {
+			return domain.CatalogCandidate{}, err
+		}
+	}
+	return candidate, nil
 }
 
 func gitCatalogMissingObjects(ctx context.Context, repository, commit, root string) (map[string]struct{}, error) {
