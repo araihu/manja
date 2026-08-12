@@ -84,6 +84,7 @@ type PublicDocsOptions struct {
 	Metadata                  PageMetadata
 	OperationIdentityInHeader bool
 	OperationParameters       *localrender.OperationParametersFragment
+	OperationRequestBodyMedia *localrender.OperationRequestBodyMediaFragment
 	Selection                 *PublicDocsSelection
 	SchemaLinks               map[string]string
 	SchemaLinkTarget          string
@@ -1487,14 +1488,18 @@ func responseHeaderSummary(header core.OperationResponseHeader) core.SchemaSumma
 templ mediaTypeList(idPrefix string, label string, mediaTypes []core.OperationMediaType, opts PublicDocsOptions) {
 	if len(mediaTypes) > 0 {
 		<div class="grid gap-3">
-			for _, media := range mediaTypes {
+			for index, media := range mediaTypes {
 				<div data-manja-request-body-media={ media.ContentType } class="min-w-0 border-t border-outline pt-4 dark:border-outline-dark">
-					<div class="flex flex-wrap items-center gap-3">
-						@badge.Badge(badge.Config{Label: media.ContentType, Tone: badge.ToneDefault, Appearance: badge.AppearanceSoft, Size: badge.SizeSM, RootClass: "shrink-0 font-mono"})
-						if schemaInline(media.Schema) != "" {
-							@schemaTypeLink(media.Schema, opts)
-						}
-					</div>
+					if opts.OperationRequestBodyMedia != nil {
+						@localrender.OperationRequestBodyMedia(*opts.OperationRequestBodyMedia, index)
+					} else {
+						<div class="flex flex-wrap items-center gap-3">
+							@badge.Badge(badge.Config{Label: media.ContentType, Tone: badge.ToneDefault, Appearance: badge.AppearanceSoft, Size: badge.SizeSM, RootClass: "shrink-0 font-mono"})
+							if schemaInline(media.Schema) != "" {
+								@schemaTypeLink(media.Schema, opts)
+							}
+						</div>
+					}
 					@schemaProperties(mediaTypeTableID(idPrefix, media), label+" schema for "+media.ContentType, media.Schema, opts)
 				</div>
 			}

@@ -712,6 +712,84 @@ func TestCatalogOperationRouteReusesRichEndpointProjection(t *testing.T) {
 	}
 }
 
+func TestCatalogSelectedOperationPreparesRequestBodyMediaSummary(t *testing.T) {
+	t.Parallel()
+
+	for _, mount := range []string{"/", "/kubernetes"} {
+		mount := mount
+		t.Run(mount, func(t *testing.T) {
+			t.Parallel()
+			handler, snapshot := catalogHandlerFixture(t, mount)
+			detailID := "detail-sha256-" + strings.Repeat("a", 64)
+			data, err := handler.(*CatalogHandler).catalogPageData(
+				context.Background(), snapshot, mount, "core-v1", detailID, "", "", "",
+			)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if data.OperationRequestBodyMedia == nil {
+				t.Fatal("selected operation did not prepare request-body media summary")
+			}
+			body, err := data.OperationRequestBodyMedia.MediaBytes(context.Background(), 0)
+			if err != nil {
+				t.Fatal(err)
+			}
+			documentHref := "/documents/core-v1/"
+			if mount != "/" {
+				documentHref = mount + documentHref
+			}
+			for _, want := range []string{
+				"application/json",
+				`href="` + documentHref + `?selected=detail-sha256-` + strings.Repeat("c", 64),
+				`hx-target="#catalog-main-content"`,
+				">Pod object<",
+			} {
+				if !strings.Contains(string(body), want) {
+					t.Errorf("prepared catalog request-body media summary missing %q in %s", want, body)
+				}
+			}
+		})
+	}
+}
+
+func TestCatalogOperationWithoutRequestBodyKeepsMediaFragmentAbsent(t *testing.T) {
+	t.Parallel()
+
+	detailID := domain.DetailID("detail-sha256-" + strings.Repeat("f", 64))
+	detailBytes, err := catalogjson.EncodeDetailShard(catalog.DetailShardV1{SchemaVersion: 1, DocumentKey: "plain", Records: []catalog.DetailRecordV1{{
+		ID: detailID, Kind: "operation", Operation: &projection.OperationDetail{
+			ID: string(detailID), Anchor: string(detailID), Href: "documents/plain/?selected=" + string(detailID) + "#" + string(detailID),
+			HeadingID: string(detailID), Heading: "Ping", HeadingLevel: 2, Method: "GET", Path: "/ping",
+		},
+	}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	digest := sha256.Sum256(detailBytes)
+	snapshot := catalog.RuntimeSnapshot{
+		ID: "snapshot-sha256-" + catalog.SnapshotID(strings.Repeat("a", 64)), Location: "/memory",
+		Directory: catalog.CatalogArtifactV1{
+			SchemaVersion: 1, CatalogID: "plain", Title: "Plain", SearchChild: "search/directory.json",
+			Documents: []catalog.DocumentDirectoryV1{{
+				Key: "plain", Title: "Plain", SourceChild: "sources/plain.json",
+				Operations: []catalog.OperationDirectoryV1{{DetailID: detailID, OperationID: "ping", Method: "GET", Path: "/ping", Title: "Ping", DetailChild: "details/plain.json"}},
+			}},
+		},
+		Manifest: catalog.ManifestV1{SchemaVersion: 1, Children: []catalog.ChildIdentityV1{
+			{Path: "search/directory.json", Kind: "search-directory", Length: 2, SHA256: strings.Repeat("e", 64)},
+			{Path: "details/plain.json", Kind: "detail", Length: uint64(len(detailBytes)), SHA256: hex.EncodeToString(digest[:])},
+		}},
+	}
+	handler := &CatalogHandler{children: memoryCatalogChildren{"details/plain.json": detailBytes}, details: catalog.NewDetailCache()}
+	data, err := handler.catalogPageData(context.Background(), snapshot, "/", "plain", string(detailID), "", "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if data.OperationRequestBodyMedia != nil {
+		t.Fatal("operation without request body prepared a media fragment")
+	}
+}
+
 func TestCatalogInitialHTMLIncludesCompleteRouteSocialMetadata(t *testing.T) {
 	t.Parallel()
 

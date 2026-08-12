@@ -836,6 +836,74 @@ func TestPreparedOperationParametersMatchCatalogSSRBytes(t *testing.T) {
 	}
 }
 
+func TestPreparedOperationRequestBodyMediaMatchesCatalogSSRBytes(t *testing.T) {
+	t.Parallel()
+
+	for mediaCount := 0; mediaCount <= 2; mediaCount++ {
+		mediaCount := mediaCount
+		t.Run(fmt.Sprintf("media=%d", mediaCount), func(t *testing.T) {
+			t.Parallel()
+
+			detailID := domain.DetailID("detail-sha256-" + strings.Repeat("d", 64))
+			documentHref := "/kubernetes/documents/core-v1/"
+			schemaID := "detail-sha256-" + strings.Repeat("e", 64)
+			operation := domain.Operation{
+				Anchor: string(detailID), Title: "Create Pod", Method: "POST", Path: "/api/v1/pods",
+				RequestBody: &domain.OperationRequestBody{Description: "Pod to create.", Required: true},
+			}
+			detail := catalog.DetailRecordV1{ID: detailID, Kind: "operation", Operation: &projection.OperationDetail{
+				ID: string(detailID), Anchor: string(detailID), HeadingID: string(detailID), Heading: "Create Pod", HeadingLevel: 2,
+				Method: "POST", Path: "/api/v1/pods", HasRequestBody: true,
+				RequestBody: projection.RequestBody{Description: "Pod to create.", Required: true},
+			}}
+			var nodes []projection.SchemaNode
+			if mediaCount >= 1 {
+				operation.RequestBody.MediaTypes = append(operation.RequestBody.MediaTypes, domain.OperationMediaType{
+					ContentType: "application/json", Schema: domain.SchemaSummary{Name: "Pod", Type: "object", Properties: []domain.SchemaProperty{{Name: "kind", Required: true, Schema: domain.SchemaSummary{Type: "string"}}}},
+					Example: `{"kind":"Pod"}`, ExampleProvided: true,
+				})
+				detail.Operation.RequestBody.MediaTypes = append(detail.Operation.RequestBody.MediaTypes, projection.MediaType{
+					Ordinal: 0, ID: "application/json", ContentType: "application/json", SchemaRef: 7,
+					Examples: []projection.Example{{Ordinal: 0, ID: "primary", Text: `{"kind":"Pod"}`, Provided: true}},
+				})
+				nodes = append(nodes, projection.SchemaNode{Ordinal: 7, ID: "node-pod", Name: "Pod", Type: "object"})
+			}
+			if mediaCount >= 2 {
+				operation.RequestBody.MediaTypes = append(operation.RequestBody.MediaTypes, domain.OperationMediaType{
+					ContentType: "application/yaml", Schema: domain.SchemaSummary{Name: "Status", Type: "string", Enum: []string{"ready", "pending"}},
+				})
+				detail.Operation.RequestBody.MediaTypes = append(detail.Operation.RequestBody.MediaTypes, projection.MediaType{
+					Ordinal: 1, ID: "application/yaml", ContentType: "application/yaml", SchemaRef: 8,
+				})
+				nodes = append(nodes, projection.SchemaNode{Ordinal: 8, ID: "node-status", Name: "Status", Type: "string", Enum: []string{"ready", "pending"}})
+			}
+			schemaLinks := map[string]string{
+				"Pod":    documentHref + "?selected=" + schemaID + "#" + schemaID,
+				"Status": documentHref + "?selected=" + schemaID + "#" + schemaID,
+			}
+			fragment, err := localrender.PrepareOperationRequestBodyMedia(detail, operation, nodes, documentHref, schemaLinks)
+			if err != nil {
+				t.Fatal(err)
+			}
+			baseOptions := PublicDocsOptions{
+				SchemaLinks: schemaLinks, SchemaLinkTarget: "#catalog-main-content", SchemaLinkSelect: "#catalog-main-content", SchemaLinkSwap: "outerHTML show:#main-content:top",
+			}
+			var legacy, delegated bytes.Buffer
+			if err := endpointSection(operation, nil, "", baseOptions, OperationNavigationData{}).Render(context.Background(), &legacy); err != nil {
+				t.Fatal(err)
+			}
+			baseOptions.OperationRequestBodyMedia = &fragment
+			if err := endpointSection(operation, nil, "", baseOptions, OperationNavigationData{}).Render(context.Background(), &delegated); err != nil {
+				t.Fatal(err)
+			}
+			if !bytes.Equal(legacy.Bytes(), delegated.Bytes()) {
+				index := firstDifferentByte(legacy.Bytes(), delegated.Bytes())
+				t.Fatalf("delegated request-body media summary changed complete SSR endpoint bytes at byte %d:\nlegacy=%q\ndelegated=%q", index, nearbyBytes(legacy.Bytes(), index), nearbyBytes(delegated.Bytes(), index))
+			}
+		})
+	}
+}
+
 func firstDifferentByte(left, right []byte) int {
 	limit := min(len(left), len(right))
 	for index := range limit {

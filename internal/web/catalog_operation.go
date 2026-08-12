@@ -31,7 +31,7 @@ func (handler *CatalogHandler) catalogOperationView(
 	snapshot catalog.RuntimeSnapshot,
 	document catalog.DocumentDirectoryV1,
 	detail projection.OperationDetail,
-) (*domain.Operation, []projection.SchemaNode, error) {
+) (*domain.Operation, []projection.SchemaNode, []projection.SchemaNode, error) {
 	resolver := catalogOperationSchemaResolver{
 		handler: handler, ctx: ctx, snapshot: snapshot, document: document,
 		active: make(map[projection.SchemaRef]bool), selected: make(map[projection.SchemaRef]projection.SchemaNode),
@@ -54,7 +54,7 @@ func (handler *CatalogHandler) catalogOperationView(
 	for _, parameter := range detail.Parameters {
 		schema, err := resolver.schema(parameter.SchemaRef, 0)
 		if err != nil {
-			return nil, nil, err
+			return nil, nil, nil, err
 		}
 		operation.Parameters = append(operation.Parameters, domain.OperationParameter{
 			Name: parameter.Name, In: parameter.In, Required: parameter.Required,
@@ -62,10 +62,15 @@ func (handler *CatalogHandler) catalogOperationView(
 		})
 	}
 	parameterNodes := resolver.selectedNodes()
+	var requestBodyNodes []projection.SchemaNode
 	if detail.HasRequestBody {
 		mediaTypes, err := resolver.mediaTypes(detail.RequestBody.MediaTypes)
 		if err != nil {
-			return nil, nil, err
+			return nil, nil, nil, err
+		}
+		requestBodyNodes, err = resolver.selectedMediaRootNodes(detail.RequestBody.MediaTypes)
+		if err != nil {
+			return nil, nil, nil, err
 		}
 		operation.RequestBody = &domain.OperationRequestBody{
 			Description: detail.RequestBody.Description,
@@ -79,7 +84,7 @@ func (handler *CatalogHandler) catalogOperationView(
 		for _, header := range response.Headers {
 			schema, err := resolver.schema(header.SchemaRef, 0)
 			if err != nil {
-				return nil, nil, err
+				return nil, nil, nil, err
 			}
 			headers = append(headers, domain.OperationResponseHeader{
 				Name: header.Name, Description: header.Description,
@@ -88,7 +93,7 @@ func (handler *CatalogHandler) catalogOperationView(
 		}
 		mediaTypes, err := resolver.mediaTypes(response.MediaTypes)
 		if err != nil {
-			return nil, nil, err
+			return nil, nil, nil, err
 		}
 		operation.Responses = append(operation.Responses, domain.OperationResponse{
 			Status: response.Status, Description: response.Description, Headers: headers, MediaTypes: mediaTypes,
@@ -117,7 +122,7 @@ func (handler *CatalogHandler) catalogOperationView(
 			Label: "cURL", Language: "shell", Code: catalogOperationCurl(*operation),
 		}}
 	}
-	return operation, parameterNodes, nil
+	return operation, parameterNodes, requestBodyNodes, nil
 }
 
 func (handler *CatalogHandler) catalogSchemaView(
@@ -229,6 +234,23 @@ func (resolver *catalogOperationSchemaResolver) selectedNodes() []projection.Sch
 	}
 	sort.Slice(result, func(left, right int) bool { return result[left].Ordinal < result[right].Ordinal })
 	return result
+}
+
+func (resolver *catalogOperationSchemaResolver) selectedMediaRootNodes(mediaTypes []projection.MediaType) ([]projection.SchemaNode, error) {
+	selected := make(map[projection.SchemaRef]projection.SchemaNode, len(mediaTypes))
+	for _, media := range mediaTypes {
+		node, exists := resolver.selected[media.SchemaRef]
+		if !exists {
+			return nil, fmt.Errorf("request-body media schema node %d was not selected", media.SchemaRef)
+		}
+		selected[media.SchemaRef] = cloneProjectionSchemaNode(node)
+	}
+	result := make([]projection.SchemaNode, 0, len(selected))
+	for _, node := range selected {
+		result = append(result, node)
+	}
+	sort.Slice(result, func(left, right int) bool { return result[left].Ordinal < result[right].Ordinal })
+	return result, nil
 }
 
 func cloneProjectionSchemaNode(node projection.SchemaNode) projection.SchemaNode {
