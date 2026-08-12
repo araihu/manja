@@ -195,6 +195,26 @@ func TestZeroOperationParametersFragmentFailsWithoutBytes(t *testing.T) {
 	}
 }
 
+func TestParameterSchemaInlineMatchesExistingSSRLabels(t *testing.T) {
+	tests := []struct {
+		name   string
+		schema domain.SchemaSummary
+		want   string
+	}{
+		{name: "plain", schema: domain.SchemaSummary{Name: "Pod", Type: "object"}, want: "Pod object"},
+		{name: "formatted", schema: domain.SchemaSummary{Type: "string", Format: "uuid"}, want: "string<uuid>"},
+		{name: "array", schema: domain.SchemaSummary{Type: "array", Items: schemaSummaryPointer(domain.SchemaSummary{Type: "string"})}, want: "array[string]"},
+		{name: "named primitive enum", schema: domain.SchemaSummary{Name: "Phase", Type: "string", Enum: []string{"Ready"}}, want: "string<Phase>"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if got := parameterSchemaInline(test.schema); got != test.want {
+				t.Fatalf("parameterSchemaInline() = %q, want %q", got, test.want)
+			}
+		})
+	}
+}
+
 func operationParametersFixture() (catalog.DetailRecordV1, domain.Operation, []projection.SchemaNode) {
 	detailID := domain.DetailID("detail-sha256-" + strings.Repeat("a", 64))
 	projected := []projection.Parameter{

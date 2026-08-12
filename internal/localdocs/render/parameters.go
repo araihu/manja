@@ -59,7 +59,7 @@ func PrepareOperationParameters(detail catalog.DetailRecordV1, operation domain.
 		return OperationParametersFragment{}, invalidOperationParametersField("parameter inventory")
 	}
 
-	resolver, err := newOperationParameterSchemaResolver(nodes)
+	resolver, err := newOperationParameterSchemaResolver(nodes, len(projected.Parameters))
 	if err != nil {
 		return OperationParametersFragment{}, err
 	}
@@ -156,8 +156,8 @@ type operationParameterSchemaResolver struct {
 	loaded int
 }
 
-func newOperationParameterSchemaResolver(nodes []projection.SchemaNode) (*operationParameterSchemaResolver, error) {
-	if len(nodes) > maximumParameterSchemaNodes {
+func newOperationParameterSchemaResolver(nodes []projection.SchemaNode, parameterCount int) (*operationParameterSchemaResolver, error) {
+	if parameterCount < 0 || len(nodes) > maximumParameterSchemaNodes+parameterCount {
 		return nil, invalidOperationParametersField("schema-node inventory")
 	}
 	resolver := &operationParameterSchemaResolver{
@@ -185,6 +185,9 @@ func newOperationParameterSchemaResolver(nodes []projection.SchemaNode) (*operat
 }
 
 func validOperationParameterSchemaNode(node projection.SchemaNode) bool {
+	if len(node.Items) > 1 {
+		return false
+	}
 	for _, value := range []string{node.Name, node.Type, node.Format, node.Description, node.DefaultValue, node.ExampleText, node.JSON} {
 		if !utf8.ValidString(value) {
 			return false
