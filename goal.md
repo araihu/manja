@@ -51,15 +51,15 @@ not implement hosted product behavior speculatively.
 - Task: `019fef17-2fad-73d2-b004-d3706d36ea82`
 - Worktree label: dedicated Open Core developer worktree
 - Initial lane base: `39d65ade21c080ee2102f53da5ed741f000d6dd7`
-- OC-04A implementation base and implementation-commit direct parent:
-  `57643af0bae0727bf2b9e78622130fb1aa6e26ec`
+- OC-04B implementation base and direct parent:
+  `05fcf118d9eb7fca94ae9a587f2776771f4678ef`
 - Current checkpoint base tree:
-  `ec973970d9545d7a7e3b20ea0bfc9d4d22938d19`
+  `9e806e77adbf3fb1b007925eeb6a2fd497fe90dd`
 - Fresh-main merge-base:
   `43f96dfbf9d18eee2364f14778e6b94312c8abac`, tree
   `959f199e145c316b4b76e40a561413c0e6d57134`
-- Branch: `codex/oc04-projection-transport-contract`
-- Worktree label: OC-04A immutable projection-transport worktree
+- Branch: `codex/oc04b-public-eligibility-descriptor`
+- Worktree label: OC-04B public-eligibility descriptor worktree
 - Owns only bounded Open Core implementation checkpoints assigned here.
 - Must commit each coherent checkpoint with a meaningful message.
 - Must not implement deferred SaaS behavior or edit the active Arai Hû theme
@@ -204,6 +204,26 @@ not implement hosted product behavior speculatively.
   contains no local-runtime activation marker. No descriptor, public-eligibility
   decision, Wasm renderer, Service Worker, offline storage, rollback, tombstone,
   kill switch, UI, Docker, SaaS, theme, legal, or Task 8 behavior is added.
+  Goal-only child `05fcf118d9eb7fca94ae9a587f2776771f4678ef`, tree
+  `9e806e77adbf3fb1b007925eeb6a2fd497fe90dd`, records the frozen OC-04A
+  receipts and received independent `ACCEPT`; it is the immutable direct parent
+  for OC-04B and remains unpushed and unintegrated.
+- OC-04B implementation commit
+  `66f259b90a424f6934ce539e88e39c6e91698162`, tree
+  `c213e73eec2192cd53230cdc6939d71e5c44c2d5`, admits an inert enhancement
+  descriptor only when composition explicitly declares the catalog public and
+  anonymous with a stable publication key. Before emission, the server requires
+  exact manifest/snapshot identity, recomputed lowercase SHA-256, canonical
+  revision, `projection-v2`, source digest, catalog identity, and identical
+  transport/identity child inventories. `MANJA_LOCAL_DOCS=off` is parsed
+  strictly by self-hosted runtime composition and removes the descriptor while
+  preserving byte-identical SSR/no-JS HTML and the OC-04A transport. Root tests
+  passed, including self-hosted and E2E in 187.067s and 186.957s; affected full,
+  race, vet, strict Muamba, templ regeneration, and diff checks also passed.
+  No Wasm renderer, Service Worker, offline storage, rollback, tombstone, UI,
+  Docker, SaaS, theme, legal, packaging, or Task 8 behavior is added. The final
+  moving checkpoint identity is supplied by the external review packet to avoid
+  recursive self-reference.
 - At `2026-08-12T03:34:23Z`, the confirmed public preview URL
   `https://manja.araihu.com/manja-assets/manja-social.png` returned HTTP 200,
   `image/png`, 21,500 bytes, 1280x640, and SHA-256
@@ -429,9 +449,10 @@ not implement hosted product behavior speculatively.
   accepted. OC-01M8's route-specific canonical/Open Graph/explicit X Card
   metadata and preview response contract for standalone public docs is also
   independently accepted. OC-01M9's separate catalog-search keyboard-focus
-  correction is independently accepted. OC-04A is implemented locally from
-  that exact accepted identity and awaits fresh exact-identity independent
-  review.
+  correction is independently accepted. OC-04A is independently accepted at
+  exact `05fcf118d9eb7fca94ae9a587f2776771f4678ef`, tree
+  `9e806e77adbf3fb1b007925eeb6a2fd497fe90dd`. OC-04B is implemented locally
+  from that exact parent and awaits fresh exact-identity independent review.
 - Active Arai Hû Modern-theme rollout belongs to task
   `019fef01-b65f-7980-a360-83e48f8a6345`; this control plane must avoid its
   files and refs.
@@ -625,11 +646,13 @@ Status: queued after packaging boundary is current.
 
 ### OC-04: Hybrid SSR/Wasm and offline runtime
 
-Status: Open Core and active as bounded checkpoints. OC-04A adds only immutable
-HTTP transport for the existing deterministic projection-v2 detail and
-schema-node shards, unused by rendered pages. It is groundwork, not proof of a
-Wasm renderer, anonymous-public eligibility, Service Worker, offline storage,
-rollback, tombstones, kill switch, parity, or performance acceptance.
+Status: Open Core and active as bounded checkpoints. OC-04A adds immutable HTTP
+transport for deterministic projection-v2 detail and schema-node shards. OC-04B
+adds explicit anonymous-public eligibility, strict immutable descriptor
+admission, and the self-hosted composition kill switch while leaving SSR/no-JS
+authoritative. These checkpoints are groundwork, not proof of a Wasm renderer,
+Service Worker, offline storage, rollback, tombstones, parity, or performance
+acceptance.
 
 ## PR Gate
 
@@ -667,15 +690,15 @@ Before merge:
 
 ## Next Action
 
-Submit the frozen OC-04A identity, clean status, RED/GREEN transport receipts,
-exact response/hash/cache proof, adversarial path/type/corruption cases, and SSR
-byte-identity receipt for fresh independent technical and design review. PM
-chooses and separately authorizes any integration path. Any push, PR, or head
-movement restarts exact-head CI, CodeQL, independent review, and substantive
-CodeRabbit gates; absence or failure blocks integration.
+Submit the frozen OC-04B identity, clean status, RED/GREEN eligibility,
+immutable-identity/inventory, strict kill-switch, byte-identical SSR, preserved
+OC-04A transport, race, and root-suite receipts for fresh independent technical
+and design review. PM chooses and separately authorizes any integration path.
+Any push, PR, or head movement restarts exact-head CI, CodeQL, independent
+review, and substantive CodeRabbit gates; absence or failure blocks integration.
 Overall provenance remains `BLOCKED`; legal authority and final-artifact
 notices stay separate, and licensing/package-generation Task 8 remains stopped.
 Hosted SaaS stays deferred, active-theme work stays excluded, and OC-04 hybrid
-SSR/Wasm/offline remains Open Core; runtime activation stays separate from this
-transport-only checkpoint. No push, merge, release, deployment, cleanup, or
-other lifecycle action is authorized here.
+SSR/Wasm/offline remains Open Core; Wasm and offline runtime activation stay
+separate from this descriptor-only checkpoint. No push, merge, release,
+deployment, cleanup, or other lifecycle action is authorized here.
