@@ -10,13 +10,20 @@ type PageKey string
 const (
 	Home PageKey = "home"
 	Docs PageKey = "docs"
+
+	productionSiteOrigin = "https://manja.araihu.com"
+	socialPreviewURL     = productionSiteOrigin + "/manja-assets/manja-social.png"
+	socialPreviewAlt     = "Manja OpenAPI documentation preview"
 )
 
 type page struct {
-	Title       string
-	Description string
-	Path        string
-	Body        template.HTML
+	Title            string
+	Description      string
+	Path             string
+	CanonicalURL     string
+	SocialPreviewURL string
+	SocialPreviewAlt string
+	Body             template.HTML
 }
 
 // Render writes one of the public product-site pages.
@@ -28,17 +35,23 @@ func pageFor(key PageKey) page {
 	switch key {
 	case Docs:
 		return page{
-			Title:       "Run and publish Manja | OpenAPI docs",
-			Description: "Run Manja locally or with Docker, connect an OpenAPI source, choose a revision, and publish read-only documentation from a known-good version.",
-			Path:        "/docs",
-			Body:        docsBody,
+			Title:            "Run and publish Manja | OpenAPI docs",
+			Description:      "Run Manja locally or with Docker, connect an OpenAPI source, choose a revision, and publish read-only documentation from a known-good version.",
+			Path:             "/docs",
+			CanonicalURL:     productionSiteOrigin + "/docs",
+			SocialPreviewURL: socialPreviewURL,
+			SocialPreviewAlt: socialPreviewAlt,
+			Body:             docsBody,
 		}
 	default:
 		return page{
-			Title:       "Publish OpenAPI docs from source | Manja",
-			Description: "Connect Manja to an OpenAPI file or Git source, choose a revision, and publish read-only API documentation from a stable known-good version.",
-			Path:        "/",
-			Body:        homeBody,
+			Title:            "Publish OpenAPI docs from source | Manja",
+			Description:      "Connect Manja to an OpenAPI file or Git source, choose a revision, and publish read-only API documentation from a stable known-good version.",
+			Path:             "/",
+			CanonicalURL:     productionSiteOrigin + "/",
+			SocialPreviewURL: socialPreviewURL,
+			SocialPreviewAlt: socialPreviewAlt,
+			Body:             homeBody,
 		}
 	}
 }
@@ -50,6 +63,22 @@ var pageTemplate = template.Must(template.New("page").Parse(`<!doctype html>
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{{.Title}}</title>
   <meta name="description" content="{{.Description}}">
+  <link rel="canonical" href="{{.CanonicalURL}}">
+  <meta property="og:url" content="{{.CanonicalURL}}">
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="{{.Title}}">
+  <meta property="og:description" content="{{.Description}}">
+  <meta property="og:site_name" content="Manja">
+  <meta property="og:image" content="{{.SocialPreviewURL}}">
+  <meta property="og:image:type" content="image/png">
+  <meta property="og:image:width" content="1280">
+  <meta property="og:image:height" content="640">
+  <meta property="og:image:alt" content="{{.SocialPreviewAlt}}">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="{{.Title}}">
+  <meta name="twitter:description" content="{{.Description}}">
+  <meta name="twitter:image" content="{{.SocialPreviewURL}}">
+  <meta name="twitter:image:alt" content="{{.SocialPreviewAlt}}">
   <link rel="icon" href="/static/favicon.svg" type="image/svg+xml" crossorigin="anonymous" data-asset-brand="icon">
   <link rel="stylesheet" href="/static/araihu.css">
   <link rel="stylesheet" href="/static/site.css">

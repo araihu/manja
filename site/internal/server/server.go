@@ -9,6 +9,7 @@ import (
 
 	core "github.com/araihu/manja/domain"
 	app "github.com/araihu/manja/internal/selfhosted"
+	"github.com/araihu/manja/internal/web"
 	"github.com/araihu/manja/site/internal/site"
 )
 
@@ -28,6 +29,7 @@ func NewWithOptions(ctx context.Context, opts Options) http.Handler {
 	mux := http.NewServeMux()
 	demo := mountDemo("/demo", demoHandler(ctx, opts))
 	mux.Handle("/static/", cacheForever(http.FileServer(http.FS(site.StaticFiles))))
+	mux.Handle("/manja-assets/manja-social.png", cacheForever(web.NewCatalogAssetsHandler()))
 	mux.Handle("/demo", demo)
 	mux.Handle("/demo/", demo)
 	mux.HandleFunc("/", page)
