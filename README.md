@@ -19,6 +19,42 @@ go run ./cmd/manja -data-dir .manja/data
 
 Open <http://localhost:8080>.
 
+### Portable CI with Dagger
+
+CI toolchains and the same gates are available locally through Dagger v0.21.8.
+The host needs only the exact Dagger CLI and a compatible container runtime:
+
+```bash
+dagger call verify --source=. --trust-domain=local
+dagger call integration --source=. --trust-domain=local
+dagger call image --source=. --version=dev
+```
+
+`verify` covers generated drift, Muamba, Redocly, oapi-codegen, templ, root
+tests, Playwright, and the standalone `site/` module with `GOWORK=off`.
+`integration` provisions a pinned Forgejo service with native Dagger service
+bindings. It needs no Docker daemon, privileged service, or host runtime socket.
+Mutable Go, npm, Muamba, and browser caches are partitioned by the runner trust
+boundary. Admitted pull requests run on `hostinger-vps-pr`; protected main,
+tag, publication, deployment, and Assets jobs run on
+`hostinger-vps-trusted`. Host configuration isolates the two labels' Dagger
+Engines, sockets, data roots, and ACLs.
+
+Fork and same-repository PR domains both resolve to the stable `pr` cache
+namespace inside PR Engines. They cannot read or populate `main`, `release`,
+or `assets` volumes. GitHub-hosted fallback PRs use the same logical namespace
+on an ephemeral Engine. Persistent volumes contain only Go module/build data,
+npm downloads, Muamba's verified download cache, and Playwright browser tools;
+source, generated outputs, publication artifacts, application state, metadata
+files, and secrets remain outside them.
+
+`publish-image`, `dispatch-fly`, and `update-araihu-assets` are uncached
+effect/freshness functions. They require strict JSON `File` inputs, typed
+secrets, and a unique nonce. Local callers can use
+`local-$(uuidgen | tr '[:upper:]' '[:lower:]')` and
+should invoke these functions only when intending the documented GHCR,
+GitHub, or repository update effect.
+
 For live development, run:
 
 ```bash

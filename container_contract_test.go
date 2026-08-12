@@ -65,16 +65,53 @@ func TestContainerPublishWorkflowContract(t *testing.T) {
 	assertContains(t, workflow, "'v*.*.*'")
 	assertContains(t, workflow, "permissions:")
 	assertContains(t, workflow, "packages: write")
-	assertContains(t, workflow, "registry: ghcr.io")
-	assertContains(t, workflow, "images: ghcr.io/${{ github.repository }}")
-	assertContains(t, workflow, "latest=auto")
-	assertContains(t, workflow, "type=raw,value=main,enable=${{ github.ref == 'refs/heads/main' }}")
-	assertContains(t, workflow, "type=sha,format=long,prefix=,enable=${{ github.ref == 'refs/heads/main' }}")
-	assertContains(t, workflow, "type=semver,pattern={{version}}")
-	assertContains(t, workflow, "type=semver,pattern={{major}}.{{minor}}")
-	assertContains(t, workflow, "type=semver,pattern={{major}}")
-	assertContains(t, workflow, "build-args: |")
-	assertContains(t, workflow, "MANJA_VERSION=${{ github.ref_type == 'tag' && github.ref_name || github.sha }}")
+	assertContains(t, workflow, "REGISTRY_TOKEN: ${{ secrets.GITHUB_TOKEN }}")
+	assertContains(t, workflow, "dagger call publish-image")
+	assertContains(t, workflow, "--metadata=\"$MANJA_METADATA\"")
+	assertContains(t, workflow, "--registry-token=env://REGISTRY_TOKEN")
+	assertContains(t, workflow, "--run-nonce='${{ github.run_id }}-${{ github.run_attempt }}'")
+	module := readFile(t, ".dagger/src/index.ts")
+	for label, value := range map[string]string{
+		"created":     "input.created",
+		"description": "OCI_DESCRIPTION",
+		"licenses":    "OCI_LICENSES",
+		"revision":    "input.source_sha",
+		"source":      "OCI_SOURCE",
+		"title":       "OCI_TITLE",
+		"url":         "OCI_URL",
+		"version":     "ociVersion",
+	} {
+		assertContains(t, module, `.withLabel("org.opencontainers.image.`+label+`", `+value+`)`)
+	}
+	for _, exact := range []string{
+		`const OCI_DESCRIPTION = "Hosted OpenAPI renderer and publisher built with Goshtoso"`,
+		`const OCI_LICENSES = ""`,
+		`const OCI_SOURCE = "https://github.com/araihu/manja"`,
+		`const OCI_TITLE = "manja"`,
+		`const OCI_URL = "https://github.com/araihu/manja"`,
+	} {
+		assertContains(t, module, exact)
+	}
+}
+
+func TestContainerPublishBranchAndTagVersionParity(t *testing.T) {
+	module := readFile(t, ".dagger/src/index.ts")
+	publication := readFile(t, ".dagger/src/publication.ts")
+	for _, exact := range []string{
+		`if (refType === "branch" && refName === "main") {`,
+		`buildVersion: sourceSHA`,
+		`ociVersion: "main"`,
+		`tags: ["main", sourceSHA]`,
+		`buildVersion: refName`,
+		`ociVersion: refName.slice(1)`,
+		`tags: [` + "`${major}.${minor}.${patch}`, `${major}.${minor}`, major, \"latest\"" + `]`,
+	} {
+		assertContains(t, publication, exact)
+	}
+	assertContains(t, module, `const { buildVersion, ociVersion, tags } = resolvePublication(`)
+	assertContains(t, module, `this.buildImage(source, buildVersion)`)
+	assertContains(t, module, `.withLabel("org.opencontainers.image.version", ociVersion)`)
+	assertNotContains(t, module, `.withLabel("org.opencontainers.image.version", buildVersion)`)
 }
 
 func readFile(t *testing.T, path string) string {

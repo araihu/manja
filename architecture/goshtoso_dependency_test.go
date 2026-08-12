@@ -32,19 +32,19 @@ type moduleFile struct {
 	Go string
 }
 
-func TestCITestsSiteWithNormalizedScratchModfile(t *testing.T) {
-	workflow, err := os.ReadFile(filepath.Join(repositoryRoot(t), ".github", "workflows", "ci.yml"))
+func TestDaggerCITestsSiteWithoutRewritingCommittedMetadata(t *testing.T) {
+	module, err := os.ReadFile(filepath.Join(repositoryRoot(t), ".dagger", "src", "index.ts"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	for _, contract := range []string{
-		`modfile=.manja-ci-site.mod`,
-		`trap 'rm -f "$modfile" "$sumfile"' EXIT`,
-		`go mod tidy -modfile="$modfile"`,
-		`go test -modfile="$modfile" ./...`,
+		`.withEnvVariable("GOWORK", "off")`,
+		`.withWorkdir("/work/site")`,
+		`.withExec(["go", "mod", "tidy", "-diff"])`,
+		`.withExec(["go", "test", "./...", "-count=1"])`,
 	} {
-		if !strings.Contains(string(workflow), contract) {
-			t.Errorf("CI site gate missing %q", contract)
+		if !strings.Contains(string(module), contract) {
+			t.Errorf("Dagger site gate missing %q", contract)
 		}
 	}
 }

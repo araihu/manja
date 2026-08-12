@@ -22,56 +22,34 @@ jobs:
         github.event.pull_request.head.repo.full_name == github.repository &&
         github.event.pull_request.head.repo.fork == false &&
         contains(fromJSON(vars.HOSTINGER_PR_ACTORS_JSON || '[]'), github.actor) &&
-        fromJSON('["self-hosted","Linux","X64","hostinger-vps"]') ||
+        fromJSON('["self-hosted","Linux","X64","hostinger-vps-pr"]') ||
+        github.event_name == 'push' &&
+        fromJSON('["self-hosted","Linux","X64","hostinger-vps-trusted"]') ||
         'ubuntu-latest'
       }}
     env:
-      MUAMBA_CACHE_DIR: .cache/muamba
+      MANJA_TRUST_DOMAIN: >-
+        ${{
+          github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork && 'fork' ||
+          github.event_name == 'pull_request' && 'internal' ||
+          github.ref_type == 'tag' && 'release' ||
+          'main'
+        }}
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-go@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          go-version-file: go.mod
-      - uses: actions/setup-node@v7
-        with:
-          node-version: 22
-      - uses: actions/cache@v6
-        with:
-          path: .cache/muamba
-          key: muamba-${{ runner.os }}-${{ hashFiles('muamba.yaml') }}
-          restore-keys: |
-            muamba-${{ runner.os }}-
-      - run: go mod tidy
-      - run: git diff --exit-code go.mod go.sum
-      - run: go tool muamba sync --strict
-      - run: go tool muamba verify --strict
-      - run: go tool muamba generate-go --strict --check --dir internal/webassets --output muamba_gen.go
-      - run: go run ./cmd/webassets check
-      - run: scripts/redocly bundle api/openapi.yaml -o api/dist/openapi.yaml
-      - run: scripts/redocly lint api/openapi.yaml
-      - run: |
-          go run github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen \
-            -generate types,strict-server \
-            -package web \
-            -o internal/web/api.gen.go \
-            api/dist/openapi.yaml
-      - run: go run github.com/a-h/templ/cmd/templ generate
-      - run: git diff --exit-code
-      - run: go run github.com/mxschmitt/playwright-go/cmd/playwright@v0.6100.0 install --with-deps chromium
-      - run: go test ./...
-      - name: Test site against candidate root graph
-        working-directory: site
-        shell: bash
+          persist-credentials: false
+      - name: Install or verify exact Dagger CLI
+        env:
+          RUNNER_ENVIRONMENT: ${{ runner.environment }}
+        run: bash .github/scripts/setup-dagger.sh
+      - name: Verify root and standalone site with Dagger
         run: |
-          modfile=.manja-ci-site.mod
-          sumfile=.manja-ci-site.sum
-          trap 'rm -f "$modfile" "$sumfile"' EXIT
-          cp go.mod "$modfile"
-          cp go.sum "$sumfile"
-          go mod tidy -modfile="$modfile"
-          go test -modfile="$modfile" ./...
+          test -z "$(git ls-files '.dagger/sdk/**')"
+          dagger call verify --source=. --trust-domain="$MANJA_TRUST_DOMAIN"
 
   integration:
+    timeout-minutes: 15
     runs-on: >-
       ${{
         github.event_name == 'pull_request' &&
@@ -82,78 +60,128 @@ jobs:
         github.event.pull_request.head.repo.full_name == github.repository &&
         github.event.pull_request.head.repo.fork == false &&
         contains(fromJSON(vars.HOSTINGER_PR_ACTORS_JSON || '[]'), github.actor) &&
-        fromJSON('["self-hosted","Linux","X64","hostinger-vps"]') ||
+        fromJSON('["self-hosted","Linux","X64","hostinger-vps-pr"]') ||
+        github.event_name == 'push' &&
+        fromJSON('["self-hosted","Linux","X64","hostinger-vps-trusted"]') ||
         'ubuntu-latest'
       }}
+    env:
+      MANJA_TRUST_DOMAIN: >-
+        ${{
+          github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork && 'fork' ||
+          github.event_name == 'pull_request' && 'internal' ||
+          github.ref_type == 'tag' && 'release' ||
+          'main'
+        }}
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-go@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          go-version-file: go.mod
-      - run: go test -tags=integration ./internal/integration -v
+          persist-credentials: false
+      - name: Install or verify exact Dagger CLI
+        env:
+          RUNNER_ENVIRONMENT: ${{ runner.environment }}
+        run: bash .github/scripts/setup-dagger.sh
+      - name: Run isolated container-backed integration with Dagger
+        run: dagger call integration --source=. --trust-domain="$MANJA_TRUST_DOMAIN"
 
   image:
     name: Build and publish image
     if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
     needs: [test, integration]
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON('["self-hosted","Linux","X64","hostinger-vps-trusted"]') }}
     permissions:
       contents: read
       packages: write
+    env:
+      MANJA_METADATA: ${{ github.workspace }}/.dagger-inputs/manja-publish.json
     steps:
-      - uses: actions/checkout@v7
-      - uses: docker/setup-buildx-action@v4
-      - name: Docker metadata
-        id: meta
-        uses: docker/metadata-action@v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          images: ghcr.io/${{ github.repository }}
-          flavor: |
-            latest=auto
-          tags: |
-            type=raw,value=main,enable=${{ github.ref == 'refs/heads/main' }}
-            type=sha,format=long,prefix=,enable=${{ github.ref == 'refs/heads/main' }}
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
-            type=semver,pattern={{major}}
-      - name: Login to GitHub Container Registry
-        uses: docker/login-action@v4
+          persist-credentials: false
+      - name: Install or verify exact Dagger CLI
+        env:
+          RUNNER_ENVIRONMENT: ${{ runner.environment }}
+        run: bash .github/scripts/setup-dagger.sh
+      - name: Materialize trusted publish identity
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
+        env:
+          REF_NAME: ${{ github.ref_name }}
+          REF_TYPE: ${{ github.ref_type }}
+          REGISTRY_USERNAME: ${{ github.actor }}
+          SOURCE_REPOSITORY: ${{ github.repository }}
+          SOURCE_SHA: ${{ github.sha }}
         with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-      - name: Build and push
-        uses: docker/build-push-action@v7
-        with:
-          context: .
-          push: true
-          build-args: |
-            MANJA_VERSION=${{ github.ref_type == 'tag' && github.ref_name || github.sha }}
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          github-token: unused
+          script: |
+            const fs = require("fs")
+            const path = require("path")
+            const sourceSha = process.env.SOURCE_SHA
+            if (!/^[0-9a-f]{40}$/.test(sourceSha)) {
+              throw new Error("source SHA must be a full lowercase Git SHA-1")
+            }
+            const payload = {
+              created: new Date().toISOString().replace(/\.\d{3}Z$/, "Z"),
+              ref_name: process.env.REF_NAME,
+              ref_type: process.env.REF_TYPE,
+              registry_username: process.env.REGISTRY_USERNAME,
+              source_repository: process.env.SOURCE_REPOSITORY,
+              source_sha: sourceSha,
+            }
+            const output = process.env.MANJA_METADATA
+            fs.mkdirSync(path.dirname(output), {recursive: true})
+            fs.writeFileSync(output, JSON.stringify(payload), {encoding: "utf8", flag: "wx", mode: 0o600})
+      - name: Build and publish exact image set with Dagger
+        env:
+          REGISTRY_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          test -n "$REGISTRY_TOKEN"
+          dagger call publish-image \
+            --source=. \
+            --metadata="$MANJA_METADATA" \
+            --registry-token=env://REGISTRY_TOKEN \
+            --run-nonce='${{ github.run_id }}-${{ github.run_attempt }}'
 
   deploy:
     name: Trigger Fly deploy
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     needs: [test, integration]
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON('["self-hosted","Linux","X64","hostinger-vps-trusted"]') }}
     concurrency: deploy-group
+    env:
+      MANJA_METADATA: ${{ github.workspace }}/.dagger-inputs/manja-deploy.json
     steps:
-      - name: Dispatch central deployment
-        uses: actions/github-script@v9
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          github-token: ${{ secrets.FLY_DEPLOY_DISPATCH_TOKEN }}
+          persist-credentials: false
+      - name: Install or verify exact Dagger CLI
+        env:
+          RUNNER_ENVIRONMENT: ${{ runner.environment }}
+        run: bash .github/scripts/setup-dagger.sh
+      - name: Materialize trusted deployment identity
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
+        env:
+          SOURCE_REPOSITORY: ${{ github.repository }}
+          SOURCE_RUN_ID: ${{ github.run_id }}
+          SOURCE_SHA: ${{ github.sha }}
+        with:
+          github-token: unused
           script: |
-            await github.rest.repos.createDispatchEvent({
-              owner: 'araihu',
-              repo: 'fly-deploy',
-              event_type: 'manja-main',
-              client_payload: {
-                manja_ref: context.sha,
-                manja_sha: context.sha,
-                manja_run_id: String(context.runId),
-                source_repository: `${context.repo.owner}/${context.repo.repo}`,
-              },
-            })
+            const fs = require("fs")
+            const path = require("path")
+            const payload = {
+              source_repository: process.env.SOURCE_REPOSITORY,
+              source_run_id: process.env.SOURCE_RUN_ID,
+              source_sha: process.env.SOURCE_SHA,
+            }
+            const output = process.env.MANJA_METADATA
+            fs.mkdirSync(path.dirname(output), {recursive: true})
+            fs.writeFileSync(output, JSON.stringify(payload), {encoding: "utf8", flag: "wx", mode: 0o600})
+      - name: Dispatch central deployment with Dagger
+        env:
+          FLY_DEPLOY_DISPATCH_TOKEN: ${{ secrets.FLY_DEPLOY_DISPATCH_TOKEN }}
+        run: |
+          test -n "$FLY_DEPLOY_DISPATCH_TOKEN"
+          dagger call dispatch-fly \
+            --metadata="$MANJA_METADATA" \
+            --token=env://FLY_DEPLOY_DISPATCH_TOKEN \
+            --run-nonce='${{ github.run_id }}-${{ github.run_attempt }}'
