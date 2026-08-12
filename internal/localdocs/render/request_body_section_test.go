@@ -101,6 +101,30 @@ func TestPrepareOperationRequestBodyFailsClosedOnInconsistentInputs(t *testing.T
 	}
 }
 
+func TestPrepareOperationRequestBodyRejectsMixedChildPreparationContexts(t *testing.T) {
+	t.Parallel()
+
+	detail, operation, nodes, documentHref, schemaLinks := operationRequestBodyMediaFixture()
+	media, err := PrepareOperationRequestBodyMedia(detail, operation, nodes, documentHref, schemaLinks)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	otherDocumentHref := "/documents/other/"
+	otherSchemaLinks := map[string]string{
+		"Pod": strings.Replace(schemaLinks["Pod"], documentHref, otherDocumentHref, 1),
+	}
+	trees, err := PrepareOperationSchemaTrees(detail, operation, nodes, otherDocumentHref, otherSchemaLinks)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	fragment, err := PrepareOperationRequestBody(detail, operation, media, trees)
+	if err == nil || !reflect.DeepEqual(fragment, OperationRequestBodyFragment{}) {
+		t.Fatalf("PrepareOperationRequestBody() = (%#v, %v), want zero fragment and error for mixed child contexts", fragment, err)
+	}
+}
+
 func TestPreparedOperationRequestBodyCopiesRenderInputs(t *testing.T) {
 	t.Parallel()
 

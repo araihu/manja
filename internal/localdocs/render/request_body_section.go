@@ -51,6 +51,10 @@ func PrepareOperationRequestBody(
 	if projected.ID != id || projected.Anchor != id || operation.Anchor != projected.Anchor {
 		return OperationRequestBodyFragment{}, invalidOperationRequestBodyField("operation identity")
 	}
+	parentBinding, err := bindOperationPreparationParent(detail, operation)
+	if err != nil || media.binding != trees.binding || media.binding.parent != parentBinding {
+		return OperationRequestBodyFragment{}, invalidOperationRequestBodyField("preparation context")
+	}
 	projectedBody := projected.RequestBody
 	preparedBody := operation.RequestBody
 	if !utf8.ValidString(projectedBody.Description) || projectedBody.Description != preparedBody.Description || projectedBody.Required != preparedBody.Required ||

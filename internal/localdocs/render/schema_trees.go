@@ -22,6 +22,7 @@ var errInvalidOperationSchemaTreesFragment = errors.New("local docs operation sc
 type OperationSchemaTreesFragment struct {
 	request   []operationSchemaTreeData
 	responses [][]operationSchemaTreeData
+	binding   operationPreparationBinding
 	valid     bool
 }
 
@@ -158,6 +159,10 @@ func PrepareOperationSchemaTrees(
 				return OperationSchemaTreesFragment{}, err
 			}
 		}
+	}
+	fragment.binding, err = bindOperationPreparation(detail, operation, documentHref, schemaLinks)
+	if err != nil {
+		return OperationSchemaTreesFragment{}, invalidOperationSchemaTreesField("preparation context")
 	}
 	return fragment, nil
 }

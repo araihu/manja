@@ -20,8 +20,9 @@ import (
 var errInvalidOperationRequestBodyMediaFragment = errors.New("local docs operation request-body media fragment is invalid")
 
 type OperationRequestBodyMediaFragment struct {
-	media []operationRequestBodyMediaData
-	valid bool
+	media   []operationRequestBodyMediaData
+	binding operationPreparationBinding
+	valid   bool
 }
 
 type operationRequestBodyMediaData struct {
@@ -81,6 +82,10 @@ func PrepareOperationRequestBodyMedia(
 	}
 	if len(resolver.used) != len(resolver.nodes) {
 		return OperationRequestBodyMediaFragment{}, invalidOperationRequestBodyMediaField("schema-node inventory")
+	}
+	fragment.binding, err = bindOperationPreparation(detail, operation, documentHref, schemaLinks)
+	if err != nil {
+		return OperationRequestBodyMediaFragment{}, invalidOperationRequestBodyMediaField("preparation context")
 	}
 	return fragment, nil
 }
