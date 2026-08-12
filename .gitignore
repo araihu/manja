@@ -4,6 +4,9 @@
 .manja/
 .superpowers/
 /.cache/muamba/
+.dagger/node_modules/
+.dagger/sdk/
+.dagger-inputs/
 *.test
 go.work
 go.work.sum

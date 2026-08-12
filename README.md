@@ -19,6 +19,31 @@ go run ./cmd/manja -data-dir .manja/data
 
 Open <http://localhost:8080>.
 
+### Portable CI with Dagger
+
+CI toolchains and the same gates are available locally through Dagger v0.21.8.
+The host needs only the exact Dagger CLI and a compatible container runtime:
+
+```bash
+dagger call verify --source=. --trust-domain=local
+dagger call integration --source=. --trust-domain=local
+dagger call image --source=. --version=dev
+```
+
+`verify` covers generated drift, Muamba, Redocly, oapi-codegen, templ, root
+tests, Playwright, and the standalone `site/` module with `GOWORK=off`.
+`integration` provisions its own isolated Docker service for testcontainers.
+Mutable Go, npm, Muamba, and browser caches are partitioned by trust domain;
+fork, internal PR, main, release, Assets, and local executions never share
+those volumes.
+
+`publish-image`, `dispatch-fly`, and `update-araihu-assets` are uncached
+effect/freshness functions. They require strict JSON `File` inputs, typed
+secrets, and a unique nonce. Local callers can use
+`local-$(uuidgen | tr '[:upper:]' '[:lower:]')` and
+should invoke these functions only when intending the documented GHCR,
+GitHub, or repository update effect.
+
 For live development, run:
 
 ```bash
