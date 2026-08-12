@@ -51,15 +51,15 @@ not implement hosted product behavior speculatively.
 - Task: `019fef17-2fad-73d2-b004-d3706d36ea82`
 - Worktree label: dedicated Open Core developer worktree
 - Initial lane base: `39d65ade21c080ee2102f53da5ed741f000d6dd7`
-- OC-04B implementation base and direct parent:
-  `05fcf118d9eb7fca94ae9a587f2776771f4678ef`
+- OC-04B correction base and direct parent:
+  `f02469c39e09576963b9de4d98807abfc542b792`
 - Current checkpoint base tree:
-  `9e806e77adbf3fb1b007925eeb6a2fd497fe90dd`
+  `f6400357ebfefcc4571b4bd3246a3176df797e99`
 - Fresh-main merge-base:
   `43f96dfbf9d18eee2364f14778e6b94312c8abac`, tree
   `959f199e145c316b4b76e40a561413c0e6d57134`
-- Branch: `codex/oc04b-public-eligibility-descriptor`
-- Worktree label: OC-04B public-eligibility descriptor worktree
+- Branch: `codex/oc04b-public-eligibility-descriptor-correction`
+- Worktree label: OC-04B publication-key correction worktree
 - Owns only bounded Open Core implementation checkpoints assigned here.
 - Must commit each coherent checkpoint with a meaningful message.
 - Must not implement deferred SaaS behavior or edit the active Arai Hû theme
@@ -224,6 +224,24 @@ not implement hosted product behavior speculatively.
   Docker, SaaS, theme, legal, packaging, or Task 8 behavior is added. The final
   moving checkpoint identity is supplied by the external review packet to avoid
   recursive self-reference.
+- Goal-only child `f02469c39e09576963b9de4d98807abfc542b792`, tree
+  `f6400357ebfefcc4571b4bd3246a3176df797e99`, was independently rejected only
+  for one technical P1: `publicationKey` used an over-broad canonical string
+  validator and eligible catalogs could share a cache namespace. The rejected
+  parent and its branch remain unchanged.
+- Correction implementation commit
+  `366b95530b10f6d79346b5485dc27be13bd56b96`, tree
+  `ca7b646b48fb7cef6e2a3226865dca336c944082`, binds every eligible
+  `publicationKey` to 1-64 lowercase ASCII bytes with alphanumeric endpoints
+  and `[a-z0-9._-]` interior characters. Renderer configuration rejects
+  duplicate eligible keys before server creation. Direct web policy admission
+  disables enhancement globally on invalid or duplicate keys, preserving SSR
+  HTTP 200 with no descriptor and no HTTP 500. Distinct valid keys remain
+  independently addressable. Focused RED reproduced all four accepted-invalid
+  cases; GREEN, affected full packages, race, vet, strict Muamba, diff check,
+  and root `go test ./... -count=1` passed. Root receipts include self-hosted
+  202.962s and E2E 189.132s. No other OC-04B/OC-04A behavior or scope changed;
+  final moving identity remains external for fresh review.
 - At `2026-08-12T03:34:23Z`, the confirmed public preview URL
   `https://manja.araihu.com/manja-assets/manja-social.png` returned HTTP 200,
   `image/png`, 21,500 bytes, 1280x640, and SHA-256
@@ -451,8 +469,10 @@ not implement hosted product behavior speculatively.
   independently accepted. OC-01M9's separate catalog-search keyboard-focus
   correction is independently accepted. OC-04A is independently accepted at
   exact `05fcf118d9eb7fca94ae9a587f2776771f4678ef`, tree
-  `9e806e77adbf3fb1b007925eeb6a2fd497fe90dd`. OC-04B is implemented locally
-  from that exact parent and awaits fresh exact-identity independent review.
+  `9e806e77adbf3fb1b007925eeb6a2fd497fe90dd`. OC-04B correction starts from
+  rejected exact `f02469c39e09576963b9de4d98807abfc542b792`, tree
+  `f6400357ebfefcc4571b4bd3246a3176df797e99`, and awaits fresh exact-identity
+  independent review.
 - Active Arai Hû Modern-theme rollout belongs to task
   `019fef01-b65f-7980-a360-83e48f8a6345`; this control plane must avoid its
   files and refs.
@@ -690,10 +710,11 @@ Before merge:
 
 ## Next Action
 
-Submit the frozen OC-04B identity, clean status, RED/GREEN eligibility,
-immutable-identity/inventory, strict kill-switch, byte-identical SSR, preserved
-OC-04A transport, race, and root-suite receipts for fresh independent technical
-and design review. PM chooses and separately authorizes any integration path.
+Submit the frozen OC-04B correction identity, clean status, publication-key
+grammar/limit/duplicate RED/GREEN receipts, no-descriptor/HTTP-200 fail-closed
+proof, preserved descriptor/SSR/OC-04A transport behavior, race, and root-suite
+receipts for fresh independent technical and design review. PM chooses and
+separately authorizes any integration path.
 Any push, PR, or head movement restarts exact-head CI, CodeQL, independent
 review, and substantive CodeRabbit gates; absence or failure blocks integration.
 Overall provenance remains `BLOCKED`; legal authority and final-artifact
