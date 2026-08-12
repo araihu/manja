@@ -259,12 +259,17 @@ func (handler *CatalogHandler) catalogPageDataWithSidebarQuery(
 			if err != nil {
 				return templates.CatalogPageData{}, err
 			}
+			operationAuthorization, err := localrender.PrepareOperationAuthorization(detail, *operation)
+			if err != nil {
+				return templates.CatalogPageData{}, err
+			}
 			operationParameters, err := localrender.PrepareOperationParameters(detail, *operation, parameterNodes)
 			if err != nil {
 				return templates.CatalogPageData{}, err
 			}
 			data.OperationView = operation
 			data.OperationHeader = &operationHeader
+			data.OperationAuthorization = &operationAuthorization
 			data.OperationParameters = &operationParameters
 			if detail.Operation.HasRequestBody {
 				operationRequestBodyMedia, err := localrender.PrepareOperationRequestBodyMedia(detail, *operation, requestBodyNodes, documentHref, data.SchemaLinks)

@@ -1,0 +1,72 @@
+package render
+
+import "github.com/araihu/goshtoso/components/badge"
+
+templ operationAuthorization(requirements []operationAuthorizationData) {
+	if len(requirements) > 0 {
+		<section data-manja-authorization aria-label="Authorization requirements" class="grid min-w-0 gap-4 rounded-radius border border-outline p-4 dark:border-outline-dark">
+			<div class="flex flex-wrap items-center justify-between gap-3">
+				<h5 class="font-title text-lg font-bold text-on-surface-strong dark:text-on-surface-dark-strong">Authorization</h5>
+				@badge.Badge(badge.Config{Label: "Read-only", Tone: badge.ToneSecondary, Appearance: badge.AppearanceSoft, Size: badge.SizeSM})
+			</div>
+			<p class="max-w-[70ch] text-sm text-on-surface-muted dark:text-on-surface-dark-muted">Credentials are never accepted or stored on this documentation page.</p>
+			<div class="divide-y divide-outline dark:divide-outline-dark">
+				for _, item := range requirements {
+					<article data-manja-security-requirement={ item.Name } class="grid gap-3 py-4 first:pt-0 last:pb-0">
+						<div class="manja-schema-heading">
+							<div class="manja-schema-identity">
+								<span class="manja-schema-name">{ item.Name }</span>
+								if item.TypeLabel != "" {
+									<span class="manja-schema-type">{ item.TypeLabel }</span>
+								}
+							</div>
+							<span class="manja-schema-property-state" data-required="true">required</span>
+						</div>
+						if item.Instruction != "" {
+							<p class="max-w-[70ch] text-sm text-on-surface dark:text-on-surface-dark">{ item.Instruction }</p>
+						}
+						if item.Description != "" {
+							<p class="max-w-[70ch] whitespace-pre-wrap text-sm leading-6 text-on-surface-muted dark:text-on-surface-dark-muted">{ item.Description }</p>
+						}
+						if item.ParameterName != "" || item.Scheme != "" || item.BearerFormat != "" || item.OpenIDConnectURL != "" {
+							<dl class="grid gap-3 text-sm sm:grid-cols-2">
+								if item.ParameterName != "" {
+									@operationAuthorizationField(item.ParameterLabel, item.ParameterName)
+								}
+								if item.Scheme != "" {
+									@operationAuthorizationField("Scheme", item.Scheme)
+								}
+								if item.BearerFormat != "" {
+									@operationAuthorizationField("Bearer format", item.BearerFormat)
+								}
+								if item.OpenIDConnectURL != "" {
+									<div class="min-w-0 sm:col-span-2">
+										<dt class="text-xs font-semibold uppercase tracking-wide text-on-surface-muted dark:text-on-surface-dark-muted">OpenID Connect URL</dt>
+										<dd class="mt-1 min-w-0 break-all font-mono text-on-surface-strong dark:text-on-surface-dark-strong">{ item.OpenIDConnectURL }</dd>
+									</div>
+								}
+							</dl>
+						}
+						if len(item.Scopes) > 0 {
+							<div class="grid gap-2">
+								<p class="text-xs font-semibold uppercase tracking-wide text-on-surface-muted dark:text-on-surface-dark-muted">Scopes</p>
+								<div class="flex flex-wrap gap-2">
+									for _, scope := range item.Scopes {
+										<code class="rounded-radius bg-surface-alt px-2 py-1 text-xs text-on-surface-strong dark:bg-surface-dark-alt dark:text-on-surface-dark-strong">{ scope }</code>
+									}
+								</div>
+							</div>
+						}
+					</article>
+				}
+			</div>
+		</section>
+	}
+}
+
+templ operationAuthorizationField(label string, value string) {
+	<div class="min-w-0">
+		<dt class="text-xs font-semibold uppercase tracking-wide text-on-surface-muted dark:text-on-surface-dark-muted">{ label }</dt>
+		<dd class="mt-1 break-words font-mono text-on-surface-strong dark:text-on-surface-dark-strong">{ value }</dd>
+	</div>
+}

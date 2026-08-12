@@ -836,6 +836,57 @@ func TestPreparedOperationParametersMatchCatalogSSRBytes(t *testing.T) {
 	}
 }
 
+func TestPreparedOperationAuthorizationMatchesCompleteEndpointSSRBytes(t *testing.T) {
+	t.Parallel()
+
+	for securityCount := 0; securityCount <= 4; securityCount++ {
+		securityCount := securityCount
+		t.Run(fmt.Sprintf("security=%d", securityCount), func(t *testing.T) {
+			t.Parallel()
+
+			detailID := domain.DetailID("detail-sha256-" + strings.Repeat("b", 64))
+			operation := domain.Operation{Anchor: string(detailID), Title: "List Pods", Method: "GET", Path: "/api/v1/pods"}
+			detail := catalog.DetailRecordV1{ID: detailID, Kind: "operation", Operation: &projection.OperationDetail{
+				ID: string(detailID), Anchor: string(detailID), HeadingID: string(detailID), Heading: "List Pods", HeadingLevel: 2,
+				Method: "GET", Path: "/api/v1/pods",
+			}}
+			for index, security := range []domain.OperationSecurity{
+				{Name: "bearer", Definition: domain.SecurityScheme{Name: "bearer", Type: "http", Description: "Bearer access.", Scheme: "bearer", BearerFormat: "JWT"}},
+				{Name: "api-key", Definition: domain.SecurityScheme{Name: "api-key", Type: "apiKey", Description: "API key.", ParameterName: "X-API-Key", In: "header"}},
+				{Name: "oauth", Scopes: []string{"pods:read", "pods:write"}, Definition: domain.SecurityScheme{Name: "oauth", Type: "oauth2", OpenIDConnectURL: "https://auth.example.test/.well-known/openid-configuration"}},
+				{Name: "custom", Definition: domain.SecurityScheme{Name: "custom", Type: " ", Scheme: " ", BearerFormat: " ", OpenIDConnectURL: " "}},
+			}[:securityCount] {
+				operation.Security = append(operation.Security, security)
+				projected := projection.SecurityRequirement{Ordinal: uint32(index), ID: security.Name, Name: security.Name, Definition: projection.SecurityScheme{
+					Name: security.Definition.Name, Type: security.Definition.Type, Description: security.Definition.Description,
+					ParameterName: security.Definition.ParameterName, In: security.Definition.In, Scheme: security.Definition.Scheme,
+					BearerFormat: security.Definition.BearerFormat, OpenIDConnectURL: security.Definition.OpenIDConnectURL,
+				}}
+				for scopeIndex, scope := range security.Scopes {
+					projected.Scopes = append(projected.Scopes, projection.TextRecord{Ordinal: uint32(scopeIndex), ID: authorizationProjectionID(scope), Value: scope})
+				}
+				detail.Operation.Security = append(detail.Operation.Security, projected)
+			}
+
+			fragment, err := localrender.PrepareOperationAuthorization(detail, operation)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var originalPage, delegatedPage bytes.Buffer
+			if err := endpointSection(operation, nil, "", PublicDocsOptions{}, OperationNavigationData{}).Render(context.Background(), &originalPage); err != nil {
+				t.Fatal(err)
+			}
+			if err := endpointSection(operation, nil, "", PublicDocsOptions{OperationAuthorization: &fragment}, OperationNavigationData{}).Render(context.Background(), &delegatedPage); err != nil {
+				t.Fatal(err)
+			}
+			if !bytes.Equal(originalPage.Bytes(), delegatedPage.Bytes()) {
+				index := firstDifferentByte(originalPage.Bytes(), delegatedPage.Bytes())
+				t.Fatalf("delegated authorization changed complete SSR endpoint bytes at byte %d:\noriginal=%q\ndelegated=%q", index, nearbyBytes(originalPage.Bytes(), index), nearbyBytes(delegatedPage.Bytes(), index))
+			}
+		})
+	}
+}
+
 func TestPreparedOperationRequestBodyMediaMatchesCatalogSSRBytes(t *testing.T) {
 	t.Parallel()
 
@@ -1170,6 +1221,17 @@ func codeSampleProjectionID(language, label string) string {
 		hash.Write([]byte(value))
 	}
 	return "code-sample-" + hex.EncodeToString(hash.Sum(nil))
+}
+
+func authorizationProjectionID(scope string) string {
+	hash := sha256.New()
+	hash.Write([]byte("scope"))
+	hash.Write([]byte{0})
+	var length [8]byte
+	binary.BigEndian.PutUint64(length[:], uint64(len([]byte(scope))))
+	hash.Write(length[:])
+	hash.Write([]byte(scope))
+	return "scope-" + hex.EncodeToString(hash.Sum(nil))
 }
 
 func parameterSummary(typeName, format string) domain.SchemaSummary {

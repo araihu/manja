@@ -83,6 +83,7 @@ type PublicDocsOptions struct {
 	ManageDefaultFavicon      bool
 	Metadata                  PageMetadata
 	OperationIdentityInHeader bool
+	OperationAuthorization    *localrender.OperationAuthorizationFragment
 	OperationParameters       *localrender.OperationParametersFragment
 	OperationRequestBodyMedia *localrender.OperationRequestBodyMediaFragment
 	OperationResponseMedia    *localrender.OperationResponseMediaFragment
@@ -1029,7 +1030,11 @@ templ endpointSection(op core.Operation, servers []core.SpecServer, exampleSpecJ
 						if operationHasRequest(op) {
 							<section class="grid gap-8" aria-label="Request">
 								<h4 class="font-title text-2xl font-bold text-on-surface-strong dark:text-on-surface-dark-strong">Request</h4>
-								@authorizationDocumentation(op.Security)
+								if opts.OperationAuthorization != nil {
+									@localrender.OperationAuthorization(*opts.OperationAuthorization)
+								} else {
+									@authorizationDocumentation(op.Security)
+								}
 								if opts.OperationParameters != nil {
 									@localrender.OperationParameters(*opts.OperationParameters)
 								} else {

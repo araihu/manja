@@ -923,10 +923,18 @@ inventories to copied prepared values, rejects invalid UTF-8 and bounded-output
 violations, and preserves explicit-example payload semantics. Parser work,
 request composition changes, browser activation, Service Worker, offline
 storage, lifecycle actions, SaaS, and theme work remain outside this checkpoint.
+OC-04M prepares and renders operation authorization documentation through one
+bounded parser-free templ-escaped component shared byte-for-byte with catalog
+SSR. Its admission binds ordered requirement and scope identities to copied
+security-scheme display fields, rejects duplicate, inconsistent, invalid UTF-8,
+record-limit, and output-limit input, and remains read-only: it never accepts or
+stores credentials. Request composition changes, browser activation, Service
+Worker, offline storage, lifecycle actions, SaaS, theme, legal, packaging, and
+complete operation-body/main rendering remain outside this checkpoint.
 These checkpoints are groundwork, not proof of a complete operation body/main
 Wasm HTML renderer, browser activation, Service Worker, offline storage,
 rollback, tombstones, recursive request-body rendering, response rendering,
-parity beyond the four bounded operation fragments, or performance
+parity beyond these bounded operation fragments, or performance
 acceptance.
 
 ## PR Gate
