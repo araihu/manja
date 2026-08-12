@@ -27,6 +27,23 @@ type CatalogPublicEligibility struct {
 	Anonymous      bool
 }
 
+func validCatalogEnhancementPolicy(policy CatalogEnhancementPolicy) bool {
+	publicationKeys := make(map[string]struct{}, len(policy.Publications))
+	for _, eligibility := range policy.Publications {
+		if !eligibility.Public || !eligibility.Anonymous {
+			continue
+		}
+		if domain.ValidateCatalogPublicationKey(eligibility.PublicationKey) != nil {
+			return false
+		}
+		if _, exists := publicationKeys[eligibility.PublicationKey]; exists {
+			return false
+		}
+		publicationKeys[eligibility.PublicationKey] = struct{}{}
+	}
+	return true
+}
+
 func (handler *CatalogHandler) catalogEnhancementDescriptor(snapshot catalog.RuntimeSnapshot, mount string) *templates.CatalogEnhancementDescriptorData {
 	if handler.enhancement.Disabled {
 		return nil
@@ -35,7 +52,7 @@ func (handler *CatalogHandler) catalogEnhancementDescriptor(snapshot catalog.Run
 	if !exists || !eligibility.Public || !eligibility.Anonymous {
 		return nil
 	}
-	if domain.ValidateCatalogID(eligibility.CatalogID) != nil || domain.ValidateCanonicalIdentity("local docs publication key", eligibility.PublicationKey, false) != nil {
+	if domain.ValidateCatalogID(eligibility.CatalogID) != nil || domain.ValidateCatalogPublicationKey(eligibility.PublicationKey) != nil {
 		return nil
 	}
 	identity := snapshot.Manifest.Identity

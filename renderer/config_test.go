@@ -69,6 +69,13 @@ func TestNewRejectsInvalidCatalogConfiguration(t *testing.T) {
 		{name: "local docs anonymous only", config: Config{Version: 1, Catalogs: []CatalogConfig{{ID: "payments", Mount: "/", Title: "Payments", ProfileID: domain.CompatibilityProfileStrict, LocalDocs: CatalogLocalDocs{Anonymous: true, PublicationKey: "payments"}}}}},
 		{name: "local docs key only", config: Config{Version: 1, Catalogs: []CatalogConfig{{ID: "payments", Mount: "/", Title: "Payments", ProfileID: domain.CompatibilityProfileStrict, LocalDocs: CatalogLocalDocs{PublicationKey: "payments"}}}}},
 		{name: "local docs missing key", config: Config{Version: 1, Catalogs: []CatalogConfig{{ID: "payments", Mount: "/", Title: "Payments", ProfileID: domain.CompatibilityProfileStrict, LocalDocs: CatalogLocalDocs{Public: true, Anonymous: true}}}}},
+		{name: "local docs uppercase key", config: Config{Version: 1, Catalogs: []CatalogConfig{{ID: "payments", Mount: "/", Title: "Payments", ProfileID: domain.CompatibilityProfileStrict, LocalDocs: CatalogLocalDocs{Public: true, Anonymous: true, PublicationKey: "Public-Payments"}}}}},
+		{name: "local docs invalid key", config: Config{Version: 1, Catalogs: []CatalogConfig{{ID: "payments", Mount: "/", Title: "Payments", ProfileID: domain.CompatibilityProfileStrict, LocalDocs: CatalogLocalDocs{Public: true, Anonymous: true, PublicationKey: "public/payments"}}}}},
+		{name: "local docs oversized key", config: Config{Version: 1, Catalogs: []CatalogConfig{{ID: "payments", Mount: "/", Title: "Payments", ProfileID: domain.CompatibilityProfileStrict, LocalDocs: CatalogLocalDocs{Public: true, Anonymous: true, PublicationKey: strings.Repeat("a", 65)}}}}},
+		{name: "local docs duplicate eligible key", config: Config{Version: 1, Catalogs: []CatalogConfig{
+			{ID: "payments", Mount: "/payments", Title: "Payments", ProfileID: domain.CompatibilityProfileStrict, LocalDocs: CatalogLocalDocs{Public: true, Anonymous: true, PublicationKey: "public-api"}},
+			{ID: "orders", Mount: "/orders", Title: "Orders", ProfileID: domain.CompatibilityProfileStrict, LocalDocs: CatalogLocalDocs{Public: true, Anonymous: true, PublicationKey: "public-api"}},
+		}}},
 		{name: "organization source kind", config: Config{Version: 1, Organization: OrganizationConfig{Sources: []OrganizationSource{{Name: "API", Kind: "network", Location: "example"}}}, Catalogs: []CatalogConfig{validCatalogConfig("payments", "/")}}},
 		{name: "organization source URL", config: Config{Version: 1, Organization: OrganizationConfig{Sources: []OrganizationSource{{Name: "API", Kind: OrganizationSourceKindGit, Location: "example", URL: "http://example.test/repo"}}}, Catalogs: []CatalogConfig{validCatalogConfig("payments", "/")}}},
 		{name: "organization license URL without name", config: Config{Version: 1, Organization: OrganizationConfig{License: OrganizationLicense{URL: "https://example.test/license"}}, Catalogs: []CatalogConfig{validCatalogConfig("payments", "/")}}},
@@ -88,6 +95,17 @@ func TestNewAcceptsExplicitPublicAnonymousLocalDocsAuthority(t *testing.T) {
 	catalog := validCatalogConfig("payments", "/")
 	catalog.LocalDocs = CatalogLocalDocs{Public: true, Anonymous: true, PublicationKey: "public-payments"}
 	if _, err := New(Config{Version: 1, Catalogs: []CatalogConfig{catalog}}); err != nil {
+		t.Fatalf("New: %v", err)
+	}
+}
+
+func TestNewAcceptsDistinctCanonicalLocalDocsPublicationKeys(t *testing.T) {
+	t.Parallel()
+	config := Config{Version: 1, Catalogs: []CatalogConfig{
+		{ID: "payments", Mount: "/payments", Title: "Payments", ProfileID: domain.CompatibilityProfileStrict, LocalDocs: CatalogLocalDocs{Public: true, Anonymous: true, PublicationKey: "public.payments-v1"}},
+		{ID: "orders", Mount: "/orders", Title: "Orders", ProfileID: domain.CompatibilityProfileStrict, LocalDocs: CatalogLocalDocs{Public: true, Anonymous: true, PublicationKey: "public_orders-v1"}},
+	}}
+	if _, err := New(config); err != nil {
 		t.Fatalf("New: %v", err)
 	}
 }

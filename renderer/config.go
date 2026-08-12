@@ -97,6 +97,7 @@ func validateConfig(config Config) error {
 		return err
 	}
 	ids := make(map[string]struct{}, len(config.Catalogs))
+	publicationKeys := make(map[string]string, len(config.Catalogs))
 	for index, catalog := range config.Catalogs {
 		if err := domain.ValidateCatalogID(catalog.ID); err != nil {
 			return fmt.Errorf("catalog %d: %w", index, err)
@@ -148,9 +149,13 @@ func validateConfig(config Config) error {
 			if !catalog.LocalDocs.Public || !catalog.LocalDocs.Anonymous {
 				return fmt.Errorf("catalog %q local docs requires public and anonymous authority", catalog.ID)
 			}
-			if err := domain.ValidateCanonicalIdentity(fmt.Sprintf("catalog %q local docs publication key", catalog.ID), catalog.LocalDocs.PublicationKey, false); err != nil {
-				return err
+			if err := domain.ValidateCatalogPublicationKey(catalog.LocalDocs.PublicationKey); err != nil {
+				return fmt.Errorf("catalog %q local docs: %w", catalog.ID, err)
 			}
+			if owner, exists := publicationKeys[catalog.LocalDocs.PublicationKey]; exists {
+				return fmt.Errorf("catalogs %q and %q duplicate local docs publication key %q", owner, catalog.ID, catalog.LocalDocs.PublicationKey)
+			}
+			publicationKeys[catalog.LocalDocs.PublicationKey] = catalog.ID
 		}
 	}
 	for left := range config.Catalogs {

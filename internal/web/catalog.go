@@ -112,6 +112,9 @@ func NewCatalogHandlerWithOrganizationAndEnhancement(runtime *catalog.Runtime, c
 		copyPublications[mount] = value
 	}
 	enhancement.Publications = copyPublications
+	if !validCatalogEnhancementPolicy(enhancement) {
+		enhancement.Disabled = true
+	}
 	organization.Sources = append([]OrganizationSourcePresentation(nil), organization.Sources...)
 	return &CatalogHandler{runtime: runtime, children: children, details: catalog.NewDetailCache(), search: catalog.NewSearchCache(), presentation: copyPresentation, organization: organization, enhancement: enhancement}
 }

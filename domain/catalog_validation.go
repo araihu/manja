@@ -20,6 +20,12 @@ func ValidateCatalogDocumentKey(value string) error {
 	return validateCatalogKey("catalog document key", value)
 }
 
+// ValidateCatalogPublicationKey validates the stable public cache namespace
+// used by optional local-docs enhancement descriptors.
+func ValidateCatalogPublicationKey(value string) error {
+	return validateCatalogKey("catalog publication key", value)
+}
+
 func ValidateCatalogCandidate(candidate CatalogCandidate) error {
 	if err := validateUTF8Strings("catalog candidate", candidate); err != nil {
 		return err

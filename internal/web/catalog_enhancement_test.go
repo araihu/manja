@@ -139,6 +139,67 @@ func TestCatalogEnhancementDescriptorFailsClosed(t *testing.T) {
 	}
 }
 
+func TestCatalogEnhancementPolicyRejectsInvalidOrDuplicatePublicationKeysWithoutHTTP500(t *testing.T) {
+	tests := []struct {
+		name string
+		keys map[string]string
+	}{
+		{name: "duplicate", keys: map[string]string{"/first": "public-api", "/second": "public-api"}},
+		{name: "uppercase", keys: map[string]string{"/first": "Public-api", "/second": "public-second"}},
+		{name: "invalid character", keys: map[string]string{"/first": "public/api", "/second": "public-second"}},
+		{name: "oversized", keys: map[string]string{"/first": strings.Repeat("a", 65), "/second": "public-second"}},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			handler := catalogEnhancementMultiMountHandler(t, test.keys)
+			for mount := range test.keys {
+				response := httptest.NewRecorder()
+				handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, mount+"/", nil))
+				if response.Code != http.StatusOK {
+					t.Fatalf("GET %s = %d body=%q, want fail-closed SSR 200", mount, response.Code, response.Body.String())
+				}
+				if strings.Contains(response.Body.String(), `id="manja-local-docs-descriptor"`) {
+					t.Fatalf("GET %s emitted descriptor for invalid policy", mount)
+				}
+				if !strings.Contains(response.Body.String(), `data-manja-catalog-shell="true"`) {
+					t.Fatalf("GET %s lost SSR shell", mount)
+				}
+			}
+		})
+	}
+}
+
+func TestCatalogEnhancementPolicyAcceptsDistinctCanonicalPublicationKeys(t *testing.T) {
+	keys := map[string]string{"/first": "public.first-v1", "/second": "public_second-v1"}
+	handler := catalogEnhancementMultiMountHandler(t, keys)
+	for mount, key := range keys {
+		response := httptest.NewRecorder()
+		handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, mount+"/", nil))
+		if response.Code != http.StatusOK {
+			t.Fatalf("GET %s = %d body=%q", mount, response.Code, response.Body.String())
+		}
+		if descriptor := decodeCatalogEnhancementDescriptor(t, response.Body.String()); descriptor.PublicationKey != key {
+			t.Fatalf("GET %s publication key = %q, want %q", mount, descriptor.PublicationKey, key)
+		}
+	}
+}
+
+func catalogEnhancementMultiMountHandler(t *testing.T, keys map[string]string) http.Handler {
+	t.Helper()
+	baseHandler, snapshot := catalogHandlerFixture(t, "/fixture")
+	base := baseHandler.(*CatalogHandler)
+	snapshot = catalogEnhancementSnapshot(t, snapshot)
+	runtime := catalog.NewRuntime(1)
+	publications := make(map[string]CatalogPublicEligibility, len(keys))
+	for mount, key := range keys {
+		if _, err := runtime.ActivateMount(mount, "", 1, snapshot); err != nil {
+			t.Fatal(err)
+		}
+		publications[mount] = CatalogPublicEligibility{CatalogID: snapshot.Directory.CatalogID, PublicationKey: key, Public: true, Anonymous: true}
+	}
+	return NewCatalogHandlerWithOrganizationAndEnhancement(runtime, base.children, base.presentation, base.organization, CatalogEnhancementPolicy{Publications: publications})
+}
+
 func eligibleCatalogEnhancementPolicy(snapshot catalog.RuntimeSnapshot) CatalogEnhancementPolicy {
 	return CatalogEnhancementPolicy{Publications: map[string]CatalogPublicEligibility{
 		"/kubernetes": {CatalogID: snapshot.Directory.CatalogID, PublicationKey: "public-kubernetes", Public: true, Anonymous: true},
