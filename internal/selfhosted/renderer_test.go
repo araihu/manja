@@ -27,6 +27,10 @@ catalogs:
   - id: payments
     mount: /
     title: Payments
+    localDocs:
+      public: true
+      anonymous: true
+      publicationKey: payments
     defaultDocument: payments
     profile: strict-v1
     source:
@@ -47,8 +51,17 @@ catalogs:
 	}
 	response := httptest.NewRecorder()
 	handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/", nil))
-	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), "Payments") {
+	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), "Payments") || !strings.Contains(response.Body.String(), `id="manja-local-docs-descriptor"`) {
 		t.Fatalf("GET / = %d %q", response.Code, response.Body.String())
+	}
+	disabled, _, err := NewRenderer(context.Background(), RendererOptions{ConfigPath: configPath, LocalDocsDisabled: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	disabledResponse := httptest.NewRecorder()
+	disabled.ServeHTTP(disabledResponse, httptest.NewRequest(http.MethodGet, "/", nil))
+	if strings.Contains(disabledResponse.Body.String(), `id="manja-local-docs-descriptor"`) || !strings.Contains(disabledResponse.Body.String(), "Payments") {
+		t.Fatalf("disabled local docs changed SSR or emitted descriptor: %q", disabledResponse.Body.String())
 	}
 }
 

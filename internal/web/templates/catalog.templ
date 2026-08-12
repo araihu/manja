@@ -135,6 +135,7 @@ type CatalogPageData struct {
 	CurrentVisit *CatalogSearchItemData
 	DocumentSortBy string
 	DocumentSortDir string
+	EnhancementDescriptor *CatalogEnhancementDescriptorData
 }
 
 func catalogNavigationLabel(data CatalogPageData) string {
@@ -290,13 +291,26 @@ type CatalogSchemaEdgeData struct {
 	ReferenceIsEnumAlias bool
 }
 
+type CatalogEnhancementDescriptorData struct {
+	SchemaVersion uint32 `json:"schemaVersion"`
+	PublicationKey string `json:"publicationKey"`
+	PublicationBase string `json:"publicationBase"`
+	SnapshotID string `json:"snapshotId"`
+	RevisionID string `json:"revisionId"`
+	ProjectionFormat string `json:"projectionFormat"`
+	ProjectionDigest string `json:"projectionDigest"`
+	ProjectionDataBase string `json:"projectionDataBase"`
+}
+
 templ CatalogPage(data CatalogPageData) {
 	{{ metadata := data.Metadata }}
 	if metadata.Title == "" {
 		{{ metadata.Title = catalogPageTitle(data) }}
 	}
 	@LayoutWithBrandingMetadata(metadata, catalogBranding(data.Directory.Branding), false, false) {
-		<script src="/manja-assets/catalog-search.js"></script>
+		if data.EnhancementDescriptor != nil {
+			@templpkg.JSONScript("manja-local-docs-descriptor", data.EnhancementDescriptor)
+		}<script src="/manja-assets/catalog-search.js"></script>
 		@copyPageScript()
 		<div
 			hx-history="false"

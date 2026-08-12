@@ -33,6 +33,10 @@ catalogs:
   - id: kubernetes
     mount: /catalogs/kubernetes
     title: Kubernetes
+    localDocs:
+      public: true
+      anonymous: true
+      publicationKey: kubernetes
     branding:
       displayName: Kubernetes
       logo:
@@ -185,6 +189,10 @@ catalogs:
   - id: github
     mount: /catalogs/github
     title: GitHub REST API
+    localDocs:
+      public: true
+      anonymous: true
+      publicationKey: github
     branding:
       displayName: GitHub
       logo:
@@ -211,6 +219,10 @@ catalogs:
   - id: stripe
     mount: /catalogs/stripe
     title: Stripe API
+    localDocs:
+      public: true
+      anonymous: true
+      publicationKey: stripe
     readme: >-
       A pinned official Stripe OpenAPI release from 2020-08-27, retained as a
       stable public demo catalog.

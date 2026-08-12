@@ -60,8 +60,15 @@ type RendererCatalogConfig struct {
 	CompatibilityAllowlist string                       `yaml:"compatibilityAllowlist"`
 	Source                 RendererSourceConfig         `yaml:"source"`
 	SEO                    RendererSEOConfig            `yaml:"seo"`
+	LocalDocs              RendererCatalogLocalDocs     `yaml:"localDocs"`
 
 	compatibilityAllowlist []byte
+}
+
+type RendererCatalogLocalDocs struct {
+	Public         bool   `yaml:"public"`
+	Anonymous      bool   `yaml:"anonymous"`
+	PublicationKey string `yaml:"publicationKey"`
 }
 
 type RendererCatalogLicenseConfig struct {
@@ -179,6 +186,9 @@ func (file RendererFile) RuntimeConfig() renderer.Config {
 			SEO: renderer.CatalogSEO{
 				Description: catalog.SEO.Description, CanonicalBase: catalog.SEO.CanonicalBase,
 				SocialImage: catalog.SEO.SocialImage, SocialImageAlt: catalog.SEO.SocialImageAlt,
+			},
+			LocalDocs: renderer.CatalogLocalDocs{
+				Public: catalog.LocalDocs.Public, Anonymous: catalog.LocalDocs.Anonymous, PublicationKey: catalog.LocalDocs.PublicationKey,
 			},
 		}
 	}

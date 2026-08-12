@@ -264,12 +264,19 @@ func (server *server) ensureRuntime(ctx context.Context) error {
 	server.runtime = runtime
 	server.coordinator = coordinator
 	presentation := make(map[string]web.CatalogPresentation, len(server.config.Catalogs))
+	enhancement := web.CatalogEnhancementPolicy{Disabled: server.config.LocalDocsDisabled, Publications: make(map[string]web.CatalogPublicEligibility, len(server.config.Catalogs))}
 	for _, configured := range server.config.Catalogs {
 		presentation[configured.Mount] = web.CatalogPresentation{
 			Description: configured.SEO.Description, Readme: configured.Readme,
 			License:       web.CatalogLicensePresentation{Name: configured.License.Name, URL: configured.License.URL},
 			CanonicalBase: configured.SEO.CanonicalBase,
 			SocialImage:   configured.SEO.SocialImage, SocialImageMIMEType: socialImageMIMEType(configured.SEO.SocialImage), SocialImageAlt: configured.SEO.SocialImageAlt,
+		}
+		if configured.LocalDocs.Public || configured.LocalDocs.Anonymous || configured.LocalDocs.PublicationKey != "" {
+			enhancement.Publications[configured.Mount] = web.CatalogPublicEligibility{
+				CatalogID: configured.ID, PublicationKey: configured.LocalDocs.PublicationKey,
+				Public: configured.LocalDocs.Public, Anonymous: configured.LocalDocs.Anonymous,
+			}
 		}
 	}
 	organization := web.OrganizationPresentation{
@@ -290,7 +297,7 @@ func (server *server) ensureRuntime(ctx context.Context) error {
 			Name: source.Name, Kind: source.Kind, Location: source.Location, URL: source.URL,
 		}
 	}
-	server.handler.install(runtime, web.NewCatalogHandlerWithOrganization(runtime, coordinator.Store(), presentation, organization))
+	server.handler.install(runtime, web.NewCatalogHandlerWithOrganizationAndEnhancement(runtime, coordinator.Store(), presentation, organization, enhancement))
 	return nil
 }
 

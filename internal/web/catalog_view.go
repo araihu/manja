@@ -58,7 +58,8 @@ func (handler *CatalogHandler) catalogPageDataWithSidebarQuery(
 	data := templates.CatalogPageData{
 		Mount: mount, SnapshotID: snapshot.ID,
 		RevisionID: snapshot.Manifest.Identity.RevisionID, CommitSHA: snapshot.Manifest.Identity.CommitSHA,
-		Directory: snapshot.Directory,
+		Directory:             snapshot.Directory,
+		EnhancementDescriptor: handler.catalogEnhancementDescriptor(snapshot, mount),
 		// A one-document mount is the renderer's standalone-spec shape. Its
 		// sidebar should return to the organization landing page, not imply a
 		// catalog overview that does not exist.

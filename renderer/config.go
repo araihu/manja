@@ -24,6 +24,7 @@ type Config struct {
 	Version             uint32
 	DataDir             string
 	StartupProcessBytes uint64
+	LocalDocsDisabled   bool
 	Organization        OrganizationConfig
 	Catalogs            []CatalogConfig
 }
@@ -61,6 +62,13 @@ type CatalogConfig struct {
 	ProfileID              domain.CompatibilityProfileID
 	CompatibilityAllowlist []byte
 	SEO                    CatalogSEO
+	LocalDocs              CatalogLocalDocs
+}
+
+type CatalogLocalDocs struct {
+	Public         bool
+	Anonymous      bool
+	PublicationKey string
 }
 
 type CatalogLicense struct {
@@ -134,6 +142,15 @@ func validateConfig(config Config) error {
 		}
 		if err := validateSEO(fmt.Sprintf("catalog %q", catalog.ID), catalog.SEO); err != nil {
 			return err
+		}
+		configuredLocalDocs := catalog.LocalDocs.Public || catalog.LocalDocs.Anonymous || catalog.LocalDocs.PublicationKey != ""
+		if configuredLocalDocs {
+			if !catalog.LocalDocs.Public || !catalog.LocalDocs.Anonymous {
+				return fmt.Errorf("catalog %q local docs requires public and anonymous authority", catalog.ID)
+			}
+			if err := domain.ValidateCanonicalIdentity(fmt.Sprintf("catalog %q local docs publication key", catalog.ID), catalog.LocalDocs.PublicationKey, false); err != nil {
+				return err
+			}
 		}
 	}
 	for left := range config.Catalogs {

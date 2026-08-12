@@ -14,13 +14,14 @@ import (
 )
 
 type runtimeConfig struct {
-	Addr           string
-	RendererConfig string
-	DataDir        string
+	Addr              string
+	RendererConfig    string
+	DataDir           string
+	LocalDocsDisabled bool
 }
 
 var serveRecovered = func(ctx context.Context, cfg runtimeConfig) error {
-	handler, receipts, err := app.NewRecoveredRenderer(ctx, app.RendererOptions{ConfigPath: cfg.RendererConfig, DataDir: cfg.DataDir})
+	handler, receipts, err := app.NewRecoveredRenderer(ctx, app.RendererOptions{ConfigPath: cfg.RendererConfig, DataDir: cfg.DataDir, LocalDocsDisabled: cfg.LocalDocsDisabled})
 	if err != nil {
 		return err
 	}
@@ -61,5 +62,24 @@ func configFromArgs(args []string) (runtimeConfig, error) {
 	if strings.TrimSpace(*rendererConfig) == "" || strings.TrimSpace(*dataDir) == "" {
 		return runtimeConfig{}, fmt.Errorf("--renderer-config and --data-dir are required")
 	}
-	return runtimeConfig{Addr: *addr, RendererConfig: *rendererConfig, DataDir: *dataDir}, nil
+	disabled, err := localDocsDisabledFromEnvironment()
+	if err != nil {
+		return runtimeConfig{}, err
+	}
+	return runtimeConfig{Addr: *addr, RendererConfig: *rendererConfig, DataDir: *dataDir, LocalDocsDisabled: disabled}, nil
+}
+
+func localDocsDisabledFromEnvironment() (bool, error) {
+	value, exists := os.LookupEnv("MANJA_LOCAL_DOCS")
+	if !exists {
+		return false, nil
+	}
+	switch value {
+	case "on":
+		return false, nil
+	case "off":
+		return true, nil
+	default:
+		return false, fmt.Errorf("MANJA_LOCAL_DOCS must be on or off")
+	}
 }

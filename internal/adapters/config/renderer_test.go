@@ -438,6 +438,10 @@ func TestCommittedKubernetesRendererConfigUsesAuthorityDocumentKeys(t *testing.T
 		if !exists || loaded.Catalogs[index].Mount != mount {
 			t.Fatalf("catalog %q mount = %#v, want %q", id, loaded.Catalogs[index], mount)
 		}
+		localDocs := loaded.RuntimeConfig().Catalogs[index].LocalDocs
+		if !localDocs.Public || !localDocs.Anonymous || localDocs.PublicationKey != id {
+			t.Fatalf("catalog %q local docs authority = %#v", id, localDocs)
+		}
 	}
 	kubernetesIndex := catalogIndex["kubernetes"]
 	kubernetes := loaded.Catalogs[kubernetesIndex]

@@ -27,6 +27,7 @@ type CatalogHandler struct {
 	search       *catalog.ByteCache
 	presentation map[string]CatalogPresentation
 	organization OrganizationPresentation
+	enhancement  CatalogEnhancementPolicy
 }
 
 type CatalogPresentation struct {
@@ -98,12 +99,21 @@ func NewCatalogHandlerWithPresentation(runtime *catalog.Runtime, children catalo
 }
 
 func NewCatalogHandlerWithOrganization(runtime *catalog.Runtime, children catalogChildReader, presentation map[string]CatalogPresentation, organization OrganizationPresentation) http.Handler {
+	return NewCatalogHandlerWithOrganizationAndEnhancement(runtime, children, presentation, organization, CatalogEnhancementPolicy{})
+}
+
+func NewCatalogHandlerWithOrganizationAndEnhancement(runtime *catalog.Runtime, children catalogChildReader, presentation map[string]CatalogPresentation, organization OrganizationPresentation, enhancement CatalogEnhancementPolicy) http.Handler {
 	copyPresentation := make(map[string]CatalogPresentation, len(presentation))
 	for mount, value := range presentation {
 		copyPresentation[mount] = value
 	}
+	copyPublications := make(map[string]CatalogPublicEligibility, len(enhancement.Publications))
+	for mount, value := range enhancement.Publications {
+		copyPublications[mount] = value
+	}
+	enhancement.Publications = copyPublications
 	organization.Sources = append([]OrganizationSourcePresentation(nil), organization.Sources...)
-	return &CatalogHandler{runtime: runtime, children: children, details: catalog.NewDetailCache(), search: catalog.NewSearchCache(), presentation: copyPresentation, organization: organization}
+	return &CatalogHandler{runtime: runtime, children: children, details: catalog.NewDetailCache(), search: catalog.NewSearchCache(), presentation: copyPresentation, organization: organization, enhancement: enhancement}
 }
 
 // CatalogFlightReservationBytes reports the maximum encoded-plus-decoded

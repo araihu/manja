@@ -11,8 +11,9 @@ import (
 )
 
 type RendererOptions struct {
-	ConfigPath string
-	DataDir    string
+	ConfigPath        string
+	DataDir           string
+	LocalDocsDisabled bool
 }
 
 // NewRecoveredRenderer opens only durable renderer state. It never constructs
@@ -50,6 +51,7 @@ func rendererConfiguration(options RendererOptions) (configadapter.RendererFile,
 		return configadapter.RendererFile{}, renderer.Config{}, err
 	}
 	runtimeConfig := configured.RuntimeConfig()
+	runtimeConfig.LocalDocsDisabled = options.LocalDocsDisabled
 	if strings.TrimSpace(options.DataDir) != "" {
 		runtimeConfig.DataDir = options.DataDir
 	}

@@ -65,6 +65,10 @@ func TestNewRejectsInvalidCatalogConfiguration(t *testing.T) {
 		{name: "social image query", config: Config{Version: 1, Catalogs: []CatalogConfig{{ID: "payments", Mount: "/", Title: "Payments", ProfileID: domain.CompatibilityProfileStrict, SEO: CatalogSEO{SocialImage: "https://docs.example.test/social.png?v=1", SocialImageAlt: "Preview"}}}}},
 		{name: "unsupported social image type", config: Config{Version: 1, Catalogs: []CatalogConfig{{ID: "payments", Mount: "/", Title: "Payments", ProfileID: domain.CompatibilityProfileStrict, SEO: CatalogSEO{SocialImage: "https://docs.example.test/social.svg", SocialImageAlt: "Preview"}}}}},
 		{name: "catalog license URL without name", config: Config{Version: 1, Catalogs: []CatalogConfig{{ID: "payments", Mount: "/", Title: "Payments", ProfileID: domain.CompatibilityProfileStrict, License: CatalogLicense{URL: "https://example.test/license"}}}}},
+		{name: "local docs public only", config: Config{Version: 1, Catalogs: []CatalogConfig{{ID: "payments", Mount: "/", Title: "Payments", ProfileID: domain.CompatibilityProfileStrict, LocalDocs: CatalogLocalDocs{Public: true, PublicationKey: "payments"}}}}},
+		{name: "local docs anonymous only", config: Config{Version: 1, Catalogs: []CatalogConfig{{ID: "payments", Mount: "/", Title: "Payments", ProfileID: domain.CompatibilityProfileStrict, LocalDocs: CatalogLocalDocs{Anonymous: true, PublicationKey: "payments"}}}}},
+		{name: "local docs key only", config: Config{Version: 1, Catalogs: []CatalogConfig{{ID: "payments", Mount: "/", Title: "Payments", ProfileID: domain.CompatibilityProfileStrict, LocalDocs: CatalogLocalDocs{PublicationKey: "payments"}}}}},
+		{name: "local docs missing key", config: Config{Version: 1, Catalogs: []CatalogConfig{{ID: "payments", Mount: "/", Title: "Payments", ProfileID: domain.CompatibilityProfileStrict, LocalDocs: CatalogLocalDocs{Public: true, Anonymous: true}}}}},
 		{name: "organization source kind", config: Config{Version: 1, Organization: OrganizationConfig{Sources: []OrganizationSource{{Name: "API", Kind: "network", Location: "example"}}}, Catalogs: []CatalogConfig{validCatalogConfig("payments", "/")}}},
 		{name: "organization source URL", config: Config{Version: 1, Organization: OrganizationConfig{Sources: []OrganizationSource{{Name: "API", Kind: OrganizationSourceKindGit, Location: "example", URL: "http://example.test/repo"}}}, Catalogs: []CatalogConfig{validCatalogConfig("payments", "/")}}},
 		{name: "organization license URL without name", config: Config{Version: 1, Organization: OrganizationConfig{License: OrganizationLicense{URL: "https://example.test/license"}}, Catalogs: []CatalogConfig{validCatalogConfig("payments", "/")}}},
@@ -76,6 +80,15 @@ func TestNewRejectsInvalidCatalogConfiguration(t *testing.T) {
 				t.Fatal("invalid renderer configuration was accepted")
 			}
 		})
+	}
+}
+
+func TestNewAcceptsExplicitPublicAnonymousLocalDocsAuthority(t *testing.T) {
+	t.Parallel()
+	catalog := validCatalogConfig("payments", "/")
+	catalog.LocalDocs = CatalogLocalDocs{Public: true, Anonymous: true, PublicationKey: "public-payments"}
+	if _, err := New(Config{Version: 1, Catalogs: []CatalogConfig{catalog}}); err != nil {
+		t.Fatalf("New: %v", err)
 	}
 }
 
