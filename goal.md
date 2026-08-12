@@ -51,15 +51,15 @@ not implement hosted product behavior speculatively.
 - Task: `019fef17-2fad-73d2-b004-d3706d36ea82`
 - Worktree label: dedicated Open Core developer worktree
 - Initial lane base: `39d65ade21c080ee2102f53da5ed741f000d6dd7`
-- OC-04E accepted base and direct parent:
-  `fa248fdc5adb45e72953f5d9ac9db9f318b70ff0`
+- OC-04F accepted base and direct parent:
+  `acb83447b847eacc2ba12207d2a93d092cb1be75`
 - Current checkpoint base tree:
-  `4187a705f13a34de834852f8ff82a13d205c093d`
+  `9407fd41174dc14eb29a81fc2b657684767b1704`
 - Fresh-main merge-base:
   `43f96dfbf9d18eee2364f14778e6b94312c8abac`, tree
   `959f199e145c316b4b76e40a561413c0e6d57134`
-- Branch: `codex/oc04e-schema-node-fragment`
-- Worktree label: OC-04E schema-node fragment worktree
+- Branch: `codex/oc04f-operation-header-fragment`
+- Worktree label: OC-04F operation-header fragment worktree
 - Owns only bounded Open Core implementation checkpoints assigned here.
 - Must commit each coherent checkpoint with a meaningful message.
 - Must not implement deferred SaaS behavior or edit the active Arai Hû theme
@@ -317,6 +317,41 @@ not implement hosted product behavior speculatively.
   gates, vet, strict Muamba, stable templ generation, and diff check. Full root
   tests passed with self-hosted 193.387s and E2E 189.120s. The moving final
   goal-child identity remains external for fresh review.
+- OC-04E goal child `acb83447b847eacc2ba12207d2a93d092cb1be75`,
+  tree `9407fd41174dc14eb29a81fc2b657684767b1704`, received independent
+  `ACCEPT` and is the immutable direct parent for OC-04F.
+- OC-04F implementation commit
+  `1bcbce91c4069f359e29536a357858c26e3e5720`, tree
+  `99ef2ceb0e2f265d9c02e4200b549e9779ec494d`, adds a parser-free prepared
+  operation-header HTML fragment under `internal/localdocs/render`. It binds
+  the immutable operation detail ID, anchor, heading, compiler-produced href,
+  method, path, summary, description, and deprecation state to the prepared
+  operation. Inputs are copied; templ escapes projection text; a 2 MiB bound
+  prevents partial oversized output. The package performs no parser, network,
+  filesystem, HTTP, or template-raw work and compiles for `js/wasm`.
+- OC-04F delegation commit `d75fa9a98799acfdcc8aec90db6026cd73e4efd5`,
+  tree `601554d4bcfc3a8d2f78768af1c977f199a177c2`, removes the duplicate
+  catalog operation-header renderer. Existing SSR delegates to the same pure
+  component with current Copy Page and provenance components supplied as
+  explicit slots. The endpoint body, request composer, response/schema trees,
+  operation navigation, canonical metadata, and no-JS routes remain on their
+  existing server path.
+- Immutable-base reconciliation proved the accepted compiler emits
+  `documents/<key>/?selected=<detail>#<detail>` and partitioning copies that
+  exact href into operation details. Two accepted web fixtures still used the
+  older `?selected=<detail>` shape; only those fixture identities were aligned.
+  Production href semantics were not widened. Lowercase HTTP methods remain
+  accepted and rendered uppercase, matching the existing compiler and badge
+  contract.
+- OC-04F RED receipts captured the absent preparation API, inconsistent
+  identities/prepared fields, invalid document and endpoint paths, and retained
+  duplicate renderer. A pre-delegation test proved the prepared header matched
+  untouched SSR bytes; the durable test proves the same exact SSR/component
+  bytes after delegation. GREEN receipts include focused fragment/web/template
+  and architecture tests, localdocs/web/template race, vet, strict Muamba,
+  `js/wasm` build, stable templ generation, and diff check. Full root tests
+  passed with self-hosted 194.240s and E2E 187.018s. The moving final goal-child
+  identity remains external for fresh review.
 - At `2026-08-12T03:34:23Z`, the confirmed public preview URL
   `https://manja.araihu.com/manja-assets/manja-social.png` returned HTTP 200,
   `image/png`, 21,500 bytes, 1280x640, and SHA-256
@@ -750,10 +785,12 @@ a Wasm-compatible admission prerequisite. OC-04D verifies and strictly decodes
 admitted detail/schema-node bytes into exact selected projection records without
 parser, network, filesystem, template, or HTML dependencies. OC-04E prepares and
 renders a bounded schema-node HTML fragment through one templ-escaped component
-shared byte-for-byte with SSR. These checkpoints are groundwork, not proof of a
-full operation/main Wasm HTML renderer, browser activation, Service Worker,
-offline storage, rollback, tombstones, parity beyond the schema-node fragment,
-or performance acceptance.
+shared byte-for-byte with SSR. OC-04F prepares and renders the operation identity
+header through one bounded templ-escaped component shared byte-for-byte with
+SSR. These checkpoints are groundwork, not proof of a full operation body/main
+Wasm HTML renderer, browser activation, Service Worker, offline storage,
+rollback, tombstones, parity beyond the two bounded fragments, or performance
+acceptance.
 
 ## PR Gate
 
@@ -791,17 +828,18 @@ Before merge:
 
 ## Next Action
 
-Submit the frozen OC-04E identity, clean status, preparation/escaping/reference
-RED/GREEN receipts, exact SSR-fragment parity, preserved OC-04A/B/C/D behavior,
-Wasm boundary, race, and root-suite receipts for fresh independent technical
-and design review. PM chooses and separately authorizes any integration path.
+Submit the frozen OC-04F identity, clean status, operation identity/href/path
+RED/GREEN receipts, exact pre/post-delegation SSR-header parity, preserved
+OC-04A/B/C/D/E behavior, Wasm boundary, race, and root-suite receipts for fresh
+independent technical and design review. PM chooses and separately authorizes
+any integration path.
 Any push, PR, or head movement restarts exact-head CI, CodeQL, independent
 review, and substantive CodeRabbit gates; absence or failure blocks integration.
 Overall provenance remains `BLOCKED`; legal authority and final-artifact
 notices stay separate, and licensing/package-generation Task 8 remains stopped.
 Hosted SaaS stays deferred, active-theme work stays excluded, and OC-04 hybrid
-SSR/Wasm/offline remains Open Core; operation/main rendering, browser ABI and
-activation, Service Worker, offline storage, rollback, tombstones, kill-switch
-lifecycle, and UI work stay separate from this schema-node fragment checkpoint.
-No push, merge, release,
+SSR/Wasm/offline remains Open Core; operation body/main rendering, browser ABI
+and activation, Service Worker, offline storage, rollback, tombstones,
+kill-switch lifecycle, and UI work stay separate from this operation-header
+fragment checkpoint. No push, merge, release,
 deployment, cleanup, or other lifecycle action is authorized here.
