@@ -49,6 +49,7 @@ jobs:
           dagger call verify --source=. --trust-domain="$MANJA_TRUST_DOMAIN"
 
   integration:
+    timeout-minutes: 15
     runs-on: >-
       ${{
         github.event_name == 'pull_request' &&

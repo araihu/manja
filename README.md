@@ -32,7 +32,8 @@ dagger call image --source=. --version=dev
 
 `verify` covers generated drift, Muamba, Redocly, oapi-codegen, templ, root
 tests, Playwright, and the standalone `site/` module with `GOWORK=off`.
-`integration` provisions its own isolated Docker service for testcontainers.
+`integration` provisions a pinned Forgejo service with native Dagger service
+bindings. It needs no Docker daemon, privileged service, or host runtime socket.
 Mutable Go, npm, Muamba, and browser caches are partitioned by the runner trust
 boundary. Admitted pull requests run on `hostinger-vps-pr`; protected main,
 tag, publication, deployment, and Assets jobs run on

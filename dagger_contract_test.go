@@ -41,7 +41,7 @@ func TestDaggerModulePreservesPipelineBoundaries(t *testing.T) {
 		`"golang:1.26.5-bookworm@sha256:`,
 		`"node:22-bookworm@sha256:`,
 		`"golang:1.26.5-alpine@sha256:`,
-		`"docker:29.1.3-dind@sha256:`,
+		`"codeberg.org/forgejo/forgejo:11@sha256:`,
 		`dag.cacheVolume(`,
 		`manja-${partition}-go-mod-v1`,
 		`manja-${partition}-go-build-v1`,
@@ -52,7 +52,11 @@ func TestDaggerModulePreservesPipelineBoundaries(t *testing.T) {
 		`runNonce: string`,
 		`Secret`,
 		`File`,
-		`insecureRootCapabilities`,
+		`.withDockerHealthcheck([`,
+		`test -f /tmp/manja-forgejo-ready && curl --fail --silent http://127.0.0.1:3000/api/healthz`,
+		`.withServiceBinding("forgejo", forgejo)`,
+		`.withEnvVariable("MANJA_FORGEJO_HTTP_URL", "http://forgejo:3000")`,
+		`.withEnvVariable("MANJA_FORGEJO_SSH_ENDPOINT", "forgejo:22")`,
 		`.withEnvVariable("GOWORK", "off")`,
 		`"go", "test", "./...", "-count=1"`,
 		`"go", "test", "-tags=integration", "./internal/integration", "-v", "-count=1"`,
@@ -78,6 +82,9 @@ func TestDaggerModulePreservesPipelineBoundaries(t *testing.T) {
 		assertContains(t, cachePolicy, want)
 	}
 	for _, forbidden := range []string{"CodeRabbit", "coderabbit", "dagger/dagger-for-github", "@latest"} {
+		assertNotContains(t, module, forbidden)
+	}
+	for _, forbidden := range []string{"-dind@sha256:", "DOCKER_HOST", "DOCKER_TLS_CERTDIR", "insecureRootCapabilities"} {
 		assertNotContains(t, module, forbidden)
 	}
 }
@@ -142,6 +149,28 @@ func TestPullRequestTrustDomainsMountOnlyIsolatedPersistentCaches(t *testing.T) 
 	assets := readFile(t, ".github/workflows/araihu-assets.yml")
 	assertContains(t, assets, "hostinger-vps-trusted")
 	assertNotContains(t, assets, `"hostinger-vps"]`)
+}
+
+func TestIntegrationUsesNativeServiceAndFailsWithinBoundedTime(t *testing.T) {
+	module := daggerFunction(t, readFile(t, ".dagger/src/index.ts"), "integration")
+	for _, want := range []string{
+		`.asService({ useEntrypoint: true })`,
+		`"go", "test", "-tags=integration", "./internal/integration", "-v", "-count=1", "-timeout=10m"`,
+	} {
+		assertContains(t, module, want)
+	}
+	for _, forbidden := range []string{"docker", "insecureRootCapabilities"} {
+		assertNotContains(t, module, forbidden)
+	}
+
+	workflow := readFile(t, ".github/workflows/ci.yml")
+	job := workflowJob(t, workflow, "integration")
+	assertContains(t, job, "timeout-minutes: 15")
+}
+
+func TestForgejoAcquisitionRegistersCleanupBeforeErrorCheck(t *testing.T) {
+	source := readFile(t, "internal/integration/forgejo_test.go")
+	assertContains(t, source, "container, err := forgejo.Run(ctx, forgejoImage)\n\ttestcontainers.CleanupContainer(t, container)\n\tif err != nil {")
 }
 
 func TestWorkflowAdaptersUseExactDaggerCLIAndDirectCalls(t *testing.T) {
@@ -263,4 +292,19 @@ func daggerFunction(t *testing.T, module, name string) string {
 		next = len(module) - start - 1
 	}
 	return module[annotation+1 : start+1+next]
+}
+
+func workflowJob(t *testing.T, workflow, name string) string {
+	t.Helper()
+	header := "\n  " + name + ":\n"
+	start := strings.Index(workflow, header)
+	if start < 0 {
+		t.Fatalf("workflow job %s missing", name)
+	}
+	bodyStart := start + len(header)
+	next := regexp.MustCompile(`(?m)^  [A-Za-z0-9_-]+:\n`).FindStringIndex(workflow[bodyStart:])
+	if next == nil {
+		return workflow[start:]
+	}
+	return workflow[start : bodyStart+next[0]]
 }

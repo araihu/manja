@@ -19,31 +19,33 @@ import (
 	"github.com/testcontainers/testcontainers-go/modules/forgejo"
 )
 
+const forgejoImage = "codeberg.org/forgejo/forgejo:11@sha256:946243edbab116d5bb78b73ea68af6f3d69229ba1b1ed958dd82c3481167f3e0"
+
 func TestForgejoContainerStarts(t *testing.T) {
 	ctx := context.Background()
-	c, err := forgejo.Run(ctx, "codeberg.org/forgejo/forgejo:11")
+	fixture := acquireForgejo(t, ctx)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, fixture.baseURL+"/api/healthz", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer c.Terminate(ctx)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("Forgejo health status = %d", resp.StatusCode)
+	}
 }
 
 func TestGitSourceFetchesSpecFromPublicForgejoRepository(t *testing.T) {
 	ctx := context.Background()
-	c, err := forgejo.Run(ctx, "codeberg.org/forgejo/forgejo:11")
-	testcontainers.CleanupContainer(t, c)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	baseURL, err := c.ConnectionString(ctx)
-	if err != nil {
-		t.Fatal(err)
-	}
+	fixture := acquireForgejo(t, ctx)
+	baseURL := fixture.baseURL
 	repoName := "openapi-docs"
-	createForgejoRepo(t, ctx, baseURL, c.AdminUsername(), c.AdminPassword(), repoName, false)
-	repoURL := forgejoRepoURL(baseURL, c.AdminUsername(), repoName)
-	pushSpecToForgejo(t, baseURL, c.AdminUsername(), c.AdminPassword(), repoName, "docs/openapi.yaml")
+	createForgejoRepo(t, ctx, baseURL, fixture.username, fixture.password, repoName, false)
+	repoURL := forgejoRepoURL(baseURL, fixture.username, repoName)
+	pushSpecToForgejo(t, baseURL, fixture.username, fixture.password, repoName, "docs/openapi.yaml")
 
 	src := sourceadapter.Git{Repo: repoURL, Ref: "main", Path: "docs/openapi.yaml"}
 	spec, rev, err := src.Fetch(ctx)
@@ -70,27 +72,19 @@ func TestGitSourceFetchesSpecFromPublicForgejoRepository(t *testing.T) {
 
 func TestGitSourceFetchesSpecFromPrivateForgejoRepositoryWithHTTPSCredentials(t *testing.T) {
 	ctx := context.Background()
-	c, err := forgejo.Run(ctx, "codeberg.org/forgejo/forgejo:11")
-	testcontainers.CleanupContainer(t, c)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	baseURL, err := c.ConnectionString(ctx)
-	if err != nil {
-		t.Fatal(err)
-	}
+	fixture := acquireForgejo(t, ctx)
+	baseURL := fixture.baseURL
 	repoName := "private-openapi-docs"
-	createForgejoRepo(t, ctx, baseURL, c.AdminUsername(), c.AdminPassword(), repoName, true)
-	repoURL := forgejoRepoURL(baseURL, c.AdminUsername(), repoName)
-	pushSpecToForgejo(t, baseURL, c.AdminUsername(), c.AdminPassword(), repoName, "docs/openapi.yaml")
+	createForgejoRepo(t, ctx, baseURL, fixture.username, fixture.password, repoName, true)
+	repoURL := forgejoRepoURL(baseURL, fixture.username, repoName)
+	pushSpecToForgejo(t, baseURL, fixture.username, fixture.password, repoName, "docs/openapi.yaml")
 
 	src := sourceadapter.Git{
 		Repo:     repoURL,
 		Ref:      "main",
 		Path:     "docs/openapi.yaml",
-		Username: c.AdminUsername(),
-		Token:    c.AdminPassword(),
+		Username: fixture.username,
+		Token:    fixture.password,
 	}
 	spec, rev, err := src.Fetch(ctx)
 	if err != nil {
@@ -107,28 +101,16 @@ func TestGitSourceFetchesSpecFromPrivateForgejoRepositoryWithHTTPSCredentials(t 
 
 func TestGitSourceFetchesSpecFromPrivateForgejoRepositoryWithSSHCredentials(t *testing.T) {
 	ctx := context.Background()
-	c, err := forgejo.Run(ctx, "codeberg.org/forgejo/forgejo:11")
-	testcontainers.CleanupContainer(t, c)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	baseURL, err := c.ConnectionString(ctx)
-	if err != nil {
-		t.Fatal(err)
-	}
+	fixture := acquireForgejo(t, ctx)
+	baseURL := fixture.baseURL
 	privateKey, publicKey := generateSSHKeyPair(t)
-	addForgejoSSHKey(t, ctx, baseURL, c.AdminUsername(), c.AdminPassword(), publicKey)
+	addForgejoSSHKey(t, ctx, baseURL, fixture.username, fixture.password, publicKey)
 
 	repoName := "ssh-openapi-docs"
-	createForgejoRepo(t, ctx, baseURL, c.AdminUsername(), c.AdminPassword(), repoName, true)
-	pushSpecToForgejo(t, baseURL, c.AdminUsername(), c.AdminPassword(), repoName, "docs/openapi.yaml")
+	createForgejoRepo(t, ctx, baseURL, fixture.username, fixture.password, repoName, true)
+	pushSpecToForgejo(t, baseURL, fixture.username, fixture.password, repoName, "docs/openapi.yaml")
 
-	sshEndpoint, err := c.SSHConnectionString(ctx)
-	if err != nil {
-		t.Fatal(err)
-	}
-	repoURL := forgejoSSHRepoURL(sshEndpoint, c.AdminUsername(), repoName)
+	repoURL := forgejoSSHRepoURL(fixture.sshEndpoint, fixture.username, repoName)
 	src := sourceadapter.Git{
 		Repo:          repoURL,
 		Ref:           "main",
@@ -145,6 +127,63 @@ func TestGitSourceFetchesSpecFromPrivateForgejoRepositoryWithSSHCredentials(t *t
 	}
 	if rev.SourceID != repoURL || rev.Ref != "main" || rev.CommitSHA == "" || rev.ID == "" {
 		t.Fatalf("revision = %#v", rev)
+	}
+}
+
+type forgejoFixture struct {
+	baseURL     string
+	sshEndpoint string
+	username    string
+	password    string
+}
+
+func acquireForgejo(t *testing.T, ctx context.Context) forgejoFixture {
+	t.Helper()
+	const (
+		httpURLEnv  = "MANJA_FORGEJO_HTTP_URL"
+		sshEnv      = "MANJA_FORGEJO_SSH_ENDPOINT"
+		usernameEnv = "MANJA_FORGEJO_ADMIN_USERNAME"
+		passwordEnv = "MANJA_FORGEJO_ADMIN_PASSWORD"
+	)
+	values := []string{
+		os.Getenv(httpURLEnv),
+		os.Getenv(sshEnv),
+		os.Getenv(usernameEnv),
+		os.Getenv(passwordEnv),
+	}
+	configured := 0
+	for _, value := range values {
+		if value != "" {
+			configured++
+		}
+	}
+	if configured != 0 {
+		if configured != len(values) {
+			t.Fatalf("%s, %s, %s, and %s must be set together", httpURLEnv, sshEnv, usernameEnv, passwordEnv)
+		}
+		return forgejoFixture{
+			baseURL: values[0], sshEndpoint: values[1], username: values[2], password: values[3],
+		}
+	}
+
+	container, err := forgejo.Run(ctx, forgejoImage)
+	testcontainers.CleanupContainer(t, container)
+	if err != nil {
+		t.Fatal(err)
+	}
+	baseURL, err := container.ConnectionString(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sshEndpoint, err := container.SSHConnectionString(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return forgejoFixture{
+		baseURL:     baseURL,
+		sshEndpoint: sshEndpoint,
+		username:    container.AdminUsername(),
+		password:    container.AdminPassword(),
 	}
 }
 

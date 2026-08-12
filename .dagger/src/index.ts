@@ -18,8 +18,8 @@ const NODE_IMAGE =
   "node:22-bookworm@sha256:0557ac14e0d45d02ed563067b82856ca5e7aa3437fa28d98d4350ea9c3d9494a"
 const GO_BUILD_IMAGE =
   "golang:1.26.5-alpine@sha256:0178a641fbb4858c5f1b48e34bdaabe0350a330a1b1149aabd498d0699ff5fb2"
-const DIND_IMAGE =
-  "docker:29.1.3-dind@sha256:173f284a4299164772a90f52b373e73e087583c0963f1334c9995f190ef6f3f5"
+const FORGEJO_IMAGE =
+  "codeberg.org/forgejo/forgejo:11@sha256:946243edbab116d5bb78b73ea68af6f3d69229ba1b1ed958dd82c3481167f3e0"
 const ALPINE_IMAGE =
   "alpine:3.24@sha256:28bd5fe8b56d1bd048e5babf5b10710ebe0bae67db86916198a6eec434943f8b"
 const PLAYWRIGHT_VERSION = "v0.6100.0"
@@ -28,6 +28,44 @@ const OCI_LICENSES = ""
 const OCI_SOURCE = "https://github.com/araihu/manja"
 const OCI_TITLE = "manja"
 const OCI_URL = "https://github.com/araihu/manja"
+const FORGEJO_ADMIN_USERNAME = "forgejo-admin"
+const FORGEJO_ADMIN_PASSWORD = "forgejo-admin"
+const FORGEJO_ENTRYPOINT = `#!/bin/sh
+set -eu
+
+/usr/bin/entrypoint &
+service_pid=$!
+cleanup() {
+  kill "$service_pid" 2>/dev/null || true
+  wait "$service_pid" 2>/dev/null || true
+}
+trap cleanup EXIT INT TERM
+
+attempt=0
+until curl --fail --silent http://127.0.0.1:3000/api/healthz >/dev/null; do
+  if ! kill -0 "$service_pid" 2>/dev/null; then
+    wait "$service_pid"
+    exit $?
+  fi
+  attempt=$((attempt + 1))
+  if [ "$attempt" -ge 60 ]; then
+    echo "Forgejo did not become ready within 60 seconds" >&2
+    exit 1
+  fi
+  sleep 1
+done
+
+su-exec git forgejo admin user create \
+  --username "${FORGEJO_ADMIN_USERNAME}" \
+  --password "${FORGEJO_ADMIN_PASSWORD}" \
+  --email admin@forgejo.local \
+  --admin \
+  --must-change-password=false
+touch /tmp/manja-forgejo-ready
+
+wait "$service_pid"
+trap - EXIT INT TERM
+`
 
 const SOURCE_EXCLUDES = [
   ".cache",
@@ -107,28 +145,40 @@ export class Manja {
       .stdout()
   }
 
-  /** Run container-backed integration tests against an isolated Docker service. */
+  /** Run integration tests against an isolated native Forgejo service. */
   @func()
   async integration(
     @argument({ defaultPath: ".", ignore: SOURCE_EXCLUDES }) source: Directory,
     trustDomain: string,
   ): Promise<string> {
-    const docker = dag.container()
-      .from(DIND_IMAGE)
-      .withEnvVariable("DOCKER_TLS_CERTDIR", "")
-      .withExposedPort(2375)
-      .asService({
-        args: ["--host=tcp://0.0.0.0:2375", "--tls=false"],
-        useEntrypoint: true,
-        insecureRootCapabilities: true,
+    const forgejo = dag.container()
+      .from(FORGEJO_IMAGE)
+      .withEnvVariable("FORGEJO__database__DB_TYPE", "sqlite3")
+      .withEnvVariable("FORGEJO__security__INSTALL_LOCK", "true")
+      .withEnvVariable("FORGEJO__server__ROOT_URL", "http://forgejo:3000/")
+      .withEnvVariable("FORGEJO__server__SSH_DOMAIN", "forgejo")
+      .withEnvVariable("FORGEJO__server__SSH_PORT", "22")
+      .withNewFile("/usr/local/bin/manja-forgejo-entrypoint", FORGEJO_ENTRYPOINT, {
+        permissions: 0o755,
       })
+      .withEntrypoint(["/usr/local/bin/manja-forgejo-entrypoint"])
+      .withoutDefaultArgs()
+      .withExposedPort(3000)
+      .withExposedPort(22)
+      .withDockerHealthcheck([
+        "/bin/sh", "-ec",
+        "test -f /tmp/manja-forgejo-ready && curl --fail --silent http://127.0.0.1:3000/api/healthz >/dev/null",
+      ], { interval: "1s", retries: 15, startPeriod: "60s", timeout: "3s" })
+      .asService({ useEntrypoint: true })
 
     return this.project(source, trustDomain)
-      .withServiceBinding("docker", docker)
-      .withEnvVariable("DOCKER_HOST", "tcp://docker:2375")
-      .withEnvVariable("DOCKER_TLS_CERTDIR", "")
+      .withServiceBinding("forgejo", forgejo)
+      .withEnvVariable("MANJA_FORGEJO_HTTP_URL", "http://forgejo:3000")
+      .withEnvVariable("MANJA_FORGEJO_SSH_ENDPOINT", "forgejo:22")
+      .withEnvVariable("MANJA_FORGEJO_ADMIN_USERNAME", FORGEJO_ADMIN_USERNAME)
+      .withEnvVariable("MANJA_FORGEJO_ADMIN_PASSWORD", FORGEJO_ADMIN_PASSWORD)
       .withExec([
-        "go", "test", "-tags=integration", "./internal/integration", "-v", "-count=1",
+        "go", "test", "-tags=integration", "./internal/integration", "-v", "-count=1", "-timeout=10m",
       ])
       .stdout()
   }
