@@ -24,8 +24,9 @@ var errInvalidOperationExamplesFragment = errors.New("local docs operation examp
 const maximumOperationExampleRecords = 4096
 
 // OperationExamplesFragment holds admitted response examples and operation code
-// samples. It owns copied display bytes only; OpenAPI parsing, request
-// composition, browser activation, and persistence stay outside this fragment.
+// samples. It owns copied identity, labels, display bytes, and prevalidated JSON;
+// rendering never reparses source data. OpenAPI parsing, request composition,
+// browser activation, and persistence stay outside this fragment.
 type OperationExamplesFragment struct {
 	responses   [][]operationResponseExampleData
 	codeSamples []operationCodeSampleData
@@ -33,18 +34,19 @@ type OperationExamplesFragment struct {
 }
 
 type operationResponseExampleData struct {
+	ID              string
 	Status          string
 	ContentType     string
-	SchemaJSON      string
+	Schema          json.RawMessage
 	Example         string
 	ExampleProvided bool
 	visible         bool
 }
 
 type operationCodeSampleData struct {
-	Label    string
-	Language string
-	Code     string
+	DisplayLabel string
+	Language     string
+	Code         string
 }
 
 func PrepareOperationExamples(detail catalog.DetailRecordV1, operation domain.Operation, nodes []projection.SchemaNode) (OperationExamplesFragment, error) {
@@ -61,6 +63,9 @@ func PrepareOperationExamples(detail catalog.DetailRecordV1, operation domain.Op
 	generatedFallback := len(projected.CodeSamples) == 0 && len(operation.Snippets) == 1
 	if !generatedFallback && len(projected.CodeSamples) != len(operation.Snippets) {
 		return OperationExamplesFragment{}, invalidOperationExamplesField("code sample inventory")
+	}
+	if generatedFallback && !operationExamplesFallbackMatchesProjection(*projected, operation) {
+		return OperationExamplesFragment{}, invalidOperationExamplesField("generated code sample inputs")
 	}
 	records := len(projected.CodeSamples)
 	for _, response := range projected.Responses {
@@ -121,15 +126,23 @@ func PrepareOperationExamples(detail catalog.DetailRecordV1, operation domain.Op
 			if err := resolver.validate(media.SchemaRef, preparedMedia.Schema, 0); err != nil {
 				return OperationExamplesFragment{}, err
 			}
-			if node := resolver.nodes[media.SchemaRef]; node.JSON != preparedMedia.Schema.JSON || !utf8.ValidString(node.JSON) {
+			node := resolver.nodes[media.SchemaRef]
+			if node.JSON != preparedMedia.Schema.JSON || !utf8.ValidString(node.JSON) {
 				return OperationExamplesFragment{}, invalidOperationExamplesField("response media schema JSON")
+			}
+			schema := json.RawMessage("null")
+			if strings.TrimSpace(node.JSON) != "" {
+				if !json.Valid([]byte(node.JSON)) {
+					return OperationExamplesFragment{}, invalidOperationExamplesField("response media schema JSON")
+				}
+				schema = append(json.RawMessage(nil), node.JSON...)
 			}
 			if !admitOperationExampleBytes(&preparedBytes, media.ContentType, preparedMedia.Schema.JSON, preparedMedia.Example) {
 				return OperationExamplesFragment{}, invalidOperationExamplesField("response media bytes")
 			}
 			fragment.responses[responseIndex] = append(fragment.responses[responseIndex], operationResponseExampleData{
-				Status: response.Status, ContentType: media.ContentType,
-				SchemaJSON: preparedMedia.Schema.JSON, Example: preparedMedia.Example,
+				ID:     string(detail.ID) + "-response-" + anchorFragment(response.Status) + "-" + anchorFragment(media.ContentType) + "-example",
+				Status: response.Status, ContentType: media.ContentType, Schema: schema, Example: preparedMedia.Example,
 				ExampleProvided: preparedMedia.ExampleProvided,
 				visible:         strings.TrimSpace(preparedMedia.Example) != "",
 			})
@@ -145,7 +158,7 @@ func PrepareOperationExamples(detail catalog.DetailRecordV1, operation domain.Op
 		if prepared.Label != "cURL" || prepared.Language != "shell" || prepared.Code != operationExamplesCurl(operation) || !admitOperationExampleBytes(&preparedBytes, prepared.Label, prepared.Language, prepared.Code) {
 			return OperationExamplesFragment{}, invalidOperationExamplesField("generated code sample")
 		}
-		fragment.codeSamples = append(fragment.codeSamples, operationCodeSampleData{Label: prepared.Label, Language: prepared.Language, Code: prepared.Code})
+		fragment.codeSamples = append(fragment.codeSamples, operationCodeSampleData{DisplayLabel: "Request Sample: " + prepared.Label, Language: prepared.Language, Code: prepared.Code})
 	}
 	for sampleIndex, sample := range projected.CodeSamples {
 		prepared := operation.Snippets[sampleIndex]
@@ -157,9 +170,31 @@ func PrepareOperationExamples(detail catalog.DetailRecordV1, operation domain.Op
 			return OperationExamplesFragment{}, invalidOperationExamplesField("code sample bytes")
 		}
 		codeIDs[sample.ID] = struct{}{}
-		fragment.codeSamples = append(fragment.codeSamples, operationCodeSampleData{Label: prepared.Label, Language: prepared.Language, Code: prepared.Code})
+		fragment.codeSamples = append(fragment.codeSamples, operationCodeSampleData{DisplayLabel: "Request Sample: " + prepared.Label, Language: prepared.Language, Code: prepared.Code})
 	}
 	return fragment, nil
+}
+
+func operationExamplesFallbackMatchesProjection(projected projection.OperationDetail, operation domain.Operation) bool {
+	if projected.Method != operation.Method || projected.Path != operation.Path || projected.HasRequestBody != (operation.RequestBody != nil) {
+		return false
+	}
+	if !projected.HasRequestBody {
+		return true
+	}
+	if len(projected.RequestBody.MediaTypes) != len(operation.RequestBody.MediaTypes) {
+		return false
+	}
+	ids := make(map[string]struct{}, len(projected.RequestBody.MediaTypes))
+	for index, media := range projected.RequestBody.MediaTypes {
+		prepared := operation.RequestBody.MediaTypes[index]
+		_, duplicate := ids[media.ID]
+		if media.Ordinal != uint32(index) || media.ID != media.ContentType || duplicate || media.ContentType != prepared.ContentType || !operationResponseMediaExampleMatches(media.Examples, prepared) {
+			return false
+		}
+		ids[media.ID] = struct{}{}
+	}
+	return true
 }
 
 func operationExamplesCurl(operation domain.Operation) string {
@@ -208,13 +243,13 @@ func (fragment OperationExamplesFragment) HasResponseExample(responseIndex, medi
 	return fragment.valid && responseIndex >= 0 && responseIndex < len(fragment.responses) && mediaIndex >= 0 && mediaIndex < len(fragment.responses[responseIndex]) && fragment.responses[responseIndex][mediaIndex].visible
 }
 
-func OperationResponseExample(fragment OperationExamplesFragment, responseIndex, mediaIndex int, operationID string) templ.Component {
+func OperationResponseExample(fragment OperationExamplesFragment, responseIndex, mediaIndex int) templ.Component {
 	return templ.ComponentFunc(func(ctx context.Context, writer io.Writer) error {
-		if !fragment.HasResponseExample(responseIndex, mediaIndex) || !utf8.ValidString(operationID) {
+		if !fragment.HasResponseExample(responseIndex, mediaIndex) {
 			return errInvalidOperationExamplesFragment
 		}
 		var output boundedBuffer
-		if err := operationResponseExample(fragment.responses[responseIndex][mediaIndex], operationID).Render(ctx, &output); err != nil {
+		if err := operationResponseExample(fragment.responses[responseIndex][mediaIndex]).Render(ctx, &output); err != nil {
 			return err
 		}
 		_, err := writer.Write(output.Bytes())
@@ -222,13 +257,13 @@ func OperationResponseExample(fragment OperationExamplesFragment, responseIndex,
 	})
 }
 
-func OperationCodeSample(fragment OperationExamplesFragment, sampleIndex int, displayLabel string) templ.Component {
+func OperationCodeSample(fragment OperationExamplesFragment, sampleIndex int) templ.Component {
 	return templ.ComponentFunc(func(ctx context.Context, writer io.Writer) error {
-		if !fragment.valid || sampleIndex < 0 || sampleIndex >= len(fragment.codeSamples) || !utf8.ValidString(displayLabel) {
+		if !fragment.valid || sampleIndex < 0 || sampleIndex >= len(fragment.codeSamples) {
 			return errInvalidOperationExamplesFragment
 		}
 		var output boundedBuffer
-		if err := operationCodeSample(fragment.codeSamples[sampleIndex], displayLabel).Render(ctx, &output); err != nil {
+		if err := operationCodeSample(fragment.codeSamples[sampleIndex]).Render(ctx, &output); err != nil {
 			return err
 		}
 		_, err := writer.Write(output.Bytes())
@@ -236,17 +271,17 @@ func OperationCodeSample(fragment OperationExamplesFragment, sampleIndex int, di
 	})
 }
 
-func (fragment OperationExamplesFragment) ResponseExampleBytes(ctx context.Context, responseIndex, mediaIndex int, operationID string) ([]byte, error) {
+func (fragment OperationExamplesFragment) ResponseExampleBytes(ctx context.Context, responseIndex, mediaIndex int) ([]byte, error) {
 	var output bytes.Buffer
-	if err := OperationResponseExample(fragment, responseIndex, mediaIndex, operationID).Render(ctx, &output); err != nil {
+	if err := OperationResponseExample(fragment, responseIndex, mediaIndex).Render(ctx, &output); err != nil {
 		return nil, err
 	}
 	return append([]byte(nil), output.Bytes()...), nil
 }
 
-func (fragment OperationExamplesFragment) CodeSampleBytes(ctx context.Context, sampleIndex int, displayLabel string) ([]byte, error) {
+func (fragment OperationExamplesFragment) CodeSampleBytes(ctx context.Context, sampleIndex int) ([]byte, error) {
 	var output bytes.Buffer
-	if err := OperationCodeSample(fragment, sampleIndex, displayLabel).Render(ctx, &output); err != nil {
+	if err := OperationCodeSample(fragment, sampleIndex).Render(ctx, &output); err != nil {
 		return nil, err
 	}
 	return append([]byte(nil), output.Bytes()...), nil
@@ -259,13 +294,7 @@ func operationResponseExamplePayload(data operationResponseExampleData) map[stri
 	if data.ExampleProvided && strings.TrimSpace(data.Example) != "" {
 		payload["hasExplicitExample"] = true
 	}
-	var schema any
-	if strings.TrimSpace(data.SchemaJSON) != "" {
-		if err := json.Unmarshal([]byte(data.SchemaJSON), &schema); err != nil {
-			schema = nil
-		}
-	}
-	payload["schema"] = schema
+	payload["schema"] = data.Schema
 	return payload
 }
 

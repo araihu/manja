@@ -13,7 +13,7 @@ import (
 	"github.com/araihu/goshtoso/components/codeblock"
 )
 
-func operationResponseExample(data operationResponseExampleData, operationID string) templ.Component {
+func operationResponseExample(data operationResponseExampleData) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
 		if templ_7745c5c3_CtxErr := ctx.Err(); templ_7745c5c3_CtxErr != nil {
@@ -34,7 +34,7 @@ func operationResponseExample(data operationResponseExampleData, operationID str
 			templ_7745c5c3_Var1 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		id := operationID + "-response-" + anchorFragment(data.Status) + "-" + anchorFragment(data.ContentType) + "-example"
+		id := data.ID
 		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<div id=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
@@ -74,7 +74,7 @@ func operationResponseExample(data operationResponseExampleData, operationID str
 	})
 }
 
-func operationCodeSample(data operationCodeSampleData, displayLabel string) templ.Component {
+func operationCodeSample(data operationCodeSampleData) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
 		if templ_7745c5c3_CtxErr := ctx.Err(); templ_7745c5c3_CtxErr != nil {
@@ -96,7 +96,7 @@ func operationCodeSample(data operationCodeSampleData, displayLabel string) temp
 		}
 		ctx = templ.ClearChildren(ctx)
 		templ_7745c5c3_Err = codeblock.CodeBlock(codeblock.Config{
-			Label:     displayLabel,
+			Label:     data.DisplayLabel,
 			Language:  data.Language,
 			Code:      data.Code,
 			MaxHeight: "24rem",

@@ -2,6 +2,7 @@ package render
 
 import (
 	"context"
+	"os"
 	"reflect"
 	"strings"
 	"testing"
@@ -19,7 +20,7 @@ func TestPreparedOperationExamplesRenderCanonicalEscapedResponseAndCodeSamples(t
 	if err != nil {
 		t.Fatal(err)
 	}
-	responseBody, err := fragment.ResponseExampleBytes(context.Background(), 0, 0, operation.Anchor)
+	responseBody, err := fragment.ResponseExampleBytes(context.Background(), 0, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -38,11 +39,11 @@ func TestPreparedOperationExamplesRenderCanonicalEscapedResponseAndCodeSamples(t
 		t.Fatalf("response example emitted unescaped HTML: %s", responseBody)
 	}
 
-	first, err := fragment.CodeSampleBytes(context.Background(), 0, "Request Sample: cURL")
+	first, err := fragment.CodeSampleBytes(context.Background(), 0)
 	if err != nil {
 		t.Fatal(err)
 	}
-	second, err := fragment.CodeSampleBytes(context.Background(), 1, "Request Sample: JavaScript")
+	second, err := fragment.CodeSampleBytes(context.Background(), 1)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -90,6 +91,9 @@ func TestPrepareOperationExamplesFailsClosedOnMutationInventoryOrderSizeAndUTF8(
 		}},
 		{name: "prepared media schema JSON", mutate: func(_ *catalog.DetailRecordV1, operation *domain.Operation) {
 			operation.Responses[0].MediaTypes[0].Schema.JSON = `{"changed":true}`
+		}},
+		{name: "invalid admitted media schema JSON", mutate: func(_ *catalog.DetailRecordV1, operation *domain.Operation) {
+			operation.Responses[0].MediaTypes[0].Schema.JSON = `{"broken":`
 		}},
 		{name: "code sample missing", mutate: func(detail *catalog.DetailRecordV1, _ *domain.Operation) {
 			detail.Operation.CodeSamples = detail.Operation.CodeSamples[:1]
@@ -147,7 +151,7 @@ func TestPreparedOperationExamplesCopyInputsPreserveExplicitEmptyAndRejectInvali
 	if !fragment.HasResponseExample(0, 0) || fragment.HasResponseExample(0, 1) || fragment.HasResponseExample(1, 0) {
 		t.Fatalf("response example visibility drifted")
 	}
-	before, err := fragment.ResponseExampleBytes(context.Background(), 0, 0, operation.Anchor)
+	before, err := fragment.ResponseExampleBytes(context.Background(), 0, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -155,7 +159,7 @@ func TestPreparedOperationExamplesCopyInputsPreserveExplicitEmptyAndRejectInvali
 	operation.Responses[0].MediaTypes[0].Example = "changed"
 	detail.Operation.CodeSamples[0].Code = "changed"
 	operation.Snippets[0].Code = "changed"
-	after, err := fragment.ResponseExampleBytes(context.Background(), 0, 0, operation.Anchor)
+	after, err := fragment.ResponseExampleBytes(context.Background(), 0, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -163,19 +167,133 @@ func TestPreparedOperationExamplesCopyInputsPreserveExplicitEmptyAndRejectInvali
 		t.Fatalf("prepared response example changed after source mutation")
 	}
 	for _, indexes := range [][2]int{{-1, 0}, {0, -1}, {0, 2}, {2, 0}} {
-		body, renderErr := fragment.ResponseExampleBytes(context.Background(), indexes[0], indexes[1], operation.Anchor)
+		body, renderErr := fragment.ResponseExampleBytes(context.Background(), indexes[0], indexes[1])
 		if renderErr == nil || len(body) != 0 {
 			t.Fatalf("ResponseExampleBytes(%d, %d) = (%d bytes, %v), want zero bytes and error", indexes[0], indexes[1], len(body), renderErr)
 		}
 	}
-	body, renderErr := fragment.CodeSampleBytes(context.Background(), 2, "Request Sample")
+	body, renderErr := fragment.CodeSampleBytes(context.Background(), 2)
 	if renderErr == nil || len(body) != 0 {
 		t.Fatalf("CodeSampleBytes(2) = (%d bytes, %v), want zero bytes and error", len(body), renderErr)
 	}
 }
 
+func TestPreparedOperationExamplesOwnRenderIdentityAndLabels(t *testing.T) {
+	t.Parallel()
+
+	detail, operation, nodes := operationExamplesFixture()
+	fragment, err := PrepareOperationExamples(detail, operation, nodes)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	foreignID := "detail-sha256-" + strings.Repeat("f", 64)
+	detail.Operation.ID = foreignID
+	detail.Operation.Anchor = detail.Operation.ID
+	detail.Operation.CodeSamples[0].Label = "Forged"
+	operation.Anchor = detail.Operation.ID
+	operation.Snippets[0].Label = "Forged"
+
+	response, err := fragment.ResponseExampleBytes(context.Background(), 0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantID := string(operationExamplesFixtureDetailID()) + "-response-201-application-json-example"
+	if !strings.Contains(string(response), `id="`+wantID+`"`) || strings.Contains(string(response), foreignID) {
+		t.Fatalf("response example used fresh operation identity: %s", response)
+	}
+
+	sample, err := fragment.CodeSampleBytes(context.Background(), 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(sample), "Request Sample: cURL") || strings.Contains(string(sample), "Forged") {
+		t.Fatalf("code sample used fresh display label: %s", sample)
+	}
+}
+
+func TestPrepareOperationExamplesRejectsGeneratedFallbackOutsideProjection(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name   string
+		mutate func(*catalog.DetailRecordV1, *domain.Operation)
+	}{
+		{name: "method", mutate: func(_ *catalog.DetailRecordV1, operation *domain.Operation) {
+			operation.Method = "DELETE"
+		}},
+		{name: "path", mutate: func(_ *catalog.DetailRecordV1, operation *domain.Operation) {
+			operation.Path = "/forged"
+		}},
+		{name: "request body content type", mutate: func(_ *catalog.DetailRecordV1, operation *domain.Operation) {
+			operation.RequestBody.MediaTypes[0].ContentType = "text/plain"
+		}},
+		{name: "request body example", mutate: func(_ *catalog.DetailRecordV1, operation *domain.Operation) {
+			operation.RequestBody.MediaTypes[0].Example = `{"forged":true}`
+		}},
+	}
+	for _, test := range tests {
+		test := test
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			detail, operation := generatedOperationExamplesFixture()
+			test.mutate(&detail, &operation)
+			operation.Snippets[0].Code = operationExamplesCurl(operation)
+			fragment, err := PrepareOperationExamples(detail, operation, nil)
+			if err == nil || !reflect.DeepEqual(fragment, OperationExamplesFragment{}) {
+				t.Fatalf("PrepareOperationExamples() = (%#v, %v), want zero fragment and error", fragment, err)
+			}
+		})
+	}
+}
+
+func TestPrepareOperationExamplesRejectsInvalidSchemaJSONBeforeRender(t *testing.T) {
+	t.Parallel()
+
+	detail, operation, nodes := operationExamplesFixture()
+	nodes[0].JSON = `{"broken":`
+	operation.Responses[0].MediaTypes[0].Schema.JSON = nodes[0].JSON
+	fragment, err := PrepareOperationExamples(detail, operation, nodes)
+	if err == nil || !reflect.DeepEqual(fragment, OperationExamplesFragment{}) {
+		t.Fatalf("PrepareOperationExamples() = (%#v, %v), want zero fragment and error", fragment, err)
+	}
+}
+
+func TestOperationExamplesRenderPathDoesNotParseJSON(t *testing.T) {
+	t.Parallel()
+
+	source, err := os.ReadFile("response_examples.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	start := strings.Index(string(source), "func OperationResponseExample(")
+	if start < 0 {
+		t.Fatal("OperationResponseExample renderer missing")
+	}
+	if strings.Contains(string(source[start:]), "json.Unmarshal") {
+		t.Fatal("operation examples render path reparses prepared JSON")
+	}
+}
+
+func operationExamplesFixtureDetailID() domain.DetailID {
+	return domain.DetailID("detail-sha256-" + strings.Repeat("a", 64))
+}
+
+func generatedOperationExamplesFixture() (catalog.DetailRecordV1, domain.Operation) {
+	detailID := operationExamplesFixtureDetailID()
+	detail := catalog.DetailRecordV1{ID: detailID, Kind: "operation", Operation: &projection.OperationDetail{
+		ID: string(detailID), Anchor: string(detailID), Method: "POST", Path: "/widgets", HasRequestBody: true,
+		RequestBody: projection.RequestBody{MediaTypes: []projection.MediaType{{Ordinal: 0, ID: "application/json", ContentType: "application/json", Examples: []projection.Example{{Ordinal: 0, ID: "primary", Text: `{"name":"one"}`, Provided: true}}}}},
+	}}
+	operation := domain.Operation{Anchor: string(detailID), Method: "POST", Path: "/widgets", RequestBody: &domain.OperationRequestBody{
+		MediaTypes: []domain.OperationMediaType{{ContentType: "application/json", Example: `{"name":"one"}`, ExampleProvided: true}},
+	}}
+	operation.Snippets = []domain.RequestSnippet{{Label: "cURL", Language: "shell", Code: operationExamplesCurl(operation)}}
+	return detail, operation
+}
+
 func operationExamplesFixture() (catalog.DetailRecordV1, domain.Operation, []projection.SchemaNode) {
-	detailID := domain.DetailID("detail-sha256-" + strings.Repeat("a", 64))
+	detailID := operationExamplesFixtureDetailID()
 	detail := catalog.DetailRecordV1{ID: detailID, Kind: "operation", Operation: &projection.OperationDetail{
 		ID: string(detailID), Anchor: string(detailID), Responses: []projection.Response{
 			{Ordinal: 0, ID: "201", Status: "201", Headers: []projection.ResponseHeader{{Ordinal: 0, ID: operationResponseHeaderID("X-Quota"), Name: "X-Quota", Examples: []projection.Example{{Ordinal: 0, ID: "primary", Text: "17", Provided: true}}}}, MediaTypes: []projection.MediaType{

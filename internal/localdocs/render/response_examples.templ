@@ -5,8 +5,8 @@ import (
 	templpkg "github.com/a-h/templ"
 )
 
-templ operationResponseExample(data operationResponseExampleData, operationID string) {
-	{{ id := operationID + "-response-" + anchorFragment(data.Status) + "-" + anchorFragment(data.ContentType) + "-example" }}
+templ operationResponseExample(data operationResponseExampleData) {
+	{{ id := data.ID }}
 	<div id={ id } data-manja-example>
 		@codeblock.CodeBlock(codeblock.Config{
 			ID: id+"-code",
@@ -20,9 +20,9 @@ templ operationResponseExample(data operationResponseExampleData, operationID st
 	</div>
 }
 
-templ operationCodeSample(data operationCodeSampleData, displayLabel string) {
+templ operationCodeSample(data operationCodeSampleData) {
 	@codeblock.CodeBlock(codeblock.Config{
-		Label: displayLabel,
+		Label: data.DisplayLabel,
 		Language: data.Language,
 		Code: data.Code,
 		MaxHeight: "24rem",

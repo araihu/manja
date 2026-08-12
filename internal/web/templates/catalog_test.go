@@ -1022,6 +1022,47 @@ func TestPreparedOperationCodeSamplesMatchCatalogSSRBytes(t *testing.T) {
 	}
 }
 
+func TestPreparedOperationCodeSamplesWithoutCurlMatchCompleteEndpointSSRBytes(t *testing.T) {
+	t.Parallel()
+
+	detailID := domain.DetailID("detail-sha256-" + strings.Repeat("d", 64))
+	operation := domain.Operation{
+		Anchor: string(detailID), Title: "Create Pod", Method: "POST", Path: "/pods",
+		Parameters: []domain.OperationParameter{{Name: "trace", In: "header"}},
+		Snippets: []domain.RequestSnippet{
+			{Label: "JavaScript", Language: "javascript", Code: "fetch('/pods')"},
+			{Label: "Python", Language: "python", Code: "requests.post('/pods')"},
+		},
+	}
+	detail := catalog.DetailRecordV1{ID: detailID, Kind: "operation", Operation: &projection.OperationDetail{
+		ID: string(detailID), Anchor: string(detailID), Method: "POST", Path: "/pods",
+		CodeSamples: []projection.CodeSample{
+			{Ordinal: 0, ID: codeSampleProjectionID("javascript", "JavaScript"), Label: "JavaScript", Language: "javascript", Code: "fetch('/pods')"},
+			{Ordinal: 1, ID: codeSampleProjectionID("python", "Python"), Label: "Python", Language: "python", Code: "requests.post('/pods')"},
+		},
+	}}
+	fragment, err := localrender.PrepareOperationExamples(detail, operation, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var legacy, delegated bytes.Buffer
+	if err := endpointSection(operation, nil, "", PublicDocsOptions{}, OperationNavigationData{}).Render(context.Background(), &legacy); err != nil {
+		t.Fatal(err)
+	}
+	if err := endpointSection(operation, nil, "", PublicDocsOptions{OperationExamples: &fragment}, OperationNavigationData{}).Render(context.Background(), &delegated); err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(legacy.Bytes(), delegated.Bytes()) {
+		index := firstDifferentByte(legacy.Bytes(), delegated.Bytes())
+		t.Fatalf("delegated non-cURL code samples changed complete SSR endpoint bytes at byte %d:\nlegacy=%q\ndelegated=%q", index, nearbyBytes(legacy.Bytes(), index), nearbyBytes(delegated.Bytes(), index))
+	}
+	for _, want := range []string{"Request Sample: Shell / cURL", "Request Sample: JavaScript", "Request Sample: Python"} {
+		if !strings.Contains(delegated.String(), want) {
+			t.Fatalf("delegated endpoint missing %q", want)
+		}
+	}
+}
+
 func firstDifferentByte(left, right []byte) int {
 	limit := min(len(left), len(right))
 	for index := range limit {

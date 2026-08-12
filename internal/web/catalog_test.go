@@ -785,7 +785,7 @@ func TestCatalogSelectedOperationPreparesResponseMediaSummary(t *testing.T) {
 			if data.OperationExamples == nil {
 				t.Fatal("selected operation did not prepare response examples and code samples")
 			}
-			codeSample, err := data.OperationExamples.CodeSampleBytes(context.Background(), 0, "Request Sample: cURL")
+			codeSample, err := data.OperationExamples.CodeSampleBytes(context.Background(), 0)
 			if err != nil || !strings.Contains(string(codeSample), "curl --request GET /api/v1/pods") {
 				t.Fatalf("prepared catalog code sample = %q, %v", codeSample, err)
 			}
