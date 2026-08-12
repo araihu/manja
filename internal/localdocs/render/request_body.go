@@ -48,20 +48,11 @@ func PrepareOperationRequestBodyMedia(
 	if !utf8.ValidString(projected.Description) || projected.Description != prepared.Description || projected.Required != prepared.Required || len(projected.MediaTypes) != len(prepared.MediaTypes) {
 		return OperationRequestBodyMediaFragment{}, invalidOperationRequestBodyMediaField("request body")
 	}
-	nodeByRef := make(map[projection.SchemaRef]projection.SchemaNode, len(nodes))
-	nodeIDs := make(map[string]struct{}, len(nodes))
-	for _, node := range nodes {
-		ref := projection.SchemaRef(node.Ordinal)
-		_, duplicateRef := nodeByRef[ref]
-		_, duplicateID := nodeIDs[node.ID]
-		if duplicateRef || duplicateID || !validOperationParameterSchemaNode(node) {
-			return OperationRequestBodyMediaFragment{}, invalidOperationRequestBodyMediaField("schema-node inventory")
-		}
-		nodeByRef[ref] = cloneSchemaNode(node)
-		nodeIDs[node.ID] = struct{}{}
+	resolver, err := newOperationRequestBodyMediaSchemaResolver(nodes, len(projected.MediaTypes))
+	if err != nil {
+		return OperationRequestBodyMediaFragment{}, err
 	}
 	fragment := OperationRequestBodyMediaFragment{media: make([]operationRequestBodyMediaData, 0, len(projected.MediaTypes)), valid: true}
-	used := make(map[projection.SchemaRef]struct{}, len(projected.MediaTypes))
 	mediaIDs := make(map[string]struct{}, len(projected.MediaTypes))
 	for index, media := range projected.MediaTypes {
 		_, duplicate := mediaIDs[media.ID]
@@ -72,14 +63,9 @@ func PrepareOperationRequestBodyMedia(
 		if !operationRequestBodyMediaExampleMatches(media.Examples, prepared.MediaTypes[index]) {
 			return OperationRequestBodyMediaFragment{}, invalidOperationRequestBodyMediaField("media example")
 		}
-		node, exists := nodeByRef[media.SchemaRef]
-		if !exists {
-			return OperationRequestBodyMediaFragment{}, invalidOperationRequestBodyMediaField("missing schema node")
-		}
-		used[media.SchemaRef] = struct{}{}
 		schema := prepared.MediaTypes[index].Schema
-		if node.Name != schema.Name || node.Type != schema.Type || node.Format != schema.Format || !slices.Equal(node.Enum, schema.Enum) {
-			return OperationRequestBodyMediaFragment{}, invalidOperationRequestBodyMediaField("schema summary")
+		if err := resolver.validate(media.SchemaRef, schema, 0); err != nil {
+			return OperationRequestBodyMediaFragment{}, err
 		}
 		data := operationRequestBodyMediaData{ContentType: media.ContentType, SchemaLabel: parameterSchemaInline(schema)}
 		if requestBodySchemaIsLinkable(schema) {
@@ -93,10 +79,67 @@ func PrepareOperationRequestBodyMedia(
 		}
 		fragment.media = append(fragment.media, data)
 	}
-	if len(used) != len(nodeByRef) {
+	if len(resolver.used) != len(resolver.nodes) {
 		return OperationRequestBodyMediaFragment{}, invalidOperationRequestBodyMediaField("schema-node inventory")
 	}
 	return fragment, nil
+}
+
+type operationRequestBodyMediaSchemaResolver struct {
+	nodes  map[projection.SchemaRef]projection.SchemaNode
+	used   map[projection.SchemaRef]struct{}
+	active map[projection.SchemaRef]bool
+}
+
+func newOperationRequestBodyMediaSchemaResolver(nodes []projection.SchemaNode, mediaCount int) (*operationRequestBodyMediaSchemaResolver, error) {
+	if mediaCount < 0 || len(nodes) > maximumParameterSchemaNodes+mediaCount {
+		return nil, invalidOperationRequestBodyMediaField("schema-node inventory")
+	}
+	resolver := &operationRequestBodyMediaSchemaResolver{
+		nodes:  make(map[projection.SchemaRef]projection.SchemaNode, len(nodes)),
+		used:   make(map[projection.SchemaRef]struct{}, len(nodes)),
+		active: make(map[projection.SchemaRef]bool),
+	}
+	ids := make(map[string]struct{}, len(nodes))
+	var previous uint32
+	for index, node := range nodes {
+		ref := projection.SchemaRef(node.Ordinal)
+		_, duplicateRef := resolver.nodes[ref]
+		_, duplicateID := ids[node.ID]
+		if (index > 0 && node.Ordinal <= previous) || duplicateRef || duplicateID || !validOperationParameterSchemaNode(node) {
+			return nil, invalidOperationRequestBodyMediaField("schema-node inventory")
+		}
+		resolver.nodes[ref] = cloneSchemaNode(node)
+		ids[node.ID] = struct{}{}
+		previous = node.Ordinal
+	}
+	return resolver, nil
+}
+
+func (resolver *operationRequestBodyMediaSchemaResolver) validate(ref projection.SchemaRef, schema domain.SchemaSummary, depth int) error {
+	node, exists := resolver.nodes[ref]
+	if !exists {
+		return invalidOperationRequestBodyMediaField("missing schema node")
+	}
+	resolver.used[ref] = struct{}{}
+	if node.Name != schema.Name || node.Type != schema.Type || node.Format != schema.Format || !slices.Equal(node.Enum, schema.Enum) {
+		return invalidOperationRequestBodyMediaField("schema summary")
+	}
+	if depth >= maximumParameterSchemaDepth || resolver.active[ref] {
+		if schema.Items != nil {
+			return invalidOperationRequestBodyMediaField("schema summary")
+		}
+		return nil
+	}
+	if (len(node.Items) == 1) != (schema.Items != nil) {
+		return invalidOperationRequestBodyMediaField("schema summary")
+	}
+	if schema.Items == nil {
+		return nil
+	}
+	resolver.active[ref] = true
+	defer delete(resolver.active, ref)
+	return resolver.validate(node.Items[0].SchemaRef, *schema.Items, depth+1)
 }
 
 func operationRequestBodyMediaExampleMatches(examples []projection.Example, media domain.OperationMediaType) bool {

@@ -839,7 +839,7 @@ func TestPreparedOperationParametersMatchCatalogSSRBytes(t *testing.T) {
 func TestPreparedOperationRequestBodyMediaMatchesCatalogSSRBytes(t *testing.T) {
 	t.Parallel()
 
-	for mediaCount := 0; mediaCount <= 2; mediaCount++ {
+	for mediaCount := 0; mediaCount <= 3; mediaCount++ {
 		mediaCount := mediaCount
 		t.Run(fmt.Sprintf("media=%d", mediaCount), func(t *testing.T) {
 			t.Parallel()
@@ -876,6 +876,23 @@ func TestPreparedOperationRequestBodyMediaMatchesCatalogSSRBytes(t *testing.T) {
 					Ordinal: 1, ID: "application/yaml", ContentType: "application/yaml", SchemaRef: 8,
 				})
 				nodes = append(nodes, projection.SchemaNode{Ordinal: 8, ID: "node-status", Name: "Status", Type: "string", Enum: []string{"ready", "pending"}})
+			}
+			if mediaCount >= 3 {
+				operation.RequestBody.MediaTypes = append(operation.RequestBody.MediaTypes, domain.OperationMediaType{
+					ContentType: "application/problem+json", Schema: domain.SchemaSummary{
+						Type: "array", Items: &domain.SchemaSummary{
+							Type: "array", Items: &domain.SchemaSummary{Name: "Status", Type: "string", Format: "uuid", Enum: []string{"ready", "pending"}},
+						},
+					},
+				})
+				detail.Operation.RequestBody.MediaTypes = append(detail.Operation.RequestBody.MediaTypes, projection.MediaType{
+					Ordinal: 2, ID: "application/problem+json", ContentType: "application/problem+json", SchemaRef: 9,
+				})
+				nodes = append(nodes,
+					projection.SchemaNode{Ordinal: 9, ID: "node-array-root", Type: "array", Items: []projection.SchemaNodeItem{{Ordinal: 0, ID: "items", SchemaRef: 10}}},
+					projection.SchemaNode{Ordinal: 10, ID: "node-array-nested", Type: "array", Items: []projection.SchemaNodeItem{{Ordinal: 0, ID: "items", SchemaRef: 11}}},
+					projection.SchemaNode{Ordinal: 11, ID: "node-array-status", Name: "Status", Type: "string", Format: "uuid", Enum: []string{"ready", "pending"}},
+				)
 			}
 			schemaLinks := map[string]string{
 				"Pod":    documentHref + "?selected=" + schemaID + "#" + schemaID,

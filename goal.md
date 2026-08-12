@@ -53,8 +53,9 @@ not implement hosted product behavior speculatively.
 - Initial lane base: `39d65ade21c080ee2102f53da5ed741f000d6dd7`
 - OC-04H accepted direct parent:
   `fb9381f4b04821f322d128da3c7a50ce827af7d6`
-- Current checkpoint base tree:
-  `35fa43dfc56375e8af37b52438614ea4b3d3260e`
+- OC-04H rejected correction parent:
+  `699613e2cb1c171af11743ee5749441d50d288a7`, tree
+  `b87f82a99378b7e8332761101211c3535f1f12a9`
 - Fresh-main merge-base:
   `43f96dfbf9d18eee2364f14778e6b94312c8abac`, tree
   `959f199e145c316b4b76e40a561413c0e6d57134`
@@ -440,6 +441,26 @@ not implement hosted product behavior speculatively.
   tests passed with self-hosted 206.767s and E2E 189.169s. No new Goshtoso
   source-lookup snag occurred; existing public badge/icon APIs were sufficient.
   The moving final goal-child identity remains external for fresh review.
+- Independent technical review rejected exact OC-04H head
+  `699613e2cb1c171af11743ee5749441d50d288a7`, tree
+  `b87f82a99378b7e8332761101211c3535f1f12a9`, for one P1. Preparation bound
+  only root name/type/format/enum while the rendered schema label recursively
+  consumed unbound `Items`; coordinated prepared-item mutations could therefore
+  change accepted HTML. The rejected identity remains unchanged as this
+  correction's immediate parent.
+- The bounded OC-04H correction captures the complete already-read Items chain
+  used by each label, emits its unique schema-node inventory in stable ordinal
+  order, and validates name/type/format/enum at every admitted node. Missing,
+  extra, reordered, duplicate, or over-depth item inventory fails closed before
+  fragment admission. RED reproduced a valid nested chain rejected as unused
+  inventory and four root-only prepared-item mutations accepted with changed
+  output. GREEN covers item type/name/format/enum drift, missing and extra item
+  nodes/edges, reordered nodes, copied inventory, and nested-array byte parity.
+  Focused and full localdocs/web/template packages, affected race and vet,
+  architecture, `js/wasm`, strict Muamba verification and generation, webassets,
+  stable templ generation, and diff check pass. Full root tests pass with
+  self-hosted 167.243s and E2E 189.668s. Moving correction head/tree remains
+  external for fresh identity-bound review.
 - At `2026-08-12T03:34:23Z`, the confirmed public preview URL
   `https://manja.araihu.com/manja-assets/manja-social.png` returned HTTP 200,
   `image/png`, 21,500 bytes, 1280x640, and SHA-256
@@ -877,9 +898,9 @@ shared byte-for-byte with SSR. OC-04F prepares and renders the operation identit
 header through one bounded templ-escaped component shared byte-for-byte with
 SSR. OC-04G prepares and renders the Path, Query, and Header parameter groups
 through one bounded templ-escaped component shared byte-for-byte with SSR.
-OC-04H prepares and renders request-body media badges, shallow schema labels,
-and optional schema links through one bounded templ-escaped component shared
-byte-for-byte with SSR.
+OC-04H prepares and renders request-body media badges, bounded recursive
+Items-chain schema labels, and optional schema links through one templ-escaped
+component shared byte-for-byte with SSR.
 These checkpoints are groundwork, not proof of a complete operation body/main
 Wasm HTML renderer, browser activation, Service Worker, offline storage,
 rollback, tombstones, recursive request-body rendering, response rendering,
@@ -922,9 +943,10 @@ Before merge:
 
 ## Next Action
 
-Submit the frozen OC-04H identity, clean status, the accepted OC-04G parent,
-strict media/root-node/href RED/GREEN receipts, exact zero/one/multiple
-whole-endpoint SSR parity, root/nested real-handler proof, preserved
+Submit the frozen OC-04H correction child, clean status, rejected parent
+`699613e2cb1c171af11743ee5749441d50d288a7`, complete Items-chain mutation
+receipts, exact zero/one/multiple/nested-array whole-endpoint SSR parity,
+root/nested real-handler proof, preserved
 OC-04A/B/C/D/E/F/G behavior, Wasm boundary, race, and root-suite
 receipts for fresh independent technical and design review. PM chooses and
 separately authorizes any integration path.

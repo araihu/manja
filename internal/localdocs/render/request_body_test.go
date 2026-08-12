@@ -135,6 +135,114 @@ func TestPrepareOperationRequestBodyMediaFailsClosedOnInconsistentInputs(t *test
 	}
 }
 
+func TestPrepareOperationRequestBodyMediaRequiresCompleteNestedItemsChain(t *testing.T) {
+	t.Parallel()
+
+	detail, operation, nodes, documentHref, schemaLinks := operationRequestBodyNestedArrayFixture()
+	fragment, err := PrepareOperationRequestBodyMedia(detail, operation, nodes, documentHref, schemaLinks)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, err := fragment.MediaBytes(context.Background(), 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := `array[array[string&lt;uuid&gt;&lt;Status&gt;]]`; !strings.Contains(string(body), want) {
+		t.Fatalf("nested array summary missing %q in %s", want, body)
+	}
+}
+
+func TestPrepareOperationRequestBodyMediaRejectsNestedItemsDrift(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name      string
+		wantField string
+		mutate    func(*domain.Operation, *[]projection.SchemaNode)
+	}{
+		{name: "item type", wantField: "schema summary", mutate: func(operation *domain.Operation, _ *[]projection.SchemaNode) {
+			operation.RequestBody.MediaTypes[0].Schema.Items.Items.Type = "integer"
+		}},
+		{name: "item name", wantField: "schema summary", mutate: func(operation *domain.Operation, _ *[]projection.SchemaNode) {
+			operation.RequestBody.MediaTypes[0].Schema.Items.Items.Name = "Phase"
+		}},
+		{name: "item format", wantField: "schema summary", mutate: func(operation *domain.Operation, _ *[]projection.SchemaNode) {
+			operation.RequestBody.MediaTypes[0].Schema.Items.Items.Format = "date-time"
+		}},
+		{name: "item enum", wantField: "schema summary", mutate: func(operation *domain.Operation, _ *[]projection.SchemaNode) {
+			operation.RequestBody.MediaTypes[0].Schema.Items.Items.Enum = []string{"ready", "failed"}
+		}},
+		{name: "missing item node", wantField: "missing schema node", mutate: func(_ *domain.Operation, nodes *[]projection.SchemaNode) {
+			*nodes = (*nodes)[:2]
+		}},
+		{name: "missing item edge", wantField: "schema summary", mutate: func(_ *domain.Operation, nodes *[]projection.SchemaNode) {
+			(*nodes)[1].Items = nil
+		}},
+		{name: "missing prepared item", wantField: "schema summary", mutate: func(operation *domain.Operation, _ *[]projection.SchemaNode) {
+			operation.RequestBody.MediaTypes[0].Schema.Items.Items = nil
+		}},
+		{name: "extra prepared item", wantField: "schema summary", mutate: func(operation *domain.Operation, nodes *[]projection.SchemaNode) {
+			(*nodes)[2].Items = nil
+			operation.RequestBody.MediaTypes[0].Schema.Items.Items.Items = &domain.SchemaSummary{Type: "boolean"}
+		}},
+		{name: "extra item node", wantField: "schema-node inventory", mutate: func(_ *domain.Operation, nodes *[]projection.SchemaNode) {
+			*nodes = append(*nodes, projection.SchemaNode{Ordinal: 10, ID: "node-unused", Type: "string"})
+		}},
+		{name: "extra item edge", wantField: "schema-node inventory", mutate: func(_ *domain.Operation, nodes *[]projection.SchemaNode) {
+			(*nodes)[1].Items = append((*nodes)[1].Items, projection.SchemaNodeItem{Ordinal: 1, ID: "items-extra", SchemaRef: 10})
+		}},
+		{name: "reordered item nodes", wantField: "schema-node inventory", mutate: func(_ *domain.Operation, nodes *[]projection.SchemaNode) {
+			(*nodes)[1], (*nodes)[2] = (*nodes)[2], (*nodes)[1]
+		}},
+	}
+
+	for _, test := range tests {
+		test := test
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			detail, operation, nodes, documentHref, schemaLinks := operationRequestBodyNestedArrayFixture()
+			test.mutate(&operation, &nodes)
+			fragment, err := PrepareOperationRequestBodyMedia(detail, operation, nodes, documentHref, schemaLinks)
+			if err == nil || !reflect.DeepEqual(fragment, OperationRequestBodyMediaFragment{}) {
+				t.Fatalf("PrepareOperationRequestBodyMedia() = (%#v, %v), want zero fragment and error", fragment, err)
+			}
+			if !strings.Contains(err.Error(), test.wantField) {
+				t.Fatalf("PrepareOperationRequestBodyMedia() error = %q, want field %q", err, test.wantField)
+			}
+		})
+	}
+}
+
+func TestPrepareOperationRequestBodyMediaRejectsUnboundPreparedItems(t *testing.T) {
+	t.Parallel()
+
+	for _, field := range []string{"type", "name", "format", "enum"} {
+		field := field
+		t.Run(field, func(t *testing.T) {
+			t.Parallel()
+			detail, operation, nodes, documentHref, schemaLinks := operationRequestBodyNestedArrayFixture()
+			nodes = nodes[:1]
+			switch field {
+			case "type":
+				operation.RequestBody.MediaTypes[0].Schema.Items.Type = "integer"
+			case "name":
+				operation.RequestBody.MediaTypes[0].Schema.Items.Name = "Changed"
+			case "format":
+				operation.RequestBody.MediaTypes[0].Schema.Items.Format = "uuid"
+			case "enum":
+				operation.RequestBody.MediaTypes[0].Schema.Items.Enum = []string{"changed"}
+			}
+			fragment, err := PrepareOperationRequestBodyMedia(detail, operation, nodes, documentHref, schemaLinks)
+			if err == nil || !reflect.DeepEqual(fragment, OperationRequestBodyMediaFragment{}) {
+				t.Fatalf("PrepareOperationRequestBodyMedia() = (%#v, %v), want zero fragment and error", fragment, err)
+			}
+			if !strings.Contains(err.Error(), "missing schema node") {
+				t.Fatalf("PrepareOperationRequestBodyMedia() error = %q, want missing schema node", err)
+			}
+		})
+	}
+}
+
 func TestPreparedOperationRequestBodyMediaCopiesInputsAndPreservesOrder(t *testing.T) {
 	t.Parallel()
 
@@ -234,5 +342,25 @@ func operationRequestBodyMediaFixture() (catalog.DetailRecordV1, domain.Operatio
 	nodes := []projection.SchemaNode{{Ordinal: 7, ID: "node-pod", Name: "Pod", Type: "object"}}
 	documentHref := "/documents/core-v1/"
 	schemaLinks := map[string]string{"Pod": documentHref + "?selected=" + schemaID + "#" + schemaID}
+	return detail, operation, nodes, documentHref, schemaLinks
+}
+
+func operationRequestBodyNestedArrayFixture() (catalog.DetailRecordV1, domain.Operation, []projection.SchemaNode, string, map[string]string) {
+	detail, operation, _, documentHref, schemaLinks := operationRequestBodyMediaFixture()
+	detail.Operation.RequestBody.MediaTypes[0].SchemaRef = 7
+	operation.RequestBody.MediaTypes[0].Schema = domain.SchemaSummary{
+		Type: "array",
+		Items: &domain.SchemaSummary{
+			Type: "array",
+			Items: &domain.SchemaSummary{
+				Name: "Status", Type: "string", Format: "uuid", Enum: []string{"ready", "pending"},
+			},
+		},
+	}
+	nodes := []projection.SchemaNode{
+		{Ordinal: 7, ID: "node-array-root", Type: "array", Items: []projection.SchemaNodeItem{{Ordinal: 0, ID: "items", SchemaRef: 8}}},
+		{Ordinal: 8, ID: "node-array-nested", Type: "array", Items: []projection.SchemaNodeItem{{Ordinal: 0, ID: "items", SchemaRef: 9}}},
+		{Ordinal: 9, ID: "node-status", Name: "Status", Type: "string", Format: "uuid", Enum: []string{"ready", "pending"}},
+	}
 	return detail, operation, nodes, documentHref, schemaLinks
 }

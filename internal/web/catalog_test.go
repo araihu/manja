@@ -752,6 +752,38 @@ func TestCatalogSelectedOperationPreparesRequestBodyMediaSummary(t *testing.T) {
 	}
 }
 
+func TestCatalogOperationSelectsCompleteRequestBodyItemsChain(t *testing.T) {
+	t.Parallel()
+
+	resolver := catalogOperationSchemaResolver{selected: map[projection.SchemaRef]projection.SchemaNode{
+		7: {Ordinal: 7, ID: "node-array-root", Type: "array", Items: []projection.SchemaNodeItem{{Ordinal: 0, ID: "items", SchemaRef: 8}}},
+		8: {Ordinal: 8, ID: "node-array-nested", Type: "array", Items: []projection.SchemaNodeItem{{Ordinal: 0, ID: "items", SchemaRef: 9}}},
+		9: {Ordinal: 9, ID: "node-status", Name: "Status", Type: "string", Format: "uuid", Enum: []string{"ready", "pending"}},
+	}}
+	mediaTypes := []projection.MediaType{{Ordinal: 0, ID: "application/json", ContentType: "application/json", SchemaRef: 7}}
+	prepared := []domain.OperationMediaType{{ContentType: "application/json", Schema: domain.SchemaSummary{
+		Type: "array", Items: &domain.SchemaSummary{
+			Type: "array", Items: &domain.SchemaSummary{Name: "Status", Type: "string", Format: "uuid", Enum: []string{"ready", "pending"}},
+		},
+	}}}
+
+	nodes, err := resolver.selectedMediaLabelNodes(mediaTypes, prepared)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(nodes) != 3 || nodes[0].Ordinal != 7 || nodes[1].Ordinal != 8 || nodes[2].Ordinal != 9 {
+		t.Fatalf("selectedMediaLabelNodes() = %#v, want sorted complete Items chain 7, 8, 9", nodes)
+	}
+	prepared[0].Schema.Items.Items.Type = "integer"
+	if nodes[2].Type != "string" {
+		t.Fatalf("selected nodes alias prepared schema mutation: %#v", nodes[2])
+	}
+	resolver.selected[9] = projection.SchemaNode{}
+	if nodes[2].Type != "string" {
+		t.Fatalf("selected nodes alias resolver mutation: %#v", nodes[2])
+	}
+}
+
 func TestCatalogOperationWithoutRequestBodyKeepsMediaFragmentAbsent(t *testing.T) {
 	t.Parallel()
 

@@ -68,7 +68,7 @@ func (handler *CatalogHandler) catalogOperationView(
 		if err != nil {
 			return nil, nil, nil, err
 		}
-		requestBodyNodes, err = resolver.selectedMediaRootNodes(detail.RequestBody.MediaTypes)
+		requestBodyNodes, err = resolver.selectedMediaLabelNodes(detail.RequestBody.MediaTypes, mediaTypes)
 		if err != nil {
 			return nil, nil, nil, err
 		}
@@ -236,14 +236,15 @@ func (resolver *catalogOperationSchemaResolver) selectedNodes() []projection.Sch
 	return result
 }
 
-func (resolver *catalogOperationSchemaResolver) selectedMediaRootNodes(mediaTypes []projection.MediaType) ([]projection.SchemaNode, error) {
+func (resolver *catalogOperationSchemaResolver) selectedMediaLabelNodes(mediaTypes []projection.MediaType, prepared []domain.OperationMediaType) ([]projection.SchemaNode, error) {
+	if len(mediaTypes) != len(prepared) {
+		return nil, fmt.Errorf("request-body media inventory changed while selecting schema nodes")
+	}
 	selected := make(map[projection.SchemaRef]projection.SchemaNode, len(mediaTypes))
-	for _, media := range mediaTypes {
-		node, exists := resolver.selected[media.SchemaRef]
-		if !exists {
-			return nil, fmt.Errorf("request-body media schema node %d was not selected", media.SchemaRef)
+	for index, media := range mediaTypes {
+		if err := resolver.selectMediaLabelNodes(selected, media.SchemaRef, prepared[index].Schema, 0); err != nil {
+			return nil, err
 		}
-		selected[media.SchemaRef] = cloneProjectionSchemaNode(node)
 	}
 	result := make([]projection.SchemaNode, 0, len(selected))
 	for _, node := range selected {
@@ -251,6 +252,21 @@ func (resolver *catalogOperationSchemaResolver) selectedMediaRootNodes(mediaType
 	}
 	sort.Slice(result, func(left, right int) bool { return result[left].Ordinal < result[right].Ordinal })
 	return result, nil
+}
+
+func (resolver *catalogOperationSchemaResolver) selectMediaLabelNodes(selected map[projection.SchemaRef]projection.SchemaNode, ref projection.SchemaRef, schema domain.SchemaSummary, depth int) error {
+	node, exists := resolver.selected[ref]
+	if !exists {
+		return fmt.Errorf("request-body media schema node %d was not selected", ref)
+	}
+	selected[ref] = cloneProjectionSchemaNode(node)
+	if schema.Items == nil {
+		return nil
+	}
+	if depth >= catalogOperationSchemaDepth || len(node.Items) != 1 {
+		return fmt.Errorf("request-body media schema node %d has inconsistent items", ref)
+	}
+	return resolver.selectMediaLabelNodes(selected, node.Items[0].SchemaRef, *schema.Items, depth+1)
 }
 
 func cloneProjectionSchemaNode(node projection.SchemaNode) projection.SchemaNode {
