@@ -730,6 +730,9 @@ func TestCatalogSelectedOperationPreparesRequestBodyMediaSummary(t *testing.T) {
 			if data.OperationRequestBodyMedia == nil {
 				t.Fatal("selected operation did not prepare request-body media summary")
 			}
+			if data.OperationSchemaTrees == nil {
+				t.Fatal("selected operation did not prepare request/response schema trees")
+			}
 			body, err := data.OperationRequestBodyMedia.MediaBytes(context.Background(), 0)
 			if err != nil {
 				t.Fatal(err)
@@ -746,6 +749,15 @@ func TestCatalogSelectedOperationPreparesRequestBodyMediaSummary(t *testing.T) {
 			} {
 				if !strings.Contains(string(body), want) {
 					t.Errorf("prepared catalog request-body media summary missing %q in %s", want, body)
+				}
+			}
+			schemaTree, err := data.OperationSchemaTrees.RequestBodyBytes(context.Background(), 0)
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, want := range []string{`aria-label="Request body schema for application/json schema tree"`, `data-schema-tree-row="metadata"`} {
+				if !strings.Contains(string(schemaTree), want) {
+					t.Errorf("prepared catalog request schema tree missing %q in %s", want, schemaTree)
 				}
 			}
 			responseDetail, err := data.OperationResponseDetails.ResponseBytes(context.Background(), 0, string(data.Selected.ID)+"-200-application-json-headers")
@@ -785,6 +797,9 @@ func TestCatalogSelectedOperationPreparesResponseMediaSummary(t *testing.T) {
 			if data.OperationExamples == nil {
 				t.Fatal("selected operation did not prepare response examples and code samples")
 			}
+			if data.OperationSchemaTrees == nil {
+				t.Fatal("selected operation did not prepare request/response schema trees")
+			}
 			codeSample, err := data.OperationExamples.CodeSampleBytes(context.Background(), 0)
 			if err != nil || !strings.Contains(string(codeSample), "curl --request GET /api/v1/pods") {
 				t.Fatalf("prepared catalog code sample = %q, %v", codeSample, err)
@@ -805,6 +820,15 @@ func TestCatalogSelectedOperationPreparesResponseMediaSummary(t *testing.T) {
 			} {
 				if !strings.Contains(string(body), want) {
 					t.Errorf("prepared catalog response-media summary missing %q in %s", want, body)
+				}
+			}
+			schemaTree, err := data.OperationSchemaTrees.ResponseBytes(context.Background(), 0, 0)
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, want := range []string{`aria-label="Response body schema tree"`, `data-schema-tree-row="metadata"`} {
+				if !strings.Contains(string(schemaTree), want) {
+					t.Errorf("prepared catalog response schema tree missing %q in %s", want, schemaTree)
 				}
 			}
 		})
@@ -840,6 +864,22 @@ func TestCatalogOperationSelectsCompleteRequestBodyItemsChain(t *testing.T) {
 	resolver.selected[9] = projection.SchemaNode{}
 	if nodes[2].Type != "string" {
 		t.Fatalf("selected nodes alias resolver mutation: %#v", nodes[2])
+	}
+}
+
+func TestCatalogOperationSelectsBoundRecursiveSchemaTreeNode(t *testing.T) {
+	t.Parallel()
+
+	resolver := catalogOperationSchemaResolver{selected: map[projection.SchemaRef]projection.SchemaNode{
+		7: {Ordinal: 7, ID: "node-envelope", Name: "Envelope", Type: "object", Properties: []projection.SchemaNodeProperty{{Ordinal: 0, ID: "property-child", Name: "child", SchemaRef: 7}}},
+	}}
+	schema := domain.SchemaSummary{Name: "Envelope", Type: "object", Properties: []domain.SchemaProperty{{Name: "child", Schema: domain.SchemaSummary{Name: "Envelope", Type: "object"}}}}
+	selected := make(map[projection.SchemaRef]projection.SchemaNode)
+	if err := resolver.selectOperationSchemaTreeNodes(selected, make(map[projection.SchemaRef]bool), 7, schema, 0); err != nil {
+		t.Fatal(err)
+	}
+	if len(selected) != 1 || selected[7].ID != "node-envelope" {
+		t.Fatalf("recursive schema-tree selection = %#v", selected)
 	}
 }
 

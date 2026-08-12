@@ -88,6 +88,7 @@ type PublicDocsOptions struct {
 	OperationResponseMedia    *localrender.OperationResponseMediaFragment
 	OperationResponseDetails  *localrender.OperationResponseDetailsFragment
 	OperationExamples         *localrender.OperationExamplesFragment
+	OperationSchemaTrees      *localrender.OperationSchemaTreesFragment
 	Selection                 *PublicDocsSelection
 	SchemaLinks               map[string]string
 	SchemaLinkTarget          string
@@ -1511,7 +1512,11 @@ templ mediaTypeList(idPrefix string, label string, mediaTypes []core.OperationMe
 							}
 						</div>
 					}
-					@schemaProperties(mediaTypeTableID(idPrefix, media), label+" schema for "+media.ContentType, media.Schema, opts)
+					if opts.OperationSchemaTrees != nil {
+						@localrender.OperationRequestBodySchemaTree(*opts.OperationSchemaTrees, index)
+					} else {
+						@schemaProperties(mediaTypeTableID(idPrefix, media), label+" schema for "+media.ContentType, media.Schema, opts)
+					}
 				</div>
 			}
 		</div>
@@ -1577,7 +1582,11 @@ templ responseMediaTypeBlock(opID string, responseIndex int, response core.Opera
 					@responseDescription(response.Description, opts)
 					@responseHeaders(response.Headers, idPrefix+"-"+anchorFragment(media.ContentType)+"-headers", opts)
 				}
-				@schemaProperties(mediaTypeTableID(idPrefix, media), "Response body", media.Schema, opts)
+				if opts.OperationSchemaTrees != nil {
+					@localrender.OperationResponseSchemaTree(*opts.OperationSchemaTrees, responseIndex, mediaIndex)
+				} else {
+					@schemaProperties(mediaTypeTableID(idPrefix, media), "Response body", media.Schema, opts)
+				}
 			</div>
 			if opts.OperationExamples != nil && opts.OperationExamples.HasResponseExample(responseIndex, mediaIndex) {
 				<aside class="manja-response-panel-example" aria-label={ "Response " + response.Status + " " + media.ContentType + " example" }>

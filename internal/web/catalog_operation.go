@@ -31,7 +31,7 @@ func (handler *CatalogHandler) catalogOperationView(
 	snapshot catalog.RuntimeSnapshot,
 	document catalog.DocumentDirectoryV1,
 	detail projection.OperationDetail,
-) (*domain.Operation, []projection.SchemaNode, []projection.SchemaNode, []projection.SchemaNode, []projection.SchemaNode, error) {
+) (*domain.Operation, []projection.SchemaNode, []projection.SchemaNode, []projection.SchemaNode, []projection.SchemaNode, []projection.SchemaNode, error) {
 	resolver := catalogOperationSchemaResolver{
 		handler: handler, ctx: ctx, snapshot: snapshot, document: document,
 		active: make(map[projection.SchemaRef]bool), selected: make(map[projection.SchemaRef]projection.SchemaNode),
@@ -54,7 +54,7 @@ func (handler *CatalogHandler) catalogOperationView(
 	for _, parameter := range detail.Parameters {
 		schema, err := resolver.schema(parameter.SchemaRef, 0)
 		if err != nil {
-			return nil, nil, nil, nil, nil, err
+			return nil, nil, nil, nil, nil, nil, err
 		}
 		operation.Parameters = append(operation.Parameters, domain.OperationParameter{
 			Name: parameter.Name, In: parameter.In, Required: parameter.Required,
@@ -66,11 +66,11 @@ func (handler *CatalogHandler) catalogOperationView(
 	if detail.HasRequestBody {
 		mediaTypes, err := resolver.mediaTypes(detail.RequestBody.MediaTypes)
 		if err != nil {
-			return nil, nil, nil, nil, nil, err
+			return nil, nil, nil, nil, nil, nil, err
 		}
 		requestBodyNodes, err = resolver.selectedMediaLabelNodes(detail.RequestBody.MediaTypes, mediaTypes)
 		if err != nil {
-			return nil, nil, nil, nil, nil, err
+			return nil, nil, nil, nil, nil, nil, err
 		}
 		operation.RequestBody = &domain.OperationRequestBody{
 			Description: detail.RequestBody.Description,
@@ -86,7 +86,7 @@ func (handler *CatalogHandler) catalogOperationView(
 		for _, header := range response.Headers {
 			schema, err := resolver.schema(header.SchemaRef, 0)
 			if err != nil {
-				return nil, nil, nil, nil, nil, err
+				return nil, nil, nil, nil, nil, nil, err
 			}
 			headers = append(headers, domain.OperationResponseHeader{
 				Name: header.Name, Description: header.Description,
@@ -95,7 +95,7 @@ func (handler *CatalogHandler) catalogOperationView(
 		}
 		mediaTypes, err := resolver.mediaTypes(response.MediaTypes)
 		if err != nil {
-			return nil, nil, nil, nil, nil, err
+			return nil, nil, nil, nil, nil, nil, err
 		}
 		operation.Responses = append(operation.Responses, domain.OperationResponse{
 			Status: response.Status, Description: response.Description, Headers: headers, MediaTypes: mediaTypes,
@@ -105,11 +105,15 @@ func (handler *CatalogHandler) catalogOperationView(
 	}
 	responseMediaNodes, err := resolver.selectedMediaLabelNodes(responseMediaTypes, preparedResponseMediaTypes)
 	if err != nil {
-		return nil, nil, nil, nil, nil, err
+		return nil, nil, nil, nil, nil, nil, err
 	}
 	responseDetailNodes, err := resolver.selectedResponseDetailNodes(detail.Responses, operation.Responses)
 	if err != nil {
-		return nil, nil, nil, nil, nil, err
+		return nil, nil, nil, nil, nil, nil, err
+	}
+	schemaTreeNodes, err := resolver.selectedOperationSchemaTreeNodes(detail, *operation)
+	if err != nil {
+		return nil, nil, nil, nil, nil, nil, err
 	}
 	operation.Security = make([]domain.OperationSecurity, 0, len(detail.Security))
 	for _, security := range detail.Security {
@@ -134,7 +138,7 @@ func (handler *CatalogHandler) catalogOperationView(
 			Label: "cURL", Language: "shell", Code: catalogOperationCurl(*operation),
 		}}
 	}
-	return operation, parameterNodes, requestBodyNodes, responseMediaNodes, responseDetailNodes, nil
+	return operation, parameterNodes, requestBodyNodes, responseMediaNodes, responseDetailNodes, schemaTreeNodes, nil
 }
 
 func (handler *CatalogHandler) catalogSchemaView(
@@ -287,6 +291,68 @@ func (resolver *catalogOperationSchemaResolver) selectedResponseDetailNodes(resp
 	}
 	sort.Slice(result, func(left, right int) bool { return result[left].Ordinal < result[right].Ordinal })
 	return result, nil
+}
+
+func (resolver *catalogOperationSchemaResolver) selectedOperationSchemaTreeNodes(detail projection.OperationDetail, operation domain.Operation) ([]projection.SchemaNode, error) {
+	selected := make(map[projection.SchemaRef]projection.SchemaNode)
+	if detail.HasRequestBody {
+		if operation.RequestBody == nil || len(detail.RequestBody.MediaTypes) != len(operation.RequestBody.MediaTypes) {
+			return nil, fmt.Errorf("request schema-tree inventory changed")
+		}
+		for index, media := range detail.RequestBody.MediaTypes {
+			if err := resolver.selectOperationSchemaTreeNodes(selected, make(map[projection.SchemaRef]bool), media.SchemaRef, operation.RequestBody.MediaTypes[index].Schema, 0); err != nil {
+				return nil, err
+			}
+		}
+	} else if operation.RequestBody != nil {
+		return nil, fmt.Errorf("request schema-tree inventory changed")
+	}
+	if len(detail.Responses) != len(operation.Responses) {
+		return nil, fmt.Errorf("response schema-tree inventory changed")
+	}
+	for responseIndex, response := range detail.Responses {
+		if len(response.MediaTypes) != len(operation.Responses[responseIndex].MediaTypes) {
+			return nil, fmt.Errorf("response schema-tree media inventory changed")
+		}
+		for mediaIndex, media := range response.MediaTypes {
+			if err := resolver.selectOperationSchemaTreeNodes(selected, make(map[projection.SchemaRef]bool), media.SchemaRef, operation.Responses[responseIndex].MediaTypes[mediaIndex].Schema, 0); err != nil {
+				return nil, err
+			}
+		}
+	}
+	result := make([]projection.SchemaNode, 0, len(selected))
+	for _, node := range selected {
+		result = append(result, cloneProjectionSchemaNode(node))
+	}
+	sort.Slice(result, func(left, right int) bool { return result[left].Ordinal < result[right].Ordinal })
+	return result, nil
+}
+
+func (resolver *catalogOperationSchemaResolver) selectOperationSchemaTreeNodes(selected map[projection.SchemaRef]projection.SchemaNode, active map[projection.SchemaRef]bool, ref projection.SchemaRef, schema domain.SchemaSummary, depth int) error {
+	node, exists := resolver.selected[ref]
+	if !exists {
+		return fmt.Errorf("operation schema-tree node %d was not selected", ref)
+	}
+	selected[ref] = cloneProjectionSchemaNode(node)
+	if depth >= catalogOperationSchemaDepth || active[ref] {
+		return nil
+	}
+	if len(node.Properties) != len(schema.Properties) || (len(node.Items) == 1) != (schema.Items != nil) {
+		return fmt.Errorf("operation schema-tree node %d has inconsistent edges", ref)
+	}
+	active[ref] = true
+	defer delete(active, ref)
+	for index, property := range node.Properties {
+		if err := resolver.selectOperationSchemaTreeNodes(selected, active, property.SchemaRef, schema.Properties[index].Schema, depth+1); err != nil {
+			return err
+		}
+	}
+	if schema.Items != nil {
+		if err := resolver.selectOperationSchemaTreeNodes(selected, active, node.Items[0].SchemaRef, *schema.Items, depth+1); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (resolver *catalogOperationSchemaResolver) selectResponseDetailNodes(selected map[projection.SchemaRef]projection.SchemaNode, ref projection.SchemaRef, schema domain.SchemaSummary, depth int) error {

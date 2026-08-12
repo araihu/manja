@@ -991,6 +991,61 @@ func TestPreparedOperationResponseMediaMatchesCatalogSSRBytes(t *testing.T) {
 	}
 }
 
+func TestPreparedOperationSchemaTreesMatchCompleteCatalogSSRBytes(t *testing.T) {
+	t.Parallel()
+
+	detailID := domain.DetailID("detail-sha256-" + strings.Repeat("a", 64))
+	schemaID := "detail-sha256-" + strings.Repeat("b", 64)
+	documentHref := "/kubernetes/documents/core-v1/"
+	phase := domain.SchemaSummary{
+		Name: "Phase", Type: "string", Format: "uuid", Description: "Lifecycle <phase>.", Default: "Ready", Example: "Pending",
+		Enum: []string{"Ready", "Pending"}, Constraints: []domain.SchemaConstraint{{Name: "minLength", Value: "1"}}, JSON: `{"type":"string"}`,
+	}
+	requestSchema := domain.SchemaSummary{
+		Name: "Pod", Type: "object", Description: "Pod request.", JSON: `{"type":"object"}`,
+		Properties: []domain.SchemaProperty{{Name: "phase", Required: true, Description: "Lifecycle <phase>.", Schema: phase}},
+	}
+	responseItem := domain.SchemaSummary{
+		Name: "Envelope", Type: "object", Description: "Response envelope.", Nullable: true, Deprecated: true, JSON: `{"type":"object"}`,
+		Properties: []domain.SchemaProperty{{Name: "phase", Description: "Lifecycle <phase>.", Schema: phase}},
+	}
+	responseSchema := domain.SchemaSummary{Name: "EnvelopeList", Type: "array", JSON: `{"type":"array"}`, Items: &responseItem}
+	operation := domain.Operation{
+		Anchor: string(detailID), Title: "Create Pod", Method: "POST", Path: "/pods",
+		RequestBody: &domain.OperationRequestBody{Description: "Pod to create.", Required: true, MediaTypes: []domain.OperationMediaType{{ContentType: "application/json", Schema: requestSchema}}},
+		Responses:   []domain.OperationResponse{{Status: "201", Description: "Created.", MediaTypes: []domain.OperationMediaType{{ContentType: "application/json", Schema: responseSchema}}}},
+	}
+	detail := catalog.DetailRecordV1{ID: detailID, Kind: "operation", Operation: &projection.OperationDetail{
+		ID: string(detailID), Anchor: string(detailID), HeadingID: string(detailID), Heading: "Create Pod", HeadingLevel: 2, Method: "POST", Path: "/pods", HasRequestBody: true,
+		RequestBody: projection.RequestBody{Description: "Pod to create.", Required: true, MediaTypes: []projection.MediaType{{Ordinal: 0, ID: "application/json", ContentType: "application/json", SchemaRef: 7}}},
+		Responses:   []projection.Response{{Ordinal: 0, ID: "201", Status: "201", Description: "Created.", MediaTypes: []projection.MediaType{{Ordinal: 0, ID: "application/json", ContentType: "application/json", SchemaRef: 9}}}},
+	}}
+	nodes := []projection.SchemaNode{
+		{Ordinal: 7, ID: "node-pod", Name: "Pod", Type: "object", Description: "Pod request.", JSON: `{"type":"object"}`, Properties: []projection.SchemaNodeProperty{{Ordinal: 0, ID: "property-phase", Name: "phase", Required: true, SchemaRef: 8}}},
+		{Ordinal: 8, ID: "node-phase", Name: "Phase", Type: "string", Format: "uuid", Description: "Lifecycle <phase>.", DefaultValue: "Ready", ExampleText: "Pending", Enum: []string{"Ready", "Pending"}, Constraints: []projection.SchemaConstraint{{Name: "minLength", Value: "1"}}, JSON: `{"type":"string"}`},
+		{Ordinal: 9, ID: "node-envelope-list", Name: "EnvelopeList", Type: "array", JSON: `{"type":"array"}`, Items: []projection.SchemaNodeItem{{Ordinal: 0, ID: "items", SchemaRef: 10}}},
+		{Ordinal: 10, ID: "node-envelope", Name: "Envelope", Type: "object", Description: "Response envelope.", Nullable: true, Deprecated: true, JSON: `{"type":"object"}`, Properties: []projection.SchemaNodeProperty{{Ordinal: 0, ID: "property-phase", Name: "phase", SchemaRef: 8}}},
+	}
+	schemaLinks := map[string]string{"Phase": documentHref + "?selected=" + schemaID + "#" + schemaID}
+	fragment, err := localrender.PrepareOperationSchemaTrees(detail, operation, nodes, documentHref, schemaLinks)
+	if err != nil {
+		t.Fatal(err)
+	}
+	baseOptions := PublicDocsOptions{SchemaLinks: schemaLinks, SchemaLinkTarget: "#catalog-main-content", SchemaLinkSelect: "#catalog-main-content", SchemaLinkSwap: "outerHTML show:#main-content:top"}
+	var legacy, delegated bytes.Buffer
+	if err := endpointSection(operation, nil, "", baseOptions, OperationNavigationData{}).Render(context.Background(), &legacy); err != nil {
+		t.Fatal(err)
+	}
+	baseOptions.OperationSchemaTrees = &fragment
+	if err := endpointSection(operation, nil, "", baseOptions, OperationNavigationData{}).Render(context.Background(), &delegated); err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(legacy.Bytes(), delegated.Bytes()) {
+		index := firstDifferentByte(legacy.Bytes(), delegated.Bytes())
+		t.Fatalf("delegated operation schema trees changed complete SSR endpoint bytes at byte %d:\nlegacy=%q\ndelegated=%q", index, nearbyBytes(legacy.Bytes(), index), nearbyBytes(delegated.Bytes(), index))
+	}
+}
+
 func TestPreparedOperationCodeSamplesMatchCatalogSSRBytes(t *testing.T) {
 	t.Parallel()
 

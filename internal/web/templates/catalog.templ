@@ -117,6 +117,7 @@ type CatalogPageData struct {
 	OperationResponseMedia *localrender.OperationResponseMediaFragment
 	OperationResponseDetails *localrender.OperationResponseDetailsFragment
 	OperationExamples *localrender.OperationExamplesFragment
+	OperationSchemaTrees *localrender.OperationSchemaTreesFragment
 	OperationNavigation OperationNavigationData
 	SchemaView *core.Schema
 	OperationServers []core.SpecServer
@@ -942,6 +943,7 @@ templ catalogOperationDetail(data CatalogPageData) {
 				OperationResponseMedia: data.OperationResponseMedia,
 				OperationResponseDetails: data.OperationResponseDetails,
 				OperationExamples: data.OperationExamples,
+				OperationSchemaTrees: data.OperationSchemaTrees,
 				SchemaLinks:      data.SchemaLinks,
 				SchemaLinkTarget: "#catalog-main-content",
 				SchemaLinkSelect: "#catalog-main-content",
