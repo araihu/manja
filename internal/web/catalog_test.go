@@ -748,6 +748,15 @@ func TestCatalogSelectedOperationPreparesRequestBodyMediaSummary(t *testing.T) {
 					t.Errorf("prepared catalog request-body media summary missing %q in %s", want, body)
 				}
 			}
+			responseDetail, err := data.OperationResponseDetails.ResponseBytes(context.Background(), 0, string(data.Selected.ID)+"-200-application-json-headers", data.SchemaLinks)
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, want := range []string{"OK", "X-Request-ID", "Trace identifier.", `data-manja-response-section="headers"`} {
+				if !strings.Contains(string(responseDetail), want) {
+					t.Errorf("prepared catalog response detail missing %q in %s", want, responseDetail)
+				}
+			}
 		})
 	}
 }
@@ -769,6 +778,9 @@ func TestCatalogSelectedOperationPreparesResponseMediaSummary(t *testing.T) {
 			}
 			if data.OperationResponseMedia == nil {
 				t.Fatal("selected operation did not prepare response-media summary")
+			}
+			if data.OperationResponseDetails == nil {
+				t.Fatal("selected operation did not prepare response details")
 			}
 			body, err := data.OperationResponseMedia.MediaBytes(context.Background(), 0, 0)
 			if err != nil {
@@ -1609,9 +1621,13 @@ func catalogHandlerFixtureWithOrganization(t *testing.T, mount string, presentat
 			Parameters:     []projection.Parameter{{ID: catalogParameterProjectionID("query", "watch"), Name: "watch", In: "query", Description: "Watch for changes.", SchemaRef: 2}},
 			HasRequestBody: true,
 			RequestBody:    projection.RequestBody{Required: true, MediaTypes: []projection.MediaType{{ID: "application/json", ContentType: "application/json", SchemaRef: 0, Examples: []projection.Example{{ID: "primary", Text: `{\"kind\":\"Pod\"}`, Provided: true}}}}},
-			Responses:      []projection.Response{{ID: "200", Status: "200", Description: "OK", MediaTypes: []projection.MediaType{{ID: "application/json", ContentType: "application/json", SchemaRef: 0}}}},
-			Security:       []projection.SecurityRequirement{{ID: "BearerToken", Name: "BearerToken"}},
-			CodeSamples:    []projection.CodeSample{{ID: "curl", Label: "cURL", Language: "shell", Code: "curl --request GET /api/v1/pods"}},
+			Responses: []projection.Response{{
+				ID: "200", Status: "200", Description: "OK",
+				Headers:    []projection.ResponseHeader{{Ordinal: 0, ID: catalogResponseHeaderProjectionID("X-Request-ID"), Name: "X-Request-ID", Description: "Trace identifier.", SchemaRef: 2}},
+				MediaTypes: []projection.MediaType{{ID: "application/json", ContentType: "application/json", SchemaRef: 0}},
+			}},
+			Security:    []projection.SecurityRequirement{{ID: "BearerToken", Name: "BearerToken"}},
+			CodeSamples: []projection.CodeSample{{ID: "curl", Label: "cURL", Language: "shell", Code: "curl --request GET /api/v1/pods"}},
 		},
 	}}})
 	if err != nil {
@@ -1670,4 +1686,16 @@ func catalogParameterProjectionID(location, name string) string {
 		hash.Write([]byte(value))
 	}
 	return "parameter-" + hex.EncodeToString(hash.Sum(nil))
+}
+
+func catalogResponseHeaderProjectionID(name string) string {
+	hash := sha256.New()
+	hash.Write([]byte("response-header"))
+	hash.Write([]byte{0})
+	var length [8]byte
+	value := strings.ToLower(name)
+	binary.BigEndian.PutUint64(length[:], uint64(len([]byte(value))))
+	hash.Write(length[:])
+	hash.Write([]byte(value))
+	return "response-header-" + hex.EncodeToString(hash.Sum(nil))
 }

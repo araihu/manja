@@ -86,6 +86,7 @@ type PublicDocsOptions struct {
 	OperationParameters       *localrender.OperationParametersFragment
 	OperationRequestBodyMedia *localrender.OperationRequestBodyMediaFragment
 	OperationResponseMedia    *localrender.OperationResponseMediaFragment
+	OperationResponseDetails  *localrender.OperationResponseDetailsFragment
 	Selection                 *PublicDocsSelection
 	SchemaLinks               map[string]string
 	SchemaLinkTarget          string
@@ -1438,9 +1439,13 @@ templ schemaSection(schema core.Schema, exampleSpecJSON string, opts PublicDocsO
 
 templ responsePanel(opID string, responseIndex int, response core.OperationResponse, exampleSpecJSON string, opts PublicDocsOptions) {
 	<section class="grid gap-4">
-		if len(response.MediaTypes) == 0 {
+	if len(response.MediaTypes) == 0 {
+		if opts.OperationResponseDetails != nil {
+			@localrender.OperationResponseDetails(*opts.OperationResponseDetails, responseIndex, opID+"-"+anchorFragment(response.Status)+"-headers", opts.SchemaLinks)
+		} else {
 			@responseDescription(response.Description, opts)
 			@responseHeaders(response.Headers, opID+"-"+anchorFragment(response.Status)+"-headers", opts)
+		}
 		}
 		@responseMediaTypeList(opID, responseIndex, response, exampleSpecJSON, opts)
 	</section>
@@ -1561,8 +1566,12 @@ templ responseMediaTypeBlock(opID string, responseIndex int, response core.Opera
 						}
 					}
 				</div>
-				@responseDescription(response.Description, opts)
-				@responseHeaders(response.Headers, idPrefix+"-"+anchorFragment(media.ContentType)+"-headers", opts)
+				if opts.OperationResponseDetails != nil {
+					@localrender.OperationResponseDetails(*opts.OperationResponseDetails, responseIndex, idPrefix+"-"+anchorFragment(media.ContentType)+"-headers", opts.SchemaLinks)
+				} else {
+					@responseDescription(response.Description, opts)
+					@responseHeaders(response.Headers, idPrefix+"-"+anchorFragment(media.ContentType)+"-headers", opts)
+				}
 				@schemaProperties(mediaTypeTableID(idPrefix, media), "Response body", media.Schema, opts)
 			</div>
 			if hasResponseExample(media) {

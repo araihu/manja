@@ -928,22 +928,22 @@ func TestPreparedOperationResponseMediaMatchesCatalogSSRBytes(t *testing.T) {
 	documentHref := "/kubernetes/documents/core-v1/"
 	schemaID := "detail-sha256-" + strings.Repeat("e", 64)
 	operation := domain.Operation{Anchor: string(detailID), Title: "Create Pod", Method: "POST", Path: "/api/v1/pods", Responses: []domain.OperationResponse{
-		{Status: "200", MediaTypes: []domain.OperationMediaType{
+		{Status: "200", Description: "Created resource.", Headers: []domain.OperationResponseHeader{{Name: "X-Rate-Limit", Description: "Quota remaining.", Schema: domain.SchemaSummary{Type: "array", Items: &domain.SchemaSummary{Type: "array", Items: &domain.SchemaSummary{Type: "string", Format: "uuid"}}}}}, MediaTypes: []domain.OperationMediaType{
 			{ContentType: "application/json", Schema: domain.SchemaSummary{Name: "Pod", Type: "object"}, Example: `{"kind":"Pod"}`, ExampleProvided: true},
 			{ContentType: "application/problem+json", Schema: domain.SchemaSummary{Type: "array", Items: &domain.SchemaSummary{Type: "array", Items: &domain.SchemaSummary{Name: "Status", Type: "string", Format: "uuid", Enum: []string{"ready", "pending"}}}}},
 		}},
-		{Status: "404", MediaTypes: []domain.OperationMediaType{{ContentType: "text/plain", Schema: domain.SchemaSummary{Type: "string"}}}},
-		{Status: "204"},
+		{Status: "404", Description: "Missing resource.", Headers: []domain.OperationResponseHeader{{Name: "X-Request-ID", Schema: domain.SchemaSummary{Type: "string"}}}, MediaTypes: []domain.OperationMediaType{{ContentType: "text/plain", Schema: domain.SchemaSummary{Type: "string"}}}},
+		{Status: "204", Description: "No content.", Headers: []domain.OperationResponseHeader{{Name: "X-Trace-ID", Schema: domain.SchemaSummary{Type: "string"}}}},
 	}}
 	detail := catalog.DetailRecordV1{ID: detailID, Kind: "operation", Operation: &projection.OperationDetail{
 		ID: string(detailID), Anchor: string(detailID), HeadingID: string(detailID), Heading: "Create Pod", HeadingLevel: 2, Method: "POST", Path: "/api/v1/pods",
 		Responses: []projection.Response{
-			{Ordinal: 0, ID: "200", Status: "200", MediaTypes: []projection.MediaType{
+			{Ordinal: 0, ID: "200", Status: "200", Description: "Created resource.", Headers: []projection.ResponseHeader{{Ordinal: 0, ID: responseHeaderProjectionID("X-Rate-Limit"), Name: "X-Rate-Limit", Description: "Quota remaining.", SchemaRef: 12}}, MediaTypes: []projection.MediaType{
 				{Ordinal: 0, ID: "application/json", ContentType: "application/json", SchemaRef: 7, Examples: []projection.Example{{Ordinal: 0, ID: "primary", Text: `{"kind":"Pod"}`, Provided: true}}},
 				{Ordinal: 1, ID: "application/problem+json", ContentType: "application/problem+json", SchemaRef: 8},
 			}},
-			{Ordinal: 1, ID: "404", Status: "404", MediaTypes: []projection.MediaType{{Ordinal: 0, ID: "text/plain", ContentType: "text/plain", SchemaRef: 11}}},
-			{Ordinal: 2, ID: "204", Status: "204"},
+			{Ordinal: 1, ID: "404", Status: "404", Description: "Missing resource.", Headers: []projection.ResponseHeader{{Ordinal: 0, ID: responseHeaderProjectionID("X-Request-ID"), Name: "X-Request-ID", SchemaRef: 13}}, MediaTypes: []projection.MediaType{{Ordinal: 0, ID: "text/plain", ContentType: "text/plain", SchemaRef: 11}}},
+			{Ordinal: 2, ID: "204", Status: "204", Description: "No content.", Headers: []projection.ResponseHeader{{Ordinal: 0, ID: responseHeaderProjectionID("X-Trace-ID"), Name: "X-Trace-ID", SchemaRef: 14}}},
 		},
 	}}
 	nodes := []projection.SchemaNode{
@@ -952,12 +952,21 @@ func TestPreparedOperationResponseMediaMatchesCatalogSSRBytes(t *testing.T) {
 		{Ordinal: 9, ID: "node-array-nested", Type: "array", Items: []projection.SchemaNodeItem{{Ordinal: 0, ID: "items", SchemaRef: 10}}},
 		{Ordinal: 10, ID: "node-status", Name: "Status", Type: "string", Format: "uuid", Enum: []string{"ready", "pending"}},
 		{Ordinal: 11, ID: "node-text", Type: "string"},
+		{Ordinal: 12, ID: "node-rate-limit", Type: "array", Items: []projection.SchemaNodeItem{{Ordinal: 0, ID: "items", SchemaRef: 15}}},
+		{Ordinal: 13, ID: "node-request-id", Type: "string"},
+		{Ordinal: 14, ID: "node-trace-id", Type: "string"},
+		{Ordinal: 15, ID: "node-rate-limit-items", Type: "array", Items: []projection.SchemaNodeItem{{Ordinal: 0, ID: "items", SchemaRef: 16}}},
+		{Ordinal: 16, ID: "node-rate-limit-value", Type: "string", Format: "uuid"},
 	}
 	schemaLinks := map[string]string{
 		"Pod":    documentHref + "?selected=" + schemaID + "#" + schemaID,
 		"Status": documentHref + "?selected=" + schemaID + "#" + schemaID,
 	}
-	fragment, err := localrender.PrepareOperationResponseMedia(detail, operation, nodes, documentHref, schemaLinks)
+	fragment, err := localrender.PrepareOperationResponseMedia(detail, operation, nodes[:5], documentHref, schemaLinks)
+	if err != nil {
+		t.Fatal(err)
+	}
+	responseDetails, err := localrender.PrepareOperationResponseDetails(detail, operation, []projection.SchemaNode{nodes[5], nodes[6], nodes[7], nodes[8], nodes[9]}, documentHref, schemaLinks)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -967,6 +976,7 @@ func TestPreparedOperationResponseMediaMatchesCatalogSSRBytes(t *testing.T) {
 		t.Fatal(err)
 	}
 	baseOptions.OperationResponseMedia = &fragment
+	baseOptions.OperationResponseDetails = &responseDetails
 	if err := endpointSection(operation, nil, "", baseOptions, OperationNavigationData{}).Render(context.Background(), &delegated); err != nil {
 		t.Fatal(err)
 	}
@@ -1003,6 +1013,18 @@ func parameterProjectionID(location, name string) string {
 		hash.Write([]byte(value))
 	}
 	return "parameter-" + hex.EncodeToString(hash.Sum(nil))
+}
+
+func responseHeaderProjectionID(name string) string {
+	hash := sha256.New()
+	hash.Write([]byte("response-header"))
+	hash.Write([]byte{0})
+	var length [8]byte
+	value := strings.ToLower(name)
+	binary.BigEndian.PutUint64(length[:], uint64(len([]byte(value))))
+	hash.Write(length[:])
+	hash.Write([]byte(value))
+	return "response-header-" + hex.EncodeToString(hash.Sum(nil))
 }
 
 func parameterSummary(typeName, format string) domain.SchemaSummary {
