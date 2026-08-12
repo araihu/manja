@@ -1,6 +1,8 @@
 package web
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"net/http"
 	"path"
@@ -59,7 +61,57 @@ func (handler *CatalogHandler) serveSnapshotResource(response http.ResponseWrite
 		handler.serveExactSearchChild(response, request, snapshot, childPath)
 		return
 	}
+	if len(parts) >= 5 && parts[0] == "snapshots" && parts[1] == string(snapshot.ID) && parts[2] == "projection-data" {
+		childPath := strings.Join(parts[3:], "/")
+		identity, exists := catalogChildIdentity(snapshot.Manifest, childPath)
+		if !exists || !isProjectionChildPath(childPath, identity.Kind) {
+			http.NotFound(response, request)
+			return
+		}
+		handler.serveExactProjectionChild(response, request, snapshot, identity)
+		return
+	}
 	http.NotFound(response, request)
+}
+
+func isProjectionChildPath(childPath, kind string) bool {
+	if childPath == "" || path.Clean(childPath) != childPath || strings.Contains(childPath, `\`) {
+		return false
+	}
+	switch kind {
+	case "detail":
+		return strings.HasPrefix(childPath, "details/") && len(childPath) > len("details/")
+	case "schema-node":
+		return strings.HasPrefix(childPath, "schema-nodes/") && len(childPath) > len("schema-nodes/")
+	default:
+		return false
+	}
+}
+
+func (handler *CatalogHandler) serveExactProjectionChild(response http.ResponseWriter, request *http.Request, snapshot catalog.RuntimeSnapshot, approved catalog.ChildIdentityV1) {
+	data, loaded, err := handler.children.ReadChild(request.Context(), snapshot, approved.Path)
+	if err != nil || loaded != approved || uint64(len(data)) != approved.Length {
+		http.Error(response, "catalog temporarily unavailable", http.StatusServiceUnavailable)
+		return
+	}
+	digest := sha256.Sum256(data)
+	if hex.EncodeToString(digest[:]) != approved.SHA256 {
+		http.Error(response, "catalog temporarily unavailable", http.StatusServiceUnavailable)
+		return
+	}
+	etag := `"sha256-` + approved.SHA256 + `"`
+	response.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+	response.Header().Set("Content-Type", "application/json")
+	response.Header().Set("Content-Length", fmt.Sprintf("%d", approved.Length))
+	response.Header().Set("ETag", etag)
+	if request.Header.Get("If-None-Match") == etag {
+		response.WriteHeader(http.StatusNotModified)
+		return
+	}
+	response.WriteHeader(http.StatusOK)
+	if request.Method != http.MethodHead {
+		_, _ = response.Write(data)
+	}
 }
 
 func (handler *CatalogHandler) serveExactSearchChild(response http.ResponseWriter, request *http.Request, snapshot catalog.RuntimeSnapshot, childPath string) {

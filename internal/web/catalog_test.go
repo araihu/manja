@@ -994,6 +994,170 @@ func TestCatalogDownloadAndCacheContracts(t *testing.T) {
 	}
 }
 
+func TestCatalogProjectionTransportServesDeclaredImmutableShards(t *testing.T) {
+	t.Parallel()
+
+	for _, mount := range []string{"/", "/kubernetes"} {
+		t.Run(mount, func(t *testing.T) {
+			handler, snapshot := catalogHandlerFixture(t, mount)
+			base := mount
+			if base != "/" {
+				base += "/"
+			}
+			paths := []string{
+				snapshot.Directory.Documents[1].Operations[0].DetailChild,
+				snapshot.Directory.Documents[1].Schemas[0].DetailChild,
+				snapshot.Directory.Documents[1].SchemaNodeShards[0].Path,
+			}
+			for _, childPath := range paths {
+				identity, ok := catalogChildIdentity(snapshot.Manifest, childPath)
+				if !ok {
+					t.Fatalf("fixture child %q is undeclared", childPath)
+				}
+				requestPath := base + "snapshots/" + string(snapshot.ID) + "/projection-data/" + childPath
+				get := httptest.NewRecorder()
+				handler.ServeHTTP(get, httptest.NewRequest(http.MethodGet, requestPath, nil))
+				if get.Code != http.StatusOK {
+					t.Fatalf("GET %s = %d body=%q, want 200", requestPath, get.Code, get.Body.String())
+				}
+				digest := sha256.Sum256(get.Body.Bytes())
+				if get.Body.Len() != int(identity.Length) || hex.EncodeToString(digest[:]) != identity.SHA256 {
+					t.Errorf("GET %s payload = %d bytes sha256=%x, want %d bytes sha256=%s", requestPath, get.Body.Len(), digest, identity.Length, identity.SHA256)
+				}
+				if get.Header().Get("Content-Type") != "application/json" || get.Header().Get("Content-Length") != fmt.Sprintf("%d", identity.Length) || get.Header().Get("ETag") != `"sha256-`+identity.SHA256+`"` || get.Header().Get("Cache-Control") != "public, max-age=31536000, immutable" || get.Header().Get("Content-Encoding") != "" {
+					t.Errorf("GET %s headers=%v", requestPath, get.Header())
+				}
+
+				head := httptest.NewRecorder()
+				handler.ServeHTTP(head, httptest.NewRequest(http.MethodHead, requestPath, nil))
+				if head.Code != http.StatusOK || head.Body.Len() != 0 || head.Header().Get("Content-Length") != get.Header().Get("Content-Length") || head.Header().Get("ETag") != get.Header().Get("ETag") {
+					t.Errorf("HEAD %s = %d bytes=%d headers=%v", requestPath, head.Code, head.Body.Len(), head.Header())
+				}
+
+				conditionalRequest := httptest.NewRequest(http.MethodGet, requestPath, nil)
+				conditionalRequest.Header.Set("If-None-Match", get.Header().Get("ETag"))
+				notModified := httptest.NewRecorder()
+				handler.ServeHTTP(notModified, conditionalRequest)
+				if notModified.Code != http.StatusNotModified || notModified.Body.Len() != 0 || notModified.Header().Get("ETag") != get.Header().Get("ETag") {
+					t.Errorf("conditional GET %s = %d bytes=%d headers=%v", requestPath, notModified.Code, notModified.Body.Len(), notModified.Header())
+				}
+			}
+		})
+	}
+}
+
+func TestCatalogProjectionTransportRejectsUnsafeOrNonProjectionChildren(t *testing.T) {
+	t.Parallel()
+
+	handler, snapshot := catalogHandlerFixture(t, "/kubernetes")
+	base := "/kubernetes/snapshots/" + string(snapshot.ID) + "/projection-data/"
+	for _, childPath := range []string{
+		"catalog.json",
+		"sources/core-v1.json",
+		"search/directory.json",
+		"manifest.json",
+		"unknown.json",
+		"details/../catalog.json",
+		"details//core.json",
+		`details\\core.json`,
+	} {
+		response := httptest.NewRecorder()
+		handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, base+childPath, nil))
+		if response.Code != http.StatusNotFound && response.Code != http.StatusBadRequest {
+			t.Errorf("projection child %q = %d, want 404/400", childPath, response.Code)
+		}
+	}
+	for _, requestPath := range []string{
+		"/kubernetes/snapshots/snapshot-sha256-" + strings.Repeat("c", 64) + "/projection-data/details/core.json",
+		base + "details%2fcore.json",
+		base + "details%5ccore.json",
+		base + "details/%2e%2e/catalog.json",
+	} {
+		response := httptest.NewRecorder()
+		handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, requestPath, nil))
+		if response.Code != http.StatusNotFound && response.Code != http.StatusBadRequest {
+			t.Errorf("projection path %q = %d, want 404/400", requestPath, response.Code)
+		}
+	}
+
+	wrongKindSnapshot := snapshot
+	wrongKindSnapshot.Manifest.Children = append([]catalog.ChildIdentityV1(nil), snapshot.Manifest.Children...)
+	for index := range wrongKindSnapshot.Manifest.Children {
+		if wrongKindSnapshot.Manifest.Children[index].Path == "details/core.json" {
+			wrongKindSnapshot.Manifest.Children[index].Kind = "schema-node"
+		}
+	}
+	runtime := catalog.NewRuntime(1)
+	if _, err := runtime.ActivateMount("/kubernetes", "", 1, wrongKindSnapshot); err != nil {
+		t.Fatal(err)
+	}
+	wrongKindHandler := NewCatalogHandler(runtime, handler.(*CatalogHandler).children)
+	response := httptest.NewRecorder()
+	wrongKindHandler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, base+"details/core.json", nil))
+	if response.Code != http.StatusNotFound {
+		t.Errorf("detail path declared as schema-node = %d, want 404", response.Code)
+	}
+
+	validPath := base + snapshot.Directory.Documents[1].Operations[0].DetailChild
+	response = httptest.NewRecorder()
+	wrongMethod := httptest.NewRequest(http.MethodPost, validPath, nil)
+	handler.ServeHTTP(response, wrongMethod)
+	if response.Code != http.StatusMethodNotAllowed || response.Header().Get("Allow") != "GET, HEAD" {
+		t.Errorf("POST projection child = %d allow=%q, want 405 GET, HEAD", response.Code, response.Header().Get("Allow"))
+	}
+}
+
+func TestCatalogProjectionTransportFailsClosedOnChangedOrUnreadableChild(t *testing.T) {
+	t.Parallel()
+
+	handler, snapshot := catalogHandlerFixture(t, "/kubernetes")
+	childPath := snapshot.Directory.Documents[1].Operations[0].DetailChild
+	identity, ok := catalogChildIdentity(snapshot.Manifest, childPath)
+	if !ok {
+		t.Fatalf("fixture child %q is undeclared", childPath)
+	}
+	requestPath := "/kubernetes/snapshots/" + string(snapshot.ID) + "/projection-data/" + childPath
+	baseHandler := handler.(*CatalogHandler)
+	changedIdentity := identity
+	changedIdentity.SHA256 = strings.Repeat("f", 64)
+	for _, test := range []struct {
+		name     string
+		override projectionTransportCatalogChildren
+	}{
+		{name: "same-length changed bytes", override: projectionTransportCatalogChildren{fallback: baseHandler.children, path: childPath, data: bytes.Repeat([]byte("x"), int(identity.Length))}},
+		{name: "changed loaded identity", override: projectionTransportCatalogChildren{fallback: baseHandler.children, path: childPath, data: bytes.Repeat([]byte("x"), int(identity.Length)), identity: &changedIdentity}},
+		{name: "read error", override: projectionTransportCatalogChildren{fallback: baseHandler.children, path: childPath, err: io.ErrUnexpectedEOF}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			response := httptest.NewRecorder()
+			NewCatalogHandler(baseHandler.runtime, test.override).ServeHTTP(response, httptest.NewRequest(http.MethodGet, requestPath, nil))
+			if response.Code != http.StatusServiceUnavailable || response.Header().Get("Cache-Control") != "" || response.Header().Get("ETag") != "" {
+				t.Errorf("%s = %d headers=%v body=%q, want fail-closed 503", test.name, response.Code, response.Header(), response.Body.String())
+			}
+		})
+	}
+}
+
+func TestCatalogProjectionTransportIsNotActivatedByInitialHTML(t *testing.T) {
+	t.Parallel()
+
+	handler, _ := catalogHandlerFixture(t, "/kubernetes")
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/kubernetes/documents/core-v1/", nil))
+	if response.Code != http.StatusOK {
+		t.Fatalf("initial HTML = %d body=%q", response.Code, response.Body.String())
+	}
+	digest := sha256.Sum256(response.Body.Bytes())
+	if got := hex.EncodeToString(digest[:]); got != "891bf8623eae9f5d342b7aa01d85e7fb6f39ced1ca3319a2a46e8e5999469078" || response.Body.Len() != 53468 {
+		t.Errorf("initial HTML = sha256 %s, %d bytes; want accepted OC-01M9 bytes", got, response.Body.Len())
+	}
+	for _, forbidden := range []string{"projection-data", "serviceWorker", "manja:local-ready", "MANJA_LOCAL_DOCS"} {
+		if strings.Contains(response.Body.String(), forbidden) {
+			t.Errorf("initial HTML activated OC-04 runtime marker %q", forbidden)
+		}
+	}
+}
+
 func TestCatalogAssetsServeClientSearchRouter(t *testing.T) {
 	t.Parallel()
 
@@ -1064,6 +1228,31 @@ func (children memoryCatalogChildren) ReadChild(_ context.Context, snapshot cata
 		}
 	}
 	return nil, catalog.ChildIdentityV1{}, io.ErrUnexpectedEOF
+}
+
+type projectionTransportCatalogChildren struct {
+	fallback catalogChildReader
+	path     string
+	data     []byte
+	identity *catalog.ChildIdentityV1
+	err      error
+}
+
+func (children projectionTransportCatalogChildren) ReadChild(ctx context.Context, snapshot catalog.RuntimeSnapshot, childPath string) ([]byte, catalog.ChildIdentityV1, error) {
+	if childPath != children.path {
+		return children.fallback.ReadChild(ctx, snapshot, childPath)
+	}
+	if children.err != nil {
+		return nil, catalog.ChildIdentityV1{}, children.err
+	}
+	identity, ok := catalogChildIdentity(snapshot.Manifest, childPath)
+	if !ok {
+		return nil, catalog.ChildIdentityV1{}, io.ErrUnexpectedEOF
+	}
+	if children.identity != nil {
+		identity = *children.identity
+	}
+	return append([]byte(nil), children.data...), identity, nil
 }
 
 type deadlineSearchCatalogChildren struct {
