@@ -51,15 +51,15 @@ not implement hosted product behavior speculatively.
 - Task: `019fef17-2fad-73d2-b004-d3706d36ea82`
 - Worktree label: dedicated Open Core developer worktree
 - Initial lane base: `39d65ade21c080ee2102f53da5ed741f000d6dd7`
-- Current checkpoint base and direct parent:
-  `cb3c2ac9df78482472a3929476ec77e0a885a2f1`
+- OC-04A implementation base and implementation-commit direct parent:
+  `57643af0bae0727bf2b9e78622130fb1aa6e26ec`
 - Current checkpoint base tree:
-  `9011e5def2caf30c40f18c9737f43bb2b2d8976c`
+  `ec973970d9545d7a7e3b20ea0bfc9d4d22938d19`
 - Fresh-main merge-base:
   `43f96dfbf9d18eee2364f14778e6b94312c8abac`, tree
   `959f199e145c316b4b76e40a561413c0e6d57134`
-- Branch: `codex/oc01m9-catalog-search-focus`
-- Worktree label: OC-01M9 catalog-search focus-indicator worktree
+- Branch: `codex/oc04-projection-transport-contract`
+- Worktree label: OC-04A immutable projection-transport worktree
 - Owns only bounded Open Core implementation checkpoints assigned here.
 - Must commit each coherent checkpoint with a meaningful message.
 - Must not implement deferred SaaS behavior or edit the active Arai Hû theme
@@ -186,9 +186,24 @@ not implement hosted product behavior speculatively.
   the focused browser test proves `Ctrl+K` focus, a solid 2 px outline with 2 px
   offset, token-color binding, and at least 3:1 contrast in both palettes. Full
   root tests passed, including E2E in 195.961s; focused template, catalog web,
-  race, vet, Muamba, templ-drift, and catalog E2E gates also passed. The final
-  moving candidate identity stays in the immutable external review packet to
-  avoid recursive self-reference.
+  race, vet, Muamba, templ-drift, and catalog E2E gates also passed. Exact head
+  `57643af0bae0727bf2b9e78622130fb1aa6e26ec`, tree
+  `ec973970d9545d7a7e3b20ea0bfc9d4d22938d19`, received independent `ACCEPT`
+  from technical and design reviewers and remains the immutable base for
+  OC-04A.
+- OC-04A starts from accepted OC-01M9 exact head
+  `57643af0bae0727bf2b9e78622130fb1aa6e26ec`, tree
+  `ec973970d9545d7a7e3b20ea0bfc9d4d22938d19`. Local implementation commit
+  `4b21788de6ecdcadfab2e9643b7a5f0adae090ab`, tree
+  `7056f2c8cdbab86e2209e0362b86e7510ae7a5aa`, exposes only declared immutable
+  `detail` and `schema-node` children under snapshot-scoped
+  `projection-data` routes. GET, HEAD, conditional 304, exact size/SHA-256/ETag,
+  immutable cache headers, root/nested mounts, prefix-plus-kind allowlisting,
+  path rejection, and changed/unreadable child failure are covered offline.
+  Initial SSR HTML remains byte-identical to the accepted OC-01M9 fixture and
+  contains no local-runtime activation marker. No descriptor, public-eligibility
+  decision, Wasm renderer, Service Worker, offline storage, rollback, tombstone,
+  kill switch, UI, Docker, SaaS, theme, legal, or Task 8 behavior is added.
 - At `2026-08-12T03:34:23Z`, the confirmed public preview URL
   `https://manja.araihu.com/manja-assets/manja-social.png` returned HTTP 200,
   `image/png`, 21,500 bytes, 1280x640, and SHA-256
@@ -413,8 +428,10 @@ not implement hosted product behavior speculatively.
   metadata gate. OC-01M7's equivalent product-site contract is independently
   accepted. OC-01M8's route-specific canonical/Open Graph/explicit X Card
   metadata and preview response contract for standalone public docs is also
-  independently accepted. OC-01M9 is the separate bounded catalog-search
-  keyboard-focus correction awaiting exact-identity independent review.
+  independently accepted. OC-01M9's separate catalog-search keyboard-focus
+  correction is independently accepted. OC-04A is implemented locally from
+  that exact accepted identity and awaits fresh exact-identity independent
+  review.
 - Active Arai Hû Modern-theme rollout belongs to task
   `019fef01-b65f-7980-a360-83e48f8a6345`; this control plane must avoid its
   files and refs.
@@ -564,8 +581,10 @@ OC-01M9 catalog-search focus-indicator checkpoint:
 - exclusions: active-theme redesign, standalone/social metadata changes,
   hosted SaaS, hybrid SSR/Wasm/offline runtime, legal/runtime bytes, packaging,
   and lifecycle actions;
-- disposition: implementation committed locally; final clean freeze and fresh
-  technical/design review required. The moving final head/tree remain external.
+- accepted candidate: `57643af0bae0727bf2b9e78622130fb1aa6e26ec`,
+  tree `ec973970d9545d7a7e3b20ea0bfc9d4d22938d19`;
+- disposition: independently accepted by technical and design reviewers, clean
+  and preserved locally; no push or integration is authorized.
 
 The final moving candidate head and tree are bound by the immutable external
 review packet and control plane. A commit cannot embed its own final commit and
@@ -606,9 +625,11 @@ Status: queued after packaging boundary is current.
 
 ### OC-04: Hybrid SSR/Wasm and offline runtime
 
-Status: Open Core; queued for plan reconciliation after self-hosted authority and
-packaging checkpoints. Existing projection-v2 work is groundwork, not proof of
-the complete runtime.
+Status: Open Core and active as bounded checkpoints. OC-04A adds only immutable
+HTTP transport for the existing deterministic projection-v2 detail and
+schema-node shards, unused by rendered pages. It is groundwork, not proof of a
+Wasm renderer, anonymous-public eligibility, Service Worker, offline storage,
+rollback, tombstones, kill switch, parity, or performance acceptance.
 
 ## PR Gate
 
@@ -646,15 +667,15 @@ Before merge:
 
 ## Next Action
 
-Submit the frozen OC-01M9 identity, clean status, rendered focus contract,
-computed browser outline/token/contrast proof, templ drift receipt, focused
-catalog gates, and full root/E2E result for fresh independent technical and
-design review. PM chooses and separately authorizes any integration path. Any
-push, PR, or head movement restarts exact-head CI, CodeQL, independent review,
-and substantive CodeRabbit gates; absence or failure blocks integration.
+Submit the frozen OC-04A identity, clean status, RED/GREEN transport receipts,
+exact response/hash/cache proof, adversarial path/type/corruption cases, and SSR
+byte-identity receipt for fresh independent technical and design review. PM
+chooses and separately authorizes any integration path. Any push, PR, or head
+movement restarts exact-head CI, CodeQL, independent review, and substantive
+CodeRabbit gates; absence or failure blocks integration.
 Overall provenance remains `BLOCKED`; legal authority and final-artifact
 notices stay separate, and licensing/package-generation Task 8 remains stopped.
 Hosted SaaS stays deferred, active-theme work stays excluded, and OC-04 hybrid
-SSR/Wasm/offline remains Open Core and separate from this correction. No push,
-merge, release, deployment, cleanup, or other lifecycle action is authorized
-here.
+SSR/Wasm/offline remains Open Core; runtime activation stays separate from this
+transport-only checkpoint. No push, merge, release, deployment, cleanup, or
+other lifecycle action is authorized here.
