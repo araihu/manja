@@ -40,6 +40,16 @@ func (activation Activation) Inventory() []ProjectionArtifact {
 	return append([]ProjectionArtifact(nil), activation.inventory...)
 }
 
+func (activation Activation) artifact(pathValue, kind string) (ProjectionArtifact, bool) {
+	index := sort.Search(len(activation.inventory), func(index int) bool {
+		return activation.inventory[index].Path >= pathValue
+	})
+	if index == len(activation.inventory) || activation.inventory[index].Path != pathValue || activation.inventory[index].Kind != kind {
+		return ProjectionArtifact{}, false
+	}
+	return activation.inventory[index], true
+}
+
 // Admit validates the complete immutable activation envelope without reading
 // the network or filesystem. A failure always returns an empty Activation.
 func Admit(descriptor DescriptorV1, manifestBytes []byte) (Activation, error) {
