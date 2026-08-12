@@ -1,6 +1,6 @@
 # Manja Open Core Product Goal
 
-Updated: 2026-08-11
+Updated: 2026-08-12
 
 ## Objective
 
@@ -52,10 +52,10 @@ not implement hosted product behavior speculatively.
 - Worktree label: dedicated Open Core developer worktree
 - Initial lane base: `39d65ade21c080ee2102f53da5ed741f000d6dd7`
 - Current checkpoint base and merge-base:
-  `9733949b8dde9eb0fe1ef285ceb3ecbeb88f5d06`
+  `43f96dfbf9d18eee2364f14778e6b94312c8abac`
 - Current checkpoint base tree:
-  `10c75d6c0fa3e945093bc47e46df0d33e0ad40de`
-- Branch: `codex/oc01-stripe-captured-integrity`
+  `959f199e145c316b4b76e40a561413c0e6d57134`
+- Branch: `codex/oc01-stripe-integrity-activation`
 - Owns only bounded Open Core implementation checkpoints assigned here.
 - Must commit each coherent checkpoint with a meaningful message.
 - Must not implement deferred SaaS behavior or edit the active Arai Hû theme
@@ -116,6 +116,28 @@ not implement hosted product behavior speculatively.
   local PM state from the absent remote PM ref. Authorized push opened [PR
   #96](https://github.com/araihu/manja/pull/96) at that exact ledger head against
   base `main` `9733949b8dde9eb0fe1ef285ceb3ecbeb88f5d06`.
+- PR #96 was squash-merged with authorization at `2026-08-12T02:12:14Z`.
+  Exact source head was `ad9d114ede2fe8b5337331eee8268e830a0e4577`;
+  merge commit is `43f96dfbf9d18eee2364f14778e6b94312c8abac`, tree
+  `959f199e145c316b4b76e40a561413c0e6d57134`, with sole parent/base
+  `9733949b8dde9eb0fe1ef285ceb3ecbeb88f5d06`.
+- Exact-source-head CI run `31552796911` succeeded on authorized retry attempt
+  2: `test` and `integration` passed; image publication and deployment were
+  skipped. CodeQL run `31552795037` succeeded for actions, Go,
+  JavaScript/TypeScript, and summary. Exact-head CodeRabbit run
+  `b7c5b517-c405-4711-8edd-b9be54a0b92d` generated no actionable comments, and
+  independent final review returned `ACCEPT` with no findings.
+- Accepted post-merge goal-only checkpoint
+  `3d308ae3fc17a8ebc10cfe953c57d0651df9887c`, tree
+  `66487fb7eb2bf98c0fc6b4dd1a0aa3831ba59bb1`, remains clean and preserved on
+  its local branch. It is not integrated, pushed, or rewritten by this
+  checkpoint.
+- The active bounded OC-01 checkpoint starts from exact fresh `origin/main`
+  `43f96dfbf9d18eee2364f14778e6b94312c8abac`, tree
+  `959f199e145c316b4b76e40a561413c0e6d57134`. It activates the existing
+  provider-neutral Git integrity receipt seam for the real Stripe renderer
+  build source. Final moving candidate identity stays in the immutable external
+  review packet to avoid recursive self-reference.
 - Its direct ancestry after the fresh-main base is `bd4a96fbaa898142845d8eeab051a45b504cff3a`,
   `87fe9e8d1bb3b3824b1aa3ecbbc2cb01e2fb1ff9`, rejected candidate
   `2da4be9420def8c24356ebc3e08b4e662a4b4244` / tree
@@ -338,12 +360,17 @@ not implement hosted product behavior speculatively.
 Status: PR #94's accepted OC-01 baseline and mechanical corrections were squash
 merged at exact `9733949b8dde9eb0fe1ef285ceb3ecbeb88f5d06`, tree
 `10c75d6c0fa3e945093bc47e46df0d33e0ad40de`. The subsequent fresh-main Stripe
-captured-byte integrity line is under review in PR #96. Exact implementation head
-`b4d7562e7a97903726234a3d8d8a8d2130bf4481`, tree
+captured-byte integrity line was squash-merged through PR #96. Exact
+implementation head `b4d7562e7a97903726234a3d8d8a8d2130bf4481`, tree
 `ef6f22e9842d233ccde7acfd93c1563941d1290a`, is independently accepted with no
 findings. Accepted ledger head `2ba674e4b7b8000a32ea47ce8896b9d741681b7f`,
-tree `b86fcf32d882d5baefd8ced024da2cd261ade191`, is pushed as PR #96 head. Neither
-the implementation line nor its ledger is integrated.
+tree `b86fcf32d882d5baefd8ced024da2cd261ade191`, remained in the accepted PR
+lineage. Exact source head `ad9d114ede2fe8b5337331eee8268e830a0e4577`
+passed final gates and was squash-merged as
+`43f96dfbf9d18eee2364f14778e6b94312c8abac`, tree
+`959f199e145c316b4b76e40a561413c0e6d57134`. The next narrow OC-01 checkpoint
+activates that accepted integrity seam for the configured Stripe build input;
+it does not claim overall provenance clearance.
 
 Accepted source identity:
 
@@ -377,8 +404,24 @@ Fresh-main Stripe captured-byte checkpoint:
 - immediate parent: `f10e16b05e7ff69fc13c70cabaff5f17c57eafd0`;
 - accepted ledger head: `2ba674e4b7b8000a32ea47ce8896b9d741681b7f`;
 - accepted ledger tree: `b86fcf32d882d5baefd8ced024da2cd261ade191`;
-- disposition: implementation and ledger accepted; authorized push opened PR
-  #96 at exact ledger head; not integrated.
+- final source head: `ad9d114ede2fe8b5337331eee8268e830a0e4577`;
+- squash merge: `43f96dfbf9d18eee2364f14778e6b94312c8abac`;
+- merged tree: `959f199e145c316b4b76e40a561413c0e6d57134`;
+- disposition: implementation and ledger independently accepted; exact-head CI
+  retry, CodeQL, CodeRabbit, and independent review passed; PR #96 merged with
+  authorization.
+
+Stripe integrity activation checkpoint:
+
+- base and merge-base: `43f96dfbf9d18eee2364f14778e6b94312c8abac`;
+- base tree: `959f199e145c316b4b76e40a561413c0e6d57134`;
+- branch: `codex/oc01-stripe-integrity-activation`;
+- first coherent implementation commit:
+  `a0da08297630502ebee5290b5bbb4cd2e79359bf`;
+- scope: adjacent runtime receipt, real renderer-source binding, strict offline
+  receipt proof, and exact legal-provenance reconciliation only;
+- disposition: local candidate requires clean freeze and independent review;
+  no push or integration is authorized.
 
 The final moving candidate head and tree are bound by the immutable external
 review packet and control plane. A commit cannot embed its own final commit and
@@ -435,16 +478,14 @@ At `2026-08-11T18:54:35Z`, [PR
 `refs/heads/coord/opencore-product` is absent after the authorized squash merge;
 this checkpoint does not recreate or push it.
 
-Accepted fresh-main Stripe captured-byte implementation head
-`b4d7562e7a97903726234a3d8d8a8d2130bf4481`, tree
-`ef6f22e9842d233ccde7acfd93c1563941d1290a`, is independently accepted with no
-findings. Authorized push opened [PR
-#96](https://github.com/araihu/manja/pull/96) against base `main`
-`9733949b8dde9eb0fe1ef285ceb3ecbeb88f5d06` at exact accepted ledger head
-`2ba674e4b7b8000a32ea47ce8896b9d741681b7f`, tree
-`b86fcf32d882d5baefd8ced024da2cd261ade191`. At the
-`2026-08-12T01:06:56Z` snapshot, CI, CodeQL, and CodeRabbit are queued or
-pending. No successful exact-head remote gate is claimed.
+[PR #96](https://github.com/araihu/manja/pull/96) was squash-merged with
+authorization at `2026-08-12T02:12:14Z`. Base was exact
+`9733949b8dde9eb0fe1ef285ceb3ecbeb88f5d06`; source head was exact
+`ad9d114ede2fe8b5337331eee8268e830a0e4577`; merge commit is exact
+`43f96dfbf9d18eee2364f14778e6b94312c8abac`, tree
+`959f199e145c316b4b76e40a561413c0e6d57134`, with the base as its sole parent.
+Exact-head CI retry, CodeQL, CodeRabbit, and independent review passed only for
+that immutable source head.
 
 Before merge:
 
@@ -461,12 +502,14 @@ Before merge:
 
 ## Next Action
 
-Freeze this goal-only child's moving identity in the immutable external review
-packet and obtain fresh independent review. After any authorized push or PR-head
-movement, exact-head CI, CodeQL, reviewer, and substantive CodeRabbit gates must
-pass before merge. Repository-supported integration method is squash merge with
-match-head protection against the exact reviewed PR head. Overall provenance
-remains `BLOCKED`; legal provenance stays separate and
+Freeze the Stripe integrity activation candidate with exact identity, complete
+status, focused and root receipts, then obtain fresh independent review. PM
+chooses and separately authorizes any integration path. Any push, PR, or head
+movement restarts exact-head CI, CodeQL, independent review, and substantive
+CodeRabbit gates; absence or failure blocks integration. Overall provenance
+remains `BLOCKED`; legal authority and final-artifact notices stay separate, and
 licensing/package-generation Task 8 remains stopped. Hosted SaaS stays deferred,
 active-theme work stays excluded, and OC-04 hybrid SSR/Wasm/offline remains Open
-Core. No release, deployment, cleanup, or other lifecycle action is authorized.
+Core. The designer's SSR/Wasm/offline, public-site metadata, and catalog-search
+focus findings remain separate future bounded checkpoints. No push, merge,
+release, deployment, cleanup, or other lifecycle action is authorized here.
