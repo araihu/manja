@@ -51,11 +51,15 @@ not implement hosted product behavior speculatively.
 - Task: `019fef17-2fad-73d2-b004-d3706d36ea82`
 - Worktree label: dedicated Open Core developer worktree
 - Initial lane base: `39d65ade21c080ee2102f53da5ed741f000d6dd7`
-- Current checkpoint base and merge-base:
-  `43f96dfbf9d18eee2364f14778e6b94312c8abac`
+- Current checkpoint base and direct parent:
+  `dab2b8f24552f89cc2b1d705181a1ac4a2b97847`
 - Current checkpoint base tree:
+  `1abee072de1fce813731bfc3e02706c31cd0eb6d`
+- Fresh-main merge-base:
+  `43f96dfbf9d18eee2364f14778e6b94312c8abac`, tree
   `959f199e145c316b4b76e40a561413c0e6d57134`
-- Branch: `codex/oc01-stripe-integrity-activation`
+- Branch: `codex/oc01m7-product-site-social`
+- Worktree label: OC-01M7 product-site social-metadata worktree
 - Owns only bounded Open Core implementation checkpoints assigned here.
 - Must commit each coherent checkpoint with a meaningful message.
 - Must not implement deferred SaaS behavior or edit the active Arai Hû theme
@@ -132,12 +136,40 @@ not implement hosted product behavior speculatively.
   `66487fb7eb2bf98c0fc6b4dd1a0aa3831ba59bb1`, remains clean and preserved on
   its local branch. It is not integrated, pushed, or rewritten by this
   checkpoint.
-- The active bounded OC-01 checkpoint starts from exact fresh `origin/main`
+- The Stripe integrity activation checkpoint starts from exact fresh
+  `origin/main`
   `43f96dfbf9d18eee2364f14778e6b94312c8abac`, tree
   `959f199e145c316b4b76e40a561413c0e6d57134`. It activates the existing
   provider-neutral Git integrity receipt seam for the real Stripe renderer
-  build source. Final moving candidate identity stays in the immutable external
-  review packet to avoid recursive self-reference.
+  build source. Exact local candidate
+  `dab2b8f24552f89cc2b1d705181a1ac4a2b97847`, tree
+  `1abee072de1fce813731bfc3e02706c31cd0eb6d`, received independent `ACCEPT`
+  with no findings from both developer and designer reviewers and remains
+  clean, preserved, unpushed, and unintegrated.
+- OC-01M7 starts from that accepted Stripe candidate as its direct parent; its
+  merge-base remains fresh `origin/main`
+  `43f96dfbf9d18eee2364f14778e6b94312c8abac`. First coherent implementation
+  commit `e342c68fff9abc9be1d744da8fb7c3c73f6e6c81`, tree
+  `f1aba174a207b6db02afbcee6a3f9892d18f14fa`, adds initial-HTML metadata for
+  the product homepage and `/docs`, plus an exact product-site route to the
+  existing embedded Manja preview bytes. The final moving candidate identity
+  stays in the immutable external review packet to avoid recursive
+  self-reference.
+- At `2026-08-12T03:34:23Z`, the confirmed public preview URL
+  `https://manja.araihu.com/manja-assets/manja-social.png` returned HTTP 200,
+  `image/png`, 21,500 bytes, 1280x640, and SHA-256
+  `7234c9a20fc3a4a44364b8f9d544ddae5aba8c2b6a418b26ad5a930d2d0ab0bd`.
+  The external central deployment configuration confirms
+  `manja.araihu.com` as the Manja production host, but currently routes it to
+  the renderer runtime rather than the product-site binary. OC-01M7 therefore
+  proves local server-rendered product-site HTML and the already-live preview
+  asset; it does not claim that the new homepage or `/docs` metadata has been
+  deployed.
+- Goshtoso snag: the existing product site is an `html/template` shell, not a
+  templ/Goshtoso App Shell. Replatforming it solely to call
+  `head.Metadata` would mix shell/theme work into this narrow metadata patch;
+  OC-01M7 keeps the existing server-rendered shell and records that migration
+  as a separate future reconciliation.
 - Its direct ancestry after the fresh-main base is `bd4a96fbaa898142845d8eeab051a45b504cff3a`,
   `87fe9e8d1bb3b3824b1aa3ecbbc2cb01e2fb1ff9`, rejected candidate
   `2da4be9420def8c24356ebc3e08b4e662a4b4244` / tree
@@ -340,13 +372,14 @@ not implement hosted product behavior speculatively.
   module, generation, browser, API, and templ gates passed for the OC-01
   evidence. Local OCI inventory observations supplied baseline evidence only;
   they are not a digest-bound distribution gate, which remains blocked under
-  Task 8. Direct standalone `site` testing still fails because its committed
-  module files need indirect dependency updates; OC-01 did not widen scope to
-  change them.
+  Task 8. On the OC-01M7 parent, direct standalone site setup and tests pass
+  with `GOWORK=off`; this supersedes the earlier historical dependency-graph
+  failure without changing site module files.
 - Renderer/catalog initial HTML and preview-image checks pass the social-ready
-  metadata gate. The public product site lacks canonical, Open Graph, explicit
-  X Card, and preview-image metadata; this is a recorded Open Core artifact gap,
-  not an OC-01 page change.
+  metadata gate. The accepted parent still lacks equivalent product-site
+  metadata; OC-01M7 locally adds route-specific canonical/Open Graph/explicit X
+  Card metadata and the preview response contract for `/` and `/docs`, pending
+  final freeze and independent review.
 - Active Arai Hû Modern-theme rollout belongs to task
   `019fef01-b65f-7980-a360-83e48f8a6345`; this control plane must avoid its
   files and refs.
@@ -420,8 +453,29 @@ Stripe integrity activation checkpoint:
   `a0da08297630502ebee5290b5bbb4cd2e79359bf`;
 - scope: adjacent runtime receipt, real renderer-source binding, strict offline
   receipt proof, and exact legal-provenance reconciliation only;
-- disposition: local candidate requires clean freeze and independent review;
-  no push or integration is authorized.
+- accepted candidate: `dab2b8f24552f89cc2b1d705181a1ac4a2b97847`,
+  tree `1abee072de1fce813731bfc3e02706c31cd0eb6d`;
+- disposition: independently accepted by developer and designer reviewers,
+  clean and preserved locally; no push or integration is authorized.
+
+OC-01M7 product-site social metadata checkpoint:
+
+- direct parent: accepted Stripe candidate
+  `dab2b8f24552f89cc2b1d705181a1ac4a2b97847`, tree
+  `1abee072de1fce813731bfc3e02706c31cd0eb6d`;
+- fresh-main merge-base: `43f96dfbf9d18eee2364f14778e6b94312c8abac`,
+  tree `959f199e145c316b4b76e40a561413c0e6d57134`;
+- branch: `codex/oc01m7-product-site-social`;
+- first implementation commit:
+  `e342c68fff9abc9be1d744da8fb7c3c73f6e6c81`, tree
+  `f1aba174a207b6db02afbcee6a3f9892d18f14fa`;
+- scope: product homepage and `/docs` initial HTML only, with route-specific
+  title, description, canonical URL, `og:url`, complete Open Graph image
+  structure/alt, explicit X Card tags, and the existing Manja preview asset;
+- exclusions: standalone renderer metadata, catalog focus, active theme, hosted
+  SaaS, hybrid SSR/Wasm/offline runtime, packaging, and lifecycle actions;
+- disposition: local candidate requires final clean freeze and fresh independent
+  review. The moving head/tree remain external.
 
 The final moving candidate head and tree are bound by the immutable external
 review packet and control plane. A commit cannot embed its own final commit and
@@ -502,14 +556,15 @@ Before merge:
 
 ## Next Action
 
-Freeze the Stripe integrity activation candidate with exact identity, complete
-status, focused and root receipts, then obtain fresh independent review. PM
-chooses and separately authorizes any integration path. Any push, PR, or head
-movement restarts exact-head CI, CodeQL, independent review, and substantive
-CodeRabbit gates; absence or failure blocks integration. Overall provenance
-remains `BLOCKED`; legal authority and final-artifact notices stay separate, and
+Freeze OC-01M7 with exact identity, complete staged/unstaged/untracked status,
+initial-HTML and preview receipts, standalone site tests/race/vet, and diff
+checks, then obtain fresh independent developer and designer review. PM chooses
+and separately authorizes any integration path. Any push, PR, or head movement
+restarts exact-head CI, CodeQL, independent review, and substantive CodeRabbit
+gates; absence or failure blocks integration. Overall provenance remains
+`BLOCKED`; legal authority and final-artifact notices stay separate, and
 licensing/package-generation Task 8 remains stopped. Hosted SaaS stays deferred,
 active-theme work stays excluded, and OC-04 hybrid SSR/Wasm/offline remains Open
-Core. The designer's SSR/Wasm/offline, public-site metadata, and catalog-search
-focus findings remain separate future bounded checkpoints. No push, merge,
+Core. Standalone public-doc metadata, catalog-search visible focus, and the
+hybrid runtime remain separate future bounded checkpoints. No push, merge,
 release, deployment, cleanup, or other lifecycle action is authorized here.
