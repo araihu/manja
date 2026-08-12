@@ -17,6 +17,7 @@ import (
 	"github.com/araihu/manja/application/projection"
 	"github.com/araihu/manja/domain"
 	"github.com/araihu/manja/internal/adapters/catalogjson"
+	localrender "github.com/araihu/manja/internal/localdocs/render"
 	"github.com/araihu/manja/internal/web/templates"
 )
 
@@ -284,7 +285,7 @@ func (handler *CatalogHandler) catalogPageDataWithSidebarQuery(
 			if err != nil {
 				return templates.CatalogPageData{}, err
 			}
-			schemaNodeData, err := handler.catalogSchemaNodeData(ctx, snapshot, document, node, shard, documentHref, selectedDetailID)
+			schemaNodeData, err := handler.catalogSchemaNodeData(ctx, snapshot, document, detail, node, shard, documentHref)
 			if err != nil {
 				return templates.CatalogPageData{}, err
 			}
@@ -663,17 +664,15 @@ func (handler *CatalogHandler) loadCatalogSchemaNode(
 	return shard.Nodes[offset], shard, nil
 }
 
-const maxCatalogSchemaEdges = 100
-
 func (handler *CatalogHandler) catalogSchemaNodeData(
 	ctx context.Context,
 	snapshot catalog.RuntimeSnapshot,
 	document catalog.DocumentDirectoryV1,
+	detail catalog.DetailRecordV1,
 	node projection.SchemaNode,
 	shard catalog.SchemaNodeShardV1,
 	documentHref string,
-	detailID domain.DetailID,
-) (*templates.CatalogSchemaNodeData, error) {
+) (*localrender.SchemaNodeFragment, error) {
 	known := make(map[projection.SchemaRef]projection.SchemaNode, len(shard.Nodes))
 	for _, candidate := range shard.Nodes {
 		known[projection.SchemaRef(candidate.Ordinal)] = candidate
@@ -691,112 +690,38 @@ func (handler *CatalogHandler) catalogSchemaNodeData(
 		}
 		return target, nil
 	}
-	result := &templates.CatalogSchemaNodeData{
-		Ordinal: node.Ordinal, Name: firstNonEmpty(node.Name, "Schema node "+strconv.FormatUint(uint64(node.Ordinal), 10)),
-		Type: node.Type, Format: node.Format, Description: catalogSchemaText(node.Description),
-		DefaultValue: catalogSchemaText(node.DefaultValue), ExampleText: catalogSchemaText(node.ExampleText),
-		EnumValues: append([]string(nil), node.Enum...), Constraints: catalogSchemaConstraints(node.Constraints),
-		Nullable: node.Nullable, Deprecated: node.Deprecated,
-	}
-	appendEdge := func(name, description string, required bool, ref projection.SchemaRef) error {
-		if len(result.Edges) == maxCatalogSchemaEdges {
-			result.Truncated = true
+	references := make([]projection.SchemaNode, 0, len(node.Items)+len(node.Properties))
+	seen := make(map[projection.SchemaRef]struct{}, len(node.Items)+len(node.Properties))
+	appendReference := func(ref projection.SchemaRef) error {
+		if ref == projection.SchemaRef(node.Ordinal) {
+			return nil
+		}
+		if _, exists := seen[ref]; exists {
 			return nil
 		}
 		target, err := lookup(ref)
 		if err != nil {
 			return err
 		}
-		reference := ""
-		referenceHref := ""
-		referenceIsEnumAlias := catalogSchemaNodeIsNamedPrimitiveEnumAlias(target)
-		if catalogSchemaNodeReferenceNavigable(target) {
-			reference = strings.TrimSpace(target.Name)
-			referenceHref = catalogSchemaNodeHref(documentHref, detailID, uint32(ref))
-		}
-		result.Edges = append(result.Edges, templates.CatalogSchemaEdgeData{
-			Name: name, Description: catalogSchemaText(description), Required: required,
-			Type: catalogSchemaNodeShapeType(target), Reference: reference, ReferenceHref: referenceHref, ReferenceIsEnumAlias: referenceIsEnumAlias,
-			DefaultValue: catalogSchemaText(target.DefaultValue), ExampleText: catalogSchemaText(target.ExampleText),
-			EnumValues: append([]string(nil), target.Enum...), Constraints: catalogSchemaConstraints(target.Constraints),
-			Nullable: target.Nullable, Deprecated: target.Deprecated,
-		})
+		seen[ref] = struct{}{}
+		references = append(references, target)
 		return nil
 	}
 	for _, item := range node.Items {
-		if err := appendEdge("items", "", false, item.SchemaRef); err != nil {
+		if err := appendReference(item.SchemaRef); err != nil {
 			return nil, err
-		}
-		if len(result.Edges) == maxCatalogSchemaEdges && result.Truncated {
-			break
 		}
 	}
 	for _, property := range node.Properties {
-		if err := appendEdge(property.Name, property.Description, property.Required, property.SchemaRef); err != nil {
+		if err := appendReference(property.SchemaRef); err != nil {
 			return nil, err
 		}
-		if len(result.Edges) == maxCatalogSchemaEdges && result.Truncated {
-			break
-		}
 	}
-	return result, nil
-}
-
-func catalogSchemaConstraints(constraints []projection.SchemaConstraint) []templates.CatalogSchemaConstraintData {
-	result := make([]templates.CatalogSchemaConstraintData, 0, len(constraints))
-	for _, constraint := range constraints {
-		result = append(result, templates.CatalogSchemaConstraintData{Name: constraint.Name, Value: constraint.Value})
+	fragment, err := localrender.PrepareSchemaNode(detail, node, references, documentHref)
+	if err != nil {
+		return nil, err
 	}
-	return result
-}
-
-func catalogSchemaNodeHref(documentHref string, detailID domain.DetailID, ordinal uint32) string {
-	return documentHref + "?selected=" + url.QueryEscape(string(detailID)) + "&node=" + strconv.FormatUint(uint64(ordinal), 10) + "#schema-node-panel"
-}
-
-func catalogSchemaNodeShapeType(node projection.SchemaNode) string {
-	parts := make([]string, 0, 2)
-	if node.Type != "" {
-		parts = append(parts, node.Type)
-	}
-	if node.Format != "" {
-		parts = append(parts, "("+node.Format+")")
-	}
-	if len(parts) == 0 {
-		return ""
-	}
-	return strings.Join(parts, " ")
-}
-
-func catalogSchemaNodeReferenceNavigable(node projection.SchemaNode) bool {
-	if strings.TrimSpace(node.Name) == "" {
-		return false
-	}
-	if catalogSchemaNodeIsNamedPrimitiveEnumAlias(node) {
-		return true
-	}
-	return !catalogSchemaNodeIsPrimitiveType(node)
-}
-
-func catalogSchemaNodeIsPrimitiveType(node projection.SchemaNode) bool {
-	switch strings.ToLower(strings.TrimSpace(node.Type)) {
-	case "string", "number", "integer", "boolean", "null":
-		return true
-	}
-	return false
-}
-
-func catalogSchemaNodeIsNamedPrimitiveEnumAlias(node projection.SchemaNode) bool {
-	return strings.TrimSpace(node.Name) != "" && catalogSchemaNodeIsPrimitiveType(node) && len(node.Enum) > 0
-}
-
-func catalogSchemaText(value string) string {
-	const maxRunes = 512
-	runes := []rune(strings.TrimSpace(value))
-	if len(runes) <= maxRunes {
-		return string(runes)
-	}
-	return string(runes[:maxRunes]) + "…"
+	return &fragment, nil
 }
 
 func firstNonEmpty(values ...string) string {

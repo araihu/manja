@@ -19,6 +19,7 @@ import (
 	"github.com/araihu/manja/application/projection"
 	"github.com/araihu/manja/domain"
 	"github.com/araihu/manja/internal/adapters/catalogjson"
+	localrender "github.com/araihu/manja/internal/localdocs/render"
 	"github.com/araihu/manja/internal/web/templates"
 )
 
@@ -234,6 +235,44 @@ func TestCatalogSchemaNodeTargetReturnsOnlySchemaNodeFragment(t *testing.T) {
 		if strings.Contains(body, reject) {
 			t.Errorf("catalog schema node fragment retained shell marker %q:\n%s", reject, body)
 		}
+	}
+}
+
+func TestLocalSchemaNodeRendererMatchesSSRFragmentBytes(t *testing.T) {
+	t.Parallel()
+
+	handler, snapshot := catalogHandlerFixture(t, "/kubernetes")
+	catalogHandler := handler.(*CatalogHandler)
+	document := snapshot.Directory.Documents[1]
+	schemaID := document.Schemas[0].DetailID
+	detail, err := catalogHandler.loadCatalogDetail(context.Background(), snapshot, document.Schemas[0].DetailChild, schemaID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	node, shard, err := catalogHandler.loadCatalogSchemaNode(context.Background(), snapshot, document, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	references := []projection.SchemaNode{shard.Nodes[2]}
+	fragment, err := localrender.PrepareSchemaNode(detail, node, references, "/kubernetes/documents/core-v1/")
+	if err != nil {
+		t.Fatal(err)
+	}
+	localBody, err := fragment.Bytes(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	request := httptest.NewRequest(http.MethodGet, "/kubernetes/documents/core-v1/?selected="+string(schemaID)+"&node=1", nil)
+	request.Header.Set("HX-Request", "true")
+	request.Header.Set("HX-Target", "schema-node-panel")
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	if response.Code != http.StatusOK {
+		t.Fatalf("SSR schema-node fragment = %d body=%q", response.Code, response.Body.String())
+	}
+	if !bytes.Equal(localBody, response.Body.Bytes()) {
+		t.Fatalf("local and SSR schema-node fragments differ:\nlocal=%s\nSSR=%s", localBody, response.Body.Bytes())
 	}
 }
 
@@ -1428,7 +1467,7 @@ func catalogHandlerFixtureWithOrganization(t *testing.T, mount string, presentat
 		t.Fatal(err)
 	}
 	schemaBytes, err := catalogjson.EncodeDetailShard(catalog.DetailShardV1{SchemaVersion: 1, DocumentKey: "core-v1", Records: []catalog.DetailRecordV1{{
-		ID: schemaID, Kind: "schema", Schema: &projection.SchemaDetail{ID: string(schemaID), Anchor: string(schemaID), Href: "?selected=" + string(schemaID), HeadingID: string(schemaID), Heading: "Pod", HeadingLevel: 2, Description: "Pod schema.", SchemaRef: 0},
+		ID: schemaID, Kind: "schema", Schema: &projection.SchemaDetail{ID: string(schemaID), Anchor: string(schemaID), Href: "documents/core-v1/?selected=" + string(schemaID) + "#" + string(schemaID), HeadingID: string(schemaID), Heading: "Pod", HeadingLevel: 2, Description: "Pod schema.", SchemaRef: 0},
 	}}})
 	if err != nil {
 		t.Fatal(err)
