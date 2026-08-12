@@ -1,0 +1,245 @@
+package render
+
+import (
+	"strconv"
+	"strings"
+	"unicode/utf8"
+
+	templpkg "github.com/a-h/templ"
+	"github.com/araihu/goshtoso/components/tooltip"
+)
+
+templ schemaNode(node schemaNodeData) {
+	{{ rootNode := strings.TrimSpace(node.Name) == strings.TrimSpace(node.RootHeading) }}
+	<section id="schema-node-panel" aria-label={ node.Name + " schema node" } class="scroll-mt-24 rounded-radius border border-outline bg-surface p-5 dark:border-outline-dark dark:bg-surface-dark">
+		if !rootNode {
+			<div class="flex flex-wrap items-start justify-between gap-3 border-b border-outline pb-4 dark:border-outline-dark">
+				<div class="min-w-0">
+					<h2 tabindex="-1" data-catalog-schema-node-focus="true" class="manja-schema-title font-title text-2xl font-bold text-on-surface-strong focus-visible:rounded-radius focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary dark:text-on-surface-dark-strong dark:focus-visible:outline-primary-dark">{ node.Name }</h2>
+				</div>
+				if node.Type != "" || node.Format != "" {
+					<code class="rounded-radius bg-surface-alt px-3 py-1.5 text-sm text-on-surface-strong dark:bg-surface-dark-alt dark:text-on-surface-dark-strong">{ strings.TrimSpace(node.Type + " " + node.Format) }</code>
+				}
+			</div>
+			if node.Description != "" {
+				<p class="mt-4 max-w-[70ch] whitespace-pre-wrap break-words text-on-surface-muted dark:text-on-surface-dark-muted">{ node.Description }</p>
+			}
+		}
+		if schemaHasMetadata(node.DefaultValue, node.ExampleText, node.EnumValues, node.Constraints, node.Nullable, node.Deprecated) {
+			<div class="mt-4">
+				@schemaMetadata(node.DefaultValue, node.ExampleText, node.EnumValues, node.Constraints, node.Nullable, node.Deprecated)
+			</div>
+		}
+		if len(node.Edges) > 0 {
+			<div class="mt-6 grid gap-4">
+				for _, edge := range node.Edges {
+					<article data-catalog-schema-property={ edge.Name } class="min-w-0 border-b border-outline px-1 pb-4 last:border-b-0 last:pb-0 dark:border-outline-dark">
+						<div class="manja-schema-label">
+							<div class="manja-schema-heading">
+								@schemaPropertyIdentity(node.Ordinal, edge)
+								@schemaPropertyStates(schemaPropertyStateLabel(edge.Required), edge.Nullable, edge.Deprecated)
+							</div>
+							if schemaEdgeHasDescription(edge) {
+								@schemaEdgeDescription(node.Ordinal, edge)
+							}
+							if schemaHasMetadata(edge.DefaultValue, edge.ExampleText, edge.EnumValues, edge.Constraints, false, false) {
+								@schemaMetadata(edge.DefaultValue, edge.ExampleText, edge.EnumValues, edge.Constraints, false, false)
+							}
+						</div>
+					</article>
+				}
+			</div>
+		}
+		if node.Truncated {
+			<p class="mt-4 text-sm text-on-surface-muted dark:text-on-surface-dark-muted">Showing first 100 links from this node.</p>
+		}
+	</section>
+}
+
+templ schemaPropertyIdentity(nodeOrdinal uint32, edge schemaEdgeData) {
+	<div class="manja-schema-identity">
+		<span class="manja-schema-name">{ edge.Name }</span>
+		if edge.ReferenceIsEnumAlias {
+			@schemaEnumAliasType(nodeOrdinal, edge)
+		} else {
+			if edge.Reference != "" {
+				@schemaReferenceLink(edge, "")
+			}
+			if edge.Type != "" {
+				<span class="manja-schema-type">{ edge.Type }</span>
+			}
+		}
+	</div>
+}
+
+templ schemaEnumAliasType(nodeOrdinal uint32, edge schemaEdgeData) {
+	{{ tooltipID := schemaEnumAliasTooltipID(nodeOrdinal, edge) }}
+	@tooltip.Tooltip(
+		tooltipID,
+		edge.Reference,
+		tooltip.WithDescription(schemaEnumAliasPreview(edge.EnumValues)),
+		tooltip.WithPosition(tooltip.PositionBottom),
+		tooltip.WithTrigger(schemaEnumAliasTrigger(edge, tooltipID)),
+	)
+}
+
+templ schemaEnumAliasTrigger(edge schemaEdgeData, tooltipID string) {
+	<span class="manja-schema-type">{ edge.Type }&lt;</span>
+	@schemaReferenceLink(edge, tooltipID)
+	<span class="manja-schema-type">&gt;</span>
+}
+
+templ schemaReferenceLink(edge schemaEdgeData, tooltipID string) {
+	if edge.ReferenceHref != "" {
+		<a
+			data-catalog-schema-reference="true"
+			if edge.ReferenceIsEnumAlias {
+				data-catalog-schema-enum-reference="true"
+			}
+			href={ templpkg.URL(edge.ReferenceHref) }
+			hx-get={ edge.ReferenceHref }
+			hx-target="#schema-node-panel"
+			hx-select="#schema-node-panel"
+			hx-swap="outerHTML show:#schema-node-panel:top"
+			hx-push-url="true"
+			if tooltipID != "" {
+				aria-describedby={ tooltipID }
+			}
+			title={ "Open schema " + edge.Reference }
+			class="manja-schema-reference rounded-radius underline-offset-4 transition hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary dark:focus-visible:outline-primary-dark"
+		>{ edge.Reference }</a>
+	} else {
+		<span class="manja-schema-type">{ edge.Reference }</span>
+	}
+}
+
+func schemaEnumAliasTooltipID(nodeOrdinal uint32, edge schemaEdgeData) string {
+	return "catalog-schema-enum-alias-" + strconv.FormatUint(uint64(nodeOrdinal), 10) + "-" + anchorFragment(edge.Name) + "-" + anchorFragment(edge.Reference)
+}
+
+func schemaEnumAliasPreview(values []string) string {
+	const previewLimit = 5
+	preview := make([]string, 0, min(len(values), previewLimit))
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value == "" {
+			continue
+		}
+		preview = append(preview, value)
+		if len(preview) == previewLimit {
+			break
+		}
+	}
+	if len(preview) == 0 {
+		return "Named primitive enum."
+	}
+	if len(values) > len(preview) {
+		return "Allowed: " + strings.Join(preview, ", ") + ", and more."
+	}
+	return "Allowed: " + strings.Join(preview, ", ")
+}
+
+templ schemaEdgeDescription(nodeOrdinal uint32, edge schemaEdgeData) {
+	{{ descriptionID := "catalog-schema-property-" + strconv.FormatUint(uint64(nodeOrdinal), 10) + "-" + anchorFragment(edge.Name) + "-description" }}
+	if schemaDescriptionNeedsCollapse(edge.Description) {
+		<div x-data="{ expanded: false }" class="manja-schema-description">
+			<p id={ descriptionID } data-catalog-schema-description-content="true" data-expanded="true" x-bind:data-expanded="expanded.toString()" class="manja-schema-description-content whitespace-pre-wrap">{ edge.Description }</p>
+			<button type="button" x-cloak data-catalog-schema-description-toggle="true" class="manja-description-toggle mt-1 text-xs font-medium text-primary underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary dark:text-primary-dark dark:focus-visible:outline-primary-dark" x-bind:aria-expanded="expanded.toString()" aria-controls={ descriptionID } x-on:click="expanded = !expanded" x-text="expanded ? 'Show less' : 'Show more'">Show more</button>
+		</div>
+	} else {
+		<p class="manja-schema-description whitespace-pre-wrap">{ edge.Description }</p>
+	}
+}
+
+func schemaDescriptionNeedsCollapse(description string) bool {
+	text := strings.TrimSpace(description)
+	return utf8.RuneCountInString(text) > 220 || strings.Count(text, "\n") >= 4
+}
+
+func schemaEdgeHasDescription(edge schemaEdgeData) bool {
+	description := strings.TrimSpace(edge.Description)
+	return description != "" && !strings.EqualFold(description, strings.TrimSpace(edge.Reference))
+}
+
+templ schemaMetadata(defaultValue string, exampleText string, enumValues []string, constraints []schemaConstraintData, nullable bool, deprecated bool) {
+	if defaultValue != "" {
+		<p class="manja-schema-metadata"><span>Default:</span><code>{ defaultValue }</code></p>
+	}
+	if exampleText != "" {
+		<p class="manja-schema-metadata"><span>Example:</span><code>{ exampleText }</code></p>
+	}
+	if len(enumValues) > 0 {
+		<p class="manja-schema-metadata">
+			<span>Allowed:</span>
+			for _, value := range enumValues {
+				<code>{ value }</code>
+			}
+		</p>
+	}
+	for _, constraint := range constraints {
+		<p class="manja-schema-metadata"><span>{ constraint.Name }:</span><code>{ constraint.Value }</code></p>
+	}
+	if nullable || deprecated {
+		<p class="manja-schema-metadata">
+			<span>Status:</span>
+			if nullable {
+				<code>nullable</code>
+			}
+			if deprecated {
+				<code>deprecated</code>
+			}
+		</p>
+	}
+}
+
+func schemaHasMetadata(defaultValue string, exampleText string, enumValues []string, constraints []schemaConstraintData, nullable bool, deprecated bool) bool {
+	return defaultValue != "" || exampleText != "" || len(enumValues) > 0 || len(constraints) > 0 || nullable || deprecated
+}
+
+templ schemaPropertyState(state string) {
+	if state == "required" {
+		<span class="manja-schema-property-state" data-required="true">required</span>
+	} else if state == "optional" {
+		<span class="manja-schema-property-state" data-required="false">optional</span>
+	}
+}
+
+templ schemaPropertyStates(state string, nullable bool, deprecated bool) {
+	<span class="flex flex-wrap items-center justify-end gap-2">
+		@schemaPropertyState(state)
+		if nullable {
+			<span class="manja-schema-property-state">nullable</span>
+		}
+		if deprecated {
+			<span class="manja-schema-property-state" data-deprecated="true">deprecated</span>
+		}
+	</span>
+}
+
+func schemaPropertyStateLabel(required bool) string {
+	if required {
+		return "required"
+	}
+	return "optional"
+}
+
+func anchorFragment(value string) string {
+	var builder strings.Builder
+	lastWasSeparator := false
+	for _, character := range strings.ToLower(value) {
+		switch {
+		case character >= 'a' && character <= 'z':
+			builder.WriteRune(character)
+			lastWasSeparator = false
+		case character >= '0' && character <= '9':
+			builder.WriteRune(character)
+			lastWasSeparator = false
+		default:
+			if builder.Len() > 0 && !lastWasSeparator {
+				builder.WriteByte('-')
+				lastWasSeparator = true
+			}
+		}
+	}
+	return strings.Trim(builder.String(), "-")
+}
