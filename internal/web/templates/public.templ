@@ -91,6 +91,7 @@ type PublicDocsOptions struct {
 	OperationResponseDetails  *localrender.OperationResponseDetailsFragment
 	OperationExamples         *localrender.OperationExamplesFragment
 	OperationSchemaTrees      *localrender.OperationSchemaTreesFragment
+	OperationNavigation       *localrender.OperationNavigationFragment
 	Selection                 *PublicDocsSelection
 	SchemaLinks               map[string]string
 	SchemaLinkTarget          string
@@ -1073,7 +1074,11 @@ templ endpointSection(op core.Operation, servers []core.SpecServer, exampleSpecJ
 						}
 					</div>
 				}
-				@operationNavigation(navigation)
+		if opts.OperationNavigation != nil {
+			@localrender.OperationNavigation(*opts.OperationNavigation)
+		} else {
+			@operationNavigation(navigation)
+		}
 			</div>
 			if operationHasRail(op, servers) {
 				<aside

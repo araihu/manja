@@ -120,7 +120,7 @@ type CatalogPageData struct {
 	OperationResponseDetails *localrender.OperationResponseDetailsFragment
 	OperationExamples *localrender.OperationExamplesFragment
 	OperationSchemaTrees *localrender.OperationSchemaTreesFragment
-	OperationNavigation OperationNavigationData
+	OperationNavigation *localrender.OperationNavigationFragment
 	SchemaView *core.Schema
 	OperationServers []core.SpecServer
 	Search *CatalogSearchData
@@ -948,11 +948,12 @@ templ catalogOperationDetail(data CatalogPageData) {
 				OperationResponseDetails: data.OperationResponseDetails,
 				OperationExamples: data.OperationExamples,
 				OperationSchemaTrees: data.OperationSchemaTrees,
+				OperationNavigation: data.OperationNavigation,
 				SchemaLinks:      data.SchemaLinks,
 				SchemaLinkTarget: "#catalog-main-content",
 				SchemaLinkSelect: "#catalog-main-content",
 				SchemaLinkSwap:   "outerHTML show:#main-content:top",
-			}, data.OperationNavigation)
+			}, OperationNavigationData{})
 		</article>
 	} else {
 		{{ operation := *data.Selected.Operation }}

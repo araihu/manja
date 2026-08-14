@@ -188,6 +188,46 @@ func TestCatalogSelectedMainTargetReturnsOnlyMainFragment(t *testing.T) {
 	}
 }
 
+func TestCatalogPreparedOperationNavigationRendersThroughRootAndNestedHandlers(t *testing.T) {
+	t.Parallel()
+
+	for _, mount := range []string{"/", "/kubernetes"} {
+		mount := mount
+		t.Run(mount, func(t *testing.T) {
+			t.Parallel()
+			handler, selectedID := catalogNavigationHandlerFixture(t, mount)
+			base := mount
+			if base != "/" {
+				base += "/"
+			}
+			response := httptest.NewRecorder()
+			handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, base+"documents/core-v1/?selected="+string(selectedID), nil))
+			if response.Code != http.StatusOK {
+				t.Fatalf("operation route = %d body=%q", response.Code, response.Body.String())
+			}
+			body := response.Body.String()
+			for _, want := range []string{
+				`data-manja-operation-navigation`,
+				`aria-label="More operations in core"`,
+				`data-manja-operation-neighbor="previous"`,
+				`data-manja-operation-neighbor="next"`,
+				`hx-target="#main-content"`,
+				`hx-select="#main-content"`,
+				`hx-select-oob="#catalog-navigation"`,
+				`focus-visible:outline-primary`,
+				`dark:focus-visible:outline-primary-dark`,
+			} {
+				if !strings.Contains(body, want) {
+					t.Errorf("prepared navigation missing %q", want)
+				}
+			}
+			if strings.Count(body, `data-manja-operation-navigation`) != 1 {
+				t.Fatalf("prepared navigation rendered more than once: %d", strings.Count(body, `data-manja-operation-navigation`))
+			}
+		})
+	}
+}
+
 func TestCatalogSidebarTargetReturnsOnlySidebarFragment(t *testing.T) {
 	t.Parallel()
 
@@ -915,7 +955,7 @@ func TestCatalogOperationWithoutRequestBodyKeepsMediaFragmentAbsent(t *testing.T
 			SchemaVersion: 1, CatalogID: "plain", Title: "Plain", SearchChild: "search/directory.json",
 			Documents: []catalog.DocumentDirectoryV1{{
 				Key: "plain", Title: "Plain", SourceChild: "sources/plain.json",
-				Operations: []catalog.OperationDirectoryV1{{DetailID: detailID, OperationID: "ping", Method: "GET", Path: "/ping", Title: "Ping", DetailChild: "details/plain.json"}},
+				Operations: []catalog.OperationDirectoryV1{{DetailID: detailID, OperationID: "ping", Method: "GET", Path: "/ping", Title: "Ping", Href: "plain/?selected=" + string(detailID) + "#" + string(detailID), DetailChild: "details/plain.json"}},
 			}},
 		},
 		Manifest: catalog.ManifestV1{SchemaVersion: 1, Children: []catalog.ChildIdentityV1{
@@ -1127,7 +1167,7 @@ func TestCatalogMaxOperationGroupRejectsSelectedPageBeyondByteBound(t *testing.T
 		operations[index] = catalog.OperationDirectoryV1{
 			DetailID: detailID, OperationID: fmt.Sprintf("operation%d", index+1), Method: "GET",
 			Path: fmt.Sprintf("/items/%d", index+1), Title: fmt.Sprintf("Operation %d", index+1),
-			DetailChild: "details/max.json", Tags: []string{"All operations"},
+			Href: "max/?selected=" + string(detailID) + "#" + string(detailID), DetailChild: "details/max.json", Tags: []string{"All operations"},
 		}
 	}
 	selected := operations[len(operations)-1]
@@ -1136,6 +1176,7 @@ func TestCatalogMaxOperationGroupRejectsSelectedPageBeyondByteBound(t *testing.T
 			ID: string(selected.DetailID), Anchor: string(selected.DetailID), Href: "documents/max/?selected=" + string(selected.DetailID) + "#" + string(selected.DetailID),
 			HeadingID: string(selected.DetailID), Heading: selected.Title, HeadingLevel: 2,
 			Method: selected.Method, Path: selected.Path,
+			Tags: []projection.TextRecord{{Ordinal: 0, ID: "All operations", Value: "All operations"}},
 		},
 	}}})
 	if err != nil {
@@ -1631,6 +1672,68 @@ func (children deadlineSearchCatalogChildren) ReadChild(ctx context.Context, sna
 
 func catalogHandlerFixture(t *testing.T, mount string) (http.Handler, catalog.RuntimeSnapshot) {
 	return catalogHandlerFixtureWithPresentation(t, mount, nil)
+}
+
+func catalogNavigationHandlerFixture(t *testing.T, mount string) (http.Handler, domain.DetailID) {
+	t.Helper()
+	baseHandler, snapshot := catalogHandlerFixture(t, mount)
+	base := baseHandler.(*CatalogHandler)
+	baseChildren := base.children.(memoryCatalogChildren)
+	children := make(memoryCatalogChildren, len(baseChildren))
+	for childPath, data := range baseChildren {
+		children[childPath] = append([]byte(nil), data...)
+	}
+
+	detailPath := "details/core.json"
+	shard, err := catalogjson.DecodeDetailShard(children[detailPath])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(shard.Records) != 1 || shard.Records[0].Operation == nil {
+		t.Fatalf("base detail shard = %#v, want one operation", shard)
+	}
+	shard.Records[0].Operation.Tags = []projection.TextRecord{{Ordinal: 0, ID: "core", Value: "core"}}
+	document := &snapshot.Directory.Documents[1]
+	document.Operations[0].Tags = []string{"core"}
+	selectedID := domain.DetailID("detail-sha256-" + strings.Repeat("b", 64))
+	nextID := domain.DetailID("detail-sha256-" + strings.Repeat("d", 64))
+	for _, item := range []struct {
+		id          domain.DetailID
+		operationID string
+		title       string
+		method      string
+		path        string
+	}{
+		{id: selectedID, operationID: "getCoreV1Pod", title: "Get Pod", method: "GET", path: "/api/v1/pods/{name}"},
+		{id: nextID, operationID: "deleteCoreV1Pod", title: "Delete Pod", method: "DELETE", path: "/api/v1/pods/{name}"},
+	} {
+		href := "documents/core-v1/?selected=" + string(item.id) + "#" + string(item.id)
+		document.Operations = append(document.Operations, catalog.OperationDirectoryV1{
+			DetailID: item.id, OperationID: item.operationID, Method: item.method, Path: item.path,
+			Title: item.title, Href: strings.TrimPrefix(href, "documents/"), DetailChild: detailPath, Tags: []string{"core"},
+		})
+		shard.Records = append(shard.Records, catalog.DetailRecordV1{ID: item.id, Kind: "operation", Operation: &projection.OperationDetail{
+			Ordinal: uint32(len(shard.Records)), ID: string(item.id), Anchor: string(item.id), Href: href,
+			HeadingID: string(item.id), Heading: item.title, HeadingLevel: 2, Method: item.method, Path: item.path,
+			Summary: item.title, Tags: []projection.TextRecord{{Ordinal: 0, ID: "core", Value: "core"}},
+		}})
+	}
+	children[detailPath], err = catalogjson.EncodeDetailShard(shard)
+	if err != nil {
+		t.Fatal(err)
+	}
+	digest := sha256.Sum256(children[detailPath])
+	for index := range snapshot.Manifest.Children {
+		if snapshot.Manifest.Children[index].Path == detailPath {
+			snapshot.Manifest.Children[index].Length = uint64(len(children[detailPath]))
+			snapshot.Manifest.Children[index].SHA256 = hex.EncodeToString(digest[:])
+		}
+	}
+	runtime := catalog.NewRuntime(1)
+	if _, err := runtime.ActivateMount(mount, "", 1, snapshot); err != nil {
+		t.Fatal(err)
+	}
+	return NewCatalogHandler(runtime, children), selectedID
 }
 
 func catalogHandlerFixtureWithPresentation(t *testing.T, mount string, presentation map[string]CatalogPresentation) (http.Handler, catalog.RuntimeSnapshot) {

@@ -947,6 +947,24 @@ component or source-lookup snag occurred. Browser activation, Wasm runtime
 wiring, request-composer behavior,
 Service Worker, offline/storage, SaaS, theme, legal, packaging, and lifecycle
 actions remain outside this checkpoint. Open Core remains incomplete.
+OC-04O starts from exact accepted OC-04N correction parent
+`2b1e8d91bc2ef8c957a8fd413c71427c971c5e8d`, tree
+`0e8b32a347a201a4ab9986e9b72b2a26cf59fc2b`. It prepares the catalog
+operation previous/next navigation as one bounded parser-free fragment from the
+selected immutable operation detail, prepared domain operation, document
+directory, document href, and open sidebar groups. Admission binds the complete
+rendered operation inventory, rejects inconsistent IDs, methods, paths, tags,
+hrefs, child paths, groups, invalid UTF-8, duplicates, and oversized output,
+then retains copied render values only. Catalog SSR/no-JS bytes remain exact,
+including the existing navigation landmark and label, HTMX target/select/swap
+contract, keyboard focus indicators, responsive two-column layout, semantic
+light/dark tokens, and escaped labels. Root and nested real handlers render one
+prepared navigation with both neighbors. Existing Goshtoso icon and badge
+components were sufficient; no component, generated-template, or source-lookup
+snag occurred. Public standalone fallback rendering, response/request shells,
+request composer and rail, browser activation, Wasm runtime wiring, Service
+Worker, offline/storage, SaaS, theme, legal, packaging, and lifecycle actions
+remain outside this checkpoint. Open Core remains incomplete.
 These checkpoints are groundwork, not proof of a complete operation body/main
 Wasm HTML renderer, browser activation, Service Worker, offline storage,
 rollback, tombstones, response rendering,
@@ -989,10 +1007,10 @@ Before merge:
 
 ## Next Action
 
-Submit the frozen OC-04N child of exact accepted OC-04M parent
-`2404f45319b9af67df32492eab8af2ac0a001c38`, with clean status, fail-closed
+Submit the frozen OC-04O child of exact accepted OC-04N correction parent
+`2b1e8d91bc2ef8c957a8fd413c71427c971c5e8d`, with clean status, fail-closed
 mutation receipts, exact whole-endpoint SSR/no-JS parity, root/nested
-real-handler proof, preserved OC-04A-M behavior, architecture/Wasm-boundary,
+real-handler proof, preserved OC-04A-N behavior, architecture/Wasm-boundary,
 race, vet, generation, Muamba, webassets, and uncached standalone root-suite
 receipts for fresh independent review. PM chooses and separately authorizes any
 integration path.

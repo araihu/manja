@@ -305,7 +305,11 @@ func (handler *CatalogHandler) catalogPageDataWithSidebarQuery(
 				}
 				data.OperationRequestBody = &operationRequestBody
 			}
-			data.OperationNavigation = catalogOperationNavigation(documentHref, document.Operations, detail.ID, openGroups, groupPages)
+			operationNavigation, err := localrender.PrepareOperationNavigation(detail, *operation, document, documentHref, openGroups)
+			if err != nil {
+				return templates.CatalogPageData{}, err
+			}
+			data.OperationNavigation = &operationNavigation
 			data.CurrentVisit = &templates.CatalogSearchItemData{
 				ID: string(detail.ID), Title: detail.Operation.Heading, Description: detail.Operation.Description,
 				Href: catalogDetailHref(documentHref, detail.ID), Kind: "Operation", Method: detail.Operation.Method,
@@ -522,100 +526,8 @@ func catalogSidebarHref(
 	return href
 }
 
-func catalogOperationNavigation(
-	documentHref string,
-	operations []catalog.OperationDirectoryV1,
-	selectedID domain.DetailID,
-	openGroups map[string]struct{},
-	pages map[string]int,
-) templates.OperationNavigationData {
-	selectedIndex := -1
-	group := ""
-	for index, operation := range operations {
-		if operation.DetailID == selectedID {
-			selectedIndex = index
-			group = catalogOperationGroupLabel(operation)
-			break
-		}
-	}
-	navigation := templates.OperationNavigationData{Group: group, Catalog: true}
-	if selectedIndex < 0 {
-		return navigation
-	}
-	for index := selectedIndex - 1; index >= 0; index-- {
-		operation := operations[index]
-		if catalogOperationGroupLabel(operation) != group {
-			continue
-		}
-		navigation.Previous = catalogOperationNavigationItem(documentHref, operation, openGroups, pages)
-		break
-	}
-	for index := selectedIndex + 1; index < len(operations); index++ {
-		operation := operations[index]
-		if catalogOperationGroupLabel(operation) != group {
-			continue
-		}
-		navigation.Next = catalogOperationNavigationItem(documentHref, operation, openGroups, pages)
-		break
-	}
-	return navigation
-}
-
-func catalogOperationNavigationItem(
-	documentHref string,
-	operation catalog.OperationDirectoryV1,
-	openGroups map[string]struct{},
-	pages map[string]int,
-) *templates.OperationNavigationItem {
-	title := firstNonEmpty(strings.TrimSpace(operation.Title), strings.TrimSpace(operation.OperationID), strings.TrimSpace(operation.Method+" "+operation.Path))
-	return &templates.OperationNavigationItem{
-		Title:  title,
-		Method: operation.Method,
-		Href:   catalogSidebarHref(documentHref, string(operation.DetailID), "", openGroups, pages),
-	}
-}
-
 func catalogOperationGroupLabel(operation catalog.OperationDirectoryV1) string {
-	if len(operation.Tags) > 0 {
-		if label := strings.TrimSpace(operation.Tags[0]); label != "" {
-			return label
-		}
-	}
-	// Some otherwise useful OpenAPI descriptions omit tags entirely. Grouping
-	// every such operation together makes a large sidebar both hard to scan and
-	// too expensive to render. The first resource segment gives those routes a
-	// stable, human-readable fallback without changing tagged APIs.
-	fallback := ""
-	for _, segment := range strings.Split(strings.Trim(operation.Path, "/"), "/") {
-		segment = strings.TrimSpace(segment)
-		if segment == "" || strings.HasPrefix(segment, "{") {
-			continue
-		}
-		if fallback == "" {
-			fallback = segment
-		}
-		if segment == "api" || isCatalogAPIVersionSegment(segment) {
-			continue
-		}
-		return segment
-	}
-	if fallback != "" {
-		return fallback
-	}
-	return "Untagged"
-}
-
-func isCatalogAPIVersionSegment(segment string) bool {
-	segment = strings.TrimSpace(segment)
-	if len(segment) < 2 || segment[0] != 'v' {
-		return false
-	}
-	for _, character := range segment[1:] {
-		if character < '0' || character > '9' {
-			return false
-		}
-	}
-	return true
+	return localrender.OperationGroupLabel(operation)
 }
 
 func cloneCatalogOpenGroups(groups map[string]struct{}) map[string]struct{} {

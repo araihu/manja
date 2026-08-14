@@ -972,6 +972,51 @@ func TestPreparedOperationRequestBodyMediaMatchesCatalogSSRBytes(t *testing.T) {
 	}
 }
 
+func TestPreparedOperationNavigationMatchesCompleteCatalogSSRBytes(t *testing.T) {
+	t.Parallel()
+
+	ids := []domain.DetailID{
+		domain.DetailID("detail-sha256-" + strings.Repeat("a", 64)),
+		domain.DetailID("detail-sha256-" + strings.Repeat("b", 64)),
+		domain.DetailID("detail-sha256-" + strings.Repeat("c", 64)),
+	}
+	detail := catalog.DetailRecordV1{ID: ids[1], Kind: "operation", Operation: &projection.OperationDetail{
+		ID: string(ids[1]), Anchor: string(ids[1]), HeadingID: string(ids[1]), HeadingLevel: 2,
+		Href:    "documents/core-v1/?selected=" + string(ids[1]) + "#" + string(ids[1]),
+		Heading: "Get Pod", Method: "GET", Path: "/api/v1/pods/{name}", Summary: "Get Pod",
+		Tags: []projection.TextRecord{{Ordinal: 0, ID: "core", Value: "core"}},
+	}}
+	operation := domain.Operation{
+		ID: "getCoreV1Pod", Anchor: string(ids[1]), Title: "Get Pod", Method: "GET", Path: "/api/v1/pods/{name}",
+		Summary: "Get Pod", Tags: []string{"core"},
+	}
+	document := catalog.DocumentDirectoryV1{Key: "core-v1", Operations: []catalog.OperationDirectoryV1{
+		{DetailID: ids[0], OperationID: "listCoreV1Pod", Method: "GET", Path: "/api/v1/pods", Title: "List Pods", Href: "core-v1/?selected=" + string(ids[0]) + "#" + string(ids[0]), DetailChild: "details/core.json", Tags: []string{"core"}},
+		{DetailID: ids[1], OperationID: operation.ID, Method: operation.Method, Path: operation.Path, Title: operation.Summary, Href: "core-v1/?selected=" + string(ids[1]) + "#" + string(ids[1]), DetailChild: "details/core.json", Tags: append([]string(nil), operation.Tags...)},
+		{DetailID: ids[2], OperationID: "deleteCoreV1Pod", Method: "DELETE", Path: "/api/v1/pods/{name}", Title: "Delete Pod", Href: "core-v1/?selected=" + string(ids[2]) + "#" + string(ids[2]), DetailChild: "details/core.json", Tags: []string{"core"}},
+	}}
+	documentHref := "/kubernetes/documents/core-v1/"
+	fragment, err := localrender.PrepareOperationNavigation(detail, operation, document, documentHref, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	legacyNavigation := OperationNavigationData{Group: "core", Catalog: true,
+		Previous: &OperationNavigationItem{Title: "List Pods", Method: "GET", Href: documentHref + "?group=&selected=" + string(ids[0]) + "#" + string(ids[0])},
+		Next:     &OperationNavigationItem{Title: "Delete Pod", Method: "DELETE", Href: documentHref + "?group=&selected=" + string(ids[2]) + "#" + string(ids[2])},
+	}
+	var legacy bytes.Buffer
+	if err := endpointSection(operation, nil, "", PublicDocsOptions{}, legacyNavigation).Render(context.Background(), &legacy); err != nil {
+		t.Fatal(err)
+	}
+	var delegated bytes.Buffer
+	if err := endpointSection(operation, nil, "", PublicDocsOptions{OperationNavigation: &fragment}, OperationNavigationData{}).Render(context.Background(), &delegated); err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(delegated.Bytes(), legacy.Bytes()) {
+		t.Fatalf("prepared operation navigation changed complete endpoint SSR bytes\nlegacy=%s\ndelegated=%s", legacy.Bytes(), delegated.Bytes())
+	}
+}
+
 func TestPreparedOperationResponseMediaMatchesCatalogSSRBytes(t *testing.T) {
 	t.Parallel()
 

@@ -1,0 +1,117 @@
+package render
+
+import (
+	"strings"
+
+	templpkg "github.com/a-h/templ"
+	"github.com/araihu/goshtoso/components/badge"
+	"github.com/araihu/goshtoso/components/icon"
+	"github.com/araihu/goshtoso/components/icon/heroicons"
+)
+
+templ operationNavigation(navigation operationNavigationData) {
+	if navigation.Previous != nil || navigation.Next != nil {
+		<nav data-manja-operation-navigation data-manja-operation-group={ navigation.Group } aria-label={ operationNavigationLabel(navigation.Group) } class="mt-10 border-t border-outline pt-6 dark:border-outline-dark">
+			<div class="grid gap-3 lg:grid-cols-2">
+				if navigation.Previous != nil {
+					@operationNavigationLink(*navigation.Previous, "previous")
+				}
+				if navigation.Next != nil {
+					@operationNavigationLink(*navigation.Next, "next")
+				}
+			</div>
+		</nav>
+	}
+}
+
+templ operationNavigationLink(item operationNavigationItemData, direction string) {
+	<a
+		data-manja-operation-neighbor={ direction }
+		href={ templpkg.URL(item.Href) }
+		hx-get={ item.Href }
+		hx-target="#main-content"
+		hx-select="#main-content"
+		hx-select-oob="#catalog-navigation"
+		hx-swap="outerHTML show:#main-content:top"
+		hx-push-url="true"
+		class={ operationNavigationLinkClass(direction) }
+	>
+		if direction == "previous" {
+			@icon.Icon(icon.Config{SpriteURL: heroicons.SpriteURL, Symbol: heroicons.Icon16SolidChevronLeft, Size: icon.SizeSM, Decorative: true, RootClass: "mt-1 shrink-0"})
+		}
+		<span class={ operationNavigationContentClass(direction) }>
+			<span class="text-xs font-semibold uppercase tracking-wide text-on-surface-muted dark:text-on-surface-dark-muted">{ operationNavigationDirectionLabel(direction) }</span>
+			<span class={ operationNavigationIdentityClass(direction) }>
+				@operationNavigationMethodBadge(item.Method)
+				<span class="min-w-0 break-words font-semibold text-on-surface-strong dark:text-on-surface-dark-strong">{ item.Title }</span>
+			</span>
+		</span>
+		if direction == "next" {
+			@icon.Icon(icon.Config{SpriteURL: heroicons.SpriteURL, Symbol: heroicons.Icon16SolidChevronRight, Size: icon.SizeSM, Decorative: true, RootClass: "mt-1 shrink-0"})
+		}
+	</a>
+}
+
+templ operationNavigationMethodBadge(method string) {
+	@badge.Badge(badge.Config{
+		Label:      strings.ToUpper(strings.TrimSpace(method)),
+		Tone:       operationNavigationMethodBadgeTone(method),
+		Appearance: badge.AppearanceSoft,
+		Size:       badge.SizeSM,
+		RootClass:  "shrink-0 font-mono font-bold",
+	})
+}
+
+func operationNavigationMethodBadgeTone(method string) badge.Tone {
+	switch strings.ToUpper(strings.TrimSpace(method)) {
+	case "GET":
+		return badge.ToneSuccess
+	case "POST":
+		return badge.TonePrimary
+	case "PUT", "PATCH":
+		return badge.ToneWarning
+	case "DELETE":
+		return badge.ToneDanger
+	default:
+		return badge.ToneDefault
+	}
+}
+
+func operationNavigationLabel(group string) string {
+	group = strings.TrimSpace(group)
+	if group == "" {
+		group = "Untagged"
+	}
+	return "More operations in " + group
+}
+
+func operationNavigationLinkClass(direction string) string {
+	className := "group flex min-w-0 items-start gap-3 rounded-radius border border-outline bg-surface p-4 transition-colors hover:border-primary hover:bg-surface-alt focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary dark:border-outline-dark dark:bg-surface-dark dark:hover:border-primary-dark dark:hover:bg-surface-dark-alt dark:focus-visible:outline-primary-dark"
+	if direction == "next" {
+		className += " text-right sm:col-start-2"
+	}
+	return className
+}
+
+func operationNavigationContentClass(direction string) string {
+	className := "flex min-w-0 flex-1 flex-col gap-2"
+	if direction == "next" {
+		className += " text-right"
+	}
+	return className
+}
+
+func operationNavigationIdentityClass(direction string) string {
+	className := "flex w-full min-w-0 items-start gap-2"
+	if direction == "next" {
+		className += " justify-end"
+	}
+	return className
+}
+
+func operationNavigationDirectionLabel(direction string) string {
+	if direction == "previous" {
+		return "Previous operation"
+	}
+	return "Next operation"
+}
