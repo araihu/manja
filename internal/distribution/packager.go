@@ -458,6 +458,7 @@ func Pack(request PackageRequest, policy Policy) (PackageResult, error) {
 	mechanicalFindings = append(mechanicalFindings, validateAuthority("rights_holder", request.RightsHolder)...)
 	artifactNames := make(map[string]struct{}, len(request.Artifacts))
 	for _, artifactRequest := range request.Artifacts {
+		mechanicalFindings = append(mechanicalFindings, validateLegalPlacement(policy, artifactRequest.Kind)...)
 		if !validArtifactName(artifactRequest.Name) {
 			mechanicalFindings = append(mechanicalFindings, Finding{Code: "artifact.name.invalid", Subject: artifactRequest.Name, Detail: "artifact name must be one safe path segment"})
 		}
@@ -717,13 +718,21 @@ func validateLegalAgainstRoot(request ArtifactRequest, legalRoot string, legal L
 		if !exists || isZeroFile(file) {
 			continue
 		}
-		candidate := filepath.Join(request.Root, filepath.FromSlash(requiredPath))
+		candidate, err := containedPath(request.Root, requiredPath)
+		if err != nil {
+			findings = append(findings, Finding{Code: "legal.path.unsafe", Subject: request.Name + ":" + requiredPath, Detail: err.Error()})
+			continue
+		}
 		if _, err := os.Lstat(candidate); errors.Is(err, os.ErrNotExist) {
 			if legalRoot == "" {
 				findings = append(findings, Finding{Code: "legal.file.missing", Subject: request.Name + ":" + requiredPath, Detail: "required legal file is absent from artifact root and no legal source root was supplied"})
 				continue
 			}
-			candidate = filepath.Join(legalRoot, filepath.Base(filepath.FromSlash(file.Path)))
+			candidate, err = containedPath(legalRoot, filepath.Base(filepath.FromSlash(file.Path)))
+			if err != nil {
+				findings = append(findings, Finding{Code: "legal.path.unsafe", Subject: request.Name + ":" + requiredPath, Detail: err.Error()})
+				continue
+			}
 		}
 		actual, err := regularFileEvidence(candidate, requiredPath)
 		if err != nil {
@@ -768,6 +777,9 @@ func packageOne(request ArtifactRequest, artifact ArtifactEvidence, packageReque
 	if err := os.WriteFile(sbomFilePath, sbomBytes, 0o644); err != nil {
 		return PackagedArtifact{}, artifact, err
 	}
+	if err := os.Chmod(sbomFilePath, 0o644); err != nil {
+		return PackagedArtifact{}, artifact, err
+	}
 	finalInventory, err := InspectRoot(staging, RootOptions{ExcludedPaths: runtimeExclusions(request.Kind, policy)})
 	if err != nil {
 		return PackagedArtifact{}, artifact, err
@@ -804,12 +816,18 @@ func installLegalFiles(staging string, kind ArtifactKind, legalRoot string, lega
 		if !exists || isZeroFile(file) {
 			return fmt.Errorf("required legal file evidence %q is missing", requiredPath)
 		}
-		destination := filepath.Join(staging, filepath.FromSlash(requiredPath))
+		destination, err := containedPath(staging, requiredPath)
+		if err != nil {
+			return fmt.Errorf("unsafe legal placement %q: %w", requiredPath, err)
+		}
 		if _, err := os.Lstat(destination); errors.Is(err, os.ErrNotExist) {
 			if legalRoot == "" {
 				return fmt.Errorf("required legal file %q is absent and no legal source root was supplied", requiredPath)
 			}
-			source := filepath.Join(legalRoot, filepath.Base(filepath.FromSlash(file.Path)))
+			source, err := containedPath(legalRoot, filepath.Base(filepath.FromSlash(file.Path)))
+			if err != nil {
+				return fmt.Errorf("unsafe legal source %q: %w", file.Path, err)
+			}
 			info, err := os.Lstat(source)
 			if err != nil {
 				return fmt.Errorf("read legal file %q: %w", requiredPath, err)
@@ -1055,6 +1073,36 @@ func requiredPaths(policy Policy, kind ArtifactKind) []string {
 		return append([]string(nil), paths...)
 	}
 	return append([]string(nil), policy.RequiredLegalPaths...)
+}
+
+func validateLegalPlacement(policy Policy, kind ArtifactKind) []Finding {
+	var findings []Finding
+	for _, requiredPath := range requiredPaths(policy, kind) {
+		if _, err := canonicalRelativePath(requiredPath); err != nil {
+			findings = append(findings, Finding{Code: "legal.path.unsafe", Subject: requiredPath, Detail: err.Error()})
+		}
+	}
+	return findings
+}
+
+func containedPath(root, relative string) (string, error) {
+	canonical, err := canonicalRelativePath(relative)
+	if err != nil {
+		return "", err
+	}
+	rootAbs, err := filepath.Abs(root)
+	if err != nil {
+		return "", err
+	}
+	candidate := filepath.Join(rootAbs, filepath.FromSlash(canonical))
+	relativeToRoot, err := filepath.Rel(rootAbs, candidate)
+	if err != nil {
+		return "", err
+	}
+	if relativeToRoot == ".." || strings.HasPrefix(relativeToRoot, ".."+string(filepath.Separator)) {
+		return "", &InventoryError{Code: "artifact.path.unsafe", Path: relative, Detail: "path escapes its intended root"}
+	}
+	return candidate, nil
 }
 
 func sbomPath(policy Policy, kind ArtifactKind, name string) (string, error) {

@@ -237,35 +237,8 @@ func TestPackReportsMissingOutputDirectoryAfterGates(t *testing.T) {
 }
 
 func TestPackPassesSyntheticAuthorityAndPlacesNotices(t *testing.T) {
-	root := t.TempDir()
-	writeTestFile(t, root, "bin/manja", "binary")
-	if err := os.Chmod(filepath.Join(root, "bin", "manja"), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	legalRoot := t.TempDir()
-	writeTestFile(t, legalRoot, "LICENSE", "license")
-	writeTestFile(t, legalRoot, "NOTICE", "notice")
-	writeTestFile(t, legalRoot, "THIRD_PARTY_NOTICES.md", "third party")
-	legal := LegalEvidence{
-		Holder: "Verified Holder", YearRange: "2026",
-		License:    fileEvidenceFromPath(t, legalRoot, "LICENSE"),
-		Notice:     fileEvidenceFromPath(t, legalRoot, "NOTICE"),
-		ThirdParty: fileEvidenceFromPath(t, legalRoot, "THIRD_PARTY_NOTICES.md"),
-	}
-	rootInventory, err := InspectRoot(root, RootOptions{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	artifactRequest := ArtifactRequest{Name: "manja", Kind: ArtifactBinary, Source: "git:test", Root: root, RootDigest: rootInventory.Digest, ExpectedDigest: syntheticPackageDigest}
 	output := filepath.Join(t.TempDir(), "release")
-	packageRequest := PackageRequest{
-		Subject:      SubjectEvidence{CommitSHA: strings.Repeat("a", 40), TreeSHA: strings.Repeat("b", 40)},
-		Provenance:   AuthorityEvidence{Status: StatusPass, Reference: "provenance-receipt", Digest: "sha256:" + strings.Repeat("1", 64)},
-		RightsHolder: AuthorityEvidence{Status: StatusPass, Reference: "rights-receipt", Digest: "sha256:" + strings.Repeat("2", 64)},
-		Legal:        legal, LegalRoot: legalRoot,
-		Artifacts: []ArtifactRequest{artifactRequest},
-		OutputDir: output,
-	}
+	packageRequest := syntheticPackageRequest(t, output)
 	result, err := Pack(packageRequest, DefaultPolicy())
 	if err != nil {
 		t.Fatal(err)
@@ -306,6 +279,55 @@ func TestPackPassesSyntheticAuthorityAndPlacesNotices(t *testing.T) {
 		if file.Path == "bin/manja" && file.Mode != 0o755 {
 			t.Fatalf("final archive changed executable mode: %#v", file)
 		}
+	}
+}
+
+func syntheticPackageRequest(t *testing.T, output string) PackageRequest {
+	t.Helper()
+	root := t.TempDir()
+	writeTestFile(t, root, "bin/manja", "binary")
+	if err := os.Chmod(filepath.Join(root, "bin", "manja"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	legalRoot := t.TempDir()
+	for _, file := range []struct {
+		path    string
+		content string
+	}{
+		{path: "LICENSE", content: "license"},
+		{path: "NOTICE", content: "notice"},
+		{path: "THIRD_PARTY_NOTICES.md", content: "third party"},
+	} {
+		writeTestFile(t, legalRoot, file.path, file.content)
+		if err := os.Chmod(filepath.Join(legalRoot, filepath.FromSlash(file.path)), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	legal := LegalEvidence{
+		Holder: "Verified Holder", YearRange: "2026",
+		License:    fileEvidenceFromPath(t, legalRoot, "LICENSE"),
+		Notice:     fileEvidenceFromPath(t, legalRoot, "NOTICE"),
+		ThirdParty: fileEvidenceFromPath(t, legalRoot, "THIRD_PARTY_NOTICES.md"),
+	}
+	rootInventory, err := InspectRoot(root, RootOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return PackageRequest{
+		Subject:      SubjectEvidence{CommitSHA: strings.Repeat("a", 40), TreeSHA: strings.Repeat("b", 40)},
+		Provenance:   AuthorityEvidence{Status: StatusPass, Reference: "provenance-receipt", Digest: "sha256:" + strings.Repeat("1", 64)},
+		RightsHolder: AuthorityEvidence{Status: StatusPass, Reference: "rights-receipt", Digest: "sha256:" + strings.Repeat("2", 64)},
+		Legal:        legal,
+		LegalRoot:    legalRoot,
+		Artifacts: []ArtifactRequest{{
+			Name:           "manja",
+			Kind:           ArtifactBinary,
+			Source:         "git:test",
+			Root:           root,
+			RootDigest:     rootInventory.Digest,
+			ExpectedDigest: syntheticPackageDigest,
+		}},
+		OutputDir: output,
 	}
 }
 
@@ -492,6 +514,55 @@ func TestPackRejectsUnsafeSBOMPlacement(t *testing.T) {
 	}
 	if result.Result.Status != StatusBlocked || !result.Result.HasCode("artifact.sbom.path_unsafe") {
 		t.Fatalf("result = %#v, want unsafe-SBOM-path blocker", result.Result)
+	}
+}
+
+func TestPackRejectsUnsafeLegalPlacement(t *testing.T) {
+	root := t.TempDir()
+	writeTestFile(t, root, "bin/manja", "binary")
+	legalRoot, legal := testLegalEvidence(t)
+	policy := DefaultPolicy()
+	escapeName := filepath.Base(root) + "-escaped"
+	unsafePath := "../" + escapeName + "/LICENSE"
+	policy.LegalPlacement = map[ArtifactKind][]string{ArtifactBinary: {unsafePath}}
+	legal.License.Path = unsafePath
+	output := filepath.Join(t.TempDir(), "release")
+
+	result, err := Pack(PackageRequest{
+		Subject:      SubjectEvidence{CommitSHA: strings.Repeat("a", 40), TreeSHA: strings.Repeat("b", 40)},
+		Provenance:   AuthorityEvidence{Status: StatusPass, Reference: "provenance-receipt", Digest: "sha256:" + strings.Repeat("1", 64)},
+		RightsHolder: AuthorityEvidence{Status: StatusPass, Reference: "rights-receipt", Digest: "sha256:" + strings.Repeat("2", 64)},
+		Legal:        legal, LegalRoot: legalRoot,
+		Artifacts: []ArtifactRequest{{Name: "manja", Kind: ArtifactBinary, Source: "git:test", Root: root}},
+		OutputDir: output,
+	}, policy)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Result.Status != StatusBlocked || !result.Result.HasCode("legal.path.unsafe") {
+		t.Fatalf("result = %#v, want unsafe-legal-path blocker", result.Result)
+	}
+	if _, err := os.Stat(output); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("output directory exists after unsafe legal placement: %v", err)
+	}
+}
+
+func TestInstallLegalFilesRejectsTraversalBeforeWritingOutsideStaging(t *testing.T) {
+	staging := t.TempDir()
+	legalRoot, legal := testLegalEvidence(t)
+	escapeName := filepath.Base(staging) + "-escaped"
+	unsafePath := "../" + escapeName + "/LICENSE"
+	policy := DefaultPolicy()
+	policy.LegalPlacement = map[ArtifactKind][]string{ArtifactBinary: {unsafePath}}
+	legal.License.Path = unsafePath
+
+	err := installLegalFiles(staging, ArtifactBinary, legalRoot, legal, policy)
+	if err == nil {
+		t.Fatal("installLegalFiles accepted a traversal legal placement")
+	}
+	escaped := filepath.Join(filepath.Dir(staging), escapeName, "LICENSE")
+	if _, err := os.Stat(escaped); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("unsafe legal placement wrote outside staging: %v", err)
 	}
 }
 
