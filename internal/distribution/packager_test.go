@@ -22,6 +22,10 @@ const (
 	firstFailureDigest     = "sha256:84aee66c276af7ca5dc4413883b846acf46b41c9301af21790901be10f43b7a7"
 )
 
+func testArtifactSource(name string) string {
+	return "git:example.com/" + name + "@" + strings.Repeat("c", 40)
+}
+
 func TestInspectRootRecursesAndRejectsExcludedNestedFile(t *testing.T) {
 	root := t.TempDir()
 	writeTestFile(t, root, "nested/ok.txt", "ok")
@@ -210,7 +214,7 @@ func TestPackBlockedAuthorityNeverWritesReleaseArtifacts(t *testing.T) {
 		Subject:      SubjectEvidence{CommitSHA: strings.Repeat("a", 40), TreeSHA: strings.Repeat("b", 40)},
 		Provenance:   AuthorityEvidence{Status: StatusBlocked},
 		RightsHolder: AuthorityEvidence{Status: StatusBlocked},
-		Artifacts:    []ArtifactRequest{{Name: "manja", Kind: ArtifactBinary, Source: "git:test", Root: root}},
+		Artifacts:    []ArtifactRequest{{Name: "manja", Kind: ArtifactBinary, Source: testArtifactSource("test"), Root: root}},
 		OutputDir:    output,
 	}, DefaultPolicy())
 	if err != nil {
@@ -234,7 +238,7 @@ func TestPackReportsMissingOutputDirectoryAfterGates(t *testing.T) {
 		Provenance:   testProvenanceEvidence(),
 		RightsHolder: testRightsHolderEvidence(),
 		Legal:        legal, LegalRoot: legalRoot,
-		Artifacts: []ArtifactRequest{{Name: "manja", Kind: ArtifactBinary, Source: "git:test", Root: root, ExpectedDigest: "sha256:" + strings.Repeat("f", 64)}},
+		Artifacts: []ArtifactRequest{{Name: "manja", Kind: ArtifactBinary, Source: testArtifactSource("test"), Root: root, ExpectedDigest: "sha256:" + strings.Repeat("f", 64)}},
 	}, DefaultPolicy())
 	if err == nil {
 		t.Fatal("Pack accepted a missing output directory")
@@ -330,7 +334,7 @@ func syntheticPackageRequest(t *testing.T, output string) PackageRequest {
 		Artifacts: []ArtifactRequest{{
 			Name:           "manja",
 			Kind:           ArtifactBinary,
-			Source:         "git:test",
+			Source:         testArtifactSource("test"),
 			Root:           root,
 			RootDigest:     rootInventory.Digest,
 			ExpectedDigest: syntheticPackageDigest,
@@ -356,7 +360,7 @@ func TestPackRejectsIncompleteSBOMAlreadyInArtifactRoot(t *testing.T) {
 		RightsHolder: testRightsHolderEvidence(),
 		Legal:        legal,
 		LegalRoot:    legalRoot,
-		Artifacts:    []ArtifactRequest{{Name: "manja", Kind: ArtifactBinary, Source: "git:test", Root: root, RootDigest: rootInventory.Digest}},
+		Artifacts:    []ArtifactRequest{{Name: "manja", Kind: ArtifactBinary, Source: testArtifactSource("test"), Root: root, RootDigest: rootInventory.Digest}},
 		OutputDir:    output,
 	}, DefaultPolicy())
 	if err != nil {
@@ -383,7 +387,7 @@ func TestPackValidatesLegalBytesBeforeCreatingOutput(t *testing.T) {
 		RightsHolder: testRightsHolderEvidence(),
 		Legal:        legal,
 		LegalRoot:    legalRoot,
-		Artifacts:    []ArtifactRequest{{Name: "manja", Kind: ArtifactBinary, Source: "git:test", Root: root}},
+		Artifacts:    []ArtifactRequest{{Name: "manja", Kind: ArtifactBinary, Source: testArtifactSource("test"), Root: root}},
 		OutputDir:    output,
 	}, DefaultPolicy())
 	if err != nil {
@@ -409,7 +413,7 @@ func TestPackValidatesLegalFileModeBeforeCreatingOutput(t *testing.T) {
 		Provenance:   testProvenanceEvidence(),
 		RightsHolder: testRightsHolderEvidence(),
 		Legal:        legal, LegalRoot: legalRoot,
-		Artifacts: []ArtifactRequest{{Name: "manja", Kind: ArtifactBinary, Source: "git:test", Root: root, ExpectedDigest: "sha256:" + strings.Repeat("f", 64)}},
+		Artifacts: []ArtifactRequest{{Name: "manja", Kind: ArtifactBinary, Source: testArtifactSource("test"), Root: root, ExpectedDigest: "sha256:" + strings.Repeat("f", 64)}},
 		OutputDir: output,
 	}, DefaultPolicy())
 	if err != nil {
@@ -435,7 +439,7 @@ func TestPackDoesNotLeaveArtifactsWhenLaterPackageFails(t *testing.T) {
 	legalRoot, legal := testLegalEvidence(t)
 	output := filepath.Join(t.TempDir(), "release")
 	wrongDigest := "sha256:" + strings.Repeat("f", 64)
-	firstRequest := ArtifactRequest{Name: "first", Kind: ArtifactBinary, Source: "git:first", Root: firstRoot, ExpectedDigest: firstFailureDigest}
+	firstRequest := ArtifactRequest{Name: "first", Kind: ArtifactBinary, Source: testArtifactSource("first"), Root: firstRoot, ExpectedDigest: firstFailureDigest}
 
 	result, err := Pack(PackageRequest{
 		Subject:      SubjectEvidence{CommitSHA: strings.Repeat("a", 40), TreeSHA: strings.Repeat("b", 40)},
@@ -445,7 +449,7 @@ func TestPackDoesNotLeaveArtifactsWhenLaterPackageFails(t *testing.T) {
 		LegalRoot:    legalRoot,
 		Artifacts: []ArtifactRequest{
 			firstRequest,
-			{Name: "second", Kind: ArtifactBinary, Source: "git:second", Root: secondRoot, ExpectedDigest: wrongDigest},
+			{Name: "second", Kind: ArtifactBinary, Source: testArtifactSource("second"), Root: secondRoot, ExpectedDigest: wrongDigest},
 		},
 		OutputDir: output,
 	}, DefaultPolicy())
@@ -514,7 +518,7 @@ func TestPackRejectsUnsafeSBOMPlacement(t *testing.T) {
 		Provenance:   testProvenanceEvidence(),
 		RightsHolder: testRightsHolderEvidence(),
 		Legal:        legal, LegalRoot: legalRoot,
-		Artifacts: []ArtifactRequest{{Name: "manja", Kind: ArtifactBinary, Source: "git:test", Root: root}},
+		Artifacts: []ArtifactRequest{{Name: "manja", Kind: ArtifactBinary, Source: testArtifactSource("test"), Root: root}},
 		OutputDir: filepath.Join(t.TempDir(), "release"),
 	}, policy)
 	if err != nil {
@@ -541,7 +545,7 @@ func TestPackRejectsUnsafeLegalPlacement(t *testing.T) {
 		Provenance:   testProvenanceEvidence(),
 		RightsHolder: testRightsHolderEvidence(),
 		Legal:        legal, LegalRoot: legalRoot,
-		Artifacts: []ArtifactRequest{{Name: "manja", Kind: ArtifactBinary, Source: "git:test", Root: root}},
+		Artifacts: []ArtifactRequest{{Name: "manja", Kind: ArtifactBinary, Source: testArtifactSource("test"), Root: root}},
 		OutputDir: output,
 	}, policy)
 	if err != nil {
@@ -585,7 +589,7 @@ func TestPackRejectsMissingExpectedArchiveDigest(t *testing.T) {
 		Provenance:   testProvenanceEvidence(),
 		RightsHolder: testRightsHolderEvidence(),
 		Legal:        legal, LegalRoot: legalRoot,
-		Artifacts: []ArtifactRequest{{Name: "manja", Kind: ArtifactBinary, Source: "git:test", Root: root}},
+		Artifacts: []ArtifactRequest{{Name: "manja", Kind: ArtifactBinary, Source: testArtifactSource("test"), Root: root}},
 		OutputDir: output,
 	}, DefaultPolicy())
 	if err != nil {

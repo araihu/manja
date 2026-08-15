@@ -30,9 +30,13 @@ evidence only: first-party authority, final-artifact attribution and notice
 placement, redistribution scope, and trademark/endorsement clearance remain
 separate blocked decisions.
 
-This inventory is an engineering release gate, not a legal conclusion. Manja
-must not claim Apache-2.0, publish a root `LICENSE` or `NOTICE`, or add Apache
-package metadata until every blocking item below is resolved with evidence.
+This inventory is an engineering release gate, not a legal conclusion. The
+candidate tree contains provisional root `LICENSE`, `NOTICE`, and
+`THIRD_PARTY_NOTICES.md` inputs, but they are not release clearance: `LICENSE`
+contains no operative permission grant while holder, authority, attribution,
+and redistribution remain blocked. Manja must not claim Apache-2.0, publish a
+cleared package, or add Apache package metadata until every blocking item below
+is resolved with evidence.
 
 ## Audited Base Snapshot And Evidence
 
@@ -236,8 +240,8 @@ The gate remains **BLOCKED** for independent reasons:
    brand-use disposition; portable Manja social-preview regeneration remains
    blocked on exact renderer/font acquisition, while Kubernetes social-preview
    source, generation, and trademark provenance remain incomplete;
-3. audited-base source/OCI artifacts do not carry a complete project license,
-   notices, or SBOM set.
+3. audited-base source/OCI artifacts do not carry release-cleared project
+   license and notice evidence; the SBOM step is explicitly deferred.
 
 Mechanical source/license identification for the GitHub REST fixture and
 Stripe OpenAPI input, exact generated-API reproducibility, Simple Icons mark
@@ -245,9 +249,10 @@ adaptation evidence, and the observed Manja SVG-to-PNG source/output
 relationship are resolved only to the degrees recorded above. Those mechanical
 results do not clear the independent blockers.
 
-Accordingly, this checkpoint creates no root `LICENSE`, `NOTICE`,
-`THIRD_PARTY_NOTICES.md`, Apache badge/metadata, SBOM, or production release
-artifact. The mechanical archive/evidence seam exists in
+Accordingly, this checkpoint carries provisional root `LICENSE`, `NOTICE`, and
+`THIRD_PARTY_NOTICES.md` inputs, but creates no cleared package, Apache
+badge/metadata, SBOM, or production release artifact. The SBOM step is
+explicitly deferred. The mechanical archive/evidence seam exists in
 `internal/distribution`, but it is not a production release definition and
 does not clear Task 8. Production distribution and OCI inspection remain
 stopped until this document is changed to `PASS` from concrete rights-holder

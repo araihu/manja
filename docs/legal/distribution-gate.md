@@ -23,12 +23,13 @@ fail-closed status; see [`root-materials.md`](root-materials.md) and
 The gate consumes one JSON evidence object supplied by the caller. It binds
 the object to a full lowercase Git commit and tree SHA-1, and records separate
 provenance and rights-holder authority receipts. A `PASS` authority receipt
-must be resolved from a caller-owned immutable checkout with the exact receipt
-bytes, a canonical Git commit/blob reference, and a matching SHA-256 or
-SHA-384 digest; serialized JSON cannot self-assert the unexported resolved
-state. A `BLOCKED` authority receipt remains blocked even when every mechanical
-hash check succeeds; material or holder attribution supplied before that point
-is reported as `legal.materials.before_clearance`.
+must be resolved from a caller-owned immutable Git worktree with the exact
+receipt bytes, a canonical Git commit/tree/path/blob reference verified against
+the local object database, and a matching SHA-256 or SHA-384 digest; serialized
+JSON cannot self-assert the unexported resolved state. A `BLOCKED` authority
+receipt remains blocked even when every mechanical hash check succeeds;
+material or holder attribution supplied before that point is reported as
+`legal.materials.before_clearance`.
 
 The current JSON-only `cmd/distribution-gate check` intentionally cannot
 manufacture that resolved state. A caller that has a real receipt must resolve

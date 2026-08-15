@@ -3,6 +3,7 @@ package distribution
 import (
 	"bytes"
 	"encoding/json"
+	"os/exec"
 	"strings"
 	"testing"
 )
@@ -69,8 +70,7 @@ func TestEvaluateRejectsUnverifiedAuthorityAndMutableDependency(t *testing.T) {
 
 func TestResolveAuthorityBindsReferencedReceiptBytes(t *testing.T) {
 	root := t.TempDir()
-	writeTestFile(t, root, "docs/legal/provenance-receipt.txt", "provenance receipt")
-	input := testProvenanceEvidence()
+	input := gitAuthorityEvidence(t, root, "docs/legal/provenance-receipt.txt", "provenance receipt")
 	input.resolved = false
 
 	resolved, err := ResolveAuthority(root, input)
@@ -79,6 +79,31 @@ func TestResolveAuthorityBindsReferencedReceiptBytes(t *testing.T) {
 	}
 	if !resolved.resolved || !bytes.Equal(resolved.Receipt, input.Receipt) {
 		t.Fatalf("resolved authority = %#v", resolved)
+	}
+}
+
+func TestResolveAuthorityRejectsNonGitRootAndFakeCommit(t *testing.T) {
+	nonGitRoot := t.TempDir()
+	writeTestFile(t, nonGitRoot, "docs/legal/provenance-receipt.txt", "provenance receipt")
+	if _, err := ResolveAuthority(nonGitRoot, testProvenanceEvidence()); err == nil {
+		t.Fatal("ResolveAuthority accepted a receipt from a non-Git directory")
+	}
+
+	root := t.TempDir()
+	input := gitAuthorityEvidence(t, root, "docs/legal/provenance-receipt.txt", "provenance receipt")
+	blob := input.Reference[strings.LastIndex(input.Reference, "#blob=")+len("#blob="):]
+	input.Reference = "git:example.com/manja@" + strings.Repeat("f", 40) + ":docs/legal/provenance-receipt.txt#blob=" + blob
+	if _, err := ResolveAuthority(root, input); err == nil {
+		t.Fatal("ResolveAuthority accepted a fabricated commit")
+	}
+}
+
+func TestResolveAuthorityRejectsWorkingTreeBytesOutsideGitObject(t *testing.T) {
+	root := t.TempDir()
+	input := gitAuthorityEvidence(t, root, "docs/legal/provenance-receipt.txt", "provenance receipt")
+	writeTestFile(t, root, "docs/legal/provenance-receipt.txt", "drifted receipt")
+	if _, err := ResolveAuthority(root, input); err == nil {
+		t.Fatal("ResolveAuthority accepted working-tree bytes different from the referenced Git object")
 	}
 }
 
@@ -339,6 +364,15 @@ func TestEvaluatePassesCompleteEvidenceAndAllRuntimeArtifacts(t *testing.T) {
 	}
 }
 
+func TestEvaluateRejectsMutableArtifactSource(t *testing.T) {
+	evidence := validEvidence()
+	evidence.Artifacts[0].Source = "git:test"
+	result := Evaluate(evidence, DefaultPolicy())
+	if result.Status != StatusBlocked || !result.HasCode("artifact.source.invalid") {
+		t.Fatalf("result = %#v, want mutable artifact source blocker", result)
+	}
+}
+
 func validEvidence() Evidence {
 	return Evidence{
 		SchemaVersion: 1,
@@ -379,7 +413,7 @@ func validEvidence() Evidence {
 			{
 				Name:       "manja-runtime",
 				Kind:       ArtifactBinary,
-				Source:     "git:c20241437b6309b5ce73d8ab30f14e3be9812552",
+				Source:     "git:example.com/manja@c20241437b6309b5ce73d8ab30f14e3be9812552",
 				Digest:     "sha256:" + strings.Repeat("7", 64),
 				Inspection: InspectionEvidence{Complete: true, FreshRoot: true, DigestBound: true},
 				SBOM: SBOMEvidence{
@@ -396,6 +430,38 @@ func validEvidence() Evidence {
 			},
 		},
 	}
+}
+
+func gitAuthorityEvidence(t *testing.T, root, receiptPath, content string) AuthorityEvidence {
+	t.Helper()
+	for _, args := range [][]string{
+		{"init", "--initial-branch=main"},
+		{"config", "user.email", "test@example.com"},
+		{"config", "user.name", "Test"},
+	} {
+		runGitTest(t, root, args...)
+	}
+	writeTestFile(t, root, receiptPath, content)
+	runGitTest(t, root, "add", receiptPath)
+	runGitTest(t, root, "commit", "-m", "receipt")
+	commit := strings.TrimSpace(string(runGitTest(t, root, "rev-parse", "HEAD")))
+	blob := strings.TrimSpace(string(runGitTest(t, root, "rev-parse", "HEAD:"+receiptPath)))
+	return AuthorityEvidence{
+		Status:    StatusPass,
+		Reference: "git:example.com/manja@" + commit + ":" + receiptPath + "#blob=" + blob,
+		Digest:    sha256Digest([]byte(content)),
+		Receipt:   []byte(content),
+	}
+}
+
+func runGitTest(t *testing.T, root string, args ...string) []byte {
+	t.Helper()
+	command := exec.Command("git", append([]string{"-C", root}, args...)...)
+	output, err := command.CombinedOutput()
+	if err != nil {
+		t.Fatalf("git %s: %v: %s", strings.Join(args, " "), err, output)
+	}
+	return output
 }
 
 func testProvenanceEvidence() AuthorityEvidence {
