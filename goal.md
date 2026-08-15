@@ -1464,3 +1464,21 @@ race 20/20 passed (`53.849s`), and packet full E2E/race/vet/Wasm/Muamba/
 webassets/templ/diff receipts passed. This is scope reconciliation only, not
 a technical/design/product review verdict. Existing selfhosted full-root race
 blocker remains preserved; OC-03 packet and combined full gates are pending.
+
+### Round-4 OC-03 selfhosted race packet reconciliation (2026-08-15)
+
+The frozen OC-03 packet arrived from branch `codex/oc03-selfhosted-race-fix`
+with exact base/parent `e93149acd7a2814717302e2571d66f760b16fae7`, base tree
+`8a654b40772516498084c39e9b8f461da47349d1`, head
+`ae418ecfe4ee7391a59dfa9364666f1354fb2086`, tree
+`88d522fd892e3331e82dab4e1c6c9fdef3ff4824`, and clean staged/unstaged/
+untracked status. It changes only `domain/identity.go`; identity/path checks
+passed against round4 and the packet was cherry-picked unchanged as `9524f40`.
+The bounded change lazily constructs UTF-8 error paths, preserving semantics
+while removing per-recursion allocation churn.
+
+Packet receipts report root race exit 0 plus affected/race/vet/architecture/
+Wasm/Muamba/templ/focused passes. Reconciler domain and architecture normal
+passed; domain race passed. Full combined root/site/generation gates remain
+pending. This is scope reconciliation only, not a technical/design/product
+review verdict; no lifecycle action is authorized.
