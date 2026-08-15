@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -99,6 +100,60 @@ func TestLocalDocsEnhancerActivatesAfterSameOriginManifestAndLeavesSSRBodyIntact
 	}
 	if values["ready"] != "true" || values["fallback"] != "" {
 		t.Fatalf("activation unexpectedly fell back: %#v", values)
+	}
+}
+
+func TestLocalDocsEnhancerRegistersRootScopedWorkerWithoutBlockingSSR(t *testing.T) {
+	page := localDocsPage(t)
+	descriptor, manifestJSON := localDocsFixture(t, "/docs/")
+	body := `<main id="ssr"><h1>Rendered on the server</h1></main>`
+	if err := page.SetContent(body + `<script id="manja-local-docs-descriptor" type="application/json">` + descriptor + `</script>`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := page.Evaluate(`(manifest) => {
+		window.__workerMessages = [];
+		window.__workerRegistration = null;
+		const worker = { postMessage: (message) => window.__workerMessages.push(message) };
+		Object.defineProperty(navigator, 'serviceWorker', { configurable: true, value: {
+			controller: worker,
+			register: (url, options) => { window.__workerRegistration = {url, options}; return Promise.resolve({active: worker}); },
+			ready: Promise.resolve({active: worker}),
+			addEventListener: () => {},
+		} });
+		window.ManjaLocalDocs = {activate: () => ({ok: true})};
+		window.fetch = () => Promise.resolve(new Response(manifest, {status: 200, headers: {'Content-Length': String(new TextEncoder().encode(manifest).byteLength)}}));
+	}`, manifestJSON); err != nil {
+		t.Fatal(err)
+	}
+	path, err := filepath.Abs("local-docs.js")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := page.AddScriptTag(playwright.PageAddScriptTagOptions{Path: playwright.String(path)}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := page.WaitForFunction(`() => document.documentElement.dataset.manjaLocalDocsState === 'ready'`, nil, playwright.PageWaitForFunctionOptions{Timeout: playwright.Float(5000)}); err != nil {
+		t.Fatal(err)
+	}
+	value, err := page.Evaluate(`() => ({registration: window.__workerRegistration, messages: window.__workerMessages, body: document.body.innerHTML})`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	receipt, ok := value.(map[string]any)
+	if !ok || !strings.Contains(receipt["body"].(string), "Rendered on the server") {
+		t.Fatalf("worker registration changed SSR body: %#v", value)
+	}
+	registration, ok := receipt["registration"].(map[string]any)
+	if !ok {
+		t.Fatalf("worker registration missing: %#v", value)
+	}
+	workerURL, err := url.Parse(registration["url"].(string))
+	if err != nil || workerURL.Path != "/manja-assets/local-docs/sw.js" || registration["options"].(map[string]any)["scope"] != "/" {
+		t.Fatalf("worker registration = %#v", registration)
+	}
+	messages, ok := receipt["messages"].([]any)
+	if !ok || len(messages) != 2 || messages[0].(map[string]any)["type"] != "manja:configure" || messages[1].(map[string]any)["type"] != "manja:revalidate" {
+		t.Fatalf("worker messages = %#v", receipt["messages"])
 	}
 }
 

@@ -9,7 +9,7 @@ import (
 	"github.com/araihu/goshtoso/assets"
 )
 
-//go:embed static/*
+//go:embed static/* static/local-docs/*
 var catalogStaticFiles embed.FS
 
 func NewCatalogAssetsHandler() http.Handler {
@@ -26,6 +26,9 @@ func NewCatalogAssetsHandler() http.Handler {
 			return
 		}
 		response.Header().Set("Cache-Control", "public, max-age=0, must-revalidate")
+		if request.URL.Path == "/manja-assets/local-docs/sw.js" {
+			response.Header().Set("Service-Worker-Allowed", "/")
+		}
 		mux.ServeHTTP(response, request)
 	})
 }

@@ -329,6 +329,11 @@ func (handler *CatalogHandler) serveAdmitted(response http.ResponseWriter, reque
 		handler.redirectStable(response, request, snapshot, mount, "catalog.json")
 	case relative == "llms.txt":
 		writePageMarkdown(response, request, catalogLLMsText(snapshot.Directory, mount))
+	case relative == "_manja/offline-shell":
+		// Worker cache uses one canonical workspace shell. Keep it on the
+		// regular SSR renderer so the same theme, CSP, and no-JS surface remain
+		// authoritative while local enhancement is unavailable.
+		handler.serveOverview(response, request, snapshot, mount)
 	case relative == "search":
 		handler.serveSearch(response, request, snapshot, mount)
 	case relative == "search.json":

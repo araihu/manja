@@ -1489,6 +1489,32 @@ func TestCatalogDownloadAndCacheContracts(t *testing.T) {
 	}
 }
 
+func TestCatalogOfflineShellRemainsSSRFirstAndThemeBound(t *testing.T) {
+	t.Parallel()
+
+	for _, mount := range []string{"/", "/kubernetes"} {
+		t.Run(mount, func(t *testing.T) {
+			handler, _ := catalogHandlerFixture(t, mount)
+			path := mount + "/_manja/offline-shell"
+			if mount == "/" {
+				path = "/_manja/offline-shell"
+			}
+			response := httptest.NewRecorder()
+			handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, path, nil))
+			if response.Code != http.StatusOK || !strings.Contains(response.Header().Get("Content-Type"), "text/html") {
+				t.Fatalf("offline shell = %d content-type=%q", response.Code, response.Header().Get("Content-Type"))
+			}
+			body := response.Body.String()
+			if !strings.Contains(body, `data-manja-catalog-shell="true"`) || !strings.Contains(body, `id="main-content"`) {
+				t.Fatalf("offline shell lost canonical SSR shell: %s", body)
+			}
+			if !strings.Contains(response.Header().Get("Content-Security-Policy"), "default-src 'self'") {
+				t.Fatalf("offline shell CSP = %q", response.Header().Get("Content-Security-Policy"))
+			}
+		})
+	}
+}
+
 func TestCatalogProjectionTransportServesDeclaredImmutableShards(t *testing.T) {
 	t.Parallel()
 
@@ -1768,10 +1794,35 @@ func TestCatalogAssetsServeFailClosedLocalDocsEnhancer(t *testing.T) {
 			t.Errorf("local docs enhancer asset missing %q", contract)
 		}
 	}
-	for _, forbidden := range []string{"serviceWorker", "caches", "indexedDB"} {
+	// The page enhancer may register the worker, but it must not own durable
+	// storage. CacheStorage and IndexedDB stay behind the worker boundary so a
+	// failed enhancement always leaves the SSR/no-JS document untouched.
+	for _, forbidden := range []string{"caches", "indexedDB"} {
 		if strings.Contains(response.Body.String(), forbidden) {
 			t.Errorf("local docs enhancer asset includes forbidden runtime API %q", forbidden)
 		}
+	}
+}
+
+func TestCatalogAssetsServeRootScopedLocalDocsWorkerAndStorage(t *testing.T) {
+	t.Parallel()
+
+	response := httptest.NewRecorder()
+	NewCatalogAssetsHandler().ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/manja-assets/local-docs/sw.js", nil))
+	if response.Code != http.StatusOK {
+		t.Fatalf("local docs worker asset = %d, want 200", response.Code)
+	}
+	if got := response.Header().Get("Service-Worker-Allowed"); got != "/" {
+		t.Fatalf("Service-Worker-Allowed = %q, want /", got)
+	}
+	if !strings.Contains(response.Body.String(), "ROOT_SCOPE") || !strings.Contains(response.Body.String(), "same-origin") {
+		t.Fatal("worker asset is missing root-scope or same-origin contract")
+	}
+
+	storage := httptest.NewRecorder()
+	NewCatalogAssetsHandler().ServeHTTP(storage, httptest.NewRequest(http.MethodGet, "/manja-assets/local-docs/storage.js", nil))
+	if storage.Code != http.StatusOK || !strings.Contains(storage.Body.String(), "IndexedDB") || !strings.Contains(storage.Body.String(), "MAX_PUBLICATIONS") {
+		t.Fatalf("storage asset = %d body contract missing", storage.Code)
 	}
 }
 
