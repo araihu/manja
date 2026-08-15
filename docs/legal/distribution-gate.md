@@ -11,6 +11,13 @@ claim. `Pack` may write deterministic caller-output archives and generated
 SBOM bytes only after both authority receipts and all byte/inventory checks
 pass; blocked requests leave the caller output untouched.
 
+The current source tree supplies those three root files as provisional legal
+inputs. `LoadRepositoryLegalEvidence` binds their exact bytes and rejects
+missing, linked, non-regular, or empty files, but leaves first-party `Holder`
+and `YearRange` unset. The root materials therefore do not change the
+fail-closed status; see [`root-materials.md`](root-materials.md) and
+[`THIRD_PARTY_NOTICES.md`](../../THIRD_PARTY_NOTICES.md).
+
 ## Input and output
 
 The gate consumes one JSON evidence object supplied by the caller. It binds
