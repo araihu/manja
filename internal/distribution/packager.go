@@ -212,6 +212,9 @@ func InspectArchive(archivePath string, options ArchiveOptions) (Inventory, erro
 			if closeErr != nil {
 				return Inventory{}, &InventoryError{Code: "artifact.archive.extract_failed", Path: canonical, Detail: closeErr.Error()}
 			}
+			if err := os.Chmod(outputPath, os.FileMode(header.Mode)&os.ModePerm); err != nil {
+				return Inventory{}, &InventoryError{Code: "artifact.archive.extract_failed", Path: canonical, Detail: err.Error()}
+			}
 		default:
 			return Inventory{}, &InventoryError{Code: "artifact.archive.entry_invalid", Path: canonical, Detail: "archive links and special entries are not accepted"}
 		}
@@ -252,7 +255,7 @@ func CompareInventory(expected, actual []FileEvidence) []Finding {
 			findings = append(findings, Finding{Code: "artifact.drift.missing", Subject: pathValue, Detail: "expected artifact file is absent from the complete root"})
 			continue
 		}
-		if file.Type != actualFile.Type || file.Size != actualFile.Size || file.Digest != actualFile.Digest {
+		if file.Type != actualFile.Type || file.Size != actualFile.Size || file.Mode != actualFile.Mode || file.Digest != actualFile.Digest {
 			findings = append(findings, Finding{Code: "artifact.drift.changed", Subject: pathValue, Detail: "artifact file metadata or bytes differ from the expected receipt"})
 		}
 	}
@@ -472,7 +475,7 @@ func Pack(request PackageRequest, policy Policy) (PackageResult, error) {
 	dependencyByName, dependencyFindings := validateDependencies(request.Dependencies)
 	mechanicalFindings = append(mechanicalFindings, dependencyFindings...)
 	for _, artifact := range evidence.Artifacts {
-		mechanicalFindings = append(mechanicalFindings, validateArtifact(artifact, policy, dependencyByName, request.Legal, false, authorityPassed)...)
+		mechanicalFindings = append(mechanicalFindings, validateArtifact(artifact, policy, dependencyByName, request.Legal, false, authorityPassed, false)...)
 	}
 	if authorityPassed {
 		checkedKinds := make(map[ArtifactKind]struct{}, len(request.Artifacts))
@@ -601,7 +604,7 @@ func inspectRequestedArtifact(request ArtifactRequest, policy Policy, dependenci
 		Kind:                     request.Kind,
 		Source:                   request.Source,
 		Digest:                   request.RootDigest,
-		Inspection:               InspectionEvidence{Complete: true, FreshRoot: true, DigestBound: request.RootDigest != ""},
+		Inspection:               InspectionEvidence{Complete: true, FreshRoot: false, DigestBound: request.RootDigest != ""},
 		Platforms:                append([]PlatformEvidence(nil), request.Platforms...),
 		PlatformCoverageComplete: request.PlatformCoverageComplete,
 		Dependencies:             append([]string(nil), request.Dependencies...),
@@ -618,7 +621,6 @@ func inspectRequestedArtifact(request ArtifactRequest, policy Policy, dependenci
 	if artifact.Digest == "" {
 		artifact.Digest = inventory.Digest
 	}
-	artifact.Inspection.DigestBound = true
 	findings := make([]Finding, 0)
 	if request.Kind == ArtifactOCI {
 		findings = append(findings, Finding{Code: "artifact.oci.real_artifact_missing", Subject: request.Name, Detail: "OCI packaging requires digest-bound image bytes; a caller directory cannot be converted to an OCI artifact"})
@@ -868,7 +870,14 @@ func copyRoot(source, destination string) error {
 		if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
 			return err
 		}
-		return os.WriteFile(target, data, 0o644)
+		if err := os.WriteFile(target, data, 0o644); err != nil {
+			return err
+		}
+		info, err := entry.Info()
+		if err != nil {
+			return err
+		}
+		return os.Chmod(target, info.Mode().Perm())
 	})
 }
 
@@ -887,7 +896,7 @@ func deterministicTar(root string) ([]byte, error) {
 		}
 		header := &tar.Header{
 			Name:       file.Path,
-			Mode:       0o644,
+			Mode:       int64(file.Mode),
 			Size:       int64(len(data)),
 			ModTime:    epoch,
 			AccessTime: epoch,
@@ -916,7 +925,14 @@ func inventoryFile(pathValue, canonical string) (FileEvidence, error) {
 	if err != nil {
 		return FileEvidence{}, &InventoryError{Code: "artifact.file.unreadable", Path: canonical, Detail: err.Error()}
 	}
-	return FileEvidence{Path: canonical, Type: "regular", Size: int64(len(data)), Digest: sha256Digest(data)}, nil
+	info, err := os.Lstat(pathValue)
+	if err != nil {
+		return FileEvidence{}, &InventoryError{Code: "artifact.file.unreadable", Path: canonical, Detail: err.Error()}
+	}
+	if info.Mode()&os.ModeType != 0 || !info.Mode().IsRegular() {
+		return FileEvidence{}, &InventoryError{Code: "artifact.file.type_invalid", Path: canonical, Detail: "file must be a regular file"}
+	}
+	return FileEvidence{Path: canonical, Type: "regular", Size: int64(len(data)), Mode: uint32(info.Mode().Perm()), Digest: sha256Digest(data)}, nil
 }
 
 func regularFileEvidence(pathValue, canonical string) (FileEvidence, error) {
@@ -933,7 +949,7 @@ func regularFileEvidence(pathValue, canonical string) (FileEvidence, error) {
 func digestInventory(files []FileEvidence) string {
 	var buffer bytes.Buffer
 	for _, file := range files {
-		fmt.Fprintf(&buffer, "%s\x00%s\x00%d\x00%s\n", file.Path, file.Type, file.Size, file.Digest)
+		fmt.Fprintf(&buffer, "%s\x00%s\x00%d\x00%o\x00%s\n", file.Path, file.Type, file.Size, file.Mode, file.Digest)
 	}
 	return sha256Digest(buffer.Bytes())
 }

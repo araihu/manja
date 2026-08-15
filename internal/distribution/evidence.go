@@ -137,6 +137,7 @@ type FileEvidence struct {
 	Path   string `json:"path"`
 	Type   string `json:"type"`
 	Size   int64  `json:"size"`
+	Mode   uint32 `json:"mode"`
 	Digest string `json:"digest"`
 }
 
@@ -234,7 +235,7 @@ func Evaluate(evidence Evidence, policy Policy) Result {
 			findings = append(findings, Finding{Code: "artifact.duplicate", Subject: artifact.Name, Detail: "artifact name is duplicated"})
 		}
 		artifactNames[artifact.Name] = struct{}{}
-		findings = append(findings, validateArtifact(artifact, policy, dependencyByName, evidence.Legal, !blockedAuthority, true)...)
+		findings = append(findings, validateArtifact(artifact, policy, dependencyByName, evidence.Legal, !blockedAuthority, true, true)...)
 	}
 	if len(evidence.Artifacts) == 0 {
 		findings = append(findings, Finding{Code: "artifact.missing", Detail: "no produced artifact has been inspected"})
@@ -338,7 +339,7 @@ func validateDependencies(dependencies []DependencyEvidence) (map[string]Depende
 	return byName, findings
 }
 
-func validateArtifact(artifact ArtifactEvidence, policy Policy, dependencies map[string]DependencyEvidence, legal LegalEvidence, requireLegal, checkSBOM bool) []Finding {
+func validateArtifact(artifact ArtifactEvidence, policy Policy, dependencies map[string]DependencyEvidence, legal LegalEvidence, requireLegal, checkSBOM, checkInspection bool) []Finding {
 	var findings []Finding
 	if artifact.Name == "" {
 		findings = append(findings, Finding{Code: "artifact.name.missing", Detail: "artifact name is required"})
@@ -349,7 +350,7 @@ func validateArtifact(artifact ArtifactEvidence, policy Policy, dependencies map
 	if !validDigest(artifact.Digest) {
 		findings = append(findings, Finding{Code: "artifact.digest.invalid", Subject: artifact.Name, Detail: "artifact requires a lowercase SHA-256 or SHA-384 digest"})
 	}
-	if !artifact.Inspection.Complete || !artifact.Inspection.FreshRoot || !artifact.Inspection.DigestBound {
+	if checkInspection && (!artifact.Inspection.Complete || !artifact.Inspection.FreshRoot || !artifact.Inspection.DigestBound) {
 		findings = append(findings, Finding{Code: "artifact.inspection.incomplete", Subject: artifact.Name, Detail: "artifact must be scanned from complete digest-bound bytes in a fresh extraction root"})
 	}
 	if checkSBOM {
@@ -675,6 +676,9 @@ func normalize(evidence Evidence) Evidence {
 			}
 			if leftFile.Size != rightFile.Size {
 				return leftFile.Size < rightFile.Size
+			}
+			if leftFile.Mode != rightFile.Mode {
+				return leftFile.Mode < rightFile.Mode
 			}
 			return leftFile.Digest < rightFile.Digest
 		})

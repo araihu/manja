@@ -58,6 +58,35 @@ func TestInspectRootRejectsLinksAndSpecialEntries(t *testing.T) {
 	}
 }
 
+func TestInspectRootIncludesExecutableModeInInventoryAndDigest(t *testing.T) {
+	root := t.TempDir()
+	pathValue := filepath.Join(root, "bin", "manja")
+	writeTestFile(t, root, "bin/manja", "binary")
+	if err := os.Chmod(pathValue, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	first, err := InspectRoot(root, RootOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(first.Files) != 1 || first.Files[0].Mode != 0o755 {
+		t.Fatalf("inventory = %#v, want executable mode", first)
+	}
+	if err := os.Chmod(pathValue, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	second, err := InspectRoot(root, RootOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first.Digest == second.Digest {
+		t.Fatalf("inventory digest ignored mode change: %s", first.Digest)
+	}
+	if !hasFinding(CompareInventory(first.Files, second.Files), "artifact.drift.changed") {
+		t.Fatal("inventory comparison ignored mode change")
+	}
+}
+
 func TestInspectArchiveRequiresDigestAndScansCompleteExtraction(t *testing.T) {
 	archive := makeTestTar(t, map[string]string{
 		"nested/ok.txt": "ok",
@@ -202,6 +231,9 @@ func TestPackReportsMissingOutputDirectoryAfterGates(t *testing.T) {
 func TestPackPassesSyntheticAuthorityAndPlacesNotices(t *testing.T) {
 	root := t.TempDir()
 	writeTestFile(t, root, "bin/manja", "binary")
+	if err := os.Chmod(filepath.Join(root, "bin", "manja"), 0o755); err != nil {
+		t.Fatal(err)
+	}
 	legalRoot := t.TempDir()
 	writeTestFile(t, legalRoot, "LICENSE", "license")
 	writeTestFile(t, legalRoot, "NOTICE", "notice")
@@ -256,6 +288,14 @@ func TestPackPassesSyntheticAuthorityAndPlacesNotices(t *testing.T) {
 	for _, pathValue := range []string{"LICENSE", "NOTICE", "THIRD_PARTY_NOTICES.md", "sbom/manja.cdx.json"} {
 		if !inventoryHas(inspected.Files, pathValue) {
 			t.Fatalf("final archive lacks required placement %q: %#v", pathValue, inspected.Files)
+		}
+	}
+	if !inventoryHas(inspected.Files, "bin/manja") {
+		t.Fatalf("final archive lacks executable: %#v", inspected.Files)
+	}
+	for _, file := range inspected.Files {
+		if file.Path == "bin/manja" && file.Mode != 0o755 {
+			t.Fatalf("final archive changed executable mode: %#v", file)
 		}
 	}
 }
@@ -354,6 +394,9 @@ func TestPackDoesNotLeaveArtifactsWhenLaterPackageFails(t *testing.T) {
 	}
 	if len(result.Evidence.Artifacts) != 2 || result.Evidence.Artifacts[0].Digest != firstInventory.Digest {
 		t.Fatalf("evidence = %#v, want pre-packaging artifact evidence", result.Evidence)
+	}
+	if result.Evidence.Artifacts[0].Inspection.FreshRoot || result.Evidence.Artifacts[0].Inspection.DigestBound {
+		t.Fatalf("pre-packaging evidence claimed final extraction: %#v", result.Evidence.Artifacts[0].Inspection)
 	}
 	if _, err := os.Stat(output); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("output directory exists after staged package failure: %v", err)
