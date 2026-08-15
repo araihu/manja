@@ -1359,3 +1359,38 @@ tree `15d215844b92e0c883a14a516a643832c5cac627`, with `origin/main`
 This dedicated ref owns reconciliation only; technical, design, and product
 reviews remain held pending explicit user authorization. OC-04 offline/runtime
 and OC-02 packager/artifact packets must arrive frozen before comparison.
+
+### Round-2 packet disposition: OC-04 offline runtime (2026-08-15)
+
+OC-01/OC-02 remain owned by explicit external handoff session
+`01a00601-1129-76d0-9305-460e584d13ee`. The local OC-02 packager snapshot is
+paused and preserved; no OC-01/OC-02 bytes are selected, cherry-picked, or
+rebased here. Legal authority and provenance remain blocked at this boundary.
+
+The frozen OC-04 packet is preserved at
+`/private/tmp/manja-oc04-offline-runtime.lrrf13`, branch
+`codex/oc04-offline-runtime`, with exact parent/base
+`4fda300572506d12439a9427a4feb6976b0c4204`, parent tree
+`15d215844b92e0c883a14a516a643832c5cac627`, head
+`2cf58381f831d824db3fcbd0b482e4278765aba7`, tree
+`906a6372aef8cb51819f630863e9bc01df2f2405`, and clean staged/unstaged/
+untracked status. Its one commit owns only:
+
+- `internal/web/catalog_assets.go`
+- `internal/web/catalog_test.go`
+- `internal/web/static/local-docs.js`
+- `internal/web/static/local-docs/storage.js`
+- `internal/web/static/local-docs/storage.test.mjs`
+- `internal/web/static/local-docs/sw.js`
+- `internal/web/static/local-docs/worker.test.mjs`
+- `internal/web/static/local_docs_browser_test.go`
+
+Preliminary path comparison finds no overlap with the reconciled OC-04AE ABI
+or OC-03 catalogstore paths, but this is a scope receipt, not an acceptance
+or review verdict. Broad web/E2E execution ended `BLOCKED_NO_VERDICT` on
+Playwright `EPIPE`; it is not a passing receipt and blocks packet selection.
+No cherry-pick or merge occurs in this cycle. Pending PM authorization and a
+fresh gate run: rebase against current `origin/main`, compare exact identities
+again, then run root normal/race, architecture/Wasm, vet, Muamba, webassets,
+templ, headless/browser, and packaging gates. Technical, design, and product
+reviews remain suspended.
