@@ -575,13 +575,23 @@ func TestPreparedCatalogDocumentInfoMatchesLegacySSRBytes(t *testing.T) {
 
 func TestPreparedCatalogDocumentInfoPreservesLegacyTermsWhitespaceBytes(t *testing.T) {
 	tests := []struct {
-		name    string
-		terms   string
-		contact projection.Contact
-		license projection.License
+		name        string
+		terms       string
+		contact     projection.Contact
+		license     projection.License
+		wantTerms   bool
+		wantContact bool
+		wantLicense bool
 	}{
-		{name: "space with contact", terms: " ", contact: projection.Contact{Name: "API Support"}},
-		{name: "newline with license", terms: "\n", license: projection.License{Name: "Apache 2.0"}},
+		{name: "space with contact", terms: " ", contact: projection.Contact{Name: "API Support"}, wantTerms: true, wantContact: true},
+		{name: "newline with license", terms: "\n", license: projection.License{Name: "Apache 2.0"}, wantTerms: true, wantLicense: true},
+		{name: "space terms only", terms: " "},
+		{
+			name: "meaningful terms with whitespace contact and license", terms: "https://example.test/terms",
+			contact:   projection.Contact{Name: " ", URL: "\n", Email: "\t"},
+			license:   projection.License{Name: " ", URL: "\n", Identifier: "\t"},
+			wantTerms: true,
+		},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -607,8 +617,19 @@ func TestPreparedCatalogDocumentInfoPreservesLegacyTermsWhitespaceBytes(t *testi
 				index := firstDifferentByte(legacy, delegated.Bytes())
 				t.Fatalf("prepared document info changed SSR bytes at byte %d:\nlegacy=%q\ndelegated=%q", index, nearbyBytes(legacy, index), nearbyBytes(delegated.Bytes(), index))
 			}
-			if !bytes.Contains(delegated.Bytes(), []byte(`>Terms of service</dt>`)) {
-				t.Fatalf("legacy non-empty terms value was omitted: %q", delegated.Bytes())
+			for _, want := range []struct {
+				label string
+				value []byte
+				show  bool
+			}{
+				{label: "contact", value: []byte(`>Contact</dt>`), show: test.wantContact},
+				{label: "license", value: []byte(`>License</dt>`), show: test.wantLicense},
+				{label: "terms", value: []byte(`>Terms of service</dt>`), show: test.wantTerms},
+			} {
+				got := bytes.Contains(delegated.Bytes(), want.value)
+				if got != want.show {
+					t.Errorf("%s presence = %t, want %t: %q", want.label, got, want.show, delegated.Bytes())
+				}
 			}
 		})
 	}
@@ -634,8 +655,9 @@ func renderLegacyCatalogDocumentInfo(document catalog.DocumentDirectoryV1) ([]by
 	showContact := strings.TrimSpace(contact.Name) != "" || strings.TrimSpace(contact.URL) != "" || strings.TrimSpace(contact.Email) != ""
 	showLicense := strings.TrimSpace(license.Name) != "" || strings.TrimSpace(license.URL) != "" || strings.TrimSpace(license.Identifier) != ""
 	showTerms := document.Overview.TermsOfService != ""
+	showInfo := showContact || showLicense || strings.TrimSpace(document.Overview.TermsOfService) != ""
 	var output bytes.Buffer
-	if !showContact && !showLicense && !showTerms {
+	if !showInfo {
 		return output.Bytes(), nil
 	}
 	component := templ.ComponentFunc(func(_ context.Context, writer io.Writer) error {

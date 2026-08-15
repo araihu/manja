@@ -76,7 +76,7 @@ func PrepareCatalogDocumentInfo(document catalog.DocumentDirectoryV1) (CatalogDo
 		HasLicense:        strings.TrimSpace(license.Name) != "" || strings.TrimSpace(license.URL) != "" || strings.TrimSpace(license.Identifier) != "",
 		HasTerms:          document.Overview.TermsOfService != "",
 	}
-	data.HasInfo = data.HasContact || data.HasLicense || data.HasTerms
+	data.HasInfo = data.HasContact || data.HasLicense || strings.TrimSpace(document.Overview.TermsOfService) != ""
 	fragment := CatalogDocumentInfoFragment{data: data, valid: true}
 	var output boundedBuffer
 	if err := catalogDocumentInfo(fragment.data).Render(context.Background(), &output); err != nil {

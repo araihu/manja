@@ -3,7 +3,6 @@ package render
 import (
 	"bytes"
 	"context"
-	"fmt"
 	"reflect"
 	"strings"
 	"testing"
@@ -119,13 +118,42 @@ func TestPreparedCatalogDocumentInfoCopiesInputsAndBytes(t *testing.T) {
 }
 
 func TestPreparedCatalogDocumentInfoPreservesWhitespacePresenceRules(t *testing.T) {
-	for _, terms := range []string{" ", "\n"} {
-		t.Run(fmt.Sprintf("terms=%q", terms), func(t *testing.T) {
-			document := catalog.DocumentDirectoryV1{Key: "core-v1", Overview: projection.Overview{
+	tests := []struct {
+		name        string
+		document    catalog.DocumentDirectoryV1
+		wantInfo    bool
+		wantContact bool
+		wantLicense bool
+		wantTerms   bool
+	}{
+		{
+			name: "meaningful contact preserves non-empty whitespace terms",
+			document: catalog.DocumentDirectoryV1{Key: "core-v1", Overview: projection.Overview{
 				Contact:        projection.Contact{Name: " ", URL: "https://example.test/support"},
 				License:        projection.License{Identifier: " "},
-				TermsOfService: terms,
-			}}
+				TermsOfService: " ",
+			}},
+			wantInfo: true, wantContact: true, wantTerms: true,
+		},
+		{
+			name: "meaningful terms ignore whitespace contact and license",
+			document: catalog.DocumentDirectoryV1{Key: "core-v1", Overview: projection.Overview{
+				Contact:        projection.Contact{Name: " ", URL: "\n", Email: "\t"},
+				License:        projection.License{Name: " ", URL: "\n", Identifier: "\t"},
+				TermsOfService: "https://example.test/terms",
+			}},
+			wantInfo: true, wantTerms: true,
+		},
+		{
+			name: "terms-only whitespace keeps outer info absent",
+			document: catalog.DocumentDirectoryV1{Key: "core-v1", Overview: projection.Overview{
+				TermsOfService: " ",
+			}},
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			document := test.document
 			fragment, err := PrepareCatalogDocumentInfo(document)
 			if err != nil {
 				t.Fatal(err)
@@ -134,8 +162,20 @@ func TestPreparedCatalogDocumentInfoPreservesWhitespacePresenceRules(t *testing.
 			if err != nil {
 				t.Fatal(err)
 			}
-			if !bytes.Contains(body, []byte(`>Contact</dt>`)) || bytes.Contains(body, []byte(`>License</dt>`)) || !bytes.Contains(body, []byte(`>Terms of service</dt>`)) {
-				t.Fatalf("whitespace-only presence rules changed: %s", body)
+			for _, want := range []struct {
+				label string
+				value []byte
+				show  bool
+			}{
+				{label: "info", value: []byte(`aria-label="OpenAPI information"`), show: test.wantInfo},
+				{label: "contact", value: []byte(`>Contact</dt>`), show: test.wantContact},
+				{label: "license", value: []byte(`>License</dt>`), show: test.wantLicense},
+				{label: "terms", value: []byte(`>Terms of service</dt>`), show: test.wantTerms},
+			} {
+				got := bytes.Contains(body, want.value)
+				if got != want.show {
+					t.Errorf("%s presence = %t, want %t: %s", want.label, got, want.show, body)
+				}
 			}
 		})
 	}
