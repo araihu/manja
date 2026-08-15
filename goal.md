@@ -1440,8 +1440,39 @@ asset/provenance tests, architecture tests, vet, strict Muamba verification,
 webassets check, templ generation (`updates=0`), and diff checks passed. The
 branch was up to date with `origin/main`
 `507c5ea9fcdc8cee670a023dbb82f348ba2ed763` and pushed; staged, unstaged, and
-untracked counts are zero. Implementer A remains unintegrated pending its
-clean frozen packet.
+untracked counts are zero.
+
+Implementer A then froze from the same exact phase head in
+`/tmp/manja-oc04-public-eligibility-impl-a`, branch
+`codex/oc04-public-eligibility-impl-a`: commit
+`9f0cef0d474462b532f5306a78e7c46cbeb217ff`, tree
+`bd488ec418a8cdddafe3faed481cab538017826f5`, parent
+`37241b468f37d2e00c39eecc7eb6dbc26c64d06a` / tree
+`489a59746b0121bc78726768511b305aef6cc2ba`, clean status. Its owned paths
+are `cmd/manja-local-docs/main_wasm.go`,
+`internal/localdocs/abi/activation.go`,
+`internal/localdocs/abi/activation_test.go`,
+`internal/web/static/local-docs.js`, and
+`internal/web/static/local_docs_browser_test.go`; these are disjoint from B.
+The packet binds publication-key and projection-digest cache identity through
+the activation receipt and makes the browser enhancer reject identity drift
+with SSR fallback. It adds no Service Worker registration, offline shell, UI,
+or lifecycle behavior.
+
+The reconciler cherry-picked A unchanged as
+`fe5121e6b3aabafbce5e8149d81dd8db2e2eb3cc`, tree
+`4f9c234339fbc2b003634b40fbb9a116ed2fd4eb`, direct parent
+`7a7a1d1902a8adcc3c9e96fce2efdcc7202a4b92`. No conflict or manual scope edit
+occurred; this is a scope disposition, not a technical, design, or product
+review verdict. Combined focused and full localdocs/static/web tests, localdocs
+and web/static race tests, architecture, `GOOS=js GOARCH=wasm` ABI build, vet,
+strict Muamba verification, webassets check, templ generation (`updates=0`),
+and diff checks passed. Uncached root normal and race suites passed, including
+self-hosted normal `164.475s`, self-hosted race `153.898s`, web/E2E normal
+`202.292s`, and web/E2E race `210.432s`. The reconciler remains clean after
+moving only its generated untracked Wasm binary to a recoverable temporary
+path; it must be rebased against `origin/main` and pushed again after this
+receipt commit. Reviews remain paused.
 
 ## PR Gate
 
