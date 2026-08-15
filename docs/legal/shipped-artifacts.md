@@ -61,7 +61,7 @@ It directly reports exactly these six external module/version pairs:
 
 - `github.com/a-h/templ v0.3.1020`;
 - `github.com/alecthomas/chroma/v2 v2.24.1`;
-- `github.com/araihu/goshtoso v0.1.8`;
+- `github.com/araihu/goshtoso v0.1.13`;
 - `github.com/dlclark/regexp2 v1.12.0`;
 - `golang.org/x/text v0.40.0`;
 - `gopkg.in/yaml.v3 v3.0.1`.

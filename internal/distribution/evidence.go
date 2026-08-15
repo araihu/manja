@@ -482,6 +482,8 @@ func validateArtifact(artifact ArtifactEvidence, policy Policy, dependencies map
 	}
 	if artifact.Source == "" {
 		findings = append(findings, Finding{Code: "artifact.source.missing", Subject: artifact.Name, Detail: "artifact source identity is required"})
+	} else if isMutableSource(artifact.Source) {
+		findings = append(findings, Finding{Code: "artifact.source.invalid", Subject: artifact.Name, Detail: "artifact source must include an immutable commit identity"})
 	}
 	if !validDigest(artifact.Digest) {
 		findings = append(findings, Finding{Code: "artifact.digest.invalid", Subject: artifact.Name, Detail: "artifact requires a lowercase SHA-256 or SHA-384 digest"})

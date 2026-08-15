@@ -18,10 +18,11 @@ symlinked, non-regular, or empty files, and intentionally leaves `Holder` and
 independent authority receipt supplies the missing first-party attribution
 and any other required clearance evidence.
 
-The root `LICENSE` records the MIT project-license fact and standard MIT
-license text without manufacturing a holder or year. `NOTICE` identifies the
-same unresolved first-party boundary and grants no project-name, logo, mark,
-or trade-dress permission. Neither file changes the distribution gate's
+The root `LICENSE` records the MIT project-license fact provisionally without
+manufacturing a holder or year. It contains no operative permission grant while
+authority and redistribution remain blocked. `NOTICE` identifies the same
+unresolved first-party boundary and grants no project-name, logo, mark, or
+trade-dress permission. Neither file changes the distribution gate's
 requirement for independent authority and attribution evidence.
 
 ## Upstream source records

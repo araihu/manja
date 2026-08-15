@@ -1359,6 +1359,21 @@ The owner ref remains untouched; no push was made from the isolated branch
 while the full-race freeze is not clean. Reviews, merge, release, deployment,
 cleanup, and other lifecycle actions remain unauthorized.
 
+### OC-01 / OC-02 correction checkpoint (2026-08-15)
+
+Independent technical and design review rejected reconciler parent
+`54cedbe6b34988c70dd900324d49fd9f4f66475c`, tree
+`9b2846c70e0ed2d44ab00a8900112705890fa8ae`. Findings were bounded to Git
+authority self-authentication, mutable artifact source identity, stale Goshtoso
+`v0.1.8` documentation, and contradictory provisional MIT/legal wording.
+This correction branch addresses only those findings: authority now resolves
+commit/tree/path/blob against a local Git object database, artifacts require
+immutable source identities, documentation binds Goshtoso `v0.1.13`, and root
+legal/provenance wording stays provisional with redistribution blocked. SBOM is
+explicitly deferred by product direction and is not implemented here. Fresh
+technical/design review is required for the new exact child; no integration or
+lifecycle action is authorized.
+
 ## PR Gate
 
 At `2026-08-11T18:54:35Z`, [PR
