@@ -631,8 +631,7 @@ templ catalogOverview(data CatalogPageData) {
 				<a href={ templpkg.URL(data.DownloadHref) } class="inline-flex min-h-11 shrink-0 self-start items-center rounded-radius border border-outline px-4 font-semibold hover:bg-surface-alt dark:border-outline-dark dark:hover:bg-surface-dark-alt">Download catalog JSON</a>
 			</div>
 		</div>
-		@catalogOverviewMetrics(data)
-		<div class="mt-5">
+		@catalogOverviewMetrics(data)<div class="mt-5">
 			@catalogProvenance(data, false)
 		</div>
 		if data.CatalogReadme != "" {

@@ -117,6 +117,54 @@ func TestCatalogPreparedOverviewMetricsRendersThroughRootAndNestedHandlers(t *te
 	}
 }
 
+func TestCatalogPreparedOverviewMetricsPreservesLegacyAdjacencyThroughHandlers(t *testing.T) {
+	t.Parallel()
+
+	for _, mount := range []string{"/", "/kubernetes"} {
+		mount := mount
+		t.Run(mount, func(t *testing.T) {
+			t.Parallel()
+			handler, snapshot := catalogHandlerFixture(t, mount)
+			catalogHandler := handler.(*CatalogHandler)
+			data, err := catalogHandler.catalogPageData(context.Background(), snapshot, mount, "", "", "", "", "")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if data.CatalogMetrics == nil {
+				t.Fatal("catalog overview did not prepare metrics")
+			}
+			metrics, err := data.CatalogMetrics.Bytes(context.Background())
+			if err != nil {
+				t.Fatal(err)
+			}
+			wantBoundary := append(append([]byte(nil), metrics...), []byte(`<div class="mt-5"><dl data-catalog-provenance`)...)
+
+			path := mount
+			if path != "/" {
+				path += "/"
+			}
+			response := httptest.NewRecorder()
+			handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, path, nil))
+			if response.Code != http.StatusOK {
+				t.Fatalf("catalog overview = %d body=%q", response.Code, response.Body.String())
+			}
+			body := response.Body.Bytes()
+			if bytes.Count(body, metrics) != 1 {
+				t.Fatalf("prepared metrics occurred %d times in full handler body", bytes.Count(body, metrics))
+			}
+			start := bytes.Index(body, metrics)
+			end := start + len(wantBoundary)
+			if end > len(body) || !bytes.Equal(body[start:end], wantBoundary) {
+				got := body[start:]
+				if len(got) > len(wantBoundary) {
+					got = got[:len(wantBoundary)]
+				}
+				t.Fatalf("full %s catalog handler changed legacy metrics/provenance adjacency:\nwant=%q\n got=%q", mount, wantBoundary, got)
+			}
+		})
+	}
+}
+
 func TestOrganizationRootCatalogCardNavigatesToCatalogOverview(t *testing.T) {
 	t.Parallel()
 
