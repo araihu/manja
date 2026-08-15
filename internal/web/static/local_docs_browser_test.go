@@ -102,6 +102,125 @@ func TestLocalDocsEnhancerActivatesAfterSameOriginManifestAndLeavesSSRBodyIntact
 	}
 }
 
+func TestLocalDocsEnhancerRegistersRootScopedWorkerWithoutBlockingSSR(t *testing.T) {
+	page := localDocsPage(t)
+	descriptor, manifestJSON := localDocsFixture(t, "/docs/")
+	body := `<main id="ssr"><h1>Rendered on the server</h1></main>`
+	if err := page.SetContent(body + `<script id="manja-local-docs-descriptor" type="application/json">` + descriptor + `</script>`); err != nil {
+		t.Fatal(err)
+	}
+	before, err := page.Locator("body").InnerHTML()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := page.Evaluate(`(manifest) => {
+		window.__workerRegistration = null;
+		window.__workerMessages = [];
+		const worker = { postMessage: (message) => window.__workerMessages.push(message) };
+		Object.defineProperty(navigator, 'serviceWorker', { configurable: true, value: {
+			register: (url, options) => { window.__workerRegistration = {url, options}; return Promise.resolve({active: worker}); },
+			ready: Promise.resolve({active: worker}),
+			addEventListener: () => {},
+		} });
+		window.ManjaLocalDocs = {activate: (value, input) => ({
+			ok: true,
+			catalogId: value.catalogId,
+			publicationKey: value.publicationKey,
+			snapshotId: value.snapshotId,
+			revisionId: value.revisionId,
+			projectionDigest: value.projectionDigest,
+			children: input.children
+		})};
+		window.fetch = () => Promise.resolve(new Response(manifest, {status: 200, headers: {'Content-Length': String(new TextEncoder().encode(manifest).byteLength)}}));
+	}`, manifestJSON); err != nil {
+		t.Fatal(err)
+	}
+	path, err := filepath.Abs("local-docs.js")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := page.AddScriptTag(playwright.PageAddScriptTagOptions{Path: playwright.String(path)}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := page.WaitForFunction(`() => document.documentElement.dataset.manjaLocalDocsState === 'ready'`, nil, playwright.PageWaitForFunctionOptions{Timeout: playwright.Float(5000)}); err != nil {
+		t.Fatal(err)
+	}
+	after, err := page.Locator("body").InnerHTML()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if after != before {
+		t.Fatalf("worker registration changed SSR body: before=%q after=%q", before, after)
+	}
+	value, err := page.Evaluate(`() => ({registration: window.__workerRegistration, messages: window.__workerMessages, worker: document.documentElement.dataset.manjaLocalDocsWorker || ''})`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	state, ok := value.(map[string]any)
+	if !ok {
+		t.Fatalf("worker state = %#v", value)
+	}
+	registration, ok := state["registration"].(map[string]any)
+	if !ok {
+		t.Fatalf("worker registration = %#v", state["registration"])
+	}
+	workerURL, workerOK := registration["url"].(string)
+	if !workerOK || !strings.HasSuffix(workerURL, "/manja-assets/local-docs/sw.js") {
+		t.Fatalf("worker registration = %#v", state["registration"])
+	}
+	options, ok := registration["options"].(map[string]any)
+	if !ok || options["scope"] != "/" {
+		t.Fatalf("worker registration options = %#v", registration["options"])
+	}
+	if state["worker"] != "registered" {
+		t.Fatalf("worker state = %#v, want registered", state["worker"])
+	}
+	if messages, ok := state["messages"].([]any); !ok || len(messages) != 1 || messages[0].(map[string]any)["type"] != "manja:configure" {
+		t.Fatalf("worker messages = %#v", state["messages"])
+	}
+}
+
+func TestLocalDocsEnhancerFallsBackBeforeActivationWhenWorkerRegistrationFails(t *testing.T) {
+	page := localDocsPage(t)
+	descriptor, manifestJSON := localDocsFixture(t, "/docs/")
+	body := `<main id="ssr"><h1>Rendered on the server</h1></main>`
+	if err := page.SetContent(body + `<script id="manja-local-docs-descriptor" type="application/json">` + descriptor + `</script>`); err != nil {
+		t.Fatal(err)
+	}
+	before, err := page.Locator("body").InnerHTML()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := page.Evaluate(`(manifest) => {
+		window.__manifestRequests = 0;
+		Object.defineProperty(navigator, 'serviceWorker', { configurable: true, value: {
+			register: () => Promise.reject(new Error('worker unavailable')),
+		} });
+		window.ManjaLocalDocs = {activate: () => ({ok: true})};
+		window.fetch = () => { window.__manifestRequests++; return Promise.resolve(new Response(manifest)); };
+	}`, manifestJSON); err != nil {
+		t.Fatal(err)
+	}
+	path, err := filepath.Abs("local-docs.js")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := page.AddScriptTag(playwright.PageAddScriptTagOptions{Path: playwright.String(path)}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := page.WaitForFunction(`() => document.documentElement.dataset.manjaLocalDocsState === 'fallback'`, nil, playwright.PageWaitForFunctionOptions{Timeout: playwright.Float(5000)}); err != nil {
+		t.Fatal(err)
+	}
+	state, err := page.Evaluate(`() => ({body: document.body.innerHTML, noRequests: window.__manifestRequests === 0, worker: document.documentElement.dataset.manjaLocalDocsWorker || '', reason: document.documentElement.dataset.manjaLocalDocsWorkerReason || ''})`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	values, ok := state.(map[string]any)
+	if !ok || values["body"] != before || values["noRequests"] != true || values["worker"] != "fallback" || values["reason"] != "worker unavailable" {
+		t.Fatalf("worker failure was not fail-closed before activation: %#v", state)
+	}
+}
+
 func TestLocalDocsEnhancerRejectsActivationIdentityDriftWithoutTouchingSSR(t *testing.T) {
 	page := localDocsPage(t)
 	descriptor, manifestJSON := localDocsFixture(t, "/docs/")
@@ -256,6 +375,11 @@ func localDocsPage(t *testing.T) playwright.Page {
 	}))
 	t.Cleanup(server.Close)
 	if _, err := page.Goto(server.URL); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := page.Evaluate(`() => {
+		Object.defineProperty(navigator, 'serviceWorker', { configurable: true, value: undefined });
+	}`); err != nil {
 		t.Fatal(err)
 	}
 	return page

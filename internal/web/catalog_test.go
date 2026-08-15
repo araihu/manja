@@ -1768,9 +1768,27 @@ func TestCatalogAssetsServeFailClosedLocalDocsEnhancer(t *testing.T) {
 			t.Errorf("local docs enhancer asset missing %q", contract)
 		}
 	}
-	for _, forbidden := range []string{"serviceWorker", "caches", "indexedDB"} {
+	for _, forbidden := range []string{"caches", "indexedDB"} {
 		if strings.Contains(response.Body.String(), forbidden) {
 			t.Errorf("local docs enhancer asset includes forbidden runtime API %q", forbidden)
+		}
+	}
+}
+
+func TestCatalogAssetsServeRootScopedLocalDocsServiceWorker(t *testing.T) {
+	t.Parallel()
+
+	response := httptest.NewRecorder()
+	NewCatalogAssetsHandler().ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/manja-assets/local-docs/sw.js", nil))
+	if response.Code != http.StatusOK {
+		t.Fatalf("local docs Service Worker asset = %d, want 200", response.Code)
+	}
+	if got := response.Header().Get("Service-Worker-Allowed"); got != "/" {
+		t.Fatalf("Service-Worker-Allowed = %q, want /", got)
+	}
+	for _, contract := range []string{"manja:configure", "event.respondWith(fetch(request))", "projectionManifestUrl"} {
+		if !strings.Contains(response.Body.String(), contract) {
+			t.Errorf("local docs Service Worker asset missing %q", contract)
 		}
 	}
 }

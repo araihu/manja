@@ -5,6 +5,7 @@
   var MAX_PROJECTION_CHILD_BYTES = 2 * 1024 * 1024;
   var DEFAULT_RUNTIME_URL = "/manja-assets/local-docs/wasm_exec.js";
   var DEFAULT_WASM_URL = "/manja-assets/local-docs/manja.wasm";
+  var DEFAULT_WORKER_URL = "/manja-assets/local-docs/sw.js";
 
   function fail(message) {
     throw new Error(message);
@@ -242,6 +243,46 @@
     return result;
   }
 
+  function workerFromNavigator() {
+    return global.navigator && global.navigator.serviceWorker;
+  }
+
+  function workerTarget(serviceWorker, registration) {
+    return registration && (registration.active || registration.waiting || registration.installing) || serviceWorker.controller;
+  }
+
+  function registerWorker(root, descriptor, options) {
+    options = options || {};
+    var serviceWorker = workerFromNavigator();
+    if (!serviceWorker || typeof serviceWorker.register !== "function") {
+      root.dataset.manjaLocalDocsWorker = "unsupported";
+      return Promise.resolve({ skipped: true, reason: "service worker unsupported" });
+    }
+    var workerURL = sameOriginPath(options.workerURL || DEFAULT_WORKER_URL);
+    if (!workerURL) {
+      return Promise.reject(new Error("Service Worker asset route is invalid"));
+    }
+    if (options.scope !== undefined && options.scope !== "/") {
+      return Promise.reject(new Error("Service Worker scope must be root-scoped"));
+    }
+    return Promise.resolve(serviceWorker.register(workerURL.href, { scope: "/" })).then(function (registration) {
+      return Promise.resolve(serviceWorker.ready || registration).then(function (ready) {
+        var target = workerTarget(serviceWorker, ready);
+        if (!target || typeof target.postMessage !== "function") {
+          throw new Error("Service Worker did not become active");
+        }
+        target.postMessage({ type: "manja:configure", descriptor: descriptor });
+        root.dataset.manjaLocalDocsWorker = "registered";
+        delete root.dataset.manjaLocalDocsWorkerReason;
+        return { ok: true, registration: ready };
+      });
+    }).catch(function (error) {
+      root.dataset.manjaLocalDocsWorker = "fallback";
+      root.dataset.manjaLocalDocsWorkerReason = error && error.message ? error.message : "Service Worker registration failed";
+      throw error;
+    });
+  }
+
   function start(options) {
     options = options || {};
     var documentValue = options.document || global.document;
@@ -252,7 +293,9 @@
         return Promise.resolve({ skipped: true });
       }
       var manifestURL = sameOriginPath(descriptor.projectionManifestUrl);
-      return loadABI(options).then(function (abi) {
+      return registerWorker(root, descriptor, options).then(function () {
+        return loadABI(options);
+      }).then(function (abi) {
         if (!abi || typeof abi.activate !== "function") {
           fail("Wasm ABI is unavailable");
         }
@@ -276,6 +319,7 @@
   var api = {
     start: start,
     autoStart: function () { return start({}); },
+    registerWorker: registerWorker,
     validateDescriptor: validateDescriptor,
     validateManifest: validateManifest
   };
