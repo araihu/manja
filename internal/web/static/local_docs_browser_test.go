@@ -43,12 +43,16 @@ func TestLocalDocsEnhancerActivatesAfterSameOriginManifestAndLeavesSSRBodyIntact
 	if err := page.SetContent(body + `<script id="manja-local-docs-descriptor" type="application/json">` + descriptor + `</script>`); err != nil {
 		t.Fatal(err)
 	}
+	before, err := page.Locator("body").InnerHTML()
+	if err != nil {
+		t.Fatal(err)
+	}
 	if _, err := page.Evaluate(`(manifest) => {
 		window.__manifestRequests = [];
 		window.__activation = null;
 		window.ManjaLocalDocs = {activate: (descriptor, value) => {
 			window.__activation = {catalogId: descriptor.catalogId, snapshotId: value.snapshotId, digest: value.identityDigest};
-			return {ok: true, children: value.children};
+			return {ok: true, catalogId: descriptor.catalogId, publicationKey: descriptor.publicationKey, snapshotId: descriptor.snapshotId, revisionId: descriptor.revisionId, projectionDigest: descriptor.projectionDigest, children: value.children};
 		}};
 		window.fetch = (url) => {
 			window.__manifestRequests.push(url);
@@ -58,10 +62,6 @@ func TestLocalDocsEnhancerActivatesAfterSameOriginManifestAndLeavesSSRBodyIntact
 		t.Fatal(err)
 	}
 	path, err := filepath.Abs("local-docs.js")
-	if err != nil {
-		t.Fatal(err)
-	}
-	before, err := page.Locator("body").InnerHTML()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -99,6 +99,51 @@ func TestLocalDocsEnhancerActivatesAfterSameOriginManifestAndLeavesSSRBodyIntact
 	}
 	if values["ready"] != "true" || values["fallback"] != "" {
 		t.Fatalf("activation unexpectedly fell back: %#v", values)
+	}
+}
+
+func TestLocalDocsEnhancerRejectsActivationIdentityDriftWithoutTouchingSSR(t *testing.T) {
+	page := localDocsPage(t)
+	descriptor, manifestJSON := localDocsFixture(t, "/docs/")
+	body := `<main id="ssr"><h1>Rendered on the server</h1><p>Keep this exact body.</p></main>`
+	if err := page.SetContent(body + `<script id="manja-local-docs-descriptor" type="application/json">` + descriptor + `</script>`); err != nil {
+		t.Fatal(err)
+	}
+	before, err := page.Locator("body").InnerHTML()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := page.Evaluate(`(manifest) => {
+		window.ManjaLocalDocs = {activate: (descriptor, value) => ({
+			ok: true,
+			catalogId: descriptor.catalogId,
+			publicationKey: descriptor.publicationKey,
+			snapshotId: descriptor.snapshotId,
+			revisionId: descriptor.revisionId,
+			projectionDigest: 'f'.repeat(64),
+			children: value.children
+		})};
+		window.fetch = () => Promise.resolve(new Response(manifest, {status: 200, headers: {'Content-Length': String(new TextEncoder().encode(manifest).byteLength)}}));
+	}`, manifestJSON); err != nil {
+		t.Fatal(err)
+	}
+	path, err := filepath.Abs("local-docs.js")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := page.AddScriptTag(playwright.PageAddScriptTagOptions{Path: playwright.String(path)}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := page.WaitForFunction(`() => document.documentElement.dataset.manjaLocalDocsState === 'fallback'`, nil, playwright.PageWaitForFunctionOptions{Timeout: playwright.Float(5000)}); err != nil {
+		t.Fatal(err)
+	}
+	state, err := page.Evaluate(`() => ({body: document.body.innerHTML, ready: document.documentElement.dataset.manjaLocalDocsReady || '', fallback: document.documentElement.dataset.manjaLocalDocsFallback || ''})`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	values, ok := state.(map[string]any)
+	if !ok || values["body"] != before || values["ready"] != "" || values["fallback"] != "true" {
+		t.Fatalf("activation identity drift was not rejected fail-closed: %#v", state)
 	}
 }
 

@@ -235,6 +235,13 @@
     return validateDescriptor(descriptor);
   }
 
+  function validateActivation(result, descriptor) {
+    if (!result || result.ok !== true || result.catalogId !== descriptor.catalogId || result.publicationKey !== descriptor.publicationKey || result.snapshotId !== descriptor.snapshotId || result.revisionId !== descriptor.revisionId || result.projectionDigest !== descriptor.projectionDigest) {
+      fail("Wasm ABI activation identity differs");
+    }
+    return result;
+  }
+
   function start(options) {
     options = options || {};
     var documentValue = options.document || global.document;
@@ -251,11 +258,9 @@
         }
         return readManifest(manifestURL, descriptor).then(function (manifest) {
           return Promise.resolve(abi.activate(descriptor, manifest)).then(function (result) {
-            if (!result || result.ok !== true) {
-              fail("Wasm ABI rejected activation");
-            }
+            var activated = validateActivation(result, descriptor);
             mark(root, "ready");
-            return { ok: true, result: result };
+            return { ok: true, result: activated };
           });
         });
       }).catch(function (error) {

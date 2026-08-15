@@ -47,8 +47,9 @@ func main() {
 			children = append(children, map[string]any{"path": artifact.Path, "kind": artifact.Kind, "length": artifact.Length, "sha256": artifact.SHA256})
 		}
 		return map[string]any{
-			"ok": true, "catalogId": active.CatalogID(), "snapshotId": active.SnapshotID(),
-			"revisionId": active.RevisionID(), "children": children,
+			"ok": true, "catalogId": active.CatalogID(), "publicationKey": active.PublicationKey(),
+			"snapshotId": active.SnapshotID(), "revisionId": active.RevisionID(),
+			"projectionDigest": active.ProjectionDigest(), "children": children,
 		}
 	})
 	allowsFunc = js.FuncOf(func(_ js.Value, args []js.Value) any {
