@@ -234,6 +234,9 @@ relationship are resolved only to the degrees recorded above. Those mechanical
 results do not clear the independent blockers.
 
 Accordingly, this checkpoint creates no root `LICENSE`, `NOTICE`,
-`THIRD_PARTY_NOTICES.md`, Apache badge/metadata, SBOM, or release packager.
-Task 8 of the Open Core plan remains stopped until this document is changed to
-`PASS` from concrete rights-holder and redistribution evidence.
+`THIRD_PARTY_NOTICES.md`, Apache badge/metadata, SBOM, or production release
+artifact. The mechanical archive/evidence seam exists in
+`internal/distribution`, but it is not a production release definition and
+does not clear Task 8. Production distribution and OCI inspection remain
+stopped until this document is changed to `PASS` from concrete rights-holder
+and redistribution evidence.

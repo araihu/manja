@@ -730,7 +730,11 @@ func validateLegalAgainstRoot(request ArtifactRequest, legalRoot string, legal L
 			findings = append(findings, Finding{Code: "legal.file.unreadable", Subject: request.Name + ":" + requiredPath, Detail: err.Error()})
 			continue
 		}
-		if actual.Size != file.Size || actual.Digest != file.Digest {
+		if actual.Size != file.Size || actual.Mode != file.Mode || actual.Digest != file.Digest {
+			if actual.Mode != file.Mode && actual.Size == file.Size && actual.Digest == file.Digest {
+				findings = append(findings, Finding{Code: "legal.file.mode_mismatch", Subject: request.Name + ":" + requiredPath, Detail: fmt.Sprintf("expected mode %o, got %o", file.Mode, actual.Mode)})
+				continue
+			}
 			findings = append(findings, Finding{Code: "legal.file.digest_mismatch", Subject: request.Name + ":" + requiredPath, Detail: fmt.Sprintf("expected %d/%s, got %d/%s", file.Size, file.Digest, actual.Size, actual.Digest)})
 		}
 	}
@@ -817,13 +821,16 @@ func installLegalFiles(staging string, kind ArtifactKind, legalRoot string, lega
 			if err != nil {
 				return fmt.Errorf("read legal file %q: %w", requiredPath, err)
 			}
-			if int64(len(data)) != file.Size || digestForExpected(data, file.Digest) != file.Digest {
+			if int64(len(data)) != file.Size || uint32(info.Mode().Perm()) != file.Mode || digestForExpected(data, file.Digest) != file.Digest {
 				return fmt.Errorf("legal file %q differs from supplied evidence", file.Path)
 			}
 			if err := os.MkdirAll(filepath.Dir(destination), 0o755); err != nil {
 				return err
 			}
-			if err := os.WriteFile(destination, data, 0o644); err != nil {
+			if err := os.WriteFile(destination, data, os.FileMode(file.Mode)&os.ModePerm); err != nil {
+				return err
+			}
+			if err := os.Chmod(destination, os.FileMode(file.Mode)&os.ModePerm); err != nil {
 				return err
 			}
 		} else if err != nil {
@@ -833,7 +840,7 @@ func installLegalFiles(staging string, kind ArtifactKind, legalRoot string, lega
 		if err != nil {
 			return err
 		}
-		if actual.Size != file.Size || actual.Digest != file.Digest {
+		if actual.Size != file.Size || actual.Mode != file.Mode || actual.Digest != file.Digest {
 			return fmt.Errorf("legal file %q differs from supplied evidence", requiredPath)
 		}
 	}

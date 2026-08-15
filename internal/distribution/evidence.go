@@ -434,7 +434,11 @@ func validateArtifact(artifact ArtifactEvidence, policy Policy, dependencies map
 				continue
 			}
 			legalFile, legalExists := legalFileForPath(legal, requiredPath)
-			if legalExists && (file.Size != legalFile.Size || file.Digest != legalFile.Digest) {
+			if legalExists && (file.Size != legalFile.Size || file.Mode != legalFile.Mode || file.Digest != legalFile.Digest) {
+				if file.Mode != legalFile.Mode && file.Size == legalFile.Size && file.Digest == legalFile.Digest {
+					findings = append(findings, Finding{Code: "artifact.legal_file.mode_mismatch", Subject: artifact.Name + ":" + requiredPath, Detail: "legal evidence mode differs from the inspected artifact bytes"})
+					continue
+				}
 				findings = append(findings, Finding{Code: "artifact.legal_file.bytes_mismatch", Subject: artifact.Name + ":" + requiredPath, Detail: "legal evidence digest differs from the inspected artifact bytes"})
 			}
 		}

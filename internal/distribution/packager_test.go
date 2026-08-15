@@ -13,6 +13,14 @@ import (
 	"testing"
 )
 
+const (
+	// Reviewed fixture receipts. Any deterministic archive-byte change must
+	// update these values through a separately inspected archive, not by asking
+	// Pack to compute its own expectation.
+	syntheticPackageDigest = "sha256:4ee924368b4d43587f7af6c76c010f157fbc52c9e9b32fd0327db42bf2578780"
+	firstFailureDigest     = "sha256:84aee66c276af7ca5dc4413883b846acf46b41c9301af21790901be10f43b7a7"
+)
+
 func TestInspectRootRecursesAndRejectsExcludedNestedFile(t *testing.T) {
 	root := t.TempDir()
 	writeTestFile(t, root, "nested/ok.txt", "ok")
@@ -248,8 +256,7 @@ func TestPackPassesSyntheticAuthorityAndPlacesNotices(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	artifactRequest := ArtifactRequest{Name: "manja", Kind: ArtifactBinary, Source: "git:test", Root: root, RootDigest: rootInventory.Digest}
-	artifactRequest.ExpectedDigest = expectedPackageDigest(t, artifactRequest, DefaultPolicy(), legalRoot, legal, nil)
+	artifactRequest := ArtifactRequest{Name: "manja", Kind: ArtifactBinary, Source: "git:test", Root: root, RootDigest: rootInventory.Digest, ExpectedDigest: syntheticPackageDigest}
 	output := filepath.Join(t.TempDir(), "release")
 	packageRequest := PackageRequest{
 		Subject:      SubjectEvidence{CommitSHA: strings.Repeat("a", 40), TreeSHA: strings.Repeat("b", 40)},
@@ -360,6 +367,32 @@ func TestPackValidatesLegalBytesBeforeCreatingOutput(t *testing.T) {
 	}
 }
 
+func TestPackValidatesLegalFileModeBeforeCreatingOutput(t *testing.T) {
+	root := t.TempDir()
+	writeTestFile(t, root, "bin/manja", "binary")
+	legalRoot, legal := testLegalEvidence(t)
+	legal.License.Mode = 0o755
+	output := filepath.Join(t.TempDir(), "release")
+
+	result, err := Pack(PackageRequest{
+		Subject:      SubjectEvidence{CommitSHA: strings.Repeat("a", 40), TreeSHA: strings.Repeat("b", 40)},
+		Provenance:   AuthorityEvidence{Status: StatusPass, Reference: "provenance-receipt", Digest: "sha256:" + strings.Repeat("1", 64)},
+		RightsHolder: AuthorityEvidence{Status: StatusPass, Reference: "rights-receipt", Digest: "sha256:" + strings.Repeat("2", 64)},
+		Legal:        legal, LegalRoot: legalRoot,
+		Artifacts: []ArtifactRequest{{Name: "manja", Kind: ArtifactBinary, Source: "git:test", Root: root, ExpectedDigest: "sha256:" + strings.Repeat("f", 64)}},
+		OutputDir: output,
+	}, DefaultPolicy())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Result.Status != StatusBlocked || !result.Result.HasCode("legal.file.mode_mismatch") {
+		t.Fatalf("result = %#v, want legal-mode blocker", result.Result)
+	}
+	if _, err := os.Stat(output); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("output directory exists after legal mode mismatch: %v", err)
+	}
+}
+
 func TestPackDoesNotLeaveArtifactsWhenLaterPackageFails(t *testing.T) {
 	firstRoot := t.TempDir()
 	writeTestFile(t, firstRoot, "bin/first", "first")
@@ -372,8 +405,7 @@ func TestPackDoesNotLeaveArtifactsWhenLaterPackageFails(t *testing.T) {
 	legalRoot, legal := testLegalEvidence(t)
 	output := filepath.Join(t.TempDir(), "release")
 	wrongDigest := "sha256:" + strings.Repeat("f", 64)
-	firstRequest := ArtifactRequest{Name: "first", Kind: ArtifactBinary, Source: "git:first", Root: firstRoot}
-	firstRequest.ExpectedDigest = expectedPackageDigest(t, firstRequest, DefaultPolicy(), legalRoot, legal, nil)
+	firstRequest := ArtifactRequest{Name: "first", Kind: ArtifactBinary, Source: "git:first", Root: firstRoot, ExpectedDigest: firstFailureDigest}
 
 	result, err := Pack(PackageRequest{
 		Subject:      SubjectEvidence{CommitSHA: strings.Repeat("a", 40), TreeSHA: strings.Repeat("b", 40)},
@@ -619,24 +651,4 @@ func testLegalEvidence(t *testing.T) (string, LegalEvidence) {
 		Notice:     fileEvidenceFromPath(t, legalRoot, "NOTICE"),
 		ThirdParty: fileEvidenceFromPath(t, legalRoot, "THIRD_PARTY_NOTICES.md"),
 	}
-}
-
-func expectedPackageDigest(t *testing.T, request ArtifactRequest, policy Policy, legalRoot string, legal LegalEvidence, dependencies []DependencyEvidence) string {
-	t.Helper()
-	prepareRequest := request
-	prepareRequest.ExpectedDigest = "sha256:" + strings.Repeat("0", 64)
-	artifact, findings := inspectRequestedArtifact(prepareRequest, policy, dependencies, true)
-	if len(findings) != 0 {
-		t.Fatalf("inspectRequestedArtifact findings = %#v", findings)
-	}
-	packaged, _, err := packageOne(request, artifact, PackageRequest{
-		Legal:        legal,
-		LegalRoot:    legalRoot,
-		Dependencies: dependencies,
-		OutputDir:    t.TempDir(),
-	}, policy)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return packaged.Digest
 }
