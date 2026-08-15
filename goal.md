@@ -1434,3 +1434,14 @@ Wasm, strict Muamba, generated-Go, webassets, templ `updates=0`, and
 `git diff --check` pass. Root race timing remains an open blocker; reviews,
 legal clearance, merge, release, deployment, cleanup, and external handoff
 mutation remain prohibited.
+
+### Round-4 reconciler baseline (2026-08-15)
+
+Round-4 starts from frozen reconciler head
+`e93149acd7a2814717302e2571d66f760b16fae7`, tree
+`8a654b40772516498084c39e9b8f461da47349d1`, with merge-base `origin/main`
+`507c5ea9fcdc8cee670a023dbb82f348ba2ed763`. Two bounded corrective packets
+are expected: OC-03 selfhosted race deadline and OC-04/accessibility
+`focus-visible`. Compare exact base/head/tree/status and owned paths before
+selection; preserve existing race and E2E blockers. Reviews, merge, release,
+deployment, cleanup, and other lifecycle actions remain suspended.
