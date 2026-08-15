@@ -74,7 +74,7 @@ func PrepareCatalogDocumentInfo(document catalog.DocumentDirectoryV1) (CatalogDo
 		TermsOfService:    document.Overview.TermsOfService,
 		HasContact:        strings.TrimSpace(contact.Name) != "" || strings.TrimSpace(contact.URL) != "" || strings.TrimSpace(contact.Email) != "",
 		HasLicense:        strings.TrimSpace(license.Name) != "" || strings.TrimSpace(license.URL) != "" || strings.TrimSpace(license.Identifier) != "",
-		HasTerms:          strings.TrimSpace(document.Overview.TermsOfService) != "",
+		HasTerms:          document.Overview.TermsOfService != "",
 	}
 	data.HasInfo = data.HasContact || data.HasLicense || data.HasTerms
 	fragment := CatalogDocumentInfoFragment{data: data, valid: true}

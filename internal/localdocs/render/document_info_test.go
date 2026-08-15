@@ -3,6 +3,7 @@ package render
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"reflect"
 	"strings"
 	"testing"
@@ -118,21 +119,25 @@ func TestPreparedCatalogDocumentInfoCopiesInputsAndBytes(t *testing.T) {
 }
 
 func TestPreparedCatalogDocumentInfoPreservesWhitespacePresenceRules(t *testing.T) {
-	document := catalog.DocumentDirectoryV1{Key: "core-v1", Overview: projection.Overview{
-		Contact:        projection.Contact{Name: " ", URL: "https://example.test/support"},
-		License:        projection.License{Identifier: " "},
-		TermsOfService: " ",
-	}}
-	fragment, err := PrepareCatalogDocumentInfo(document)
-	if err != nil {
-		t.Fatal(err)
-	}
-	body, err := fragment.Bytes(context.Background())
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !bytes.Contains(body, []byte(`>Contact</dt>`)) || bytes.Contains(body, []byte(`>License</dt>`)) || bytes.Contains(body, []byte(`>Terms of service</dt>`)) {
-		t.Fatalf("whitespace-only presence rules changed: %s", body)
+	for _, terms := range []string{" ", "\n"} {
+		t.Run(fmt.Sprintf("terms=%q", terms), func(t *testing.T) {
+			document := catalog.DocumentDirectoryV1{Key: "core-v1", Overview: projection.Overview{
+				Contact:        projection.Contact{Name: " ", URL: "https://example.test/support"},
+				License:        projection.License{Identifier: " "},
+				TermsOfService: terms,
+			}}
+			fragment, err := PrepareCatalogDocumentInfo(document)
+			if err != nil {
+				t.Fatal(err)
+			}
+			body, err := fragment.Bytes(context.Background())
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !bytes.Contains(body, []byte(`>Contact</dt>`)) || bytes.Contains(body, []byte(`>License</dt>`)) || !bytes.Contains(body, []byte(`>Terms of service</dt>`)) {
+				t.Fatalf("whitespace-only presence rules changed: %s", body)
+			}
+		})
 	}
 }
 

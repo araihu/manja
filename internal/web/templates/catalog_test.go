@@ -573,6 +573,47 @@ func TestPreparedCatalogDocumentInfoMatchesLegacySSRBytes(t *testing.T) {
 	}
 }
 
+func TestPreparedCatalogDocumentInfoPreservesLegacyTermsWhitespaceBytes(t *testing.T) {
+	tests := []struct {
+		name    string
+		terms   string
+		contact projection.Contact
+		license projection.License
+	}{
+		{name: "space with contact", terms: " ", contact: projection.Contact{Name: "API Support"}},
+		{name: "newline with license", terms: "\n", license: projection.License{Name: "Apache 2.0"}},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			document := catalog.DocumentDirectoryV1{Key: "core-v1", Overview: projection.Overview{
+				Contact:        test.contact,
+				License:        test.license,
+				TermsOfService: test.terms,
+			}}
+			fragment, err := localrender.PrepareCatalogDocumentInfo(document)
+			if err != nil {
+				t.Fatal(err)
+			}
+			data := CatalogPageData{Document: &document, DocumentInfo: &fragment}
+			var delegated bytes.Buffer
+			if err := catalogDocumentInfo(data).Render(context.Background(), &delegated); err != nil {
+				t.Fatal(err)
+			}
+			legacy, err := renderLegacyCatalogDocumentInfo(document)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !bytes.Equal(legacy, delegated.Bytes()) {
+				index := firstDifferentByte(legacy, delegated.Bytes())
+				t.Fatalf("prepared document info changed SSR bytes at byte %d:\nlegacy=%q\ndelegated=%q", index, nearbyBytes(legacy, index), nearbyBytes(delegated.Bytes(), index))
+			}
+			if !bytes.Contains(delegated.Bytes(), []byte(`>Terms of service</dt>`)) {
+				t.Fatalf("legacy non-empty terms value was omitted: %q", delegated.Bytes())
+			}
+		})
+	}
+}
+
 func renderLegacyCatalogDocumentInfo(document catalog.DocumentDirectoryV1) ([]byte, error) {
 	legacyURL := func(value string) string {
 		safe, err := templ.JoinURLErrs(templ.URL(value))
@@ -592,7 +633,7 @@ func renderLegacyCatalogDocumentInfo(document catalog.DocumentDirectoryV1) ([]by
 	license := document.Overview.License
 	showContact := strings.TrimSpace(contact.Name) != "" || strings.TrimSpace(contact.URL) != "" || strings.TrimSpace(contact.Email) != ""
 	showLicense := strings.TrimSpace(license.Name) != "" || strings.TrimSpace(license.URL) != "" || strings.TrimSpace(license.Identifier) != ""
-	showTerms := strings.TrimSpace(document.Overview.TermsOfService) != ""
+	showTerms := document.Overview.TermsOfService != ""
 	var output bytes.Buffer
 	if !showContact && !showLicense && !showTerms {
 		return output.Bytes(), nil
