@@ -65,13 +65,28 @@ type SubjectEvidence struct {
 	TreeSHA   string `json:"treeSha"`
 }
 
+// AuthorityClaims keeps first-party copyright, redistribution, and trademark
+// dispositions separate. Each non-empty value must be repeated by the exact
+// immutable receipt; caller-supplied claims alone never grant authority.
+type AuthorityClaims struct {
+	CopyrightHolder    string `json:"copyrightHolder,omitempty"`
+	CopyrightYearRange string `json:"copyrightYearRange,omitempty"`
+	Redistribution     string `json:"redistribution,omitempty"`
+	Trademark          string `json:"trademark,omitempty"`
+}
+
 // AuthorityEvidence points at evidence for a gate. A PASS requires an
-// immutable reference, digest, exact receipt bytes, and in-process resolution;
-// a BLOCKED status is valid without either.
+// immutable reference, tree/path/blob, exact size/mode/digest/receipt bytes,
+// explicit claims, and in-process resolution; a BLOCKED status is valid
+// without either.
 type AuthorityEvidence struct {
-	Status    Status `json:"status"`
-	Reference string `json:"reference,omitempty"`
-	Digest    string `json:"digest,omitempty"`
+	Status    Status          `json:"status"`
+	Reference string          `json:"reference,omitempty"`
+	Tree      string          `json:"tree,omitempty"`
+	Size      int64           `json:"size,omitempty"`
+	Mode      uint32          `json:"mode,omitempty"`
+	Digest    string          `json:"digest,omitempty"`
+	Claims    AuthorityClaims `json:"claims,omitempty"`
 	// Receipt is the exact immutable receipt body named by Reference. PASS is
 	// impossible unless its SHA-256/SHA-384 digest and Git blob identity both
 	// match the supplied bytes.
@@ -86,6 +101,7 @@ type AuthorityEvidence struct {
 // license receipt came from the named repository revision.
 type LicenseReceipt struct {
 	Reference string `json:"reference,omitempty"`
+	Tree      string `json:"tree,omitempty"`
 	Size      int64  `json:"size,omitempty"`
 	Mode      uint32 `json:"mode,omitempty"`
 	Digest    string `json:"digest,omitempty"`
@@ -121,16 +137,17 @@ type DependencyEvidence struct {
 // ArtifactEvidence identifies one actual artifact and its recursively
 // inspected files. Runtime artifacts must include every required legal file.
 type ArtifactEvidence struct {
-	Name                     string             `json:"name"`
-	Kind                     ArtifactKind       `json:"kind"`
-	Source                   string             `json:"source"`
-	Digest                   string             `json:"digest"`
-	Inspection               InspectionEvidence `json:"inspection"`
-	SBOM                     SBOMEvidence       `json:"sbom"`
-	Platforms                []PlatformEvidence `json:"platforms,omitempty"`
-	PlatformCoverageComplete bool               `json:"platformCoverageComplete,omitempty"`
-	Dependencies             []string           `json:"dependencies"`
-	Files                    []FileEvidence     `json:"files"`
+	Name                        string             `json:"name"`
+	Kind                        ArtifactKind       `json:"kind"`
+	Source                      string             `json:"source"`
+	Digest                      string             `json:"digest"`
+	Inspection                  InspectionEvidence `json:"inspection"`
+	SBOM                        SBOMEvidence       `json:"sbom"`
+	Platforms                   []PlatformEvidence `json:"platforms,omitempty"`
+	PlatformCoverageComplete    bool               `json:"platformCoverageComplete,omitempty"`
+	Dependencies                []string           `json:"dependencies"`
+	DependencyInventoryComplete bool               `json:"dependencyInventoryComplete"`
+	Files                       []FileEvidence     `json:"files"`
 }
 
 // InspectionEvidence proves that the complete immutable artifact was scanned
@@ -224,7 +241,7 @@ var (
 	sha1Pattern               = regexp.MustCompile(`^[0-9a-f]{40}$`)
 	hexPattern                = regexp.MustCompile(`^[0-9a-f]+$`)
 	spdxIdentifierPattern     = regexp.MustCompile(`^[A-Za-z0-9.-]+$`)
-	authorityReferencePattern = regexp.MustCompile(`^git:([^@\s]+)@([0-9a-f]{40}):([^#\s]+)#blob=([0-9a-f]{40})$`)
+	authorityReferencePattern = regexp.MustCompile(`^git:([^@\s]+)@([0-9a-f]{40}):([^#\s]+)#tree=([0-9a-f]{40})&blob=([0-9a-f]{40})$`)
 	immutableVersionPattern   = regexp.MustCompile(`^v?[0-9]+\.[0-9]+\.[0-9]+(?:[-+][0-9A-Za-z.-]+)?$`)
 	immutableSourcePattern    = regexp.MustCompile(`^(?:https?://|git:)[^@\s]+@[0-9a-f]{40}(?:$|[/:?#][^\s]*)`)
 )
@@ -289,6 +306,7 @@ type parsedAuthorityReference struct {
 	repository string
 	commit     string
 	path       string
+	tree       string
 	blob       string
 }
 
@@ -297,7 +315,7 @@ func parseAuthorityReference(value string) (parsedAuthorityReference, bool) {
 	if matches == nil || unsafePath(matches[3]) {
 		return parsedAuthorityReference{}, false
 	}
-	return parsedAuthorityReference{repository: matches[1], commit: matches[2], path: matches[3], blob: matches[4]}, true
+	return parsedAuthorityReference{repository: matches[1], commit: matches[2], path: matches[3], tree: matches[4], blob: matches[5]}, true
 }
 
 func validateAuthority(name string, authority AuthorityEvidence, legal LegalEvidence) []Finding {
@@ -306,22 +324,56 @@ func validateAuthority(name string, authority AuthorityEvidence, legal LegalEvid
 	case StatusPass:
 		reference, referenceValid := parseAuthorityReference(authority.Reference)
 		if !referenceValid {
-			findings = append(findings, Finding{Code: "authority." + name + ".reference_invalid", Detail: "PASS requires a canonical Git receipt reference with an immutable commit and blob"})
+			findings = append(findings, Finding{Code: "authority." + name + ".reference_invalid", Detail: "PASS requires a canonical Git receipt reference with immutable commit, tree, path, and blob"})
+		} else if authority.Tree != reference.tree {
+			findings = append(findings, Finding{Code: "authority." + name + ".tree_mismatch", Detail: "authority tree differs from the immutable receipt reference"})
+		}
+		if !sha1Pattern.MatchString(authority.Tree) {
+			findings = append(findings, Finding{Code: "authority." + name + ".tree_invalid", Detail: "PASS requires the full lowercase Git tree SHA-1"})
+		}
+		if authority.Size <= 0 {
+			findings = append(findings, Finding{Code: "authority." + name + ".size_invalid", Detail: "PASS requires the exact positive receipt byte size"})
+		}
+		if authority.Mode != 0o644 && authority.Mode != 0o755 {
+			findings = append(findings, Finding{Code: "authority." + name + ".mode_invalid", Detail: "PASS requires an explicit 0644 or 0755 receipt mode"})
 		}
 		if !validDigest(authority.Digest) {
 			findings = append(findings, Finding{Code: "authority." + name + ".digest_invalid", Detail: "PASS requires a lowercase SHA-256 or SHA-384 digest"})
 		}
 		if len(authority.Receipt) == 0 {
 			findings = append(findings, Finding{Code: "authority." + name + ".receipt_missing", Detail: "PASS requires the exact immutable receipt bytes"})
-		} else if validDigest(authority.Digest) && digestForExpected(authority.Receipt, authority.Digest) != authority.Digest {
-			findings = append(findings, Finding{Code: "authority." + name + ".receipt_digest_mismatch", Detail: "receipt bytes do not match the supplied digest"})
+		} else {
+			if authority.Size != int64(len(authority.Receipt)) {
+				findings = append(findings, Finding{Code: "authority." + name + ".receipt_size_mismatch", Detail: "receipt bytes do not match the supplied size"})
+			}
+			if validDigest(authority.Digest) && digestForExpected(authority.Receipt, authority.Digest) != authority.Digest {
+				findings = append(findings, Finding{Code: "authority." + name + ".receipt_digest_mismatch", Detail: "receipt bytes do not match the supplied digest"})
+			}
 		}
 		if referenceValid && len(authority.Receipt) > 0 && gitBlobSHA1(authority.Receipt) != reference.blob {
 			findings = append(findings, Finding{Code: "authority." + name + ".receipt_blob_mismatch", Detail: "receipt bytes do not match the Git blob in the immutable reference"})
 		}
-		if name == "rights_holder" && legal.Holder != "" && legal.YearRange != "" && authority.resolved &&
-			(!receiptContainsClaim(authority.Receipt, "holder", legal.Holder) || !receiptContainsClaim(authority.Receipt, "year-range", legal.YearRange)) {
-			findings = append(findings, Finding{Code: "authority." + name + ".claim_mismatch", Detail: "resolved rights-holder receipt does not authorize the supplied holder and year range"})
+		claims := []struct {
+			label string
+			value string
+		}{
+			{label: "copyright-holder", value: authority.Claims.CopyrightHolder},
+			{label: "copyright-year-range", value: authority.Claims.CopyrightYearRange},
+			{label: "redistribution", value: authority.Claims.Redistribution},
+			{label: "trademark", value: authority.Claims.Trademark},
+		}
+		for _, claim := range claims {
+			if claim.value == "" || strings.ContainsAny(claim.value, "\r\n") {
+				findings = append(findings, Finding{Code: "authority." + name + ".claims_missing", Subject: claim.label, Detail: "PASS requires an explicit, single-line authority claim for copyright, redistribution, and trademark disposition"})
+				continue
+			}
+			if !receiptContainsClaim(authority.Receipt, claim.label, claim.value) {
+				findings = append(findings, Finding{Code: "authority." + name + ".claim_mismatch", Subject: claim.label, Detail: "immutable authority receipt does not contain the exact supplied claim"})
+			}
+		}
+		if name == "rights_holder" && legal.Holder != "" && legal.YearRange != "" &&
+			(authority.Claims.CopyrightHolder != legal.Holder || authority.Claims.CopyrightYearRange != legal.YearRange) {
+			findings = append(findings, Finding{Code: "authority." + name + ".legal_claim_mismatch", Detail: "rights-holder claims do not authorize the supplied legal holder and year range"})
 		}
 		if !authority.resolved {
 			findings = append(findings, Finding{Code: "authority." + name + ".unresolved", Detail: "PASS requires a receipt resolved from the immutable reference, not a serialized caller assertion"})
@@ -466,6 +518,9 @@ func validateArtifact(artifact ArtifactEvidence, policy Policy, dependencies map
 	}
 	if len(artifact.Files) == 0 {
 		findings = append(findings, Finding{Code: "artifact.inventory.missing", Subject: artifact.Name, Detail: "artifact has no recursively inspected file inventory"})
+	}
+	if !artifact.DependencyInventoryComplete {
+		findings = append(findings, Finding{Code: "artifact.dependency.inventory_incomplete", Subject: artifact.Name, Detail: "artifact requires a reviewed complete dependency closure, including an explicit empty closure when applicable"})
 	}
 	seenFiles := make(map[string]FileEvidence, len(artifact.Files))
 	for _, file := range artifact.Files {
@@ -660,14 +715,32 @@ func isUnknownLicense(value string) bool {
 }
 
 var knownSPDXIdentifiers = map[string]struct{}{
-	"0BSD": {}, "Apache-1.1": {}, "Apache-2.0": {}, "Artistic-2.0": {},
-	"BSD-2-Clause": {}, "BSD-3-Clause": {}, "BSL-1.1": {}, "CC0-1.0": {},
-	"CDDL-1.0": {}, "EPL-1.0": {}, "EPL-2.0": {}, "GPL-2.0-only": {},
-	"GPL-2.0-or-later": {}, "GPL-3.0-only": {}, "GPL-3.0-or-later": {},
-	"ISC": {}, "LGPL-2.1-only": {}, "LGPL-2.1-or-later": {}, "LGPL-3.0-only": {},
-	"LGPL-3.0-or-later": {}, "MIT": {}, "MPL-1.1": {}, "MPL-2.0": {},
-	"OFL-1.1": {}, "OpenSSL": {}, "Python-2.0": {}, "Ruby": {}, "Unlicense": {},
-	"UPL-1.0": {}, "WTFPL": {}, "Zlib": {},
+	"0BSD": {}, "AGPL-1.0-only": {}, "AGPL-1.0-or-later": {},
+	"AGPL-3.0-only": {}, "AGPL-3.0-or-later": {}, "Apache-1.1": {},
+	"Apache-2.0": {}, "Artistic-2.0": {}, "BSD-2-Clause": {},
+	"BSD-3-Clause": {}, "BSD-3-Clause-Clear": {}, "BSD-4-Clause": {},
+	"BSD-Source-Code": {}, "BSL-1.1": {}, "CC-BY-4.0": {},
+	"CC-BY-SA-4.0": {}, "CC0-1.0": {}, "CDDL-1.0": {}, "EPL-1.0": {},
+	"EPL-2.0": {}, "GPL-2.0": {}, "GPL-2.0-only": {},
+	"GPL-2.0-or-later": {}, "GPL-3.0": {}, "GPL-3.0-only": {},
+	"GPL-3.0-or-later": {}, "ISC": {}, "LGPL-2.0-only": {},
+	"LGPL-2.0-or-later": {}, "LGPL-2.1": {}, "LGPL-2.1-only": {},
+	"LGPL-2.1-or-later": {}, "LGPL-3.0": {}, "LGPL-3.0-only": {},
+	"LGPL-3.0-or-later": {}, "MIT": {}, "MIT-0": {}, "MPL-1.1": {},
+	"MPL-2.0": {}, "MPL-2.0-no-copyleft-exception": {}, "NCSA": {},
+	"OFL-1.1": {}, "OpenSSL": {}, "Python-2.0": {}, "Ruby": {},
+	"Unlicense": {}, "UPL-1.0": {}, "WTFPL": {}, "Zlib": {},
+}
+
+var knownSPDXExceptions = map[string]struct{}{
+	"Autoconf-exception-2.0": {}, "Autoconf-exception-3.0": {},
+	"Bison-exception-2.2": {}, "Classpath-exception-2.0": {},
+	"CLISP-exception-2.0": {}, "FLTK-exception": {}, "Font-exception-2.0": {},
+	"GCC-exception-2.0": {}, "GCC-exception-3.1": {}, "GNAT-exception": {},
+	"LLVM-exception": {}, "Libtool-exception": {}, "Linux-syscall-note": {},
+	"mif-exception": {}, "Nokia-Qt-exception-1.1": {},
+	"OCaml-LGPL-linking-exception": {}, "OpenJDK-assembly-exception-1.0": {},
+	"PS-or-PDF-font-exception-20170817": {}, "Swift-exception": {},
 }
 
 func validSPDXExpression(value string) bool {
@@ -675,35 +748,81 @@ func validSPDXExpression(value string) bool {
 	if value == "" {
 		return false
 	}
-	value = strings.NewReplacer("(", " ( ", ")", " ) ").Replace(value)
-	tokens := strings.Fields(value)
-	expectOperand := true
-	depth := 0
-	for _, token := range tokens {
-		if expectOperand {
-			if token == "(" {
-				depth++
-				continue
-			}
-			if !validSPDXIdentifier(token) {
-				return false
-			}
-			expectOperand = false
-			continue
-		}
-		switch token {
-		case "AND", "OR", "WITH":
-			expectOperand = true
-		case ")":
-			if depth == 0 {
-				return false
-			}
-			depth--
-		default:
+	tokens := strings.Fields(strings.NewReplacer("(", " ( ", ")", " ) ").Replace(value))
+	parser := spdxExpressionParser{tokens: tokens}
+	if !parser.parseExpression() {
+		return false
+	}
+	return parser.position == len(tokens)
+}
+
+type spdxExpressionParser struct {
+	tokens   []string
+	position int
+}
+
+func (parser *spdxExpressionParser) parseExpression() bool {
+	return parser.parseOr()
+}
+
+func (parser *spdxExpressionParser) parseOr() bool {
+	if !parser.parseAnd() {
+		return false
+	}
+	for parser.position < len(parser.tokens) && parser.tokens[parser.position] == "OR" {
+		parser.position++
+		if !parser.parseAnd() {
 			return false
 		}
 	}
-	return !expectOperand && depth == 0
+	return true
+}
+
+func (parser *spdxExpressionParser) parseAnd() bool {
+	if !parser.parseWith() {
+		return false
+	}
+	for parser.position < len(parser.tokens) && parser.tokens[parser.position] == "AND" {
+		parser.position++
+		if !parser.parseWith() {
+			return false
+		}
+	}
+	return true
+}
+
+func (parser *spdxExpressionParser) parseWith() bool {
+	if !parser.parsePrimary() {
+		return false
+	}
+	if parser.position < len(parser.tokens) && parser.tokens[parser.position] == "WITH" {
+		parser.position++
+		if parser.position >= len(parser.tokens) || !validSPDXException(parser.tokens[parser.position]) {
+			return false
+		}
+		parser.position++
+	}
+	return true
+}
+
+func (parser *spdxExpressionParser) parsePrimary() bool {
+	if parser.position >= len(parser.tokens) {
+		return false
+	}
+	token := parser.tokens[parser.position]
+	if token == "(" {
+		parser.position++
+		if !parser.parseExpression() || parser.position >= len(parser.tokens) || parser.tokens[parser.position] != ")" {
+			return false
+		}
+		parser.position++
+		return true
+	}
+	if !validSPDXIdentifier(token) {
+		return false
+	}
+	parser.position++
+	return true
 }
 
 func validSPDXIdentifier(value string) bool {
@@ -714,11 +833,24 @@ func validSPDXIdentifier(value string) bool {
 	return ok
 }
 
+func validSPDXException(value string) bool {
+	if strings.HasPrefix(value, "LicenseRef-") && len(value) > len("LicenseRef-") {
+		return spdxIdentifierPattern.MatchString(strings.TrimPrefix(value, "LicenseRef-"))
+	}
+	_, ok := knownSPDXExceptions[value]
+	return ok
+}
+
 func validateLicenseReceipt(name, license string, receipt LicenseReceipt) []Finding {
 	var findings []Finding
 	parsed, ok := parseAuthorityReference(receipt.Reference)
 	if !ok {
-		findings = append(findings, Finding{Code: "dependency.license.reference_invalid", Subject: name, Detail: "shipped dependency license requires an immutable Git reference with a blob"})
+		findings = append(findings, Finding{Code: "dependency.license.reference_invalid", Subject: name, Detail: "shipped dependency license requires an immutable Git reference with tree, path, and blob"})
+	} else if receipt.Tree != parsed.tree {
+		findings = append(findings, Finding{Code: "dependency.license.tree_mismatch", Subject: name, Detail: "license receipt tree differs from the immutable reference"})
+	}
+	if !sha1Pattern.MatchString(receipt.Tree) {
+		findings = append(findings, Finding{Code: "dependency.license.tree_invalid", Subject: name, Detail: "license receipt requires the full lowercase Git tree SHA-1"})
 	}
 	if receipt.Size <= 0 {
 		findings = append(findings, Finding{Code: "dependency.license.size_invalid", Subject: name, Detail: "license receipt requires a positive byte size"})
@@ -753,34 +885,91 @@ func validateLicenseReceipt(name, license string, receipt LicenseReceipt) []Find
 
 func licenseReceiptAuthorizes(expression string, receipt []byte) bool {
 	text := strings.ToLower(string(receipt))
-	identifiers := strings.Fields(strings.NewReplacer("(", " ", ")", " ", "AND", " ", "OR", " ", "WITH", " ").Replace(expression))
+	identifiers := spdxLicenseIdentifiers(expression)
 	for _, rawIdentifier := range identifiers {
 		identifier := strings.ToLower(rawIdentifier)
-		var markers []string
-		switch identifier {
-		case "mit":
-			markers = []string{"mit license"}
-		case "apache-2.0":
-			markers = []string{"apache license", "2.0"}
-		case "bsd-2-clause", "bsd-3-clause":
-			markers = []string{"redistribution", "source code"}
-		case "isc":
-			markers = []string{"isc license"}
-		case "mpl-2.0":
-			markers = []string{"mozilla public license", "2.0"}
-		default:
-			if strings.HasPrefix(identifier, "licenseref-") {
-				continue
-			}
-			markers = []string{"license"}
+		if strings.Contains(text, "spdx-license-identifier: "+identifier) {
+			continue
 		}
-		for _, marker := range markers {
-			if !strings.Contains(text, marker) {
+		if strings.HasPrefix(identifier, "licenseref-") {
+			if !strings.Contains(text, "license-ref: "+identifier) {
 				return false
 			}
+			continue
+		}
+		markers, known := spdxLicenseMarkers[identifier]
+		if !known || !containsAll(text, markers) {
+			return false
 		}
 	}
 	return len(identifiers) > 0
+}
+
+var spdxLicenseMarkers = map[string][]string{
+	"0bsd":              {"bsd zero clause"},
+	"agpl-1.0-only":     {"gnu affero general public license", "version 1"},
+	"agpl-1.0-or-later": {"gnu affero general public license", "version 1"},
+	"agpl-3.0-only":     {"gnu affero general public license", "version 3"},
+	"agpl-3.0-or-later": {"gnu affero general public license", "version 3"},
+	"apache-1.1":        {"apache license", "1.1"},
+	"apache-2.0":        {"apache license", "2.0"},
+	"artistic-2.0":      {"artistic license", "2.0"},
+	"bsd-2-clause":      {"redistribution and use in source and binary forms", "provided that"},
+	"bsd-3-clause":      {"redistribution and use in source and binary forms", "endorse or promote"},
+	"bsl-1.1":           {"business source license", "1.1"},
+	"cc0-1.0":           {"creative commons", "cc0"},
+	"cddl-1.0":          {"common development and distribution license", "1.0"},
+	"epl-1.0":           {"eclipse public license", "1.0"},
+	"epl-2.0":           {"eclipse public license", "2.0"},
+	"gpl-2.0":           {"gnu general public license", "version 2"},
+	"gpl-2.0-only":      {"gnu general public license", "version 2"},
+	"gpl-2.0-or-later":  {"gnu general public license", "version 2"},
+	"gpl-3.0":           {"gnu general public license", "version 3"},
+	"gpl-3.0-only":      {"gnu general public license", "version 3"},
+	"gpl-3.0-or-later":  {"gnu general public license", "version 3"},
+	"isc":               {"isc license"},
+	"lgpl-2.1-only":     {"gnu lesser general public license", "version 2.1"},
+	"lgpl-2.1-or-later": {"gnu lesser general public license", "version 2.1"},
+	"lgpl-3.0-only":     {"gnu lesser general public license", "version 3"},
+	"lgpl-3.0-or-later": {"gnu lesser general public license", "version 3"},
+	"mit":               {"mit license", "permission is hereby granted"},
+	"mit-0":             {"mit no attribution"},
+	"mpl-1.1":           {"mozilla public license", "1.1"},
+	"mpl-2.0":           {"mozilla public license", "2.0"},
+	"openssl":           {"openssl license", "redistribution"},
+	"ofl-1.1":           {"sil open font license", "1.1"},
+	"python-2.0":        {"python software foundation license", "2.0"},
+	"ruby":              {"ruby license"},
+	"unlicense":         {"unlicense", "public domain"},
+	"upl-1.0":           {"universal permissive license", "1.0"},
+	"wtfpl":             {"do what the fuck you want to public license"},
+	"zlib":              {"zlib license", "altered source"},
+}
+
+func spdxLicenseIdentifiers(expression string) []string {
+	tokens := strings.Fields(strings.NewReplacer("(", " ", ")", " ").Replace(expression))
+	identifiers := make([]string, 0, len(tokens))
+	for index := 0; index < len(tokens); index++ {
+		switch tokens[index] {
+		case "AND", "OR":
+			continue
+		case "WITH":
+			index++
+			continue
+		default:
+			identifiers = append(identifiers, tokens[index])
+		}
+	}
+	return identifiers
+}
+
+func containsAll(text string, markers []string) bool {
+	for _, marker := range markers {
+		if !strings.Contains(text, marker) {
+			return false
+		}
+	}
+	return true
 }
 
 func isMutableVersion(value string) bool {

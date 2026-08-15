@@ -409,15 +409,21 @@ func GenerateSBOM(name, version string, dependencies []DependencyEvidence) ([]by
 // deterministic tar bytes. The two checks prevent source-root and
 // final-artifact substitution.
 type ArtifactRequest struct {
-	Name                     string             `json:"name"`
-	Kind                     ArtifactKind       `json:"kind"`
-	Source                   string             `json:"source"`
-	Root                     string             `json:"root"`
-	RootDigest               string             `json:"rootDigest,omitempty"`
-	ExpectedDigest           string             `json:"expectedDigest,omitempty"`
-	Dependencies             []string           `json:"dependencies"`
-	Platforms                []PlatformEvidence `json:"platforms,omitempty"`
-	PlatformCoverageComplete bool               `json:"platformCoverageComplete,omitempty"`
+	Name       string       `json:"name"`
+	Kind       ArtifactKind `json:"kind"`
+	Source     string       `json:"source"`
+	Root       string       `json:"root"`
+	RootDigest string       `json:"rootDigest,omitempty"`
+	// ExpectedFiles is the reviewed release-definition inventory for the
+	// supplied root before legal/SBOM material is injected. The packager still
+	// walks the entire root and compares every byte/size/mode against it; an
+	// omitted or self-computed digest is not authoritative.
+	ExpectedFiles               []FileEvidence     `json:"expectedFiles"`
+	ExpectedDigest              string             `json:"expectedDigest,omitempty"`
+	Dependencies                []string           `json:"dependencies"`
+	DependencyInventoryComplete bool               `json:"dependencyInventoryComplete"`
+	Platforms                   []PlatformEvidence `json:"platforms,omitempty"`
+	PlatformCoverageComplete    bool               `json:"platformCoverageComplete,omitempty"`
 }
 
 // PackageRequest contains only caller-supplied authority and artifact input.
@@ -561,6 +567,7 @@ func Pack(request PackageRequest, policy Policy) (PackageResult, error) {
 }
 
 const packageManifestName = ".manja-package-manifest.json"
+const packageLockSuffix = ".manja-package.lock"
 
 type packageManifest struct {
 	Version   int                    `json:"version"`
@@ -582,6 +589,11 @@ func publishOutputs(outputDir string, outputs []PackagedArtifact) ([]PackagedArt
 	if err := os.MkdirAll(parent, 0o755); err != nil {
 		return nil, fmt.Errorf("create package output parent: %w", err)
 	}
+	publicationLock, err := acquirePublicationLock(outputDir)
+	if err != nil {
+		return nil, err
+	}
+	defer releasePublicationLock(publicationLock)
 	info, err := os.Lstat(outputDir)
 	if err == nil {
 		if !info.IsDir() {
@@ -619,34 +631,46 @@ func publishNewDirectory(outputDir, parent string, outputs []PackagedArtifact) (
 	for index := range stagedOutputs {
 		stagedOutputs[index].Path = filepath.Join(outputDir, outputs[index].Name+".tar")
 	}
+	if err := verifyPublishedSet(outputDir, stagedOutputs, manifest); err != nil {
+		_ = os.RemoveAll(outputDir)
+		_ = syncDirectory(parent)
+		return nil, fmt.Errorf("verify published package set: %w", err)
+	}
 	return stagedOutputs, nil
 }
 
 func publishIntoExistingDirectory(outputDir, parent string, outputs []PackagedArtifact) ([]PackagedArtifact, error) {
+	entries, err := os.ReadDir(outputDir)
+	if err != nil {
+		return nil, fmt.Errorf("inspect existing package output directory: %w", err)
+	}
+	if len(entries) != 0 {
+		return nil, errors.New("package output directory is not empty or was already published")
+	}
 	stage, stagedOutputs, manifest, err := prepareOutputStage(parent, outputs)
 	if err != nil {
 		return nil, err
 	}
 	defer os.RemoveAll(stage)
 	published := make([]string, 0, len(outputs))
+	manifestPublished := false
 	cleanup := func() {
 		for _, pathValue := range published {
 			_ = os.Remove(pathValue)
 		}
-	}
-	for _, output := range outputs {
-		finalPath := filepath.Join(outputDir, output.Name+".tar")
-		if _, err := os.Lstat(finalPath); err == nil {
-			return nil, fmt.Errorf("package output already exists: %s", finalPath)
-		} else if !errors.Is(err, os.ErrNotExist) {
-			return nil, fmt.Errorf("inspect package output %q: %w", output.Name, err)
+		if manifestPublished {
+			_ = os.Remove(filepath.Join(outputDir, packageManifestName))
 		}
 	}
 	for index := range stagedOutputs {
 		finalPath := filepath.Join(outputDir, outputs[index].Name+".tar")
-		if err := os.Rename(stagedOutputs[index].Path, finalPath); err != nil {
+		if err := os.Link(stagedOutputs[index].Path, finalPath); err != nil {
 			cleanup()
 			return nil, fmt.Errorf("commit package %q: %w", outputs[index].Name, err)
+		}
+		if err := os.Remove(stagedOutputs[index].Path); err != nil {
+			cleanup()
+			return nil, fmt.Errorf("retire staged package %q: %w", outputs[index].Name, err)
 		}
 		stagedOutputs[index].Path = finalPath
 		published = append(published, finalPath)
@@ -655,10 +679,99 @@ func publishIntoExistingDirectory(outputDir, parent string, outputs []PackagedAr
 		cleanup()
 		return nil, err
 	}
+	manifestPublished = true
 	if err := syncDirectory(outputDir); err != nil {
+		cleanup()
 		return nil, fmt.Errorf("sync published package directory: %w", err)
 	}
+	if err := verifyPublishedSet(outputDir, stagedOutputs, manifest); err != nil {
+		cleanup()
+		_ = syncDirectory(outputDir)
+		return nil, fmt.Errorf("verify published package set: %w", err)
+	}
 	return stagedOutputs, nil
+}
+
+type packagePublicationLock struct {
+	path string
+	file *os.File
+}
+
+func acquirePublicationLock(outputDir string) (packagePublicationLock, error) {
+	lockPath := outputDir + packageLockSuffix
+	file, err := os.OpenFile(lockPath, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+	if err != nil {
+		return packagePublicationLock{}, fmt.Errorf("acquire package publication lock: %w", err)
+	}
+	if _, err := file.WriteString("manja-package-publication\n"); err != nil {
+		_ = file.Close()
+		_ = os.Remove(lockPath)
+		return packagePublicationLock{}, fmt.Errorf("write package publication lock: %w", err)
+	}
+	if err := file.Sync(); err != nil {
+		_ = file.Close()
+		_ = os.Remove(lockPath)
+		return packagePublicationLock{}, fmt.Errorf("sync package publication lock: %w", err)
+	}
+	return packagePublicationLock{path: lockPath, file: file}, nil
+}
+
+func releasePublicationLock(lock packagePublicationLock) {
+	if lock.file != nil {
+		_ = lock.file.Close()
+	}
+	_ = os.Remove(lock.path)
+	_ = syncDirectory(filepath.Dir(lock.path))
+}
+
+func verifyPublishedSet(outputDir string, outputs []PackagedArtifact, expectedManifest []byte) error {
+	manifestPath := filepath.Join(outputDir, packageManifestName)
+	actualManifest, err := os.ReadFile(manifestPath)
+	if err != nil {
+		return fmt.Errorf("read committed package manifest: %w", err)
+	}
+	if !bytes.Equal(actualManifest, expectedManifest) {
+		return errors.New("committed package manifest differs from the staged manifest")
+	}
+	var manifest packageManifest
+	if err := json.Unmarshal(actualManifest, &manifest); err != nil {
+		return fmt.Errorf("decode committed package manifest: %w", err)
+	}
+	if manifest.Version != 1 || len(manifest.Artifacts) != len(outputs) {
+		return errors.New("committed package manifest has an incomplete artifact set")
+	}
+	entriesByName := make(map[string]packageManifestEntry, len(manifest.Artifacts))
+	for _, entry := range manifest.Artifacts {
+		if _, exists := entriesByName[entry.Name]; exists {
+			return fmt.Errorf("committed package manifest duplicates %q", entry.Name)
+		}
+		entriesByName[entry.Name] = entry
+	}
+	for _, output := range outputs {
+		pathValue := filepath.Join(outputDir, output.Name+".tar")
+		info, err := os.Lstat(pathValue)
+		if err != nil {
+			return fmt.Errorf("inspect committed package %q: %w", output.Name, err)
+		}
+		if info.Mode().Perm() != 0o644 || !info.Mode().IsRegular() {
+			return fmt.Errorf("committed package %q has an invalid mode or type", output.Name)
+		}
+		data, err := os.ReadFile(pathValue)
+		if err != nil {
+			return fmt.Errorf("read committed package %q: %w", output.Name, err)
+		}
+		if digestForExpected(data, output.Digest) != output.Digest {
+			return fmt.Errorf("committed package %q digest differs from its receipt", output.Name)
+		}
+		entry, exists := entriesByName[output.Name]
+		if !exists {
+			return fmt.Errorf("committed package manifest omits %q", output.Name)
+		}
+		if entry.Name != output.Name || entry.Path != output.Name+".tar" || entry.Digest != output.Digest {
+			return fmt.Errorf("committed package manifest entry %q differs from its receipt", output.Name)
+		}
+	}
+	return nil
 }
 
 func prepareOutputStage(parent string, outputs []PackagedArtifact) (string, []PackagedArtifact, []byte, error) {
@@ -720,9 +833,12 @@ func writeAtomicManifest(outputDir string, data []byte) error {
 		return fmt.Errorf("write package manifest pointer: %w", err)
 	}
 	manifestPath := filepath.Join(outputDir, packageManifestName)
-	if err := os.Rename(temporaryPath, manifestPath); err != nil {
+	if err := os.Link(temporaryPath, manifestPath); err != nil {
 		_ = os.Remove(temporaryPath)
 		return fmt.Errorf("commit package manifest pointer: %w", err)
+	}
+	if err := os.Remove(temporaryPath); err != nil {
+		return fmt.Errorf("retire package manifest pointer: %w", err)
 	}
 	return nil
 }
@@ -773,14 +889,15 @@ func syncDirectory(pathValue string) error {
 
 func inspectRequestedArtifact(request ArtifactRequest, policy Policy, dependencies []DependencyEvidence, generateMaterials bool) (ArtifactEvidence, []Finding) {
 	artifact := ArtifactEvidence{
-		Name:                     request.Name,
-		Kind:                     request.Kind,
-		Source:                   request.Source,
-		Digest:                   request.RootDigest,
-		Inspection:               InspectionEvidence{Complete: true, FreshRoot: false, DigestBound: request.RootDigest != ""},
-		Platforms:                append([]PlatformEvidence(nil), request.Platforms...),
-		PlatformCoverageComplete: request.PlatformCoverageComplete,
-		Dependencies:             append([]string(nil), request.Dependencies...),
+		Name:                        request.Name,
+		Kind:                        request.Kind,
+		Source:                      request.Source,
+		Digest:                      request.RootDigest,
+		Inspection:                  InspectionEvidence{Complete: true, FreshRoot: false, DigestBound: request.RootDigest != ""},
+		Platforms:                   append([]PlatformEvidence(nil), request.Platforms...),
+		PlatformCoverageComplete:    request.PlatformCoverageComplete,
+		Dependencies:                append([]string(nil), request.Dependencies...),
+		DependencyInventoryComplete: request.DependencyInventoryComplete,
 	}
 	inventory, err := InspectRoot(request.Root, RootOptions{ExcludedPaths: runtimeExclusions(request.Kind, policy)})
 	if err != nil {
@@ -795,8 +912,27 @@ func inspectRequestedArtifact(request ArtifactRequest, policy Policy, dependenci
 		artifact.Digest = inventory.Digest
 	}
 	findings := make([]Finding, 0)
+	if len(request.ExpectedFiles) == 0 {
+		findings = append(findings, Finding{Code: "artifact.inventory.expected_missing", Subject: request.Name, Detail: "packaging requires a reviewed complete expected file inventory for the supplied root"})
+	} else {
+		expectedFiles := append([]FileEvidence(nil), request.ExpectedFiles...)
+		sort.Slice(expectedFiles, func(left, right int) bool { return expectedFiles[left].Path < expectedFiles[right].Path })
+		findings = append(findings, validateExpectedInventory(expectedFiles, request.Name)...)
+		findings = append(findings, CompareInventory(expectedFiles, inventory.Files)...)
+		if request.RootDigest == "" {
+			findings = append(findings, Finding{Code: "artifact.root.digest_missing", Subject: request.Name, Detail: "packaging requires an independently supplied complete-root digest"})
+		} else if expectedDigest := digestInventory(expectedFiles); expectedDigest != request.RootDigest {
+			findings = append(findings, Finding{Code: "artifact.inventory.digest_mismatch", Subject: request.Name, Detail: fmt.Sprintf("expected inventory digest is %s, request declares %s", expectedDigest, request.RootDigest)})
+		}
+	}
+	if !request.DependencyInventoryComplete {
+		findings = append(findings, Finding{Code: "artifact.dependency.inventory_incomplete", Subject: request.Name, Detail: "packaging requires a reviewed complete dependency closure, including an explicit empty closure when applicable"})
+	}
 	if request.Kind == ArtifactOCI {
 		findings = append(findings, Finding{Code: "artifact.oci.real_artifact_missing", Subject: request.Name, Detail: "OCI packaging requires digest-bound image bytes; a caller directory cannot be converted to an OCI artifact"})
+	}
+	if request.RootDigest == "" {
+		findings = append(findings, Finding{Code: "artifact.root.digest_missing", Subject: request.Name, Detail: "packaging requires an independently supplied complete-root digest"})
 	}
 	if request.RootDigest != "" && request.RootDigest != inventory.Digest {
 		findings = append(findings, Finding{Code: "artifact.root.digest_mismatch", Subject: request.Name, Detail: fmt.Sprintf("expected %s, got %s", request.RootDigest, inventory.Digest)})
@@ -823,6 +959,19 @@ func inspectRequestedArtifact(request ArtifactRequest, policy Policy, dependenci
 		}
 	}
 	return artifact, findings
+}
+
+func validateExpectedInventory(files []FileEvidence, artifactName string) []Finding {
+	findings := make([]Finding, 0)
+	seen := make(map[string]struct{}, len(files))
+	for _, file := range files {
+		if _, exists := seen[file.Path]; exists {
+			findings = append(findings, Finding{Code: "artifact.inventory.expected_duplicate", Subject: artifactName + ":" + file.Path, Detail: "reviewed expected inventory contains a duplicate path"})
+		}
+		seen[file.Path] = struct{}{}
+		findings = append(findings, validateFile(file, file.Path)...)
+	}
+	return findings
 }
 
 func validArtifactName(name string) bool {

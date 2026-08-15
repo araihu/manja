@@ -17,12 +17,14 @@ The gate consumes one JSON evidence object supplied by the caller. It binds
 the object to a full lowercase Git commit and tree SHA-1, and records separate
 provenance and rights-holder authority receipts. A `PASS` authority receipt
 must be resolved from a caller-owned non-bare Git worktree whose `origin`
-matches the reference, whose immutable commit exists, and whose commit path
-resolves to the referenced blob. The exact receipt bytes, canonical Git
-commit/blob reference, and matching SHA-256 or SHA-384 digest are checked;
-serialized JSON cannot self-assert the unexported resolved state. A
-rights-holder receipt must also contain the canonical `holder: ...` and
-`year-range: ...` claims supplied to the gate. A `BLOCKED` authority receipt
+matches the repository locator (the locator is not itself legal authority),
+whose immutable commit and `commit^{tree}` exist, and whose commit path
+resolves to the referenced blob. The canonical reference records repository,
+commit, tree, path, and blob; evidence also records exact size, mode, receipt
+bytes, and SHA-256 or SHA-384 digest. Serialized JSON cannot self-assert the
+unexported resolved state. The receipt must repeat separate
+`copyright-holder`, `copyright-year-range`, `redistribution`, and `trademark`
+claims; caller-supplied claims alone never grant clearance. A `BLOCKED` authority receipt
 remains blocked even when every mechanical hash check succeeds; material or
 holder attribution supplied before that point is reported as
 `legal.materials.before_clearance`.
@@ -37,12 +39,14 @@ Absent those resolutions, the result stays **BLOCKED**.
 For each dependency, the evidence records ecosystem, immutable version, SPDX
 identifier or expression, scope (`shipped`, `build-only`, or `test-only`),
 source, and a reproducible digest. A shipped dependency additionally records
-an immutable Git license receipt with exact bytes, size, mode, blob, and
-SHA-256/SHA-384 digest. For each produced artifact, it records the exact
-source identity and digest, a complete/fresh/digest-bound inspection receipt,
-a complete CycloneDX-JSON or SPDX-JSON SBOM receipt with exact size and mode,
-and a recursive regular file inventory with sizes, explicit portable permission
-modes, and digests. Artifact dependency names must resolve
+an immutable Git license receipt with exact repository/commit/tree/path/blob,
+bytes, size, mode, and SHA-256/SHA-384 digest. For each produced artifact, it
+records the exact source identity and digest, a complete/fresh/digest-bound
+inspection receipt, a complete CycloneDX-JSON or SPDX-JSON SBOM receipt with
+exact size and mode, a reviewed expected root inventory, and an explicit
+complete dependency closure. The actual recursive regular-file scan is
+compared against that expected inventory, so a rename, extra, duplicate, or
+unknown file fails closed. Artifact dependency names must resolve
 to exactly one dependency evidence record; build-only and test-only records
 cannot enter a produced artifact.
 
@@ -61,14 +65,19 @@ remain excluded unless final artifact bytes prove otherwise.
 
 Publication writes exact-mode files durably into a same-filesystem staging
 directory and commits a new output directory with an atomic rename when the
-destination does not exist. Existing destinations use an atomic manifest
-pointer (`.manja-package-manifest.json`) so consumers see a complete output
-set only after the pointer commit; uncommitted files are not a release set.
+destination does not exist. A no-replace publication lock serializes writers;
+already-published or non-empty destinations are rejected. Existing empty
+destinations use no-replace file links and an atomic manifest pointer
+(`.manja-package-manifest.json`), followed by exact digest/mode/manifest
+read-back, so consumers see a complete output set only after the pointer
+commit.
 
 OCI evidence additionally requires an explicit complete-coverage assertion
 and one immutable digest for every published OS/architecture manifest. An
 incomplete platform list is a blocker; a single local platform does not prove
-multi-platform coverage.
+multi-platform coverage. The Dagger `publishImage` boundary currently fails
+closed before any GHCR call because OC-01 has no `PASS` authority,
+redistribution, or trademark clearance for the exact image/platform digest.
 
 ## Exclusion gates
 

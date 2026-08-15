@@ -30,7 +30,7 @@ func ResolveAuthority(root string, authority AuthorityEvidence) (AuthorityEviden
 	if rootInfo.Mode()&os.ModeSymlink != 0 || !rootInfo.IsDir() {
 		return AuthorityEvidence{}, fmt.Errorf("authority root must be a real directory")
 	}
-	receipt, err := resolveGitBlob(root, reference)
+	receipt, mode, err := resolveGitBlobWithMode(root, reference)
 	if err != nil {
 		return AuthorityEvidence{}, fmt.Errorf("resolve authority receipt: %w", err)
 	}
@@ -42,6 +42,15 @@ func ResolveAuthority(root string, authority AuthorityEvidence) (AuthorityEviden
 	}
 	if gitBlobSHA1(receipt) != reference.blob {
 		return AuthorityEvidence{}, fmt.Errorf("authority receipt Git blob does not match referenced bytes")
+	}
+	if authority.Tree != reference.tree {
+		return AuthorityEvidence{}, fmt.Errorf("authority tree differs from immutable reference")
+	}
+	if authority.Size != int64(len(receipt)) {
+		return AuthorityEvidence{}, fmt.Errorf("authority receipt size differs from referenced bytes")
+	}
+	if authority.Mode != mode {
+		return AuthorityEvidence{}, fmt.Errorf("authority receipt mode differs from referenced Git mode")
 	}
 	authority.Receipt = append([]byte(nil), receipt...)
 	authority.resolved = true
@@ -75,10 +84,14 @@ func ResolveDependencyLicense(root string, dependency DependencyEvidence) (Depen
 	if dependency.LicenseReceipt.Mode != mode {
 		return DependencyEvidence{}, fmt.Errorf("dependency license mode differs from referenced Git mode")
 	}
+	if dependency.LicenseReceipt.Tree != reference.tree {
+		return DependencyEvidence{}, fmt.Errorf("dependency license tree differs from immutable reference")
+	}
 	if digestForExpected(receipt, dependency.LicenseReceipt.Digest) != dependency.LicenseReceipt.Digest {
 		return DependencyEvidence{}, fmt.Errorf("dependency license digest does not match referenced bytes")
 	}
 	dependency.LicenseReceipt.Receipt = append([]byte(nil), receipt...)
+	dependency.LicenseReceipt.Tree = reference.tree
 	dependency.LicenseReceipt.resolved = true
 	return dependency, nil
 }
@@ -98,11 +111,15 @@ func resolveGitBlobWithMode(root string, reference parsedAuthorityReference) ([]
 	}
 	remote, err := gitOutput(root, "remote", "get-url", "origin")
 	if err != nil || canonicalRepository(remote) != canonicalRepository(reference.repository) {
-		return nil, 0, fmt.Errorf("Git origin does not match immutable repository reference")
+		return nil, 0, fmt.Errorf("Git origin does not match immutable repository reference; origin is only checkout identity, not legal authority")
 	}
 	commitType, err := gitOutput(root, "cat-file", "-t", reference.commit)
 	if err != nil || strings.TrimSpace(commitType) != "commit" {
 		return nil, 0, fmt.Errorf("immutable commit is absent from the checkout")
+	}
+	tree, err := gitOutput(root, "rev-parse", "--verify", reference.commit+"^{tree}")
+	if err != nil || strings.TrimSpace(tree) != reference.tree {
+		return nil, 0, fmt.Errorf("immutable commit tree does not match the referenced tree")
 	}
 	object, err := gitOutput(root, "rev-parse", "--verify", reference.commit+":"+reference.path)
 	if err != nil || strings.TrimSpace(object) != reference.blob {

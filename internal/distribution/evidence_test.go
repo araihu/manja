@@ -126,12 +126,14 @@ func TestResolveDependencyLicenseBindsImmutableGitBytesAndMode(t *testing.T) {
 	runGitTest(t, root, "add", "LICENSE")
 	runGitTest(t, root, "commit", "-m", "license")
 	commit := strings.TrimSpace(runGitTest(t, root, "rev-parse", "HEAD"))
+	tree := strings.TrimSpace(runGitTest(t, root, "rev-parse", "HEAD^{tree}"))
 	blob := strings.TrimSpace(runGitTest(t, root, "rev-parse", "HEAD:LICENSE"))
 	dependency := DependencyEvidence{
 		Ecosystem: "go", Name: "example.com/runtime", Version: "v1.2.3", License: "MIT", Scope: ScopeShipped,
 		Source: "https://example.com/runtime@" + strings.Repeat("a", 40), Digest: "sha256:" + strings.Repeat("1", 64),
 		LicenseReceipt: LicenseReceipt{
-			Reference: "git:example.com/licenses@" + commit + ":LICENSE#blob=" + blob,
+			Reference: "git:example.com/licenses@" + commit + ":LICENSE#tree=" + tree + "&blob=" + blob,
+			Tree:      tree,
 			Size:      int64(len(content)), Mode: 0o644, Digest: sha256Digest(content),
 		},
 	}
@@ -146,11 +148,16 @@ func TestResolveDependencyLicenseBindsImmutableGitBytesAndMode(t *testing.T) {
 
 func TestEvaluateRejectsRightsReceiptThatDoesNotAuthorizeLegalClaim(t *testing.T) {
 	evidence := validEvidence()
-	receipt := []byte("rights receipt\nholder: Other Holder\nyear-range: 2026\n")
+	receipt := []byte("rights receipt\n" +
+		"copyright-holder: Other Holder\n" +
+		"copyright-year-range: 2026\n" +
+		"redistribution: verified for test fixture\n" +
+		"trademark: verified for test fixture\n")
 	evidence.RightsHolder.Receipt = receipt
+	evidence.RightsHolder.Size = int64(len(receipt))
 	evidence.RightsHolder.Digest = sha256Digest(receipt)
-	parts := strings.Split(evidence.RightsHolder.Reference, "#blob=")
-	evidence.RightsHolder.Reference = parts[0] + "#blob=" + gitBlobSHA1(receipt)
+	parts := strings.Split(evidence.RightsHolder.Reference, "&blob=")
+	evidence.RightsHolder.Reference = parts[0] + "&blob=" + gitBlobSHA1(receipt)
 	result := Evaluate(evidence, DefaultPolicy())
 	if result.Status != StatusBlocked || !result.HasCode("authority.rights_holder.claim_mismatch") {
 		t.Fatalf("result = %#v, want rights-holder claim blocker", result)
@@ -477,7 +484,8 @@ func validEvidence() Evidence {
 					Format: "CycloneDX-JSON", Source: "sbom/manja-runtime.cdx.json",
 					Size: 31, Mode: 0o644, Digest: "sha256:" + strings.Repeat("a", 64), Complete: true,
 				},
-				Dependencies: []string{"example.com/runtime"},
+				Dependencies:                []string{"example.com/runtime"},
+				DependencyInventoryComplete: true,
 				Files: []FileEvidence{
 					validFile("LICENSE", 11),
 					validFile("NOTICE", 7),
@@ -490,32 +498,54 @@ func validEvidence() Evidence {
 }
 
 func testProvenanceEvidence() AuthorityEvidence {
-	receipt := []byte("provenance receipt\n")
+	receipt := []byte("provenance receipt\n" +
+		"copyright-holder: Verified Holder\n" +
+		"copyright-year-range: 2026\n" +
+		"redistribution: verified for test fixture\n" +
+		"trademark: verified for test fixture\n")
+	tree := strings.Repeat("b", 40)
 	return AuthorityEvidence{
-		Status:    StatusPass,
-		Reference: "git:example.com/manja@" + strings.Repeat("a", 40) + ":docs/legal/provenance-receipt.txt#blob=" + gitBlobSHA1(receipt),
-		Digest:    sha256Digest(receipt),
-		Receipt:   receipt,
-		resolved:  true,
+		Status: StatusPass,
+		Reference: "git:example.com/manja@" + strings.Repeat("a", 40) +
+			":docs/legal/provenance-receipt.txt#tree=" + tree + "&blob=" + gitBlobSHA1(receipt),
+		Tree: tree, Size: int64(len(receipt)), Mode: 0o644,
+		Digest: sha256Digest(receipt), Receipt: receipt,
+		Claims: AuthorityClaims{
+			CopyrightHolder: "Verified Holder", CopyrightYearRange: "2026",
+			Redistribution: "verified for test fixture", Trademark: "verified for test fixture",
+		},
+		resolved: true,
 	}
 }
 
 func testRightsHolderEvidence() AuthorityEvidence {
-	receipt := []byte("rights receipt\nholder: Verified Holder\nyear-range: 2026\n")
+	receipt := []byte("rights receipt\n" +
+		"copyright-holder: Verified Holder\n" +
+		"copyright-year-range: 2026\n" +
+		"redistribution: verified for test fixture\n" +
+		"trademark: verified for test fixture\n")
+	tree := strings.Repeat("c", 40)
 	return AuthorityEvidence{
-		Status:    StatusPass,
-		Reference: "git:example.com/manja@" + strings.Repeat("b", 40) + ":docs/legal/rights-holder-receipt.txt#blob=" + gitBlobSHA1(receipt),
-		Digest:    sha256Digest(receipt),
-		Receipt:   receipt,
-		resolved:  true,
+		Status: StatusPass,
+		Reference: "git:example.com/manja@" + strings.Repeat("b", 40) +
+			":docs/legal/rights-holder-receipt.txt#tree=" + tree + "&blob=" + gitBlobSHA1(receipt),
+		Tree: tree, Size: int64(len(receipt)), Mode: 0o644,
+		Digest: sha256Digest(receipt), Receipt: receipt,
+		Claims: AuthorityClaims{
+			CopyrightHolder: "Verified Holder", CopyrightYearRange: "2026",
+			Redistribution: "verified for test fixture", Trademark: "verified for test fixture",
+		},
+		resolved: true,
 	}
 }
 
 func testLicenseReceipt() LicenseReceipt {
-	receipt := []byte("MIT License\n")
+	receipt := []byte("SPDX-License-Identifier: MIT\nMIT License\nPermission is hereby granted\n")
+	tree := strings.Repeat("d", 40)
 	return LicenseReceipt{
-		Reference: "git:example.com/licenses@" + strings.Repeat("c", 40) + ":LICENSE#blob=" + gitBlobSHA1(receipt),
-		Size:      int64(len(receipt)), Mode: 0o644, Digest: sha256Digest(receipt), Receipt: receipt, resolved: true,
+		Reference: "git:example.com/licenses@" + strings.Repeat("c", 40) + ":LICENSE#tree=" + tree + "&blob=" + gitBlobSHA1(receipt),
+		Tree:      tree, Size: int64(len(receipt)), Mode: 0o644,
+		Digest: sha256Digest(receipt), Receipt: receipt, resolved: true,
 	}
 }
 
@@ -530,11 +560,13 @@ func gitAuthorityEvidence(t *testing.T, relative string, content []byte, remote 
 	runGitTest(t, root, "add", ".")
 	runGitTest(t, root, "commit", "-m", "receipt")
 	commit := strings.TrimSpace(runGitTest(t, root, "rev-parse", "HEAD"))
+	tree := strings.TrimSpace(runGitTest(t, root, "rev-parse", "HEAD^{tree}"))
 	blob := strings.TrimSpace(runGitTest(t, root, "rev-parse", "HEAD:"+relative))
 	return root, AuthorityEvidence{
 		Status:    StatusPass,
-		Reference: "git:example.com/manja@" + commit + ":" + relative + "#blob=" + blob,
-		Digest:    sha256Digest(content), Receipt: append([]byte(nil), content...),
+		Reference: "git:example.com/manja@" + commit + ":" + relative + "#tree=" + tree + "&blob=" + blob,
+		Tree:      tree, Size: int64(len(content)), Mode: 0o644,
+		Digest: sha256Digest(content), Receipt: append([]byte(nil), content...),
 	}
 }
 
@@ -549,4 +581,23 @@ func runGitTest(t *testing.T, root string, args ...string) string {
 
 func validFile(path string, size int64) FileEvidence {
 	return FileEvidence{Path: path, Type: "regular", Size: size, Mode: 0o644, Digest: "sha256:" + strings.Repeat("8", 64)}
+}
+
+func TestSPDXParserRequiresKnownExceptionsForWITH(t *testing.T) {
+	if !validSPDXExpression("GPL-2.0-only WITH Classpath-exception-2.0") {
+		t.Fatal("valid SPDX exception expression was rejected")
+	}
+	if validSPDXExpression("MIT WITH made-up-exception") {
+		t.Fatal("unknown SPDX exception was accepted")
+	}
+	if validSPDXExpression("MIT OR") {
+		t.Fatal("incomplete SPDX expression was accepted")
+	}
+}
+
+func TestLicenseReceiptDoesNotMapEveryLicenseToGenericLicenseText(t *testing.T) {
+	findings := validateLicenseReceipt("example.com/runtime", "Unlicense", testLicenseReceipt())
+	if !hasFinding(findings, "dependency.license.claim_mismatch") {
+		t.Fatalf("findings = %#v, want a license/text mismatch", findings)
+	}
 }

@@ -9,7 +9,7 @@ import {
   Secret,
 } from "@dagger.io/dagger"
 
-import { resolvePublication } from "./publication.js"
+import { assertOCIPublicationGate, resolvePublication } from "./publication.js"
 import { resolveCachePartition } from "./cache.js"
 
 const GO_IMAGE =
@@ -25,6 +25,11 @@ const ALPINE_IMAGE =
 const PLAYWRIGHT_VERSION = "v0.6100.0"
 const OCI_DESCRIPTION = "Hosted OpenAPI renderer and publisher built with Goshtoso"
 const OCI_LICENSES = ""
+// OC-01 is still blocked: no first-party authority, redistribution, or
+// trademark clearance receipt has been verified for the actual image bytes.
+// Keep the publication boundary fail-closed until a reviewed legal gate
+// supplies PASS for the exact image/platform digest set.
+const OCI_LEGAL_GATE_STATUS = "BLOCKED"
 const OCI_SOURCE = "https://github.com/araihu/manja"
 const OCI_TITLE = "manja"
 const OCI_URL = "https://github.com/araihu/manja"
@@ -202,6 +207,7 @@ export class Manja {
     runNonce: string,
   ): Promise<string> {
     this.validateRunNonce(runNonce)
+    assertOCIPublicationGate(OCI_LEGAL_GATE_STATUS)
     const input = await this.readStringObject(metadata, [
       "created", "ref_name", "ref_type", "registry_username", "source_repository",
       "source_sha",

@@ -169,6 +169,59 @@ func TestCompareInventoryRejectsDuplicateRenamedAndUnknownPaths(t *testing.T) {
 	}
 }
 
+func TestInspectRequestedArtifactRequiresReviewedCompleteInventory(t *testing.T) {
+	root := t.TempDir()
+	writeTestFile(t, root, "bin/manja", "binary")
+	inventory, err := InspectRoot(root, RootOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, findings := inspectRequestedArtifact(ArtifactRequest{
+		Name: "manja", Kind: ArtifactBinary, Source: "git:test", Root: root,
+		RootDigest: inventory.Digest,
+	}, DefaultPolicy(), nil, false)
+	if !hasFinding(findings, "artifact.inventory.expected_missing") {
+		t.Fatalf("findings = %#v, want missing reviewed inventory", findings)
+	}
+}
+
+func TestInspectRequestedArtifactRequiresCompleteDependencyClosure(t *testing.T) {
+	root := t.TempDir()
+	writeTestFile(t, root, "bin/manja", "binary")
+	inventory, err := InspectRoot(root, RootOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, findings := inspectRequestedArtifact(ArtifactRequest{
+		Name: "manja", Kind: ArtifactBinary, Source: "git:test", Root: root,
+		RootDigest: inventory.Digest, ExpectedFiles: inventory.Files,
+	}, DefaultPolicy(), nil, false)
+	if !hasFinding(findings, "artifact.dependency.inventory_incomplete") {
+		t.Fatalf("findings = %#v, want incomplete dependency closure", findings)
+	}
+}
+
+func TestInspectRequestedArtifactRejectsInventoryRenameAndUnknownFile(t *testing.T) {
+	root := t.TempDir()
+	writeTestFile(t, root, "bin/manja", "binary")
+	expected, err := InspectRoot(root, RootOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Rename(filepath.Join(root, "bin", "manja"), filepath.Join(root, "bin", "renamed")); err != nil {
+		t.Fatal(err)
+	}
+	_, findings := inspectRequestedArtifact(ArtifactRequest{
+		Name: "manja", Kind: ArtifactBinary, Source: "git:test", Root: root,
+		RootDigest: expected.Digest, ExpectedFiles: expected.Files,
+	}, DefaultPolicy(), nil, false)
+	for _, code := range []string{"artifact.drift.missing", "artifact.drift.extra", "artifact.root.digest_mismatch"} {
+		if !hasFinding(findings, code) {
+			t.Fatalf("findings = %#v, missing %s", findings, code)
+		}
+	}
+}
+
 func TestGenerateSBOMRejectsUnknownLicenseAndIsByteStable(t *testing.T) {
 	dependency := DependencyEvidence{
 		Ecosystem: "go", Name: "example.com/runtime", Version: "v1.2.3",
@@ -240,6 +293,10 @@ func TestPackBlockedAuthorityNeverWritesReleaseArtifacts(t *testing.T) {
 func TestPackReportsMissingOutputDirectoryAfterGates(t *testing.T) {
 	root := t.TempDir()
 	writeTestFile(t, root, "bin/manja", "binary")
+	rootInventory, err := InspectRoot(root, RootOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
 	legalRoot, legal := testLegalEvidence(t)
 
 	result, err := Pack(PackageRequest{
@@ -247,7 +304,7 @@ func TestPackReportsMissingOutputDirectoryAfterGates(t *testing.T) {
 		Provenance:   testProvenanceEvidence(),
 		RightsHolder: testRightsHolderEvidence(),
 		Legal:        legal, LegalRoot: legalRoot,
-		Artifacts: []ArtifactRequest{{Name: "manja", Kind: ArtifactBinary, Source: "git:test", Root: root, ExpectedDigest: "sha256:" + strings.Repeat("f", 64)}},
+		Artifacts: []ArtifactRequest{{Name: "manja", Kind: ArtifactBinary, Source: "git:test", Root: root, RootDigest: rootInventory.Digest, ExpectedFiles: rootInventory.Files, DependencyInventoryComplete: true, ExpectedDigest: "sha256:" + strings.Repeat("f", 64)}},
 	}, DefaultPolicy())
 	if err == nil {
 		t.Fatal("Pack accepted a missing output directory")
@@ -341,12 +398,14 @@ func syntheticPackageRequest(t *testing.T, output string) PackageRequest {
 		Legal:        legal,
 		LegalRoot:    legalRoot,
 		Artifacts: []ArtifactRequest{{
-			Name:           "manja",
-			Kind:           ArtifactBinary,
-			Source:         "git:test",
-			Root:           root,
-			RootDigest:     rootInventory.Digest,
-			ExpectedDigest: syntheticPackageDigest,
+			Name:                        "manja",
+			Kind:                        ArtifactBinary,
+			Source:                      "git:test",
+			Root:                        root,
+			RootDigest:                  rootInventory.Digest,
+			ExpectedFiles:               rootInventory.Files,
+			DependencyInventoryComplete: true,
+			ExpectedDigest:              syntheticPackageDigest,
 		}},
 		OutputDir: output,
 	}
@@ -369,7 +428,7 @@ func TestPackRejectsIncompleteSBOMAlreadyInArtifactRoot(t *testing.T) {
 		RightsHolder: testRightsHolderEvidence(),
 		Legal:        legal,
 		LegalRoot:    legalRoot,
-		Artifacts:    []ArtifactRequest{{Name: "manja", Kind: ArtifactBinary, Source: "git:test", Root: root, RootDigest: rootInventory.Digest}},
+		Artifacts:    []ArtifactRequest{{Name: "manja", Kind: ArtifactBinary, Source: "git:test", Root: root, RootDigest: rootInventory.Digest, ExpectedFiles: rootInventory.Files, DependencyInventoryComplete: true}},
 		OutputDir:    output,
 	}, DefaultPolicy())
 	if err != nil {
@@ -467,7 +526,11 @@ func TestPackDoesNotLeaveArtifactsWhenLaterPackageFails(t *testing.T) {
 	legalRoot, legal := testLegalEvidence(t)
 	output := filepath.Join(t.TempDir(), "release")
 	wrongDigest := "sha256:" + strings.Repeat("f", 64)
-	firstRequest := ArtifactRequest{Name: "first", Kind: ArtifactBinary, Source: "git:first", Root: firstRoot, ExpectedDigest: firstFailureDigest}
+	secondInventory, err := InspectRoot(secondRoot, RootOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	firstRequest := ArtifactRequest{Name: "first", Kind: ArtifactBinary, Source: "git:first", Root: firstRoot, RootDigest: firstInventory.Digest, ExpectedFiles: firstInventory.Files, DependencyInventoryComplete: true, ExpectedDigest: firstFailureDigest}
 
 	result, err := Pack(PackageRequest{
 		Subject:      SubjectEvidence{CommitSHA: strings.Repeat("a", 40), TreeSHA: strings.Repeat("b", 40)},
@@ -477,7 +540,7 @@ func TestPackDoesNotLeaveArtifactsWhenLaterPackageFails(t *testing.T) {
 		LegalRoot:    legalRoot,
 		Artifacts: []ArtifactRequest{
 			firstRequest,
-			{Name: "second", Kind: ArtifactBinary, Source: "git:second", Root: secondRoot, ExpectedDigest: wrongDigest},
+			{Name: "second", Kind: ArtifactBinary, Source: "git:second", Root: secondRoot, RootDigest: secondInventory.Digest, ExpectedFiles: secondInventory.Files, DependencyInventoryComplete: true, ExpectedDigest: wrongDigest},
 		},
 		OutputDir: output,
 	}, DefaultPolicy())
@@ -493,7 +556,7 @@ func TestPackDoesNotLeaveArtifactsWhenLaterPackageFails(t *testing.T) {
 	if len(result.Evidence.Artifacts) != 2 || result.Evidence.Artifacts[0].Digest != firstInventory.Digest {
 		t.Fatalf("evidence = %#v, want pre-packaging artifact evidence", result.Evidence)
 	}
-	if result.Evidence.Artifacts[0].Inspection.FreshRoot || result.Evidence.Artifacts[0].Inspection.DigestBound {
+	if result.Evidence.Artifacts[0].Inspection.FreshRoot {
 		t.Fatalf("pre-packaging evidence claimed final extraction: %#v", result.Evidence.Artifacts[0].Inspection)
 	}
 	if _, err := os.Stat(output); !errors.Is(err, os.ErrNotExist) {
@@ -541,7 +604,7 @@ func TestPublishOutputsUsesExactModesAndManifestCommit(t *testing.T) {
 		t.Fatal(err)
 	}
 	outputDir := filepath.Join(t.TempDir(), "release")
-	outputs, err := publishOutputs(outputDir, []PackagedArtifact{{Name: "first", Path: archive, Digest: "sha256:" + strings.Repeat("a", 64)}})
+	outputs, err := publishOutputs(outputDir, []PackagedArtifact{{Name: "first", Path: archive, Digest: sha256Digest([]byte("archive"))}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -579,6 +642,42 @@ func TestPublishOutputsUsesExactModesAndManifestCommit(t *testing.T) {
 	}
 }
 
+func TestPublishOutputsRejectsAlreadyPublishedDirectory(t *testing.T) {
+	staged := t.TempDir()
+	archive := filepath.Join(staged, "first.tar")
+	data := []byte("archive")
+	if err := os.WriteFile(archive, data, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	outputDir := filepath.Join(t.TempDir(), "release")
+	if err := os.MkdirAll(outputDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(outputDir, packageManifestName), []byte("published\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := publishOutputs(outputDir, []PackagedArtifact{{Name: "first", Path: archive, Digest: sha256Digest(data)}}); err == nil {
+		t.Fatal("publishOutputs appended to an already-published directory")
+	}
+}
+
+func TestPublishOutputsFailsClosedWhenPublicationLockIsHeld(t *testing.T) {
+	staged := t.TempDir()
+	archive := filepath.Join(staged, "first.tar")
+	if err := os.WriteFile(archive, []byte("archive"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	outputDir := filepath.Join(t.TempDir(), "release")
+	lockPath := outputDir + packageLockSuffix
+	if err := os.WriteFile(lockPath, []byte("held\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	defer os.Remove(lockPath)
+	if _, err := publishOutputs(outputDir, []PackagedArtifact{{Name: "first", Path: archive, Digest: sha256Digest([]byte("archive"))}}); err == nil {
+		t.Fatal("publishOutputs ignored an existing publication lock")
+	}
+}
+
 func TestPackAcceptsSHA384ExpectedArchiveDigest(t *testing.T) {
 	first := syntheticPackageRequest(t, filepath.Join(t.TempDir(), "first"))
 	if err := os.MkdirAll(first.OutputDir, 0o755); err != nil {
@@ -611,6 +710,10 @@ func TestPackAcceptsSHA384ExpectedArchiveDigest(t *testing.T) {
 func TestPackRejectsUnsafeSBOMPlacement(t *testing.T) {
 	root := t.TempDir()
 	writeTestFile(t, root, "bin/manja", "binary")
+	rootInventory, err := InspectRoot(root, RootOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
 	legalRoot, legal := testLegalEvidence(t)
 	policy := DefaultPolicy()
 	policy.SBOMPlacement = map[ArtifactKind]string{ArtifactBinary: "../outside"}
@@ -620,7 +723,7 @@ func TestPackRejectsUnsafeSBOMPlacement(t *testing.T) {
 		Provenance:   testProvenanceEvidence(),
 		RightsHolder: testRightsHolderEvidence(),
 		Legal:        legal, LegalRoot: legalRoot,
-		Artifacts: []ArtifactRequest{{Name: "manja", Kind: ArtifactBinary, Source: "git:test", Root: root}},
+		Artifacts: []ArtifactRequest{{Name: "manja", Kind: ArtifactBinary, Source: "git:test", Root: root, RootDigest: rootInventory.Digest, ExpectedFiles: rootInventory.Files, DependencyInventoryComplete: true}},
 		OutputDir: filepath.Join(t.TempDir(), "release"),
 	}, policy)
 	if err != nil {

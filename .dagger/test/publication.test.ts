@@ -1,9 +1,21 @@
 import assert from "node:assert/strict"
 import test from "node:test"
 
-import { resolvePublication } from "../src/publication.ts"
+import { assertOCIPublicationGate, resolvePublication } from "../src/publication.ts"
 
 const sha = "0123456789abcdef0123456789abcdef01234567"
+
+test("OCI publication remains blocked without legal clearance", () => {
+  assert.throws(
+    () => assertOCIPublicationGate("BLOCKED"),
+    /OCI publication is BLOCKED/,
+  )
+})
+
+test("OCI publication gate accepts only explicit PASS", () => {
+  assert.doesNotThrow(() => assertOCIPublicationGate("PASS"))
+  assert.throws(() => assertOCIPublicationGate("pass"), /OCI publication is BLOCKED/)
+})
 
 test("main uses SHA build version and main OCI version", () => {
   assert.deepEqual(resolvePublication("branch", "main", sha), {

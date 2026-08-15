@@ -4,6 +4,14 @@ export type Publication = {
   tags: string[]
 }
 
+export function assertOCIPublicationGate(status: string): void {
+  if (status !== "PASS") {
+    throw new Error(
+      "OCI publication is BLOCKED: OC-01 first-party authority and redistribution/trademark clearance are not PASS for the exact image digest",
+    )
+  }
+}
+
 export function resolvePublication(
   refType: string,
   refName: string,

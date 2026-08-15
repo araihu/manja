@@ -192,10 +192,12 @@ prohibited bytes remain elsewhere. A sibling checksum file or marker inside the
 extracted root is not independent authority. No production archive, release
 digest, layout, or passing clearance receipt exists yet.
 
-OCI distribution inspection is also **BLOCKED** until stopped Task 8 implements
-digest-bound inspection and promotion. Existing CI-published OCI artifacts
-remain uninspected and uncleared. No independently trusted release digest,
-passing inspection receipt, or same-digest promotion proof is recorded.
+OCI distribution inspection and publication are **BLOCKED** until the
+digest-bound inspection/promotion seam and OC-01 clearance exist. The Dagger
+`publishImage` boundary now fails before any GHCR call while that gate is
+blocked. Existing CI-published OCI artifacts remain uninspected and
+uncleared. No independently trusted release digest, passing inspection
+receipt, or same-digest promotion proof is recorded.
 Prior local inspection found the prohibited sources under
 `/app/internal/web/static`, but that observation is not a digest-bound release
 gate and cannot authorize publication.
