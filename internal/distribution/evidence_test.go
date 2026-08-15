@@ -3,6 +3,8 @@ package distribution
 import (
 	"bytes"
 	"encoding/json"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -68,10 +70,7 @@ func TestEvaluateRejectsUnverifiedAuthorityAndMutableDependency(t *testing.T) {
 }
 
 func TestResolveAuthorityBindsReferencedReceiptBytes(t *testing.T) {
-	root := t.TempDir()
-	writeTestFile(t, root, "docs/legal/provenance-receipt.txt", "provenance receipt")
-	input := testProvenanceEvidence()
-	input.resolved = false
+	root, input := gitAuthorityEvidence(t, "docs/legal/provenance-receipt.txt", []byte("provenance receipt"), "https://example.com/manja.git")
 
 	resolved, err := ResolveAuthority(root, input)
 	if err != nil {
@@ -79,6 +78,82 @@ func TestResolveAuthorityBindsReferencedReceiptBytes(t *testing.T) {
 	}
 	if !resolved.resolved || !bytes.Equal(resolved.Receipt, input.Receipt) {
 		t.Fatalf("resolved authority = %#v", resolved)
+	}
+}
+
+func TestResolveAuthorityRejectsNonGitWrongRepoAndMissingCommitPath(t *testing.T) {
+	root, input := gitAuthorityEvidence(t, "docs/legal/provenance-receipt.txt", []byte("provenance receipt"), "https://example.com/manja.git")
+	cases := map[string]func(*AuthorityEvidence, string){
+		"non-git-root": func(value *AuthorityEvidence, _ string) {},
+		"wrong-repository": func(value *AuthorityEvidence, _ string) {
+			value.Reference = strings.Replace(value.Reference, "example.com/manja", "example.com/other", 1)
+		},
+		"missing-commit": func(value *AuthorityEvidence, commit string) {
+			value.Reference = strings.Replace(value.Reference, commit, strings.Repeat("0", 40), 1)
+		},
+		"missing-path": func(value *AuthorityEvidence, _ string) {
+			value.Reference = strings.Replace(value.Reference, "docs/legal/provenance-receipt.txt", "docs/legal/missing.txt", 1)
+		},
+	}
+	commit := strings.Split(strings.Split(input.Reference, "@")[1], ":")[0]
+	for name, mutate := range cases {
+		t.Run(name, func(t *testing.T) {
+			candidate := input
+			candidate.resolved = false
+			mutate(&candidate, commit)
+			candidateRoot := root
+			if name == "non-git-root" {
+				candidateRoot = t.TempDir()
+			}
+			if _, err := ResolveAuthority(candidateRoot, candidate); err == nil {
+				t.Fatal("ResolveAuthority accepted unverifiable authority")
+			}
+		})
+	}
+}
+
+func TestResolveDependencyLicenseBindsImmutableGitBytesAndMode(t *testing.T) {
+	root := t.TempDir()
+	content := []byte("MIT License\n")
+	writeTestFile(t, root, "LICENSE", string(content))
+	if err := os.Chmod(filepath.Join(root, "LICENSE"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	runGitTest(t, root, "init")
+	runGitTest(t, root, "config", "user.email", "test@example.com")
+	runGitTest(t, root, "config", "user.name", "Test")
+	runGitTest(t, root, "remote", "add", "origin", "https://example.com/licenses.git")
+	runGitTest(t, root, "add", "LICENSE")
+	runGitTest(t, root, "commit", "-m", "license")
+	commit := strings.TrimSpace(runGitTest(t, root, "rev-parse", "HEAD"))
+	blob := strings.TrimSpace(runGitTest(t, root, "rev-parse", "HEAD:LICENSE"))
+	dependency := DependencyEvidence{
+		Ecosystem: "go", Name: "example.com/runtime", Version: "v1.2.3", License: "MIT", Scope: ScopeShipped,
+		Source: "https://example.com/runtime@" + strings.Repeat("a", 40), Digest: "sha256:" + strings.Repeat("1", 64),
+		LicenseReceipt: LicenseReceipt{
+			Reference: "git:example.com/licenses@" + commit + ":LICENSE#blob=" + blob,
+			Size:      int64(len(content)), Mode: 0o644, Digest: sha256Digest(content),
+		},
+	}
+	resolved, err := ResolveDependencyLicense(root, dependency)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !resolved.LicenseReceipt.resolved || !bytes.Equal(resolved.LicenseReceipt.Receipt, content) {
+		t.Fatalf("resolved dependency license = %#v", resolved)
+	}
+}
+
+func TestEvaluateRejectsRightsReceiptThatDoesNotAuthorizeLegalClaim(t *testing.T) {
+	evidence := validEvidence()
+	receipt := []byte("rights receipt\nholder: Other Holder\nyear-range: 2026\n")
+	evidence.RightsHolder.Receipt = receipt
+	evidence.RightsHolder.Digest = sha256Digest(receipt)
+	parts := strings.Split(evidence.RightsHolder.Reference, "#blob=")
+	evidence.RightsHolder.Reference = parts[0] + "#blob=" + gitBlobSHA1(receipt)
+	result := Evaluate(evidence, DefaultPolicy())
+	if result.Status != StatusBlocked || !result.HasCode("authority.rights_holder.claim_mismatch") {
+		t.Fatalf("result = %#v, want rights-holder claim blocker", result)
 	}
 }
 
@@ -94,6 +169,21 @@ func TestSerializedAuthorityCannotSelfAssertPass(t *testing.T) {
 	result := Evaluate(decoded, DefaultPolicy())
 	if result.Status != StatusBlocked || !result.HasCode("authority.provenance.unresolved") || !result.HasCode("authority.rights_holder.unresolved") {
 		t.Fatalf("result = %#v, want serialized authority to remain blocked", result)
+	}
+}
+
+func TestSerializedDependencyLicenseCannotSelfAssertPass(t *testing.T) {
+	encoded, err := MarshalCanonical(validEvidence())
+	if err != nil {
+		t.Fatal(err)
+	}
+	decoded, err := DecodeStrict(bytes.NewReader(encoded))
+	if err != nil {
+		t.Fatal(err)
+	}
+	result := Evaluate(decoded, DefaultPolicy())
+	if result.Status != StatusBlocked || !result.HasCode("dependency.license.unresolved") {
+		t.Fatalf("result = %#v, want serialized license receipt to remain blocked", result)
 	}
 }
 
@@ -357,13 +447,14 @@ func validEvidence() Evidence {
 		},
 		Dependencies: []DependencyEvidence{
 			{
-				Ecosystem: "go",
-				Name:      "example.com/runtime",
-				Version:   "v1.2.3",
-				License:   "MIT",
-				Scope:     ScopeShipped,
-				Source:    "https://example.com/runtime@aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-				Digest:    "sha256:" + strings.Repeat("5", 64),
+				Ecosystem:      "go",
+				Name:           "example.com/runtime",
+				Version:        "v1.2.3",
+				License:        "MIT",
+				Scope:          ScopeShipped,
+				Source:         "https://example.com/runtime@aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+				Digest:         "sha256:" + strings.Repeat("5", 64),
+				LicenseReceipt: testLicenseReceipt(),
 			},
 			{
 				Ecosystem: "go",
@@ -384,7 +475,7 @@ func validEvidence() Evidence {
 				Inspection: InspectionEvidence{Complete: true, FreshRoot: true, DigestBound: true},
 				SBOM: SBOMEvidence{
 					Format: "CycloneDX-JSON", Source: "sbom/manja-runtime.cdx.json",
-					Digest: "sha256:" + strings.Repeat("a", 64), Complete: true,
+					Size: 31, Mode: 0o644, Digest: "sha256:" + strings.Repeat("a", 64), Complete: true,
 				},
 				Dependencies: []string{"example.com/runtime"},
 				Files: []FileEvidence{
@@ -399,23 +490,61 @@ func validEvidence() Evidence {
 }
 
 func testProvenanceEvidence() AuthorityEvidence {
+	receipt := []byte("provenance receipt\n")
 	return AuthorityEvidence{
 		Status:    StatusPass,
-		Reference: "git:example.com/manja@" + strings.Repeat("a", 40) + ":docs/legal/provenance-receipt.txt#blob=a4f33c88285d57140c931a5342b9cb72a1583f25",
-		Digest:    "sha256:354f669fd34cc43c5b029902722e79350ee1eed8d197ebc98e3a4d3bf53aaf17",
-		Receipt:   []byte("provenance receipt"),
+		Reference: "git:example.com/manja@" + strings.Repeat("a", 40) + ":docs/legal/provenance-receipt.txt#blob=" + gitBlobSHA1(receipt),
+		Digest:    sha256Digest(receipt),
+		Receipt:   receipt,
 		resolved:  true,
 	}
 }
 
 func testRightsHolderEvidence() AuthorityEvidence {
+	receipt := []byte("rights receipt\nholder: Verified Holder\nyear-range: 2026\n")
 	return AuthorityEvidence{
 		Status:    StatusPass,
-		Reference: "git:example.com/manja@" + strings.Repeat("b", 40) + ":docs/legal/rights-holder-receipt.txt#blob=00ace30a8b1db2d8afe5a51333d9137650e10e8a",
-		Digest:    "sha256:0690f2cc4e8e452e6d42a4b43db96dc9816f567573b7dcefb3aebd989daf305d",
-		Receipt:   []byte("rights receipt"),
+		Reference: "git:example.com/manja@" + strings.Repeat("b", 40) + ":docs/legal/rights-holder-receipt.txt#blob=" + gitBlobSHA1(receipt),
+		Digest:    sha256Digest(receipt),
+		Receipt:   receipt,
 		resolved:  true,
 	}
+}
+
+func testLicenseReceipt() LicenseReceipt {
+	receipt := []byte("MIT License\n")
+	return LicenseReceipt{
+		Reference: "git:example.com/licenses@" + strings.Repeat("c", 40) + ":LICENSE#blob=" + gitBlobSHA1(receipt),
+		Size:      int64(len(receipt)), Mode: 0o644, Digest: sha256Digest(receipt), Receipt: receipt, resolved: true,
+	}
+}
+
+func gitAuthorityEvidence(t *testing.T, relative string, content []byte, remote string) (string, AuthorityEvidence) {
+	t.Helper()
+	root := t.TempDir()
+	writeTestFile(t, root, relative, string(content))
+	runGitTest(t, root, "init")
+	runGitTest(t, root, "config", "user.email", "test@example.com")
+	runGitTest(t, root, "config", "user.name", "Test")
+	runGitTest(t, root, "remote", "add", "origin", remote)
+	runGitTest(t, root, "add", ".")
+	runGitTest(t, root, "commit", "-m", "receipt")
+	commit := strings.TrimSpace(runGitTest(t, root, "rev-parse", "HEAD"))
+	blob := strings.TrimSpace(runGitTest(t, root, "rev-parse", "HEAD:"+relative))
+	return root, AuthorityEvidence{
+		Status:    StatusPass,
+		Reference: "git:example.com/manja@" + commit + ":" + relative + "#blob=" + blob,
+		Digest:    sha256Digest(content), Receipt: append([]byte(nil), content...),
+	}
+}
+
+func runGitTest(t *testing.T, root string, args ...string) string {
+	t.Helper()
+	output, err := gitCommand(root, args...).CombinedOutput()
+	if err != nil {
+		t.Fatalf("git %v: %v\n%s", args, err, output)
+	}
+	return string(output)
 }
 
 func validFile(path string, size int64) FileEvidence {

@@ -16,25 +16,33 @@ pass; blocked requests leave the caller output untouched.
 The gate consumes one JSON evidence object supplied by the caller. It binds
 the object to a full lowercase Git commit and tree SHA-1, and records separate
 provenance and rights-holder authority receipts. A `PASS` authority receipt
-must be resolved from a caller-owned immutable checkout with the exact receipt
-bytes, a canonical Git commit/blob reference, and a matching SHA-256 or
-SHA-384 digest; serialized JSON cannot self-assert the unexported resolved
-state. A `BLOCKED` authority receipt remains blocked even when every mechanical
-hash check succeeds; material or holder attribution supplied before that point
-is reported as `legal.materials.before_clearance`.
+must be resolved from a caller-owned non-bare Git worktree whose `origin`
+matches the reference, whose immutable commit exists, and whose commit path
+resolves to the referenced blob. The exact receipt bytes, canonical Git
+commit/blob reference, and matching SHA-256 or SHA-384 digest are checked;
+serialized JSON cannot self-assert the unexported resolved state. A
+rights-holder receipt must also contain the canonical `holder: ...` and
+`year-range: ...` claims supplied to the gate. A `BLOCKED` authority receipt
+remains blocked even when every mechanical hash check succeeds; material or
+holder attribution supplied before that point is reported as
+`legal.materials.before_clearance`.
 
 The current JSON-only `cmd/distribution-gate check` intentionally cannot
 manufacture that resolved state. A caller that has a real receipt must resolve
 it through the checkout-bound `distribution.ResolveAuthority` seam before an
-in-process `Evaluate` or `Pack`; absent that authority, the result stays
-**BLOCKED**.
+in-process `Evaluate` or `Pack`; shipped dependency licenses likewise require
+`distribution.ResolveDependencyLicense` and an immutable license-byte receipt.
+Absent those resolutions, the result stays **BLOCKED**.
 
-For each dependency, the evidence records ecosystem, immutable version,
-license identifier, scope (`shipped`, `build-only`, or `test-only`), source,
-and a reproducible digest. For each produced artifact, it records the exact
+For each dependency, the evidence records ecosystem, immutable version, SPDX
+identifier or expression, scope (`shipped`, `build-only`, or `test-only`),
+source, and a reproducible digest. A shipped dependency additionally records
+an immutable Git license receipt with exact bytes, size, mode, blob, and
+SHA-256/SHA-384 digest. For each produced artifact, it records the exact
 source identity and digest, a complete/fresh/digest-bound inspection receipt,
-a complete CycloneDX-JSON or SPDX-JSON SBOM receipt, and a recursive regular
-file inventory with sizes, explicit portable permission modes, and digests. Artifact dependency names must resolve
+a complete CycloneDX-JSON or SPDX-JSON SBOM receipt with exact size and mode,
+and a recursive regular file inventory with sizes, explicit portable permission
+modes, and digests. Artifact dependency names must resolve
 to exactly one dependency evidence record; build-only and test-only records
 cannot enter a produced artifact.
 
@@ -50,6 +58,12 @@ renamed, duplicated, or unknown files fail closed; a fixed pair of paths is not
 an inventory. Existing SBOM bytes are checked against deterministic generated
 bytes before staging. Build-only, test-only, parser, and compiler dependencies
 remain excluded unless final artifact bytes prove otherwise.
+
+Publication writes exact-mode files durably into a same-filesystem staging
+directory and commits a new output directory with an atomic rename when the
+destination does not exist. Existing destinations use an atomic manifest
+pointer (`.manja-package-manifest.json`) so consumers see a complete output
+set only after the pointer commit; uncommitted files are not a release set.
 
 OCI evidence additionally requires an explicit complete-coverage assertion
 and one immutable digest for every published OS/architecture manifest. An

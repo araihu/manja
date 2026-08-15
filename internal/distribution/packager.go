@@ -303,7 +303,8 @@ type SBOMComponent struct {
 }
 
 type SBOMLicense struct {
-	License SBOMLicenseID `json:"license"`
+	License    *SBOMLicenseID `json:"license,omitempty"`
+	Expression string         `json:"expression,omitempty"`
 }
 
 type SBOMLicenseID struct {
@@ -338,7 +339,7 @@ func GenerateSBOM(name, version string, dependencies []DependencyEvidence) ([]by
 	}
 	components := make([]SBOMComponent, 0, len(dependencies))
 	for _, dependency := range dependencies {
-		if isUnknownLicense(dependency.License) {
+		if isUnknownLicense(dependency.License) || !validSPDXExpression(dependency.License) {
 			return nil, SBOMEvidence{}, fmt.Errorf("dependency %q has unknown or missing license", dependency.Name)
 		}
 		if dependency.Scope != ScopeShipped {
@@ -349,6 +350,11 @@ func GenerateSBOM(name, version string, dependencies []DependencyEvidence) ([]by
 		}
 		if !validDigest(dependency.Digest) {
 			return nil, SBOMEvidence{}, fmt.Errorf("dependency %q has invalid digest", dependency.Name)
+		}
+		if dependency.Scope == ScopeShipped {
+			if findings := validateLicenseReceipt(dependency.Name, dependency.License, dependency.LicenseReceipt); len(findings) > 0 {
+				return nil, SBOMEvidence{}, fmt.Errorf("dependency %q has invalid license receipt: %s", dependency.Name, findings[0].Detail)
+			}
 		}
 		purl := ""
 		if dependency.Ecosystem == "go" {
@@ -362,6 +368,12 @@ func GenerateSBOM(name, version string, dependencies []DependencyEvidence) ([]by
 			hashAlgorithm = "SHA-384"
 			hashContent = strings.TrimPrefix(dependency.Digest, "sha384:")
 		}
+		license := SBOMLicense{}
+		if strings.ContainsAny(dependency.License, "()") || strings.Contains(dependency.License, " AND ") || strings.Contains(dependency.License, " OR ") || strings.Contains(dependency.License, " WITH ") {
+			license.Expression = strings.TrimSpace(dependency.License)
+		} else {
+			license.License = &SBOMLicenseID{ID: strings.TrimSpace(dependency.License)}
+		}
 		components = append(components, SBOMComponent{
 			Type:    "library",
 			BomRef:  dependency.Ecosystem + ":" + dependency.Name + "@" + dependency.Version,
@@ -371,7 +383,7 @@ func GenerateSBOM(name, version string, dependencies []DependencyEvidence) ([]by
 			// shipped scope is mapped to required in the emitted document.
 			Scope:    "required",
 			Purl:     purl,
-			Licenses: []SBOMLicense{{License: SBOMLicenseID{ID: strings.TrimSpace(dependency.License)}}},
+			Licenses: []SBOMLicense{license},
 			Hashes:   []SBOMHash{{Algorithm: hashAlgorithm, Content: hashContent}},
 		})
 	}
@@ -388,7 +400,7 @@ func GenerateSBOM(name, version string, dependencies []DependencyEvidence) ([]by
 	if !sbomHasCompleteShape(encoded, encoded) {
 		return nil, SBOMEvidence{}, errors.New("generated CycloneDX 1.5 document failed schema-shape validation")
 	}
-	return encoded, SBOMEvidence{Format: "CycloneDX-JSON", Digest: sha256Digest(encoded), Complete: true}, nil
+	return encoded, SBOMEvidence{Format: "CycloneDX-JSON", Size: int64(len(encoded)), Mode: 0o644, Digest: sha256Digest(encoded), Complete: true}, nil
 }
 
 // ArtifactRequest describes one actual root to package. RootDigest, when
@@ -459,8 +471,8 @@ func Pack(request PackageRequest, policy Policy) (PackageResult, error) {
 	}
 	authorityPassed := request.Provenance.Status == StatusPass && request.RightsHolder.Status == StatusPass
 	mechanicalFindings := make([]Finding, 0)
-	provenanceFindings := validateAuthority("provenance", request.Provenance)
-	rightsHolderFindings := validateAuthority("rights_holder", request.RightsHolder)
+	provenanceFindings := validateAuthority("provenance", request.Provenance, request.Legal)
+	rightsHolderFindings := validateAuthority("rights_holder", request.RightsHolder, request.Legal)
 	authorityPassed = authorityPassed && len(provenanceFindings) == 0 && len(rightsHolderFindings) == 0
 	mechanicalFindings = append(mechanicalFindings, provenanceFindings...)
 	mechanicalFindings = append(mechanicalFindings, rightsHolderFindings...)
@@ -548,64 +560,215 @@ func Pack(request PackageRequest, policy Policy) (PackageResult, error) {
 	return result, nil
 }
 
+const packageManifestName = ".manja-package-manifest.json"
+
+type packageManifest struct {
+	Version   int                    `json:"version"`
+	Artifacts []packageManifestEntry `json:"artifacts"`
+}
+
+type packageManifestEntry struct {
+	Name   string `json:"name"`
+	Path   string `json:"path"`
+	Digest string `json:"digest"`
+}
+
 func publishOutputs(outputDir string, outputs []PackagedArtifact) ([]PackagedArtifact, error) {
-	outputDirExisted := false
-	if info, err := os.Lstat(outputDir); err == nil {
-		outputDirExisted = true
+	if len(outputs) == 0 {
+		return nil, errors.New("package publication requires at least one output")
+	}
+	outputDir = filepath.Clean(outputDir)
+	parent := filepath.Dir(outputDir)
+	if err := os.MkdirAll(parent, 0o755); err != nil {
+		return nil, fmt.Errorf("create package output parent: %w", err)
+	}
+	info, err := os.Lstat(outputDir)
+	if err == nil {
 		if !info.IsDir() {
 			return nil, fmt.Errorf("package output path is not a directory")
 		}
-	} else if !errors.Is(err, os.ErrNotExist) {
-		return nil, fmt.Errorf("inspect package output directory: %w", err)
-	} else if err := os.MkdirAll(outputDir, 0o755); err != nil {
-		return nil, fmt.Errorf("create package output directory: %w", err)
+		return publishIntoExistingDirectory(outputDir, parent, outputs)
 	}
+	if !errors.Is(err, os.ErrNotExist) {
+		return nil, fmt.Errorf("inspect package output directory: %w", err)
+	}
+	return publishNewDirectory(outputDir, parent, outputs)
+}
+
+func publishNewDirectory(outputDir, parent string, outputs []PackagedArtifact) ([]PackagedArtifact, error) {
+	stage, stagedOutputs, manifest, err := prepareOutputStage(parent, outputs)
+	if err != nil {
+		return nil, err
+	}
+	defer os.RemoveAll(stage)
+	if err := writeDurableFile(filepath.Join(stage, packageManifestName), manifest, 0o644); err != nil {
+		return nil, fmt.Errorf("write package manifest: %w", err)
+	}
+	if err := os.Chmod(stage, 0o755); err != nil {
+		return nil, fmt.Errorf("normalize package directory mode: %w", err)
+	}
+	if err := syncDirectory(stage); err != nil {
+		return nil, fmt.Errorf("sync staged package directory: %w", err)
+	}
+	if err := os.Rename(stage, outputDir); err != nil {
+		return nil, fmt.Errorf("commit package directory: %w", err)
+	}
+	if err := syncDirectory(parent); err != nil {
+		return nil, fmt.Errorf("sync package parent directory: %w", err)
+	}
+	for index := range stagedOutputs {
+		stagedOutputs[index].Path = filepath.Join(outputDir, outputs[index].Name+".tar")
+	}
+	return stagedOutputs, nil
+}
+
+func publishIntoExistingDirectory(outputDir, parent string, outputs []PackagedArtifact) ([]PackagedArtifact, error) {
+	stage, stagedOutputs, manifest, err := prepareOutputStage(parent, outputs)
+	if err != nil {
+		return nil, err
+	}
+	defer os.RemoveAll(stage)
 	published := make([]string, 0, len(outputs))
 	cleanup := func() {
 		for _, pathValue := range published {
 			_ = os.Remove(pathValue)
 		}
-		if outputDirExisted {
-			return
-		}
-		entries, err := os.ReadDir(outputDir)
-		if err == nil && len(entries) == 0 {
-			_ = os.Remove(outputDir)
+	}
+	for _, output := range outputs {
+		finalPath := filepath.Join(outputDir, output.Name+".tar")
+		if _, err := os.Lstat(finalPath); err == nil {
+			return nil, fmt.Errorf("package output already exists: %s", finalPath)
+		} else if !errors.Is(err, os.ErrNotExist) {
+			return nil, fmt.Errorf("inspect package output %q: %w", output.Name, err)
 		}
 	}
+	for index := range stagedOutputs {
+		finalPath := filepath.Join(outputDir, outputs[index].Name+".tar")
+		if err := os.Rename(stagedOutputs[index].Path, finalPath); err != nil {
+			cleanup()
+			return nil, fmt.Errorf("commit package %q: %w", outputs[index].Name, err)
+		}
+		stagedOutputs[index].Path = finalPath
+		published = append(published, finalPath)
+	}
+	if err := writeAtomicManifest(outputDir, manifest); err != nil {
+		cleanup()
+		return nil, err
+	}
+	if err := syncDirectory(outputDir); err != nil {
+		return nil, fmt.Errorf("sync published package directory: %w", err)
+	}
+	return stagedOutputs, nil
+}
+
+func prepareOutputStage(parent string, outputs []PackagedArtifact) (string, []PackagedArtifact, []byte, error) {
+	stage, err := os.MkdirTemp(parent, ".manja-package-stage-")
+	if err != nil {
+		return "", nil, nil, fmt.Errorf("create package staging directory: %w", err)
+	}
+	cleanup := func() { _ = os.RemoveAll(stage) }
+	stagedOutputs := append([]PackagedArtifact(nil), outputs...)
+	entries := make([]packageManifestEntry, 0, len(outputs))
+	seen := make(map[string]struct{}, len(outputs))
 	for index := range outputs {
+		if !validArtifactName(outputs[index].Name) {
+			cleanup()
+			return "", nil, nil, fmt.Errorf("unsafe package output name %q", outputs[index].Name)
+		}
+		if _, exists := seen[outputs[index].Name]; exists {
+			cleanup()
+			return "", nil, nil, fmt.Errorf("duplicate package output name %q", outputs[index].Name)
+		}
+		seen[outputs[index].Name] = struct{}{}
 		archiveBytes, err := os.ReadFile(outputs[index].Path)
 		if err != nil {
 			cleanup()
-			return nil, fmt.Errorf("read staged package %q: %w", outputs[index].Name, err)
+			return "", nil, nil, fmt.Errorf("read staged package %q: %w", outputs[index].Name, err)
 		}
-		outputPath := filepath.Join(outputDir, outputs[index].Name+".tar")
-		file, err := os.OpenFile(outputPath, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
-		if err != nil {
+		stagedPath := filepath.Join(stage, outputs[index].Name+".tar")
+		if err := writeDurableFile(stagedPath, archiveBytes, 0o644); err != nil {
 			cleanup()
-			return nil, fmt.Errorf("create package %q: %w", outputs[index].Name, err)
+			return "", nil, nil, fmt.Errorf("stage package %q: %w", outputs[index].Name, err)
 		}
-		written, writeErr := file.Write(archiveBytes)
-		closeErr := file.Close()
-		if writeErr != nil {
-			_ = os.Remove(outputPath)
-			cleanup()
-			return nil, fmt.Errorf("write package %q: %w", outputs[index].Name, writeErr)
-		}
-		if written != len(archiveBytes) {
-			_ = os.Remove(outputPath)
-			cleanup()
-			return nil, fmt.Errorf("write package %q: %w", outputs[index].Name, io.ErrShortWrite)
-		}
-		if closeErr != nil {
-			_ = os.Remove(outputPath)
-			cleanup()
-			return nil, fmt.Errorf("close package %q: %w", outputs[index].Name, closeErr)
-		}
-		outputs[index].Path = outputPath
-		published = append(published, outputPath)
+		stagedOutputs[index].Path = stagedPath
+		entries = append(entries, packageManifestEntry{Name: outputs[index].Name, Path: outputs[index].Name + ".tar", Digest: outputs[index].Digest})
 	}
-	return outputs, nil
+	sort.Slice(entries, func(left, right int) bool { return entries[left].Name < entries[right].Name })
+	encoded, err := json.MarshalIndent(packageManifest{Version: 1, Artifacts: entries}, "", "  ")
+	if err != nil {
+		cleanup()
+		return "", nil, nil, fmt.Errorf("marshal package manifest: %w", err)
+	}
+	return stage, stagedOutputs, append(encoded, '\n'), nil
+}
+
+func writeAtomicManifest(outputDir string, data []byte) error {
+	temporary, err := os.CreateTemp(outputDir, ".manja-package-manifest.tmp-")
+	if err != nil {
+		return fmt.Errorf("create package manifest pointer: %w", err)
+	}
+	temporaryPath := temporary.Name()
+	if err := temporary.Close(); err != nil {
+		_ = os.Remove(temporaryPath)
+		return fmt.Errorf("close package manifest pointer: %w", err)
+	}
+	if err := os.Remove(temporaryPath); err != nil {
+		return fmt.Errorf("reset package manifest pointer: %w", err)
+	}
+	if err := writeDurableFile(temporaryPath, data, 0o644); err != nil {
+		_ = os.Remove(temporaryPath)
+		return fmt.Errorf("write package manifest pointer: %w", err)
+	}
+	manifestPath := filepath.Join(outputDir, packageManifestName)
+	if err := os.Rename(temporaryPath, manifestPath); err != nil {
+		_ = os.Remove(temporaryPath)
+		return fmt.Errorf("commit package manifest pointer: %w", err)
+	}
+	return nil
+}
+
+func writeDurableFile(pathValue string, data []byte, mode os.FileMode) error {
+	file, err := os.OpenFile(pathValue, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+	if err != nil {
+		return err
+	}
+	remove := true
+	defer func() {
+		_ = file.Close()
+		if remove {
+			_ = os.Remove(pathValue)
+		}
+	}()
+	written, err := file.Write(data)
+	if err != nil {
+		return err
+	}
+	if written != len(data) {
+		return io.ErrShortWrite
+	}
+	if err := file.Chmod(mode); err != nil {
+		return err
+	}
+	if err := file.Sync(); err != nil {
+		return err
+	}
+	if err := file.Close(); err != nil {
+		return err
+	}
+	remove = false
+	return nil
+}
+
+func syncDirectory(pathValue string) error {
+	directory, err := os.Open(pathValue)
+	if err != nil {
+		return err
+	}
+	if err := directory.Sync(); err != nil {
+		_ = directory.Close()
+		return err
+	}
+	return directory.Close()
 }
 
 func inspectRequestedArtifact(request ArtifactRequest, policy Policy, dependencies []DependencyEvidence, generateMaterials bool) (ArtifactEvidence, []Finding) {
@@ -688,6 +851,12 @@ func validateExistingSBOM(root, relativePath string, expected []byte, artifactNa
 	if !bytes.Equal(actual, expected) {
 		return []Finding{{Code: "artifact.sbom.bytes_mismatch", Subject: artifactName, Detail: "existing SBOM bytes differ from deterministic generated bytes"}}
 	}
+	if info.Size() != int64(len(expected)) {
+		return []Finding{{Code: "artifact.sbom.size_mismatch", Subject: artifactName, Detail: "existing SBOM size differs from deterministic generated bytes"}}
+	}
+	if uint32(info.Mode().Perm()) != 0o644 {
+		return []Finding{{Code: "artifact.sbom.mode_mismatch", Subject: artifactName, Detail: fmt.Sprintf("existing SBOM mode is %o, want 644", info.Mode().Perm())}}
+	}
 	return nil
 }
 
@@ -711,6 +880,14 @@ func sbomHasCompleteShape(actual, expected []byte) bool {
 	for index, component := range actualDocument.Components {
 		if component.Type == "" || component.BomRef == "" || component.Name == "" || component.Version == "" || component.Scope != "required" || len(component.Licenses) == 0 || len(component.Hashes) == 0 {
 			return false
+		}
+		for _, license := range component.Licenses {
+			if (license.License == nil || license.License.ID == "") == (license.Expression == "") {
+				return false
+			}
+			if license.Expression != "" && !validSPDXExpression(license.Expression) {
+				return false
+			}
 		}
 		if component.BomRef != expectedDocument.Components[index].BomRef {
 			return false
@@ -800,7 +977,7 @@ func packageOne(request ArtifactRequest, artifact ArtifactEvidence, packageReque
 	if err != nil {
 		return PackagedArtifact{}, artifact, err
 	}
-	archiveDigest := sha256Digest(archiveBytes)
+	archiveDigest := digestForExpected(archiveBytes, request.ExpectedDigest)
 	if request.ExpectedDigest != "" && request.ExpectedDigest != archiveDigest {
 		return PackagedArtifact{}, artifact, fmt.Errorf("expected %s, got %s", request.ExpectedDigest, archiveDigest)
 	}

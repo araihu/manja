@@ -179,6 +179,7 @@ func TestGenerateSBOMRejectsUnknownLicenseAndIsByteStable(t *testing.T) {
 		t.Fatal("GenerateSBOM accepted missing license evidence")
 	}
 	dependency.License = "MIT"
+	dependency.LicenseReceipt = testLicenseReceipt()
 	first, firstEvidence, err := GenerateSBOM("manja", "dev", []DependencyEvidence{dependency})
 	if err != nil {
 		t.Fatal(err)
@@ -199,6 +200,18 @@ func TestGenerateSBOMRejectsUnknownLicenseAndIsByteStable(t *testing.T) {
 	}
 	if !sbomHasCompleteShape(first, first) || len(document.Components) != 1 || document.Components[0].Scope != "required" {
 		t.Fatalf("generated CycloneDX 1.5 shape is invalid: %#v", document)
+	}
+}
+
+func TestGenerateSBOMRejectsInvalidSPDXLicenseExpression(t *testing.T) {
+	dependency := DependencyEvidence{
+		Ecosystem: "go", Name: "example.com/runtime", Version: "v1.2.3",
+		License: "MadeUp-License", Scope: ScopeShipped,
+		Source: "https://example.com/runtime@" + strings.Repeat("a", 40),
+		Digest: "sha256:" + strings.Repeat("1", 64), LicenseReceipt: testLicenseReceipt(),
+	}
+	if _, _, err := GenerateSBOM("manja", "dev", []DependencyEvidence{dependency}); err == nil {
+		t.Fatal("GenerateSBOM accepted an invalid SPDX license identifier")
 	}
 }
 
@@ -370,6 +383,25 @@ func TestPackRejectsIncompleteSBOMAlreadyInArtifactRoot(t *testing.T) {
 	}
 }
 
+func TestValidateExistingSBOMRejectsModeDrift(t *testing.T) {
+	root := t.TempDir()
+	expected, _, err := GenerateSBOM("manja", "", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pathValue := filepath.Join(root, "sbom", "manja.cdx.json")
+	if err := os.MkdirAll(filepath.Dir(pathValue), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(pathValue, expected, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	findings := validateExistingSBOM(root, "sbom/manja.cdx.json", expected, "manja")
+	if !hasFinding(findings, "artifact.sbom.mode_mismatch") {
+		t.Fatalf("findings = %#v, want SBOM mode mismatch", findings)
+	}
+}
+
 func TestPackValidatesLegalBytesBeforeCreatingOutput(t *testing.T) {
 	root := t.TempDir()
 	writeTestFile(t, root, "bin/manja", "binary")
@@ -499,6 +531,80 @@ func TestPublishOutputsRemovesOnlyNewEmptyDirectoryOnFailure(t *testing.T) {
 	}
 	if _, err := os.Stat(existingOutput); err != nil {
 		t.Fatalf("pre-existing output directory was removed: %v", err)
+	}
+}
+
+func TestPublishOutputsUsesExactModesAndManifestCommit(t *testing.T) {
+	staged := t.TempDir()
+	archive := filepath.Join(staged, "first.tar")
+	if err := os.WriteFile(archive, []byte("archive"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	outputDir := filepath.Join(t.TempDir(), "release")
+	outputs, err := publishOutputs(outputDir, []PackagedArtifact{{Name: "first", Path: archive, Digest: "sha256:" + strings.Repeat("a", 64)}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(outputs) != 1 {
+		t.Fatalf("outputs = %#v", outputs)
+	}
+	fileInfo, err := os.Stat(outputs[0].Path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fileInfo.Mode().Perm() != 0o644 {
+		t.Fatalf("published archive mode = %o, want 644", fileInfo.Mode().Perm())
+	}
+	directoryInfo, err := os.Stat(outputDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if directoryInfo.Mode().Perm() != 0o755 {
+		t.Fatalf("published directory mode = %o, want 755", directoryInfo.Mode().Perm())
+	}
+	manifestPath := filepath.Join(outputDir, packageManifestName)
+	manifestInfo, err := os.Stat(manifestPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if manifestInfo.Mode().Perm() != 0o644 {
+		t.Fatalf("manifest mode = %o, want 644", manifestInfo.Mode().Perm())
+	}
+	manifest, err := os.ReadFile(manifestPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Contains(manifest, []byte(`"first.tar"`)) {
+		t.Fatalf("manifest = %s, want committed archive entry", manifest)
+	}
+}
+
+func TestPackAcceptsSHA384ExpectedArchiveDigest(t *testing.T) {
+	first := syntheticPackageRequest(t, filepath.Join(t.TempDir(), "first"))
+	if err := os.MkdirAll(first.OutputDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	artifact, findings := inspectRequestedArtifact(first.Artifacts[0], DefaultPolicy(), first.Dependencies, true)
+	if len(findings) != 0 {
+		t.Fatalf("preparation findings = %#v", findings)
+	}
+	_, _, err := packageOne(first.Artifacts[0], artifact, first, DefaultPolicy())
+	if err != nil {
+		t.Fatal(err)
+	}
+	archivePath := filepath.Join(first.OutputDir, "manja.tar")
+	archive, err := os.ReadFile(archivePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	second := syntheticPackageRequest(t, filepath.Join(t.TempDir(), "second"))
+	second.Artifacts[0].ExpectedDigest = testSHA384Digest(archive)
+	result, err := Pack(second, DefaultPolicy())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Result.Status != StatusPass || len(result.Outputs) != 1 || result.Outputs[0].Digest != second.Artifacts[0].ExpectedDigest {
+		t.Fatalf("result = %#v, outputs = %#v", result.Result, result.Outputs)
 	}
 }
 
