@@ -1,11 +1,18 @@
 # Shipped Artifact Matrix
 
-Date: 2026-08-11
+Date: 2026-08-15
 
 Status: packaging and licensing gates are **BLOCKED** by
 [`provenance.md`](provenance.md). This file records current artifact contents
 and required future placement of license evidence. It does not assert that any
 artifact is cleared for Apache-2.0 distribution.
+
+The mechanical archive seam now exists in commit `e90f8da`
+(`internal/distribution/packager.go`), with recursive root/archive inspection,
+deterministic tar output, legal-byte/SBOM checks, and explicit OCI refusal.
+This does not create a production release layout or establish authority; no
+real source, binary, site, or digest-bound OCI artifact has been cleared at
+this checkpoint.
 
 ## Classification Rules
 
@@ -23,10 +30,10 @@ artifact is cleared for Apache-2.0 distribution.
 
 | Artifact | Current build and inspected contents | Shipped scope | Required future evidence placement | Current inspection command/result |
 | --- | --- | --- | --- | --- |
-| Source tarball | No release packager exists. The audited-base archive at commit `39d65ade21c080ee2102f53da5ed741f000d6dd7` and tree `64cee6ab67060d1d8c4734fc5f54f6dbe6d272f6` contains 688 paths: tracked first-party source/docs/config, generated Go/JavaScript, 31 Muamba acquisition archives and their retained licenses, 65 locked Kubernetes OpenAPI files and upstream license, copied fixtures/assets, and three unresolved logo-concept PNGs. It excludes ignored `api/dist` and transient build state. No root project license, notice, third-party notice, or SBOM exists. This is an immutable audited-base receipt, not a candidate-`HEAD` count. | Complete tracked tree, including copied/generated material and retained third-party acquisition bytes. No root `vendor/` tree is tracked, but `internal/webassets/vendor/` is shipped in a raw source archive. | Archive root: verified project `LICENSE`, accurate `NOTICE`, reviewed `THIRD_PARTY_NOTICES.md`, and deterministic source inventory/SBOM if policy requires it. Preserve required upstream license files and exclude unresolved generated concepts unless cleared. | `git archive --format=tar 39d65ade21c080ee2102f53da5ed741f000d6dd7 \| tar -tf -` reports 688 paths. After a packager exists, unpack immutable bytes and reconcile every notice record to actual files. |
-| `manja` binary archive | No binary-archive script or released binary layout exists. Current Docker build creates a build-time `cmd/manja` compiler and a separate runtime-only `cmd/manja-runtime` binary; only the runtime binary enters the image. | Cannot be called a shipped archive yet. A future runtime archive would include Manja plus templ, Goshtoso, Chroma, regexp2, `x/text`, YAML, runtime static assets, and precompiled renderer data if it mirrors the image. Build-time parser/compiler modules and test tools must stay excluded unless actual archive bytes prove otherwise. | Archive root: `bin/manja`, project `LICENSE`, `NOTICE`, `THIRD_PARTY_NOTICES.md`, Go/browser/renderer-data SBOMs, runtime static tree, renderer config/allowlist, and all notices required by compiled catalogs. | Build with the release script once one exists; unpack, run `go version -m bin/manja`, enumerate files, verify static/renderer digests, and compare SBOM/notices to final bytes. |
+| Source tarball | No production release definition or source archive exists. The mechanical packager can inspect a complete source root and emit deterministic tar bytes only after authority clearance. The audited-base archive at commit `39d65ade21c080ee2102f53da5ed741f000d6dd7` and tree `64cee6ab67060d1d8c4734fc5f54f6dbe6d272f6` contains 688 paths: tracked first-party source/docs/config, generated Go/JavaScript, 31 Muamba acquisition archives and their retained licenses, 65 locked Kubernetes OpenAPI files and upstream license, copied fixtures/assets, and three unresolved logo-concept PNGs. It excludes ignored `api/dist` and transient build state. No root project license, notice, third-party notice, or SBOM exists. This is an immutable audited-base receipt, not a candidate-`HEAD` count. | Complete tracked tree, including copied/generated material and retained third-party acquisition bytes. No root `vendor/` tree is tracked, but `internal/webassets/vendor/` is shipped in a raw source archive. | Archive root: verified project `LICENSE`, accurate `NOTICE`, reviewed `THIRD_PARTY_NOTICES.md`, and deterministic source inventory/SBOM if policy requires it. Preserve required upstream license files and exclude unresolved generated concepts unless cleared. | Historical receipt: `git archive --format=tar 39d65ade21c080ee2102f53da5ed741f000d6dd7 \| tar -tf -` reports 688 paths. No current candidate source archive has been produced or inspected. |
+| `manja` binary archive | No binary-archive release script, layout, or released bytes exist. `Pack` can only package a caller-supplied complete root after authority clearance. The Docker build creates a build-time `cmd/manja` compiler and a separate runtime-only `cmd/manja-runtime` binary; only the runtime binary enters the image. | Cannot be called a shipped archive yet. A future runtime archive would include Manja plus templ, Goshtoso, Chroma, regexp2, `x/text`, YAML, runtime static assets, and precompiled renderer data if it mirrors the image. Build-time parser/compiler modules and test tools must stay excluded unless actual archive bytes prove otherwise. | Archive root: `bin/manja`, project `LICENSE`, `NOTICE`, `THIRD_PARTY_NOTICES.md`, Go/browser/renderer-data SBOMs, runtime static tree, renderer config/allowlist, and all notices required by compiled catalogs. | No release script or candidate archive exists. When authorized, unpack the immutable output, run `go version -m bin/manja`, enumerate files, verify static/renderer digests, and compare SBOM/notices to final bytes. |
 | OCI image `ghcr.io/araihu/manja` | Current Dockerfile builds with `golang:1.26.5-alpine`, compiles Kubernetes/GitHub/Stripe inputs, and copies only `manja-runtime` into `alpine:3.24`. Local `manja:provenance` inspection reported `linux/arm64`: 35,242,561-byte image, 9 layers, 17 final APK packages, 416 renderer-data files in three snapshots, renderer config/allowlist, and complete `internal/web/static`. Final stage has no `git`. | Runtime Go closure; Alpine base and `ca-certificates`; compiled Kubernetes/GitHub/Stripe renderer data; CSS/JS/SVG/PNG assets; both generated browser bundles. The blanket static copy also ships `request_composer_browser_test.go` and `schema_example_browser_test.go` as source files. Parser/compiler modules, Go toolchain, and integration/test dependencies remain build-only unless copied elsewhere. | `/usr/share/licenses/manja/`: verified project `LICENSE`, `NOTICE`, `THIRD_PARTY_NOTICES.md`, and OCI/Go/browser/renderer-data SBOMs. Preserve required Kubernetes, GitHub, Stripe, Simple Icons, and other attributions. Current image contains none of these paths. | Prior observed receipt: `docker build --pull=false -t manja:provenance .`; `docker history --no-trunc`; `docker image inspect`; run `/bin/sh` to enumerate APK and application files. The build command did not specify a platform; inspection reported `linux/arm64`. Local image ID: `sha256:dd2c84189b78ec4d84635667f7e97fafe74c4401e3f97e2be23c7178b2d50c09`. Future reproduction must use the explicit platform and base-digest checks in `provenance.md`. |
-| Public `site` artifact | Separate module `github.com/araihu/manja/site` builds `site/cmd/server`; `site/internal/site/assets.go` embeds `static/*`. No site archive/image/release packager exists. Direct `GOWORK=off go test ./... -count=1` currently stops before tests because `site/go.mod` needs two indirect dependency updates. CI instead copies the mod/sum to temporary modfiles, tidies those, and tests the candidate root graph; independent baseline review established that this path can pass, but this document claims no exact OC-01 run receipt for it. | If distributed, site server production closure plus embedded CSS, JavaScript, SVG assets, and product copy. Root test/tool dependencies are not automatically part of the site. The remote campaign script is fetched at runtime and is not embedded in the site binary. | Beside site binary/archive: project `LICENSE`, `NOTICE`, `THIRD_PARTY_NOTICES.md`, site-specific Go/static SBOM, and a validated social preview asset. If deployed as an image, mirror OCI placement. | Current direct command fails with `go: updates to go.mod needed; to update it: go mod tidy`. Keep this visible until a separately authorized dependency checkpoint fixes it. Use the exact temporary-modfile CI command for candidate-graph verification without changing committed site files. |
+| Public `site` artifact | Separate module `github.com/araihu/manja/site` builds `site/cmd/server`; `site/internal/site/assets.go` embeds `static/*`. No site production archive/image exists; the mechanical packager can inspect a supplied site root but does not build or discover one. Direct `GOWORK=off go test ./... -count=1` currently stops before tests because `site/go.mod` needs two indirect dependency updates. CI instead copies the mod/sum to temporary modfiles, tidies those, and tests the candidate root graph; independent baseline review established that this path can pass, but this document claims no exact OC-01 run receipt for it. | If distributed, site server production closure plus embedded CSS, JavaScript, SVG assets, and product copy. Root test/tool dependencies are not automatically part of the site. The remote campaign script is fetched at runtime and is not embedded in the site binary. | Beside site binary/archive: project `LICENSE`, `NOTICE`, `THIRD_PARTY_NOTICES.md`, site-specific Go/static SBOM, and a validated social preview asset. If deployed as an image, mirror OCI placement. | Current direct command fails with `go: updates to go.mod needed; to update it: go mod tidy`. Keep this visible until a separately authorized dependency checkpoint fixes it. Use the exact temporary-modfile CI command for candidate-graph verification without changing committed site files. |
 
 ## Dependency And Artifact Boundaries
 
@@ -155,25 +162,27 @@ By default, the distribution gate must also fail if either browser-test source
 is present anywhere in runtime/binary-package or OCI bytes. Raw source archives
 are not subject to this exclusion.
 
-No Manja runtime/binary archive, archive format, immutable archive digest,
-packager, final layout, or authoritative archive manifest exists at this
-snapshot; CI publishes only the OCI artifact. Therefore no caller-supplied host
-directory can currently prove complete runtime/binary-package contents. A clean
-selected subdirectory can hide prohibited files elsewhere. The host archive gate
+No Manja runtime/binary/site production archive, immutable release digest,
+final layout, or authoritative archive manifest exists at this snapshot; CI
+publishes only the OCI artifact. The internal packager is intentionally not a
+release definition: it accepts a caller-supplied complete root and refuses
+missing roots, selected subdirectories, drift, unknown files, incomplete SBOMs,
+and uncleared legal material. Therefore no caller-supplied host directory can
+currently prove released runtime/binary-package contents. The host archive gate
 remains **BLOCKED** under Task 8 rather than reporting success from such a root.
 
-The prospective Task-8 invariant is per archive: the packager must receive the
-immutable archive bytes and an independently trusted expected digest from the
-release definition, verify that digest, create a fresh empty extraction root,
-safely extract the complete archive into that root itself, and recursively scan
-that exact root. It must reject digest mismatch; unsafe or incomplete extraction;
-path traversal or link escape; inventory or permission errors; and any scan
-error or prohibited browser-test source. Each separately produced runtime/binary
-archive must repeat the process in its own fresh root. Regression coverage must
-reject substitution of a clean selected subdirectory while prohibited bytes
-remain elsewhere. A sibling checksum file or marker inside the extracted root
-is not independent authority. This is a future invariant, not a current archive,
-digest, command, layout, marker, or receipt.
+The implemented Task-8 archive invariant is per archive: the packager receives
+the immutable archive bytes and an independently trusted expected digest from
+the release definition, verifies that digest, creates a fresh empty extraction
+root, safely extracts the complete archive into that root itself, and
+recursively scans that exact root. It rejects digest mismatch; unsafe or
+incomplete extraction; path traversal or link escape; inventory or permission
+errors; and any scan error or prohibited browser-test source. Each separately
+produced runtime/binary archive must repeat the process in its own fresh root.
+Regression coverage rejects substitution of a clean selected subdirectory while
+prohibited bytes remain elsewhere. A sibling checksum file or marker inside the
+extracted root is not independent authority. No production archive, release
+digest, layout, or passing clearance receipt exists yet.
 
 OCI distribution inspection is also **BLOCKED** until stopped Task 8 implements
 digest-bound inspection and promotion. Existing CI-published OCI artifacts
@@ -216,8 +225,9 @@ a current passing receipt.
 This exclusion may be changed only if shipping those source files in a runtime
 artifact is an intentional redistribution decision and an explicit notice/SBOM
 policy review clears and inventories them. Their accidental presence under a
-blanket static copy is not clearance. Task 8 remains blocked until archive-owned
-extraction/scanning, digest-bound OCI inspection, and the other final packager
-gates are implemented; OC-01 does not change the Dockerfile. The recorded current
-OCI source presence remains a blocker until separately authorized packaging work
+blanket static copy is not clearance. Task 8 remains blocked by the absent real
+release artifacts, digest-bound OCI inspection, and other final packager gates;
+the archive-owned extraction/scanning seam is implemented but has no production
+receipt yet. OC-01 does not change the Dockerfile. The recorded current OCI
+source presence remains a blocker until separately authorized packaging work
 removes or explicitly clears it.
