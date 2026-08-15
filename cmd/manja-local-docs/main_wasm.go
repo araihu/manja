@@ -13,6 +13,7 @@ import (
 var (
 	activateFunc js.Func
 	allowsFunc   js.Func
+	resolveFunc  js.Func
 )
 
 func main() {
@@ -56,8 +57,19 @@ func main() {
 		}
 		return active.Allows(args[0].String(), args[1].String())
 	})
+	resolveFunc = js.FuncOf(func(_ js.Value, args []js.Value) any {
+		if !activeReady || len(args) != 2 || args[0].Type() != js.TypeString || args[1].Type() != js.TypeString {
+			return false
+		}
+		artifact, ok := active.Resolve(args[0].String(), args[1].String())
+		if !ok {
+			return false
+		}
+		return map[string]any{"path": artifact.Path, "kind": artifact.Kind, "length": artifact.Length, "sha256": artifact.SHA256}
+	})
 	api.Set("activate", activateFunc)
 	api.Set("allows", allowsFunc)
+	api.Set("resolve", resolveFunc)
 	js.Global().Set("ManjaLocalDocs", api)
 	select {}
 }

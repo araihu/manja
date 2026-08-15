@@ -91,6 +91,47 @@ func TestActivationRouteAllowlistIsGetOnlyAndPublicationScoped(t *testing.T) {
 	}
 }
 
+func TestActivationResolvesDeclaredProjectionRouteWithImmutableMetadata(t *testing.T) {
+	descriptor, manifest := validActivationFixture()
+	activation, err := Admit(descriptor, manifest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	base := descriptor.ProjectionDataBase
+	for _, test := range []struct {
+		name    string
+		method  string
+		path    string
+		want    Artifact
+		allowed bool
+	}{
+		{name: "detail", method: "GET", path: base + "details/core.json", want: manifest.Children[0], allowed: true},
+		{name: "schema node", method: "GET", path: base + "schema-nodes/core.json", want: manifest.Children[1], allowed: true},
+		{name: "catalog is not projection", method: "GET", path: base + "catalog.json"},
+		{name: "wrong method", method: "POST", path: base + "details/core.json"},
+		{name: "unknown child", method: "GET", path: base + "details/unknown.json"},
+		{name: "query", method: "GET", path: base + "details/core.json?x=1"},
+		{name: "traversal", method: "GET", path: base + "details/../schema-nodes/core.json"},
+		{name: "backslash", method: "GET", path: base + `details\core.json`},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			got, allowed := activation.Resolve(test.method, test.path)
+			if allowed != test.allowed {
+				t.Fatalf("Resolve(%q, %q) allowed = %t, want %t", test.method, test.path, allowed, test.allowed)
+			}
+			if !allowed {
+				if got != (Artifact{}) {
+					t.Fatalf("Resolve(%q, %q) returned failed state %#v", test.method, test.path, got)
+				}
+				return
+			}
+			if got != test.want {
+				t.Fatalf("Resolve(%q, %q) = %#v, want %#v", test.method, test.path, got, test.want)
+			}
+		})
+	}
+}
+
 func validActivationFixture() (Descriptor, Manifest) {
 	digest := strings.Repeat("a", 64)
 	snapshot := "snapshot-sha256-" + strings.Repeat("b", 64)
