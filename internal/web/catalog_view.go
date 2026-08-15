@@ -122,6 +122,11 @@ func (handler *CatalogHandler) catalogPageDataWithSidebarQuery(
 	documentHref, _ := catalogURL(mount, "documents", document.Key)
 	documentHref += "/"
 	data.DocumentHref = documentHref
+	documentHeader, err := localrender.PrepareCatalogDocumentHeader(document, documentHref, data.DownloadHref)
+	if err != nil {
+		return templates.CatalogPageData{}, err
+	}
+	data.DocumentHeader = &documentHeader
 	data.SchemaLinks = make(map[string]string, len(document.Schemas))
 	for _, schema := range document.Schemas {
 		name := strings.TrimSpace(schema.Name)

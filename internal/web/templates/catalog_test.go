@@ -14,6 +14,8 @@ import (
 
 	"github.com/a-h/templ"
 	"github.com/araihu/goshtoso/components/badge"
+	"github.com/araihu/goshtoso/components/icon"
+	"github.com/araihu/goshtoso/components/icon/heroicons"
 	"github.com/araihu/goshtoso/components/sidebar"
 	"github.com/araihu/manja/application/catalog"
 	"github.com/araihu/manja/application/projection"
@@ -416,6 +418,78 @@ func TestCatalogDocumentOverviewKeepsIdentityVersionAndDownloadInHeader(t *testi
 	if !strings.Contains(body, document.SourcePath) {
 		t.Fatalf("document overview omitted source path %q", document.SourcePath)
 	}
+}
+
+func TestPreparedCatalogDocumentHeaderMatchesCatalogSSRBytes(t *testing.T) {
+	t.Parallel()
+
+	data := catalogTemplateFixture()
+	document := data.Directory.Documents[0]
+	document.APIVersion = "v1"
+	document.SourceChild = "sources/core-v1.json"
+	document.Overview.Description = "Document description."
+	data.Document = &document
+	data.DocumentHref = "/kubernetes/documents/core-v1/"
+	data.DownloadHref = "/kubernetes/openapi/core-v1.json"
+
+	legacy, err := renderLegacyCatalogDocumentHeader(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fragment, err := localrender.PrepareCatalogDocumentHeader(document, data.DocumentHref, data.DownloadHref)
+	if err != nil {
+		t.Fatal(err)
+	}
+	data.DocumentHeader = &fragment
+	var delegated bytes.Buffer
+	if err := catalogDocumentHeader(data).Render(context.Background(), &delegated); err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(legacy, delegated.Bytes()) {
+		index := firstDifferentByte(legacy, delegated.Bytes())
+		t.Fatalf("prepared document header changed SSR bytes at byte %d:\nlegacy=%q\ndelegated=%q", index, nearbyBytes(legacy, index), nearbyBytes(delegated.Bytes(), index))
+	}
+}
+
+func renderLegacyCatalogDocumentHeader(data CatalogPageData) ([]byte, error) {
+	var output bytes.Buffer
+	component := templ.ComponentFunc(func(ctx context.Context, writer io.Writer) error {
+		document := *data.Document
+		if _, err := io.WriteString(writer, `<header data-catalog-document-header class="mb-8 grid min-w-0 gap-4 border-b border-outline pb-8 dark:border-outline-dark"><div class="flex min-w-0 flex-wrap items-start justify-between gap-4"><div class="min-w-0"><p class="mb-2 text-sm font-semibold uppercase tracking-wide text-primary dark:text-primary-dark">OpenAPI document</p><div class="flex min-w-0 flex-wrap items-center gap-3"><h1 tabindex="-1" data-manja-settled-focus="true" class="manja-schema-title min-w-0 break-words font-title text-3xl font-bold text-on-surface-strong sm:text-4xl dark:text-on-surface-dark-strong" title="`); err != nil {
+			return err
+		}
+		if _, err := io.WriteString(writer, templ.EscapeString(catalogDocumentTitle(document))+`">`+templ.EscapeString(catalogDocumentTitle(document))+`</h1>`); err != nil {
+			return err
+		}
+		if version := catalogDocumentVersionLabel(document); version != "" {
+			if err := badge.Badge(badge.Config{Label: version, Tone: badge.ToneSecondary, Appearance: badge.AppearanceSoft, Size: badge.SizeSM, RootClass: "shrink-0"}).Render(ctx, writer); err != nil {
+				return err
+			}
+		}
+		if _, err := io.WriteString(writer, `</div></div><nav aria-label="Specification actions" class="flex flex-wrap items-center gap-2"><a href="`+templ.EscapeString(data.DownloadHref)+`" download class="inline-flex min-h-9 items-center justify-center gap-2 rounded-radius border border-outline px-3 text-sm font-semibold text-on-surface-strong transition hover:bg-surface-alt focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary dark:border-outline-dark dark:text-on-surface-dark-strong dark:hover:bg-surface-dark-alt dark:focus-visible:outline-primary-dark">`); err != nil {
+			return err
+		}
+		if err := icon.Icon(icon.Config{SpriteURL: heroicons.SpriteURL, Symbol: heroicons.Icon16SolidArrowDownTray, Size: icon.SizeSM, Decorative: true}).Render(ctx, writer); err != nil {
+			return err
+		}
+		if _, err := io.WriteString(writer, `<span>Download source</span></a></nav></div>`); err != nil {
+			return err
+		}
+		if document.Overview.Description != "" {
+			if _, err := io.WriteString(writer, `<p class="max-w-[70ch] whitespace-pre-wrap text-base leading-7 text-on-surface-muted dark:text-on-surface-dark-muted">`+templ.EscapeString(document.Overview.Description)+`</p>`); err != nil {
+				return err
+			}
+		}
+		if err := catalogSourceStatus(data).Render(ctx, writer); err != nil {
+			return err
+		}
+		_, err := io.WriteString(writer, `</header>`)
+		return err
+	})
+	if err := component.Render(context.Background(), &output); err != nil {
+		return nil, err
+	}
+	return output.Bytes(), nil
 }
 
 func TestCatalogDocumentOverviewRendersOnlyDeclaredOpenAPIInfo(t *testing.T) {

@@ -133,6 +133,21 @@ func TestSchemaDetailFragmentUsesOneCanonicalCatalogComponent(t *testing.T) {
 	}
 }
 
+func TestCatalogDocumentHeaderFragmentUsesOneCanonicalCatalogComponent(t *testing.T) {
+	root := repositoryRoot(t)
+	source, err := os.ReadFile(filepath.Join(root, "internal", "web", "templates", "catalog.templ"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(source)
+	if strings.Contains(text, `<header data-catalog-document-header`) {
+		t.Fatal("catalog template retains a second document-header renderer")
+	}
+	if !strings.Contains(text, "@localrender.CatalogDocumentHeader(*data.DocumentHeader") {
+		t.Fatal("catalog template does not delegate to canonical document-header renderer")
+	}
+}
+
 func TestOperationHeaderFragmentUsesOneCanonicalComponent(t *testing.T) {
 	root := repositoryRoot(t)
 	source, err := os.ReadFile(filepath.Join(root, "internal", "web", "templates", "catalog.templ"))
