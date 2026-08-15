@@ -735,6 +735,46 @@ func TestCatalogDocumentComboboxFiltersDistinctKeysAndEmitsCanonicalSelection(t 
 	}
 }
 
+func TestCatalogDocumentMetricsPreparedAndMatchesSSRBytes(t *testing.T) {
+	t.Parallel()
+
+	for _, mount := range []string{"/", "/kubernetes"} {
+		mount := mount
+		t.Run(mount, func(t *testing.T) {
+			t.Parallel()
+			handler, snapshot := catalogHandlerFixture(t, mount)
+			catalogHandler := handler.(*CatalogHandler)
+			data, err := catalogHandler.catalogPageData(context.Background(), snapshot, mount, "core-v1", "", "", "", "")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if data.DocumentMetrics == nil {
+				t.Fatal("catalog document did not prepare metrics")
+			}
+			fragment, err := data.DocumentMetrics.Bytes(context.Background())
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !bytes.Contains(fragment, []byte(`>Operations</p>`)) || !bytes.Contains(fragment, []byte(`>Schemas</p>`)) {
+				t.Fatalf("prepared metrics omitted labels: %s", fragment)
+			}
+			requestPath := "/documents/core-v1/"
+			if mount != "/" {
+				requestPath = mount + requestPath
+			}
+			response := httptest.NewRecorder()
+			catalogHandler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, requestPath, nil))
+			if response.Code != http.StatusOK {
+				t.Fatalf("catalog document = %d body=%q", response.Code, response.Body.String())
+			}
+			body := response.Body.Bytes()
+			if bytes.Count(body, fragment) != 1 {
+				t.Fatalf("SSR rendered prepared metrics %d times, want once", bytes.Count(body, fragment))
+			}
+		})
+	}
+}
+
 func TestCatalogSchemaLoadsOneProgressiveNodeWithNoJSFallback(t *testing.T) {
 	t.Parallel()
 

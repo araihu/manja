@@ -132,6 +132,11 @@ func (handler *CatalogHandler) catalogPageDataWithSidebarQuery(
 		return templates.CatalogPageData{}, err
 	}
 	data.DocumentInfo = &documentInfo
+	documentMetrics, err := localrender.PrepareCatalogDocumentMetrics(document)
+	if err != nil {
+		return templates.CatalogPageData{}, err
+	}
+	data.DocumentMetrics = &documentMetrics
 	documentSecuritySchemes, err := localrender.PrepareCatalogDocumentSecuritySchemes(document)
 	if err != nil {
 		return templates.CatalogPageData{}, err

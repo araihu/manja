@@ -573,6 +573,57 @@ func TestPreparedCatalogDocumentInfoMatchesLegacySSRBytes(t *testing.T) {
 	}
 }
 
+func TestPreparedCatalogDocumentMetricsMatchesLegacySSRBytes(t *testing.T) {
+	t.Parallel()
+
+	for _, test := range []struct {
+		name       string
+		operations int
+		schemas    int
+	}{
+		{name: "empty", operations: 0, schemas: 0},
+		{name: "mixed", operations: 2, schemas: 1},
+		{name: "large", operations: 20_000, schemas: 20_000},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			document := catalog.DocumentDirectoryV1{
+				Key:        "core-v1",
+				Operations: make([]catalog.OperationDirectoryV1, test.operations),
+				Schemas:    make([]catalog.SchemaDirectoryV1, test.schemas),
+			}
+			fragment, err := localrender.PrepareCatalogDocumentMetrics(document)
+			if err != nil {
+				t.Fatal(err)
+			}
+			data := CatalogPageData{Document: &document, DocumentMetrics: &fragment}
+			var delegated bytes.Buffer
+			if err := catalogDocumentMetrics(data).Render(context.Background(), &delegated); err != nil {
+				t.Fatal(err)
+			}
+			legacy, err := renderLegacyCatalogDocumentMetrics(document)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !bytes.Equal(legacy, delegated.Bytes()) {
+				index := firstDifferentByte(legacy, delegated.Bytes())
+				t.Fatalf("prepared document metrics changed SSR bytes at byte %d:\nlegacy=%q\ndelegated=%q", index, nearbyBytes(legacy, index), nearbyBytes(delegated.Bytes(), index))
+			}
+		})
+	}
+}
+
+func renderLegacyCatalogDocumentMetrics(document catalog.DocumentDirectoryV1) ([]byte, error) {
+	var output bytes.Buffer
+	component := templ.ComponentFunc(func(_ context.Context, writer io.Writer) error {
+		_, err := io.WriteString(writer, `<div class="grid gap-4 sm:grid-cols-2"><div class="rounded-radius border border-outline bg-surface p-5 dark:border-outline-dark dark:bg-surface-dark"><p class="text-sm font-medium text-on-surface-muted dark:text-on-surface-dark-muted">Operations</p><p class="mt-2 break-words font-title text-2xl font-bold text-on-surface-strong dark:text-on-surface-dark-strong">`+fmt.Sprintf("%d", len(document.Operations))+`</p></div><div class="rounded-radius border border-outline bg-surface p-5 dark:border-outline-dark dark:bg-surface-dark"><p class="text-sm font-medium text-on-surface-muted dark:text-on-surface-dark-muted">Schemas</p><p class="mt-2 break-words font-title text-2xl font-bold text-on-surface-strong dark:text-on-surface-dark-strong">`+fmt.Sprintf("%d", len(document.Schemas))+`</p></div></div>`)
+		return err
+	})
+	if err := component.Render(context.Background(), &output); err != nil {
+		return nil, err
+	}
+	return output.Bytes(), nil
+}
+
 func TestPreparedCatalogDocumentInfoPreservesLegacyTermsWhitespaceBytes(t *testing.T) {
 	tests := []struct {
 		name        string

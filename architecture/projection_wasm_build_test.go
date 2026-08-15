@@ -181,6 +181,24 @@ func TestCatalogDocumentSecuritySchemesFragmentUsesOneCanonicalCatalogComponent(
 	}
 }
 
+func TestCatalogDocumentMetricsFragmentUsesOneCanonicalCatalogComponent(t *testing.T) {
+	root := repositoryRoot(t)
+	source, err := os.ReadFile(filepath.Join(root, "internal", "web", "templates", "catalog.templ"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(source)
+	if strings.Contains(text, `class="grid gap-4 sm:grid-cols-2"`) {
+		t.Fatal("catalog template retains a second document-metrics renderer")
+	}
+	if strings.Contains(text, "data.Document.Operations") || strings.Contains(text, "data.Document.Schemas") {
+		t.Fatal("catalog template reads document metrics outside the canonical fragment")
+	}
+	if !strings.Contains(text, "@localrender.CatalogDocumentMetrics(*data.DocumentMetrics)") {
+		t.Fatal("catalog template does not delegate to canonical document-metrics renderer")
+	}
+}
+
 func TestOperationHeaderFragmentUsesOneCanonicalComponent(t *testing.T) {
 	root := repositoryRoot(t)
 	source, err := os.ReadFile(filepath.Join(root, "internal", "web", "templates", "catalog.templ"))

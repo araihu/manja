@@ -104,6 +104,7 @@ type CatalogPageData struct {
 	DocumentHref string
 	DocumentHeader *localrender.CatalogDocumentHeaderFragment
 	DocumentInfo *localrender.CatalogDocumentInfoFragment
+	DocumentMetrics *localrender.CatalogDocumentMetricsFragment
 	DocumentSecuritySchemes *localrender.CatalogDocumentSecuritySchemesFragment
 	CatalogReadme string
 	CatalogLicense CatalogOrganizationLicenseData
@@ -768,6 +769,8 @@ templ catalogMetric(label string, value string) {
 	</div>
 }
 
+// Keep the document metric and security component calls adjacent inside the
+// overview: legacy SSR emits no whitespace between these fragments.
 templ catalogDocument(data CatalogPageData) {
 	<main data-catalog-document={ data.Document.Key } class="pb-16">
 		if data.Selected == nil {
@@ -775,11 +778,7 @@ templ catalogDocument(data CatalogPageData) {
 		}
 		if data.Selected == nil {
 			@catalogDocumentInfo(data)
-			<div class="grid gap-4 sm:grid-cols-2">
-				@catalogMetric("Operations", fmt.Sprintf("%d", len(data.Document.Operations)))
-				@catalogMetric("Schemas", fmt.Sprintf("%d", len(data.Document.Schemas)))
-			</div>
-			@catalogDocumentSecuritySchemes(data)
+			@catalogDocumentMetrics(data)@catalogDocumentSecuritySchemes(data)
 		} else if data.Selected.Operation != nil {
 			@catalogOperationDetail(data)
 		} else if data.Selected.Schema != nil {
@@ -802,6 +801,25 @@ templ catalogDocumentInfo(data CatalogPageData) {
 	} else {
 		@catalogDocumentInfoFallback(data)
 	}
+}
+
+templ catalogDocumentMetrics(data CatalogPageData) {
+	if data.DocumentMetrics != nil {
+		@localrender.CatalogDocumentMetrics(*data.DocumentMetrics)
+	} else {
+		@catalogDocumentMetricsFallback(data)
+	}
+}
+
+func catalogDocumentMetricsFallback(data CatalogPageData) templpkg.Component {
+	if data.Document == nil {
+		return templpkg.NopComponent
+	}
+	fragment, err := localrender.PrepareCatalogDocumentMetrics(*data.Document)
+	if err != nil {
+		return templpkg.NopComponent
+	}
+	return localrender.CatalogDocumentMetrics(fragment)
 }
 
 templ catalogDocumentSecuritySchemes(data CatalogPageData) {
