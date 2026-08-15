@@ -2,6 +2,7 @@ package selfhosted
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -10,19 +11,71 @@ import (
 	"time"
 )
 
+type startupResult struct {
+	handler http.Handler
+	err     error
+}
+
+func startWithContext(ctx context.Context, start func(context.Context) (http.Handler, error)) (http.Handler, error) {
+	results := make(chan startupResult, 1)
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		handler, err := start(ctx)
+		results <- startupResult{handler: handler, err: err}
+	}()
+
+	select {
+	case got := <-results:
+		<-done
+		return got.handler, got.err
+	case <-ctx.Done():
+		<-done
+		return nil, ctx.Err()
+	}
+}
+
+func TestStartWithContextWaitsForStartupBeforeReturningDeadline(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	started := make(chan struct{})
+	finished := make(chan struct{})
+	result := make(chan error, 1)
+	go func() {
+		_, err := startWithContext(ctx, func(ctx context.Context) (http.Handler, error) {
+			close(started)
+			<-ctx.Done()
+			close(finished)
+			return nil, ctx.Err()
+		})
+		result <- err
+	}()
+
+	<-started
+	cancel()
+	select {
+	case err := <-result:
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("startup error = %v, want context canceled", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("startWithContext did not return after startup finished")
+	}
+	select {
+	case <-finished:
+	default:
+		t.Fatal("startWithContext returned before startup finished")
+	}
+}
+
 func TestDefaultGitHubFixtureStartsWithinDeadline(t *testing.T) {
 	// The race detector substantially slows schema/example construction. Thirty
 	// seconds keeps the startup contract bounded while leaving CI headroom.
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	type result struct {
-		handler http.Handler
-		err     error
-	}
-	results := make(chan result, 1)
 	dataDir := t.TempDir()
-	go func() {
-		handler, err := NewWithOptions(ctx, Options{
+	handler, err := startWithContext(ctx, func(ctx context.Context) (http.Handler, error) {
+		return NewWithOptions(ctx, Options{
 			ProjectID: "github",
 			SourceID:  "github-fixture",
 			SpecPath: filepath.Join(
@@ -30,21 +83,17 @@ func TestDefaultGitHubFixtureStartsWithinDeadline(t *testing.T) {
 			),
 			DataDir: dataDir,
 		})
-		results <- result{handler: handler, err: err}
-	}()
-
-	select {
-	case <-ctx.Done():
-		t.Fatalf("default self-hosted fixture did not start within deadline: %v", ctx.Err())
-	case got := <-results:
-		if got.err != nil {
-			t.Fatalf("start default self-hosted fixture: %v", got.err)
+	})
+	if err != nil {
+		if errors.Is(err, context.DeadlineExceeded) {
+			t.Fatalf("default self-hosted fixture did not start within deadline: %v", ctx.Err())
 		}
-		recorder := httptest.NewRecorder()
-		got.handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/", nil))
-		if recorder.Code != http.StatusOK {
-			t.Fatalf("default fixture status = %d", recorder.Code)
-		}
+		t.Fatalf("start default self-hosted fixture: %v", err)
+	}
+	recorder := httptest.NewRecorder()
+	handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/", nil))
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("default fixture status = %d", recorder.Code)
 	}
 }
 
