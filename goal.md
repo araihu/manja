@@ -1247,6 +1247,61 @@ this branch, and records blockers as blockers. Technical, design, and product
 reviews remain suspended until explicit user authorization; merge, release,
 deployment, cleanup, and other lifecycle actions remain unauthorized.
 
+### OC-04AE / OC-03 frozen packet reconciliation and gate receipts (2026-08-15)
+
+OC-04AE arrived from `/private/tmp/manja-oc04ae-hybrid-eligibility`, branch
+`codex/oc04ae-hybrid-eligibility`, exact head
+`548cf7cf9adfcdaf60fe770c2177bf4389a2737d`, tree
+`cd943cf88694105e7187ef7158c3a5db8bc40dc1`, parent
+`084a81e7a1f285510fde817473f3a4452ba36b87` / tree
+`a69e3f00ecec277e3b49f2d8782303a5171c8a36`, clean status. Its owned paths are
+`internal/localdocs/abi/activation.go` and `internal/localdocs/abi/activation_test.go`.
+The packet is a parser-free browser ABI and activation seam with same-origin
+GET allowlisting, immutable copies, fail-closed SSR fallback, and no packaged
+`.wasm` or `wasm_exec` runtime. Its focused Playwright, template, and Wasm
+boundary gates passed.
+
+OC-03 arrived from `/private/tmp/manja-oc03-lifecycle-worker`, branch
+`codex/oc03-lifecycle-worker`, exact head
+`9efbf83c354a7cacc9cb05d4e78cbb4f2cbfb111`, tree
+`17e891c2d57972642012343c8cac18c6c7f3d572`, parent/base
+`69c9516b79131ee7c72b67410de7e0c2ef5957ee` / tree
+`f2f7f5fe5c09977bf101280da4fcf20c58e9e1ba`, clean status. Its owned paths are
+`application/catalog/runtime.go`, `internal/adapters/catalogstore/activation.go`,
+`internal/adapters/catalogstore/activation_test.go`,
+`internal/adapters/catalogstore/crash_test.go`,
+`internal/adapters/catalogstore/gc.go`,
+`internal/adapters/catalogstore/recovery.go`, and
+`internal/adapters/catalogstore/store_test.go`. RED captured
+`ErrActivationPending`; GREEN covered journal/LKG/rollback recovery, race, vet,
+architecture/Wasm, Muamba, and webassets behavior.
+
+Owned paths are disjoint. Both packets were selected unchanged, preserving the
+original frozen refs and worktrees. OC-03 was cherry-picked onto the frozen
+OC-04AE child, producing reconciler head
+`8035a9faefa9b8ed45032375dd63d7cfd635cd1f`, tree
+`1bd5821c2633342fce81baa3f5014691dbf6c032`, with direct parent
+`548cf7cf9adfcdaf60fe770c2177bf4389a2737d`. This is a scope reconciliation,
+not a technical, design, or product review verdict.
+
+Focused receipts passed: normal ABI/catalogstore/catalog/web tests; race ABI,
+catalogstore `253.450s`, catalog `249.548s`, and web `3.053s`; architecture
+`9.687s`; direct ABI and projection `GOOS=js GOARCH=wasm` builds; and affected
+vet. Strict Muamba verification, strict generated-Go check, webassets check,
+templ generation (`updates=0`), Redocly bundle/lint, API code generation, and
+site tests passed. Redocly retained only the existing three warnings: missing
+API license, localhost server URL, and health operation without a 4XX response.
+Uncached root normal `GOWORK=off go test ./... -count=1` passed, including
+self-hosted `167.961s` and E2E `193.142s`; root race passed, including catalog
+`267.231s`, catalogstore `272.420s`, self-hosted `204.946s`, and E2E `204.319s`.
+`git diff --check` passed and generated trees remained unchanged.
+
+The dedicated reconciler ref is `codex/opencore-reconciler-next`; local and
+remote point to the exact head/tree above, with staged, unstaged, and untracked
+counts all zero. Technical, design, and product reviews remain suspended until
+explicit user authorization. Merge, release, deployment, cleanup, and other
+lifecycle actions remain unauthorized.
+
 ## PR Gate
 
 At `2026-08-11T18:54:35Z`, [PR
@@ -1283,12 +1338,10 @@ Before merge:
 
 ## Next Action
 
-Await the two frozen OC-04AE and OC-03 implementer packets from the exact cycle
-base. Compare exact identities, status, owned paths, and receipts; consolidate
-only disjoint compatible changes; then run focused and complete root gates,
-rebase and push the evolving reconciler checkpoint, and verify exact
-SHA/tree/status after each movement. PM chooses and separately authorizes any
-integration path.
+Hold the exact frozen reconciler candidate pending an explicit review signal.
+If authorized, start independent technical, design, and product reviews against
+the exact head/tree/status above; any correction requires a fresh identity-bound
+review. PM chooses and separately authorizes any integration path.
 Any push, PR, or head movement restarts exact-head CI, CodeQL, independent
 review, and substantive CodeRabbit gates; absence or failure blocks integration.
 Overall provenance remains `BLOCKED`; legal authority and final-artifact
