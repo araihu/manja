@@ -469,15 +469,18 @@ func Pack(request PackageRequest, policy Policy) (PackageResult, error) {
 	// exclusions before staging. Notice placement is intentionally deferred:
 	// the final inventory does not exist until legal files and the generated
 	// SBOM have been copied into a private staging root.
-	_, dependencyFindings := validateDependencies(request.Dependencies)
+	dependencyByName, dependencyFindings := validateDependencies(request.Dependencies)
 	mechanicalFindings = append(mechanicalFindings, dependencyFindings...)
-	dependencyByName, _ := validateDependencies(request.Dependencies)
 	for _, artifact := range evidence.Artifacts {
 		mechanicalFindings = append(mechanicalFindings, validateArtifact(artifact, policy, dependencyByName, request.Legal, false, authorityPassed)...)
 	}
 	if authorityPassed {
+		checkedKinds := make(map[ArtifactKind]struct{}, len(request.Artifacts))
 		for _, artifactRequest := range request.Artifacts {
-			mechanicalFindings = append(mechanicalFindings, validateLegal(request.Legal, requiredPaths(policy, artifactRequest.Kind))...)
+			if _, checked := checkedKinds[artifactRequest.Kind]; !checked {
+				checkedKinds[artifactRequest.Kind] = struct{}{}
+				mechanicalFindings = append(mechanicalFindings, validateLegal(request.Legal, requiredPaths(policy, artifactRequest.Kind))...)
+			}
 			mechanicalFindings = append(mechanicalFindings, validateLegalAgainstRoot(artifactRequest, request.LegalRoot, request.Legal, policy)...)
 		}
 	}
@@ -487,12 +490,13 @@ func Pack(request PackageRequest, policy Policy) (PackageResult, error) {
 	if len(mechanicalFindings) > 0 || request.Provenance.Status != StatusPass || request.RightsHolder.Status != StatusPass {
 		mechanical := Evaluate(evidence, policy)
 		mechanical.Findings = append(mechanical.Findings, mechanicalFindings...)
-		sortFindings(mechanical.Findings)
+		mechanical.Findings = deduplicateFindings(mechanical.Findings)
 		mechanical.Status = StatusBlocked
 		result.Result = mechanical
 		return result, nil
 	}
 	if request.OutputDir == "" {
+		result.Result = Result{Status: StatusBlocked, Findings: []Finding{{Code: "artifact.output.missing", Detail: "package output directory is required after all gates pass"}}}
 		return result, errors.New("package output directory is required after all gates pass")
 	}
 	stagingOutput, err := os.MkdirTemp("", "manja-distribution-output-")
@@ -502,14 +506,15 @@ func Pack(request PackageRequest, policy Policy) (PackageResult, error) {
 	defer os.RemoveAll(stagingOutput)
 	stagedRequest := request
 	stagedRequest.OutputDir = stagingOutput
+	prePackagingEvidence := evidence
+	prePackagingEvidence.Artifacts = append([]ArtifactEvidence(nil), evidence.Artifacts...)
 
 	for index, artifactRequest := range request.Artifacts {
 		artifact := evidence.Artifacts[index]
 		output, finalEvidence, err := packageOne(artifactRequest, artifact, stagedRequest, policy)
 		if err != nil {
-			result.Result.Status = StatusBlocked
-			result.Result.Findings = append(result.Result.Findings, Finding{Code: "artifact.package.failed", Subject: artifactRequest.Name, Detail: err.Error()})
-			sortFindings(result.Result.Findings)
+			result.Evidence = prePackagingEvidence
+			result.Result = Result{Status: StatusBlocked, Findings: []Finding{{Code: "artifact.package.failed", Subject: artifactRequest.Name, Detail: err.Error()}}}
 			result.Outputs = nil
 			return result, nil
 		}
@@ -531,13 +536,28 @@ func Pack(request PackageRequest, policy Policy) (PackageResult, error) {
 }
 
 func publishOutputs(outputDir string, outputs []PackagedArtifact) ([]PackagedArtifact, error) {
-	if err := os.MkdirAll(outputDir, 0o755); err != nil {
+	outputDirExisted := false
+	if info, err := os.Lstat(outputDir); err == nil {
+		outputDirExisted = true
+		if !info.IsDir() {
+			return nil, fmt.Errorf("package output path is not a directory")
+		}
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return nil, fmt.Errorf("inspect package output directory: %w", err)
+	} else if err := os.MkdirAll(outputDir, 0o755); err != nil {
 		return nil, fmt.Errorf("create package output directory: %w", err)
 	}
 	published := make([]string, 0, len(outputs))
 	cleanup := func() {
 		for _, pathValue := range published {
 			_ = os.Remove(pathValue)
+		}
+		if outputDirExisted {
+			return
+		}
+		entries, err := os.ReadDir(outputDir)
+		if err == nil && len(entries) == 0 {
+			_ = os.Remove(outputDir)
 		}
 	}
 	for index := range outputs {
@@ -615,8 +635,13 @@ func inspectRequestedArtifact(request ArtifactRequest, policy Policy, dependenci
 			findings = append(findings, Finding{Code: "artifact.sbom.license_invalid", Subject: request.Name, Detail: err.Error()})
 		} else {
 			artifact.SBOM = sbom
-			artifact.SBOM.Source = sbomPath(policy, request.Kind, request.Name)
-			findings = append(findings, validateExistingSBOM(request.Root, artifact.SBOM.Source, sbomBytes, request.Name)...)
+			sbomRelativePath, pathErr := sbomPath(policy, request.Kind, request.Name)
+			if pathErr != nil {
+				findings = append(findings, Finding{Code: "artifact.sbom.path_unsafe", Subject: request.Name, Detail: pathErr.Error()})
+			} else {
+				artifact.SBOM.Source = sbomRelativePath
+				findings = append(findings, validateExistingSBOM(request.Root, artifact.SBOM.Source, sbomBytes, request.Name)...)
+			}
 		}
 	}
 	return artifact, findings
@@ -722,7 +747,10 @@ func packageOne(request ArtifactRequest, artifact ArtifactEvidence, packageReque
 	if err != nil {
 		return PackagedArtifact{}, artifact, err
 	}
-	sbomRelativePath := sbomPath(policy, request.Kind, request.Name)
+	sbomRelativePath, err := sbomPath(policy, request.Kind, request.Name)
+	if err != nil {
+		return PackagedArtifact{}, artifact, fmt.Errorf("invalid SBOM path: %w", err)
+	}
 	sbomFilePath := filepath.Join(staging, filepath.FromSlash(sbomRelativePath))
 	if err := os.MkdirAll(filepath.Dir(sbomFilePath), 0o755); err != nil {
 		return PackagedArtifact{}, artifact, err
@@ -772,16 +800,19 @@ func installLegalFiles(staging string, kind ArtifactKind, legalRoot string, lega
 				return fmt.Errorf("required legal file %q is absent and no legal source root was supplied", requiredPath)
 			}
 			source := filepath.Join(legalRoot, filepath.Base(filepath.FromSlash(file.Path)))
-			actual, err := regularFileEvidence(source, file.Path)
+			info, err := os.Lstat(source)
 			if err != nil {
 				return fmt.Errorf("read legal file %q: %w", requiredPath, err)
 			}
-			if actual.Size != file.Size || actual.Digest != file.Digest {
-				return fmt.Errorf("legal file %q differs from supplied evidence", file.Path)
+			if info.Mode()&os.ModeType != 0 || !info.Mode().IsRegular() {
+				return fmt.Errorf("legal file %q must be a regular file", file.Path)
 			}
 			data, err := os.ReadFile(source)
 			if err != nil {
 				return fmt.Errorf("read legal file %q: %w", requiredPath, err)
+			}
+			if int64(len(data)) != file.Size || digestForExpected(data, file.Digest) != file.Digest {
+				return fmt.Errorf("legal file %q differs from supplied evidence", file.Path)
 			}
 			if err := os.MkdirAll(filepath.Dir(destination), 0o755); err != nil {
 				return err
@@ -999,12 +1030,13 @@ func requiredPaths(policy Policy, kind ArtifactKind) []string {
 	return append([]string(nil), policy.RequiredLegalPaths...)
 }
 
-func sbomPath(policy Policy, kind ArtifactKind, name string) string {
+func sbomPath(policy Policy, kind ArtifactKind, name string) (string, error) {
+	candidate := "sbom/" + name + ".cdx.json"
 	if prefix, exists := policy.SBOMPlacement[kind]; exists && strings.TrimSpace(prefix) != "" {
 		prefix = strings.TrimSuffix(strings.ReplaceAll(prefix, "\\", "/"), "/")
-		return prefix + "/" + name + ".cdx.json"
+		candidate = prefix + "/" + name + ".cdx.json"
 	}
-	return "sbom/" + name + ".cdx.json"
+	return canonicalRelativePath(candidate)
 }
 
 func dependenciesForArtifact(names []string, dependencies []DependencyEvidence) []DependencyEvidence {

@@ -595,6 +595,21 @@ func sortFindings(findings []Finding) {
 	})
 }
 
+func deduplicateFindings(findings []Finding) []Finding {
+	if len(findings) < 2 {
+		return findings
+	}
+	sortFindings(findings)
+	unique := findings[:1]
+	for _, finding := range findings[1:] {
+		if finding == unique[len(unique)-1] {
+			continue
+		}
+		unique = append(unique, finding)
+	}
+	return unique
+}
+
 // MarshalCanonical emits stable, sorted evidence bytes. It is an evidence
 // serialization seam, not a release artifact writer.
 func MarshalCanonical(evidence Evidence) ([]byte, error) {
@@ -650,7 +665,18 @@ func normalize(evidence Evidence) Evidence {
 		}
 		sort.Strings(copyEvidence.Artifacts[index].Dependencies)
 		sort.Slice(copyEvidence.Artifacts[index].Files, func(left, right int) bool {
-			return copyEvidence.Artifacts[index].Files[left].Path < copyEvidence.Artifacts[index].Files[right].Path
+			leftFile := copyEvidence.Artifacts[index].Files[left]
+			rightFile := copyEvidence.Artifacts[index].Files[right]
+			if leftFile.Path != rightFile.Path {
+				return leftFile.Path < rightFile.Path
+			}
+			if leftFile.Type != rightFile.Type {
+				return leftFile.Type < rightFile.Type
+			}
+			if leftFile.Size != rightFile.Size {
+				return leftFile.Size < rightFile.Size
+			}
+			return leftFile.Digest < rightFile.Digest
 		})
 		sort.Slice(copyEvidence.Artifacts[index].Platforms, func(left, right int) bool {
 			leftPlatform := copyEvidence.Artifacts[index].Platforms[left]
@@ -661,12 +687,21 @@ func normalize(evidence Evidence) Evidence {
 		})
 	}
 	sort.Slice(copyEvidence.Dependencies, func(left, right int) bool {
-		leftKey := copyEvidence.Dependencies[left].Ecosystem + "\x00" + copyEvidence.Dependencies[left].Name
-		rightKey := copyEvidence.Dependencies[right].Ecosystem + "\x00" + copyEvidence.Dependencies[right].Name
-		return leftKey < rightKey
+		leftDependency := copyEvidence.Dependencies[left]
+		rightDependency := copyEvidence.Dependencies[right]
+		leftKey, _ := json.Marshal(leftDependency)
+		rightKey, _ := json.Marshal(rightDependency)
+		return string(leftKey) < string(rightKey)
 	})
 	sort.Slice(copyEvidence.Artifacts, func(left, right int) bool {
-		return copyEvidence.Artifacts[left].Name < copyEvidence.Artifacts[right].Name
+		leftArtifact := copyEvidence.Artifacts[left]
+		rightArtifact := copyEvidence.Artifacts[right]
+		if leftArtifact.Name != rightArtifact.Name {
+			return leftArtifact.Name < rightArtifact.Name
+		}
+		leftKey, _ := json.Marshal(leftArtifact)
+		rightKey, _ := json.Marshal(rightArtifact)
+		return string(leftKey) < string(rightKey)
 	})
 	return copyEvidence
 }

@@ -179,6 +179,26 @@ func TestPackBlockedAuthorityNeverWritesReleaseArtifacts(t *testing.T) {
 	}
 }
 
+func TestPackReportsMissingOutputDirectoryAfterGates(t *testing.T) {
+	root := t.TempDir()
+	writeTestFile(t, root, "bin/manja", "binary")
+	legalRoot, legal := testLegalEvidence(t)
+
+	result, err := Pack(PackageRequest{
+		Subject:      SubjectEvidence{CommitSHA: strings.Repeat("a", 40), TreeSHA: strings.Repeat("b", 40)},
+		Provenance:   AuthorityEvidence{Status: StatusPass, Reference: "provenance-receipt", Digest: "sha256:" + strings.Repeat("1", 64)},
+		RightsHolder: AuthorityEvidence{Status: StatusPass, Reference: "rights-receipt", Digest: "sha256:" + strings.Repeat("2", 64)},
+		Legal:        legal, LegalRoot: legalRoot,
+		Artifacts: []ArtifactRequest{{Name: "manja", Kind: ArtifactBinary, Source: "git:test", Root: root}},
+	}, DefaultPolicy())
+	if err == nil {
+		t.Fatal("Pack accepted a missing output directory")
+	}
+	if result.Result.Status != StatusBlocked || !result.Result.HasCode("artifact.output.missing") {
+		t.Fatalf("result = %#v, want explicit output-directory blocker", result.Result)
+	}
+}
+
 func TestPackPassesSyntheticAuthorityAndPlacesNotices(t *testing.T) {
 	root := t.TempDir()
 	writeTestFile(t, root, "bin/manja", "binary")
@@ -197,14 +217,15 @@ func TestPackPassesSyntheticAuthorityAndPlacesNotices(t *testing.T) {
 		t.Fatal(err)
 	}
 	output := filepath.Join(t.TempDir(), "release")
-	result, err := Pack(PackageRequest{
+	packageRequest := PackageRequest{
 		Subject:      SubjectEvidence{CommitSHA: strings.Repeat("a", 40), TreeSHA: strings.Repeat("b", 40)},
 		Provenance:   AuthorityEvidence{Status: StatusPass, Reference: "provenance-receipt", Digest: "sha256:" + strings.Repeat("1", 64)},
 		RightsHolder: AuthorityEvidence{Status: StatusPass, Reference: "rights-receipt", Digest: "sha256:" + strings.Repeat("2", 64)},
 		Legal:        legal, LegalRoot: legalRoot,
 		Artifacts: []ArtifactRequest{{Name: "manja", Kind: ArtifactBinary, Source: "git:test", Root: root, RootDigest: rootInventory.Digest}},
 		OutputDir: output,
-	}, DefaultPolicy())
+	}
+	result, err := Pack(packageRequest, DefaultPolicy())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -215,8 +236,18 @@ func TestPackPassesSyntheticAuthorityAndPlacesNotices(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !bytes.Equal(archive, mustRead(t, result.Outputs[0].Path)) {
-		t.Fatal("packaged archive read is not stable")
+	secondOutput := filepath.Join(t.TempDir(), "release")
+	packageRequest.OutputDir = secondOutput
+	second, err := Pack(packageRequest, DefaultPolicy())
+	if err != nil {
+		t.Fatal(err)
+	}
+	secondArchive, err := os.ReadFile(second.Outputs[0].Path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Outputs[0].Digest != second.Outputs[0].Digest || !bytes.Equal(archive, secondArchive) {
+		t.Fatal("equivalent package inputs produced different archive bytes")
 	}
 	inspected, err := InspectArchive(result.Outputs[0].Path, ArchiveOptions{ExpectedDigest: result.Outputs[0].Digest})
 	if err != nil {
@@ -290,6 +321,10 @@ func TestPackValidatesLegalBytesBeforeCreatingOutput(t *testing.T) {
 func TestPackDoesNotLeaveArtifactsWhenLaterPackageFails(t *testing.T) {
 	firstRoot := t.TempDir()
 	writeTestFile(t, firstRoot, "bin/first", "first")
+	firstInventory, err := InspectRoot(firstRoot, RootOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
 	secondRoot := t.TempDir()
 	writeTestFile(t, secondRoot, "bin/second", "second")
 	legalRoot, legal := testLegalEvidence(t)
@@ -317,8 +352,67 @@ func TestPackDoesNotLeaveArtifactsWhenLaterPackageFails(t *testing.T) {
 	if len(result.Outputs) != 0 {
 		t.Fatalf("outputs = %#v, want none after staged package failure", result.Outputs)
 	}
+	if len(result.Evidence.Artifacts) != 2 || result.Evidence.Artifacts[0].Digest != firstInventory.Digest {
+		t.Fatalf("evidence = %#v, want pre-packaging artifact evidence", result.Evidence)
+	}
 	if _, err := os.Stat(output); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("output directory exists after staged package failure: %v", err)
+	}
+}
+
+func TestPublishOutputsRemovesOnlyNewEmptyDirectoryOnFailure(t *testing.T) {
+	staged := t.TempDir()
+	first := filepath.Join(staged, "first.tar")
+	if err := os.WriteFile(first, []byte("archive"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	outputRoot := t.TempDir()
+	newOutput := filepath.Join(outputRoot, "new-release")
+	if _, err := publishOutputs(newOutput, []PackagedArtifact{
+		{Name: "first", Path: first},
+		{Name: "second", Path: filepath.Join(staged, "missing.tar")},
+	}); err == nil {
+		t.Fatal("publishOutputs accepted a missing staged archive")
+	}
+	if _, err := os.Stat(newOutput); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("new output directory survived failed publication: %v", err)
+	}
+
+	existingOutput := filepath.Join(outputRoot, "existing-release")
+	if err := os.Mkdir(existingOutput, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := publishOutputs(existingOutput, []PackagedArtifact{
+		{Name: "first", Path: first},
+		{Name: "second", Path: filepath.Join(staged, "missing.tar")},
+	}); err == nil {
+		t.Fatal("publishOutputs accepted a missing staged archive in an existing directory")
+	}
+	if _, err := os.Stat(existingOutput); err != nil {
+		t.Fatalf("pre-existing output directory was removed: %v", err)
+	}
+}
+
+func TestPackRejectsUnsafeSBOMPlacement(t *testing.T) {
+	root := t.TempDir()
+	writeTestFile(t, root, "bin/manja", "binary")
+	legalRoot, legal := testLegalEvidence(t)
+	policy := DefaultPolicy()
+	policy.SBOMPlacement = map[ArtifactKind]string{ArtifactBinary: "../outside"}
+
+	result, err := Pack(PackageRequest{
+		Subject:      SubjectEvidence{CommitSHA: strings.Repeat("a", 40), TreeSHA: strings.Repeat("b", 40)},
+		Provenance:   AuthorityEvidence{Status: StatusPass, Reference: "provenance-receipt", Digest: "sha256:" + strings.Repeat("1", 64)},
+		RightsHolder: AuthorityEvidence{Status: StatusPass, Reference: "rights-receipt", Digest: "sha256:" + strings.Repeat("2", 64)},
+		Legal:        legal, LegalRoot: legalRoot,
+		Artifacts: []ArtifactRequest{{Name: "manja", Kind: ArtifactBinary, Source: "git:test", Root: root}},
+		OutputDir: filepath.Join(t.TempDir(), "release"),
+	}, policy)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Result.Status != StatusBlocked || !result.Result.HasCode("artifact.sbom.path_unsafe") {
+		t.Fatalf("result = %#v, want unsafe-SBOM-path blocker", result.Result)
 	}
 }
 
@@ -411,15 +505,6 @@ func fileEvidenceFromPath(t *testing.T, root, relative string) FileEvidence {
 	}
 	digest := sha256.Sum256(data)
 	return FileEvidence{Path: relative, Type: "regular", Size: int64(len(data)), Digest: "sha256:" + hex.EncodeToString(digest[:])}
-}
-
-func mustRead(t *testing.T, pathValue string) []byte {
-	t.Helper()
-	data, err := os.ReadFile(pathValue)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return data
 }
 
 func inventoryHas(files []FileEvidence, pathValue string) bool {

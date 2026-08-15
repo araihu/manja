@@ -237,6 +237,43 @@ func TestCanonicalEvidenceSortsAndIsByteStable(t *testing.T) {
 	}
 }
 
+func TestCanonicalEvidenceUsesTotalOrderingForEqualPrimaryKeys(t *testing.T) {
+	first := validEvidence()
+	second := validEvidence()
+
+	fileA := validFile("same.txt", 1)
+	fileB := validFile("same.txt", 2)
+	fileB.Digest = "sha256:" + strings.Repeat("9", 64)
+	first.Artifacts[0].Files = []FileEvidence{fileA, fileB}
+	second.Artifacts[0].Files = []FileEvidence{fileB, fileA}
+
+	dependencyA := first.Dependencies[0]
+	dependencyA.Version = "v0.0.1"
+	dependencyB := first.Dependencies[0]
+	dependencyB.Version = "v9.9.9"
+	first.Dependencies = []DependencyEvidence{dependencyA, dependencyB}
+	second.Dependencies = []DependencyEvidence{dependencyB, dependencyA}
+
+	artifactA := first.Artifacts[0]
+	artifactA.Source = "git:a"
+	artifactB := first.Artifacts[0]
+	artifactB.Source = "git:b"
+	first.Artifacts = []ArtifactEvidence{artifactA, artifactB}
+	second.Artifacts = []ArtifactEvidence{artifactB, artifactA}
+
+	firstBytes, err := MarshalCanonical(first)
+	if err != nil {
+		t.Fatal(err)
+	}
+	secondBytes, err := MarshalCanonical(second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(firstBytes, secondBytes) {
+		t.Fatalf("canonical bytes differ for equal primary keys:\n%s\n---\n%s", firstBytes, secondBytes)
+	}
+}
+
 func TestEvaluatePassesCompleteEvidenceAndAllRuntimeArtifacts(t *testing.T) {
 	evidence := validEvidence()
 	result := Evaluate(evidence, DefaultPolicy())
