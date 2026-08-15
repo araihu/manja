@@ -54,6 +54,15 @@ func ResolveAuthority(root string, authority AuthorityEvidence) (AuthorityEviden
 	}
 	authority.Receipt = append([]byte(nil), receipt...)
 	authority.resolved = true
+	authority.binding = authorityBinding{
+		reference: authority.Reference,
+		commit:    reference.commit,
+		tree:      reference.tree,
+		path:      reference.path,
+		blob:      reference.blob,
+		digest:    authority.Digest,
+		receipt:   append([]byte(nil), receipt...),
+	}
 	return authority, nil
 }
 

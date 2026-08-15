@@ -81,6 +81,29 @@ func TestResolveAuthorityBindsReferencedReceiptBytes(t *testing.T) {
 	}
 }
 
+func TestEvaluateRejectsAuthorityMutationAfterResolution(t *testing.T) {
+	root, input := gitAuthorityEvidence(t, "docs/legal/provenance-receipt.txt", []byte("provenance receipt"), "https://example.com/manja.git")
+	resolved, err := ResolveAuthority(root, input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	reference, ok := parseAuthorityReference(resolved.Reference)
+	if !ok {
+		t.Fatalf("resolved reference is invalid: %q", resolved.Reference)
+	}
+	mutatedReceipt := []byte("mutated receipt")
+	resolved.Reference = "git:example.com/manja@" + strings.Repeat("f", 40) + ":docs/legal/other-receipt.txt#tree=" + reference.tree + "&blob=" + gitBlobSHA1(mutatedReceipt)
+	resolved.Digest = sha256Digest(mutatedReceipt)
+	resolved.Receipt = mutatedReceipt
+
+	evidence := validEvidence()
+	evidence.Provenance = resolved
+	result := Evaluate(evidence, DefaultPolicy())
+	if result.Status != StatusBlocked || !result.HasCode("authority.provenance.binding_mismatch") {
+		t.Fatalf("result = %#v, want authority mutation blocker", result)
+	}
+}
+
 func TestResolveAuthorityRejectsNonGitWrongRepoAndMissingCommitPath(t *testing.T) {
 	root, input := gitAuthorityEvidence(t, "docs/legal/provenance-receipt.txt", []byte("provenance receipt"), "https://example.com/manja.git")
 	cases := map[string]func(*AuthorityEvidence, string){
@@ -515,6 +538,12 @@ func testProvenanceEvidence() AuthorityEvidence {
 			Redistribution: "verified for test fixture", Trademark: "verified for test fixture",
 		},
 		resolved: true,
+		binding: authorityBinding{
+			reference: "git:example.com/manja@" + strings.Repeat("a", 40) + ":docs/legal/provenance-receipt.txt#tree=" + tree + "&blob=" + gitBlobSHA1(receipt),
+			commit:    strings.Repeat("a", 40), tree: tree,
+			path: "docs/legal/provenance-receipt.txt", blob: gitBlobSHA1(receipt),
+			digest: sha256Digest(receipt), receipt: append([]byte(nil), receipt...),
+		},
 	}
 }
 
@@ -536,6 +565,12 @@ func testRightsHolderEvidence() AuthorityEvidence {
 			Redistribution: "verified for test fixture", Trademark: "verified for test fixture",
 		},
 		resolved: true,
+		binding: authorityBinding{
+			reference: "git:example.com/manja@" + strings.Repeat("b", 40) + ":docs/legal/rights-holder-receipt.txt#tree=" + tree + "&blob=" + gitBlobSHA1(receipt),
+			commit:    strings.Repeat("b", 40), tree: tree,
+			path: "docs/legal/rights-holder-receipt.txt", blob: gitBlobSHA1(receipt),
+			digest: sha256Digest(receipt), receipt: append([]byte(nil), receipt...),
+		},
 	}
 }
 
