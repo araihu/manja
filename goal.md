@@ -1033,6 +1033,19 @@ overlap. Reconciliation selected only Implementer 2 and preserved Implementer
 `ee36f634512da6b473dc2e2ebee3906d200affe7`; this is a scope disposition, not
 a technical or design review verdict.
 
+Reconciliation gate receipts: templ generation completed with `updates=0` and
+the generated diff check passed; focused localdocs/web/templates, focused
+race, architecture/Wasm, vet, build, `go mod tidy -diff`, strict Muamba, and
+webassets checks passed. Two uncached `GOWORK=off go test ./... -count=1` runs
+exited only on the pre-existing `internal/web/e2e` failure
+`TestCatalogDocumentSearchUsesGlobalModal` (`focusVisible=false`); its
+isolated run passed, while the complete E2E package reproduced the failure.
+The root race run and its isolated reproduction exited only on
+`application/catalog` `TestCompilerCompilesCompleteLockedKubernetesCatalog`
+with `global Kubernetes search "apps v1 deployment": search_deadline`; all
+other root race packages passed. Full root and root-race gates therefore remain
+explicitly blocked by those external timing failures, not silently accepted.
+
 ## PR Gate
 
 At `2026-08-11T18:54:35Z`, [PR
