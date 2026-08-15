@@ -334,9 +334,13 @@ func GenerateSBOM(name, version string, dependencies []DependencyEvidence) ([]by
 		return nil, SBOMEvidence{}, errors.New("SBOM name is required")
 	}
 	components := make([]SBOMComponent, 0, len(dependencies))
+	seenComponents := make(map[string]struct{}, len(dependencies))
 	for _, dependency := range dependencies {
 		if isUnknownLicense(dependency.License) {
 			return nil, SBOMEvidence{}, fmt.Errorf("dependency %q has unknown or missing license", dependency.Name)
+		}
+		if !validLicenseIdentifier(dependency.License) {
+			return nil, SBOMEvidence{}, fmt.Errorf("dependency %q has an unrecognized license identifier", dependency.Name)
 		}
 		if dependency.Scope != ScopeShipped {
 			return nil, SBOMEvidence{}, fmt.Errorf("dependency %q is not in shipped scope", dependency.Name)
@@ -344,9 +348,20 @@ func GenerateSBOM(name, version string, dependencies []DependencyEvidence) ([]by
 		if dependency.Ecosystem == "" || dependency.Name == "" || dependency.Version == "" {
 			return nil, SBOMEvidence{}, fmt.Errorf("dependency identity is incomplete for %q", dependency.Name)
 		}
+		if isMutableVersion(dependency.Version) {
+			return nil, SBOMEvidence{}, fmt.Errorf("dependency %q has a mutable version", dependency.Name)
+		}
+		if dependency.Source == "" {
+			return nil, SBOMEvidence{}, fmt.Errorf("dependency %q source is required", dependency.Name)
+		}
 		if !validDigest(dependency.Digest) {
 			return nil, SBOMEvidence{}, fmt.Errorf("dependency %q has invalid digest", dependency.Name)
 		}
+		componentKey := dependency.Ecosystem + "\x00" + dependency.Name + "\x00" + dependency.Version
+		if _, exists := seenComponents[componentKey]; exists {
+			return nil, SBOMEvidence{}, fmt.Errorf("dependency %q is duplicated", dependency.Name)
+		}
+		seenComponents[componentKey] = struct{}{}
 		purl := ""
 		if dependency.Ecosystem == "go" {
 			purl = "pkg:golang/" + dependency.Name + "@" + dependency.Version
@@ -370,7 +385,11 @@ func GenerateSBOM(name, version string, dependencies []DependencyEvidence) ([]by
 			Hashes:   []SBOMHash{{Algorithm: hashAlgorithm, Content: hashContent}},
 		})
 	}
-	sort.Slice(components, func(left, right int) bool { return components[left].BomRef < components[right].BomRef })
+	sort.Slice(components, func(left, right int) bool {
+		leftKey := components[left].BomRef + "\x00" + components[left].Name + "\x00" + components[left].Version + "\x00" + components[left].Purl
+		rightKey := components[right].BomRef + "\x00" + components[right].Name + "\x00" + components[right].Version + "\x00" + components[right].Purl
+		return leftKey < rightKey
+	})
 	document := sbomDocument{BomFormat: "CycloneDX", SpecVersion: "1.5", Version: 1, Components: components}
 	document.Metadata.Component.Type = "application"
 	document.Metadata.Component.Name = name
@@ -381,6 +400,89 @@ func GenerateSBOM(name, version string, dependencies []DependencyEvidence) ([]by
 	}
 	encoded = append(encoded, '\n')
 	return encoded, SBOMEvidence{Format: "CycloneDX-JSON", Digest: sha256Digest(encoded), Complete: true}, nil
+}
+
+// NoticeManifestEntry is one shipped dependency fact copied into the stable
+// notice manifest. The manifest is an inventory aid, not a license grant or a
+// substitute for the caller-supplied THIRD_PARTY_NOTICES.md.
+type NoticeManifestEntry struct {
+	Ecosystem string `json:"ecosystem"`
+	Name      string `json:"name"`
+	Version   string `json:"version"`
+	License   string `json:"license"`
+	Source    string `json:"source"`
+	Digest    string `json:"digest"`
+}
+
+type noticeManifestDocument struct {
+	Format        string                `json:"format"`
+	SchemaVersion int                   `json:"schemaVersion"`
+	Artifact      string                `json:"artifact"`
+	Dependencies  []NoticeManifestEntry `json:"dependencies"`
+}
+
+// GenerateNoticeManifest emits deterministic JSON for the shipped dependency
+// notice inventory. It refuses unknown, mutable, incomplete, or non-shipped
+// dependency evidence and returns no bytes on failure.
+func GenerateNoticeManifest(name string, dependencies []DependencyEvidence) ([]byte, NoticeManifestEvidence, error) {
+	if strings.TrimSpace(name) == "" {
+		return nil, NoticeManifestEvidence{}, errors.New("notice manifest name is required")
+	}
+	entries := make([]NoticeManifestEntry, 0, len(dependencies))
+	seen := make(map[string]struct{}, len(dependencies))
+	for _, dependency := range dependencies {
+		if dependency.Ecosystem == "" || dependency.Name == "" || dependency.Version == "" {
+			return nil, NoticeManifestEvidence{}, fmt.Errorf("dependency identity is incomplete for %q", dependency.Name)
+		}
+		if dependency.Scope != ScopeShipped {
+			return nil, NoticeManifestEvidence{}, fmt.Errorf("dependency %q is not in shipped scope", dependency.Name)
+		}
+		if isUnknownLicense(dependency.License) {
+			return nil, NoticeManifestEvidence{}, fmt.Errorf("dependency %q has unknown or missing license", dependency.Name)
+		}
+		if !validLicenseIdentifier(dependency.License) {
+			return nil, NoticeManifestEvidence{}, fmt.Errorf("dependency %q has an unrecognized license identifier", dependency.Name)
+		}
+		if isMutableVersion(dependency.Version) {
+			return nil, NoticeManifestEvidence{}, fmt.Errorf("dependency %q has a mutable version", dependency.Name)
+		}
+		if dependency.Source == "" {
+			return nil, NoticeManifestEvidence{}, fmt.Errorf("dependency %q source is required", dependency.Name)
+		}
+		if !validDigest(dependency.Digest) {
+			return nil, NoticeManifestEvidence{}, fmt.Errorf("dependency %q has invalid digest", dependency.Name)
+		}
+		key := dependency.Ecosystem + "\x00" + dependency.Name + "\x00" + dependency.Version
+		if _, exists := seen[key]; exists {
+			return nil, NoticeManifestEvidence{}, fmt.Errorf("dependency %q is duplicated", dependency.Name)
+		}
+		seen[key] = struct{}{}
+		entries = append(entries, NoticeManifestEntry{
+			Ecosystem: dependency.Ecosystem,
+			Name:      dependency.Name,
+			Version:   dependency.Version,
+			License:   strings.TrimSpace(dependency.License),
+			Source:    dependency.Source,
+			Digest:    dependency.Digest,
+		})
+	}
+	sort.Slice(entries, func(left, right int) bool {
+		leftKey := entries[left].Ecosystem + "\x00" + entries[left].Name + "\x00" + entries[left].Version
+		rightKey := entries[right].Ecosystem + "\x00" + entries[right].Name + "\x00" + entries[right].Version
+		return leftKey < rightKey
+	})
+	document := noticeManifestDocument{
+		Format:        "Manja-Notice-Manifest-JSON",
+		SchemaVersion: 1,
+		Artifact:      name,
+		Dependencies:  entries,
+	}
+	encoded, err := json.MarshalIndent(document, "", "  ")
+	if err != nil {
+		return nil, NoticeManifestEvidence{}, fmt.Errorf("marshal notice manifest: %w", err)
+	}
+	encoded = append(encoded, '\n')
+	return encoded, NoticeManifestEvidence{Format: document.Format, Digest: sha256Digest(encoded), Complete: true}, nil
 }
 
 // ArtifactRequest describes one actual root to package. RootDigest, when
@@ -448,6 +550,11 @@ func Pack(request PackageRequest, policy Policy) (PackageResult, error) {
 		Legal:         request.Legal,
 		Dependencies:  append([]DependencyEvidence(nil), request.Dependencies...),
 	}
+	if policyFindings := validatePolicy(policy); len(policyFindings) > 0 {
+		result.Evidence = evidence
+		result.Result = Result{Status: StatusBlocked, Findings: policyFindings}
+		return result, nil
+	}
 	authorityPassed := request.Provenance.Status == StatusPass && request.RightsHolder.Status == StatusPass
 	mechanicalFindings := make([]Finding, 0)
 	mechanicalFindings = append(mechanicalFindings, validateAuthority("provenance", request.Provenance)...)
@@ -495,15 +602,29 @@ func Pack(request PackageRequest, policy Policy) (PackageResult, error) {
 	if request.OutputDir == "" {
 		return result, errors.New("package output directory is required after all gates pass")
 	}
-	if err := os.MkdirAll(request.OutputDir, 0o755); err != nil {
-		return result, fmt.Errorf("create package output directory: %w", err)
+	if _, err := os.Lstat(request.OutputDir); err == nil {
+		result.Result = Evaluate(evidence, policy)
+		result.Result.Status = StatusBlocked
+		result.Result.Findings = append(result.Result.Findings, Finding{Code: "package.output.exists", Subject: request.OutputDir, Detail: "package output directory already exists; refusing to overwrite or mix outputs"})
+		sortFindings(result.Result.Findings)
+		return result, nil
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return result, fmt.Errorf("inspect package output directory: %w", err)
 	}
+	stagedOutput, err := os.MkdirTemp("", "manja-distribution-output-")
+	if err != nil {
+		return result, fmt.Errorf("create staged package output directory: %w", err)
+	}
+	defer os.RemoveAll(stagedOutput)
 
 	for index, artifactRequest := range request.Artifacts {
 		artifact := evidence.Artifacts[index]
-		output, finalEvidence, err := packageOne(artifactRequest, artifact, request, policy)
+		stagedRequest := request
+		stagedRequest.OutputDir = stagedOutput
+		output, finalEvidence, err := packageOne(artifactRequest, artifact, stagedRequest, policy)
 		if err != nil {
 			result.Result.Status = StatusBlocked
+			result.Outputs = nil
 			result.Result.Findings = append(result.Result.Findings, Finding{Code: "artifact.package.failed", Subject: artifactRequest.Name, Detail: err.Error()})
 			sortFindings(result.Result.Findings)
 			return result, nil
@@ -515,6 +636,25 @@ func Pack(request PackageRequest, policy Policy) (PackageResult, error) {
 	result.Result = Evaluate(evidence, policy)
 	if result.Result.Status != StatusPass {
 		result.Outputs = nil
+		return result, nil
+	}
+	if err := os.MkdirAll(filepath.Dir(request.OutputDir), 0o755); err != nil {
+		return result, fmt.Errorf("create package output parent: %w", err)
+	}
+	if _, err := os.Lstat(request.OutputDir); err == nil {
+		result.Result = Evaluate(evidence, policy)
+		result.Result.Status = StatusBlocked
+		result.Result.Findings = append(result.Result.Findings, Finding{Code: "package.output.exists", Subject: request.OutputDir, Detail: "package output directory appeared during packaging; refusing to overwrite it"})
+		sortFindings(result.Result.Findings)
+		return result, nil
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return result, fmt.Errorf("inspect package output directory before publish: %w", err)
+	}
+	if err := os.Rename(stagedOutput, request.OutputDir); err != nil {
+		return result, fmt.Errorf("publish staged package output: %w", err)
+	}
+	for index := range result.Outputs {
+		result.Outputs[index].Path = filepath.Join(request.OutputDir, filepath.Base(result.Outputs[index].Path))
 	}
 	return result, nil
 }
@@ -562,6 +702,14 @@ func inspectRequestedArtifact(request ArtifactRequest, policy Policy, dependenci
 			artifact.SBOM.Source = sbomPath(policy, request.Kind, request.Name)
 			findings = append(findings, validateExistingSBOM(request.Root, artifact.SBOM.Source, sbomBytes, request.Name)...)
 		}
+		manifestBytes, manifest, err := GenerateNoticeManifest(request.Name, dependenciesForArtifact(request.Dependencies, dependencies))
+		if err != nil {
+			findings = append(findings, Finding{Code: "artifact.notice_manifest.license_invalid", Subject: request.Name, Detail: err.Error()})
+		} else {
+			artifact.NoticeManifest = manifest
+			artifact.NoticeManifest.Source = noticeManifestPath(policy, request.Kind, request.Name)
+			findings = append(findings, validateExistingNoticeManifest(request.Root, artifact.NoticeManifest.Source, manifestBytes, request.Name)...)
+		}
 	}
 	return artifact, findings
 }
@@ -595,6 +743,31 @@ func validateExistingSBOM(root, relativePath string, expected []byte, artifactNa
 	return nil
 }
 
+func validateExistingNoticeManifest(root, relativePath string, expected []byte, artifactName string) []Finding {
+	pathValue := filepath.Join(root, filepath.FromSlash(relativePath))
+	info, err := os.Lstat(pathValue)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return []Finding{{Code: "artifact.notice_manifest.unreadable", Subject: artifactName, Detail: err.Error()}}
+	}
+	if info.Mode()&os.ModeType != 0 || !info.Mode().IsRegular() {
+		return []Finding{{Code: "artifact.notice_manifest.incomplete", Subject: artifactName, Detail: "existing notice manifest is not a regular file"}}
+	}
+	actual, err := os.ReadFile(pathValue)
+	if err != nil {
+		return []Finding{{Code: "artifact.notice_manifest.unreadable", Subject: artifactName, Detail: err.Error()}}
+	}
+	if !noticeManifestHasCompleteShape(actual, expected) {
+		return []Finding{{Code: "artifact.notice_manifest.incomplete", Subject: artifactName, Detail: "existing notice manifest does not cover the generated dependency set"}}
+	}
+	if !bytes.Equal(actual, expected) {
+		return []Finding{{Code: "artifact.notice_manifest.bytes_mismatch", Subject: artifactName, Detail: "existing notice manifest bytes differ from deterministic generated bytes"}}
+	}
+	return nil
+}
+
 func sbomHasCompleteShape(actual, expected []byte) bool {
 	var actualDocument, expectedDocument sbomDocument
 	if err := json.Unmarshal(actual, &actualDocument); err != nil {
@@ -617,6 +790,31 @@ func sbomHasCompleteShape(actual, expected []byte) bool {
 			return false
 		}
 		if component.BomRef != expectedDocument.Components[index].BomRef {
+			return false
+		}
+	}
+	return true
+}
+
+func noticeManifestHasCompleteShape(actual, expected []byte) bool {
+	var actualDocument, expectedDocument noticeManifestDocument
+	if err := json.Unmarshal(actual, &actualDocument); err != nil {
+		return false
+	}
+	if err := json.Unmarshal(expected, &expectedDocument); err != nil {
+		return false
+	}
+	if actualDocument.Format != "Manja-Notice-Manifest-JSON" || actualDocument.SchemaVersion != 1 || actualDocument.Artifact == "" {
+		return false
+	}
+	if len(actualDocument.Dependencies) != len(expectedDocument.Dependencies) {
+		return false
+	}
+	for index, dependency := range actualDocument.Dependencies {
+		if dependency.Ecosystem == "" || dependency.Name == "" || dependency.Version == "" || dependency.License == "" || dependency.Source == "" || !validDigest(dependency.Digest) {
+			return false
+		}
+		if dependency.Ecosystem != expectedDocument.Dependencies[index].Ecosystem || dependency.Name != expectedDocument.Dependencies[index].Name || dependency.Version != expectedDocument.Dependencies[index].Version || dependency.Digest != expectedDocument.Dependencies[index].Digest {
 			return false
 		}
 	}
@@ -674,6 +872,18 @@ func packageOne(request ArtifactRequest, artifact ArtifactEvidence, packageReque
 	if err := os.WriteFile(sbomFilePath, sbomBytes, 0o644); err != nil {
 		return PackagedArtifact{}, artifact, err
 	}
+	manifestBytes, manifest, err := GenerateNoticeManifest(request.Name, dependenciesForArtifact(request.Dependencies, packageRequest.Dependencies))
+	if err != nil {
+		return PackagedArtifact{}, artifact, err
+	}
+	manifestRelativePath := noticeManifestPath(policy, request.Kind, request.Name)
+	manifestFilePath := filepath.Join(staging, filepath.FromSlash(manifestRelativePath))
+	if err := os.MkdirAll(filepath.Dir(manifestFilePath), 0o755); err != nil {
+		return PackagedArtifact{}, artifact, err
+	}
+	if err := os.WriteFile(manifestFilePath, manifestBytes, 0o644); err != nil {
+		return PackagedArtifact{}, artifact, err
+	}
 	finalInventory, err := InspectRoot(staging, RootOptions{ExcludedPaths: runtimeExclusions(request.Kind, policy)})
 	if err != nil {
 		return PackagedArtifact{}, artifact, err
@@ -681,6 +891,8 @@ func packageOne(request ArtifactRequest, artifact ArtifactEvidence, packageReque
 	artifact.Files = finalInventory.Files
 	artifact.SBOM = sbom
 	artifact.SBOM.Source = sbomRelativePath
+	artifact.NoticeManifest = manifest
+	artifact.NoticeManifest.Source = manifestRelativePath
 	artifact.Digest = ""
 	archiveBytes, err := deterministicTar(staging)
 	if err != nil {
@@ -949,6 +1161,14 @@ func sbomPath(policy Policy, kind ArtifactKind, name string) string {
 		return prefix + "/" + name + ".cdx.json"
 	}
 	return "sbom/" + name + ".cdx.json"
+}
+
+func noticeManifestPath(policy Policy, kind ArtifactKind, name string) string {
+	if prefix, exists := policy.NoticeManifestPlacement[kind]; exists && strings.TrimSpace(prefix) != "" {
+		prefix = strings.TrimSuffix(strings.ReplaceAll(prefix, "\\", "/"), "/")
+		return prefix + "/" + name + ".json"
+	}
+	return "notices/" + name + ".json"
 }
 
 func dependenciesForArtifact(names []string, dependencies []DependencyEvidence) []DependencyEvidence {

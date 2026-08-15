@@ -153,6 +153,73 @@ func TestGenerateSBOMRejectsUnknownLicenseAndIsByteStable(t *testing.T) {
 	}
 }
 
+func TestGenerateNoticeManifestRejectsUnknownLicenseAndIsByteStable(t *testing.T) {
+	dependencies := []DependencyEvidence{
+		{Ecosystem: "npm", Name: "zeta", Version: "1.0.0", Scope: ScopeShipped, Source: "https://example.test/zeta", Digest: "sha256:" + strings.Repeat("2", 64)},
+		{Ecosystem: "go", Name: "example.com/alpha", Version: "v1.0.0", License: "unknown", Scope: ScopeShipped, Source: "https://example.test/alpha", Digest: "sha256:" + strings.Repeat("1", 64)},
+	}
+	if _, _, err := GenerateNoticeManifest("manja", dependencies); err == nil {
+		t.Fatal("GenerateNoticeManifest accepted unknown license evidence")
+	}
+	dependencies[0].License = "MIT"
+	dependencies[1].License = "Apache-2.0"
+	first, firstEvidence, err := GenerateNoticeManifest("manja", dependencies)
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, secondEvidence, err := GenerateNoticeManifest("manja", dependencies)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(first, second) || firstEvidence != secondEvidence {
+		t.Fatalf("notice manifest generation drifted:\n%s\n---\n%s", first, second)
+	}
+	if bytes.Contains(first, []byte("timestamp")) || bytes.Contains(first, []byte("generatedAt")) {
+		t.Fatalf("notice manifest contains volatile metadata: %s", first)
+	}
+	if !bytes.Contains(first, []byte(`"name": "example.com/alpha"`)) {
+		t.Fatalf("notice manifest lacks dependency identity: %s", first)
+	}
+}
+
+func TestGenerateSBOMRejectsUnrecognizedLicenseIdentifier(t *testing.T) {
+	dependency := DependencyEvidence{
+		Ecosystem: "go", Name: "example.com/runtime", Version: "v1.2.3",
+		License: "not-a-license", Scope: ScopeShipped, Source: "https://example.com/runtime",
+		Digest: "sha256:" + strings.Repeat("1", 64),
+	}
+	if _, _, err := GenerateSBOM("manja", "dev", []DependencyEvidence{dependency}); err == nil {
+		t.Fatal("GenerateSBOM accepted an unrecognized license identifier")
+	}
+}
+
+func TestGenerateSBOMRejectsDuplicateComponentIdentity(t *testing.T) {
+	dependency := DependencyEvidence{
+		Ecosystem: "go", Name: "example.com/runtime", Version: "v1.2.3",
+		License: "MIT", Scope: ScopeShipped, Source: "https://example.com/runtime",
+		Digest: "sha256:" + strings.Repeat("1", 64),
+	}
+	duplicate := dependency
+	duplicate.Digest = "sha256:" + strings.Repeat("2", 64)
+	if _, _, err := GenerateSBOM("manja", "dev", []DependencyEvidence{dependency, duplicate}); err == nil {
+		t.Fatal("GenerateSBOM accepted duplicate component identity")
+	}
+}
+
+func TestGenerateSBOMRejectsMissingOrMutableDependencyIdentity(t *testing.T) {
+	dependency := DependencyEvidence{
+		Ecosystem: "go", Name: "example.com/runtime", Version: "latest",
+		License: "MIT", Scope: ScopeShipped, Digest: "sha256:" + strings.Repeat("1", 64),
+	}
+	if _, _, err := GenerateSBOM("manja", "dev", []DependencyEvidence{dependency}); err == nil {
+		t.Fatal("GenerateSBOM accepted mutable or missing dependency identity")
+	}
+	dependency.Version = "v1.2.3"
+	if _, _, err := GenerateSBOM("manja", "dev", []DependencyEvidence{dependency}); err == nil {
+		t.Fatal("GenerateSBOM accepted missing dependency source")
+	}
+}
+
 func TestPackBlockedAuthorityNeverWritesReleaseArtifacts(t *testing.T) {
 	root := t.TempDir()
 	writeTestFile(t, root, "bin/manja", "binary")
@@ -218,7 +285,7 @@ func TestPackPassesSyntheticAuthorityAndPlacesNotices(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, pathValue := range []string{"LICENSE", "NOTICE", "THIRD_PARTY_NOTICES.md", "sbom/manja.cdx.json"} {
+	for _, pathValue := range []string{"LICENSE", "NOTICE", "THIRD_PARTY_NOTICES.md", "sbom/manja.cdx.json", "notices/manja.json"} {
 		if !inventoryHas(inspected.Files, pathValue) {
 			t.Fatalf("final archive lacks required placement %q: %#v", pathValue, inspected.Files)
 		}
@@ -256,6 +323,37 @@ func TestPackRejectsIncompleteSBOMAlreadyInArtifactRoot(t *testing.T) {
 	}
 }
 
+func TestPackRejectsDriftedNoticeManifestAlreadyInArtifactRoot(t *testing.T) {
+	root := t.TempDir()
+	writeTestFile(t, root, "bin/manja", "binary")
+	writeTestFile(t, root, "notices/manja.json", `{"format":"Manja-Notice-Manifest-JSON","schemaVersion":1,"artifact":"manja","dependencies":[]}`)
+	legalRoot, legal := testLegalEvidence(t)
+	rootInventory, err := InspectRoot(root, RootOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	output := filepath.Join(t.TempDir(), "release")
+
+	result, err := Pack(PackageRequest{
+		Subject:      SubjectEvidence{CommitSHA: strings.Repeat("a", 40), TreeSHA: strings.Repeat("b", 40)},
+		Provenance:   AuthorityEvidence{Status: StatusPass, Reference: "provenance-receipt", Digest: "sha256:" + strings.Repeat("1", 64)},
+		RightsHolder: AuthorityEvidence{Status: StatusPass, Reference: "rights-receipt", Digest: "sha256:" + strings.Repeat("2", 64)},
+		Legal:        legal,
+		LegalRoot:    legalRoot,
+		Artifacts:    []ArtifactRequest{{Name: "manja", Kind: ArtifactBinary, Source: "git:test", Root: root, RootDigest: rootInventory.Digest}},
+		OutputDir:    output,
+	}, DefaultPolicy())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Result.Status != StatusBlocked || !result.Result.HasCode("artifact.notice_manifest.bytes_mismatch") {
+		t.Fatalf("result = %#v, want drifted notice-manifest blocker", result.Result)
+	}
+	if _, err := os.Stat(output); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("output directory exists after notice-manifest drift: %v", err)
+	}
+}
+
 func TestPackValidatesLegalBytesBeforeCreatingOutput(t *testing.T) {
 	root := t.TempDir()
 	writeTestFile(t, root, "bin/manja", "binary")
@@ -280,6 +378,40 @@ func TestPackValidatesLegalBytesBeforeCreatingOutput(t *testing.T) {
 	}
 	if _, err := os.Stat(output); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("output directory exists before legal clearance: %v", err)
+	}
+}
+
+func TestPackDoesNotLeavePartialOutputsWhenLaterArtifactFails(t *testing.T) {
+	rootOne := t.TempDir()
+	writeTestFile(t, rootOne, "bin/manja", "first")
+	rootTwo := t.TempDir()
+	writeTestFile(t, rootTwo, "bin/manja", "second")
+	legalRoot, legal := testLegalEvidence(t)
+	output := filepath.Join(t.TempDir(), "release")
+
+	result, err := Pack(PackageRequest{
+		Subject:      SubjectEvidence{CommitSHA: strings.Repeat("a", 40), TreeSHA: strings.Repeat("b", 40)},
+		Provenance:   AuthorityEvidence{Status: StatusPass, Reference: "provenance-receipt", Digest: "sha256:" + strings.Repeat("1", 64)},
+		RightsHolder: AuthorityEvidence{Status: StatusPass, Reference: "rights-receipt", Digest: "sha256:" + strings.Repeat("2", 64)},
+		Legal:        legal,
+		LegalRoot:    legalRoot,
+		Artifacts: []ArtifactRequest{
+			{Name: "first", Kind: ArtifactBinary, Source: "git:test", Root: rootOne},
+			{Name: "second", Kind: ArtifactBinary, Source: "git:test", Root: rootTwo, ExpectedDigest: "sha256:" + strings.Repeat("f", 64)},
+		},
+		OutputDir: output,
+	}, DefaultPolicy())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Result.Status != StatusBlocked || !result.Result.HasCode("artifact.package.failed") {
+		t.Fatalf("result = %#v, want blocked package failure", result.Result)
+	}
+	if len(result.Outputs) != 0 {
+		t.Fatalf("outputs = %#v, want none after blocked package failure", result.Outputs)
+	}
+	if _, err := os.Stat(output); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("output directory exists after partial package failure: %v", err)
 	}
 }
 

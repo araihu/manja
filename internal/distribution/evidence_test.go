@@ -140,6 +140,21 @@ func TestEvaluateRejectsIncompleteOCIPlatformInventory(t *testing.T) {
 	}
 }
 
+func TestEvaluateRejectsTaggedOCIReference(t *testing.T) {
+	evidence := validEvidence()
+	evidence.Artifacts[0].Kind = ArtifactOCI
+	evidence.Artifacts[0].Source = "ghcr.io/araihu/manja:latest"
+	evidence.Artifacts[0].PlatformCoverageComplete = true
+	evidence.Artifacts[0].Platforms = []PlatformEvidence{{
+		OS: "linux", Architecture: "amd64", Digest: "sha256:" + strings.Repeat("9", 64),
+	}}
+
+	result := Evaluate(evidence, DefaultPolicy())
+	if result.Status != StatusBlocked || !result.HasCode("artifact.oci.source_not_digest") {
+		t.Fatalf("result = %#v, want digest-bound OCI source blocker", result)
+	}
+}
+
 func TestEvaluateRejectsIncompleteSBOM(t *testing.T) {
 	evidence := validEvidence()
 	evidence.Artifacts[0].SBOM.Complete = false
@@ -147,6 +162,16 @@ func TestEvaluateRejectsIncompleteSBOM(t *testing.T) {
 	result := Evaluate(evidence, DefaultPolicy())
 	if result.Status != StatusBlocked || !result.HasCode("artifact.sbom.incomplete") {
 		t.Fatalf("result = %#v, want incomplete SBOM blocker", result)
+	}
+}
+
+func TestEvaluateRejectsMissingNoticeManifest(t *testing.T) {
+	evidence := validEvidence()
+	evidence.Artifacts[0].NoticeManifest = NoticeManifestEvidence{}
+
+	result := Evaluate(evidence, DefaultPolicy())
+	if result.Status != StatusBlocked || !result.HasCode("artifact.notice_manifest.source_missing") || !result.HasCode("artifact.notice_manifest.incomplete") {
+		t.Fatalf("result = %#v, want missing notice-manifest blockers", result)
 	}
 }
 
@@ -237,11 +262,95 @@ func TestCanonicalEvidenceSortsAndIsByteStable(t *testing.T) {
 	}
 }
 
+func TestCanonicalEvidenceBreaksTiesForDuplicateIdentityRecords(t *testing.T) {
+	first := validEvidence()
+	duplicateA := first.Dependencies[0]
+	duplicateA.Source = "https://example.test/a"
+	duplicateA.Digest = "sha256:" + strings.Repeat("1", 64)
+	duplicateB := first.Dependencies[0]
+	duplicateB.Source = "https://example.test/b"
+	duplicateB.Digest = "sha256:" + strings.Repeat("2", 64)
+	first.Dependencies = append(first.Dependencies, duplicateA, duplicateB)
+
+	second := validEvidence()
+	second.Dependencies = append(second.Dependencies, duplicateB, duplicateA)
+
+	firstBytes, err := MarshalCanonical(first)
+	if err != nil {
+		t.Fatal(err)
+	}
+	secondBytes, err := MarshalCanonical(second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(firstBytes, secondBytes) {
+		t.Fatalf("canonical duplicate identity order drifted:\n%s\n---\n%s", firstBytes, secondBytes)
+	}
+}
+
+func TestDecodeStrictRejectsDuplicateEvidenceKeys(t *testing.T) {
+	_, err := DecodeStrict(strings.NewReader(`{"schemaVersion":1,"schemaVersion":1}`))
+	if err == nil || !strings.Contains(err.Error(), "duplicate JSON object key") {
+		t.Fatalf("error = %v, want duplicate-key rejection", err)
+	}
+}
+
 func TestEvaluatePassesCompleteEvidenceAndAllRuntimeArtifacts(t *testing.T) {
 	evidence := validEvidence()
 	result := Evaluate(evidence, DefaultPolicy())
 	if result.Status != StatusPass {
 		t.Fatalf("status = %q, findings = %#v", result.Status, result.Findings)
+	}
+}
+
+func TestEvaluateRejectsUnsafePolicyPlacement(t *testing.T) {
+	policy := DefaultPolicy()
+	policy.SBOMPlacement = map[ArtifactKind]string{ArtifactBinary: "../outside"}
+
+	result := Evaluate(validEvidence(), policy)
+	if result.Status != StatusBlocked || !result.HasCode("policy.sbom_placement.invalid") {
+		t.Fatalf("result = %#v, want unsafe SBOM placement blocker", result)
+	}
+}
+
+func TestEvaluateRejectsLegalPlacementThatDropsRequiredNoticeFiles(t *testing.T) {
+	policy := DefaultPolicy()
+	policy.LegalPlacement = map[ArtifactKind][]string{ArtifactOCI: {"LICENSE"}}
+
+	result := Evaluate(validEvidence(), policy)
+	if result.Status != StatusBlocked || !result.HasCode("policy.legal_placement.incomplete") {
+		t.Fatalf("result = %#v, want incomplete legal-placement blocker", result)
+	}
+}
+
+func TestEvaluateRejectsMutableAuthorityReference(t *testing.T) {
+	evidence := validEvidence()
+	evidence.Provenance.Reference = "latest"
+
+	result := Evaluate(evidence, DefaultPolicy())
+	if result.Status != StatusBlocked || !result.HasCode("authority.provenance.reference_mutable") {
+		t.Fatalf("result = %#v, want mutable authority reference blocker", result)
+	}
+}
+
+func TestEvaluateRejectsWhitespaceOnlyAuthorityReference(t *testing.T) {
+	evidence := validEvidence()
+	evidence.RightsHolder.Reference = " \t"
+
+	result := Evaluate(evidence, DefaultPolicy())
+	if result.Status != StatusBlocked || !result.HasCode("authority.rights_holder.reference_missing") {
+		t.Fatalf("result = %#v, want missing rights-holder reference blocker", result)
+	}
+}
+
+func TestEvaluateRejectsWhitespaceOnlyLegalAttribution(t *testing.T) {
+	evidence := validEvidence()
+	evidence.Legal.Holder = " \t"
+	evidence.Legal.YearRange = "\n"
+
+	result := Evaluate(evidence, DefaultPolicy())
+	if result.Status != StatusBlocked || !result.HasCode("legal.attribution.missing") {
+		t.Fatalf("result = %#v, want missing legal attribution blocker", result)
 	}
 }
 
@@ -300,12 +409,17 @@ func validEvidence() Evidence {
 					Format: "CycloneDX-JSON", Source: "sbom/manja-runtime.cdx.json",
 					Digest: "sha256:" + strings.Repeat("a", 64), Complete: true,
 				},
+				NoticeManifest: NoticeManifestEvidence{
+					Format: "Manja-Notice-Manifest-JSON", Source: "notices/manja-runtime.json",
+					Digest: "sha256:" + strings.Repeat("c", 64), Complete: true,
+				},
 				Dependencies: []string{"example.com/runtime"},
 				Files: []FileEvidence{
 					validFile("LICENSE", 11),
 					validFile("NOTICE", 7),
 					validFile("THIRD_PARTY_NOTICES.md", 23),
 					{Path: "sbom/manja-runtime.cdx.json", Type: "regular", Size: 31, Digest: "sha256:" + strings.Repeat("a", 64)},
+					{Path: "notices/manja-runtime.json", Type: "regular", Size: 37, Digest: "sha256:" + strings.Repeat("c", 64)},
 				},
 			},
 		},

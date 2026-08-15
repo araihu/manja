@@ -5,6 +5,7 @@
 package distribution
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -94,16 +95,17 @@ type DependencyEvidence struct {
 // ArtifactEvidence identifies one actual artifact and its recursively
 // inspected files. Runtime artifacts must include every required legal file.
 type ArtifactEvidence struct {
-	Name                     string             `json:"name"`
-	Kind                     ArtifactKind       `json:"kind"`
-	Source                   string             `json:"source"`
-	Digest                   string             `json:"digest"`
-	Inspection               InspectionEvidence `json:"inspection"`
-	SBOM                     SBOMEvidence       `json:"sbom"`
-	Platforms                []PlatformEvidence `json:"platforms,omitempty"`
-	PlatformCoverageComplete bool               `json:"platformCoverageComplete,omitempty"`
-	Dependencies             []string           `json:"dependencies"`
-	Files                    []FileEvidence     `json:"files"`
+	Name                     string                 `json:"name"`
+	Kind                     ArtifactKind           `json:"kind"`
+	Source                   string                 `json:"source"`
+	Digest                   string                 `json:"digest"`
+	Inspection               InspectionEvidence     `json:"inspection"`
+	SBOM                     SBOMEvidence           `json:"sbom"`
+	NoticeManifest           NoticeManifestEvidence `json:"noticeManifest"`
+	Platforms                []PlatformEvidence     `json:"platforms,omitempty"`
+	PlatformCoverageComplete bool                   `json:"platformCoverageComplete,omitempty"`
+	Dependencies             []string               `json:"dependencies"`
+	Files                    []FileEvidence         `json:"files"`
 }
 
 // InspectionEvidence proves that the complete immutable artifact was scanned
@@ -119,6 +121,17 @@ type InspectionEvidence struct {
 // gate checks the receipt's identity and completeness; it does not generate,
 // rewrite, or interpret an SBOM as legal advice.
 type SBOMEvidence struct {
+	Format   string `json:"format"`
+	Source   string `json:"source"`
+	Digest   string `json:"digest"`
+	Complete bool   `json:"complete"`
+}
+
+// NoticeManifestEvidence identifies the deterministic machine-readable
+// third-party notice inventory emitted beside a packaged artifact. It lists
+// only caller-supplied dependency facts; it never supplies first-party
+// copyright, license, or redistribution authority.
+type NoticeManifestEvidence struct {
 	Format   string `json:"format"`
 	Source   string `json:"source"`
 	Digest   string `json:"digest"`
@@ -152,6 +165,9 @@ type Policy struct {
 	// SBOMPlacement optionally relocates an artifact's deterministic SBOM,
 	// for example into an OCI image's license directory.
 	SBOMPlacement map[ArtifactKind]string
+	// NoticeManifestPlacement optionally relocates the deterministic
+	// third-party notice manifest for an artifact kind.
+	NoticeManifestPlacement map[ArtifactKind]string
 }
 
 // DefaultPolicy is the current bounded self-hosted distribution policy.
@@ -162,8 +178,9 @@ func DefaultPolicy() Policy {
 			"internal/web/static/request_composer_browser_test.go",
 			"internal/web/static/schema_example_browser_test.go",
 		},
-		LegalPlacement: map[ArtifactKind][]string{},
-		SBOMPlacement:  map[ArtifactKind]string{},
+		LegalPlacement:          map[ArtifactKind][]string{},
+		SBOMPlacement:           map[ArtifactKind]string{},
+		NoticeManifestPlacement: map[ArtifactKind]string{},
 	}
 }
 
@@ -191,14 +208,16 @@ func (r Result) HasCode(code string) bool {
 }
 
 var (
-	sha1Pattern = regexp.MustCompile(`^[0-9a-f]{40}$`)
-	hexPattern  = regexp.MustCompile(`^[0-9a-f]+$`)
+	sha1Pattern     = regexp.MustCompile(`^[0-9a-f]{40}$`)
+	hexPattern      = regexp.MustCompile(`^[0-9a-f]+$`)
+	ociImagePattern = regexp.MustCompile(`^ghcr\.io/araihu/manja@sha256:[0-9a-f]{64}$`)
 )
 
 // Evaluate validates dependency and artifact evidence. It never upgrades a
 // BLOCKED authority status, even when all mechanical hashes are present.
 func Evaluate(evidence Evidence, policy Policy) Result {
 	findings := make([]Finding, 0)
+	findings = append(findings, validatePolicy(policy)...)
 	if evidence.SchemaVersion != evidenceSchemaVersion {
 		findings = append(findings, Finding{
 			Code:   "evidence.schema.unsupported",
@@ -249,12 +268,102 @@ func Evaluate(evidence Evidence, policy Policy) Result {
 	return Result{Status: status, Findings: findings}
 }
 
+func validatePolicy(policy Policy) []Finding {
+	findings := make([]Finding, 0)
+	seenLegal := make(map[string]struct{}, len(policy.RequiredLegalPaths))
+	for _, requiredPath := range policy.RequiredLegalPaths {
+		if !validPolicyPath(requiredPath) {
+			findings = append(findings, Finding{Code: "policy.legal_path.invalid", Subject: requiredPath, Detail: "required legal path must be a unique safe relative file path"})
+		}
+		if _, exists := seenLegal[requiredPath]; exists {
+			findings = append(findings, Finding{Code: "policy.legal_path.duplicate", Subject: requiredPath, Detail: "required legal path is duplicated"})
+		}
+		seenLegal[requiredPath] = struct{}{}
+	}
+	if len(policy.RequiredLegalPaths) == 0 {
+		findings = append(findings, Finding{Code: "policy.legal_path.missing", Detail: "at least one required legal path is required"})
+	}
+	for kind, paths := range policy.LegalPlacement {
+		if !validArtifactKind(kind) {
+			findings = append(findings, Finding{Code: "policy.legal_placement.kind_invalid", Subject: string(kind), Detail: "legal placement references an unknown artifact kind"})
+		}
+		if len(paths) != len(policy.RequiredLegalPaths) {
+			findings = append(findings, Finding{Code: "policy.legal_placement.incomplete", Subject: string(kind), Detail: "legal placement must preserve every required legal file"})
+		}
+		requiredNames := make(map[string]struct{}, len(policy.RequiredLegalPaths))
+		for _, requiredPath := range policy.RequiredLegalPaths {
+			requiredNames[path.Base(requiredPath)] = struct{}{}
+		}
+		seen := make(map[string]struct{}, len(paths))
+		for _, placement := range paths {
+			if !validPolicyPath(placement) {
+				findings = append(findings, Finding{Code: "policy.legal_placement.invalid", Subject: string(kind) + ":" + placement, Detail: "legal placement must contain safe relative file paths"})
+			}
+			if _, exists := seen[placement]; exists {
+				findings = append(findings, Finding{Code: "policy.legal_placement.duplicate", Subject: string(kind) + ":" + placement, Detail: "legal placement path is duplicated"})
+			}
+			seen[placement] = struct{}{}
+			if _, exists := requiredNames[path.Base(placement)]; !exists {
+				findings = append(findings, Finding{Code: "policy.legal_placement.unknown", Subject: string(kind) + ":" + placement, Detail: "legal placement must map to a required legal file"})
+			}
+		}
+		for requiredName := range requiredNames {
+			found := false
+			for _, placement := range paths {
+				if path.Base(placement) == requiredName {
+					found = true
+					break
+				}
+			}
+			if !found {
+				findings = append(findings, Finding{Code: "policy.legal_placement.missing", Subject: string(kind) + ":" + requiredName, Detail: "legal placement omits a required legal file"})
+			}
+		}
+	}
+	for kind, prefix := range policy.SBOMPlacement {
+		if !validArtifactKind(kind) {
+			findings = append(findings, Finding{Code: "policy.sbom_placement.kind_invalid", Subject: string(kind), Detail: "SBOM placement references an unknown artifact kind"})
+		}
+		if !validPolicyPath(prefix) {
+			findings = append(findings, Finding{Code: "policy.sbom_placement.invalid", Subject: string(kind) + ":" + prefix, Detail: "SBOM placement must be a safe relative directory path"})
+		}
+	}
+	for kind, prefix := range policy.NoticeManifestPlacement {
+		if !validArtifactKind(kind) {
+			findings = append(findings, Finding{Code: "policy.notice_manifest_placement.kind_invalid", Subject: string(kind), Detail: "notice manifest placement references an unknown artifact kind"})
+		}
+		if !validPolicyPath(prefix) {
+			findings = append(findings, Finding{Code: "policy.notice_manifest_placement.invalid", Subject: string(kind) + ":" + prefix, Detail: "notice manifest placement must be a safe relative directory path"})
+		}
+	}
+	sortFindings(findings)
+	return findings
+}
+
+func validArtifactKind(kind ArtifactKind) bool {
+	switch kind {
+	case ArtifactSourceArchive, ArtifactBinary, ArtifactOCI, ArtifactSite:
+		return true
+	default:
+		return false
+	}
+}
+
+func validPolicyPath(value string) bool {
+	if value == "" || value == "." || strings.HasSuffix(value, "/") {
+		return false
+	}
+	return !unsafePath(value)
+}
+
 func validateAuthority(name string, authority AuthorityEvidence) []Finding {
 	var findings []Finding
 	switch authority.Status {
 	case StatusPass:
-		if authority.Reference == "" {
+		if strings.TrimSpace(authority.Reference) == "" {
 			findings = append(findings, Finding{Code: "authority." + name + ".reference_missing", Detail: "PASS requires an immutable evidence reference"})
+		} else if isMutableReference(authority.Reference) {
+			findings = append(findings, Finding{Code: "authority." + name + ".reference_mutable", Subject: authority.Reference, Detail: "PASS authority reference must not use a floating tag, branch, or head marker"})
 		}
 		if !validDigest(authority.Digest) {
 			findings = append(findings, Finding{Code: "authority." + name + ".digest_invalid", Detail: "PASS requires a lowercase SHA-256 or SHA-384 digest"})
@@ -267,13 +376,26 @@ func validateAuthority(name string, authority AuthorityEvidence) []Finding {
 	return findings
 }
 
+func isMutableReference(value string) bool {
+	value = strings.ToLower(strings.TrimSpace(value))
+	if value == "" {
+		return false
+	}
+	for _, marker := range []string{"latest", "main", "master", "head", "current", "dev"} {
+		if value == marker || strings.HasSuffix(value, ":"+marker) || strings.HasSuffix(value, "/"+marker) || strings.HasSuffix(value, "@"+marker) {
+			return true
+		}
+	}
+	return false
+}
+
 func hasLegalClaim(legal LegalEvidence) bool {
 	return legal.Holder != "" || legal.YearRange != "" || !isZeroFile(legal.License) || !isZeroFile(legal.Notice) || !isZeroFile(legal.ThirdParty)
 }
 
 func validateLegal(legal LegalEvidence, required []string) []Finding {
 	var findings []Finding
-	if legal.Holder == "" || legal.YearRange == "" {
+	if strings.TrimSpace(legal.Holder) == "" || strings.TrimSpace(legal.YearRange) == "" {
 		findings = append(findings, Finding{Code: "legal.attribution.missing", Detail: "PASS requires verified holder and evidence-backed year range"})
 	}
 	for _, requiredPath := range required {
@@ -322,6 +444,8 @@ func validateDependencies(dependencies []DependencyEvidence) (map[string]Depende
 		}
 		if isUnknownLicense(dependency.License) {
 			findings = append(findings, Finding{Code: "dependency.license.missing", Subject: dependency.Name, Detail: "dependency license evidence is unknown or missing"})
+		} else if !validLicenseIdentifier(dependency.License) {
+			findings = append(findings, Finding{Code: "dependency.license.invalid", Subject: dependency.Name, Detail: "dependency license must be a recognized SPDX identifier or reviewed LicenseRef"})
 		}
 		if dependency.Source == "" {
 			findings = append(findings, Finding{Code: "dependency.source.missing", Subject: dependency.Name, Detail: "dependency source reference is required"})
@@ -354,6 +478,7 @@ func validateArtifact(artifact ArtifactEvidence, policy Policy, dependencies map
 	}
 	if checkSBOM {
 		findings = append(findings, validateSBOM(artifact.Name, artifact.SBOM)...)
+		findings = append(findings, validateNoticeManifest(artifact.Name, artifact.NoticeManifest)...)
 	}
 	switch artifact.Kind {
 	case ArtifactSourceArchive, ArtifactBinary, ArtifactOCI, ArtifactSite:
@@ -361,6 +486,9 @@ func validateArtifact(artifact ArtifactEvidence, policy Policy, dependencies map
 		findings = append(findings, Finding{Code: "artifact.kind.invalid", Subject: artifact.Name, Detail: "artifact kind is not recognized"})
 	}
 	if artifact.Kind == ArtifactOCI {
+		if !ociImagePattern.MatchString(artifact.Source) {
+			findings = append(findings, Finding{Code: "artifact.oci.source_not_digest", Subject: artifact.Name, Detail: "OCI evidence requires the exact digest-bound ghcr.io/araihu/manja image reference"})
+		}
 		if !artifact.PlatformCoverageComplete {
 			findings = append(findings, Finding{Code: "artifact.oci.coverage_incomplete", Subject: artifact.Name, Detail: "OCI evidence must attest that every published platform manifest was inspected"})
 		}
@@ -401,6 +529,14 @@ func validateArtifact(artifact ArtifactEvidence, policy Policy, dependencies map
 			findings = append(findings, Finding{Code: "artifact.sbom.placement_missing", Subject: artifact.Name + ":" + artifact.SBOM.Source, Detail: "SBOM source must be present in the final artifact inventory"})
 		} else if file.Digest != artifact.SBOM.Digest {
 			findings = append(findings, Finding{Code: "artifact.sbom.bytes_mismatch", Subject: artifact.Name + ":" + artifact.SBOM.Source, Detail: "SBOM receipt digest differs from the inspected artifact bytes"})
+		}
+	}
+	if requireLegal && artifact.NoticeManifest.Source != "" {
+		file, exists := seenFiles[artifact.NoticeManifest.Source]
+		if !exists {
+			findings = append(findings, Finding{Code: "artifact.notice_manifest.placement_missing", Subject: artifact.Name + ":" + artifact.NoticeManifest.Source, Detail: "notice manifest source must be present in the final artifact inventory"})
+		} else if file.Digest != artifact.NoticeManifest.Digest {
+			findings = append(findings, Finding{Code: "artifact.notice_manifest.bytes_mismatch", Subject: artifact.Name + ":" + artifact.NoticeManifest.Source, Detail: "notice manifest receipt digest differs from the inspected artifact bytes"})
 		}
 	}
 	seenDeps := make(map[string]struct{}, len(artifact.Dependencies))
@@ -497,6 +633,23 @@ func validateSBOM(artifactName string, sbom SBOMEvidence) []Finding {
 	return findings
 }
 
+func validateNoticeManifest(artifactName string, manifest NoticeManifestEvidence) []Finding {
+	var findings []Finding
+	if manifest.Format != "Manja-Notice-Manifest-JSON" {
+		findings = append(findings, Finding{Code: "artifact.notice_manifest.format_invalid", Subject: artifactName, Detail: "notice manifest format must be Manja-Notice-Manifest-JSON"})
+	}
+	if manifest.Source == "" {
+		findings = append(findings, Finding{Code: "artifact.notice_manifest.source_missing", Subject: artifactName, Detail: "notice manifest source identity is required"})
+	}
+	if !validDigest(manifest.Digest) {
+		findings = append(findings, Finding{Code: "artifact.notice_manifest.digest_invalid", Subject: artifactName, Detail: "notice manifest requires a lowercase SHA-256 or SHA-384 digest"})
+	}
+	if !manifest.Complete {
+		findings = append(findings, Finding{Code: "artifact.notice_manifest.incomplete", Subject: artifactName, Detail: "notice manifest must cover the complete shipped dependency notice set"})
+	}
+	return findings
+}
+
 func validateFile(file FileEvidence, expectedPath string) []Finding {
 	var findings []Finding
 	if expectedPath == "" {
@@ -559,6 +712,52 @@ func isUnknownLicense(value string) bool {
 	}
 }
 
+var knownSPDXLicenseIDs = map[string]struct{}{
+	"0BSD": {}, "Apache-1.1": {}, "Apache-2.0": {}, "Artistic-2.0": {},
+	"BSD-1-Clause": {}, "BSD-2-Clause": {}, "BSD-3-Clause": {}, "BSL-1.1": {},
+	"CC0-1.0": {}, "CDDL-1.0": {}, "EPL-1.0": {}, "EPL-2.0": {},
+	"GPL-2.0-only": {}, "GPL-2.0-or-later": {}, "GPL-3.0-only": {}, "GPL-3.0-or-later": {},
+	"ISC": {}, "LGPL-2.1-only": {}, "LGPL-2.1-or-later": {}, "LGPL-3.0-only": {},
+	"MIT": {}, "MIT-0": {}, "MPL-2.0": {}, "OFL-1.1": {}, "OpenSSL": {},
+	"PSF-2.0": {}, "Python-2.0": {}, "Ruby": {}, "Unicode-DFS-2016": {},
+	"Unlicense": {}, "WTFPL": {}, "Zlib": {},
+}
+
+func validLicenseIdentifier(value string) bool {
+	value = strings.TrimSpace(value)
+	if isUnknownLicense(value) {
+		return false
+	}
+	tokens := strings.FieldsFunc(value, func(r rune) bool {
+		switch r {
+		case ' ', '\t', '\n', '\r', '(', ')', '+':
+			return true
+		default:
+			return false
+		}
+	})
+	if len(tokens) == 0 {
+		return false
+	}
+	for _, token := range tokens {
+		upper := strings.ToUpper(token)
+		if upper == "AND" || upper == "OR" || upper == "WITH" {
+			continue
+		}
+		if _, exists := knownSPDXLicenseIDs[token]; exists {
+			continue
+		}
+		if strings.HasPrefix(token, "LicenseRef-") && len(token) > len("LicenseRef-") {
+			continue
+		}
+		if strings.HasPrefix(token, "DocumentRef-") && strings.Contains(token, ":LicenseRef-") {
+			continue
+		}
+		return false
+	}
+	return true
+}
+
 func isMutableVersion(value string) bool {
 	switch strings.ToLower(strings.TrimSpace(value)) {
 	case "latest", "main", "master", "head", "dev", "current":
@@ -609,8 +808,15 @@ func MarshalCanonical(evidence Evidence) ([]byte, error) {
 // DecodeStrict decodes one evidence object and rejects unknown fields and
 // trailing JSON values.
 func DecodeStrict(reader io.Reader) (Evidence, error) {
+	data, err := io.ReadAll(reader)
+	if err != nil {
+		return Evidence{}, err
+	}
+	if err := rejectDuplicateJSONKeys(data); err != nil {
+		return Evidence{}, err
+	}
 	var evidence Evidence
-	decoder := json.NewDecoder(reader)
+	decoder := json.NewDecoder(bytes.NewReader(data))
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(&evidence); err != nil {
 		return Evidence{}, err
@@ -623,6 +829,67 @@ func DecodeStrict(reader io.Reader) (Evidence, error) {
 		return Evidence{}, fmt.Errorf("trailing evidence: %w", err)
 	}
 	return evidence, nil
+}
+
+func rejectDuplicateJSONKeys(data []byte) error {
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	if err := walkJSONValue(decoder); err != nil {
+		if errors.Is(err, io.EOF) {
+			return nil
+		}
+		return err
+	}
+	if _, err := decoder.Token(); err == nil {
+		return errors.New("evidence contains multiple JSON values")
+	} else if !errors.Is(err, io.EOF) {
+		return fmt.Errorf("trailing evidence: %w", err)
+	}
+	return nil
+}
+
+func walkJSONValue(decoder *json.Decoder) error {
+	token, err := decoder.Token()
+	if err != nil {
+		return err
+	}
+	switch delimiter := token.(type) {
+	case json.Delim:
+		switch delimiter {
+		case '{':
+			seen := make(map[string]struct{})
+			for decoder.More() {
+				keyToken, err := decoder.Token()
+				if err != nil {
+					return err
+				}
+				key, ok := keyToken.(string)
+				if !ok {
+					return errors.New("evidence object key is not a string")
+				}
+				if _, exists := seen[key]; exists {
+					return fmt.Errorf("duplicate JSON object key %q", key)
+				}
+				seen[key] = struct{}{}
+				if err := walkJSONValue(decoder); err != nil {
+					return err
+				}
+			}
+			_, err := decoder.Token()
+			return err
+		case '[':
+			for decoder.More() {
+				if err := walkJSONValue(decoder); err != nil {
+					return err
+				}
+			}
+			_, err := decoder.Token()
+			return err
+		default:
+			return fmt.Errorf("unexpected JSON delimiter %q", delimiter)
+		}
+	default:
+		return nil
+	}
 }
 
 func normalize(evidence Evidence) Evidence {
@@ -650,7 +917,11 @@ func normalize(evidence Evidence) Evidence {
 		}
 		sort.Strings(copyEvidence.Artifacts[index].Dependencies)
 		sort.Slice(copyEvidence.Artifacts[index].Files, func(left, right int) bool {
-			return copyEvidence.Artifacts[index].Files[left].Path < copyEvidence.Artifacts[index].Files[right].Path
+			leftFile := copyEvidence.Artifacts[index].Files[left]
+			rightFile := copyEvidence.Artifacts[index].Files[right]
+			leftKey := leftFile.Path + "\x00" + leftFile.Type + "\x00" + fmt.Sprint(leftFile.Size) + "\x00" + leftFile.Digest
+			rightKey := rightFile.Path + "\x00" + rightFile.Type + "\x00" + fmt.Sprint(rightFile.Size) + "\x00" + rightFile.Digest
+			return leftKey < rightKey
 		})
 		sort.Slice(copyEvidence.Artifacts[index].Platforms, func(left, right int) bool {
 			leftPlatform := copyEvidence.Artifacts[index].Platforms[left]
@@ -661,12 +932,18 @@ func normalize(evidence Evidence) Evidence {
 		})
 	}
 	sort.Slice(copyEvidence.Dependencies, func(left, right int) bool {
-		leftKey := copyEvidence.Dependencies[left].Ecosystem + "\x00" + copyEvidence.Dependencies[left].Name
-		rightKey := copyEvidence.Dependencies[right].Ecosystem + "\x00" + copyEvidence.Dependencies[right].Name
+		leftDependency := copyEvidence.Dependencies[left]
+		rightDependency := copyEvidence.Dependencies[right]
+		leftKey := leftDependency.Ecosystem + "\x00" + leftDependency.Name + "\x00" + leftDependency.Version + "\x00" + leftDependency.License + "\x00" + string(leftDependency.Scope) + "\x00" + leftDependency.Source + "\x00" + leftDependency.Digest
+		rightKey := rightDependency.Ecosystem + "\x00" + rightDependency.Name + "\x00" + rightDependency.Version + "\x00" + rightDependency.License + "\x00" + string(rightDependency.Scope) + "\x00" + rightDependency.Source + "\x00" + rightDependency.Digest
 		return leftKey < rightKey
 	})
 	sort.Slice(copyEvidence.Artifacts, func(left, right int) bool {
-		return copyEvidence.Artifacts[left].Name < copyEvidence.Artifacts[right].Name
+		leftArtifact := copyEvidence.Artifacts[left]
+		rightArtifact := copyEvidence.Artifacts[right]
+		leftKey := leftArtifact.Name + "\x00" + string(leftArtifact.Kind) + "\x00" + leftArtifact.Source + "\x00" + leftArtifact.Digest
+		rightKey := rightArtifact.Name + "\x00" + string(rightArtifact.Kind) + "\x00" + rightArtifact.Source + "\x00" + rightArtifact.Digest
+		return leftKey < rightKey
 	})
 	return copyEvidence
 }
