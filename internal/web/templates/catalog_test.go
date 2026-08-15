@@ -1315,78 +1315,91 @@ func TestPreparedOperationDetailSectionsMatchesCompleteEndpointSSRBytes(t *testi
 func TestPreparedOperationDetailSectionsWithResponsesMatchesCompleteEndpointSSRBytes(t *testing.T) {
 	t.Parallel()
 
-	detailID := domain.DetailID("detail-sha256-" + strings.Repeat("e", 64))
-	documentHref := "/documents/core-v1/"
-	operation := domain.Operation{
-		Anchor: string(detailID), Title: "Create Pod", Method: "POST", Path: "/pods",
-		RequestBody: &domain.OperationRequestBody{Description: "Pod to create.", Required: true, MediaTypes: []domain.OperationMediaType{{ContentType: "application/json", Schema: domain.SchemaSummary{Name: "Pod", Type: "object"}}}},
-		Responses:   []domain.OperationResponse{{Status: "201", Description: "Created."}},
-	}
-	detail := catalog.DetailRecordV1{ID: detailID, Kind: "operation", Operation: &projection.OperationDetail{
-		ID: string(detailID), Anchor: string(detailID), HeadingID: string(detailID), Heading: "Create Pod", HeadingLevel: 2,
-		Method: "POST", Path: "/pods", HasRequestBody: true,
-		RequestBody: projection.RequestBody{Description: "Pod to create.", Required: true, MediaTypes: []projection.MediaType{{Ordinal: 0, ID: "application/json", ContentType: "application/json", SchemaRef: 7}}},
-		Responses:   []projection.Response{{Ordinal: 0, ID: "201", Status: "201", Description: "Created."}},
-	}}
-	nodes := []projection.SchemaNode{{Ordinal: 7, ID: "node-pod", Name: "Pod", Type: "object"}}
-	schemaLinks := map[string]string{"Pod": documentHref + "?selected=detail-sha256-" + strings.Repeat("f", 64) + "#detail-sha256-" + strings.Repeat("f", 64)}
-	authorization, err := localrender.PrepareOperationAuthorization(detail, operation)
-	if err != nil {
-		t.Fatal(err)
-	}
-	parameters, err := localrender.PrepareOperationParameters(detail, operation, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	media, err := localrender.PrepareOperationRequestBodyMedia(detail, operation, nodes, documentHref, schemaLinks)
-	if err != nil {
-		t.Fatal(err)
-	}
-	trees, err := localrender.PrepareOperationSchemaTrees(detail, operation, nodes, documentHref, schemaLinks)
-	if err != nil {
-		t.Fatal(err)
-	}
-	body, err := localrender.PrepareOperationRequestBody(detail, operation, media, trees)
-	if err != nil {
-		t.Fatal(err)
-	}
-	request, err := localrender.PrepareOperationRequestSection(detail, operation, authorization, parameters, &body, documentHref, schemaLinks)
-	if err != nil {
-		t.Fatal(err)
-	}
-	responseMedia, err := localrender.PrepareOperationResponseMedia(detail, operation, nil, documentHref, schemaLinks)
-	if err != nil {
-		t.Fatal(err)
-	}
-	responseDetails, err := localrender.PrepareOperationResponseDetails(detail, operation, nil, documentHref, schemaLinks)
-	if err != nil {
-		t.Fatal(err)
-	}
-	examples, err := localrender.PrepareOperationExamples(detail, operation, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	responses, err := localrender.PrepareOperationResponses(detail, operation, responseMedia, responseDetails, examples, trees)
-	if err != nil {
-		t.Fatal(err)
-	}
-	sections, err := localrender.PrepareOperationDetailSections(detail, operation, &request, &responses)
-	if err != nil {
-		t.Fatal(err)
-	}
+	for _, test := range []struct {
+		name        string
+		description string
+	}{
+		{name: "description", description: "Created."},
+		{name: "empty description", description: ""},
+	} {
+		test := test
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
 
-	baseOptions := PublicDocsOptions{SchemaLinks: schemaLinks, SchemaLinkTarget: "#catalog-main-content", SchemaLinkSelect: "#catalog-main-content", SchemaLinkSwap: "outerHTML show:#main-content:top"}
-	var legacy, delegated bytes.Buffer
-	if err := endpointSection(operation, nil, "", baseOptions, OperationNavigationData{}).Render(context.Background(), &legacy); err != nil {
-		t.Fatal(err)
-	}
-	baseOptions.OperationDetailSections = &sections
-	if err := endpointSection(operation, nil, "", baseOptions, OperationNavigationData{}).Render(context.Background(), &delegated); err != nil {
-		t.Fatal(err)
-	}
-	if !bytes.Equal(legacy.Bytes(), delegated.Bytes()) {
-		index := firstDifferentByte(legacy.Bytes(), delegated.Bytes())
-		t.Fatalf("prepared operation detail sections with responses changed complete endpoint SSR bytes at byte %d:\nlegacy=%q\ndelegated=%q", index, nearbyBytes(legacy.Bytes(), index), nearbyBytes(delegated.Bytes(), index))
+			detailID := domain.DetailID("detail-sha256-" + strings.Repeat("e", 64))
+			documentHref := "/documents/core-v1/"
+			operation := domain.Operation{
+				Anchor: string(detailID), Title: "Create Pod", Method: "POST", Path: "/pods",
+				RequestBody: &domain.OperationRequestBody{Description: "Pod to create.", Required: true, MediaTypes: []domain.OperationMediaType{{ContentType: "application/json", Schema: domain.SchemaSummary{Name: "Pod", Type: "object"}}}},
+				Responses:   []domain.OperationResponse{{Status: "201", Description: test.description}},
+			}
+			detail := catalog.DetailRecordV1{ID: detailID, Kind: "operation", Operation: &projection.OperationDetail{
+				ID: string(detailID), Anchor: string(detailID), HeadingID: string(detailID), Heading: "Create Pod", HeadingLevel: 2,
+				Method: "POST", Path: "/pods", HasRequestBody: true,
+				RequestBody: projection.RequestBody{Description: "Pod to create.", Required: true, MediaTypes: []projection.MediaType{{Ordinal: 0, ID: "application/json", ContentType: "application/json", SchemaRef: 7}}},
+				Responses:   []projection.Response{{Ordinal: 0, ID: "201", Status: "201", Description: test.description}},
+			}}
+			nodes := []projection.SchemaNode{{Ordinal: 7, ID: "node-pod", Name: "Pod", Type: "object"}}
+			schemaLinks := map[string]string{"Pod": documentHref + "?selected=detail-sha256-" + strings.Repeat("f", 64) + "#detail-sha256-" + strings.Repeat("f", 64)}
+			authorization, err := localrender.PrepareOperationAuthorization(detail, operation)
+			if err != nil {
+				t.Fatal(err)
+			}
+			parameters, err := localrender.PrepareOperationParameters(detail, operation, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			media, err := localrender.PrepareOperationRequestBodyMedia(detail, operation, nodes, documentHref, schemaLinks)
+			if err != nil {
+				t.Fatal(err)
+			}
+			trees, err := localrender.PrepareOperationSchemaTrees(detail, operation, nodes, documentHref, schemaLinks)
+			if err != nil {
+				t.Fatal(err)
+			}
+			body, err := localrender.PrepareOperationRequestBody(detail, operation, media, trees)
+			if err != nil {
+				t.Fatal(err)
+			}
+			request, err := localrender.PrepareOperationRequestSection(detail, operation, authorization, parameters, &body, documentHref, schemaLinks)
+			if err != nil {
+				t.Fatal(err)
+			}
+			responseMedia, err := localrender.PrepareOperationResponseMedia(detail, operation, nil, documentHref, schemaLinks)
+			if err != nil {
+				t.Fatal(err)
+			}
+			responseDetails, err := localrender.PrepareOperationResponseDetails(detail, operation, nil, documentHref, schemaLinks)
+			if err != nil {
+				t.Fatal(err)
+			}
+			examples, err := localrender.PrepareOperationExamples(detail, operation, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			responses, err := localrender.PrepareOperationResponses(detail, operation, responseMedia, responseDetails, examples, trees)
+			if err != nil {
+				t.Fatal(err)
+			}
+			sections, err := localrender.PrepareOperationDetailSections(detail, operation, &request, &responses)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			baseOptions := PublicDocsOptions{SchemaLinks: schemaLinks, SchemaLinkTarget: "#catalog-main-content", SchemaLinkSelect: "#catalog-main-content", SchemaLinkSwap: "outerHTML show:#main-content:top"}
+			var legacy, delegated bytes.Buffer
+			if err := endpointSection(operation, nil, "", baseOptions, OperationNavigationData{}).Render(context.Background(), &legacy); err != nil {
+				t.Fatal(err)
+			}
+			baseOptions.OperationDetailSections = &sections
+			if err := endpointSection(operation, nil, "", baseOptions, OperationNavigationData{}).Render(context.Background(), &delegated); err != nil {
+				t.Fatal(err)
+			}
+			if !bytes.Equal(legacy.Bytes(), delegated.Bytes()) {
+				index := firstDifferentByte(legacy.Bytes(), delegated.Bytes())
+				t.Fatalf("prepared operation detail sections with responses changed complete endpoint SSR bytes at byte %d:\nlegacy=%q\ndelegated=%q", index, nearbyBytes(legacy.Bytes(), index), nearbyBytes(delegated.Bytes(), index))
+			}
+		})
 	}
 }
 

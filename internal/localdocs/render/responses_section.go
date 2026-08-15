@@ -154,14 +154,13 @@ func cloneOperationResponsesFragment(source OperationResponsesFragment) Operatio
 
 func operationResponseDetailsWithLegacySpacing(data operationResponseDetailData, scope string, schemaLinks map[string]string) templ.Component {
 	return templ.ComponentFunc(func(ctx context.Context, writer io.Writer) error {
-		if err := operationResponseDetails(data, scope, schemaLinks).Render(ctx, writer); err != nil {
+		if err := operationResponseDetailDescription(data.Description).Render(ctx, writer); err != nil {
 			return err
 		}
-		if data.Description != "" && len(data.Headers) == 0 {
-			_, err := io.WriteString(writer, " ")
+		if _, err := io.WriteString(writer, " "); err != nil {
 			return err
 		}
-		return nil
+		return operationResponseDetailHeaders(data.Headers, scope, schemaLinks).Render(ctx, writer)
 	})
 }
 
