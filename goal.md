@@ -5,8 +5,9 @@ Updated: 2026-08-15
 ## Objective
 
 Deliver Manja as a complete Open Core, self-hosted OpenAPI renderer and
-publisher. Coordinate three independent Codex tasks: this product-management
-task, one implementation task, and one read-only review task.
+publisher. The active implementation phase uses two isolated implementers and
+one reconciler; technical, design, and product reviews remain paused until an
+explicit review signal.
 
 This file is the repository-visible recovery summary. External control-plane
 YAML remains the lifecycle and ownership authority. Machine-specific worktree
@@ -1393,6 +1394,28 @@ the Wasm boundary build, focused package tests, and diff check pass. Final
 candidate identity and clean status are recorded in the external handoff;
 this implementation remains unpushed and unintegrated pending fresh review.
 
+### Reconciler phase v2 (2026-08-15)
+
+This phase starts from the accepted OC-04AF head
+`8150abbaa1d5e7c396d644c4d1099755c1c8200a`, tree
+`ebb0741228018c719f5b75765c651e1f785eb215`, whose parent is the accepted
+OC-01/OC-02 authority-binding head `ac6834caa56364401ec4fa21dc3b077112e37a1d`.
+The reconciler branch is rebased against `origin/main` and owns integration
+ordering, conflict resolution, scope control, frequent commits, and pushes.
+
+Two implementers work in separate worktrees and may implement bounded Open
+Core slices in parallel. Each must use RED/GREEN tests, preserve SSR/no-JS and
+parser-free boundaries, run proportional architecture/Wasm/Muamba/templ and
+headless gates, and hand off exact commit/tree/status packets. The reconciler
+may consolidate only compatible commits and must rebase against `origin/main`
+before publishing. No review task starts until the product manager gives an
+explicit review signal; any later HEAD/tree/base/byte change requires a fresh
+freeze and fresh reviews.
+
+SBOM remains explicitly deferred by product direction. Legal authority,
+attribution, redistribution, hybrid offline runtime, recovery lifecycle, and
+final packaging remain incomplete and cannot be inferred from groundwork.
+
 ## PR Gate
 
 At `2026-08-11T18:54:35Z`, [PR
@@ -1429,14 +1452,15 @@ Before merge:
 
 ## Next Action
 
-Hold the exact frozen reconciler candidate pending an explicit review signal.
-If authorized, start independent technical, design, and product reviews against
-the exact head/tree/status above; any correction requires a fresh identity-bound
-review. PM chooses and separately authorizes any integration path.
-Any push, PR, or head movement restarts exact-head CI, CodeQL, independent
-review, and substantive CodeRabbit gates; absence or failure blocks integration.
-Overall provenance remains `BLOCKED`; legal authority and final-artifact
-notices stay separate, and licensing/package-generation Task 8 remains stopped.
-Hosted SaaS stays deferred, active-theme work stays excluded, and unbounded
-browser/offline/lifecycle behavior stays outside OC-04AE and OC-03. No merge,
-release, deployment, cleanup, or other lifecycle action is authorized here.
+Run the two isolated implementers from the reconciler branch, then consolidate
+their compatible commits with exact ancestry, rebase against `origin/main`, and
+push the feature branch frequently. Keep technical/design/product reviews
+paused until an explicit product-manager review signal. After that signal,
+freeze one exact candidate and start independent reviews; any correction or
+HEAD/tree/base/byte movement requires a new freeze and new reviews.
+
+Overall provenance remains `BLOCKED`; legal authority, attribution,
+redistribution, final notices, SBOM, hybrid offline runtime, and recovery
+lifecycle remain incomplete. Hosted SaaS and active-theme work stay excluded.
+No merge, release, deployment, cleanup, or other lifecycle action is implied by
+green tests, ACCEPT, or a push.
