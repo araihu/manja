@@ -1125,6 +1125,39 @@ passed. These external blockers remain explicit and do not become acceptance.
 No technical, design, or product review has started. Merge, release,
 deployment, cleanup, and other lifecycle actions remain unauthorized.
 
+### OC-04AD race-blocker correction reconciliation (2026-08-15)
+
+This Luna Max reconciler cycle starts from exact base
+`64d36feb35c1d10a09f6330f6127201c41d011cf`, tree
+`f298bdb778434651cae0b56742b06d5be55ef36e`. Fetched `origin/main` is
+`507c5ea9fcdc8cee670a023dbb82f348ba2ed763`; it is an ancestor of the exact
+base. The dedicated branch is `codex/oc04ad-reconciler-luna-max` in an isolated
+worktree. The shared primary checkout and the preceding reconciler worktree
+remain untouched.
+
+The bounded scope is reconciliation of exactly two independent race-correction
+packets for the prior root-gate blockers:
+
+- `application/catalog`
+  `TestCompilerCompilesCompleteLockedKubernetesCatalog`, which ended with
+  `global Kubernetes search "apps v1 deployment": search_deadline`;
+- `internal/selfhosted` `TestDefaultGitHubFixtureStartsWithinDeadline`, which
+  hit the 30-second startup deadline in the full race run.
+
+Each packet must arrive with exact base/head/tree, complete staged, unstaged,
+and untracked status, owned diff, and captured focused/full race receipts.
+The reconciler compares packets independently, keeps only compatible narrow
+corrections, and preserves incompatible or out-of-scope work unchanged
+outside this branch. No parser, renderer, SSR/no-JS, legal, packaging, hosted
+SaaS, theme, browser/offline, lifecycle, or unrelated timing behavior may be
+expanded. These corrections are gate recovery only, not technical, design, or
+product review verdicts.
+
+Root race and full root gates remain blocked until both packets are frozen and
+the reconciled identity is tested. Reviews are suspended until explicit user
+authorization. Merge, release, deployment, cleanup, and other lifecycle
+actions remain unauthorized.
+
 ## PR Gate
 
 At `2026-08-11T18:54:35Z`, [PR
