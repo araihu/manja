@@ -1,8 +1,24 @@
 # Provenance And Licensing Authority Gate
 
-Date: 2026-08-11
+Date: 2026-08-15
 
 Result: **BLOCKED**
+
+## Current exact-base revalidation
+
+The current authority/provenance revalidation is recorded in
+[`authority-revalidation-2026-08-15.md`](authority-revalidation-2026-08-15.md).
+It began from the exact clean freeze requested for this checkpoint:
+
+- ref: `refs/heads/codex/opencore-reconciler-next`;
+- commit: `4fda300572506d12439a9427a4feb6976b0c4204`;
+- tree: `15d215844b92e0c883a14a516a643832c5cac627`;
+- parent: `8035a9faefa9b8ed45032375dd63d7cfd635cd1f`;
+- `origin/main` and merge-base: `507c5ea9fcdc8cee670a023dbb82f348ba2ed763`.
+
+The receipt found no independently verifiable first-party assignment or
+trademark permission. The gate therefore remains **BLOCKED**. Adding the
+receipt changes the candidate tree and requires a fresh identity-bound freeze.
 
 This inventory is an engineering release gate, not a legal conclusion. Manja
 must not claim Apache-2.0, publish a root `LICENSE` or `NOTICE`, or add Apache
