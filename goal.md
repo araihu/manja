@@ -1374,6 +1374,25 @@ explicitly deferred by product direction and is not implemented here. Fresh
 technical/design review is required for the new exact child; no integration or
 lifecycle action is authorized.
 
+### OC-04AF bounded transport resolution (2026-08-15)
+
+This fresh implementation starts from the accepted and pushed OC-01/OC-02
+authority-binding head `ac6834caa56364401ec4fa21dc3b077112e37a1d`, tree
+`af0981378303f9fb882b3be3ce1d8c5ae2f68652`. It adds one parser-free browser
+transport seam: admitted projection GET paths resolve to copied immutable
+artifact metadata, while `Allows` reuses that same resolver and the Wasm ABI
+exposes the bounded `resolve` query. Unknown, non-GET, query, traversal,
+backslash, catalog, and cross-publication paths fail closed. No network,
+filesystem, JSON parser, renderer, Service Worker, offline storage, UI,
+SaaS, theme, legal, packaging, or lifecycle behavior changes. SSR/no-JS
+remains authoritative; SBOM remains explicitly deferred.
+
+RED was the focused resolver test failing to compile before the method existed.
+GREEN covers declared detail/schema-node metadata and all rejected route forms;
+the Wasm boundary build, focused package tests, and diff check pass. Final
+candidate identity and clean status are recorded in the external handoff;
+this implementation remains unpushed and unintegrated pending fresh review.
+
 ## PR Gate
 
 At `2026-08-11T18:54:35Z`, [PR

@@ -138,19 +138,26 @@ func (activation Activation) Artifact(pathValue string) (Artifact, bool) {
 	return activation.inventory[index], true
 }
 
-// Allows reports whether a GET request is an admitted projection child for
-// this publication. It is intentionally pathname-only: callers must perform
-// same-origin URL parsing before entering the Wasm ABI.
-func (activation Activation) Allows(method, pathValue string) bool {
+// Resolve returns the immutable metadata for an admitted GET projection child.
+// It is intentionally pathname-only: callers must perform same-origin URL
+// parsing before entering the Wasm ABI.
+func (activation Activation) Resolve(method, pathValue string) (Artifact, bool) {
 	if method != "GET" || strings.ContainsAny(pathValue, "?#%") || strings.Contains(pathValue, `\`) || path.Clean(pathValue) != pathValue {
-		return false
+		return Artifact{}, false
 	}
 	for _, artifact := range activation.inventory {
 		if activation.descriptor.ProjectionDataBase+artifact.Path == pathValue {
-			return true
+			return artifact, true
 		}
 	}
-	return false
+	return Artifact{}, false
+}
+
+// Allows reports whether a GET request is an admitted projection child for
+// this publication.
+func (activation Activation) Allows(method, pathValue string) bool {
+	_, ok := activation.Resolve(method, pathValue)
+	return ok
 }
 
 func validateDescriptor(descriptor Descriptor) error {
