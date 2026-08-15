@@ -1153,10 +1153,70 @@ SaaS, theme, browser/offline, lifecycle, or unrelated timing behavior may be
 expanded. These corrections are gate recovery only, not technical, design, or
 product review verdicts.
 
-Root race and full root gates remain blocked until both packets are frozen and
-the reconciled identity is tested. Reviews are suspended until explicit user
-authorization. Merge, release, deployment, cleanup, and other lifecycle
-actions remain unauthorized.
+Prior root race and full-root timing blockers remained open until both packets
+were frozen and the reconciled identity was tested. Reviews are suspended until
+explicit user authorization. Merge, release, deployment, cleanup, and other
+lifecycle actions remain unauthorized.
+
+### OC-04AD frozen packet reconciliation and gate receipts (2026-08-15)
+
+The selfhosted packet arrived from isolated worktree
+`/tmp/manja-opencore-reconciler-luna-max`, branch
+`codex/opencore-reconciler-luna-max`, exact head
+`30d54f1e0069f9a5a897fe640bfc7087dddfa24d`, tree
+`bccbfd21f5cb1e87dcd9167d8381291717616f9d`, parent/base
+`64d36fe35c1d10a09f6330f6127201c41d011cf` / tree
+`f298bdb778434651cae0b56742b06d5be55ef36e`, clean status. It joins
+`NewWithOptions` startup before returning on a stopgate timeout, preserving the
+30-second deadline and preventing a startup goroutine from outliving the test.
+
+The catalog packet arrived from isolated worktree
+`/private/tmp/manja-oc04ad-catalog-race-worker`, branch
+`codex/oc04ad-catalog-race-worker`, exact head
+`e395f6cd9063b8570c7a3fbaebab776d04c34061`, tree
+`e80c097e21f1538e012f59b052a4130511d83000`, parent/base
+`64d36fe35c1d10a09f6330f6127201c41d011cf` / tree
+`f298bdb778434651cae0b56742b06d5be55ef36e`, clean status. It predecodes and
+caches static search-record segments after exact child identity verification;
+runtime-loaded children and every static lookup retain path, kind, length, and
+SHA-256 verification. No timeout or search bound is weakened.
+
+Owned paths are disjoint: the catalog packet owns
+`application/catalog/search.go` and `application/catalog/search_test.go`; the
+selfhosted packet owns `internal/selfhosted/final_stopgate_test.go`. Both
+packets were selected unchanged. They were cherry-picked onto the reconciler
+baseline as catalog commit `dbb727785c88030074df4b040d2a937270e8f428`, tree
+`9983811686899aba7e61c0ec2e6d47789b675258`, and selfhosted commit
+`0eee2d8e6d5cf733fffafb0904ca3b1d712b99bf`, tree
+`5056e5d1fe8510fbdc761f54d171765cfb31d4d3`. These are scope dispositions,
+not technical, design, or product review verdicts.
+
+Focused receipts: uncached normal catalog tests (`-count=3`) passed in
+`101.263s`; selfhosted normal tests (`-count=3`) passed in `3.188s`;
+selfhosted focused race (`-count=3`) passed in `33.894s`; static-record cache
+race (`-count=3`) passed in `1.524s`; and the complete Kubernetes compiler race
+test passed once in `224.572s`. A diagnostic combined catalog command with the
+cache and complete compiler tests at `-count=3` hit the Go test 10-minute
+timeout while repeating the expensive compiler case, with no race report; it
+is not used as a passing receipt.
+
+Full receipts on the reconciled candidate: uncached root normal
+`GOWORK=off go test ./... -count=1` passed, including selfhosted `186.835s` and
+E2E `195.056s`; root race `GOWORK=off go test -race ./... -count=1` passed,
+including catalog `263.730s`, selfhosted `154.334s`, and E2E `202.044s`.
+Architecture, projection, and `Projection` architecture tests passed;
+`GOOS=js GOARCH=wasm GOWORK=off go build -trimpath ./application/projection`,
+root build, root vet, and `GOWORK=off go mod tidy -diff` passed. Strict Muamba
+verification, strict generated-Go check, webassets check, two templ generation
+passes with `updates=0` and stable hashes, site tests, external-module tests,
+Redocly bundle/lint, API code generation, and `git diff --check` passed. Redocly
+reported only the existing three warnings (missing API license, localhost
+server URL, and health operation without a 4XX response); no warning is caused
+by this packet.
+
+The reconciled worktree remains review-held and lifecycle-held. No technical,
+design, or product review has started. Merge, release, deployment, cleanup,
+and other lifecycle actions remain unauthorized.
 
 ## PR Gate
 
