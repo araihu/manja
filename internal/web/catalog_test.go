@@ -746,6 +746,16 @@ func TestCatalogSchemaLoadsOneProgressiveNodeWithNoJSFallback(t *testing.T) {
 	if root.Code != http.StatusOK || !strings.Contains(root.Body.String(), `id="schema-node-panel"`) || !strings.Contains(root.Body.String(), "metadata") || !strings.Contains(root.Body.String(), "object") {
 		t.Fatalf("schema root = %d %q", root.Code, root.Body.String())
 	}
+	for _, want := range []string{
+		`<header class="grid min-w-0 gap-4">`,
+		`aria-label="Schema actions"`,
+		`class="manja-schema-title`,
+		`data-catalog-provenance`,
+	} {
+		if !strings.Contains(root.Body.String(), want) {
+			t.Fatalf("schema root missing prepared header %q: %s", want, root.Body.String())
+		}
+	}
 	childURL := rootURL + "&node=1#schema-node-panel"
 	child := httptest.NewRecorder()
 	handler.ServeHTTP(child, httptest.NewRequest(http.MethodGet, strings.Split(childURL, "#")[0], nil))

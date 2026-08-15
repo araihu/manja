@@ -128,6 +128,7 @@ type CatalogPageData struct {
 	OperationServers []core.SpecServer
 	Search *CatalogSearchData
 	SchemaNode *localrender.SchemaNodeFragment
+	SchemaDetailHeader *localrender.SchemaDetailHeaderFragment
 	DownloadHref string
 	PageMarkdownHref string
 	CapabilityFooter CapabilityFooterData
@@ -1037,33 +1038,9 @@ templ catalogOrganizationAvatar(item CatalogOrganizationItem) {
 templ catalogSchemaDetail(data CatalogPageData) {
 	{{ schema := *data.Selected.Schema }}
 	<article id={ schema.Anchor } data-catalog-detail="schema" class="space-y-6">
-		<header class="grid min-w-0 gap-4">
-			<div class="flex flex-wrap items-center justify-between gap-3">
-				<div class="flex min-w-0 flex-wrap items-center gap-2">
-					@badge.Badge(badge.Config{Label: "Schema", Tone: badge.ToneSecondary, Appearance: badge.AppearanceSoft, Size: badge.SizeMD})
-					if catalogDocumentVersionLabel(*data.Document) != "" {
-						@badge.Badge(badge.Config{Label: catalogDocumentVersionLabel(*data.Document), Tone: badge.ToneDefault, Appearance: badge.AppearanceSoft, Size: badge.SizeSM})
-					}
-					if data.SchemaNode != nil && (data.SchemaNode.Type() != "" || data.SchemaNode.Format() != "") {
-						<code class="rounded-radius bg-surface-alt px-3 py-1.5 text-sm text-on-surface-strong dark:bg-surface-dark-alt dark:text-on-surface-dark-strong">{ strings.TrimSpace(data.SchemaNode.Type() + " " + data.SchemaNode.Format()) }</code>
-					}
-				</div>
-				<nav aria-label="Schema actions" class="flex flex-wrap items-center gap-2">
-					if data.PageMarkdownHref != "" {
-						@copyPageAction(schema.Anchor, data.PageMarkdownHref)
-					}
-					<a href={ templpkg.URL(data.DownloadHref) } download class="inline-flex min-h-9 items-center justify-center gap-2 rounded-radius border border-outline px-3 text-sm font-semibold text-on-surface-strong transition hover:bg-surface-alt focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary dark:border-outline-dark dark:text-on-surface-dark-strong dark:hover:bg-surface-dark-alt dark:focus-visible:outline-primary-dark">
-						@icon.Icon(icon.Config{SpriteURL: heroicons.SpriteURL, Symbol: heroicons.Icon16SolidArrowDownTray, Size: icon.SizeSM, Decorative: true})
-						<span>Download source</span>
-					</a>
-				</nav>
-			</div>
-			<h1 tabindex="-1" data-manja-settled-focus="true" class="manja-schema-title font-title text-2xl font-bold text-on-surface-strong sm:text-3xl dark:text-on-surface-dark-strong">{ schema.Heading }</h1>
-			if schema.Description != "" {
-				<p class="max-w-[70ch] whitespace-pre-wrap break-words text-on-surface-muted dark:text-on-surface-dark-muted">{ schema.Description }</p>
-			}
-			@catalogSourceStatus(data)
-		</header>
+		if data.SchemaDetailHeader != nil {
+			@localrender.SchemaDetailHeader(*data.SchemaDetailHeader, catalogSchemaDetailActions(data, schema.Anchor), catalogSourceStatus(data))
+		}
 		if data.SchemaNode != nil && schema.ExampleSchemaJSON != "" {
 			<div class="manja-schema-detail-layout">
 				<div class="manja-schema-tree-panel">
@@ -1084,6 +1061,16 @@ templ catalogSchemaDetail(data CatalogPageData) {
 			}
 		}
 	</article>
+}
+
+templ catalogSchemaDetailActions(data CatalogPageData, anchor string) {
+	if data.PageMarkdownHref != "" {
+		@copyPageAction(anchor, data.PageMarkdownHref)
+	}
+	<a href={ templpkg.URL(data.DownloadHref) } download class="inline-flex min-h-9 items-center justify-center gap-2 rounded-radius border border-outline px-3 text-sm font-semibold text-on-surface-strong transition hover:bg-surface-alt focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary dark:border-outline-dark dark:text-on-surface-dark-strong dark:hover:bg-surface-dark-alt dark:focus-visible:outline-primary-dark">
+		@icon.Icon(icon.Config{SpriteURL: heroicons.SpriteURL, Symbol: heroicons.Icon16SolidArrowDownTray, Size: icon.SizeSM, Decorative: true})
+		<span>Download source</span>
+	</a>
 }
 
 templ catalogSourceStatus(data CatalogPageData) {

@@ -7,10 +7,13 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"fmt"
+	"io"
 	"regexp"
 	"strings"
 	"testing"
 
+	"github.com/a-h/templ"
+	"github.com/araihu/goshtoso/components/badge"
 	"github.com/araihu/goshtoso/components/sidebar"
 	"github.com/araihu/manja/application/catalog"
 	"github.com/araihu/manja/application/projection"
@@ -770,6 +773,107 @@ func TestPreparedOperationHeaderMatchesCatalogSSRBytes(t *testing.T) {
 	if !bytes.Equal(shared, legacy) {
 		t.Fatalf("prepared and SSR operation headers differ:\nprepared=%s\nSSR=%s", shared, legacy)
 	}
+}
+
+func TestPreparedSchemaDetailHeaderMatchesCatalogSSRBytes(t *testing.T) {
+	t.Parallel()
+
+	data := catalogTemplateFixture()
+	document := data.Directory.Documents[0]
+	document.APIVersion = "v1"
+	data.Document = &document
+	data.DownloadHref = "/kubernetes/openapi/core-v1.json"
+	data.PageMarkdownHref = "/kubernetes/documents/core-v1/page.md?selected=schema"
+	detailID := domain.DetailID("detail-sha256-" + strings.Repeat("d", 64))
+	detail := catalog.DetailRecordV1{ID: detailID, Kind: "schema", Schema: &projection.SchemaDetail{
+		ID: string(detailID), Anchor: string(detailID), Href: "documents/core-v1/?selected=" + string(detailID) + "#" + string(detailID),
+		HeadingID: string(detailID), Heading: "Pod schema", HeadingLevel: 2, Description: "Schema description.", SchemaRef: 7,
+	}}
+	node, err := localrender.PrepareSchemaNode(detail, projection.SchemaNode{Ordinal: 7, ID: "node-pod", Name: "Pod", Type: "object"}, nil, "/kubernetes/documents/core-v1/")
+	if err != nil {
+		t.Fatal(err)
+	}
+	schema := domain.Schema{Name: detail.Schema.Heading, Description: detail.Schema.Description}
+	fragment, err := localrender.PrepareSchemaDetailHeader(detail, schema, document, &node)
+	if err != nil {
+		t.Fatal(err)
+	}
+	data.Selected = &detail
+	data.SchemaView = &schema
+	data.SchemaNode = &node
+
+	legacy, err := renderLegacySchemaDetailHeader(data, *detail.Schema, &node)
+	if err != nil {
+		t.Fatal(err)
+	}
+	data.SchemaDetailHeader = &fragment
+	var delegatedOutput bytes.Buffer
+	if err := catalogSchemaDetail(data).Render(context.Background(), &delegatedOutput); err != nil {
+		t.Fatal(err)
+	}
+	delegated := extractSchemaDetailHeader(t, delegatedOutput.Bytes())
+	if !bytes.Equal(delegated, legacy) {
+		t.Fatalf("prepared and SSR schema detail headers differ:\nprepared=%s\nSSR=%s", delegated, legacy)
+	}
+}
+
+func renderLegacySchemaDetailHeader(data CatalogPageData, schema projection.SchemaDetail, node *localrender.SchemaNodeFragment) ([]byte, error) {
+	component := templ.ComponentFunc(func(ctx context.Context, writer io.Writer) error {
+		if _, err := io.WriteString(writer, `<header class="grid min-w-0 gap-4"><div class="flex flex-wrap items-center justify-between gap-3"><div class="flex min-w-0 flex-wrap items-center gap-2">`); err != nil {
+			return err
+		}
+		if err := badge.Badge(badge.Config{Label: "Schema", Tone: badge.ToneSecondary, Appearance: badge.AppearanceSoft, Size: badge.SizeMD}).Render(ctx, writer); err != nil {
+			return err
+		}
+		if version := catalogDocumentVersionLabel(*data.Document); version != "" {
+			if err := badge.Badge(badge.Config{Label: version, Tone: badge.ToneDefault, Appearance: badge.AppearanceSoft, Size: badge.SizeSM}).Render(ctx, writer); err != nil {
+				return err
+			}
+		}
+		if node != nil && (node.Type() != "" || node.Format() != "") {
+			if _, err := io.WriteString(writer, `<code class="rounded-radius bg-surface-alt px-3 py-1.5 text-sm text-on-surface-strong dark:bg-surface-dark-alt dark:text-on-surface-dark-strong">`+strings.TrimSpace(node.Type()+" "+node.Format())+`</code>`); err != nil {
+				return err
+			}
+		}
+		if _, err := io.WriteString(writer, `</div><nav aria-label="Schema actions" class="flex flex-wrap items-center gap-2">`); err != nil {
+			return err
+		}
+		if err := catalogSchemaDetailActions(data, schema.Anchor).Render(ctx, writer); err != nil {
+			return err
+		}
+		if _, err := io.WriteString(writer, `</nav></div><h1 tabindex="-1" data-manja-settled-focus="true" class="manja-schema-title font-title text-2xl font-bold text-on-surface-strong sm:text-3xl dark:text-on-surface-dark-strong">`+schema.Heading+`</h1>`); err != nil {
+			return err
+		}
+		if schema.Description != "" {
+			if _, err := io.WriteString(writer, `<p class="max-w-[70ch] whitespace-pre-wrap break-words text-on-surface-muted dark:text-on-surface-dark-muted">`+schema.Description+`</p>`); err != nil {
+				return err
+			}
+		}
+		if err := catalogSourceStatus(data).Render(ctx, writer); err != nil {
+			return err
+		}
+		_, err := io.WriteString(writer, `</header>`)
+		return err
+	})
+	var output bytes.Buffer
+	if err := component.Render(context.Background(), &output); err != nil {
+		return nil, err
+	}
+	return output.Bytes(), nil
+}
+
+func extractSchemaDetailHeader(t *testing.T, body []byte) []byte {
+	t.Helper()
+	start := bytes.Index(body, []byte(`<header class="grid min-w-0 gap-4">`))
+	if start < 0 {
+		t.Fatalf("schema detail header absent: %s", body)
+	}
+	relativeEnd := bytes.Index(body[start:], []byte(`</header>`))
+	if relativeEnd < 0 {
+		t.Fatalf("schema detail header unclosed: %s", body[start:])
+	}
+	end := start + relativeEnd + len(`</header>`)
+	return body[start:end]
 }
 
 func TestPreparedOperationParametersMatchCatalogSSRBytes(t *testing.T) {

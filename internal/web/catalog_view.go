@@ -364,6 +364,13 @@ func (handler *CatalogHandler) catalogPageDataWithSidebarQuery(
 				return templates.CatalogPageData{}, err
 			}
 			data.SchemaNode = schemaNodeData
+			if data.SchemaView != nil {
+				schemaHeader, err := localrender.PrepareSchemaDetailHeader(detail, *data.SchemaView, document, data.SchemaNode)
+				if err != nil {
+					return templates.CatalogPageData{}, err
+				}
+				data.SchemaDetailHeader = &schemaHeader
+			}
 		} else if selectedNode != "" {
 			return templates.CatalogPageData{}, errCatalogPageNotFound
 		}

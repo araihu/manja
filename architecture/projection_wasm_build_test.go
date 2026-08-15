@@ -79,6 +79,21 @@ func TestSchemaNodeFragmentUsesOneCanonicalComponent(t *testing.T) {
 	}
 }
 
+func TestSchemaDetailHeaderFragmentUsesOneCanonicalCatalogComponent(t *testing.T) {
+	root := repositoryRoot(t)
+	source, err := os.ReadFile(filepath.Join(root, "internal", "web", "templates", "catalog.templ"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(source)
+	if strings.Contains(text, `<header class="grid min-w-0 gap-4">`) {
+		t.Fatal("catalog template retains a second schema-detail header renderer")
+	}
+	if !strings.Contains(text, "@localrender.SchemaDetailHeader(*data.SchemaDetailHeader") {
+		t.Fatal("catalog template does not delegate to canonical schema-detail header renderer")
+	}
+}
+
 func TestOperationHeaderFragmentUsesOneCanonicalComponent(t *testing.T) {
 	root := repositoryRoot(t)
 	source, err := os.ReadFile(filepath.Join(root, "internal", "web", "templates", "catalog.templ"))
