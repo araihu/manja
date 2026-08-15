@@ -299,8 +299,12 @@ func CatalogPage(data CatalogPageData) templ.Component {
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 3, "<script src=\"/manja-assets/local-docs.js\"></script>")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 3, "<script src=\"/manja-assets/catalog-search.js\"></script> ")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 4, "<script src=\"/manja-assets/catalog-search.js\"></script> ")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -308,12 +312,12 @@ func CatalogPage(data CatalogPageData) templ.Component {
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 4, " <div hx-history=\"false\" x-data=\"{ catalogNavOpen: false }\" x-on:goshtoso-search-open.window=\"catalogNavOpen = false\" x-on:keydown.escape.window=\"if (catalogNavOpen) { catalogNavOpen = false; $nextTick(() => $refs.catalogNavTrigger.focus()) }\" x-on:resize.window=\"if (window.innerWidth >= 1024) catalogNavOpen = false\" class=\"fixed inset-0 overflow-clip bg-surface text-on-surface dark:bg-surface-dark dark:text-on-surface-dark\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 5, " <div hx-history=\"false\" x-data=\"{ catalogNavOpen: false }\" x-on:goshtoso-search-open.window=\"catalogNavOpen = false\" x-on:keydown.escape.window=\"if (catalogNavOpen) { catalogNavOpen = false; $nextTick(() => $refs.catalogNavTrigger.focus()) }\" x-on:resize.window=\"if (window.innerWidth >= 1024) catalogNavOpen = false\" class=\"fixed inset-0 overflow-clip bg-surface text-on-surface dark:bg-surface-dark dark:text-on-surface-dark\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			if catalogHasSidebar(data) {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 5, "<button type=\"button\" x-cloak x-show=\"catalogNavOpen\" x-on:click=\"catalogNavOpen = false; $nextTick(() => $refs.catalogNavTrigger.focus())\" aria-label=\"")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 6, "<button type=\"button\" x-cloak x-show=\"catalogNavOpen\" x-on:click=\"catalogNavOpen = false; $nextTick(() => $refs.catalogNavTrigger.focus())\" aria-label=\"")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
@@ -326,7 +330,7 @@ func CatalogPage(data CatalogPageData) templ.Component {
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 6, "\" data-catalog-navigation-backdrop=\"true\" class=\"manja-catalog-navigation-backdrop fixed inset-0 lg:hidden\"></button>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 7, "\" data-catalog-navigation-backdrop=\"true\" class=\"manja-catalog-navigation-backdrop fixed inset-0 lg:hidden\"></button>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
@@ -392,7 +396,7 @@ func CatalogPage(data CatalogPageData) templ.Component {
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 7, "</div>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 8, "</div>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -456,7 +460,7 @@ func catalogMainContent(data CatalogPageData) templ.Component {
 			templ_7745c5c3_Var7 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 8, "<div id=\"catalog-main-content\" data-catalog-main-content=\"true\" data-selected-doc=\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 9, "<div id=\"catalog-main-content\" data-catalog-main-content=\"true\" data-selected-doc=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -469,7 +473,7 @@ func catalogMainContent(data CatalogPageData) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 9, "\" data-document-title=\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 10, "\" data-document-title=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -482,7 +486,7 @@ func catalogMainContent(data CatalogPageData) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 10, "\" class=\"mx-auto flex min-h-full max-w-[100rem] flex-col\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 11, "\" class=\"mx-auto flex min-h-full max-w-[100rem] flex-col\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -506,7 +510,7 @@ func catalogMainContent(data CatalogPageData) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 11, "</div>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 12, "</div>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -539,7 +543,7 @@ func catalogSearchModal(data CatalogPageData) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 12, "<div x-cloak x-data=\"manjaCatalogSearch($el)\" x-init=\"init()\" x-on:goshtoso-search-open.window=\"if ($event.detail.id === 'catalog-search' && !open) openSearch()\" x-show=\"open\" x-transition.opacity.duration.150ms x-trap.inert.noscroll=\"open\" x-on:keydown.window=\"handleWindowKey($event)\" x-on:click.self=\"closeSearch()\" data-search-child-base=\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 13, "<div x-cloak x-data=\"manjaCatalogSearch($el)\" x-init=\"init()\" x-on:goshtoso-search-open.window=\"if ($event.detail.id === 'catalog-search' && !open) openSearch()\" x-show=\"open\" x-transition.opacity.duration.150ms x-trap.inert.noscroll=\"open\" x-on:keydown.window=\"handleWindowKey($event)\" x-on:click.self=\"closeSearch()\" data-search-child-base=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -552,7 +556,7 @@ func catalogSearchModal(data CatalogPageData) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 13, "\" data-search-directory-path=\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 14, "\" data-search-directory-path=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -565,7 +569,7 @@ func catalogSearchModal(data CatalogPageData) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 14, "\" data-search-directory-length=\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 15, "\" data-search-directory-length=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -578,7 +582,7 @@ func catalogSearchModal(data CatalogPageData) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 15, "\" data-search-directory-sha256=\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 16, "\" data-search-directory-sha256=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -591,7 +595,7 @@ func catalogSearchModal(data CatalogPageData) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 16, "\" data-search-fallback-url=\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 17, "\" data-search-fallback-url=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -604,7 +608,7 @@ func catalogSearchModal(data CatalogPageData) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 17, "\" data-search-global=\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 18, "\" data-search-global=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -617,7 +621,7 @@ func catalogSearchModal(data CatalogPageData) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 18, "\" data-search-context-mount=\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 19, "\" data-search-context-mount=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -630,7 +634,7 @@ func catalogSearchModal(data CatalogPageData) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 19, "\" data-search-context-document=\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 20, "\" data-search-context-document=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -643,7 +647,7 @@ func catalogSearchModal(data CatalogPageData) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 20, "\" data-search-mount=\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 21, "\" data-search-mount=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -656,7 +660,7 @@ func catalogSearchModal(data CatalogPageData) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 21, "\" data-search-scope-label=\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 22, "\" data-search-scope-label=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -669,7 +673,7 @@ func catalogSearchModal(data CatalogPageData) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 22, "\" data-search-catalog-id=\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 23, "\" data-search-catalog-id=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -682,7 +686,7 @@ func catalogSearchModal(data CatalogPageData) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 23, "\" class=\"manja-catalog-search-dialog fixed inset-0 z-[60] flex items-center justify-center p-4 backdrop-blur-md\" role=\"dialog\" aria-modal=\"true\" aria-labelledby=\"catalog-search-label\" id=\"catalog-search-dialog\"><div x-show=\"open\" x-transition:enter=\"transition ease-out duration-150\" x-transition:enter-start=\"opacity-0 translate-y-1\" x-transition:enter-end=\"opacity-100 translate-y-0\" class=\"manja-catalog-search-panel relative flex w-full max-w-2xl flex-col text-on-surface dark:text-on-surface-dark\"><div class=\"relative flex items-center gap-3 rounded-t-radius border border-b-0 border-outline bg-surface px-4 py-3 dark:border-outline-dark dark:bg-surface-dark-alt\"><svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" stroke=\"currentColor\" fill=\"none\" stroke-width=\"2\" class=\"size-5 shrink-0 text-on-surface-muted dark:text-on-surface-dark-muted\" aria-hidden=\"true\"><path stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z\"></path></svg> <label id=\"catalog-search-label\" class=\"sr-only\" for=\"catalog-search-input\">Search operations, specs, and schemas</label> <input x-ref=\"input\" x-model=\"query\" x-on:input=\"queueSearch()\" x-on:keydown.down.prevent=\"move(1)\" x-on:keydown.up.prevent=\"move(-1)\" x-on:keydown.home.prevent=\"moveTo(0)\" x-on:keydown.end.prevent=\"moveToEnd()\" x-on:keydown.enter.prevent=\"choose()\" x-on:keydown.escape.prevent=\"closeSearch()\" x-bind:aria-expanded=\"open.toString()\" x-bind:aria-activedescendant=\"activeOptionID()\" id=\"catalog-search-input\" type=\"text\" role=\"combobox\" aria-autocomplete=\"list\" aria-controls=\"catalog-search-results\" maxlength=\"256\" class=\"min-w-0 flex-1 bg-transparent py-1 text-base text-on-surface-strong placeholder:text-on-surface-muted focus-visible:rounded-radius focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary dark:text-on-surface-dark-strong dark:placeholder:text-on-surface-dark-muted dark:focus-visible:outline-primary-dark\" placeholder=\"Operation, path, schema, or content\" autocomplete=\"off\" spellcheck=\"false\"> <button type=\"button\" x-cloak x-show=\"query.length > 0\" x-on:click=\"clearQuery()\" aria-label=\"Clear search\" class=\"inline-flex size-11 items-center justify-center rounded-radius text-on-surface-muted hover:text-on-surface-strong dark:text-on-surface-dark-muted dark:hover:text-on-surface-dark-strong\">×</button>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 24, "\" class=\"manja-catalog-search-dialog fixed inset-0 z-[60] flex items-center justify-center p-4 backdrop-blur-md\" role=\"dialog\" aria-modal=\"true\" aria-labelledby=\"catalog-search-label\" id=\"catalog-search-dialog\"><div x-show=\"open\" x-transition:enter=\"transition ease-out duration-150\" x-transition:enter-start=\"opacity-0 translate-y-1\" x-transition:enter-end=\"opacity-100 translate-y-0\" class=\"manja-catalog-search-panel relative flex w-full max-w-2xl flex-col text-on-surface dark:text-on-surface-dark\"><div class=\"relative flex items-center gap-3 rounded-t-radius border border-b-0 border-outline bg-surface px-4 py-3 dark:border-outline-dark dark:bg-surface-dark-alt\"><svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" stroke=\"currentColor\" fill=\"none\" stroke-width=\"2\" class=\"size-5 shrink-0 text-on-surface-muted dark:text-on-surface-dark-muted\" aria-hidden=\"true\"><path stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z\"></path></svg> <label id=\"catalog-search-label\" class=\"sr-only\" for=\"catalog-search-input\">Search operations, specs, and schemas</label> <input x-ref=\"input\" x-model=\"query\" x-on:input=\"queueSearch()\" x-on:keydown.down.prevent=\"move(1)\" x-on:keydown.up.prevent=\"move(-1)\" x-on:keydown.home.prevent=\"moveTo(0)\" x-on:keydown.end.prevent=\"moveToEnd()\" x-on:keydown.enter.prevent=\"choose()\" x-on:keydown.escape.prevent=\"closeSearch()\" x-bind:aria-expanded=\"open.toString()\" x-bind:aria-activedescendant=\"activeOptionID()\" id=\"catalog-search-input\" type=\"text\" role=\"combobox\" aria-autocomplete=\"list\" aria-controls=\"catalog-search-results\" maxlength=\"256\" class=\"min-w-0 flex-1 bg-transparent py-1 text-base text-on-surface-strong placeholder:text-on-surface-muted focus-visible:rounded-radius focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary dark:text-on-surface-dark-strong dark:placeholder:text-on-surface-dark-muted dark:focus-visible:outline-primary-dark\" placeholder=\"Operation, path, schema, or content\" autocomplete=\"off\" spellcheck=\"false\"> <button type=\"button\" x-cloak x-show=\"query.length > 0\" x-on:click=\"clearQuery()\" aria-label=\"Clear search\" class=\"inline-flex size-11 items-center justify-center rounded-radius text-on-surface-muted hover:text-on-surface-strong dark:text-on-surface-dark-muted dark:hover:text-on-surface-dark-strong\">×</button>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -690,7 +694,7 @@ func catalogSearchModal(data CatalogPageData) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 24, "</div><div x-ref=\"results\" id=\"catalog-search-results\" class=\"flex max-h-[min(28rem,calc(100vh-12rem))] flex-col overflow-hidden overflow-y-auto rounded-b-radius border border-outline bg-surface text-sm font-light dark:border-outline-dark dark:bg-surface-dark-alt\" role=\"listbox\" aria-label=\"Catalog search results\" x-bind:aria-busy=\"loading.toString()\"><div x-show=\"query.trim().length === 0\" data-catalog-search-recent><p class=\"border-b border-outline px-4 py-2 text-xs font-semibold uppercase tracking-wide text-on-surface-muted dark:border-outline-dark dark:text-on-surface-dark-muted\">Recently visited</p><p x-show=\"recent.length === 0\" class=\"px-4 py-4 text-on-surface-muted dark:text-on-surface-dark-muted\">No recently visited items yet.</p></div><p x-show=\"query.trim().length > 0 && loading\" class=\"px-4 py-4 text-on-surface-muted dark:text-on-surface-dark-muted\">Searching…</p><p x-show=\"query.trim().length > 0 && !loading && error\" x-text=\"error\" class=\"px-4 py-4 text-danger\"></p><p x-show=\"query.trim().length > 0 && !loading && !error && results.length === 0\" class=\"px-4 py-4 text-on-surface-muted dark:text-on-surface-dark-muted\">No matching operations, specs, or schemas.</p><div><template x-for=\"(item, index) in visibleItems()\" x-bind:key=\"item.id || item.href\"><div role=\"presentation\"><div x-show=\"query.trim().length > 0 && item.groupStart\" data-catalog-search-group role=\"presentation\" class=\"sticky top-0 z-10 flex items-center justify-between gap-3 border-y border-outline bg-surface-alt px-3 py-2 text-xs font-semibold uppercase tracking-wide text-on-surface-muted dark:border-outline-dark dark:bg-surface-dark dark:text-on-surface-dark-muted\"><span x-text=\"item.groupLabel\"></span> <span x-text=\"item.groupCount + (item.groupCount === 1 ? ' result' : ' results')\" class=\"font-mono font-medium normal-case tracking-normal\"></span></div><button type=\"button\" tabindex=\"-1\" data-catalog-search-result x-bind:id=\"optionID(index)\" x-bind:aria-selected=\"(activeIndex === index).toString()\" x-bind:data-catalog-search-recent-result=\"query.trim().length === 0 ? 'true' : null\" x-on:mouseenter=\"activeIndex = index\" x-on:click=\"select(item)\" x-bind:class=\"activeIndex === index ? 'bg-surface-alt text-on-surface-strong shadow-[inset_2px_0_0_var(--color-outline-strong)] dark:bg-surface-dark dark:text-on-surface-dark-strong' : 'text-on-surface hover:bg-surface-alt dark:text-on-surface-dark dark:hover:bg-surface-dark'\" class=\"flex w-full flex-col gap-1.5 border-b border-outline p-3 text-left transition focus:outline-none dark:border-outline-dark\" role=\"option\"><div class=\"flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between sm:gap-3\"><div class=\"min-w-0 space-y-1\"><div class=\"flex min-w-0 flex-wrap items-center gap-2\"><span x-show=\"item.method\" x-text=\"item.method\" x-bind:data-catalog-search-method=\"item.method || null\" class=\"shrink-0 rounded-radius border border-outline px-1.5 py-0.5 font-mono text-xs font-bold uppercase dark:border-outline-dark\"></span><strong x-html=\"highlight(item.title)\" class=\"min-w-0 break-words text-base font-semibold leading-6\"></strong></div><div x-show=\"item.kind || item.path\" class=\"flex min-w-0 flex-wrap items-center gap-1.5 text-xs text-on-surface-muted dark:text-on-surface-dark-muted\"><span x-html=\"highlight(item.kind)\"></span><span x-show=\"item.kind && item.path\" aria-hidden=\"true\">·</span><code x-show=\"item.path\" x-html=\"highlight(item.path)\" class=\"min-w-0 break-all font-mono text-xs\"></code></div></div><span x-show=\"item.section\" x-html=\"highlight(item.section)\" class=\"shrink-0 self-start rounded-radius border border-outline px-2 py-0.5 text-xs font-medium text-on-surface-muted dark:border-outline-dark dark:text-on-surface-dark-muted\"></span></div><p x-show=\"item.description\" x-html=\"highlight(item.description)\" class=\"line-clamp-2 text-sm leading-5 text-on-surface-muted dark:text-on-surface-dark-muted\"></p></button></div></template></div><div data-catalog-search-footer class=\"sticky bottom-0 mt-auto flex flex-wrap items-center justify-between gap-2 border-t border-outline bg-surface px-3 py-2 text-xs text-on-surface-muted dark:border-outline-dark dark:bg-surface-dark-alt dark:text-on-surface-dark-muted\"><p x-show=\"query.trim().length > 0 && sourceLabel\" data-catalog-search-source x-text=\"sourceLabel\" class=\"w-full sm:w-auto\"></p><div aria-label=\"Search keyboard shortcuts\" class=\"flex w-full flex-wrap items-center justify-start gap-3 sm:ml-auto sm:w-auto sm:justify-end\"><span class=\"inline-flex items-center gap-1\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 25, "</div><div x-ref=\"results\" id=\"catalog-search-results\" class=\"flex max-h-[min(28rem,calc(100vh-12rem))] flex-col overflow-hidden overflow-y-auto rounded-b-radius border border-outline bg-surface text-sm font-light dark:border-outline-dark dark:bg-surface-dark-alt\" role=\"listbox\" aria-label=\"Catalog search results\" x-bind:aria-busy=\"loading.toString()\"><div x-show=\"query.trim().length === 0\" data-catalog-search-recent><p class=\"border-b border-outline px-4 py-2 text-xs font-semibold uppercase tracking-wide text-on-surface-muted dark:border-outline-dark dark:text-on-surface-dark-muted\">Recently visited</p><p x-show=\"recent.length === 0\" class=\"px-4 py-4 text-on-surface-muted dark:text-on-surface-dark-muted\">No recently visited items yet.</p></div><p x-show=\"query.trim().length > 0 && loading\" class=\"px-4 py-4 text-on-surface-muted dark:text-on-surface-dark-muted\">Searching…</p><p x-show=\"query.trim().length > 0 && !loading && error\" x-text=\"error\" class=\"px-4 py-4 text-danger\"></p><p x-show=\"query.trim().length > 0 && !loading && !error && results.length === 0\" class=\"px-4 py-4 text-on-surface-muted dark:text-on-surface-dark-muted\">No matching operations, specs, or schemas.</p><div><template x-for=\"(item, index) in visibleItems()\" x-bind:key=\"item.id || item.href\"><div role=\"presentation\"><div x-show=\"query.trim().length > 0 && item.groupStart\" data-catalog-search-group role=\"presentation\" class=\"sticky top-0 z-10 flex items-center justify-between gap-3 border-y border-outline bg-surface-alt px-3 py-2 text-xs font-semibold uppercase tracking-wide text-on-surface-muted dark:border-outline-dark dark:bg-surface-dark dark:text-on-surface-dark-muted\"><span x-text=\"item.groupLabel\"></span> <span x-text=\"item.groupCount + (item.groupCount === 1 ? ' result' : ' results')\" class=\"font-mono font-medium normal-case tracking-normal\"></span></div><button type=\"button\" tabindex=\"-1\" data-catalog-search-result x-bind:id=\"optionID(index)\" x-bind:aria-selected=\"(activeIndex === index).toString()\" x-bind:data-catalog-search-recent-result=\"query.trim().length === 0 ? 'true' : null\" x-on:mouseenter=\"activeIndex = index\" x-on:click=\"select(item)\" x-bind:class=\"activeIndex === index ? 'bg-surface-alt text-on-surface-strong shadow-[inset_2px_0_0_var(--color-outline-strong)] dark:bg-surface-dark dark:text-on-surface-dark-strong' : 'text-on-surface hover:bg-surface-alt dark:text-on-surface-dark dark:hover:bg-surface-dark'\" class=\"flex w-full flex-col gap-1.5 border-b border-outline p-3 text-left transition focus:outline-none dark:border-outline-dark\" role=\"option\"><div class=\"flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between sm:gap-3\"><div class=\"min-w-0 space-y-1\"><div class=\"flex min-w-0 flex-wrap items-center gap-2\"><span x-show=\"item.method\" x-text=\"item.method\" x-bind:data-catalog-search-method=\"item.method || null\" class=\"shrink-0 rounded-radius border border-outline px-1.5 py-0.5 font-mono text-xs font-bold uppercase dark:border-outline-dark\"></span><strong x-html=\"highlight(item.title)\" class=\"min-w-0 break-words text-base font-semibold leading-6\"></strong></div><div x-show=\"item.kind || item.path\" class=\"flex min-w-0 flex-wrap items-center gap-1.5 text-xs text-on-surface-muted dark:text-on-surface-dark-muted\"><span x-html=\"highlight(item.kind)\"></span><span x-show=\"item.kind && item.path\" aria-hidden=\"true\">·</span><code x-show=\"item.path\" x-html=\"highlight(item.path)\" class=\"min-w-0 break-all font-mono text-xs\"></code></div></div><span x-show=\"item.section\" x-html=\"highlight(item.section)\" class=\"shrink-0 self-start rounded-radius border border-outline px-2 py-0.5 text-xs font-medium text-on-surface-muted dark:border-outline-dark dark:text-on-surface-dark-muted\"></span></div><p x-show=\"item.description\" x-html=\"highlight(item.description)\" class=\"line-clamp-2 text-sm leading-5 text-on-surface-muted dark:text-on-surface-dark-muted\"></p></button></div></template></div><div data-catalog-search-footer class=\"sticky bottom-0 mt-auto flex flex-wrap items-center justify-between gap-2 border-t border-outline bg-surface px-3 py-2 text-xs text-on-surface-muted dark:border-outline-dark dark:bg-surface-dark-alt dark:text-on-surface-dark-muted\"><p x-show=\"query.trim().length > 0 && sourceLabel\" data-catalog-search-source x-text=\"sourceLabel\" class=\"w-full sm:w-auto\"></p><div aria-label=\"Search keyboard shortcuts\" class=\"flex w-full flex-wrap items-center justify-start gap-3 sm:ml-auto sm:w-auto sm:justify-end\"><span class=\"inline-flex items-center gap-1\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -698,7 +702,7 @@ func catalogSearchModal(data CatalogPageData) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 25, "Navigate</span> <span class=\"inline-flex items-center gap-1\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 26, "Navigate</span> <span class=\"inline-flex items-center gap-1\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -706,7 +710,7 @@ func catalogSearchModal(data CatalogPageData) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 26, "Open</span> <span class=\"inline-flex items-center gap-1\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 27, "Open</span> <span class=\"inline-flex items-center gap-1\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -714,7 +718,7 @@ func catalogSearchModal(data CatalogPageData) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 27, "Close</span></div></div></div></div></div>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 28, "Close</span></div></div></div></div></div>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -743,7 +747,7 @@ func catalogSearch(data CatalogPageData) templ.Component {
 			templ_7745c5c3_Var22 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 28, "<main data-catalog-search=\"true\" class=\"pb-16\"><div class=\"mb-8 border-b border-outline pb-8 dark:border-outline-dark\"><p class=\"mb-2 text-sm font-semibold uppercase tracking-wide text-primary dark:text-primary-dark\">Catalog search · ")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 29, "<main data-catalog-search=\"true\" class=\"pb-16\"><div class=\"mb-8 border-b border-outline pb-8 dark:border-outline-dark\"><p class=\"mb-2 text-sm font-semibold uppercase tracking-wide text-primary dark:text-primary-dark\">Catalog search · ")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -756,7 +760,7 @@ func catalogSearch(data CatalogPageData) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 29, "</p><h1 class=\"font-title text-4xl font-bold text-on-surface-strong dark:text-on-surface-dark-strong\">Search ")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 30, "</p><h1 class=\"font-title text-4xl font-bold text-on-surface-strong dark:text-on-surface-dark-strong\">Search ")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -769,7 +773,7 @@ func catalogSearch(data CatalogPageData) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 30, "</h1><form method=\"get\" action=\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 31, "</h1><form method=\"get\" action=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -782,7 +786,7 @@ func catalogSearch(data CatalogPageData) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 31, "\" class=\"mt-6 flex max-w-3xl gap-3\"><label for=\"catalog-search-query\" class=\"sr-only\">Search operations, specs, and schemas</label> <input id=\"catalog-search-query\" name=\"q\" value=\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 32, "\" class=\"mt-6 flex max-w-3xl gap-3\"><label for=\"catalog-search-query\" class=\"sr-only\">Search operations, specs, and schemas</label> <input id=\"catalog-search-query\" name=\"q\" value=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -795,17 +799,17 @@ func catalogSearch(data CatalogPageData) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 32, "\" maxlength=\"256\" autofocus placeholder=\"Operation, path, schema, or canonical detail ID\" class=\"min-h-12 min-w-0 flex-1 rounded-radius border border-outline bg-surface px-4 text-on-surface-strong dark:border-outline-dark dark:bg-surface-dark dark:text-on-surface-dark-strong\"> <button type=\"submit\" class=\"min-h-12 rounded-radius bg-primary px-5 font-semibold text-on-primary dark:bg-primary-dark dark:text-on-primary-dark\">Search</button></form></div>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 33, "\" maxlength=\"256\" autofocus placeholder=\"Operation, path, schema, or canonical detail ID\" class=\"min-h-12 min-w-0 flex-1 rounded-radius border border-outline bg-surface px-4 text-on-surface-strong dark:border-outline-dark dark:bg-surface-dark dark:text-on-surface-dark-strong\"> <button type=\"submit\" class=\"min-h-12 rounded-radius bg-primary px-5 font-semibold text-on-primary dark:bg-primary-dark dark:text-on-primary-dark\">Search</button></form></div>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		if data.Search.Query == "" {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 33, "<p class=\"text-on-surface-muted dark:text-on-surface-dark-muted\">Search globally across every catalog, operation, spec, and semantically deduplicated schema.</p>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 34, "<p class=\"text-on-surface-muted dark:text-on-surface-dark-muted\">Search globally across every catalog, operation, spec, and semantically deduplicated schema.</p>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 		} else {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 34, "<div class=\"mb-4 flex flex-wrap items-center justify-between gap-3\"><h2 class=\"font-title text-2xl font-bold text-on-surface-strong dark:text-on-surface-dark-strong\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 35, "<div class=\"mb-4 flex flex-wrap items-center justify-between gap-3\"><h2 class=\"font-title text-2xl font-bold text-on-surface-strong dark:text-on-surface-dark-strong\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -818,7 +822,7 @@ func catalogSearch(data CatalogPageData) templ.Component {
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 35, "</h2><span class=\"font-mono text-xs text-on-surface-muted dark:text-on-surface-dark-muted\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 36, "</h2><span class=\"font-mono text-xs text-on-surface-muted dark:text-on-surface-dark-muted\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -831,22 +835,22 @@ func catalogSearch(data CatalogPageData) templ.Component {
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 36, "</span></div>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 37, "</span></div>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			if len(data.Search.Results) == 0 {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 37, "<p class=\"rounded-radius border border-outline p-5 text-on-surface-muted dark:border-outline-dark dark:text-on-surface-dark-muted\">No matching operations, specs, or schemas.</p>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 38, "<p class=\"rounded-radius border border-outline p-5 text-on-surface-muted dark:border-outline-dark dark:text-on-surface-dark-muted\">No matching operations, specs, or schemas.</p>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 			} else {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 38, "<div class=\"space-y-3\" id=\"catalog-search-results\">")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 39, "<div class=\"space-y-3\" id=\"catalog-search-results\">")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 				for _, result := range data.Search.Results {
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 39, "<a href=\"")
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 40, "<a href=\"")
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
@@ -859,7 +863,7 @@ func catalogSearch(data CatalogPageData) templ.Component {
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 40, "\" class=\"block rounded-radius border border-outline bg-surface p-5 transition hover:border-primary hover:bg-surface-alt dark:border-outline-dark dark:bg-surface-dark dark:hover:border-primary-dark dark:hover:bg-surface-dark-alt\"><div class=\"flex flex-wrap items-center gap-2\">")
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 41, "\" class=\"block rounded-radius border border-outline bg-surface p-5 transition hover:border-primary hover:bg-surface-alt dark:border-outline-dark dark:bg-surface-dark dark:hover:border-primary-dark dark:hover:bg-surface-dark-alt\"><div class=\"flex flex-wrap items-center gap-2\">")
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
@@ -869,7 +873,7 @@ func catalogSearch(data CatalogPageData) templ.Component {
 							return templ_7745c5c3_Err
 						}
 					}
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 41, "<span class=\"text-xs font-semibold uppercase tracking-wide text-on-surface-muted dark:text-on-surface-dark-muted\">")
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 42, "<span class=\"text-xs font-semibold uppercase tracking-wide text-on-surface-muted dark:text-on-surface-dark-muted\">")
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
@@ -882,7 +886,7 @@ func catalogSearch(data CatalogPageData) templ.Component {
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 42, " · ")
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 43, " · ")
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
@@ -895,7 +899,7 @@ func catalogSearch(data CatalogPageData) templ.Component {
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 43, "</span></div><h3 class=\"mt-2 font-title text-xl font-bold text-on-surface-strong dark:text-on-surface-dark-strong\">")
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 44, "</span></div><h3 class=\"mt-2 font-title text-xl font-bold text-on-surface-strong dark:text-on-surface-dark-strong\">")
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
@@ -908,12 +912,12 @@ func catalogSearch(data CatalogPageData) templ.Component {
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 44, "</h3>")
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 45, "</h3>")
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
 					if result.Record.Path != "" {
-						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 45, "<code class=\"mt-2 block break-all text-sm text-on-surface-muted dark:text-on-surface-dark-muted\">")
+						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 46, "<code class=\"mt-2 block break-all text-sm text-on-surface-muted dark:text-on-surface-dark-muted\">")
 						if templ_7745c5c3_Err != nil {
 							return templ_7745c5c3_Err
 						}
@@ -926,13 +930,13 @@ func catalogSearch(data CatalogPageData) templ.Component {
 						if templ_7745c5c3_Err != nil {
 							return templ_7745c5c3_Err
 						}
-						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 46, "</code> ")
+						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 47, "</code> ")
 						if templ_7745c5c3_Err != nil {
 							return templ_7745c5c3_Err
 						}
 					}
 					if result.Record.Description != "" {
-						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 47, "<p class=\"mt-2 text-sm text-on-surface-muted dark:text-on-surface-dark-muted\">")
+						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 48, "<p class=\"mt-2 text-sm text-on-surface-muted dark:text-on-surface-dark-muted\">")
 						if templ_7745c5c3_Err != nil {
 							return templ_7745c5c3_Err
 						}
@@ -945,23 +949,23 @@ func catalogSearch(data CatalogPageData) templ.Component {
 						if templ_7745c5c3_Err != nil {
 							return templ_7745c5c3_Err
 						}
-						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 48, "</p>")
+						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 49, "</p>")
 						if templ_7745c5c3_Err != nil {
 							return templ_7745c5c3_Err
 						}
 					}
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 49, "</a>")
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 50, "</a>")
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 50, "</div>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 51, "</div>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 			}
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 51, "</main>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 52, "</main>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -990,12 +994,12 @@ func catalogHeader(data CatalogPageData) templ.Component {
 			templ_7745c5c3_Var35 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 52, "<div class=\"flex h-16 items-center justify-between gap-4 px-4 lg:px-8\"><div class=\"flex min-w-0 items-center gap-3\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 53, "<div class=\"flex h-16 items-center justify-between gap-4 px-4 lg:px-8\"><div class=\"flex min-w-0 items-center gap-3\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		if catalogHasSidebar(data) {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 53, "<button type=\"button\" x-ref=\"catalogNavTrigger\" x-on:click=\"catalogNavOpen = true; $nextTick(() => $refs.catalogNavClose.focus())\" x-bind:aria-expanded=\"catalogNavOpen.toString()\" aria-controls=\"catalog-navigation\" aria-label=\"")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 54, "<button type=\"button\" x-ref=\"catalogNavTrigger\" x-on:click=\"catalogNavOpen = true; $nextTick(() => $refs.catalogNavClose.focus())\" x-bind:aria-expanded=\"catalogNavOpen.toString()\" aria-controls=\"catalog-navigation\" aria-label=\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -1008,17 +1012,17 @@ func catalogHeader(data CatalogPageData) templ.Component {
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 54, "\" data-catalog-navigation-trigger=\"true\" class=\"inline-flex size-10 shrink-0 items-center justify-center rounded-radius border border-outline hover:bg-surface-alt focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary lg:hidden dark:border-outline-dark dark:hover:bg-surface-dark-alt dark:focus-visible:outline-primary-dark\"><svg xmlns=\"http://www.w3.org/2000/svg\" class=\"size-5\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" aria-hidden=\"true\"><path stroke-linecap=\"round\" d=\"M4 6h16M4 12h16M4 18h16\"></path></svg></button> ")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 55, "\" data-catalog-navigation-trigger=\"true\" class=\"inline-flex size-10 shrink-0 items-center justify-center rounded-radius border border-outline hover:bg-surface-alt focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary lg:hidden dark:border-outline-dark dark:hover:bg-surface-dark-alt dark:focus-visible:outline-primary-dark\"><svg xmlns=\"http://www.w3.org/2000/svg\" class=\"size-5\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" aria-hidden=\"true\"><path stroke-linecap=\"round\" d=\"M4 6h16M4 12h16M4 18h16\"></path></svg></button> ")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 55, "<a href=\"/\" aria-label=\"Manja\" class=\"flex shrink-0 items-center gap-2 font-title text-base font-bold text-on-surface-strong dark:text-on-surface-dark-strong\"><svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"167.325 123.377 776.662 776.662\" class=\"size-7 shrink-0\" aria-hidden=\"true\"><path fill=\"currentColor\" d=\"M740.383 586.072c-.647 3.511-.247 19.218-.238 23.876l.008 37.168c.046 31.636-.634 54.241-22.716 79.514a87.18 87.18 0 0 1-60.113 29.978c-18.82 1.181-45.321.301-64.691.306l-121.335.05-81.527-.042c-17.982 0-38.559 1.079-55.938-1.778-40.426-6.644-72.024-43.733-72.765-84.589-.393-21.714-.134-43.27-.206-64.881l-.279-136.952q-.104-37.737.221-75.475c0-37.841-4.547-66.466 23.251-97.172a88.2 88.2 0 0 1 62.939-29.471c20.206-.851 45.424-.123 66.08-.118l127.117.027 70.898-.013c19.278-.047 38.756-.986 57.903 2.166 29.657 4.882 56.69 29.14 66.267 57.398 5.884 17.884 4.588 36.864 4.872 55.325.296 19.277-.576 38.856.288 58.046 31.374-.505 63.14-3.277 87.514 20.727 30.042 29.585 30.634 74.265.786 104.401-26.55 26.806-55.208 19.257-88.336 21.509\"></path><path fill=\"var(--color-primary)\" d=\"M740.419 439.435c31.374-.505 63.14-3.277 87.514 20.727 30.042 29.585 30.634 74.265.786 104.401-26.55 26.806-55.208 19.257-88.336 21.509-1.63.133-3.92.178-5.606.18-26.744.028-53.545-.312-80.288-.152l-41.62.313c-28.398.123-51.02.636-73.078-20.918a73.37 73.37 0 0 1-21.871-52.348 72.55 72.55 0 0 1 21.179-51.85 73.6 73.6 0 0 1 34.229-19.494c15.408-3.745 48.738-2.349 66.044-2.323z\"></path><path fill=\"currentColor\" d=\"M740.419 439.435c31.374-.505 63.14-3.277 87.514 20.727 30.042 29.585 30.634 74.265.786 104.401-26.55 26.806-55.208 19.257-88.336 21.509.267-6.199.184-12.735.124-18.966-.411-42.498.604-85.195-.088-127.671\"></path></svg> <span data-catalog-header-brand-label>Manja</span></a> ")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 56, "<a href=\"/\" aria-label=\"Manja\" class=\"flex shrink-0 items-center gap-2 font-title text-base font-bold text-on-surface-strong dark:text-on-surface-dark-strong\"><svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"167.325 123.377 776.662 776.662\" class=\"size-7 shrink-0\" aria-hidden=\"true\"><path fill=\"currentColor\" d=\"M740.383 586.072c-.647 3.511-.247 19.218-.238 23.876l.008 37.168c.046 31.636-.634 54.241-22.716 79.514a87.18 87.18 0 0 1-60.113 29.978c-18.82 1.181-45.321.301-64.691.306l-121.335.05-81.527-.042c-17.982 0-38.559 1.079-55.938-1.778-40.426-6.644-72.024-43.733-72.765-84.589-.393-21.714-.134-43.27-.206-64.881l-.279-136.952q-.104-37.737.221-75.475c0-37.841-4.547-66.466 23.251-97.172a88.2 88.2 0 0 1 62.939-29.471c20.206-.851 45.424-.123 66.08-.118l127.117.027 70.898-.013c19.278-.047 38.756-.986 57.903 2.166 29.657 4.882 56.69 29.14 66.267 57.398 5.884 17.884 4.588 36.864 4.872 55.325.296 19.277-.576 38.856.288 58.046 31.374-.505 63.14-3.277 87.514 20.727 30.042 29.585 30.634 74.265.786 104.401-26.55 26.806-55.208 19.257-88.336 21.509\"></path><path fill=\"var(--color-primary)\" d=\"M740.419 439.435c31.374-.505 63.14-3.277 87.514 20.727 30.042 29.585 30.634 74.265.786 104.401-26.55 26.806-55.208 19.257-88.336 21.509-1.63.133-3.92.178-5.606.18-26.744.028-53.545-.312-80.288-.152l-41.62.313c-28.398.123-51.02.636-73.078-20.918a73.37 73.37 0 0 1-21.871-52.348 72.55 72.55 0 0 1 21.179-51.85 73.6 73.6 0 0 1 34.229-19.494c15.408-3.745 48.738-2.349 66.044-2.323z\"></path><path fill=\"currentColor\" d=\"M740.419 439.435c31.374-.505 63.14-3.277 87.514 20.727 30.042 29.585 30.634 74.265.786 104.401-26.55 26.806-55.208 19.257-88.336 21.509.267-6.199.184-12.735.124-18.966-.411-42.498.604-85.195-.088-127.671\"></path></svg> <span data-catalog-header-brand-label>Manja</span></a> ")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		if !data.OrganizationRoot {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 56, "<span class=\"text-on-surface-muted dark:text-on-surface-dark-muted\">/</span> <a href=\"/\" class=\"hidden min-h-11 shrink-0 items-center text-sm font-semibold text-on-surface-muted hover:text-on-surface-strong sm:inline-flex dark:text-on-surface-dark-muted dark:hover:text-on-surface-dark-strong\">Catalogs</a> <span class=\"hidden text-on-surface-muted sm:inline dark:text-on-surface-dark-muted\">/</span> <a href=\"")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 57, "<span class=\"text-on-surface-muted dark:text-on-surface-dark-muted\">/</span> <a href=\"/\" class=\"hidden min-h-11 shrink-0 items-center text-sm font-semibold text-on-surface-muted hover:text-on-surface-strong sm:inline-flex dark:text-on-surface-dark-muted dark:hover:text-on-surface-dark-strong\">Catalogs</a> <span class=\"hidden text-on-surface-muted sm:inline dark:text-on-surface-dark-muted\">/</span> <a href=\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -1031,7 +1035,7 @@ func catalogHeader(data CatalogPageData) templ.Component {
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 57, "\" aria-label=\"")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 58, "\" aria-label=\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -1044,12 +1048,12 @@ func catalogHeader(data CatalogPageData) templ.Component {
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 58, "\" class=\"flex min-w-0 shrink-0 items-center gap-2 font-title text-lg font-bold text-on-surface-strong dark:text-on-surface-dark-strong\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 59, "\" class=\"flex min-w-0 shrink-0 items-center gap-2 font-title text-lg font-bold text-on-surface-strong dark:text-on-surface-dark-strong\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			if data.Directory.Branding.LogoSrc != "" {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 59, "<img src=\"")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 60, "<img src=\"")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
@@ -1062,12 +1066,12 @@ func catalogHeader(data CatalogPageData) templ.Component {
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 60, "\" alt=\"\" loading=\"lazy\" decoding=\"async\" class=\"size-8 shrink-0 rounded-full object-cover\"> ")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 61, "\" alt=\"\" loading=\"lazy\" decoding=\"async\" class=\"size-8 shrink-0 rounded-full object-cover\"> ")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 61, "<span data-catalog-header-brand-label class=\"max-w-[12rem] truncate\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 62, "<span data-catalog-header-brand-label class=\"max-w-[12rem] truncate\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -1080,12 +1084,12 @@ func catalogHeader(data CatalogPageData) templ.Component {
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 62, "</span></a> ")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 63, "</span></a> ")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			if data.Document != nil {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 63, "<span class=\"hidden text-on-surface-muted md:inline dark:text-on-surface-dark-muted\">/</span> <a href=\"")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 64, "<span class=\"hidden text-on-surface-muted md:inline dark:text-on-surface-dark-muted\">/</span> <a href=\"")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
@@ -1098,7 +1102,7 @@ func catalogHeader(data CatalogPageData) templ.Component {
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 64, "\" title=\"")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 65, "\" title=\"")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
@@ -1111,17 +1115,17 @@ func catalogHeader(data CatalogPageData) templ.Component {
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 65, "\"")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 66, "\"")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 				if data.Selected == nil {
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 66, " aria-current=\"page\"")
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 67, " aria-current=\"page\"")
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 67, " class=\"hidden min-w-0 items-center font-title text-base font-semibold text-on-surface-muted hover:text-on-surface-strong md:flex dark:text-on-surface-dark-muted dark:hover:text-on-surface-dark-strong\"><span class=\"max-w-[18rem] truncate\">")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 68, " class=\"hidden min-w-0 items-center font-title text-base font-semibold text-on-surface-muted hover:text-on-surface-strong md:flex dark:text-on-surface-dark-muted dark:hover:text-on-surface-dark-strong\"><span class=\"max-w-[18rem] truncate\">")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
@@ -1134,13 +1138,13 @@ func catalogHeader(data CatalogPageData) templ.Component {
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 68, "</span></a>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 69, "</span></a>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 			}
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 69, "</div><div class=\"flex shrink-0 items-center gap-2\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 70, "</div><div class=\"flex shrink-0 items-center gap-2\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -1152,7 +1156,7 @@ func catalogHeader(data CatalogPageData) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 70, "<span class=\"hidden rounded-radius border border-outline px-2 py-1 font-mono text-xs text-on-surface-muted xl:inline dark:border-outline-dark dark:text-on-surface-dark-muted\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 71, "<span class=\"hidden rounded-radius border border-outline px-2 py-1 font-mono text-xs text-on-surface-muted xl:inline dark:border-outline-dark dark:text-on-surface-dark-muted\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -1165,7 +1169,7 @@ func catalogHeader(data CatalogPageData) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 71, "</span></div></div>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 72, "</span></div></div>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -1194,7 +1198,7 @@ func catalogSidebar(data CatalogPageData) templ.Component {
 			templ_7745c5c3_Var45 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 72, "<div class=\"flex h-full min-h-0 flex-col\"><div class=\"flex shrink-0 items-center justify-end p-3 lg:hidden\"><button type=\"button\" x-ref=\"catalogNavClose\" x-on:click=\"catalogNavOpen = false; $nextTick(() => $refs.catalogNavTrigger.focus())\" aria-label=\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 73, "<div class=\"flex h-full min-h-0 flex-col\"><div class=\"flex shrink-0 items-center justify-end p-3 lg:hidden\"><button type=\"button\" x-ref=\"catalogNavClose\" x-on:click=\"catalogNavOpen = false; $nextTick(() => $refs.catalogNavTrigger.focus())\" aria-label=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -1207,7 +1211,7 @@ func catalogSidebar(data CatalogPageData) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 73, "\" class=\"inline-flex size-10 items-center justify-center rounded-radius border border-outline hover:bg-surface-alt focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary dark:border-outline-dark dark:hover:bg-surface-dark-alt dark:focus-visible:outline-primary-dark\"><svg xmlns=\"http://www.w3.org/2000/svg\" class=\"size-5\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" aria-hidden=\"true\"><path stroke-linecap=\"round\" d=\"M6 6l12 12M18 6L6 18\"></path></svg></button></div><div id=\"catalog-sidebar-groups\" class=\"flex min-h-0 flex-1 flex-col\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 74, "\" class=\"inline-flex size-10 items-center justify-center rounded-radius border border-outline hover:bg-surface-alt focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary dark:border-outline-dark dark:hover:bg-surface-dark-alt dark:focus-visible:outline-primary-dark\"><svg xmlns=\"http://www.w3.org/2000/svg\" class=\"size-5\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" aria-hidden=\"true\"><path stroke-linecap=\"round\" d=\"M6 6l12 12M18 6L6 18\"></path></svg></button></div><div id=\"catalog-sidebar-groups\" class=\"flex min-h-0 flex-1 flex-col\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -1222,7 +1226,7 @@ func catalogSidebar(data CatalogPageData) templ.Component {
 				return templ_7745c5c3_Err
 			}
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 74, "</div></div>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 75, "</div></div>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -1251,7 +1255,7 @@ func catalogOrganizationNav(data CatalogOrganizationNavData) templ.Component {
 			templ_7745c5c3_Var47 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 75, "<nav id=\"catalog-organization-navigation\" aria-label=\"Catalogs and specs\" class=\"flex min-h-0 flex-1 flex-col\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 76, "<nav id=\"catalog-organization-navigation\" aria-label=\"Catalogs and specs\" class=\"flex min-h-0 flex-1 flex-col\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -1263,7 +1267,7 @@ func catalogOrganizationNav(data CatalogOrganizationNavData) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 76, "</nav>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 77, "</nav>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -1292,7 +1296,7 @@ func catalogOrganizationNavContent(data CatalogOrganizationNavData) templ.Compon
 			templ_7745c5c3_Var48 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 77, "<div>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 78, "<div>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -1304,7 +1308,7 @@ func catalogOrganizationNavContent(data CatalogOrganizationNavData) templ.Compon
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 78, "</div>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 79, "</div>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -1333,7 +1337,7 @@ func catalogOrganizationSection(label string, symbol icon.Symbol, items []Catalo
 			templ_7745c5c3_Var49 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 79, "<section class=\"py-3\" aria-labelledby=\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 80, "<section class=\"py-3\" aria-labelledby=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -1346,7 +1350,7 @@ func catalogOrganizationSection(label string, symbol icon.Symbol, items []Catalo
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 80, "\"><div class=\"mb-2 flex items-center gap-2 px-2 text-xs font-semibold uppercase tracking-wide text-on-surface-muted dark:text-on-surface-dark-muted\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 81, "\"><div class=\"mb-2 flex items-center gap-2 px-2 text-xs font-semibold uppercase tracking-wide text-on-surface-muted dark:text-on-surface-dark-muted\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -1354,7 +1358,7 @@ func catalogOrganizationSection(label string, symbol icon.Symbol, items []Catalo
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 81, "<h2 id=\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 82, "<h2 id=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -1367,7 +1371,7 @@ func catalogOrganizationSection(label string, symbol icon.Symbol, items []Catalo
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 82, "\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 83, "\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -1380,12 +1384,12 @@ func catalogOrganizationSection(label string, symbol icon.Symbol, items []Catalo
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 83, "</h2></div><div class=\"grid gap-1\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 84, "</h2></div><div class=\"grid gap-1\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		for _, item := range items {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 84, "<a href=\"")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 85, "<a href=\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -1398,17 +1402,17 @@ func catalogOrganizationSection(label string, symbol icon.Symbol, items []Catalo
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 85, "\"")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 86, "\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			if item.Active {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 86, " aria-current=\"page\"")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 87, " aria-current=\"page\"")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 87, " data-catalog-organization-item=\"")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 88, " data-catalog-organization-item=\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -1421,7 +1425,7 @@ func catalogOrganizationSection(label string, symbol icon.Symbol, items []Catalo
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 88, "\" class=\"group flex min-h-11 min-w-0 items-center gap-3 rounded-radius px-2 py-2 text-sm transition hover:bg-surface-alt focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary dark:hover:bg-surface-dark-alt dark:focus-visible:outline-primary-dark\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 89, "\" class=\"group flex min-h-11 min-w-0 items-center gap-3 rounded-radius px-2 py-2 text-sm transition hover:bg-surface-alt focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary dark:hover:bg-surface-dark-alt dark:focus-visible:outline-primary-dark\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -1429,7 +1433,7 @@ func catalogOrganizationSection(label string, symbol icon.Symbol, items []Catalo
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 89, "<span class=\"min-w-0 flex-1\"><span class=\"block truncate font-medium text-on-surface-strong group-hover:text-primary dark:text-on-surface-dark-strong dark:group-hover:text-primary-dark\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 90, "<span class=\"min-w-0 flex-1\"><span class=\"block truncate font-medium text-on-surface-strong group-hover:text-primary dark:text-on-surface-dark-strong dark:group-hover:text-primary-dark\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -1442,12 +1446,12 @@ func catalogOrganizationSection(label string, symbol icon.Symbol, items []Catalo
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 90, "</span> ")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 91, "</span> ")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			if item.Description != "" {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 91, "<span class=\"block truncate text-xs text-on-surface-muted dark:text-on-surface-dark-muted\">")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 92, "<span class=\"block truncate text-xs text-on-surface-muted dark:text-on-surface-dark-muted\">")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
@@ -1460,17 +1464,17 @@ func catalogOrganizationSection(label string, symbol icon.Symbol, items []Catalo
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 92, "</span>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 93, "</span>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 93, "</span> ")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 94, "</span> ")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			if item.Count > 0 {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 94, "<span class=\"shrink-0 rounded-full bg-surface-alt px-2 py-0.5 text-xs font-semibold tabular-nums text-on-surface-muted dark:bg-surface-dark-alt dark:text-on-surface-dark-muted\">")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 95, "<span class=\"shrink-0 rounded-full bg-surface-alt px-2 py-0.5 text-xs font-semibold tabular-nums text-on-surface-muted dark:bg-surface-dark-alt dark:text-on-surface-dark-muted\">")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
@@ -1483,18 +1487,18 @@ func catalogOrganizationSection(label string, symbol icon.Symbol, items []Catalo
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 95, "</span>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 96, "</span>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 96, "</a> ")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 97, "</a> ")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 		}
 		if len(items) == 0 {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 97, "<p class=\"px-2 py-2 text-sm text-on-surface-muted dark:text-on-surface-dark-muted\">No ")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 98, "<p class=\"px-2 py-2 text-sm text-on-surface-muted dark:text-on-surface-dark-muted\">No ")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -1507,12 +1511,12 @@ func catalogOrganizationSection(label string, symbol icon.Symbol, items []Catalo
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 98, " published yet.</p>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 99, " published yet.</p>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 99, "</div></section>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 100, "</div></section>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -1541,7 +1545,7 @@ func catalogHeaderSearch() templ.Component {
 			templ_7745c5c3_Var59 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 100, "<div data-catalog-header-search data-catalog-platform-shortcut data-catalog-search-shortcut-visible=\"desktop\" class=\"w-32 sm:w-48 lg:w-64\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 101, "<div data-catalog-header-search data-catalog-platform-shortcut data-catalog-search-shortcut-visible=\"desktop\" class=\"w-32 sm:w-48 lg:w-64\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -1554,7 +1558,7 @@ func catalogHeaderSearch() templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 101, "</div>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 102, "</div>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -1583,7 +1587,7 @@ func catalogOverview(data CatalogPageData) templ.Component {
 			templ_7745c5c3_Var60 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 102, "<main data-catalog-overview=\"true\" class=\"pb-16\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 103, "<main data-catalog-overview=\"true\" class=\"pb-16\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -1593,7 +1597,7 @@ func catalogOverview(data CatalogPageData) templ.Component {
 				return templ_7745c5c3_Err
 			}
 		} else {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 103, "<div class=\"mb-8 border-b border-outline pb-8 dark:border-outline-dark\"><div class=\"flex flex-col gap-5 md:flex-row md:items-start md:justify-between\"><div class=\"min-w-0\"><p class=\"mb-2 text-sm font-semibold uppercase tracking-wide text-primary dark:text-primary-dark\">OpenAPI catalog</p><h1 class=\"font-title text-4xl font-bold text-on-surface-strong dark:text-on-surface-dark-strong\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 104, "<div class=\"mb-8 border-b border-outline pb-8 dark:border-outline-dark\"><div class=\"flex flex-col gap-5 md:flex-row md:items-start md:justify-between\"><div class=\"min-w-0\"><p class=\"mb-2 text-sm font-semibold uppercase tracking-wide text-primary dark:text-primary-dark\">OpenAPI catalog</p><h1 class=\"font-title text-4xl font-bold text-on-surface-strong dark:text-on-surface-dark-strong\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -1606,7 +1610,7 @@ func catalogOverview(data CatalogPageData) templ.Component {
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 104, "</h1></div><a href=\"")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 105, "</h1></div><a href=\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -1619,7 +1623,7 @@ func catalogOverview(data CatalogPageData) templ.Component {
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 105, "\" class=\"inline-flex min-h-11 shrink-0 self-start items-center rounded-radius border border-outline px-4 font-semibold hover:bg-surface-alt dark:border-outline-dark dark:hover:bg-surface-dark-alt\">Download catalog JSON</a></div></div>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 106, "\" class=\"inline-flex min-h-11 shrink-0 self-start items-center rounded-radius border border-outline px-4 font-semibold hover:bg-surface-alt dark:border-outline-dark dark:hover:bg-surface-dark-alt\">Download catalog JSON</a></div></div>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -1627,7 +1631,7 @@ func catalogOverview(data CatalogPageData) templ.Component {
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 106, "<div class=\"mt-5\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 107, "<div class=\"mt-5\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -1635,12 +1639,12 @@ func catalogOverview(data CatalogPageData) templ.Component {
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 107, "</div>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 108, "</div>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			if data.CatalogReadme != "" {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 108, "<section class=\"mt-8 max-w-3xl\" aria-labelledby=\"catalog-readme-heading\"><h2 id=\"catalog-readme-heading\" class=\"font-title text-xl font-bold text-on-surface-strong dark:text-on-surface-dark-strong\">README</h2><p class=\"mt-2 whitespace-pre-line text-lg text-on-surface-muted dark:text-on-surface-dark-muted\">")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 109, "<section class=\"mt-8 max-w-3xl\" aria-labelledby=\"catalog-readme-heading\"><h2 id=\"catalog-readme-heading\" class=\"font-title text-xl font-bold text-on-surface-strong dark:text-on-surface-dark-strong\">README</h2><p class=\"mt-2 whitespace-pre-line text-lg text-on-surface-muted dark:text-on-surface-dark-muted\">")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
@@ -1653,22 +1657,22 @@ func catalogOverview(data CatalogPageData) templ.Component {
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 109, "</p></section>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 110, "</p></section>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 110, " ")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 111, " ")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			if data.CatalogLicense.Name != "" {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 111, "<section class=\"mt-8\" aria-labelledby=\"catalog-license-heading\"><h2 id=\"catalog-license-heading\" class=\"font-title text-xl font-bold text-on-surface-strong dark:text-on-surface-dark-strong\">License</h2><div class=\"mt-2 inline-flex min-h-10 items-center rounded-radius border border-outline bg-surface px-4 text-sm text-on-surface-strong dark:border-outline-dark dark:bg-surface-dark dark:text-on-surface-dark-strong\">")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 112, "<section class=\"mt-8\" aria-labelledby=\"catalog-license-heading\"><h2 id=\"catalog-license-heading\" class=\"font-title text-xl font-bold text-on-surface-strong dark:text-on-surface-dark-strong\">License</h2><div class=\"mt-2 inline-flex min-h-10 items-center rounded-radius border border-outline bg-surface px-4 text-sm text-on-surface-strong dark:border-outline-dark dark:bg-surface-dark dark:text-on-surface-dark-strong\">")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 				if data.CatalogLicense.URL != "" {
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 112, "<a href=\"")
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 113, "<a href=\"")
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
@@ -1681,7 +1685,7 @@ func catalogOverview(data CatalogPageData) templ.Component {
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 113, "\" rel=\"noreferrer\" class=\"font-semibold hover:text-primary dark:hover:text-primary-dark\">")
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 114, "\" rel=\"noreferrer\" class=\"font-semibold hover:text-primary dark:hover:text-primary-dark\">")
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
@@ -1694,12 +1698,12 @@ func catalogOverview(data CatalogPageData) templ.Component {
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 114, "</a>")
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 115, "</a>")
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
 				} else {
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 115, "<span class=\"font-semibold\">")
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 116, "<span class=\"font-semibold\">")
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
@@ -1712,22 +1716,22 @@ func catalogOverview(data CatalogPageData) templ.Component {
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 116, "</span>")
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 117, "</span>")
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 117, "</div></section>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 118, "</div></section>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 118, " <section class=\"mt-10 pb-12\" aria-labelledby=\"catalog-documents-heading\" x-data=\"{ filter: '' }\"><div class=\"mb-4\"><h2 id=\"catalog-documents-heading\" class=\"font-title text-2xl font-bold text-on-surface-strong dark:text-on-surface-dark-strong\">API groups and versions</h2></div><label class=\"mb-3 block max-w-xl\" for=\"catalog-document-filter\"><span class=\"sr-only\">Filter API groups and versions</span> <input id=\"catalog-document-filter\" type=\"search\" x-model=\"filter\" placeholder=\"Filter by name or version\" class=\"min-h-11 w-full rounded-radius border border-outline bg-surface px-4 text-on-surface-strong placeholder:text-on-surface-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary dark:border-outline-dark dark:bg-surface-dark dark:text-on-surface-dark-strong dark:placeholder:text-on-surface-dark-muted\"></label><div class=\"catalog-documents-mobile\" aria-label=\"OpenAPI documents in this catalog\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 119, " <section class=\"mt-10 pb-12\" aria-labelledby=\"catalog-documents-heading\" x-data=\"{ filter: '' }\"><div class=\"mb-4\"><h2 id=\"catalog-documents-heading\" class=\"font-title text-2xl font-bold text-on-surface-strong dark:text-on-surface-dark-strong\">API groups and versions</h2></div><label class=\"mb-3 block max-w-xl\" for=\"catalog-document-filter\"><span class=\"sr-only\">Filter API groups and versions</span> <input id=\"catalog-document-filter\" type=\"search\" x-model=\"filter\" placeholder=\"Filter by name or version\" class=\"min-h-11 w-full rounded-radius border border-outline bg-surface px-4 text-on-surface-strong placeholder:text-on-surface-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary dark:border-outline-dark dark:bg-surface-dark dark:text-on-surface-dark-strong dark:placeholder:text-on-surface-dark-muted\"></label><div class=\"catalog-documents-mobile\" aria-label=\"OpenAPI documents in this catalog\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			for _, option := range data.Documents {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 119, "<a href=\"")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 120, "<a href=\"")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
@@ -1740,7 +1744,7 @@ func catalogOverview(data CatalogPageData) templ.Component {
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 120, "\" data-catalog-document-row=\"true\" data-catalog-document-card=\"true\" data-search-text=\"")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 121, "\" data-catalog-document-row=\"true\" data-catalog-document-card=\"true\" data-search-text=\"")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
@@ -1753,7 +1757,7 @@ func catalogOverview(data CatalogPageData) templ.Component {
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 121, "\" x-show=\"")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 122, "\" x-show=\"")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
@@ -1766,7 +1770,7 @@ func catalogOverview(data CatalogPageData) templ.Component {
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 122, "\" class=\"grid min-w-0 gap-3 rounded-radius border border-outline bg-surface p-4 transition hover:bg-surface-alt focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary dark:border-outline-dark dark:bg-surface-dark dark:hover:bg-surface-dark-alt dark:focus-visible:outline-primary-dark\"><div class=\"min-w-0 overflow-hidden\">")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 123, "\" class=\"grid min-w-0 gap-3 rounded-radius border border-outline bg-surface p-4 transition hover:bg-surface-alt focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary dark:border-outline-dark dark:bg-surface-dark dark:hover:bg-surface-dark-alt dark:focus-visible:outline-primary-dark\"><div class=\"min-w-0 overflow-hidden\">")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
@@ -1774,7 +1778,7 @@ func catalogOverview(data CatalogPageData) templ.Component {
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 123, "</div><dl class=\"grid grid-cols-3 gap-3 border-t border-outline pt-3 text-sm dark:border-outline-dark\"><div class=\"min-w-0\"><dt class=\"text-xs font-semibold text-on-surface-muted dark:text-on-surface-dark-muted\">Version</dt><dd class=\"mt-1 break-words font-mono text-on-surface-strong dark:text-on-surface-dark-strong\">")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 124, "</div><dl class=\"grid grid-cols-3 gap-3 border-t border-outline pt-3 text-sm dark:border-outline-dark\"><div class=\"min-w-0\"><dt class=\"text-xs font-semibold text-on-surface-muted dark:text-on-surface-dark-muted\">Version</dt><dd class=\"mt-1 break-words font-mono text-on-surface-strong dark:text-on-surface-dark-strong\">")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
@@ -1787,7 +1791,7 @@ func catalogOverview(data CatalogPageData) templ.Component {
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 124, "</dd></div><div><dt class=\"text-xs font-semibold text-on-surface-muted dark:text-on-surface-dark-muted\">Operations</dt><dd class=\"mt-1 font-mono text-on-surface-strong dark:text-on-surface-dark-strong\">")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 125, "</dd></div><div><dt class=\"text-xs font-semibold text-on-surface-muted dark:text-on-surface-dark-muted\">Operations</dt><dd class=\"mt-1 font-mono text-on-surface-strong dark:text-on-surface-dark-strong\">")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
@@ -1800,7 +1804,7 @@ func catalogOverview(data CatalogPageData) templ.Component {
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 125, "</dd></div><div><dt class=\"text-xs font-semibold text-on-surface-muted dark:text-on-surface-dark-muted\">Schemas</dt><dd class=\"mt-1 font-mono text-on-surface-strong dark:text-on-surface-dark-strong\">")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 126, "</dd></div><div><dt class=\"text-xs font-semibold text-on-surface-muted dark:text-on-surface-dark-muted\">Schemas</dt><dd class=\"mt-1 font-mono text-on-surface-strong dark:text-on-surface-dark-strong\">")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
@@ -1813,12 +1817,12 @@ func catalogOverview(data CatalogPageData) templ.Component {
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 126, "</dd></div></dl></a>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 127, "</dd></div></dl></a>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 127, "</div><div class=\"catalog-documents-desktop\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 128, "</div><div class=\"catalog-documents-desktop\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -1826,12 +1830,12 @@ func catalogOverview(data CatalogPageData) templ.Component {
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 128, "</div><p x-show=\"filter.trim() !== '' && Array.from($root.querySelectorAll('[data-catalog-document-card]')).every(card => !(card.dataset.searchText || '').toLowerCase().includes(filter.trim().toLowerCase()))\" aria-live=\"polite\" class=\"rounded-b-radius border border-t-0 border-outline px-4 py-6 text-center text-on-surface-muted dark:border-outline-dark dark:text-on-surface-dark-muted\">No matching API documents.</p></section>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 129, "</div><p x-show=\"filter.trim() !== '' && Array.from($root.querySelectorAll('[data-catalog-document-card]')).every(card => !(card.dataset.searchText || '').toLowerCase().includes(filter.trim().toLowerCase()))\" aria-live=\"polite\" class=\"rounded-b-radius border border-t-0 border-outline px-4 py-6 text-center text-on-surface-muted dark:border-outline-dark dark:text-on-surface-dark-muted\">No matching API documents.</p></section>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 129, "</main>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 130, "</main>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -1964,7 +1968,7 @@ func catalogOrganizationOverview(data CatalogPageData) templ.Component {
 			templ_7745c5c3_Var75 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 130, "<div class=\"mb-8 border-b border-outline pb-8 dark:border-outline-dark\"><p class=\"mb-2 text-sm font-semibold uppercase tracking-wide text-primary dark:text-primary-dark\">OpenAPI workspace</p><h1 class=\"font-title text-4xl font-bold text-on-surface-strong dark:text-on-surface-dark-strong\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 131, "<div class=\"mb-8 border-b border-outline pb-8 dark:border-outline-dark\"><p class=\"mb-2 text-sm font-semibold uppercase tracking-wide text-primary dark:text-primary-dark\">OpenAPI workspace</p><h1 class=\"font-title text-4xl font-bold text-on-surface-strong dark:text-on-surface-dark-strong\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -1977,12 +1981,12 @@ func catalogOrganizationOverview(data CatalogPageData) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 131, "</h1></div>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 132, "</h1></div>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		if data.Organization.Readme != "" {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 132, "<section aria-labelledby=\"organization-readme-heading\"><h2 id=\"organization-readme-heading\" class=\"font-title text-2xl font-bold text-on-surface-strong dark:text-on-surface-dark-strong\">About</h2><p class=\"mt-3 max-w-[75ch] whitespace-pre-line text-base leading-relaxed text-on-surface-muted dark:text-on-surface-dark-muted\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 133, "<section aria-labelledby=\"organization-readme-heading\"><h2 id=\"organization-readme-heading\" class=\"font-title text-2xl font-bold text-on-surface-strong dark:text-on-surface-dark-strong\">About</h2><p class=\"mt-3 max-w-[75ch] whitespace-pre-line text-base leading-relaxed text-on-surface-muted dark:text-on-surface-dark-muted\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -1995,18 +1999,18 @@ func catalogOrganizationOverview(data CatalogPageData) templ.Component {
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 133, "</p></section>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 134, "</p></section>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 		}
 		if data.Organization.License.Name != "" {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 134, "<section class=\"mt-10\" aria-labelledby=\"organization-license-heading\"><h2 id=\"organization-license-heading\" class=\"font-title text-2xl font-bold text-on-surface-strong dark:text-on-surface-dark-strong\">License</h2><div class=\"mt-3 inline-flex min-h-10 items-center rounded-radius border border-outline bg-surface px-4 text-sm text-on-surface-strong dark:border-outline-dark dark:bg-surface-dark dark:text-on-surface-dark-strong\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 135, "<section class=\"mt-10\" aria-labelledby=\"organization-license-heading\"><h2 id=\"organization-license-heading\" class=\"font-title text-2xl font-bold text-on-surface-strong dark:text-on-surface-dark-strong\">License</h2><div class=\"mt-3 inline-flex min-h-10 items-center rounded-radius border border-outline bg-surface px-4 text-sm text-on-surface-strong dark:border-outline-dark dark:bg-surface-dark dark:text-on-surface-dark-strong\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			if data.Organization.License.URL != "" {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 135, "<a href=\"")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 136, "<a href=\"")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
@@ -2019,7 +2023,7 @@ func catalogOrganizationOverview(data CatalogPageData) templ.Component {
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 136, "\" rel=\"noreferrer\" class=\"font-semibold hover:text-primary dark:hover:text-primary-dark\">")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 137, "\" rel=\"noreferrer\" class=\"font-semibold hover:text-primary dark:hover:text-primary-dark\">")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
@@ -2032,12 +2036,12 @@ func catalogOrganizationOverview(data CatalogPageData) templ.Component {
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 137, "</a>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 138, "</a>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 			} else {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 138, "<span class=\"font-semibold\">")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 139, "<span class=\"font-semibold\">")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
@@ -2050,23 +2054,23 @@ func catalogOrganizationOverview(data CatalogPageData) templ.Component {
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 139, "</span>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 140, "</span>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 140, "</div></section>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 141, "</div></section>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 		}
 		if len(data.Organization.Sources) > 0 {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 141, "<section class=\"mt-10 pb-12\" aria-labelledby=\"organization-sources-heading\"><h2 id=\"organization-sources-heading\" class=\"font-title text-2xl font-bold text-on-surface-strong dark:text-on-surface-dark-strong\">Published sources</h2><p class=\"mt-2 max-w-2xl text-sm text-on-surface-muted dark:text-on-surface-dark-muted\">Source locations explicitly shared by this organization.</p><ul class=\"mt-4 grid gap-3 sm:grid-cols-2\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 142, "<section class=\"mt-10 pb-12\" aria-labelledby=\"organization-sources-heading\"><h2 id=\"organization-sources-heading\" class=\"font-title text-2xl font-bold text-on-surface-strong dark:text-on-surface-dark-strong\">Published sources</h2><p class=\"mt-2 max-w-2xl text-sm text-on-surface-muted dark:text-on-surface-dark-muted\">Source locations explicitly shared by this organization.</p><ul class=\"mt-4 grid gap-3 sm:grid-cols-2\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			for _, source := range data.Organization.Sources {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 142, "<li class=\"min-w-0 rounded-radius border border-outline bg-surface p-4 dark:border-outline-dark dark:bg-surface-dark\"><div class=\"flex min-w-0 items-center gap-2\"><span class=\"rounded-radius bg-surface-alt px-2 py-1 font-mono text-xs uppercase text-on-surface-muted dark:bg-surface-dark-alt dark:text-on-surface-dark-muted\">")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 143, "<li class=\"min-w-0 rounded-radius border border-outline bg-surface p-4 dark:border-outline-dark dark:bg-surface-dark\"><div class=\"flex min-w-0 items-center gap-2\"><span class=\"rounded-radius bg-surface-alt px-2 py-1 font-mono text-xs uppercase text-on-surface-muted dark:bg-surface-dark-alt dark:text-on-surface-dark-muted\">")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
@@ -2079,12 +2083,12 @@ func catalogOrganizationOverview(data CatalogPageData) templ.Component {
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 143, "</span> ")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 144, "</span> ")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 				if source.URL != "" {
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 144, "<a href=\"")
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 145, "<a href=\"")
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
@@ -2097,7 +2101,7 @@ func catalogOrganizationOverview(data CatalogPageData) templ.Component {
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 145, "\" rel=\"noreferrer\" class=\"min-w-0 truncate font-semibold text-on-surface-strong hover:text-primary dark:text-on-surface-dark-strong dark:hover:text-primary-dark\">")
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 146, "\" rel=\"noreferrer\" class=\"min-w-0 truncate font-semibold text-on-surface-strong hover:text-primary dark:text-on-surface-dark-strong dark:hover:text-primary-dark\">")
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
@@ -2110,12 +2114,12 @@ func catalogOrganizationOverview(data CatalogPageData) templ.Component {
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 146, "</a>")
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 147, "</a>")
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
 				} else {
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 147, "<span class=\"min-w-0 truncate font-semibold text-on-surface-strong dark:text-on-surface-dark-strong\">")
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 148, "<span class=\"min-w-0 truncate font-semibold text-on-surface-strong dark:text-on-surface-dark-strong\">")
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
@@ -2128,12 +2132,12 @@ func catalogOrganizationOverview(data CatalogPageData) templ.Component {
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 148, "</span>")
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 149, "</span>")
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 149, "</div><p class=\"mt-2 truncate font-mono text-xs text-on-surface-muted dark:text-on-surface-dark-muted\" title=\"")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 150, "</div><p class=\"mt-2 truncate font-mono text-xs text-on-surface-muted dark:text-on-surface-dark-muted\" title=\"")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
@@ -2146,7 +2150,7 @@ func catalogOrganizationOverview(data CatalogPageData) templ.Component {
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 150, "\">")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 151, "\">")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
@@ -2159,12 +2163,12 @@ func catalogOrganizationOverview(data CatalogPageData) templ.Component {
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 151, "</p></li>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 152, "</p></li>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 152, "</ul></section>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 153, "</ul></section>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -2240,7 +2244,7 @@ func catalogDocument(data CatalogPageData) templ.Component {
 			templ_7745c5c3_Var88 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 153, "<main data-catalog-document=\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 154, "<main data-catalog-document=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -2253,7 +2257,7 @@ func catalogDocument(data CatalogPageData) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 154, "\" class=\"pb-16\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 155, "\" class=\"pb-16\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -2268,7 +2272,7 @@ func catalogDocument(data CatalogPageData) templ.Component {
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 155, " ")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 156, " ")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -2291,7 +2295,7 @@ func catalogDocument(data CatalogPageData) templ.Component {
 				return templ_7745c5c3_Err
 			}
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 156, "</main>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 157, "</main>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -2522,7 +2526,7 @@ func catalogOperationDetail(data CatalogPageData) templ.Component {
 		ctx = templ.ClearChildren(ctx)
 		if data.OperationView != nil {
 			operation := *data.OperationView
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 157, "<article data-catalog-detail=\"operation\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 158, "<article data-catalog-detail=\"operation\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -2554,13 +2558,13 @@ func catalogOperationDetail(data CatalogPageData) templ.Component {
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 158, "</article>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 159, "</article>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 		} else {
 			operation := *data.Selected.Operation
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 159, "<article id=\"")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 160, "<article id=\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -2573,7 +2577,7 @@ func catalogOperationDetail(data CatalogPageData) templ.Component {
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 160, "\" data-catalog-detail=\"operation\" class=\"space-y-6\"><div class=\"flex flex-wrap items-center gap-3\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 161, "\" data-catalog-detail=\"operation\" class=\"space-y-6\"><div class=\"flex flex-wrap items-center gap-3\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -2581,7 +2585,7 @@ func catalogOperationDetail(data CatalogPageData) templ.Component {
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 161, "<code class=\"break-all text-base text-on-surface-strong dark:text-on-surface-dark-strong\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 162, "<code class=\"break-all text-base text-on-surface-strong dark:text-on-surface-dark-strong\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -2594,7 +2598,7 @@ func catalogOperationDetail(data CatalogPageData) templ.Component {
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 162, "</code></div><h2 class=\"font-title text-3xl font-bold text-on-surface-strong dark:text-on-surface-dark-strong\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 163, "</code></div><h2 class=\"font-title text-3xl font-bold text-on-surface-strong dark:text-on-surface-dark-strong\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -2607,12 +2611,12 @@ func catalogOperationDetail(data CatalogPageData) templ.Component {
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 163, "</h2>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 164, "</h2>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			if operation.Description != "" {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 164, "<p class=\"max-w-4xl whitespace-pre-wrap break-words text-on-surface-muted dark:text-on-surface-dark-muted\">")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 165, "<p class=\"max-w-4xl whitespace-pre-wrap break-words text-on-surface-muted dark:text-on-surface-dark-muted\">")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
@@ -2625,18 +2629,18 @@ func catalogOperationDetail(data CatalogPageData) templ.Component {
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 165, "</p>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 166, "</p>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 			}
 			if len(operation.Parameters) > 0 {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 166, "<section class=\"rounded-radius border border-outline p-5 dark:border-outline-dark\"><h3 class=\"font-title text-xl font-bold\">Parameters</h3><div class=\"mt-4 divide-y divide-outline dark:divide-outline-dark\">")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 167, "<section class=\"rounded-radius border border-outline p-5 dark:border-outline-dark\"><h3 class=\"font-title text-xl font-bold\">Parameters</h3><div class=\"mt-4 divide-y divide-outline dark:divide-outline-dark\">")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 				for _, parameter := range operation.Parameters {
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 167, "<div class=\"grid gap-2 py-3 sm:grid-cols-[14rem_1fr]\"><div><code class=\"font-semibold\">")
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 168, "<div class=\"grid gap-2 py-3 sm:grid-cols-[14rem_1fr]\"><div><code class=\"font-semibold\">")
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
@@ -2649,7 +2653,7 @@ func catalogOperationDetail(data CatalogPageData) templ.Component {
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 168, "</code> <span class=\"text-xs uppercase text-on-surface-muted dark:text-on-surface-dark-muted\">")
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 169, "</code> <span class=\"text-xs uppercase text-on-surface-muted dark:text-on-surface-dark-muted\">")
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
@@ -2662,7 +2666,7 @@ func catalogOperationDetail(data CatalogPageData) templ.Component {
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 169, "</span></div><p class=\"text-sm text-on-surface-muted dark:text-on-surface-dark-muted\">")
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 170, "</span></div><p class=\"text-sm text-on-surface-muted dark:text-on-surface-dark-muted\">")
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
@@ -2675,23 +2679,23 @@ func catalogOperationDetail(data CatalogPageData) templ.Component {
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 170, "</p></div>")
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 171, "</p></div>")
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 171, "</div></section>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 172, "</div></section>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 			}
 			if len(operation.Responses) > 0 {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 172, "<section class=\"rounded-radius border border-outline p-5 dark:border-outline-dark\"><h3 class=\"font-title text-xl font-bold\">Responses</h3><div class=\"mt-4 space-y-3\">")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 173, "<section class=\"rounded-radius border border-outline p-5 dark:border-outline-dark\"><h3 class=\"font-title text-xl font-bold\">Responses</h3><div class=\"mt-4 space-y-3\">")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 				for _, item := range operation.Responses {
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 173, "<div class=\"rounded-radius bg-surface-alt p-4 dark:bg-surface-dark-alt\"><code class=\"font-semibold\">")
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 174, "<div class=\"rounded-radius bg-surface-alt p-4 dark:bg-surface-dark-alt\"><code class=\"font-semibold\">")
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
@@ -2704,7 +2708,7 @@ func catalogOperationDetail(data CatalogPageData) templ.Component {
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 174, "</code><p class=\"mt-1 text-sm text-on-surface-muted dark:text-on-surface-dark-muted\">")
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 175, "</code><p class=\"mt-1 text-sm text-on-surface-muted dark:text-on-surface-dark-muted\">")
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
@@ -2717,17 +2721,17 @@ func catalogOperationDetail(data CatalogPageData) templ.Component {
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 175, "</p></div>")
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 176, "</p></div>")
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 176, "</div></section>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 177, "</div></section>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 177, "</article>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 178, "</article>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -2765,7 +2769,7 @@ func catalogOrganizationAvatar(item CatalogOrganizationItem) templ.Component {
 		}
 		ctx = templ.ClearChildren(ctx)
 		if item.AvatarSrc != "" {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 178, "<span x-data=\"{ imageError: false }\" class=\"relative inline-flex size-8 shrink-0 items-center justify-center overflow-hidden rounded-full bg-surface-alt text-xs font-bold tracking-wider text-on-surface-strong dark:bg-surface-dark-alt dark:text-on-surface-dark-strong\"><span x-cloak x-show=\"imageError\" aria-hidden=\"true\" class=\"absolute inset-0 flex items-center justify-center\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 179, "<span x-data=\"{ imageError: false }\" class=\"relative inline-flex size-8 shrink-0 items-center justify-center overflow-hidden rounded-full bg-surface-alt text-xs font-bold tracking-wider text-on-surface-strong dark:bg-surface-dark-alt dark:text-on-surface-dark-strong\"><span x-cloak x-show=\"imageError\" aria-hidden=\"true\" class=\"absolute inset-0 flex items-center justify-center\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -2785,7 +2789,7 @@ func catalogOrganizationAvatar(item CatalogOrganizationItem) templ.Component {
 					return templ_7745c5c3_Err
 				}
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 179, "</span> <img src=\"")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 180, "</span> <img src=\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -2798,7 +2802,7 @@ func catalogOrganizationAvatar(item CatalogOrganizationItem) templ.Component {
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 180, "\" alt=\"")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 181, "\" alt=\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -2811,7 +2815,7 @@ func catalogOrganizationAvatar(item CatalogOrganizationItem) templ.Component {
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 181, "\" loading=\"lazy\" decoding=\"async\" x-init=\"if ($el.complete && $el.naturalWidth === 0) imageError = true\" x-show=\"!imageError\" x-on:error=\"imageError = true\" class=\"absolute inset-0 size-full object-cover\"></span>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 182, "\" loading=\"lazy\" decoding=\"async\" x-init=\"if ($el.complete && $el.naturalWidth === 0) imageError = true\" x-show=\"!imageError\" x-on:error=\"imageError = true\" class=\"absolute inset-0 size-full object-cover\"></span>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -2858,7 +2862,7 @@ func catalogSchemaDetail(data CatalogPageData) templ.Component {
 				return templ_7745c5c3_Err
 			}
 		} else {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 182, "<article id=\"")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 183, "<article id=\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -2871,7 +2875,7 @@ func catalogSchemaDetail(data CatalogPageData) templ.Component {
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 183, "\" data-catalog-detail=\"schema\" class=\"space-y-6\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 184, "\" data-catalog-detail=\"schema\" class=\"space-y-6\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -2888,7 +2892,7 @@ func catalogSchemaDetail(data CatalogPageData) templ.Component {
 				}
 			} else {
 				if data.SchemaNode != nil && data.SchemaDetailExample != nil {
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 184, "<div class=\"manja-schema-detail-layout\"><div class=\"manja-schema-tree-panel\">")
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 185, "<div class=\"manja-schema-detail-layout\"><div class=\"manja-schema-tree-panel\">")
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
@@ -2896,7 +2900,7 @@ func catalogSchemaDetail(data CatalogPageData) templ.Component {
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 185, "</div><aside class=\"manja-schema-example-panel\" aria-label=\"Root JSON Schema\">")
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 186, "</div><aside class=\"manja-schema-example-panel\" aria-label=\"Root JSON Schema\">")
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
@@ -2904,7 +2908,7 @@ func catalogSchemaDetail(data CatalogPageData) templ.Component {
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 186, "</aside></div>")
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 187, "</aside></div>")
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
@@ -2915,12 +2919,12 @@ func catalogSchemaDetail(data CatalogPageData) templ.Component {
 							return templ_7745c5c3_Err
 						}
 					}
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 187, " ")
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 188, " ")
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
 					if data.SchemaDetailExample != nil {
-						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 188, "<section aria-label=\"Root JSON Schema\">")
+						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 189, "<section aria-label=\"Root JSON Schema\">")
 						if templ_7745c5c3_Err != nil {
 							return templ_7745c5c3_Err
 						}
@@ -2928,14 +2932,14 @@ func catalogSchemaDetail(data CatalogPageData) templ.Component {
 						if templ_7745c5c3_Err != nil {
 							return templ_7745c5c3_Err
 						}
-						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 189, "</section>")
+						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 190, "</section>")
 						if templ_7745c5c3_Err != nil {
 							return templ_7745c5c3_Err
 						}
 					}
 				}
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 190, "</article>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 191, "</article>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -2971,7 +2975,7 @@ func catalogSchemaDetailActions(data CatalogPageData, anchor string) templ.Compo
 				return templ_7745c5c3_Err
 			}
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 191, "<a href=\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 192, "<a href=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -2984,7 +2988,7 @@ func catalogSchemaDetailActions(data CatalogPageData, anchor string) templ.Compo
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 192, "\" download class=\"inline-flex min-h-9 items-center justify-center gap-2 rounded-radius border border-outline px-3 text-sm font-semibold text-on-surface-strong transition hover:bg-surface-alt focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary dark:border-outline-dark dark:text-on-surface-dark-strong dark:hover:bg-surface-dark-alt dark:focus-visible:outline-primary-dark\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 193, "\" download class=\"inline-flex min-h-9 items-center justify-center gap-2 rounded-radius border border-outline px-3 text-sm font-semibold text-on-surface-strong transition hover:bg-surface-alt focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary dark:border-outline-dark dark:text-on-surface-dark-strong dark:hover:bg-surface-dark-alt dark:focus-visible:outline-primary-dark\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -2992,7 +2996,7 @@ func catalogSchemaDetailActions(data CatalogPageData, anchor string) templ.Compo
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 193, "<span>Download source</span></a>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 194, "<span>Download source</span></a>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -3050,7 +3054,7 @@ func catalogProvenance(data CatalogPageData, includeSource bool) templ.Component
 			templ_7745c5c3_Var113 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 194, "<dl data-catalog-provenance class=\"flex min-w-0 flex-wrap items-center gap-x-5 gap-y-2 border-t border-outline pt-4 text-xs text-on-surface-muted dark:border-outline-dark dark:text-on-surface-dark-muted\" aria-label=\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 195, "<dl data-catalog-provenance class=\"flex min-w-0 flex-wrap items-center gap-x-5 gap-y-2 border-t border-outline pt-4 text-xs text-on-surface-muted dark:border-outline-dark dark:text-on-surface-dark-muted\" aria-label=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -3063,12 +3067,12 @@ func catalogProvenance(data CatalogPageData, includeSource bool) templ.Component
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 195, "\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 196, "\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		if includeSource && data.Document != nil {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 196, "<div class=\"flex min-w-0 max-w-full items-center gap-2\" title=\"")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 197, "<div class=\"flex min-w-0 max-w-full items-center gap-2\" title=\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -3081,7 +3085,7 @@ func catalogProvenance(data CatalogPageData, includeSource bool) templ.Component
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 197, "\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 198, "\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -3089,7 +3093,7 @@ func catalogProvenance(data CatalogPageData, includeSource bool) templ.Component
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 198, "<dt class=\"shrink-0 font-semibold\">Source</dt><dd class=\"min-w-0 break-all sm:truncate\"><code class=\"text-on-surface-strong dark:text-on-surface-dark-strong\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 199, "<dt class=\"shrink-0 font-semibold\">Source</dt><dd class=\"min-w-0 break-all sm:truncate\"><code class=\"text-on-surface-strong dark:text-on-surface-dark-strong\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -3102,13 +3106,13 @@ func catalogProvenance(data CatalogPageData, includeSource bool) templ.Component
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 199, "</code></dd></div>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 200, "</code></dd></div>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 		}
 		if !includeSource && strings.TrimSpace(string(data.Directory.ProfileID)) != "" {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 200, "<div class=\"flex items-center gap-2\" title=\"Compatibility profile applied while compiling this catalog\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 201, "<div class=\"flex items-center gap-2\" title=\"Compatibility profile applied while compiling this catalog\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -3116,7 +3120,7 @@ func catalogProvenance(data CatalogPageData, includeSource bool) templ.Component
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 201, "<dt class=\"font-semibold\">Compatibility</dt><dd><code class=\"text-on-surface-strong dark:text-on-surface-dark-strong\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 202, "<dt class=\"font-semibold\">Compatibility</dt><dd><code class=\"text-on-surface-strong dark:text-on-surface-dark-strong\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -3129,13 +3133,13 @@ func catalogProvenance(data CatalogPageData, includeSource bool) templ.Component
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 202, "</code></dd></div>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 203, "</code></dd></div>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 		}
 		if catalogRevisionValue(data) != "" {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 203, "<div class=\"flex items-center gap-2\" title=\"")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 204, "<div class=\"flex items-center gap-2\" title=\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -3148,7 +3152,7 @@ func catalogProvenance(data CatalogPageData, includeSource bool) templ.Component
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 204, "\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 205, "\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -3156,7 +3160,7 @@ func catalogProvenance(data CatalogPageData, includeSource bool) templ.Component
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 205, "<dt class=\"font-semibold\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 206, "<dt class=\"font-semibold\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -3169,7 +3173,7 @@ func catalogProvenance(data CatalogPageData, includeSource bool) templ.Component
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 206, "</dt><dd><code class=\"text-on-surface-strong dark:text-on-surface-dark-strong\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 207, "</dt><dd><code class=\"text-on-surface-strong dark:text-on-surface-dark-strong\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -3182,12 +3186,12 @@ func catalogProvenance(data CatalogPageData, includeSource bool) templ.Component
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 207, "</code></dd></div>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 208, "</code></dd></div>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 208, "<div class=\"flex items-center gap-2\" title=\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 209, "<div class=\"flex items-center gap-2\" title=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -3200,7 +3204,7 @@ func catalogProvenance(data CatalogPageData, includeSource bool) templ.Component
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 209, "\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 210, "\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -3208,7 +3212,7 @@ func catalogProvenance(data CatalogPageData, includeSource bool) templ.Component
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 210, "<dt class=\"font-semibold\">Active snapshot</dt><dd><code class=\"text-on-surface-strong dark:text-on-surface-dark-strong\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 211, "<dt class=\"font-semibold\">Active snapshot</dt><dd><code class=\"text-on-surface-strong dark:text-on-surface-dark-strong\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -3221,7 +3225,7 @@ func catalogProvenance(data CatalogPageData, includeSource bool) templ.Component
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 211, "</code></dd></div></dl>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 212, "</code></dd></div></dl>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -3482,7 +3486,7 @@ func catalogSidebarFocusRestoration() templ.Component {
 			templ_7745c5c3_Var123 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 212, "<script data-catalog-sidebar-focus-restoration=\"true\">\n\t\t(function () {\n\t\t\tif (window.__manjaCatalogSidebarFocusBound) return;\n\t\t\twindow.__manjaCatalogSidebarFocusBound = true;\n\t\t\tvar pendingControlID = \"\";\n\t\t\tvar pendingSchemaNodeFocus = false;\n\t\t\tvar selectionScrollFrame = 0;\n\n\t\t\tfunction scrollSidebarSelection() {\n\t\t\t\tvar selected = document.querySelector(\"#catalog-sidebar-groups [data-catalog-sidebar-selected]\");\n\t\t\t\tif (!selected) return;\n\t\t\t\tvar navigation = selected.closest(\"nav[aria-label='sidebar navigation']\");\n\t\t\t\tvar panel = navigation && navigation.querySelector(\".sidebar-scroll\");\n\t\t\t\tif (!panel || panel.clientHeight === 0) return;\n\t\t\t\tvar selectedBox = selected.getBoundingClientRect();\n\t\t\t\tvar panelBox = panel.getBoundingClientRect();\n\t\t\t\tif (selectedBox.top >= panelBox.top && selectedBox.bottom <= panelBox.bottom) return;\n\t\t\t\tvar maxTop = Math.max(0, panel.scrollHeight - panel.clientHeight);\n\t\t\t\tvar targetTop = panel.scrollTop + selectedBox.top - panelBox.top - (panel.clientHeight - selectedBox.height) / 2;\n\t\t\t\tpanel.scrollTop = Math.max(0, Math.min(maxTop, targetTop));\n\t\t\t}\n\n\t\t\tfunction scheduleSidebarSelectionScroll() {\n\t\t\t\tif (selectionScrollFrame) return;\n\t\t\t\tselectionScrollFrame = window.requestAnimationFrame(function () {\n\t\t\t\t\tselectionScrollFrame = window.requestAnimationFrame(function () {\n\t\t\t\t\t\tselectionScrollFrame = 0;\n\t\t\t\t\t\tscrollSidebarSelection();\n\t\t\t\t\t});\n\t\t\t\t});\n\t\t\t}\n\n\t\t\twindow.manjaCatalogScrollSidebarSelection = scheduleSidebarSelectionScroll;\n\t\t\tif (document.readyState === \"loading\") {\n\t\t\t\tdocument.addEventListener(\"DOMContentLoaded\", scheduleSidebarSelectionScroll, { once: true });\n\t\t\t} else {\n\t\t\t\tscheduleSidebarSelectionScroll();\n\t\t\t}\n\t\t\tdocument.body.addEventListener(\"click\", function (event) {\n\t\t\t\tvar trigger = event.target && event.target.closest && event.target.closest(\"[data-catalog-navigation-trigger]\");\n\t\t\t\tif (trigger) scheduleSidebarSelectionScroll();\n\t\t\t});\n\t\t\twindow.addEventListener(\"resize\", scheduleSidebarSelectionScroll);\n\t\t\tdocument.body.addEventListener(\"htmx:beforeRequest\", function (event) {\n\t\t\t\tvar trigger = event.detail && event.detail.elt;\n\t\t\t\tvar control = trigger && trigger.closest && trigger.closest(\"[data-catalog-group-control]\");\n\t\t\t\tpendingControlID = control ? control.id : \"\";\n\t\t\t\tvar schemaLink = trigger && trigger.closest && trigger.closest(\"[data-catalog-schema-property]\");\n\t\t\t\tpendingSchemaNodeFocus = !!schemaLink;\n\t\t\t});\n\t\t\tdocument.body.addEventListener(\"htmx:afterSettle\", function (event) {\n\t\t\t\tif (pendingControlID) {\n\t\t\t\t\tvar controlID = pendingControlID;\n\t\t\t\t\tpendingControlID = \"\";\n\t\t\t\t\tvar restoreControlFocus = function () {\n\t\t\t\t\t\tvar control = document.getElementById(controlID);\n\t\t\t\t\t\tif (!control) return;\n\t\t\t\t\t\ttry { control.focus({ preventScroll: true }); } catch (error) { control.focus(); }\n\t\t\t\t\t};\n\t\t\t\t\twindow.requestAnimationFrame(function () { window.requestAnimationFrame(restoreControlFocus); });\n\t\t\t\t}\n\t\t\t\tif (pendingSchemaNodeFocus) {\n\t\t\t\t\tpendingSchemaNodeFocus = false;\n\t\t\t\t\tvar schemaHeading = document.querySelector(\"#schema-node-panel [data-catalog-schema-node-focus]\");\n\t\t\t\t\tif (schemaHeading) {\n\t\t\t\t\t\ttry { schemaHeading.focus({ preventScroll: true }); } catch (error) { schemaHeading.focus(); }\n\t\t\t\t\t}\n\t\t\t\t}\n\t\t\t\tvar target = event.detail && event.detail.target;\n\t\t\t\tif (target && (target.id === \"catalog-main-content\" || target.id === \"catalog-sidebar-groups\" || (target.closest && target.closest(\"#catalog-sidebar-groups\")))) {\n\t\t\t\t\tscheduleSidebarSelectionScroll();\n\t\t\t\t}\n\t\t\t});\n\t\t\t[\"htmx:responseError\", \"htmx:sendError\", \"htmx:timeout\"].forEach(function (name) {\n\t\t\t\tdocument.body.addEventListener(name, function () {\n\t\t\t\t\tpendingControlID = \"\";\n\t\t\t\t\tpendingSchemaNodeFocus = false;\n\t\t\t\t});\n\t\t\t});\n\t\t})();\n\t</script>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 213, "<script data-catalog-sidebar-focus-restoration=\"true\">\n\t\t(function () {\n\t\t\tif (window.__manjaCatalogSidebarFocusBound) return;\n\t\t\twindow.__manjaCatalogSidebarFocusBound = true;\n\t\t\tvar pendingControlID = \"\";\n\t\t\tvar pendingSchemaNodeFocus = false;\n\t\t\tvar selectionScrollFrame = 0;\n\n\t\t\tfunction scrollSidebarSelection() {\n\t\t\t\tvar selected = document.querySelector(\"#catalog-sidebar-groups [data-catalog-sidebar-selected]\");\n\t\t\t\tif (!selected) return;\n\t\t\t\tvar navigation = selected.closest(\"nav[aria-label='sidebar navigation']\");\n\t\t\t\tvar panel = navigation && navigation.querySelector(\".sidebar-scroll\");\n\t\t\t\tif (!panel || panel.clientHeight === 0) return;\n\t\t\t\tvar selectedBox = selected.getBoundingClientRect();\n\t\t\t\tvar panelBox = panel.getBoundingClientRect();\n\t\t\t\tif (selectedBox.top >= panelBox.top && selectedBox.bottom <= panelBox.bottom) return;\n\t\t\t\tvar maxTop = Math.max(0, panel.scrollHeight - panel.clientHeight);\n\t\t\t\tvar targetTop = panel.scrollTop + selectedBox.top - panelBox.top - (panel.clientHeight - selectedBox.height) / 2;\n\t\t\t\tpanel.scrollTop = Math.max(0, Math.min(maxTop, targetTop));\n\t\t\t}\n\n\t\t\tfunction scheduleSidebarSelectionScroll() {\n\t\t\t\tif (selectionScrollFrame) return;\n\t\t\t\tselectionScrollFrame = window.requestAnimationFrame(function () {\n\t\t\t\t\tselectionScrollFrame = window.requestAnimationFrame(function () {\n\t\t\t\t\t\tselectionScrollFrame = 0;\n\t\t\t\t\t\tscrollSidebarSelection();\n\t\t\t\t\t});\n\t\t\t\t});\n\t\t\t}\n\n\t\t\twindow.manjaCatalogScrollSidebarSelection = scheduleSidebarSelectionScroll;\n\t\t\tif (document.readyState === \"loading\") {\n\t\t\t\tdocument.addEventListener(\"DOMContentLoaded\", scheduleSidebarSelectionScroll, { once: true });\n\t\t\t} else {\n\t\t\t\tscheduleSidebarSelectionScroll();\n\t\t\t}\n\t\t\tdocument.body.addEventListener(\"click\", function (event) {\n\t\t\t\tvar trigger = event.target && event.target.closest && event.target.closest(\"[data-catalog-navigation-trigger]\");\n\t\t\t\tif (trigger) scheduleSidebarSelectionScroll();\n\t\t\t});\n\t\t\twindow.addEventListener(\"resize\", scheduleSidebarSelectionScroll);\n\t\t\tdocument.body.addEventListener(\"htmx:beforeRequest\", function (event) {\n\t\t\t\tvar trigger = event.detail && event.detail.elt;\n\t\t\t\tvar control = trigger && trigger.closest && trigger.closest(\"[data-catalog-group-control]\");\n\t\t\t\tpendingControlID = control ? control.id : \"\";\n\t\t\t\tvar schemaLink = trigger && trigger.closest && trigger.closest(\"[data-catalog-schema-property]\");\n\t\t\t\tpendingSchemaNodeFocus = !!schemaLink;\n\t\t\t});\n\t\t\tdocument.body.addEventListener(\"htmx:afterSettle\", function (event) {\n\t\t\t\tif (pendingControlID) {\n\t\t\t\t\tvar controlID = pendingControlID;\n\t\t\t\t\tpendingControlID = \"\";\n\t\t\t\t\tvar restoreControlFocus = function () {\n\t\t\t\t\t\tvar control = document.getElementById(controlID);\n\t\t\t\t\t\tif (!control) return;\n\t\t\t\t\t\ttry { control.focus({ preventScroll: true }); } catch (error) { control.focus(); }\n\t\t\t\t\t};\n\t\t\t\t\twindow.requestAnimationFrame(function () { window.requestAnimationFrame(restoreControlFocus); });\n\t\t\t\t}\n\t\t\t\tif (pendingSchemaNodeFocus) {\n\t\t\t\t\tpendingSchemaNodeFocus = false;\n\t\t\t\t\tvar schemaHeading = document.querySelector(\"#schema-node-panel [data-catalog-schema-node-focus]\");\n\t\t\t\t\tif (schemaHeading) {\n\t\t\t\t\t\ttry { schemaHeading.focus({ preventScroll: true }); } catch (error) { schemaHeading.focus(); }\n\t\t\t\t\t}\n\t\t\t\t}\n\t\t\t\tvar target = event.detail && event.detail.target;\n\t\t\t\tif (target && (target.id === \"catalog-main-content\" || target.id === \"catalog-sidebar-groups\" || (target.closest && target.closest(\"#catalog-sidebar-groups\")))) {\n\t\t\t\t\tscheduleSidebarSelectionScroll();\n\t\t\t\t}\n\t\t\t});\n\t\t\t[\"htmx:responseError\", \"htmx:sendError\", \"htmx:timeout\"].forEach(function (name) {\n\t\t\t\tdocument.body.addEventListener(name, function () {\n\t\t\t\t\tpendingControlID = \"\";\n\t\t\t\t\tpendingSchemaNodeFocus = false;\n\t\t\t\t});\n\t\t\t});\n\t\t})();\n\t</script>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -3541,7 +3545,7 @@ func catalogSidebarOverflowTooltip() templ.Component {
 			templ_7745c5c3_Var124 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 213, "<script data-catalog-sidebar-overflow-tooltip=\"true\">\n\t\t(function () {\n\t\t\tif (window.__manjaCatalogSidebarOverflowTooltipBound) return;\n\t\t\twindow.__manjaCatalogSidebarOverflowTooltipBound = true;\n\t\t\tvar tooltip;\n\t\t\tvar activeLink;\n\n\t\t\tfunction labelFor(link) {\n\t\t\t\treturn link && link.querySelector && link.querySelector(\".truncate\");\n\t\t\t}\n\n\t\t\tfunction hide() {\n\t\t\t\tif (activeLink && activeLink.getAttribute(\"aria-describedby\") === \"catalog-sidebar-overflow-tooltip\") {\n\t\t\t\t\tactiveLink.removeAttribute(\"aria-describedby\");\n\t\t\t\t}\n\t\t\t\tactiveLink = null;\n\t\t\t\tif (tooltip) tooltip.hidden = true;\n\t\t\t}\n\n\t\t\tfunction show(link) {\n\t\t\t\tvar label = labelFor(link);\n\t\t\t\tif (!label || label.scrollWidth <= label.clientWidth + 1 || !label.textContent.trim()) {\n\t\t\t\t\thide();\n\t\t\t\t\treturn;\n\t\t\t\t}\n\t\t\t\tif (!tooltip) {\n\t\t\t\t\ttooltip = document.createElement(\"div\");\n\t\t\t\t\ttooltip.id = \"catalog-sidebar-overflow-tooltip\";\n\t\t\t\t\ttooltip.setAttribute(\"role\", \"tooltip\");\n\t\t\t\t\ttooltip.hidden = true;\n\t\t\t\t\tdocument.body.appendChild(tooltip);\n\t\t\t\t}\n\t\t\t\ttooltip.textContent = label.textContent.trim();\n\t\t\t\ttooltip.hidden = false;\n\t\t\t\tactiveLink = link;\n\t\t\t\tlink.setAttribute(\"aria-describedby\", tooltip.id);\n\t\t\t\tvar rect = link.getBoundingClientRect();\n\t\t\t\tvar left = rect.right + 8;\n\t\t\t\tvar top = rect.top + (rect.height - tooltip.offsetHeight) / 2;\n\t\t\t\tif (left + tooltip.offsetWidth > window.innerWidth - 8) left = rect.left - tooltip.offsetWidth - 8;\n\t\t\t\ttooltip.style.left = Math.max(8, left) + \"px\";\n\t\t\t\ttooltip.style.top = Math.min(Math.max(8, top), Math.max(8, window.innerHeight - tooltip.offsetHeight - 8)) + \"px\";\n\t\t\t}\n\n\t\t\tdocument.addEventListener(\"pointerover\", function (event) {\n\t\t\t\tvar link = event.target && event.target.closest && event.target.closest(\"[data-catalog-sidebar-operation]\");\n\t\t\t\tif (link) show(link);\n\t\t\t});\n\t\t\tdocument.addEventListener(\"pointerout\", function (event) {\n\t\t\t\tvar link = event.target && event.target.closest && event.target.closest(\"[data-catalog-sidebar-operation]\");\n\t\t\t\tif (link && (!event.relatedTarget || !link.contains(event.relatedTarget))) hide();\n\t\t\t});\n\t\t\tdocument.addEventListener(\"focusin\", function (event) {\n\t\t\t\tvar link = event.target && event.target.closest && event.target.closest(\"[data-catalog-sidebar-operation]\");\n\t\t\t\tif (link) show(link);\n\t\t\t});\n\t\t\tdocument.addEventListener(\"focusout\", function (event) {\n\t\t\t\tvar link = event.target && event.target.closest && event.target.closest(\"[data-catalog-sidebar-operation]\");\n\t\t\t\tif (link && (!event.relatedTarget || !link.contains(event.relatedTarget))) hide();\n\t\t\t});\n\t\t\twindow.addEventListener(\"resize\", hide);\n\t\t\twindow.addEventListener(\"scroll\", hide, true);\n\t\t\tdocument.body.addEventListener(\"htmx:beforeSwap\", hide);\n\t\t})();\n\t</script>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 214, "<script data-catalog-sidebar-overflow-tooltip=\"true\">\n\t\t(function () {\n\t\t\tif (window.__manjaCatalogSidebarOverflowTooltipBound) return;\n\t\t\twindow.__manjaCatalogSidebarOverflowTooltipBound = true;\n\t\t\tvar tooltip;\n\t\t\tvar activeLink;\n\n\t\t\tfunction labelFor(link) {\n\t\t\t\treturn link && link.querySelector && link.querySelector(\".truncate\");\n\t\t\t}\n\n\t\t\tfunction hide() {\n\t\t\t\tif (activeLink && activeLink.getAttribute(\"aria-describedby\") === \"catalog-sidebar-overflow-tooltip\") {\n\t\t\t\t\tactiveLink.removeAttribute(\"aria-describedby\");\n\t\t\t\t}\n\t\t\t\tactiveLink = null;\n\t\t\t\tif (tooltip) tooltip.hidden = true;\n\t\t\t}\n\n\t\t\tfunction show(link) {\n\t\t\t\tvar label = labelFor(link);\n\t\t\t\tif (!label || label.scrollWidth <= label.clientWidth + 1 || !label.textContent.trim()) {\n\t\t\t\t\thide();\n\t\t\t\t\treturn;\n\t\t\t\t}\n\t\t\t\tif (!tooltip) {\n\t\t\t\t\ttooltip = document.createElement(\"div\");\n\t\t\t\t\ttooltip.id = \"catalog-sidebar-overflow-tooltip\";\n\t\t\t\t\ttooltip.setAttribute(\"role\", \"tooltip\");\n\t\t\t\t\ttooltip.hidden = true;\n\t\t\t\t\tdocument.body.appendChild(tooltip);\n\t\t\t\t}\n\t\t\t\ttooltip.textContent = label.textContent.trim();\n\t\t\t\ttooltip.hidden = false;\n\t\t\t\tactiveLink = link;\n\t\t\t\tlink.setAttribute(\"aria-describedby\", tooltip.id);\n\t\t\t\tvar rect = link.getBoundingClientRect();\n\t\t\t\tvar left = rect.right + 8;\n\t\t\t\tvar top = rect.top + (rect.height - tooltip.offsetHeight) / 2;\n\t\t\t\tif (left + tooltip.offsetWidth > window.innerWidth - 8) left = rect.left - tooltip.offsetWidth - 8;\n\t\t\t\ttooltip.style.left = Math.max(8, left) + \"px\";\n\t\t\t\ttooltip.style.top = Math.min(Math.max(8, top), Math.max(8, window.innerHeight - tooltip.offsetHeight - 8)) + \"px\";\n\t\t\t}\n\n\t\t\tdocument.addEventListener(\"pointerover\", function (event) {\n\t\t\t\tvar link = event.target && event.target.closest && event.target.closest(\"[data-catalog-sidebar-operation]\");\n\t\t\t\tif (link) show(link);\n\t\t\t});\n\t\t\tdocument.addEventListener(\"pointerout\", function (event) {\n\t\t\t\tvar link = event.target && event.target.closest && event.target.closest(\"[data-catalog-sidebar-operation]\");\n\t\t\t\tif (link && (!event.relatedTarget || !link.contains(event.relatedTarget))) hide();\n\t\t\t});\n\t\t\tdocument.addEventListener(\"focusin\", function (event) {\n\t\t\t\tvar link = event.target && event.target.closest && event.target.closest(\"[data-catalog-sidebar-operation]\");\n\t\t\t\tif (link) show(link);\n\t\t\t});\n\t\t\tdocument.addEventListener(\"focusout\", function (event) {\n\t\t\t\tvar link = event.target && event.target.closest && event.target.closest(\"[data-catalog-sidebar-operation]\");\n\t\t\t\tif (link && (!event.relatedTarget || !link.contains(event.relatedTarget))) hide();\n\t\t\t});\n\t\t\twindow.addEventListener(\"resize\", hide);\n\t\t\twindow.addEventListener(\"scroll\", hide, true);\n\t\t\tdocument.body.addEventListener(\"htmx:beforeSwap\", hide);\n\t\t})();\n\t</script>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -3570,7 +3574,7 @@ func catalogDocumentSelection() templ.Component {
 			templ_7745c5c3_Var125 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 214, "<script data-catalog-document-selection=\"true\">\n\t\t(function () {\n\t\t\tif (window.__manjaCatalogDocumentSelectionBound) return;\n\t\t\twindow.__manjaCatalogDocumentSelectionBound = true;\n\t\t\tdocument.addEventListener(\"combobox:change\", function (event) {\n\t\t\t\tvar detail = event && event.detail;\n\t\t\t\tif (!detail || detail.id !== \"catalog-document\" || !Array.isArray(detail.values) || detail.values.length !== 1) return;\n\t\t\t\tvar value = detail.values[0];\n\t\t\t\tif (typeof value !== \"string\" || value.charAt(0) !== \"/\" || value.indexOf(\"//\") === 0) return;\n\t\t\t\twindow.location.assign(value);\n\t\t\t});\n\t\t})();\n\t</script>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 215, "<script data-catalog-document-selection=\"true\">\n\t\t(function () {\n\t\t\tif (window.__manjaCatalogDocumentSelectionBound) return;\n\t\t\twindow.__manjaCatalogDocumentSelectionBound = true;\n\t\t\tdocument.addEventListener(\"combobox:change\", function (event) {\n\t\t\t\tvar detail = event && event.detail;\n\t\t\t\tif (!detail || detail.id !== \"catalog-document\" || !Array.isArray(detail.values) || detail.values.length !== 1) return;\n\t\t\t\tvar value = detail.values[0];\n\t\t\t\tif (typeof value !== \"string\" || value.charAt(0) !== \"/\" || value.indexOf(\"//\") === 0) return;\n\t\t\t\twindow.location.assign(value);\n\t\t\t});\n\t\t})();\n\t</script>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -3599,7 +3603,7 @@ func CatalogSidebarGroupsFragment(data CatalogPageData) templ.Component {
 			templ_7745c5c3_Var126 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 215, "<div id=\"catalog-sidebar-groups\" class=\"flex min-h-0 flex-1 flex-col\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 216, "<div id=\"catalog-sidebar-groups\" class=\"flex min-h-0 flex-1 flex-col\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -3614,7 +3618,7 @@ func CatalogSidebarGroupsFragment(data CatalogPageData) templ.Component {
 				return templ_7745c5c3_Err
 			}
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 216, "</div>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 217, "</div>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}

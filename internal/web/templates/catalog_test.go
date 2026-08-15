@@ -269,6 +269,19 @@ func TestCatalogShellProvidesGlobalSearchModal(t *testing.T) {
 	}
 }
 
+func TestCatalogLocalDocsEnhancerIsGatedByTheSSRDescriptor(t *testing.T) {
+	data := catalogTemplateFixture()
+	withoutDescriptor := renderCatalogTemplate(t, data)
+	if strings.Contains(withoutDescriptor, `src="/manja-assets/local-docs.js"`) || strings.Contains(withoutDescriptor, `id="manja-local-docs-descriptor"`) {
+		t.Fatal("local docs browser enhancer leaked onto an ineligible SSR page")
+	}
+	data.EnhancementDescriptor = &CatalogEnhancementDescriptorData{SchemaVersion: 1, CatalogID: "kubernetes", PublicationKey: "public-kubernetes", PublicationBase: "/kubernetes/"}
+	withDescriptor := renderCatalogTemplate(t, data)
+	if !strings.Contains(withDescriptor, `id="manja-local-docs-descriptor"`) || !strings.Contains(withDescriptor, `src="/manja-assets/local-docs.js"`) {
+		t.Fatal("eligible SSR page did not expose the local docs enhancer contract")
+	}
+}
+
 func TestCatalogSearchInputHasVisibleKeyboardFocusIndicator(t *testing.T) {
 	t.Parallel()
 

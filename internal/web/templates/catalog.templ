@@ -225,7 +225,7 @@ templ CatalogPage(data CatalogPageData) {
 	}
 	@LayoutWithBrandingMetadata(metadata, catalogBranding(data.Directory.Branding), false, false) {
 		if data.EnhancementDescriptor != nil {
-			@templpkg.JSONScript("manja-local-docs-descriptor", data.EnhancementDescriptor)
+			@templpkg.JSONScript("manja-local-docs-descriptor", data.EnhancementDescriptor)<script src="/manja-assets/local-docs.js"></script>
 		}<script src="/manja-assets/catalog-search.js"></script>
 		@copyPageScript()
 		<div

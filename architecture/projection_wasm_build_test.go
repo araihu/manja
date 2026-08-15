@@ -404,3 +404,47 @@ func TestLocalDocsActivationWasmBuildAndBoundary(t *testing.T) {
 		t.Fatalf("compile local docs activation for js/wasm: %v\n%s", err, output)
 	}
 }
+
+func TestLocalDocsBrowserABIWasmBuildAndBoundary(t *testing.T) {
+	root := repositoryRoot(t)
+	list := command(root, "go", "list", "-deps", "./cmd/manja-local-docs")
+	list.Env = append(list.Env, "GOOS=js", "GOARCH=wasm", "GOWORK=off")
+	output, err := list.CombinedOutput()
+	if err != nil {
+		t.Fatalf("list local docs browser ABI dependencies for js/wasm: %v\n%s", err, output)
+	}
+	allowed := map[string]bool{
+		modulePath + "/cmd/manja-local-docs":   true,
+		modulePath + "/internal/localdocs/abi": true,
+	}
+	for _, dependency := range strings.Fields(string(output)) {
+		if strings.HasPrefix(dependency, modulePath+"/") && !allowed[dependency] {
+			t.Errorf("local docs browser ABI depends on forbidden package %q", dependency)
+		}
+	}
+
+	imports := command(root, "go", "list", "-f", `{{join .Imports "\n"}}`, "./cmd/manja-local-docs")
+	imports.Env = append(imports.Env, "GOOS=js", "GOARCH=wasm", "GOWORK=off")
+	output, err = imports.CombinedOutput()
+	if err != nil {
+		t.Fatalf("list local docs browser ABI imports for js/wasm: %v\n%s", err, output)
+	}
+	for _, forbidden := range []string{"encoding/json", "net", "net/http", "net/url", "os", "io", "io/fs", "path/filepath", modulePath + "/internal/adapters", modulePath + "/internal/web"} {
+		for _, imported := range strings.Fields(string(output)) {
+			if imported == forbidden || strings.HasPrefix(imported, forbidden+"/") {
+				t.Errorf("local docs browser ABI directly imports forbidden package %q", imported)
+			}
+		}
+	}
+
+	outputPath := filepath.Join(t.TempDir(), "manja-local-docs.wasm")
+	build := command(root, "go", "build", "-trimpath", "-o", outputPath, "./cmd/manja-local-docs")
+	build.Env = append(build.Env, "GOOS=js", "GOARCH=wasm", "GOWORK=off")
+	output, err = build.CombinedOutput()
+	if err != nil {
+		if len(output) > 4096 {
+			output = output[:4096]
+		}
+		t.Fatalf("compile local docs browser ABI for js/wasm: %v\n%s", err, output)
+	}
+}

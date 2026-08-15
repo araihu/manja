@@ -1755,6 +1755,26 @@ func TestCatalogAssetsServeClientSearchRouter(t *testing.T) {
 	}
 }
 
+func TestCatalogAssetsServeFailClosedLocalDocsEnhancer(t *testing.T) {
+	t.Parallel()
+
+	response := httptest.NewRecorder()
+	NewCatalogAssetsHandler().ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/manja-assets/local-docs.js", nil))
+	if response.Code != http.StatusOK {
+		t.Fatalf("local docs enhancer asset = %d, want 200", response.Code)
+	}
+	for _, contract := range []string{"same-origin", "identityDigest", "manjaLocalDocsFallback", "Wasm asset"} {
+		if !strings.Contains(response.Body.String(), contract) {
+			t.Errorf("local docs enhancer asset missing %q", contract)
+		}
+	}
+	for _, forbidden := range []string{"serviceWorker", "caches", "indexedDB"} {
+		if strings.Contains(response.Body.String(), forbidden) {
+			t.Errorf("local docs enhancer asset includes forbidden runtime API %q", forbidden)
+		}
+	}
+}
+
 func TestCatalogAssetsServeValidatedSocialPreview(t *testing.T) {
 	t.Parallel()
 
