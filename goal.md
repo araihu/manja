@@ -1302,6 +1302,63 @@ counts all zero. Technical, design, and product reviews remain suspended until
 explicit user authorization. Merge, release, deployment, cleanup, and other
 lifecycle actions remain unauthorized.
 
+### OC-01 / OC-02 external-first reconciliation (2026-08-15)
+
+The external-first owner snapshot was independently revalidated at
+`/private/tmp/manja-oc04ad-reconciler-luna-max`, ref
+`codex/opencore-reconciler-next`, HEAD
+`d59b841ebb6b564081de378590ad9e0660c5eb0d`, tree
+`ea5c162da80a049a2bd486fb1fe796aa710c7f5e`, parent
+`0593af53d34873190489ab5bc4e4aa08194e2226`. Its worktree was clean and its
+upstream ref was equal (`+0/-0`). `origin/main` was
+`507c5ea9fcdc8cee670a023dbb82f348ba2ed763`, tree
+`ef6b482a7b89f256def6e8527f50713f9ed61698`; rebase of the isolated
+reconciler branch was already up to date.
+
+OC-01 arrived from
+`/private/tmp/manja-oc01-provenance-assets-goshtoso-luna-max` as frozen commit
+`4b6f6a786433a73a86b07dcb7d51f9e813d0379b`, tree
+`ce775df56c219b570689a8d34cbfe974d2c9e1b5`, parent/base `a56dc64a5a867d54170e4e43ba2e1fb44fc84a3e`, clean detached status. It owns
+`architecture/external_source_provenance_test.go`,
+`docs/legal/authority-revalidation-2026-08-15.md`,
+`docs/legal/external-source-provenance.json`,
+`docs/legal/external-source-provenance.md`, and
+`docs/legal/provenance.md`. OC-02 arrived from
+`/private/tmp/manja-oc02-root-legal-artifacts-luna-max` as frozen commit
+`3593f85d9747d72f69f980dc7ada9c6e3e7f1f97`, tree
+`0011c67fe2256a5ec1506327da4f15c110ddf149`, parent/base `a56dc64a5a867d54170e4e43ba2e1fb44fc84a3e`, clean status. It owns
+`LICENSE`, `NOTICE`, `THIRD_PARTY_NOTICES.md`,
+`docs/legal/distribution-gate.md`, `docs/legal/root-materials.md`,
+`internal/distribution/root_materials.go`, and
+`internal/distribution/root_materials_test.go`. Both packets were selected
+only after exact commit/tree/parent/path/status checks; their frozen ledgers
+retain authority, attribution, redistribution, trademark, and final-notice
+blockers.
+
+The packets were cherry-picked unchanged, in external-first order, into the
+isolated branch `codex/opencore-reconciler-next-reconciliation` at
+`/private/tmp/manja-opencore-reconciler-next-reconciliation`: OC-01 produced
+`29a3bc26f3907782f5ed36471e32c94f90832d36`, and OC-02 produced
+`9324b9d584513e3e2bc557cb89f1d2c18b85f5d8`, tree
+`b35f5117d4c4ac3e3b4199249c3a1a5ae3b194c3`, direct parent
+`29a3bc26f3907782f5ed36471e32c94f90832d36`. The only textual overlap,
+`docs/legal/distribution-gate.md`, auto-merged without manual conflict edits.
+
+Targeted normal/race distribution, architecture, and command tests passed;
+full normal `GOWORK=off go test ./... -count=1` passed with self-hosted
+`184.824s` and web/E2E `204.978s`. Full race exited `1` only because
+`internal/selfhosted/TestDefaultGitHubFixtureStartsWithinDeadline` exceeded
+its 30-second deadline (`32.62s`); every other package, including web/E2E,
+passed, and a focused rerun passed in `12.238s`. Site tests, projection Wasm,
+vet, strict Muamba verification and generated-Go check, webassets, templ
+generation (`updates=0`), Redocly bundle/lint, `go mod tidy -diff`, and
+`git diff --check` passed. The race blocker is preserved as a blocker and no
+runtime fix was introduced outside the OC-01/OC-02 scope.
+
+The owner ref remains untouched; no push was made from the isolated branch
+while the full-race freeze is not clean. Reviews, merge, release, deployment,
+cleanup, and other lifecycle actions remain unauthorized.
+
 ## PR Gate
 
 At `2026-08-11T18:54:35Z`, [PR
