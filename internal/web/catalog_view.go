@@ -132,6 +132,11 @@ func (handler *CatalogHandler) catalogPageDataWithSidebarQuery(
 		return templates.CatalogPageData{}, err
 	}
 	data.DocumentInfo = &documentInfo
+	documentSecuritySchemes, err := localrender.PrepareCatalogDocumentSecuritySchemes(document)
+	if err != nil {
+		return templates.CatalogPageData{}, err
+	}
+	data.DocumentSecuritySchemes = &documentSecuritySchemes
 	data.SchemaLinks = make(map[string]string, len(document.Schemas))
 	for _, schema := range document.Schemas {
 		name := strings.TrimSpace(schema.Name)

@@ -635,6 +635,184 @@ func TestPreparedCatalogDocumentInfoPreservesLegacyTermsWhitespaceBytes(t *testi
 	}
 }
 
+func TestPreparedCatalogDocumentSecuritySchemesMatchesLegacySSRBytes(t *testing.T) {
+	for mask := 0; mask < 64; mask++ {
+		mask := mask
+		t.Run(fmt.Sprintf("metadata=%02d", mask), func(t *testing.T) {
+			document := catalog.DocumentDirectoryV1{Key: "core-v1"}
+			scheme := catalog.SecuritySchemeDirectoryV1{Name: "ApiKey", Anchor: "security-scheme-api-key"}
+			if mask&1 != 0 {
+				scheme.Type = "apiKey"
+			}
+			if mask&2 != 0 {
+				scheme.Description = "API key <description>."
+			}
+			if mask&4 != 0 {
+				scheme.ParameterName = "X-API-Key"
+			}
+			if mask&8 != 0 {
+				scheme.In = "header"
+			}
+			if mask&16 != 0 {
+				scheme.Scheme = "bearer"
+			}
+			if mask&32 != 0 {
+				scheme.BearerFormat = "JWT"
+			}
+			if mask&1 != 0 && mask&2 != 0 {
+				scheme.OpenIDConnectURL = "https://example.test/openid?a=1&b=2"
+			}
+			document.SecuritySchemes = []catalog.SecuritySchemeDirectoryV1{scheme}
+
+			fragment, err := localrender.PrepareCatalogDocumentSecuritySchemes(document)
+			if err != nil {
+				t.Fatal(err)
+			}
+			data := CatalogPageData{Document: &document, DocumentSecuritySchemes: &fragment}
+			var delegated bytes.Buffer
+			if err := catalogDocumentSecuritySchemes(data).Render(context.Background(), &delegated); err != nil {
+				t.Fatal(err)
+			}
+			legacy, err := renderLegacyCatalogDocumentSecuritySchemes(document)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !bytes.Equal(legacy, delegated.Bytes()) {
+				index := firstDifferentByte(legacy, delegated.Bytes())
+				t.Fatalf("prepared catalog security schemes changed SSR bytes at byte %d:\nlegacy=%q\ndelegated=%q", index, nearbyBytes(legacy, index), nearbyBytes(delegated.Bytes(), index))
+			}
+		})
+	}
+}
+
+func TestCatalogDocumentSecuritySchemesFallbackUsesCanonicalFragment(t *testing.T) {
+	document := catalog.DocumentDirectoryV1{
+		Key:             "core-v1",
+		SecuritySchemes: []catalog.SecuritySchemeDirectoryV1{{Name: "ApiKey", Anchor: "security-scheme-api-key", Type: "apiKey"}},
+	}
+	data := CatalogPageData{Document: &document}
+	var output bytes.Buffer
+	if err := catalogDocumentSecuritySchemes(data).Render(context.Background(), &output); err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Contains(output.Bytes(), []byte(`>Security Schemes</h2>`)) {
+		t.Fatalf("fallback omitted security schemes: %s", output.Bytes())
+	}
+}
+
+func renderLegacyCatalogDocumentSecuritySchemes(document catalog.DocumentDirectoryV1) ([]byte, error) {
+	legacyURL := func(value string) string {
+		safe, err := templ.JoinURLErrs(templ.URL(value))
+		if err != nil {
+			return ""
+		}
+		return templ.EscapeString(safe)
+	}
+	legacyAttribute := func(value string) string {
+		resolved, err := templ.ResolveAttributeValue(value)
+		if err != nil {
+			return ""
+		}
+		return resolved
+	}
+	var output bytes.Buffer
+	component := templ.ComponentFunc(func(ctx context.Context, writer io.Writer) error {
+		if len(document.SecuritySchemes) == 0 {
+			return nil
+		}
+		write := func(value string) error {
+			_, err := io.WriteString(writer, value)
+			return err
+		}
+		if err := write(`<section class="mt-8" aria-labelledby="document-security-schemes"><div class="mb-4 flex items-center gap-2">`); err != nil {
+			return err
+		}
+		if err := icon.Icon(icon.Config{SpriteURL: heroicons.SpriteURL, Symbol: heroicons.Icon16SolidLockClosed, Size: icon.SizeSM, Decorative: true}).Render(ctx, writer); err != nil {
+			return err
+		}
+		if err := write(`<h2 id="document-security-schemes" class="font-title text-2xl font-bold text-on-surface-strong dark:text-on-surface-dark-strong">Security Schemes</h2></div><p class="mb-4 max-w-[70ch] text-sm text-on-surface-muted dark:text-on-surface-dark-muted">Read-only reference. Credentials are never accepted or stored on this documentation page.</p><div class="grid gap-4 lg:grid-cols-2">`); err != nil {
+			return err
+		}
+		for _, scheme := range document.SecuritySchemes {
+			if err := write(`<article id="` + legacyAttribute(scheme.Anchor) + `" class="scroll-mt-24 rounded-radius border border-outline bg-surface p-5 dark:border-outline-dark dark:bg-surface-dark"><div class="flex min-w-0 flex-wrap items-center gap-2"><h3 class="min-w-0 break-words font-title text-lg font-bold text-on-surface-strong dark:text-on-surface-dark-strong">` + templ.EscapeString(scheme.Name) + `</h3>`); err != nil {
+				return err
+			}
+			if scheme.Type != "" {
+				if err := badge.Badge(badge.Config{Label: scheme.Type, Tone: badge.ToneSecondary, Appearance: badge.AppearanceSoft, Size: badge.SizeSM}).Render(ctx, writer); err != nil {
+					return err
+				}
+			}
+			if err := write(`</div>`); err != nil {
+				return err
+			}
+			if scheme.Description != "" {
+				if err := write(`<p class="mt-3 whitespace-pre-wrap text-sm leading-6 text-on-surface-muted dark:text-on-surface-dark-muted">` + templ.EscapeString(scheme.Description) + `</p>`); err != nil {
+					return err
+				}
+			}
+			if scheme.ParameterName != "" || scheme.In != "" || scheme.Scheme != "" || scheme.BearerFormat != "" || scheme.OpenIDConnectURL != "" {
+				if err := write(`<dl class="mt-4 grid gap-3 text-sm sm:grid-cols-2">`); err != nil {
+					return err
+				}
+				if scheme.ParameterName != "" {
+					if err := renderLegacyCatalogSecuritySchemeField(writer, legacySecurityParameterLabel(scheme.In), scheme.ParameterName); err != nil {
+						return err
+					}
+				}
+				if scheme.In != "" && scheme.ParameterName == "" {
+					if err := renderLegacyCatalogSecuritySchemeField(writer, "Location", scheme.In); err != nil {
+						return err
+					}
+				}
+				if scheme.Scheme != "" {
+					if err := renderLegacyCatalogSecuritySchemeField(writer, "Scheme", scheme.Scheme); err != nil {
+						return err
+					}
+				}
+				if scheme.BearerFormat != "" {
+					if err := renderLegacyCatalogSecuritySchemeField(writer, "Bearer format", scheme.BearerFormat); err != nil {
+						return err
+					}
+				}
+				if scheme.OpenIDConnectURL != "" {
+					if err := write(`<div class="min-w-0 sm:col-span-2"><dt class="text-xs font-semibold uppercase tracking-wide text-on-surface-muted dark:text-on-surface-dark-muted">OpenID Connect URL</dt><dd class="mt-1 min-w-0"><a href="` + legacyURL(scheme.OpenIDConnectURL) + `" rel="noreferrer" class="block truncate text-primary hover:underline dark:text-primary-dark" title="` + legacyAttribute(scheme.OpenIDConnectURL) + `">` + templ.EscapeString(scheme.OpenIDConnectURL) + `</a></dd></div>`); err != nil {
+						return err
+					}
+				}
+				if err := write(`</dl>`); err != nil {
+					return err
+				}
+			}
+			if err := write(`</article>`); err != nil {
+				return err
+			}
+		}
+		return write(`</div></section>`)
+	})
+	if err := component.Render(context.Background(), &output); err != nil {
+		return nil, err
+	}
+	return output.Bytes(), nil
+}
+
+func renderLegacyCatalogSecuritySchemeField(writer io.Writer, label, value string) error {
+	_, err := io.WriteString(writer, `<div class="min-w-0"><dt class="text-xs font-semibold uppercase tracking-wide text-on-surface-muted dark:text-on-surface-dark-muted">`+templ.EscapeString(label)+`</dt><dd class="mt-1 break-words font-mono text-on-surface-strong dark:text-on-surface-dark-strong">`+templ.EscapeString(value)+`</dd></div>`)
+	return err
+}
+
+func legacySecurityParameterLabel(location string) string {
+	switch strings.ToLower(strings.TrimSpace(location)) {
+	case "header":
+		return "Request header"
+	case "query":
+		return "Query parameter"
+	case "cookie":
+		return "Cookie"
+	default:
+		return "Parameter"
+	}
+}
+
 func renderLegacyCatalogDocumentInfo(document catalog.DocumentDirectoryV1) ([]byte, error) {
 	legacyURL := func(value string) string {
 		safe, err := templ.JoinURLErrs(templ.URL(value))
