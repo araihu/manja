@@ -1392,6 +1392,10 @@ passed. Root race exited nonzero after full completion: only
 `internal/selfhosted/final_stopgate_test.go` with `context deadline exceeded`
 after `45.82s` (package `226.196s`); all other reported packages passed. This
 race failure is an open blocker, not a review verdict. Reviews remain
-suspended; OC-04 packet, rebase/head identity refresh, and remaining gates are
-pending without merge, release, deployment, cleanup, or external handoff
-mutation.
+suspended. A focused rerun of the failing self-hosted test passed in `12.924s`,
+but it does not erase the failed full-root race receipt. Additional gates now
+pass: root vet, projection Wasm build, strict Muamba verification, strict
+generated-Go check, webassets check, templ generation (`updates=0`), focused
+legal fail-closed tests, and `git diff --check`. OC-04 packet, rebase/head
+identity refresh, and any remaining gate work are pending without merge,
+release, deployment, cleanup, or external handoff mutation.
