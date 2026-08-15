@@ -1004,6 +1004,23 @@ rollback, tombstones, endpoint-shell/request-rail rendering,
 parity beyond these bounded operation fragments, or performance
 acceptance.
 
+### OC-04AB continuation control plane (2026-08-15)
+
+The two-implementer continuation starts from exact accepted base
+`3438b1bf0288b8d9c7bf01bd6ed188057690d460`, tree
+`cb2ad8d7132250c06458bf50418e7b57f6b64830`, whose ancestry includes current
+`origin/main` `507c5ea9fcdc8cee670a023dbb82f348ba2ed763`. Luna Max owns a fresh
+consolidation worktree on `codex/oc04ab-reconciler-luna-max`; no implementer
+packet is frozen or integrated yet. Two implementers must provide exact
+base/head/tree/status, owned diff, and gate receipts before reconciliation.
+The reconciler compares those packets independently, preserving SSR/no-JS,
+exact byte parity, parser-free boundaries, and named exclusions: SaaS, theme,
+legal, packaging, browser/offline, and lifecycle work. No technical or design
+review has started or is authorized until an explicit user signal. This
+control-plane branch may carry its goal-only receipt and receive the
+authorized dedicated-branch push; merge, release, deployment, cleanup, and
+other lifecycle actions remain unauthorized.
+
 ## PR Gate
 
 At `2026-08-11T18:54:35Z`, [PR
