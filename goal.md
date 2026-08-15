@@ -1482,3 +1482,20 @@ Wasm/Muamba/templ/focused passes. Reconciler domain and architecture normal
 passed; domain race passed. Full combined root/site/generation gates remain
 pending. This is scope reconciliation only, not a technical/design/product
 review verdict; no lifecycle action is authorized.
+
+### Round-4 combined gate receipts (2026-08-15)
+
+Combined reconciler identity passed root normal (`GOWORK=off go test ./...
+-count=1`), including selfhosted `195.716s` and E2E `192.897s`. Root race
+passed (`GOWORK=off go test -race ./... -count=1`), including selfhosted
+`153.293s` and E2E `241.037s`; prior deadline blocker no longer reproduced.
+Site tests passed (`6.449s`). Vet, projection Wasm, strict Muamba, strict
+generated-Go, webassets, templ generation (`updates=0`), and `git diff --check`
+passed. The packet's prior focus-visible E2E failure is resolved on the
+combined identity; focused normal/race were already 20/20.
+
+Legal/artifact authority remains `BLOCKED`: no first-party authority,
+`LICENSE`, `NOTICE`, or SBOM clearance; no release artifact or legal clearance
+is claimed. These are gate receipts and scope reconciliation, not technical,
+design, product, or release acceptance. Reviews and all lifecycle actions
+remain suspended.
