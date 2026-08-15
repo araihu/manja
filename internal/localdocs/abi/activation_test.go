@@ -14,6 +14,9 @@ func TestAdmitCopiesPublicDescriptorManifestAndProjectionAllowlist(t *testing.T)
 	if activation.CatalogID() != descriptor.CatalogID || activation.SnapshotID() != descriptor.SnapshotID || activation.RevisionID() != descriptor.RevisionID {
 		t.Fatalf("activation identity = %#v", activation)
 	}
+	if activation.PublicationKey() != descriptor.PublicationKey || activation.ProjectionDigest() != descriptor.ProjectionDigest {
+		t.Fatalf("activation cache identity = publication %q digest %q, want publication %q digest %q", activation.PublicationKey(), activation.ProjectionDigest(), descriptor.PublicationKey, descriptor.ProjectionDigest)
+	}
 	artifact, ok := activation.Artifact("details/core.json")
 	if !ok || artifact.Kind != "detail" || artifact.Length != 7 || artifact.SHA256 != strings.Repeat("a", 64) {
 		t.Fatalf("detail artifact = %#v, %t", artifact, ok)
@@ -54,7 +57,7 @@ func TestAdmitFailsClosedForDescriptorManifestAndChildMutations(t *testing.T) {
 			if err == nil {
 				t.Fatalf("Admit succeeded with mutation: %#v", activation)
 			}
-			if activation.CatalogID() != "" || len(activation.inventory) != 0 {
+			if activation.CatalogID() != "" || activation.PublicationKey() != "" || activation.SnapshotID() != "" || activation.RevisionID() != "" || activation.ProjectionDigest() != "" || len(activation.inventory) != 0 {
 				t.Fatalf("failed admission returned state: %#v", activation)
 			}
 		})

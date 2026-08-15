@@ -118,11 +118,18 @@ func Admit(descriptor Descriptor, manifest Manifest) (Activation, error) {
 // CatalogID returns admitted public catalog identity.
 func (activation Activation) CatalogID() string { return activation.descriptor.CatalogID }
 
+// PublicationKey returns the composition-authorized public cache namespace.
+func (activation Activation) PublicationKey() string { return activation.descriptor.PublicationKey }
+
 // SnapshotID returns admitted immutable snapshot identity.
 func (activation Activation) SnapshotID() string { return activation.descriptor.SnapshotID }
 
 // RevisionID returns admitted source revision identity.
 func (activation Activation) RevisionID() string { return activation.descriptor.RevisionID }
+
+// ProjectionDigest returns the immutable projection identity bound to the
+// admitted snapshot and manifest.
+func (activation Activation) ProjectionDigest() string { return activation.descriptor.ProjectionDigest }
 
 // Inventory returns a defensive copy of the admitted projection children.
 func (activation Activation) Inventory() []Artifact {
