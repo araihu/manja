@@ -1445,3 +1445,22 @@ are expected: OC-03 selfhosted race deadline and OC-04/accessibility
 `focus-visible`. Compare exact base/head/tree/status and owned paths before
 selection; preserve existing race and E2E blockers. Reviews, merge, release,
 deployment, cleanup, and other lifecycle actions remain suspended.
+
+### Round-4 OC-04 focus-visible packet reconciliation (2026-08-15)
+
+The frozen OC-04 packet arrived from branch `codex/oc04-focus-visible-fix`
+with exact base/parent `e93149acd7a2814717302e2571d66f760b16fae7`, base tree
+`8a654b40772516498084c39e9b8f461da47349d1`, head
+`ea5b76b80e3eff120e0866a78eb7859e8e81ff0a`, tree
+`60fa5b29232a43c80c924f390d2a9f7fedc44da4`, and clean staged/unstaged/
+untracked status. It changes only
+`internal/web/e2e/catalog_combobox_test.go`; product bytes stay unchanged.
+Identity checks passed against round4; the packet was cherry-picked unchanged
+as `971c681`.
+
+Packet RED was 2/20 premature x-trap/$nextTick focus failures. The correction
+waits for real `document.activeElement`; focused normal 20/20 passed, focused
+race 20/20 passed (`53.849s`), and packet full E2E/race/vet/Wasm/Muamba/
+webassets/templ/diff receipts passed. This is scope reconciliation only, not
+a technical/design/product review verdict. Existing selfhosted full-root race
+blocker remains preserved; OC-03 packet and combined full gates are pending.
