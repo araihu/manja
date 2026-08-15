@@ -15,6 +15,7 @@ import (
 
 type catalogEnhancementDescriptorReceipt struct {
 	SchemaVersion         uint32 `json:"schemaVersion"`
+	CatalogID             string `json:"catalogId"`
 	PublicationKey        string `json:"publicationKey"`
 	PublicationBase       string `json:"publicationBase"`
 	SnapshotID            string `json:"snapshotId"`
@@ -22,6 +23,8 @@ type catalogEnhancementDescriptorReceipt struct {
 	ProjectionFormat      string `json:"projectionFormat"`
 	ProjectionDigest      string `json:"projectionDigest"`
 	ProjectionManifestURL string `json:"projectionManifestUrl"`
+	CatalogURL            string `json:"catalogUrl"`
+	SearchDataBase        string `json:"searchDataBase"`
 	ProjectionDataBase    string `json:"projectionDataBase"`
 }
 
@@ -61,7 +64,9 @@ func TestCatalogEnhancementDescriptorRequiresPublicAnonymousImmutableSnapshot(t 
 			wantProjectionBase := wantBase + "snapshots/" + string(snapshot.ID) + "/projection-data/"
 			wantManifestURL := wantBase + "snapshots/" + string(snapshot.ID) + "/manifest.json"
 			wantDigest := strings.TrimPrefix(string(snapshot.ID), "snapshot-sha256-")
-			if descriptor.SchemaVersion != 1 || descriptor.PublicationKey != "public-kubernetes" || descriptor.PublicationBase != wantBase || descriptor.SnapshotID != string(snapshot.ID) || descriptor.RevisionID != snapshot.Manifest.Identity.RevisionID || descriptor.ProjectionFormat != "projection-v2" || descriptor.ProjectionDigest != wantDigest || descriptor.ProjectionManifestURL != wantManifestURL || descriptor.ProjectionDataBase != wantProjectionBase {
+			wantCatalogURL := wantBase + "snapshots/" + string(snapshot.ID) + "/catalog.json"
+			wantSearchDataBase := wantBase + "snapshots/" + string(snapshot.ID) + "/search-data/"
+			if descriptor.SchemaVersion != 1 || descriptor.CatalogID != snapshot.Directory.CatalogID || descriptor.PublicationKey != "public-kubernetes" || descriptor.PublicationBase != wantBase || descriptor.SnapshotID != string(snapshot.ID) || descriptor.RevisionID != snapshot.Manifest.Identity.RevisionID || descriptor.ProjectionFormat != "projection-v2" || descriptor.ProjectionDigest != wantDigest || descriptor.ProjectionManifestURL != wantManifestURL || descriptor.CatalogURL != wantCatalogURL || descriptor.SearchDataBase != wantSearchDataBase || descriptor.ProjectionDataBase != wantProjectionBase {
 				t.Fatalf("descriptor = %#v", descriptor)
 			}
 			if !strings.Contains(response.Body.String(), `data-manja-catalog-shell="true"`) {

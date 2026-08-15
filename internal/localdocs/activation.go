@@ -24,6 +24,7 @@ type ProjectionArtifact struct {
 }
 
 type Activation struct {
+	catalogID      string
 	publicationKey string
 	snapshotID     string
 	revisionID     string
@@ -31,6 +32,8 @@ type Activation struct {
 }
 
 func (activation Activation) PublicationKey() string { return activation.publicationKey }
+
+func (activation Activation) CatalogID() string { return activation.catalogID }
 
 func (activation Activation) SnapshotID() string { return activation.snapshotID }
 
@@ -60,7 +63,7 @@ func Admit(descriptor DescriptorV1, manifestBytes []byte) (Activation, error) {
 	if err != nil {
 		return Activation{}, errors.New("local docs manifest is invalid")
 	}
-	if string(manifest.SnapshotID) != descriptor.SnapshotID || manifest.Identity.RevisionID != descriptor.RevisionID || manifest.Identity.Versions.ProjectionFormat != descriptor.ProjectionFormat {
+	if string(manifest.SnapshotID) != descriptor.SnapshotID || manifest.Identity.CatalogID != descriptor.CatalogID || manifest.Identity.RevisionID != descriptor.RevisionID || manifest.Identity.Versions.ProjectionFormat != descriptor.ProjectionFormat {
 		return Activation{}, errors.New("local docs manifest identity differs")
 	}
 	identityBytes, err := json.Marshal(manifest.Identity)
@@ -96,15 +99,15 @@ func Admit(descriptor DescriptorV1, manifestBytes []byte) (Activation, error) {
 	}
 	sort.Slice(inventory, func(left, right int) bool { return inventory[left].Path < inventory[right].Path })
 	return Activation{
-		publicationKey: descriptor.PublicationKey,
-		snapshotID:     descriptor.SnapshotID,
-		revisionID:     descriptor.RevisionID,
-		inventory:      inventory,
+		catalogID: descriptor.CatalogID, publicationKey: descriptor.PublicationKey,
+		snapshotID: descriptor.SnapshotID,
+		revisionID: descriptor.RevisionID,
+		inventory:  inventory,
 	}, nil
 }
 
 func validateDescriptor(descriptor DescriptorV1) error {
-	if descriptor.SchemaVersion != 1 || domain.ValidateCatalogPublicationKey(descriptor.PublicationKey) != nil {
+	if descriptor.SchemaVersion != 1 || domain.ValidateCatalogID(descriptor.CatalogID) != nil || domain.ValidateCatalogPublicationKey(descriptor.PublicationKey) != nil {
 		return errors.New("local docs descriptor identity is invalid")
 	}
 	if !validPublicationBase(descriptor.PublicationBase) || domain.ValidateCanonicalIdentity("local docs revision id", descriptor.RevisionID, false) != nil {
@@ -118,8 +121,10 @@ func validateDescriptor(descriptor DescriptorV1) error {
 		return errors.New("local docs descriptor snapshot is invalid")
 	}
 	wantManifest := descriptor.PublicationBase + "snapshots/" + descriptor.SnapshotID + "/manifest.json"
+	wantCatalog := descriptor.PublicationBase + "snapshots/" + descriptor.SnapshotID + "/catalog.json"
+	wantSearch := descriptor.PublicationBase + "snapshots/" + descriptor.SnapshotID + "/search-data/"
 	wantDataBase := descriptor.PublicationBase + "snapshots/" + descriptor.SnapshotID + "/projection-data/"
-	if descriptor.ProjectionManifestURL != wantManifest || descriptor.ProjectionDataBase != wantDataBase {
+	if descriptor.ProjectionManifestURL != wantManifest || descriptor.CatalogURL != wantCatalog || descriptor.SearchDataBase != wantSearch || descriptor.ProjectionDataBase != wantDataBase {
 		return errors.New("local docs descriptor URL is invalid")
 	}
 	return nil

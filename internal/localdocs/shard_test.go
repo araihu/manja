@@ -248,6 +248,7 @@ func shardActivation(t *testing.T, detailData, nodeData []byte) Activation {
 	}
 	descriptor := DescriptorV1{
 		SchemaVersion:         1,
+		CatalogID:             "kubernetes",
 		PublicationKey:        "public-kubernetes",
 		PublicationBase:       "/kubernetes/",
 		SnapshotID:            snapshotID,
@@ -255,6 +256,8 @@ func shardActivation(t *testing.T, detailData, nodeData []byte) Activation {
 		ProjectionFormat:      "projection-v2",
 		ProjectionDigest:      digestHex,
 		ProjectionManifestURL: "/kubernetes/snapshots/" + snapshotID + "/manifest.json",
+		CatalogURL:            "/kubernetes/snapshots/" + snapshotID + "/catalog.json",
+		SearchDataBase:        "/kubernetes/snapshots/" + snapshotID + "/search-data/",
 		ProjectionDataBase:    "/kubernetes/snapshots/" + snapshotID + "/projection-data/",
 	}
 	activation, err := Admit(descriptor, manifestBytes)

@@ -22,8 +22,8 @@ func TestAdmitProjectionInventoryCopiesCanonicalManifestState(t *testing.T) {
 		{Path: "details/core.json", Kind: "detail", Length: 137, SHA256: strings.Repeat("a", 64)},
 		{Path: "schema-nodes/core-000000.json", Kind: "schema-node", Length: 251, SHA256: strings.Repeat("b", 64)},
 	}
-	if activation.PublicationKey() != "public-kubernetes" || activation.SnapshotID() != descriptor.SnapshotID || activation.RevisionID() != "git-0123456789abcdef" || !reflect.DeepEqual(activation.Inventory(), wantInventory) {
-		t.Fatalf("activation = key=%q snapshot=%q revision=%q inventory=%#v", activation.PublicationKey(), activation.SnapshotID(), activation.RevisionID(), activation.Inventory())
+	if activation.CatalogID() != "kubernetes" || activation.PublicationKey() != "public-kubernetes" || activation.SnapshotID() != descriptor.SnapshotID || activation.RevisionID() != "git-0123456789abcdef" || !reflect.DeepEqual(activation.Inventory(), wantInventory) {
+		t.Fatalf("activation = catalog=%q key=%q snapshot=%q revision=%q inventory=%#v", activation.CatalogID(), activation.PublicationKey(), activation.SnapshotID(), activation.RevisionID(), activation.Inventory())
 	}
 
 	for index := range manifestBytes {
@@ -73,6 +73,12 @@ func TestAdmitProjectionInventoryFailsClosed(t *testing.T) {
 		{name: "wrong digest", mutate: func(descriptor *DescriptorV1, _ *[]byte) { descriptor.ProjectionDigest = strings.Repeat("f", 64) }},
 		{name: "wrong data base", mutate: func(descriptor *DescriptorV1, _ *[]byte) {
 			descriptor.ProjectionDataBase = "/other/snapshots/" + descriptor.SnapshotID + "/projection-data/"
+		}},
+		{name: "wrong catalog URL", mutate: func(descriptor *DescriptorV1, _ *[]byte) {
+			descriptor.CatalogURL = "/other/snapshots/" + descriptor.SnapshotID + "/catalog.json"
+		}},
+		{name: "wrong search data base", mutate: func(descriptor *DescriptorV1, _ *[]byte) {
+			descriptor.SearchDataBase = "/other/snapshots/" + descriptor.SnapshotID + "/search-data/"
 		}},
 		{name: "wrong descriptor version", mutate: func(descriptor *DescriptorV1, _ *[]byte) { descriptor.SchemaVersion = 2 }},
 		{name: "corrupt JSON", mutate: func(_ *DescriptorV1, manifest *[]byte) { (*manifest)[0] = '[' }},
@@ -155,9 +161,12 @@ func activationFixture(t *testing.T, publicationBase string) (DescriptorV1, []by
 		t.Fatal(err)
 	}
 	manifestURL := publicationBase + "snapshots/" + string(snapshotID) + "/manifest.json"
+	catalogURL := publicationBase + "snapshots/" + string(snapshotID) + "/catalog.json"
+	searchDataBase := publicationBase + "snapshots/" + string(snapshotID) + "/search-data/"
 	dataBase := publicationBase + "snapshots/" + string(snapshotID) + "/projection-data/"
 	return DescriptorV1{
 		SchemaVersion:         1,
+		CatalogID:             "kubernetes",
 		PublicationKey:        "public-kubernetes",
 		PublicationBase:       publicationBase,
 		SnapshotID:            string(snapshotID),
@@ -165,6 +174,8 @@ func activationFixture(t *testing.T, publicationBase string) (DescriptorV1, []by
 		ProjectionFormat:      "projection-v2",
 		ProjectionDigest:      digestHex,
 		ProjectionManifestURL: manifestURL,
+		CatalogURL:            catalogURL,
+		SearchDataBase:        searchDataBase,
 		ProjectionDataBase:    dataBase,
 	}, manifestBytes
 }
