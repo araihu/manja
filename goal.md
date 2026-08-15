@@ -1416,6 +1416,23 @@ SBOM remains explicitly deferred by product direction. Legal authority,
 attribution, redistribution, hybrid offline runtime, recovery lifecycle, and
 final packaging remain incomplete and cannot be inferred from groundwork.
 
+### Reconciler phase v3 (2026-08-16)
+
+The previous two-implementer phase is reconciled at
+`471e88e2ccb3c7c62ee1ff6353c57f53525d8f05`, tree
+`68bef0e76e6de22e011210ed2551f80902c7b324`, with `origin/main` as an
+ancestor and the feature branch clean and pushed. It added only bounded
+activation-identity binding and public asset/SW allowlist behavior; it did not
+register a Service Worker or claim offline-runtime completion.
+
+This next phase keeps the same protocol: two fresh isolated implementers and a
+rotated reconciler may advance separate missing Open Core seams. Reviews stay
+paused until an explicit product-manager signal. Each implementation must keep
+SSR/no-JS authoritative, preserve parser-free and no-SaaS boundaries, and hand
+off RED/GREEN, architecture/Wasm/Muamba/templ/headless gates plus exact clean
+identity. The reconciler must consolidate compatible commits, rebase against
+`origin/main`, and push frequently without merging or releasing.
+
 Implementer B packet was frozen from the exact phase head in
 `/private/tmp/manja-oc04-sw-allowlist-impl-b`, branch
 `codex/oc04-sw-allowlist-impl-b`: commit
