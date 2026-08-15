@@ -1,0 +1,12 @@
+package render
+
+templ operationDetailSections(data operationDetailSectionsData) {
+	<div class={ data.Class }>
+		if data.Request != nil {
+			@OperationRequestSection(*data.Request)
+		}
+		if data.Responses != nil {
+			@OperationResponses(*data.Responses)
+		}
+	</div>
+}

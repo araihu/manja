@@ -83,6 +83,7 @@ type PublicDocsOptions struct {
 	ManageDefaultFavicon      bool
 	Metadata                  PageMetadata
 	OperationIdentityInHeader bool
+	OperationDetailSections   *localrender.OperationDetailSectionsFragment
 	OperationRequestSection   *localrender.OperationRequestSectionFragment
 	OperationAuthorization    *localrender.OperationAuthorizationFragment
 	OperationParameters       *localrender.OperationParametersFragment
@@ -1029,7 +1030,9 @@ templ endpointSection(op core.Operation, servers []core.SpecServer, exampleSpecJ
 						}
 					</div>
 				}
-				if operationHasRequest(op) || len(op.Responses) > 0 {
+				if opts.OperationDetailSections != nil {
+					@localrender.OperationDetailSections(*opts.OperationDetailSections)
+				} else if operationHasRequest(op) || len(op.Responses) > 0 {
 					<div class={ endpointDetailLayoutClass(op) }>
 						if operationHasRequest(op) {
 							if opts.OperationRequestSection != nil {
@@ -1070,19 +1073,19 @@ templ endpointSection(op core.Operation, servers []core.SpecServer, exampleSpecJ
 									</section>
 								}
 							</section>
+								}
 							}
-						}
-						if len(op.Responses) > 0 {
-							if opts.OperationResponses != nil {
-								@localrender.OperationResponses(*opts.OperationResponses)
-							} else {
+							if len(op.Responses) > 0 {
+								if opts.OperationResponses != nil {
+									@localrender.OperationResponses(*opts.OperationResponses)
+								} else {
 								<section class="manja-endpoint-responses-section grid gap-5" aria-label="Responses">
 									<h4 class="font-title text-2xl font-bold text-on-surface-strong dark:text-on-surface-dark-strong">Responses</h4>
 									@accordion.Accordion(responseAccordionConfig(opID, op.Responses, exampleSpecJSON, opts))
 								</section>
-							}
-						}
-					</div>
+								}
+								}
+						</div>
 				}
 		if opts.OperationNavigation != nil {
 			@localrender.OperationNavigation(*opts.OperationNavigation)

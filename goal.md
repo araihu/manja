@@ -986,6 +986,18 @@ standalone fallback rendering, request/endpoint shells, request composer and
 rail, browser activation, Wasm runtime wiring, Service Worker,
 offline/storage, SaaS, theme, legal, packaging, and lifecycle actions remain
 outside this checkpoint. Open Core remains incomplete.
+OC-04R starts from exact accepted OC-04Q parent
+`fdd08c3b43725eb7ba8423933a58c809d1a897fc`, tree
+`b5dd661fbfb56a308f49ef1bd85e999b3df75c6a`. It prepares the remaining direct
+operation detail section as one bounded parser-free fragment that composes the
+already accepted request and response children under one immutable operation and
+document-link context. Admission copies child render state, rejects missing or
+invalid declarations, mixed preparation contexts, and oversized output, then
+delegates only the catalog SSR section. Endpoint SSR/no-JS bytes, existing
+landmarks, ARIA, HTMX links, responsive layout, focus behavior, and Arai Hû
+light/dark tokens remain authoritative. Browser activation, Wasm runtime wiring,
+Service Worker, offline/storage, SaaS, theme, legal, packaging, and lifecycle
+actions remain outside this checkpoint. Open Core remains incomplete.
 These checkpoints are groundwork, not proof of a complete operation body/main
 Wasm HTML renderer, browser activation, Service Worker, offline storage,
 rollback, tombstones, endpoint-shell/request-rail rendering,
@@ -1028,10 +1040,10 @@ Before merge:
 
 ## Next Action
 
-Submit the frozen OC-04P child of exact accepted OC-04O parent
-`93a4988788f051a2aab813bc3cd7d0cc22ddffef`, with clean status, fail-closed
+Submit the frozen OC-04R child of exact accepted OC-04Q parent
+`fdd08c3b43725eb7ba8423933a58c809d1a897fc`, with clean status, fail-closed
 mutation receipts, exact whole-endpoint SSR/no-JS parity, root/nested
-real-handler proof, preserved OC-04A-O behavior, architecture/Wasm-boundary,
+real-handler proof, preserved OC-04A-Q behavior, architecture/Wasm-boundary,
 race, vet, generation, Muamba, webassets, and uncached standalone root-suite
 receipts for fresh independent review. PM chooses and separately authorizes any
 integration path.

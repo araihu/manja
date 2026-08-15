@@ -19,8 +19,9 @@ var errInvalidOperationResponsesFragment = errors.New("local docs operation-resp
 // from copied OC-04I/J/K/L child data. Rendering needs no parser or mutable
 // projection/domain input.
 type OperationResponsesFragment struct {
-	data  operationResponsesData
-	valid bool
+	data    operationResponsesData
+	binding operationPreparationBinding
+	valid   bool
 }
 
 type operationResponsesData struct {
@@ -69,7 +70,7 @@ func PrepareOperationResponses(
 		OperationID: operation.Anchor,
 		Responses:   make([]operationResponseSectionData, 0, len(projected.Responses)),
 		SchemaLinks: cloneResponseDetailSchemaLinks(details.schemaLinks),
-	}, valid: true}
+	}, binding: media.binding, valid: true}
 	responseIDs := make(map[string]struct{}, len(projected.Responses))
 	for responseIndex, response := range projected.Responses {
 		prepared := operation.Responses[responseIndex]
@@ -127,6 +128,41 @@ func PrepareOperationResponses(
 		return OperationResponsesFragment{}, invalidOperationResponsesField("rendered bytes")
 	}
 	return fragment, nil
+}
+
+func cloneOperationResponsesFragment(source OperationResponsesFragment) OperationResponsesFragment {
+	clone := source
+	clone.data.SchemaLinks = cloneResponseDetailSchemaLinks(source.data.SchemaLinks)
+	clone.data.Responses = make([]operationResponseSectionData, len(source.data.Responses))
+	for responseIndex, response := range source.data.Responses {
+		clone.data.Responses[responseIndex] = operationResponseSectionData{
+			Status:  response.Status,
+			Title:   response.Title,
+			Details: cloneOperationResponseDetailData(response.Details),
+			Media:   make([]operationResponseSectionMediaData, len(response.Media)),
+		}
+		for mediaIndex, media := range response.Media {
+			clone.data.Responses[responseIndex].Media[mediaIndex] = operationResponseSectionMediaData{
+				Summary: media.Summary,
+				Tree:    cloneOperationSchemaTreeData(media.Tree),
+				Example: cloneOperationResponseExampleData(media.Example),
+			}
+		}
+	}
+	return clone
+}
+
+func operationResponseDetailsWithLegacySpacing(data operationResponseDetailData, scope string, schemaLinks map[string]string) templ.Component {
+	return templ.ComponentFunc(func(ctx context.Context, writer io.Writer) error {
+		if err := operationResponseDetails(data, scope, schemaLinks).Render(ctx, writer); err != nil {
+			return err
+		}
+		if data.Description != "" && len(data.Headers) == 0 {
+			_, err := io.WriteString(writer, " ")
+			return err
+		}
+		return nil
+	})
 }
 
 func cloneOperationResponseDetailData(source operationResponseDetailData) operationResponseDetailData {

@@ -20,8 +20,9 @@ var errInvalidOperationRequestSectionFragment = errors.New("local docs operation
 // landmark. Child fragments are copied before rendering, so this seam never
 // reads mutable projection or domain values after preparation.
 type OperationRequestSectionFragment struct {
-	data  operationRequestSectionData
-	valid bool
+	data    operationRequestSectionData
+	binding operationPreparationBinding
+	valid   bool
 }
 
 type operationRequestSectionData struct {
@@ -87,7 +88,8 @@ func PrepareOperationRequestSection(
 			Authorization: cloneOperationAuthorizationFragment(authorization),
 			Parameters:    cloneOperationParametersFragment(parameters),
 		},
-		valid: true,
+		binding: binding,
+		valid:   true,
 	}
 	if body != nil {
 		clone := cloneOperationRequestBodyFragment(*body)
@@ -201,6 +203,17 @@ func cloneOperationRequestBodyFragment(source OperationRequestBodyFragment) Oper
 	for index, media := range source.data.Media {
 		clone.data.Media[index] = media
 		clone.data.Media[index].Tree = cloneOperationSchemaTreeData(media.Tree)
+	}
+	return clone
+}
+
+func cloneOperationRequestSectionFragment(source OperationRequestSectionFragment) OperationRequestSectionFragment {
+	clone := source
+	clone.data.Authorization = cloneOperationAuthorizationFragment(source.data.Authorization)
+	clone.data.Parameters = cloneOperationParametersFragment(source.data.Parameters)
+	if source.data.Body != nil {
+		body := cloneOperationRequestBodyFragment(*source.data.Body)
+		clone.data.Body = &body
 	}
 	return clone
 }

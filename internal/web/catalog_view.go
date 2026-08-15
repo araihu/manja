@@ -319,6 +319,13 @@ func (handler *CatalogHandler) catalogPageDataWithSidebarQuery(
 				}
 				data.OperationRequestSection = &operationRequestSection
 			}
+			if len(detail.Operation.Security) > 0 || len(detail.Operation.Parameters) > 0 || detail.Operation.HasRequestBody || len(detail.Operation.Responses) > 0 {
+				operationDetailSections, err := localrender.PrepareOperationDetailSections(detail, *operation, data.OperationRequestSection, data.OperationResponses)
+				if err != nil {
+					return templates.CatalogPageData{}, err
+				}
+				data.OperationDetailSections = &operationDetailSections
+			}
 			operationNavigation, err := localrender.PrepareOperationNavigation(detail, *operation, document, documentHref, openGroups)
 			if err != nil {
 				return templates.CatalogPageData{}, err

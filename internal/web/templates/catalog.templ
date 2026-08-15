@@ -112,6 +112,7 @@ type CatalogPageData struct {
 	Selected *catalog.DetailRecordV1
 	OperationView *core.Operation
 	OperationRequestSection *localrender.OperationRequestSectionFragment
+	OperationDetailSections *localrender.OperationDetailSectionsFragment
 	OperationHeader *localrender.OperationHeaderFragment
 	OperationAuthorization *localrender.OperationAuthorizationFragment
 	OperationParameters *localrender.OperationParametersFragment
@@ -942,6 +943,7 @@ templ catalogOperationDetail(data CatalogPageData) {
 			}
 			@endpointSection(operation, data.OperationServers, "", PublicDocsOptions{
 				OperationIdentityInHeader: true,
+				OperationDetailSections: data.OperationDetailSections,
 				OperationRequestSection: data.OperationRequestSection,
 				OperationAuthorization: data.OperationAuthorization,
 				OperationParameters: data.OperationParameters,

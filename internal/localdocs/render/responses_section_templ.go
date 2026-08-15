@@ -156,7 +156,7 @@ func operationResponsePanel(data operationResponsesData, responseIndex int) temp
 			return templ_7745c5c3_Err
 		}
 		if len(response.Media) == 0 {
-			templ_7745c5c3_Err = operationResponseDetails(response.Details, data.OperationID+"-"+anchorFragment(response.Status)+"-headers", data.SchemaLinks).Render(ctx, templ_7745c5c3_Buffer)
+			templ_7745c5c3_Err = operationResponseDetailsWithLegacySpacing(response.Details, data.OperationID+"-"+anchorFragment(response.Status)+"-headers", data.SchemaLinks).Render(ctx, templ_7745c5c3_Buffer)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
