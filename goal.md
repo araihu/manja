@@ -1349,3 +1349,13 @@ notices stay separate, and licensing/package-generation Task 8 remains stopped.
 Hosted SaaS stays deferred, active-theme work stays excluded, and unbounded
 browser/offline/lifecycle behavior stays outside OC-04AE and OC-03. No merge,
 release, deployment, cleanup, or other lifecycle action is authorized here.
+
+### Round-2 reconciler baseline (2026-08-15)
+
+Round-2 reconciliation starts from exact feature identity
+`codex/opencore-reconciler-next` head `4fda300572506d12439a9427a4feb6976b0c4204`,
+tree `15d215844b92e0c883a14a516a643832c5cac627`, with `origin/main`
+`507c5ea9fcdc8cee670a023dbb82f348ba2ed763` as the current merge-base target.
+This dedicated ref owns reconciliation only; technical, design, and product
+reviews remain held pending explicit user authorization. OC-04 offline/runtime
+and OC-02 packager/artifact packets must arrive frozen before comparison.
