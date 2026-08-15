@@ -81,6 +81,42 @@ func TestCatalogRouteMatrixForRootAndNestedMounts(t *testing.T) {
 	}
 }
 
+func TestCatalogPreparedOverviewMetricsRendersThroughRootAndNestedHandlers(t *testing.T) {
+	t.Parallel()
+
+	for _, mount := range []string{"/", "/kubernetes"} {
+		mount := mount
+		t.Run(mount, func(t *testing.T) {
+			t.Parallel()
+			handler, _ := catalogHandlerFixture(t, mount)
+			path := mount
+			if path != "/" {
+				path += "/"
+			}
+			response := httptest.NewRecorder()
+			handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, path, nil))
+			if response.Code != http.StatusOK {
+				t.Fatalf("catalog overview = %d body=%q", response.Code, response.Body.String())
+			}
+			body := response.Body.String()
+			if strings.Count(body, `class="grid gap-4 sm:grid-cols-3"`) != 1 {
+				t.Fatalf("catalog overview metrics rendered %d times", strings.Count(body, `class="grid gap-4 sm:grid-cols-3"`))
+			}
+			for _, want := range []string{
+				`>Documents</p>`,
+				`>Operations</p>`,
+				`>Schemas</p>`,
+				`>2</p>`,
+				`>1</p>`,
+			} {
+				if !strings.Contains(body, want) {
+					t.Errorf("catalog overview missing prepared metric %q", want)
+				}
+			}
+		})
+	}
+}
+
 func TestOrganizationRootCatalogCardNavigatesToCatalogOverview(t *testing.T) {
 	t.Parallel()
 

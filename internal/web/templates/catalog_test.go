@@ -38,6 +38,26 @@ func TestCatalogPageRendersOverviewCountsAndMountAwareDocuments(t *testing.T) {
 	}
 }
 
+func TestPreparedCatalogOverviewMetricsMatchesCatalogSSRBytes(t *testing.T) {
+	t.Parallel()
+
+	data := catalogTemplateFixture()
+	fragment, err := localrender.PrepareCatalogOverviewMetrics(data.Directory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	data.CatalogMetrics = &fragment
+	var delegated bytes.Buffer
+	if err := catalogOverviewMetrics(data).Render(context.Background(), &delegated); err != nil {
+		t.Fatal(err)
+	}
+	legacy := `<div class="grid gap-4 sm:grid-cols-3"><div class="rounded-radius border border-outline bg-surface p-5 dark:border-outline-dark dark:bg-surface-dark"><p class="text-sm font-medium text-on-surface-muted dark:text-on-surface-dark-muted">Documents</p><p class="mt-2 break-words font-title text-2xl font-bold text-on-surface-strong dark:text-on-surface-dark-strong">2</p></div><div class="rounded-radius border border-outline bg-surface p-5 dark:border-outline-dark dark:bg-surface-dark"><p class="text-sm font-medium text-on-surface-muted dark:text-on-surface-dark-muted">Operations</p><p class="mt-2 break-words font-title text-2xl font-bold text-on-surface-strong dark:text-on-surface-dark-strong">1</p></div><div class="rounded-radius border border-outline bg-surface p-5 dark:border-outline-dark dark:bg-surface-dark"><p class="text-sm font-medium text-on-surface-muted dark:text-on-surface-dark-muted">Schemas</p><p class="mt-2 break-words font-title text-2xl font-bold text-on-surface-strong dark:text-on-surface-dark-strong">500</p></div></div>`
+	if !bytes.Equal(delegated.Bytes(), []byte(legacy)) {
+		index := firstDifferentByte([]byte(legacy), delegated.Bytes())
+		t.Fatalf("prepared catalog overview metrics changed SSR bytes at byte %d:\nlegacy=%q\ndelegated=%q", index, nearbyBytes([]byte(legacy), index), nearbyBytes(delegated.Bytes(), index))
+	}
+}
+
 func TestCatalogHeaderOmitsThemeSelectorButKeepsDarkMode(t *testing.T) {
 	t.Parallel()
 

@@ -199,6 +199,29 @@ func TestCatalogDocumentMetricsFragmentUsesOneCanonicalCatalogComponent(t *testi
 	}
 }
 
+func TestCatalogOverviewMetricsFragmentUsesOneCanonicalCatalogComponent(t *testing.T) {
+	root := repositoryRoot(t)
+	source, err := os.ReadFile(filepath.Join(root, "internal", "web", "templates", "catalog.templ"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(source)
+	for _, legacy := range []string{
+		`@catalogMetric("Documents"`,
+		`@catalogMetric("Operations"`,
+		`@catalogMetric("Schemas"`,
+		`catalogOperationCount(data.Directory)`,
+		`catalogSchemaCount(data.Directory)`,
+	} {
+		if strings.Contains(text, legacy) {
+			t.Fatalf("catalog template retains raw catalog overview metrics renderer %q", legacy)
+		}
+	}
+	if !strings.Contains(text, "@localrender.CatalogOverviewMetrics(*data.CatalogMetrics)") {
+		t.Fatal("catalog template does not delegate to canonical catalog overview metrics renderer")
+	}
+}
+
 func TestOperationHeaderFragmentUsesOneCanonicalComponent(t *testing.T) {
 	root := repositoryRoot(t)
 	source, err := os.ReadFile(filepath.Join(root, "internal", "web", "templates", "catalog.templ"))

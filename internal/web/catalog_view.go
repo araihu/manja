@@ -67,6 +67,11 @@ func (handler *CatalogHandler) catalogPageDataWithSidebarQuery(
 		StandaloneSpec: len(snapshot.Directory.Documents) == 1,
 		Documents:      make([]templates.CatalogDocumentOption, 0, len(snapshot.Directory.Documents)),
 	}
+	catalogMetrics, err := localrender.PrepareCatalogOverviewMetrics(snapshot.Directory)
+	if err != nil {
+		return templates.CatalogPageData{}, err
+	}
+	data.CatalogMetrics = &catalogMetrics
 	presentation := handler.presentation[mount]
 	data.CatalogReadme = strings.TrimSpace(presentation.Readme)
 	data.CatalogLicense = templates.CatalogOrganizationLicenseData{

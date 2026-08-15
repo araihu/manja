@@ -101,6 +101,7 @@ type CatalogPageData struct {
 	Directory catalog.CatalogArtifactV1
 	StandaloneSpec bool
 	Document *catalog.DocumentDirectoryV1
+	CatalogMetrics *localrender.CatalogOverviewMetricsFragment
 	DocumentHref string
 	DocumentHeader *localrender.CatalogDocumentHeaderFragment
 	DocumentInfo *localrender.CatalogDocumentInfoFragment
@@ -630,11 +631,7 @@ templ catalogOverview(data CatalogPageData) {
 				<a href={ templpkg.URL(data.DownloadHref) } class="inline-flex min-h-11 shrink-0 self-start items-center rounded-radius border border-outline px-4 font-semibold hover:bg-surface-alt dark:border-outline-dark dark:hover:bg-surface-dark-alt">Download catalog JSON</a>
 			</div>
 		</div>
-		<div class="grid gap-4 sm:grid-cols-3">
-			@catalogMetric("Documents", fmt.Sprintf("%d", len(data.Directory.Documents)))
-			@catalogMetric("Operations", fmt.Sprintf("%d", catalogOperationCount(data.Directory)))
-			@catalogMetric("Schemas", fmt.Sprintf("%d", catalogSchemaCount(data.Directory)))
-		</div>
+		@catalogOverviewMetrics(data)
 		<div class="mt-5">
 			@catalogProvenance(data, false)
 		</div>
@@ -762,11 +759,20 @@ templ catalogOrganizationOverview(data CatalogPageData) {
 	}
 }
 
-templ catalogMetric(label string, value string) {
-	<div class="rounded-radius border border-outline bg-surface p-5 dark:border-outline-dark dark:bg-surface-dark">
-		<p class="text-sm font-medium text-on-surface-muted dark:text-on-surface-dark-muted">{ label }</p>
-		<p class="mt-2 break-words font-title text-2xl font-bold text-on-surface-strong dark:text-on-surface-dark-strong">{ value }</p>
-	</div>
+templ catalogOverviewMetrics(data CatalogPageData) {
+	if data.CatalogMetrics != nil {
+		@localrender.CatalogOverviewMetrics(*data.CatalogMetrics)
+	} else {
+		@catalogOverviewMetricsFallback(data)
+	}
+}
+
+func catalogOverviewMetricsFallback(data CatalogPageData) templpkg.Component {
+	fragment, err := localrender.PrepareCatalogOverviewMetrics(data.Directory)
+	if err != nil {
+		return templpkg.NopComponent
+	}
+	return localrender.CatalogOverviewMetrics(fragment)
 }
 
 // Keep the document metric and security component calls adjacent inside the
@@ -1135,18 +1141,6 @@ func catalogRevisionValue(data CatalogPageData) string {
 	value = strings.TrimPrefix(value, "git-")
 	if len(value) > 12 { value = value[:12] }
 	return value
-}
-
-func catalogOperationCount(directory catalog.CatalogArtifactV1) int {
-	total := 0
-	for _, document := range directory.Documents { total += len(document.Operations) }
-	return total
-}
-
-func catalogSchemaCount(directory catalog.CatalogArtifactV1) int {
-	total := 0
-	for _, document := range directory.Documents { total += len(document.Schemas) }
-	return total
 }
 
 func catalogSidebarConfig(data CatalogPageData) sidebar.Config {
