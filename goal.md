@@ -1021,6 +1021,18 @@ control-plane branch may carry its goal-only receipt and receive the
 authorized dedicated-branch push; merge, release, deployment, cleanup, and
 other lifecycle actions remain unauthorized.
 
+Frozen packet disposition: Implementer 1 (`590c37fcda77b5d3cf015dc57853d3ba4fa865cc`,
+tree `e14a40d01434be10ebb0a1b7088c720d08c63da4`, parent `3438b1bf`) prepared
+document options across mobile cards and the desktop table. Implementer 2
+(`111f5099136ba2f782a2064a51ffddee2da2def5`, tree
+`8caa5e06619fee3dcecc981a54c1121590d10887`, parent `3438b1bf`) prepared the
+narrow document-table and HTMX-row seam. Both packets were clean and changed
+the shared catalog wiring/template surfaces; they were not composable without
+overlap. Reconciliation selected only Implementer 2 and preserved Implementer
+1 unchanged outside this branch. The selected packet is cherry-picked here as
+`ee36f634512da6b473dc2e2ebee3906d200affe7`; this is a scope disposition, not
+a technical or design review verdict.
+
 ## PR Gate
 
 At `2026-08-11T18:54:35Z`, [PR
