@@ -222,6 +222,26 @@ func TestCatalogOverviewMetricsFragmentUsesOneCanonicalCatalogComponent(t *testi
 	}
 }
 
+func TestCatalogDocumentTableUsesOneCanonicalCatalogComponent(t *testing.T) {
+	root := repositoryRoot(t)
+	source, err := os.ReadFile(filepath.Join(root, "internal", "web", "templates", "catalog.templ"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(source)
+	if strings.Contains(text, "catalogDocumentTableConfig") {
+		t.Fatal("catalog template retains server-owned document table config")
+	}
+	for _, want := range []string{
+		"@localrender.CatalogDocumentTable(*data.DocumentTable)",
+		"@localrender.CatalogDocumentTableRows(*data.DocumentTable)",
+	} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("catalog template does not delegate document table to canonical local renderer %q", want)
+		}
+	}
+}
+
 func TestOperationHeaderFragmentUsesOneCanonicalComponent(t *testing.T) {
 	root := repositoryRoot(t)
 	source, err := os.ReadFile(filepath.Join(root, "internal", "web", "templates", "catalog.templ"))

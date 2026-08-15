@@ -102,6 +102,7 @@ type CatalogPageData struct {
 	StandaloneSpec bool
 	Document *catalog.DocumentDirectoryV1
 	CatalogMetrics *localrender.CatalogOverviewMetricsFragment
+	DocumentTable *localrender.CatalogDocumentTableFragment
 	DocumentHref string
 	DocumentHeader *localrender.CatalogDocumentHeaderFragment
 	DocumentInfo *localrender.CatalogDocumentInfoFragment
@@ -179,52 +180,6 @@ func catalogDocumentTitle(document catalog.DocumentDirectoryV1) string {
 		return key
 	}
 	return strings.TrimSpace(document.Title)
-}
-
-func catalogDocumentTableEndpoint(mount string) string {
-	if mount == "/" {
-		return "/"
-	}
-	return strings.TrimRight(mount, "/") + "/"
-}
-
-func catalogDocumentTableConfig(data CatalogPageData) table.Config {
-	rows := make([]table.Row, 0, len(data.Documents))
-	for _, option := range data.Documents {
-		rows = append(rows, table.Row{
-			ID:       option.Key,
-			Link:     option.Href,
-			LinkMode: table.LinkFull,
-			Cells: map[string]table.Cell{
-				"name": {
-					Component: table.ImageCell(option.AvatarSrc, option.Label, ""),
-				},
-				"version": {Text: option.Version, Code: true},
-				"operations": {Text: strconv.Itoa(option.Operations)},
-				"schemas": {Text: strconv.Itoa(option.Schemas)},
-			},
-			AlpineAttrs: map[string]string{
-				"data-catalog-document-row": "true",
-				"data-search-text": option.SearchText,
-				"x-show": catalogDocumentFilterExpression(option.SearchText),
-			},
-		})
-	}
-	return table.Config{
-		ID: "catalog-documents-table",
-		Caption: "OpenAPI documents in this catalog",
-		Columns: []table.Column{
-			{Key: "name", Label: "Name", Sortable: true, Width: "w-[46%]"},
-			{Key: "version", Label: "Version", Sortable: true, Width: "w-[22%]"},
-			{Key: "operations", Label: "Operations", Sortable: true, Width: "w-[16%]", Align: "right"},
-			{Key: "schemas", Label: "Schemas", Sortable: true, Width: "w-[16%]", Align: "right"},
-		},
-		Rows: rows,
-		SortBy: data.DocumentSortBy,
-		SortDir: table.SortDir(data.DocumentSortDir),
-		HTMX: &table.HTMXConfig{Endpoint: catalogDocumentTableEndpoint(data.Mount)},
-		RootClass: "catalog-documents-table",
-	}
 }
 
 templ catalogSidebarIconFrame(symbol icon.Symbol) {
@@ -689,7 +644,7 @@ templ catalogOverview(data CatalogPageData) {
 				}
 			</div>
 			<div class="catalog-documents-desktop">
-				@table.Table(catalogDocumentTableConfig(data))
+				@catalogDocumentTable(data)
 			</div>
 			<p x-show="filter.trim() !== '' && Array.from($root.querySelectorAll('[data-catalog-document-card]')).every(card => !(card.dataset.searchText || '').toLowerCase().includes(filter.trim().toLowerCase()))" aria-live="polite" class="rounded-b-radius border border-t-0 border-outline px-4 py-6 text-center text-on-surface-muted dark:border-outline-dark dark:text-on-surface-dark-muted">No matching API documents.</p>
 		</section>
@@ -698,18 +653,51 @@ templ catalogOverview(data CatalogPageData) {
 }
 
 templ CatalogDocumentTableFragment(data CatalogPageData) {
-	{{ config := catalogDocumentTableConfig(data) }}
-	@table.TableRows(config)
-	<template>
-		<thead
-			id={ config.TheadID() }
-			hx-swap-oob="innerHTML"
-			data-table-sort-by={ config.SortBy }
-			data-table-sort-dir={ string(config.SortDir) }
-		>
-			@table.TableHeadContent(config)
-		</thead>
-	</template>
+	if data.DocumentTable != nil {
+		@localrender.CatalogDocumentTableRows(*data.DocumentTable)
+	} else {
+		@catalogDocumentTableRowsFallback(data)
+	}
+}
+
+templ catalogDocumentTable(data CatalogPageData) {
+	if data.DocumentTable != nil {
+		@localrender.CatalogDocumentTable(*data.DocumentTable)
+	} else {
+		@catalogDocumentTableFallback(data)
+	}
+}
+
+func catalogDocumentTableEntries(data CatalogPageData) []localrender.CatalogDocumentTableEntry {
+	entries := make([]localrender.CatalogDocumentTableEntry, 0, len(data.Documents))
+	for _, option := range data.Documents {
+		searchText := option.SearchText
+		if searchText == "" {
+			searchText = strings.ToLower(option.Key + " " + option.Version)
+		}
+		entries = append(entries, localrender.CatalogDocumentTableEntry{
+			Key: option.Key, Label: option.Label, Version: option.Version,
+			Operations: option.Operations, Schemas: option.Schemas,
+			SearchText: searchText, Href: option.Href, AvatarSrc: option.AvatarSrc,
+		})
+	}
+	return entries
+}
+
+func catalogDocumentTableFallback(data CatalogPageData) templpkg.Component {
+	fragment, err := localrender.PrepareCatalogDocumentTable(data.Mount, data.DocumentSortBy, data.DocumentSortDir, catalogDocumentTableEntries(data))
+	if err != nil {
+		return templpkg.NopComponent
+	}
+	return localrender.CatalogDocumentTable(fragment)
+}
+
+func catalogDocumentTableRowsFallback(data CatalogPageData) templpkg.Component {
+	fragment, err := localrender.PrepareCatalogDocumentTable(data.Mount, data.DocumentSortBy, data.DocumentSortDir, catalogDocumentTableEntries(data))
+	if err != nil {
+		return templpkg.NopComponent
+	}
+	return localrender.CatalogDocumentTableRows(fragment)
 }
 
 templ catalogOrganizationOverview(data CatalogPageData) {

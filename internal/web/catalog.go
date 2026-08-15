@@ -13,6 +13,7 @@ import (
 	"strings"
 
 	"github.com/araihu/manja/application/catalog"
+	localrender "github.com/araihu/manja/internal/localdocs/render"
 	"github.com/araihu/manja/internal/web/templates"
 )
 
@@ -410,11 +411,39 @@ func (handler *CatalogHandler) serveOverview(response http.ResponseWriter, reque
 	}
 	data.DocumentSortBy = request.URL.Query().Get("order_by")
 	data.DocumentSortDir = request.URL.Query().Get("order_dir")
+	if err := prepareCatalogDocumentTable(&data); err != nil {
+		http.Error(response, "catalog temporarily unavailable", http.StatusServiceUnavailable)
+		return
+	}
 	if request.URL.Query().Get("table_id") == "catalog-documents-table" {
 		handler.renderCatalogDocumentTable(response, request, data)
 		return
 	}
 	handler.renderCatalogPage(response, request, data)
+}
+
+func prepareCatalogDocumentTable(data *templates.CatalogPageData) error {
+	if data == nil {
+		return fmt.Errorf("catalog document table data is nil")
+	}
+	entries := make([]localrender.CatalogDocumentTableEntry, 0, len(data.Documents))
+	for _, option := range data.Documents {
+		searchText := option.SearchText
+		if searchText == "" {
+			searchText = strings.ToLower(option.Key + " " + option.Version)
+		}
+		entries = append(entries, localrender.CatalogDocumentTableEntry{
+			Key: option.Key, Label: option.Label, Version: option.Version,
+			Operations: option.Operations, Schemas: option.Schemas,
+			SearchText: searchText, Href: option.Href, AvatarSrc: option.AvatarSrc,
+		})
+	}
+	fragment, err := localrender.PrepareCatalogDocumentTable(data.Mount, data.DocumentSortBy, data.DocumentSortDir, entries)
+	if err != nil {
+		return err
+	}
+	data.DocumentTable = &fragment
+	return nil
 }
 
 func sortCatalogDocuments(documents []templates.CatalogDocumentOption, orderBy, orderDir string) error {
