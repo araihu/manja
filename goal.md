@@ -1399,3 +1399,38 @@ generated-Go check, webassets check, templ generation (`updates=0`), focused
 legal fail-closed tests, and `git diff --check`. OC-04 packet, rebase/head
 identity refresh, and any remaining gate work are pending without merge,
 release, deployment, cleanup, or external handoff mutation.
+
+### Round-3 OC-04 offline hardening packet reconciliation (2026-08-15)
+
+The frozen OC-04 packet arrived from branch
+`codex/oc04-offline-runtime-hardening-luna-max` with exact base/parent
+`e67e2b1b0b10904b9800aa4b47c6d1dcebb423ed`, base tree
+`1e37ccea7ac9e198c13f4d4089c913e15ecf2b86`, head
+`45915db7039ce984f65e286082553ef463ced3e4`, tree
+`76c4a8b6b036a2effb0c3a43b37527d00d6f21b9`, and clean staged/unstaged/
+untracked status. Owned paths are `internal/web/catalog.go`,
+`internal/web/catalog_assets.go`, `internal/web/catalog_test.go`,
+`internal/web/static/local-docs.js`, `storage.js`, `storage.test.mjs`,
+`sw.js`, `worker.test.mjs`, and `internal/web/static/local_docs_browser_test.go`.
+Identity checks passed; paths are disjoint from the reconciled OC-02
+distribution packet and goal ledger. The packet was cherry-picked unchanged as
+`d77c144`.
+
+Packet receipts: Node 17/17, targeted headless/static, affected tests/race,
+vet, architecture/Wasm, strict Muamba, webassets, templ, and diff checks exit
+0. Broad packet E2E exits 1 solely at
+`TestCatalogDocumentSearchUsesGlobalModal` (`focus-visible`); Playwright EPIPE
+does not reproduce. Preserve this exact E2E failure as a blocker, not a review
+verdict.
+
+Combined-identity receipts: root normal passes (`226.733s`, E2E included);
+root race exits nonzero after full completion because
+`internal/selfhosted/TestDefaultGitHubFixtureStartsWithinDeadline` fails with
+`context deadline exceeded` after `30.03s` (selfhosted package `177.210s`),
+while race E2E passes (`230.871s`). The focused selfhosted race rerun passes
+(`12.804s`) but does not erase the full-root failure. Site tests pass (`4.703s`);
+Node local-docs tests pass 17/17; affected web normal/race, vet, projection
+Wasm, strict Muamba, generated-Go, webassets, templ `updates=0`, and
+`git diff --check` pass. Root race timing remains an open blocker; reviews,
+legal clearance, merge, release, deployment, cleanup, and external handoff
+mutation remain prohibited.
