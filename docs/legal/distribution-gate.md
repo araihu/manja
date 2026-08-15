@@ -4,10 +4,12 @@ Status: **BLOCKED**.
 
 This document describes the bounded engineering seam in
 `internal/distribution` and `cmd/distribution-gate`. It is an evidence
-validator, not a legal opinion or a clearance decision. It does not create or
-claim a project `LICENSE`, `NOTICE`, `THIRD_PARTY_NOTICES.md`, SBOM, release
-archive, binary package, or OCI image. No such release file is invented while
-the repository provenance gate remains blocked.
+validator or mechanical packager, not a legal opinion or a clearance decision.
+It never creates repository `LICENSE`, `NOTICE`, or
+`THIRD_PARTY_NOTICES.md`, and never turns blocked authority into a license
+claim. `Pack` may write deterministic caller-output archives and generated
+SBOM bytes only after both authority receipts and all byte/inventory checks
+pass; blocked requests leave the caller output untouched.
 
 ## Input and output
 
@@ -30,9 +32,16 @@ cannot enter a produced artifact.
 
 `LICENSE`, `NOTICE`, and `THIRD_PARTY_NOTICES.md` are required in every
 runtime artifact only after both authority receipts are `PASS`. Their file
-paths, regular-file type, positive size, and immutable digest are checked;
-the validator never writes or synthesizes their contents. The same required
-paths must be present in the artifact inventory.
+paths, regular-file type, positive size, and immutable digest are checked
+against the actual source/final bytes. The packager copies caller-supplied
+legal bytes only after that clearance; it never synthesizes their contents.
+The same required paths must be present in the final artifact inventory.
+
+Artifact roots must exist and are recursively inventoried. Missing, selected,
+renamed, duplicated, or unknown files fail closed; a fixed pair of paths is not
+an inventory. Existing SBOM bytes are checked against deterministic generated
+bytes before staging. Build-only, test-only, parser, and compiler dependencies
+remain excluded unless final artifact bytes prove otherwise.
 
 OCI evidence additionally requires an explicit complete-coverage assertion
 and one immutable digest for every published OS/architecture manifest. An
@@ -74,10 +83,13 @@ rejected. A `BLOCKED` result is expected until independently reviewed
 provenance and rights-holder evidence exists; it must not be converted into a
 license claim by CI or packaging code.
 
-The seam deliberately does not inspect a live image, build an archive, run an
-image entrypoint, generate an SBOM, or infer a dependency graph from
-`go.mod`. A future producer may supply those receipts only after a separately
-authorized packaging checkpoint has real immutable bytes to inspect. Muamba
+The seam deliberately does not inspect a live image, run an image entrypoint,
+or infer a dependency graph from `go.mod`. `InspectArchive` extracts
+caller-supplied archive bytes into a fresh root and scans the complete result;
+`Pack` can produce deterministic source/binary/site archives from a real root
+after clearance. It refuses to represent a directory-to-tar conversion as OCI:
+OCI requires separately supplied digest-bound image/platform evidence, and no
+real OCI or site release artifact exists for this blocked checkpoint. Muamba
 remains the source-acquisition lock for existing browser inputs; its strict
 verification and generated-output checks are independent gates.
 
@@ -85,7 +97,7 @@ verification and generated-output checks are independent gates.
 
 The package and command tests exercise blocked authority, pre-clearance legal
 claims, unknown licenses, mutable versions, build/test leakage, excluded
-runtime sources, unsafe paths, non-regular files, incomplete extraction roots,
-missing or incomplete SBOMs, incomplete OCI coverage, canonical byte
-stability, and strict JSON decoding. The complete evidence fixture in those
-tests is synthetic and is not a production clearance receipt.
+runtime sources, unsafe paths, non-regular files, missing roots, recursive
+inventory drift, incomplete SBOM bytes, archive extraction, explicit OCI
+coverage, deterministic bytes, and strict JSON decoding. Test fixtures are
+mechanical inputs only; none is a production clearance receipt.

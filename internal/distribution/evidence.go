@@ -145,6 +145,13 @@ type FileEvidence struct {
 type Policy struct {
 	RequiredLegalPaths  []string
 	ExcludedRuntimePath []string
+	// LegalPlacement overrides the default root placement for an artifact
+	// kind. OCI images commonly place notices below /usr/share/licenses; the
+	// gate keeps that placement explicit instead of guessing it.
+	LegalPlacement map[ArtifactKind][]string
+	// SBOMPlacement optionally relocates an artifact's deterministic SBOM,
+	// for example into an OCI image's license directory.
+	SBOMPlacement map[ArtifactKind]string
 }
 
 // DefaultPolicy is the current bounded self-hosted distribution policy.
@@ -155,6 +162,8 @@ func DefaultPolicy() Policy {
 			"internal/web/static/request_composer_browser_test.go",
 			"internal/web/static/schema_example_browser_test.go",
 		},
+		LegalPlacement: map[ArtifactKind][]string{},
+		SBOMPlacement:  map[ArtifactKind]string{},
 	}
 }
 
@@ -225,7 +234,7 @@ func Evaluate(evidence Evidence, policy Policy) Result {
 			findings = append(findings, Finding{Code: "artifact.duplicate", Subject: artifact.Name, Detail: "artifact name is duplicated"})
 		}
 		artifactNames[artifact.Name] = struct{}{}
-		findings = append(findings, validateArtifact(artifact, policy, dependencyByName)...)
+		findings = append(findings, validateArtifact(artifact, policy, dependencyByName, evidence.Legal, !blockedAuthority, true)...)
 	}
 	if len(evidence.Artifacts) == 0 {
 		findings = append(findings, Finding{Code: "artifact.missing", Detail: "no produced artifact has been inspected"})
@@ -267,20 +276,28 @@ func validateLegal(legal LegalEvidence, required []string) []Finding {
 	if legal.Holder == "" || legal.YearRange == "" {
 		findings = append(findings, Finding{Code: "legal.attribution.missing", Detail: "PASS requires verified holder and evidence-backed year range"})
 	}
-	files := map[string]FileEvidence{
-		"LICENSE":                legal.License,
-		"NOTICE":                 legal.Notice,
-		"THIRD_PARTY_NOTICES.md": legal.ThirdParty,
-	}
 	for _, requiredPath := range required {
-		file, ok := files[requiredPath]
+		file, ok := legalFileForPath(legal, requiredPath)
 		if !ok || isZeroFile(file) {
 			findings = append(findings, Finding{Code: "legal.file.missing", Subject: requiredPath, Detail: "required legal file evidence is missing"})
 			continue
 		}
-		findings = append(findings, validateFile(file, requiredPath)...)
+		findings = append(findings, validateFile(file, file.Path)...)
 	}
 	return findings
+}
+
+func legalFileForPath(legal LegalEvidence, requiredPath string) (FileEvidence, bool) {
+	files := []FileEvidence{legal.License, legal.Notice, legal.ThirdParty}
+	for _, file := range files {
+		if file.Path == "" {
+			continue
+		}
+		if file.Path == requiredPath || path.Base(file.Path) == path.Base(requiredPath) {
+			return file, true
+		}
+	}
+	return FileEvidence{}, false
 }
 
 func validateDependencies(dependencies []DependencyEvidence) (map[string]DependencyEvidence, []Finding) {
@@ -321,7 +338,7 @@ func validateDependencies(dependencies []DependencyEvidence) (map[string]Depende
 	return byName, findings
 }
 
-func validateArtifact(artifact ArtifactEvidence, policy Policy, dependencies map[string]DependencyEvidence) []Finding {
+func validateArtifact(artifact ArtifactEvidence, policy Policy, dependencies map[string]DependencyEvidence, legal LegalEvidence, requireLegal, checkSBOM bool) []Finding {
 	var findings []Finding
 	if artifact.Name == "" {
 		findings = append(findings, Finding{Code: "artifact.name.missing", Detail: "artifact name is required"})
@@ -335,7 +352,9 @@ func validateArtifact(artifact ArtifactEvidence, policy Policy, dependencies map
 	if !artifact.Inspection.Complete || !artifact.Inspection.FreshRoot || !artifact.Inspection.DigestBound {
 		findings = append(findings, Finding{Code: "artifact.inspection.incomplete", Subject: artifact.Name, Detail: "artifact must be scanned from complete digest-bound bytes in a fresh extraction root"})
 	}
-	findings = append(findings, validateSBOM(artifact.Name, artifact.SBOM)...)
+	if checkSBOM {
+		findings = append(findings, validateSBOM(artifact.Name, artifact.SBOM)...)
+	}
 	switch artifact.Kind {
 	case ArtifactSourceArchive, ArtifactBinary, ArtifactOCI, ArtifactSite:
 	default:
@@ -363,15 +382,25 @@ func validateArtifact(artifact ArtifactEvidence, policy Policy, dependencies map
 	if len(artifact.Files) == 0 {
 		findings = append(findings, Finding{Code: "artifact.inventory.missing", Subject: artifact.Name, Detail: "artifact has no recursively inspected file inventory"})
 	}
-	seenFiles := make(map[string]struct{}, len(artifact.Files))
+	seenFiles := make(map[string]FileEvidence, len(artifact.Files))
 	for _, file := range artifact.Files {
 		if _, exists := seenFiles[file.Path]; exists && file.Path != "" {
 			findings = append(findings, Finding{Code: "artifact.file.duplicate", Subject: artifact.Name + ":" + file.Path, Detail: "artifact file path is duplicated"})
 		}
-		seenFiles[file.Path] = struct{}{}
+		if _, exists := seenFiles[file.Path]; !exists {
+			seenFiles[file.Path] = file
+		}
 		findings = append(findings, validateFile(file, file.Path)...)
 		if artifact.Kind != ArtifactSourceArchive && matchesExcluded(file.Path, policy.ExcludedRuntimePath) {
 			findings = append(findings, Finding{Code: "artifact.excluded_source", Subject: artifact.Name + ":" + file.Path, Detail: "runtime artifact contains an excluded browser-test source"})
+		}
+	}
+	if requireLegal && artifact.SBOM.Source != "" {
+		file, exists := seenFiles[artifact.SBOM.Source]
+		if !exists {
+			findings = append(findings, Finding{Code: "artifact.sbom.placement_missing", Subject: artifact.Name + ":" + artifact.SBOM.Source, Detail: "SBOM source must be present in the final artifact inventory"})
+		} else if file.Digest != artifact.SBOM.Digest {
+			findings = append(findings, Finding{Code: "artifact.sbom.bytes_mismatch", Subject: artifact.Name + ":" + artifact.SBOM.Source, Detail: "SBOM receipt digest differs from the inspected artifact bytes"})
 		}
 	}
 	seenDeps := make(map[string]struct{}, len(artifact.Dependencies))
@@ -396,9 +425,17 @@ func validateArtifact(artifact ArtifactEvidence, policy Policy, dependencies map
 			findings = append(findings, Finding{Code: "dependency.build_only_shipped", Subject: name, Detail: "build-only dependency appears in a produced artifact"})
 		}
 	}
-	for _, requiredPath := range policy.RequiredLegalPaths {
-		if _, exists := seenFiles[requiredPath]; !exists {
-			findings = append(findings, Finding{Code: "artifact.legal_file.missing", Subject: artifact.Name + ":" + requiredPath, Detail: "artifact does not contain required legal material"})
+	if requireLegal {
+		for _, requiredPath := range requiredPaths(policy, artifact.Kind) {
+			file, exists := seenFiles[requiredPath]
+			if !exists {
+				findings = append(findings, Finding{Code: "artifact.legal_file.missing", Subject: artifact.Name + ":" + requiredPath, Detail: "artifact does not contain required legal material"})
+				continue
+			}
+			legalFile, legalExists := legalFileForPath(legal, requiredPath)
+			if legalExists && (file.Size != legalFile.Size || file.Digest != legalFile.Digest) {
+				findings = append(findings, Finding{Code: "artifact.legal_file.bytes_mismatch", Subject: artifact.Name + ":" + requiredPath, Detail: "legal evidence digest differs from the inspected artifact bytes"})
+			}
 		}
 	}
 	return findings

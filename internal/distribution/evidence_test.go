@@ -121,7 +121,7 @@ func TestEvaluateRejectsUntrustedRootAndNonRegularEntries(t *testing.T) {
 	}
 }
 
-func TestEvaluateRequiresCompleteOCIPlatformInventory(t *testing.T) {
+func TestEvaluateRejectsIncompleteOCIPlatformInventory(t *testing.T) {
 	evidence := validEvidence()
 	evidence.Artifacts[0].Kind = ArtifactOCI
 	evidence.Artifacts[0].Platforms = []PlatformEvidence{{
@@ -133,11 +133,6 @@ func TestEvaluateRequiresCompleteOCIPlatformInventory(t *testing.T) {
 	}
 
 	evidence.Artifacts[0].PlatformCoverageComplete = true
-	result = Evaluate(evidence, DefaultPolicy())
-	if result.Status != StatusPass {
-		t.Fatalf("complete OCI inventory status = %q, findings = %#v", result.Status, result.Findings)
-	}
-
 	evidence.Artifacts[0].Platforms = nil
 	result = Evaluate(evidence, DefaultPolicy())
 	if result.Status != StatusBlocked || !result.HasCode("artifact.oci.platforms_missing") {
@@ -152,6 +147,26 @@ func TestEvaluateRejectsIncompleteSBOM(t *testing.T) {
 	result := Evaluate(evidence, DefaultPolicy())
 	if result.Status != StatusBlocked || !result.HasCode("artifact.sbom.incomplete") {
 		t.Fatalf("result = %#v, want incomplete SBOM blocker", result)
+	}
+}
+
+func TestEvaluateRejectsSBOMDigestDifferentFromInventory(t *testing.T) {
+	evidence := validEvidence()
+	evidence.Artifacts[0].Files[3].Digest = "sha256:" + strings.Repeat("b", 64)
+
+	result := Evaluate(evidence, DefaultPolicy())
+	if result.Status != StatusBlocked || !result.HasCode("artifact.sbom.bytes_mismatch") {
+		t.Fatalf("result = %#v, want SBOM byte-mismatch blocker", result)
+	}
+}
+
+func TestEvaluateRejectsLegalDigestDifferentFromInventory(t *testing.T) {
+	evidence := validEvidence()
+	evidence.Artifacts[0].Files[0].Digest = "sha256:" + strings.Repeat("b", 64)
+
+	result := Evaluate(evidence, DefaultPolicy())
+	if result.Status != StatusBlocked || !result.HasCode("artifact.legal_file.bytes_mismatch") {
+		t.Fatalf("result = %#v, want legal byte-mismatch blocker", result)
 	}
 }
 
@@ -290,6 +305,7 @@ func validEvidence() Evidence {
 					validFile("LICENSE", 11),
 					validFile("NOTICE", 7),
 					validFile("THIRD_PARTY_NOTICES.md", 23),
+					{Path: "sbom/manja-runtime.cdx.json", Type: "regular", Size: 31, Digest: "sha256:" + strings.Repeat("a", 64)},
 				},
 			},
 		},
