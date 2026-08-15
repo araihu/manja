@@ -20,8 +20,9 @@ var errInvalidOperationRequestBodyFragment = errors.New("local docs operation re
 // render data is copied from already verified projection/domain child
 // fragments, so rendering never needs a parser or mutable domain input.
 type OperationRequestBodyFragment struct {
-	data  operationRequestBodyData
-	valid bool
+	data    operationRequestBodyData
+	binding operationPreparationBinding
+	valid   bool
 }
 
 type operationRequestBodyData struct {
@@ -67,6 +68,7 @@ func PrepareOperationRequestBody(
 		Required:    projectedBody.Required,
 		Media:       make([]operationRequestBodyItemData, 0, len(projectedBody.MediaTypes)),
 	}, valid: true}
+	fragment.binding = media.binding
 	mediaIDs := make(map[string]struct{}, len(projectedBody.MediaTypes))
 	for index, projectedMedia := range projectedBody.MediaTypes {
 		preparedMedia := preparedBody.MediaTypes[index]

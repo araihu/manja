@@ -811,6 +811,9 @@ func TestCatalogSelectedOperationPreparesRequestBodyMediaSummary(t *testing.T) {
 			if data.OperationRequestBody == nil {
 				t.Fatal("selected operation did not prepare complete request-body section")
 			}
+			if data.OperationRequestSection == nil {
+				t.Fatal("selected operation did not prepare request section")
+			}
 			if data.OperationSchemaTrees == nil {
 				t.Fatal("selected operation did not prepare request/response schema trees")
 			}
@@ -1020,6 +1023,9 @@ func TestCatalogOperationWithoutRequestBodyKeepsMediaFragmentAbsent(t *testing.T
 	}
 	if data.OperationRequestBodyMedia != nil {
 		t.Fatal("operation without request body prepared a media fragment")
+	}
+	if data.OperationRequestSection != nil {
+		t.Fatal("operation without request did not prepare request section")
 	}
 	if data.OperationResponses != nil {
 		t.Fatal("operation without responses prepared a responses section")

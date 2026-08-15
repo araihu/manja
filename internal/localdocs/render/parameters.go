@@ -27,8 +27,9 @@ const (
 var errInvalidOperationParametersFragment = errors.New("local docs operation-parameters fragment is invalid")
 
 type OperationParametersFragment struct {
-	groups []operationParameterGroupData
-	valid  bool
+	groups  []operationParameterGroupData
+	binding operationPreparationBinding
+	valid   bool
 }
 
 type operationParameterGroupData struct {
@@ -105,6 +106,11 @@ func PrepareOperationParameters(detail catalog.DetailRecordV1, operation domain.
 		}
 		fragment.groups = append(fragment.groups, data)
 	}
+	parentBinding, err := bindOperationPreparationParent(detail, operation)
+	if err != nil {
+		return OperationParametersFragment{}, invalidOperationParametersField("preparation context")
+	}
+	fragment.binding = operationPreparationBinding{parent: parentBinding}
 	return fragment, nil
 }
 

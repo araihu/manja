@@ -26,6 +26,7 @@ var errInvalidOperationAuthorizationFragment = errors.New("local docs operation 
 // It renders documentation only; credentials and request activation remain outside this fragment.
 type OperationAuthorizationFragment struct {
 	requirements []operationAuthorizationData
+	binding      operationPreparationBinding
 	valid        bool
 }
 
@@ -124,6 +125,11 @@ func PrepareOperationAuthorization(detail catalog.DetailRecordV1, operation doma
 		}
 		fragment.requirements = append(fragment.requirements, data)
 	}
+	parentBinding, err := bindOperationPreparationParent(detail, operation)
+	if err != nil {
+		return OperationAuthorizationFragment{}, invalidOperationAuthorizationField("preparation context")
+	}
+	fragment.binding = operationPreparationBinding{parent: parentBinding}
 	return fragment, nil
 }
 

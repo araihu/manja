@@ -83,6 +83,7 @@ type PublicDocsOptions struct {
 	ManageDefaultFavicon      bool
 	Metadata                  PageMetadata
 	OperationIdentityInHeader bool
+	OperationRequestSection   *localrender.OperationRequestSectionFragment
 	OperationAuthorization    *localrender.OperationAuthorizationFragment
 	OperationParameters       *localrender.OperationParametersFragment
 	OperationRequestBody      *localrender.OperationRequestBodyFragment
@@ -1031,6 +1032,9 @@ templ endpointSection(op core.Operation, servers []core.SpecServer, exampleSpecJ
 				if operationHasRequest(op) || len(op.Responses) > 0 {
 					<div class={ endpointDetailLayoutClass(op) }>
 						if operationHasRequest(op) {
+							if opts.OperationRequestSection != nil {
+								@localrender.OperationRequestSection(*opts.OperationRequestSection)
+							} else {
 							<section class="grid gap-8" aria-label="Request">
 								<h4 class="font-title text-2xl font-bold text-on-surface-strong dark:text-on-surface-dark-strong">Request</h4>
 								if opts.OperationAuthorization != nil {
@@ -1066,6 +1070,7 @@ templ endpointSection(op core.Operation, servers []core.SpecServer, exampleSpecJ
 									</section>
 								}
 							</section>
+							}
 						}
 						if len(op.Responses) > 0 {
 							if opts.OperationResponses != nil {

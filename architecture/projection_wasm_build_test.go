@@ -160,6 +160,23 @@ func TestOperationRequestBodyFragmentUsesCanonicalCatalogComponent(t *testing.T)
 	}
 }
 
+func TestOperationRequestSectionFragmentUsesCanonicalCatalogComponent(t *testing.T) {
+	root := repositoryRoot(t)
+	source, err := os.ReadFile(filepath.Join(root, "internal", "web", "templates", "public.templ"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(source)
+	for _, want := range []string{
+		"if opts.OperationRequestSection != nil",
+		"@localrender.OperationRequestSection(*opts.OperationRequestSection)",
+	} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("catalog request section does not delegate to canonical local renderer %q", want)
+		}
+	}
+}
+
 func TestOperationNavigationFragmentUsesCanonicalCatalogComponent(t *testing.T) {
 	root := repositoryRoot(t)
 	source, err := os.ReadFile(filepath.Join(root, "internal", "web", "templates", "public.templ"))

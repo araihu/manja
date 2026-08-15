@@ -1178,6 +1178,99 @@ func TestPreparedOperationSchemaTreesMatchCompleteCatalogSSRBytes(t *testing.T) 
 	}
 }
 
+func TestPreparedOperationRequestSectionMatchesCompleteCatalogSSRBytes(t *testing.T) {
+	t.Parallel()
+
+	detailID := domain.DetailID("detail-sha256-" + strings.Repeat("a", 64))
+	schemaID := "detail-sha256-" + strings.Repeat("b", 64)
+	documentHref := "/kubernetes/documents/core-v1/"
+	operation := domain.Operation{
+		Anchor: string(detailID), Title: "Create Pod", Method: "POST", Path: "/pods",
+		RequestBody: &domain.OperationRequestBody{Description: "Pod to create.", Required: true, MediaTypes: []domain.OperationMediaType{{ContentType: "application/json", Schema: domain.SchemaSummary{Name: "Pod", Type: "object"}}}},
+		Responses:   []domain.OperationResponse{{Status: "201", Description: "Created."}},
+	}
+	detail := catalog.DetailRecordV1{ID: detailID, Kind: "operation", Operation: &projection.OperationDetail{
+		ID: string(detailID), Anchor: string(detailID), HeadingID: string(detailID), Heading: "Create Pod", HeadingLevel: 2,
+		Method: "POST", Path: "/pods", HasRequestBody: true,
+		RequestBody: projection.RequestBody{Description: "Pod to create.", Required: true, MediaTypes: []projection.MediaType{{Ordinal: 0, ID: "application/json", ContentType: "application/json", SchemaRef: 7}}},
+		Responses:   []projection.Response{{Ordinal: 0, ID: "201", Status: "201", Description: "Created."}},
+	}}
+	nodes := []projection.SchemaNode{{Ordinal: 7, ID: "node-pod", Name: "Pod", Type: "object"}}
+	schemaLinks := map[string]string{"Pod": documentHref + "?selected=" + schemaID + "#" + schemaID}
+	authorization, err := localrender.PrepareOperationAuthorization(detail, operation)
+	if err != nil {
+		t.Fatal(err)
+	}
+	parameters, err := localrender.PrepareOperationParameters(detail, operation, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	media, err := localrender.PrepareOperationRequestBodyMedia(detail, operation, nodes, documentHref, schemaLinks)
+	if err != nil {
+		t.Fatal(err)
+	}
+	trees, err := localrender.PrepareOperationSchemaTrees(detail, operation, nodes, documentHref, schemaLinks)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, err := localrender.PrepareOperationRequestBody(detail, operation, media, trees)
+	if err != nil {
+		t.Fatal(err)
+	}
+	requestSection, err := localrender.PrepareOperationRequestSection(detail, operation, authorization, parameters, &body, documentHref, schemaLinks)
+	if err != nil {
+		t.Fatal(err)
+	}
+	baseOptions := PublicDocsOptions{SchemaLinks: schemaLinks, SchemaLinkTarget: "#catalog-main-content", SchemaLinkSelect: "#catalog-main-content", SchemaLinkSwap: "outerHTML show:#main-content:top"}
+	var legacy, delegated bytes.Buffer
+	if err := endpointSection(operation, nil, "", baseOptions, OperationNavigationData{}).Render(context.Background(), &legacy); err != nil {
+		t.Fatal(err)
+	}
+	baseOptions.OperationRequestSection = &requestSection
+	if err := endpointSection(operation, nil, "", baseOptions, OperationNavigationData{}).Render(context.Background(), &delegated); err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(legacy.Bytes(), delegated.Bytes()) {
+		index := firstDifferentByte(legacy.Bytes(), delegated.Bytes())
+		t.Fatalf("delegated request section changed complete SSR/no-JS endpoint bytes at byte %d:\nlegacy=%q\ndelegated=%q", index, nearbyBytes(legacy.Bytes(), index), nearbyBytes(delegated.Bytes(), index))
+	}
+}
+
+func TestPreparedOperationRequestSectionAuthorizationOnlyMatchesSSRBytes(t *testing.T) {
+	t.Parallel()
+
+	detailID := domain.DetailID("detail-sha256-" + strings.Repeat("c", 64))
+	security := domain.OperationSecurity{Name: "bearer", Definition: domain.SecurityScheme{Name: "bearer", Type: "http", Description: "Bearer token.", Scheme: "bearer", BearerFormat: "JWT"}}
+	operation := domain.Operation{Anchor: string(detailID), Title: "List Pods", Method: "GET", Path: "/pods", Security: []domain.OperationSecurity{security}}
+	detail := catalog.DetailRecordV1{ID: detailID, Kind: "operation", Operation: &projection.OperationDetail{
+		ID: string(detailID), Anchor: string(detailID), HeadingID: string(detailID), HeadingLevel: 2, Heading: "List Pods", Method: "GET", Path: "/pods",
+		Security: []projection.SecurityRequirement{{Ordinal: 0, ID: "bearer", Name: "bearer", Definition: projection.SecurityScheme{Name: "bearer", Type: "http", Description: "Bearer token.", Scheme: "bearer", BearerFormat: "JWT"}}},
+	}}
+	authorization, err := localrender.PrepareOperationAuthorization(detail, operation)
+	if err != nil {
+		t.Fatal(err)
+	}
+	parameters, err := localrender.PrepareOperationParameters(detail, operation, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	requestSection, err := localrender.PrepareOperationRequestSection(detail, operation, authorization, parameters, nil, "/documents/core-v1/", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var legacy, delegated bytes.Buffer
+	if err := endpointSection(operation, nil, "", PublicDocsOptions{}, OperationNavigationData{}).Render(context.Background(), &legacy); err != nil {
+		t.Fatal(err)
+	}
+	if err := endpointSection(operation, nil, "", PublicDocsOptions{OperationRequestSection: &requestSection}, OperationNavigationData{}).Render(context.Background(), &delegated); err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(legacy.Bytes(), delegated.Bytes()) {
+		index := firstDifferentByte(legacy.Bytes(), delegated.Bytes())
+		t.Fatalf("delegated authorization-only request section changed SSR bytes at byte %d:\nlegacy=%q\ndelegated=%q", index, nearbyBytes(legacy.Bytes(), index), nearbyBytes(delegated.Bytes(), index))
+	}
+}
+
 func TestPreparedOperationCodeSamplesMatchCatalogSSRBytes(t *testing.T) {
 	t.Parallel()
 
