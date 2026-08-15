@@ -495,17 +495,22 @@ func Pack(request PackageRequest, policy Policy) (PackageResult, error) {
 	if request.OutputDir == "" {
 		return result, errors.New("package output directory is required after all gates pass")
 	}
-	if err := os.MkdirAll(request.OutputDir, 0o755); err != nil {
-		return result, fmt.Errorf("create package output directory: %w", err)
+	stagingOutput, err := os.MkdirTemp("", "manja-distribution-output-")
+	if err != nil {
+		return result, fmt.Errorf("create private package output directory: %w", err)
 	}
+	defer os.RemoveAll(stagingOutput)
+	stagedRequest := request
+	stagedRequest.OutputDir = stagingOutput
 
 	for index, artifactRequest := range request.Artifacts {
 		artifact := evidence.Artifacts[index]
-		output, finalEvidence, err := packageOne(artifactRequest, artifact, request, policy)
+		output, finalEvidence, err := packageOne(artifactRequest, artifact, stagedRequest, policy)
 		if err != nil {
 			result.Result.Status = StatusBlocked
 			result.Result.Findings = append(result.Result.Findings, Finding{Code: "artifact.package.failed", Subject: artifactRequest.Name, Detail: err.Error()})
 			sortFindings(result.Result.Findings)
+			result.Outputs = nil
 			return result, nil
 		}
 		result.Outputs = append(result.Outputs, output)
@@ -515,8 +520,59 @@ func Pack(request PackageRequest, policy Policy) (PackageResult, error) {
 	result.Result = Evaluate(evidence, policy)
 	if result.Result.Status != StatusPass {
 		result.Outputs = nil
+		return result, nil
+	}
+	result.Outputs, err = publishOutputs(request.OutputDir, result.Outputs)
+	if err != nil {
+		result.Outputs = nil
+		return result, fmt.Errorf("publish package outputs: %w", err)
 	}
 	return result, nil
+}
+
+func publishOutputs(outputDir string, outputs []PackagedArtifact) ([]PackagedArtifact, error) {
+	if err := os.MkdirAll(outputDir, 0o755); err != nil {
+		return nil, fmt.Errorf("create package output directory: %w", err)
+	}
+	published := make([]string, 0, len(outputs))
+	cleanup := func() {
+		for _, pathValue := range published {
+			_ = os.Remove(pathValue)
+		}
+	}
+	for index := range outputs {
+		archiveBytes, err := os.ReadFile(outputs[index].Path)
+		if err != nil {
+			cleanup()
+			return nil, fmt.Errorf("read staged package %q: %w", outputs[index].Name, err)
+		}
+		outputPath := filepath.Join(outputDir, outputs[index].Name+".tar")
+		file, err := os.OpenFile(outputPath, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
+		if err != nil {
+			cleanup()
+			return nil, fmt.Errorf("create package %q: %w", outputs[index].Name, err)
+		}
+		written, writeErr := file.Write(archiveBytes)
+		closeErr := file.Close()
+		if writeErr != nil {
+			_ = os.Remove(outputPath)
+			cleanup()
+			return nil, fmt.Errorf("write package %q: %w", outputs[index].Name, writeErr)
+		}
+		if written != len(archiveBytes) {
+			_ = os.Remove(outputPath)
+			cleanup()
+			return nil, fmt.Errorf("write package %q: %w", outputs[index].Name, io.ErrShortWrite)
+		}
+		if closeErr != nil {
+			_ = os.Remove(outputPath)
+			cleanup()
+			return nil, fmt.Errorf("close package %q: %w", outputs[index].Name, closeErr)
+		}
+		outputs[index].Path = outputPath
+		published = append(published, outputPath)
+	}
+	return outputs, nil
 }
 
 func inspectRequestedArtifact(request ArtifactRequest, policy Policy, dependencies []DependencyEvidence, generateMaterials bool) (ArtifactEvidence, []Finding) {

@@ -80,7 +80,11 @@ func TestInspectArchiveRequiresDigestAndScansCompleteExtraction(t *testing.T) {
 	if _, err := InspectArchive(archivePath, ArchiveOptions{ExpectedDigest: testSHA384Digest(archive)}); err != nil {
 		t.Fatalf("InspectArchive rejected a valid SHA-384 digest: %v", err)
 	}
-	if _, err := InspectArchive(archivePath, ArchiveOptions{ExpectedDigest: strings.Replace(digest, "a", "b", 1)}); err == nil {
+	drifted := "sha256:" + strings.Repeat("0", 64)
+	if drifted == digest {
+		drifted = "sha256:" + strings.Repeat("1", 64)
+	}
+	if _, err := InspectArchive(archivePath, ArchiveOptions{ExpectedDigest: drifted}); err == nil {
 		t.Fatal("InspectArchive accepted a drifted archive digest")
 	}
 }
@@ -280,6 +284,41 @@ func TestPackValidatesLegalBytesBeforeCreatingOutput(t *testing.T) {
 	}
 	if _, err := os.Stat(output); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("output directory exists before legal clearance: %v", err)
+	}
+}
+
+func TestPackDoesNotLeaveArtifactsWhenLaterPackageFails(t *testing.T) {
+	firstRoot := t.TempDir()
+	writeTestFile(t, firstRoot, "bin/first", "first")
+	secondRoot := t.TempDir()
+	writeTestFile(t, secondRoot, "bin/second", "second")
+	legalRoot, legal := testLegalEvidence(t)
+	output := filepath.Join(t.TempDir(), "release")
+	wrongDigest := "sha256:" + strings.Repeat("f", 64)
+
+	result, err := Pack(PackageRequest{
+		Subject:      SubjectEvidence{CommitSHA: strings.Repeat("a", 40), TreeSHA: strings.Repeat("b", 40)},
+		Provenance:   AuthorityEvidence{Status: StatusPass, Reference: "provenance-receipt", Digest: "sha256:" + strings.Repeat("1", 64)},
+		RightsHolder: AuthorityEvidence{Status: StatusPass, Reference: "rights-receipt", Digest: "sha256:" + strings.Repeat("2", 64)},
+		Legal:        legal,
+		LegalRoot:    legalRoot,
+		Artifacts: []ArtifactRequest{
+			{Name: "first", Kind: ArtifactBinary, Source: "git:first", Root: firstRoot},
+			{Name: "second", Kind: ArtifactBinary, Source: "git:second", Root: secondRoot, ExpectedDigest: wrongDigest},
+		},
+		OutputDir: output,
+	}, DefaultPolicy())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Result.Status != StatusBlocked || !result.Result.HasCode("artifact.package.failed") {
+		t.Fatalf("result = %#v, want package failure blocker", result.Result)
+	}
+	if len(result.Outputs) != 0 {
+		t.Fatalf("outputs = %#v, want none after staged package failure", result.Outputs)
+	}
+	if _, err := os.Stat(output); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("output directory exists after staged package failure: %v", err)
 	}
 }
 
