@@ -290,10 +290,15 @@ func TestCatalogDocumentSearchUsesGlobalModal(t *testing.T) {
 		t.Fatalf("recently visited apps document: %v", err)
 	}
 	input := page.Locator("#catalog-search-input")
-	focused, err := input.Evaluate(`element => document.activeElement === element`, nil)
-	if err != nil || focused != true {
-		t.Fatalf("search query focused = %v, err=%v", focused, err)
+	waitForSearchInputFocus := func(context string) {
+		if _, err := page.WaitForFunction(`() => {
+			const input = document.querySelector('#catalog-search-input');
+			return input && document.activeElement === input;
+		}`, nil, playwright.PageWaitForFunctionOptions{Timeout: playwright.Float(5000)}); err != nil {
+			t.Fatalf("%s search query focus: %v", context, err)
+		}
 	}
+	waitForSearchInputFocus("initial")
 	if err := input.Fill("controller"); err != nil {
 		t.Fatal(err)
 	}
@@ -412,6 +417,7 @@ func TestCatalogDocumentSearchUsesGlobalModal(t *testing.T) {
 	if expanded, err := searchField.Evaluate(`element => element.getAttribute('aria-expanded')`, nil); err != nil || expanded != "true" {
 		t.Fatalf("Ctrl+K sidebar search state = %v, err=%v", expanded, err)
 	}
+	waitForSearchInputFocus("Ctrl+K")
 	focusIndicatorValue, err := input.Evaluate(`element => {
 		const probe = document.createElement('span');
 		document.body.appendChild(probe);
