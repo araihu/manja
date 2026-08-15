@@ -82,6 +82,27 @@ func TestResolveAuthorityBindsReferencedReceiptBytes(t *testing.T) {
 	}
 }
 
+func TestEvaluateRejectsAuthorityMutationAfterResolution(t *testing.T) {
+	root := t.TempDir()
+	input := gitAuthorityEvidence(t, root, "docs/legal/provenance-receipt.txt", "provenance receipt")
+	resolved, err := ResolveAuthority(root, input)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	mutatedReceipt := []byte("mutated receipt")
+	resolved.Reference = "git:example.com/manja@" + strings.Repeat("f", 40) + ":docs/legal/other-receipt.txt#blob=" + gitBlobSHA1(mutatedReceipt)
+	resolved.Digest = sha256Digest(mutatedReceipt)
+	resolved.Receipt = mutatedReceipt
+
+	evidence := validEvidence()
+	evidence.Provenance = resolved
+	result := Evaluate(evidence, DefaultPolicy())
+	if result.Status != StatusBlocked || !result.HasCode("authority.provenance.binding_mismatch") {
+		t.Fatalf("result = %#v, want authority mutation blocker", result)
+	}
+}
+
 func TestResolveAuthorityRejectsNonGitRootAndFakeCommit(t *testing.T) {
 	nonGitRoot := t.TempDir()
 	writeTestFile(t, nonGitRoot, "docs/legal/provenance-receipt.txt", "provenance receipt")
@@ -465,22 +486,37 @@ func runGitTest(t *testing.T, root string, args ...string) []byte {
 }
 
 func testProvenanceEvidence() AuthorityEvidence {
-	return AuthorityEvidence{
-		Status:    StatusPass,
-		Reference: "git:example.com/manja@" + strings.Repeat("a", 40) + ":docs/legal/provenance-receipt.txt#blob=a4f33c88285d57140c931a5342b9cb72a1583f25",
-		Digest:    "sha256:354f669fd34cc43c5b029902722e79350ee1eed8d197ebc98e3a4d3bf53aaf17",
-		Receipt:   []byte("provenance receipt"),
-		resolved:  true,
-	}
+	reference := "git:example.com/manja@" + strings.Repeat("a", 40) + ":docs/legal/provenance-receipt.txt#blob=a4f33c88285d57140c931a5342b9cb72a1583f25"
+	digest := "sha256:354f669fd34cc43c5b029902722e79350ee1eed8d197ebc98e3a4d3bf53aaf17"
+	return boundTestAuthority(reference, digest, []byte("provenance receipt"), strings.Repeat("c", 40))
 }
 
 func testRightsHolderEvidence() AuthorityEvidence {
+	reference := "git:example.com/manja@" + strings.Repeat("b", 40) + ":docs/legal/rights-holder-receipt.txt#blob=00ace30a8b1db2d8afe5a51333d9137650e10e8a"
+	digest := "sha256:0690f2cc4e8e452e6d42a4b43db96dc9816f567573b7dcefb3aebd989daf305d"
+	return boundTestAuthority(reference, digest, []byte("rights receipt"), strings.Repeat("d", 40))
+}
+
+func boundTestAuthority(reference, digest string, receipt []byte, tree string) AuthorityEvidence {
+	matches := authorityReferencePattern.FindStringSubmatch(reference)
+	if matches == nil {
+		panic("invalid test authority reference")
+	}
 	return AuthorityEvidence{
 		Status:    StatusPass,
-		Reference: "git:example.com/manja@" + strings.Repeat("b", 40) + ":docs/legal/rights-holder-receipt.txt#blob=00ace30a8b1db2d8afe5a51333d9137650e10e8a",
-		Digest:    "sha256:0690f2cc4e8e452e6d42a4b43db96dc9816f567573b7dcefb3aebd989daf305d",
-		Receipt:   []byte("rights receipt"),
+		Reference: reference,
+		Digest:    digest,
+		Receipt:   append([]byte(nil), receipt...),
 		resolved:  true,
+		binding: authorityBinding{
+			reference: reference,
+			commit:    matches[1],
+			tree:      tree,
+			path:      matches[2],
+			blob:      matches[3],
+			digest:    digest,
+			receipt:   append([]byte(nil), receipt...),
+		},
 	}
 }
 

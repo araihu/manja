@@ -5,6 +5,7 @@
 package distribution
 
 import (
+	"bytes"
 	"crypto/sha1"
 	"encoding/hex"
 	"encoding/json"
@@ -77,6 +78,20 @@ type AuthorityEvidence struct {
 	Receipt []byte `json:"receipt,omitempty"`
 
 	resolved bool
+	binding  authorityBinding
+}
+
+// authorityBinding is the immutable snapshot captured by ResolveAuthority.
+// Its fields are intentionally unexported: callers can inspect or serialize
+// the public evidence, but cannot replace the identity that made it pass.
+type authorityBinding struct {
+	reference string
+	commit    string
+	tree      string
+	path      string
+	blob      string
+	digest    string
+	receipt   []byte
 }
 
 // LegalEvidence describes required legal files only after authority is proved.
@@ -285,6 +300,8 @@ func validateAuthority(name string, authority AuthorityEvidence) []Finding {
 		}
 		if !authority.resolved {
 			findings = append(findings, Finding{Code: "authority." + name + ".unresolved", Detail: "PASS requires a receipt resolved from the immutable reference, not a serialized caller assertion"})
+		} else if !authorityBindingMatches(authority) {
+			findings = append(findings, Finding{Code: "authority." + name + ".binding_mismatch", Detail: "resolved authority fields no longer match the immutable snapshot captured from Git"})
 		}
 	case StatusBlocked:
 		findings = append(findings, Finding{Code: "authority." + name + ".blocked", Detail: "authority evidence is explicitly BLOCKED"})
@@ -292,6 +309,24 @@ func validateAuthority(name string, authority AuthorityEvidence) []Finding {
 		findings = append(findings, Finding{Code: "authority." + name + ".status_invalid", Detail: "authority status must be PASS or BLOCKED"})
 	}
 	return findings
+}
+
+func authorityBindingMatches(authority AuthorityEvidence) bool {
+	binding := authority.binding
+	matches := authorityReferencePattern.FindStringSubmatch(authority.Reference)
+	if matches == nil || binding.reference == "" || binding.commit == "" || binding.tree == "" || binding.path == "" || binding.blob == "" || binding.digest == "" || len(binding.receipt) == 0 {
+		return false
+	}
+	if binding.reference != authority.Reference || binding.commit != matches[1] || binding.path != matches[2] || binding.blob != matches[3] || binding.digest != authority.Digest {
+		return false
+	}
+	if !sha1Pattern.MatchString(binding.commit) || !sha1Pattern.MatchString(binding.tree) || !sha1Pattern.MatchString(binding.blob) {
+		return false
+	}
+	if !bytes.Equal(binding.receipt, authority.Receipt) {
+		return false
+	}
+	return digestForExpected(binding.receipt, binding.digest) == binding.digest && gitBlobSHA1(binding.receipt) == binding.blob
 }
 
 func gitBlobSHA1(data []byte) string {

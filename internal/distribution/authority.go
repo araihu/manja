@@ -36,6 +36,10 @@ func ResolveAuthority(root string, authority AuthorityEvidence) (AuthorityEviden
 	if err := verifyGitReceipt(root, commit, receiptPath, blob); err != nil {
 		return AuthorityEvidence{}, err
 	}
+	tree, err := runGitText(root, "rev-parse", "--verify", commit+"^{tree}")
+	if err != nil {
+		return AuthorityEvidence{}, fmt.Errorf("read authority commit tree: %w", err)
+	}
 	pathValue, err := containedPath(root, receiptPath)
 	if err != nil {
 		return AuthorityEvidence{}, fmt.Errorf("contain authority receipt: %w", err)
@@ -69,6 +73,15 @@ func ResolveAuthority(root string, authority AuthorityEvidence) (AuthorityEviden
 	}
 	authority.Receipt = append([]byte(nil), receipt...)
 	authority.resolved = true
+	authority.binding = authorityBinding{
+		reference: authority.Reference,
+		commit:    commit,
+		tree:      tree,
+		path:      receiptPath,
+		blob:      blob,
+		digest:    authority.Digest,
+		receipt:   append([]byte(nil), receipt...),
+	}
 	return authority, nil
 }
 
