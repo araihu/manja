@@ -1361,3 +1361,37 @@ are expected: OC-04 offline hardening and OC-02 artifact package gate. OC-01/
 OC-02 external handoff bytes remain preserved and out of scope. Compare exact
 base/head/tree/status and owned paths before any selection; reviews, merge,
 release, deployment, cleanup, and other lifecycle actions remain held.
+
+### Round-3 OC-02 artifact packet reconciliation (2026-08-15)
+
+The frozen OC-02 packet arrived from branch `codex/oc02-artifact-package-gate`
+with exact base/parent `e67e2b1b0b10904b9800aa4b47c6d1dcebb423ed`, base tree
+`1e37ccea7ac9e198c13f4d4089c913e15ecf2b86`, final head
+`5e5db630ecd085b8b03892d254d5ad46583160a7`, tree
+`2d29e209823bcb49e18062f9f807fea96490d2b6`, parent
+`31197649dfb8699185b64836173224da0f2cfcf8`, and clean staged/unstaged/
+untracked status. Its owned paths are `internal/distribution/evidence.go`,
+`internal/distribution/evidence_test.go`, `internal/distribution/packager.go`,
+`internal/distribution/packager_test.go`, `docs/legal/distribution-gate.md`,
+and `docs/legal/shipped-artifacts.md`. Paths are disjoint from this branch's
+goal-only baseline and from the OC-04 lane.
+
+Identity checks passed before selection. Commits were cherry-picked unchanged
+as `a126ba7` (source `3119764`) and `47e1b01` (source `5e5db63`). This records
+scope reconciliation only, not technical, design, product, legal, or release
+acceptance. The packet reports deterministic receipts, complete-root
+reinspection, SBOM/notice manifests, fail-closed staging, and docs. Its
+artifact gate remains `BLOCKED`: no first-party authority, `LICENSE`, `NOTICE`,
+or SBOM clearance exists; no legal clearance or artifact publication is
+claimed.
+
+Reconciled receipts so far: distribution normal/race, root normal
+(`223.041s`, including E2E), site normal (`9.377s`), and `git diff --check`
+passed. Root race exited nonzero after full completion: only
+`TestDefaultGitHubFixtureStartsWithinDeadline` failed in
+`internal/selfhosted/final_stopgate_test.go` with `context deadline exceeded`
+after `45.82s` (package `226.196s`); all other reported packages passed. This
+race failure is an open blocker, not a review verdict. Reviews remain
+suspended; OC-04 packet, rebase/head identity refresh, and remaining gates are
+pending without merge, release, deployment, cleanup, or external handoff
+mutation.
