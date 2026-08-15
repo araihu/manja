@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"crypto/sha512"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
@@ -192,6 +193,13 @@ func TestGenerateSBOMRejectsUnknownLicenseAndIsByteStable(t *testing.T) {
 	if bytes.Contains(first, []byte("timestamp")) || bytes.Contains(first, []byte("serialNumber")) {
 		t.Fatalf("SBOM contains volatile metadata: %s", first)
 	}
+	var document sbomDocument
+	if err := json.Unmarshal(first, &document); err != nil {
+		t.Fatalf("generated CycloneDX JSON is invalid: %v", err)
+	}
+	if !sbomHasCompleteShape(first, first) || len(document.Components) != 1 || document.Components[0].Scope != "required" {
+		t.Fatalf("generated CycloneDX 1.5 shape is invalid: %#v", document)
+	}
 }
 
 func TestPackBlockedAuthorityNeverWritesReleaseArtifacts(t *testing.T) {
@@ -223,8 +231,8 @@ func TestPackReportsMissingOutputDirectoryAfterGates(t *testing.T) {
 
 	result, err := Pack(PackageRequest{
 		Subject:      SubjectEvidence{CommitSHA: strings.Repeat("a", 40), TreeSHA: strings.Repeat("b", 40)},
-		Provenance:   AuthorityEvidence{Status: StatusPass, Reference: "provenance-receipt", Digest: "sha256:" + strings.Repeat("1", 64)},
-		RightsHolder: AuthorityEvidence{Status: StatusPass, Reference: "rights-receipt", Digest: "sha256:" + strings.Repeat("2", 64)},
+		Provenance:   testProvenanceEvidence(),
+		RightsHolder: testRightsHolderEvidence(),
 		Legal:        legal, LegalRoot: legalRoot,
 		Artifacts: []ArtifactRequest{{Name: "manja", Kind: ArtifactBinary, Source: "git:test", Root: root, ExpectedDigest: "sha256:" + strings.Repeat("f", 64)}},
 	}, DefaultPolicy())
@@ -315,8 +323,8 @@ func syntheticPackageRequest(t *testing.T, output string) PackageRequest {
 	}
 	return PackageRequest{
 		Subject:      SubjectEvidence{CommitSHA: strings.Repeat("a", 40), TreeSHA: strings.Repeat("b", 40)},
-		Provenance:   AuthorityEvidence{Status: StatusPass, Reference: "provenance-receipt", Digest: "sha256:" + strings.Repeat("1", 64)},
-		RightsHolder: AuthorityEvidence{Status: StatusPass, Reference: "rights-receipt", Digest: "sha256:" + strings.Repeat("2", 64)},
+		Provenance:   testProvenanceEvidence(),
+		RightsHolder: testRightsHolderEvidence(),
 		Legal:        legal,
 		LegalRoot:    legalRoot,
 		Artifacts: []ArtifactRequest{{
@@ -344,8 +352,8 @@ func TestPackRejectsIncompleteSBOMAlreadyInArtifactRoot(t *testing.T) {
 
 	result, err := Pack(PackageRequest{
 		Subject:      SubjectEvidence{CommitSHA: strings.Repeat("a", 40), TreeSHA: strings.Repeat("b", 40)},
-		Provenance:   AuthorityEvidence{Status: StatusPass, Reference: "provenance-receipt", Digest: "sha256:" + strings.Repeat("1", 64)},
-		RightsHolder: AuthorityEvidence{Status: StatusPass, Reference: "rights-receipt", Digest: "sha256:" + strings.Repeat("2", 64)},
+		Provenance:   testProvenanceEvidence(),
+		RightsHolder: testRightsHolderEvidence(),
 		Legal:        legal,
 		LegalRoot:    legalRoot,
 		Artifacts:    []ArtifactRequest{{Name: "manja", Kind: ArtifactBinary, Source: "git:test", Root: root, RootDigest: rootInventory.Digest}},
@@ -371,8 +379,8 @@ func TestPackValidatesLegalBytesBeforeCreatingOutput(t *testing.T) {
 
 	result, err := Pack(PackageRequest{
 		Subject:      SubjectEvidence{CommitSHA: strings.Repeat("a", 40), TreeSHA: strings.Repeat("b", 40)},
-		Provenance:   AuthorityEvidence{Status: StatusPass, Reference: "provenance-receipt", Digest: "sha256:" + strings.Repeat("1", 64)},
-		RightsHolder: AuthorityEvidence{Status: StatusPass, Reference: "rights-receipt", Digest: "sha256:" + strings.Repeat("2", 64)},
+		Provenance:   testProvenanceEvidence(),
+		RightsHolder: testRightsHolderEvidence(),
 		Legal:        legal,
 		LegalRoot:    legalRoot,
 		Artifacts:    []ArtifactRequest{{Name: "manja", Kind: ArtifactBinary, Source: "git:test", Root: root}},
@@ -398,8 +406,8 @@ func TestPackValidatesLegalFileModeBeforeCreatingOutput(t *testing.T) {
 
 	result, err := Pack(PackageRequest{
 		Subject:      SubjectEvidence{CommitSHA: strings.Repeat("a", 40), TreeSHA: strings.Repeat("b", 40)},
-		Provenance:   AuthorityEvidence{Status: StatusPass, Reference: "provenance-receipt", Digest: "sha256:" + strings.Repeat("1", 64)},
-		RightsHolder: AuthorityEvidence{Status: StatusPass, Reference: "rights-receipt", Digest: "sha256:" + strings.Repeat("2", 64)},
+		Provenance:   testProvenanceEvidence(),
+		RightsHolder: testRightsHolderEvidence(),
 		Legal:        legal, LegalRoot: legalRoot,
 		Artifacts: []ArtifactRequest{{Name: "manja", Kind: ArtifactBinary, Source: "git:test", Root: root, ExpectedDigest: "sha256:" + strings.Repeat("f", 64)}},
 		OutputDir: output,
@@ -431,8 +439,8 @@ func TestPackDoesNotLeaveArtifactsWhenLaterPackageFails(t *testing.T) {
 
 	result, err := Pack(PackageRequest{
 		Subject:      SubjectEvidence{CommitSHA: strings.Repeat("a", 40), TreeSHA: strings.Repeat("b", 40)},
-		Provenance:   AuthorityEvidence{Status: StatusPass, Reference: "provenance-receipt", Digest: "sha256:" + strings.Repeat("1", 64)},
-		RightsHolder: AuthorityEvidence{Status: StatusPass, Reference: "rights-receipt", Digest: "sha256:" + strings.Repeat("2", 64)},
+		Provenance:   testProvenanceEvidence(),
+		RightsHolder: testRightsHolderEvidence(),
 		Legal:        legal,
 		LegalRoot:    legalRoot,
 		Artifacts: []ArtifactRequest{
@@ -503,8 +511,8 @@ func TestPackRejectsUnsafeSBOMPlacement(t *testing.T) {
 
 	result, err := Pack(PackageRequest{
 		Subject:      SubjectEvidence{CommitSHA: strings.Repeat("a", 40), TreeSHA: strings.Repeat("b", 40)},
-		Provenance:   AuthorityEvidence{Status: StatusPass, Reference: "provenance-receipt", Digest: "sha256:" + strings.Repeat("1", 64)},
-		RightsHolder: AuthorityEvidence{Status: StatusPass, Reference: "rights-receipt", Digest: "sha256:" + strings.Repeat("2", 64)},
+		Provenance:   testProvenanceEvidence(),
+		RightsHolder: testRightsHolderEvidence(),
 		Legal:        legal, LegalRoot: legalRoot,
 		Artifacts: []ArtifactRequest{{Name: "manja", Kind: ArtifactBinary, Source: "git:test", Root: root}},
 		OutputDir: filepath.Join(t.TempDir(), "release"),
@@ -530,8 +538,8 @@ func TestPackRejectsUnsafeLegalPlacement(t *testing.T) {
 
 	result, err := Pack(PackageRequest{
 		Subject:      SubjectEvidence{CommitSHA: strings.Repeat("a", 40), TreeSHA: strings.Repeat("b", 40)},
-		Provenance:   AuthorityEvidence{Status: StatusPass, Reference: "provenance-receipt", Digest: "sha256:" + strings.Repeat("1", 64)},
-		RightsHolder: AuthorityEvidence{Status: StatusPass, Reference: "rights-receipt", Digest: "sha256:" + strings.Repeat("2", 64)},
+		Provenance:   testProvenanceEvidence(),
+		RightsHolder: testRightsHolderEvidence(),
 		Legal:        legal, LegalRoot: legalRoot,
 		Artifacts: []ArtifactRequest{{Name: "manja", Kind: ArtifactBinary, Source: "git:test", Root: root}},
 		OutputDir: output,
@@ -574,8 +582,8 @@ func TestPackRejectsMissingExpectedArchiveDigest(t *testing.T) {
 
 	result, err := Pack(PackageRequest{
 		Subject:      SubjectEvidence{CommitSHA: strings.Repeat("a", 40), TreeSHA: strings.Repeat("b", 40)},
-		Provenance:   AuthorityEvidence{Status: StatusPass, Reference: "provenance-receipt", Digest: "sha256:" + strings.Repeat("1", 64)},
-		RightsHolder: AuthorityEvidence{Status: StatusPass, Reference: "rights-receipt", Digest: "sha256:" + strings.Repeat("2", 64)},
+		Provenance:   testProvenanceEvidence(),
+		RightsHolder: testRightsHolderEvidence(),
 		Legal:        legal, LegalRoot: legalRoot,
 		Artifacts: []ArtifactRequest{{Name: "manja", Kind: ArtifactBinary, Source: "git:test", Root: root}},
 		OutputDir: output,
@@ -603,8 +611,8 @@ func TestPackDoesNotPackageOCIAsSyntheticTar(t *testing.T) {
 
 	result, err := Pack(PackageRequest{
 		Subject:      SubjectEvidence{CommitSHA: strings.Repeat("a", 40), TreeSHA: strings.Repeat("b", 40)},
-		Provenance:   AuthorityEvidence{Status: StatusPass, Reference: "provenance-receipt", Digest: "sha256:" + strings.Repeat("1", 64)},
-		RightsHolder: AuthorityEvidence{Status: StatusPass, Reference: "rights-receipt", Digest: "sha256:" + strings.Repeat("2", 64)},
+		Provenance:   testProvenanceEvidence(),
+		RightsHolder: testRightsHolderEvidence(),
 		Legal:        legal,
 		LegalRoot:    legalRoot,
 		Artifacts: []ArtifactRequest{{

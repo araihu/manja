@@ -50,6 +50,53 @@ func TestEvaluateRejectsLegalClaimBeforeAuthorityEvidence(t *testing.T) {
 	}
 }
 
+func TestEvaluateRejectsUnverifiedAuthorityAndMutableDependency(t *testing.T) {
+	evidence := validEvidence()
+	evidence.Provenance = AuthorityEvidence{
+		Status:    StatusPass,
+		Reference: "https://example.com/provenance/latest",
+		Digest:    "sha256:" + strings.Repeat("f", 64),
+		Receipt:   []byte("invented receipt"),
+	}
+	evidence.Dependencies[0].Version = "^1"
+	evidence.Dependencies[0].Source = "https://example.com/runtime/latest"
+
+	result := Evaluate(evidence, DefaultPolicy())
+	if result.Status != StatusBlocked || !result.HasCode("authority.provenance.reference_invalid") || !result.HasCode("authority.provenance.receipt_digest_mismatch") || !result.HasCode("dependency.version.invalid") || !result.HasCode("dependency.source.invalid") {
+		t.Fatalf("result = %#v, want unverified-authority and mutable-dependency blockers", result)
+	}
+}
+
+func TestResolveAuthorityBindsReferencedReceiptBytes(t *testing.T) {
+	root := t.TempDir()
+	writeTestFile(t, root, "docs/legal/provenance-receipt.txt", "provenance receipt")
+	input := testProvenanceEvidence()
+	input.resolved = false
+
+	resolved, err := ResolveAuthority(root, input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !resolved.resolved || !bytes.Equal(resolved.Receipt, input.Receipt) {
+		t.Fatalf("resolved authority = %#v", resolved)
+	}
+}
+
+func TestSerializedAuthorityCannotSelfAssertPass(t *testing.T) {
+	encoded, err := MarshalCanonical(validEvidence())
+	if err != nil {
+		t.Fatal(err)
+	}
+	decoded, err := DecodeStrict(bytes.NewReader(encoded))
+	if err != nil {
+		t.Fatal(err)
+	}
+	result := Evaluate(decoded, DefaultPolicy())
+	if result.Status != StatusBlocked || !result.HasCode("authority.provenance.unresolved") || !result.HasCode("authority.rights_holder.unresolved") {
+		t.Fatalf("result = %#v, want serialized authority to remain blocked", result)
+	}
+}
+
 func TestEvaluateRejectsUnknownDependencyAndTestOnlyLeak(t *testing.T) {
 	evidence := validEvidence()
 	evidence.Dependencies = append(evidence.Dependencies,
@@ -299,16 +346,8 @@ func validEvidence() Evidence {
 			CommitSHA: strings.Repeat("a", 40),
 			TreeSHA:   strings.Repeat("b", 40),
 		},
-		Provenance: AuthorityEvidence{
-			Status:    StatusPass,
-			Reference: "docs/legal/provenance.md#evidence",
-			Digest:    "sha256:" + strings.Repeat("3", 64),
-		},
-		RightsHolder: AuthorityEvidence{
-			Status:    StatusPass,
-			Reference: "docs/legal/rights-holder-confirmation.md",
-			Digest:    "sha256:" + strings.Repeat("4", 64),
-		},
+		Provenance:   testProvenanceEvidence(),
+		RightsHolder: testRightsHolderEvidence(),
 		Legal: LegalEvidence{
 			Holder:     "Verified Holder",
 			YearRange:  "2026",
@@ -323,7 +362,7 @@ func validEvidence() Evidence {
 				Version:   "v1.2.3",
 				License:   "MIT",
 				Scope:     ScopeShipped,
-				Source:    "https://example.com/runtime",
+				Source:    "https://example.com/runtime@aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
 				Digest:    "sha256:" + strings.Repeat("5", 64),
 			},
 			{
@@ -332,7 +371,7 @@ func validEvidence() Evidence {
 				Version:   "v2.3.4",
 				License:   "Apache-2.0",
 				Scope:     ScopeBuildOnly,
-				Source:    "https://example.com/tool",
+				Source:    "https://example.com/tool@bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
 				Digest:    "sha256:" + strings.Repeat("6", 64),
 			},
 		},
@@ -356,6 +395,26 @@ func validEvidence() Evidence {
 				},
 			},
 		},
+	}
+}
+
+func testProvenanceEvidence() AuthorityEvidence {
+	return AuthorityEvidence{
+		Status:    StatusPass,
+		Reference: "git:example.com/manja@" + strings.Repeat("a", 40) + ":docs/legal/provenance-receipt.txt#blob=a4f33c88285d57140c931a5342b9cb72a1583f25",
+		Digest:    "sha256:354f669fd34cc43c5b029902722e79350ee1eed8d197ebc98e3a4d3bf53aaf17",
+		Receipt:   []byte("provenance receipt"),
+		resolved:  true,
+	}
+}
+
+func testRightsHolderEvidence() AuthorityEvidence {
+	return AuthorityEvidence{
+		Status:    StatusPass,
+		Reference: "git:example.com/manja@" + strings.Repeat("b", 40) + ":docs/legal/rights-holder-receipt.txt#blob=00ace30a8b1db2d8afe5a51333d9137650e10e8a",
+		Digest:    "sha256:0690f2cc4e8e452e6d42a4b43db96dc9816f567573b7dcefb3aebd989daf305d",
+		Receipt:   []byte("rights receipt"),
+		resolved:  true,
 	}
 }
 

@@ -5,6 +5,8 @@
 package distribution
 
 import (
+	"crypto/sha1"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -63,11 +65,18 @@ type SubjectEvidence struct {
 }
 
 // AuthorityEvidence points at evidence for a gate. A PASS requires an
-// immutable reference and digest; a BLOCKED status is valid without either.
+// immutable reference, digest, exact receipt bytes, and in-process resolution;
+// a BLOCKED status is valid without either.
 type AuthorityEvidence struct {
 	Status    Status `json:"status"`
 	Reference string `json:"reference,omitempty"`
 	Digest    string `json:"digest,omitempty"`
+	// Receipt is the exact immutable receipt body named by Reference. PASS is
+	// impossible unless its SHA-256/SHA-384 digest and Git blob identity both
+	// match the supplied bytes.
+	Receipt []byte `json:"receipt,omitempty"`
+
+	resolved bool
 }
 
 // LegalEvidence describes required legal files only after authority is proved.
@@ -192,8 +201,11 @@ func (r Result) HasCode(code string) bool {
 }
 
 var (
-	sha1Pattern = regexp.MustCompile(`^[0-9a-f]{40}$`)
-	hexPattern  = regexp.MustCompile(`^[0-9a-f]+$`)
+	sha1Pattern               = regexp.MustCompile(`^[0-9a-f]{40}$`)
+	hexPattern                = regexp.MustCompile(`^[0-9a-f]+$`)
+	authorityReferencePattern = regexp.MustCompile(`^git:[^@\s]+@([0-9a-f]{40}):([^#\s]+)#blob=([0-9a-f]{40})$`)
+	immutableVersionPattern   = regexp.MustCompile(`^v?[0-9]+\.[0-9]+\.[0-9]+(?:[-+][0-9A-Za-z.-]+)?$`)
+	immutableSourcePattern    = regexp.MustCompile(`^(?:https?://|git:)[^@\s]+@[0-9a-f]{40}(?:$|[/:?#][^\s]*)`)
 )
 
 // Evaluate validates dependency and artifact evidence. It never upgrades a
@@ -213,10 +225,12 @@ func Evaluate(evidence Evidence, policy Policy) Result {
 		findings = append(findings, Finding{Code: "subject.tree.invalid", Detail: "tree must be a full lowercase Git SHA-1"})
 	}
 
-	findings = append(findings, validateAuthority("provenance", evidence.Provenance)...)
-	findings = append(findings, validateAuthority("rights_holder", evidence.RightsHolder)...)
+	provenanceFindings := validateAuthority("provenance", evidence.Provenance)
+	rightsHolderFindings := validateAuthority("rights_holder", evidence.RightsHolder)
+	findings = append(findings, provenanceFindings...)
+	findings = append(findings, rightsHolderFindings...)
 
-	blockedAuthority := evidence.Provenance.Status != StatusPass || evidence.RightsHolder.Status != StatusPass
+	blockedAuthority := evidence.Provenance.Status != StatusPass || evidence.RightsHolder.Status != StatusPass || len(provenanceFindings) > 0 || len(rightsHolderFindings) > 0
 	if blockedAuthority && hasLegalClaim(evidence.Legal) {
 		findings = append(findings, Finding{
 			Code:   "legal.materials.before_clearance",
@@ -254,11 +268,23 @@ func validateAuthority(name string, authority AuthorityEvidence) []Finding {
 	var findings []Finding
 	switch authority.Status {
 	case StatusPass:
-		if authority.Reference == "" {
-			findings = append(findings, Finding{Code: "authority." + name + ".reference_missing", Detail: "PASS requires an immutable evidence reference"})
+		matches := authorityReferencePattern.FindStringSubmatch(authority.Reference)
+		if matches == nil || unsafePath(matches[2]) {
+			findings = append(findings, Finding{Code: "authority." + name + ".reference_invalid", Detail: "PASS requires a canonical Git receipt reference with an immutable commit and blob"})
 		}
 		if !validDigest(authority.Digest) {
 			findings = append(findings, Finding{Code: "authority." + name + ".digest_invalid", Detail: "PASS requires a lowercase SHA-256 or SHA-384 digest"})
+		}
+		if len(authority.Receipt) == 0 {
+			findings = append(findings, Finding{Code: "authority." + name + ".receipt_missing", Detail: "PASS requires the exact immutable receipt bytes"})
+		} else if validDigest(authority.Digest) && digestForExpected(authority.Receipt, authority.Digest) != authority.Digest {
+			findings = append(findings, Finding{Code: "authority." + name + ".receipt_digest_mismatch", Detail: "receipt bytes do not match the supplied digest"})
+		}
+		if matches != nil && len(authority.Receipt) > 0 && gitBlobSHA1(authority.Receipt) != matches[3] {
+			findings = append(findings, Finding{Code: "authority." + name + ".receipt_blob_mismatch", Detail: "receipt bytes do not match the Git blob in the immutable reference"})
+		}
+		if !authority.resolved {
+			findings = append(findings, Finding{Code: "authority." + name + ".unresolved", Detail: "PASS requires a receipt resolved from the immutable reference, not a serialized caller assertion"})
 		}
 	case StatusBlocked:
 		findings = append(findings, Finding{Code: "authority." + name + ".blocked", Detail: "authority evidence is explicitly BLOCKED"})
@@ -266,6 +292,13 @@ func validateAuthority(name string, authority AuthorityEvidence) []Finding {
 		findings = append(findings, Finding{Code: "authority." + name + ".status_invalid", Detail: "authority status must be PASS or BLOCKED"})
 	}
 	return findings
+}
+
+func gitBlobSHA1(data []byte) string {
+	hash := sha1.New()
+	_, _ = fmt.Fprintf(hash, "blob %d\x00", len(data))
+	_, _ = hash.Write(data)
+	return hex.EncodeToString(hash.Sum(nil))
 }
 
 func hasLegalClaim(legal LegalEvidence) bool {
@@ -326,6 +359,8 @@ func validateDependencies(dependencies []DependencyEvidence) (map[string]Depende
 		}
 		if dependency.Source == "" {
 			findings = append(findings, Finding{Code: "dependency.source.missing", Subject: dependency.Name, Detail: "dependency source reference is required"})
+		} else if isMutableSource(dependency.Source) {
+			findings = append(findings, Finding{Code: "dependency.source.invalid", Subject: dependency.Name, Detail: "dependency source must include an immutable commit identity"})
 		}
 		if !validDigest(dependency.Digest) {
 			findings = append(findings, Finding{Code: "dependency.digest.invalid", Subject: dependency.Name, Detail: "dependency requires a lowercase SHA-256 or SHA-384 digest"})
@@ -568,12 +603,15 @@ func isUnknownLicense(value string) bool {
 }
 
 func isMutableVersion(value string) bool {
-	switch strings.ToLower(strings.TrimSpace(value)) {
-	case "latest", "main", "master", "head", "dev", "current":
+	value = strings.TrimSpace(value)
+	if value == "" || !immutableVersionPattern.MatchString(value) {
 		return true
-	default:
-		return false
 	}
+	return false
+}
+
+func isMutableSource(value string) bool {
+	return !immutableSourcePattern.MatchString(strings.TrimSpace(value))
 }
 
 func validDigest(value string) bool {

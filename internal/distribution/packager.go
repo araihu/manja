@@ -363,11 +363,13 @@ func GenerateSBOM(name, version string, dependencies []DependencyEvidence) ([]by
 			hashContent = strings.TrimPrefix(dependency.Digest, "sha384:")
 		}
 		components = append(components, SBOMComponent{
-			Type:     "library",
-			BomRef:   dependency.Ecosystem + ":" + dependency.Name + "@" + dependency.Version,
-			Name:     dependency.Name,
-			Version:  dependency.Version,
-			Scope:    string(dependency.Scope),
+			Type:    "library",
+			BomRef:  dependency.Ecosystem + ":" + dependency.Name + "@" + dependency.Version,
+			Name:    dependency.Name,
+			Version: dependency.Version,
+			// CycloneDX 1.5 uses required/optional/excluded; the internal
+			// shipped scope is mapped to required in the emitted document.
+			Scope:    "required",
 			Purl:     purl,
 			Licenses: []SBOMLicense{{License: SBOMLicenseID{ID: strings.TrimSpace(dependency.License)}}},
 			Hashes:   []SBOMHash{{Algorithm: hashAlgorithm, Content: hashContent}},
@@ -383,6 +385,9 @@ func GenerateSBOM(name, version string, dependencies []DependencyEvidence) ([]by
 		return nil, SBOMEvidence{}, fmt.Errorf("marshal SBOM: %w", err)
 	}
 	encoded = append(encoded, '\n')
+	if !sbomHasCompleteShape(encoded, encoded) {
+		return nil, SBOMEvidence{}, errors.New("generated CycloneDX 1.5 document failed schema-shape validation")
+	}
 	return encoded, SBOMEvidence{Format: "CycloneDX-JSON", Digest: sha256Digest(encoded), Complete: true}, nil
 }
 
@@ -454,8 +459,11 @@ func Pack(request PackageRequest, policy Policy) (PackageResult, error) {
 	}
 	authorityPassed := request.Provenance.Status == StatusPass && request.RightsHolder.Status == StatusPass
 	mechanicalFindings := make([]Finding, 0)
-	mechanicalFindings = append(mechanicalFindings, validateAuthority("provenance", request.Provenance)...)
-	mechanicalFindings = append(mechanicalFindings, validateAuthority("rights_holder", request.RightsHolder)...)
+	provenanceFindings := validateAuthority("provenance", request.Provenance)
+	rightsHolderFindings := validateAuthority("rights_holder", request.RightsHolder)
+	authorityPassed = authorityPassed && len(provenanceFindings) == 0 && len(rightsHolderFindings) == 0
+	mechanicalFindings = append(mechanicalFindings, provenanceFindings...)
+	mechanicalFindings = append(mechanicalFindings, rightsHolderFindings...)
 	artifactNames := make(map[string]struct{}, len(request.Artifacts))
 	for _, artifactRequest := range request.Artifacts {
 		mechanicalFindings = append(mechanicalFindings, validateLegalPlacement(policy, artifactRequest.Kind)...)
@@ -701,7 +709,7 @@ func sbomHasCompleteShape(actual, expected []byte) bool {
 		return false
 	}
 	for index, component := range actualDocument.Components {
-		if component.Type == "" || component.BomRef == "" || component.Name == "" || component.Version == "" || component.Scope != string(ScopeShipped) || len(component.Licenses) == 0 || len(component.Hashes) == 0 {
+		if component.Type == "" || component.BomRef == "" || component.Name == "" || component.Version == "" || component.Scope != "required" || len(component.Licenses) == 0 || len(component.Hashes) == 0 {
 			return false
 		}
 		if component.BomRef != expectedDocument.Components[index].BomRef {
