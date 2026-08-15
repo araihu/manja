@@ -943,6 +943,64 @@ func TestPreparedSchemaDetailBodyWithoutExampleMatchesCatalogSSRBytes(t *testing
 	}
 }
 
+func TestPreparedSchemaDetailMatchesCatalogSSRBytes(t *testing.T) {
+	t.Parallel()
+
+	data := catalogTemplateFixture()
+	document := data.Directory.Documents[0]
+	document.APIVersion = "v1"
+	data.Document = &document
+	data.DownloadHref = "/kubernetes/openapi/core-v1.json"
+	data.PageMarkdownHref = "/kubernetes/documents/core-v1/page.md?selected=schema"
+	detailID := domain.DetailID("detail-sha256-" + strings.Repeat("a", 64))
+	example := `{"type":"object","description":"<pod>"}`
+	detail := catalog.DetailRecordV1{ID: detailID, Kind: "schema", Schema: &projection.SchemaDetail{
+		ID: string(detailID), Anchor: string(detailID), Href: "documents/core-v1/?selected=" + string(detailID) + "#" + string(detailID),
+		HeadingID: string(detailID), Heading: "Pod schema", HeadingLevel: 2, Description: "Schema description.", SchemaRef: 7,
+		ExampleSchemaJSON: example,
+	}}
+	node, err := localrender.PrepareSchemaNode(detail, projection.SchemaNode{Ordinal: 7, ID: "node-pod", Name: "Pod", Type: "object"}, nil, "/kubernetes/documents/core-v1/")
+	if err != nil {
+		t.Fatal(err)
+	}
+	schema := domain.Schema{Name: detail.Schema.Heading, Description: detail.Schema.Description, Example: domain.SchemaExample{JSON: example}}
+	header, err := localrender.PrepareSchemaDetailHeader(detail, schema, document, &node)
+	if err != nil {
+		t.Fatal(err)
+	}
+	exampleFragment, err := localrender.PrepareSchemaDetailExample(detail, schema, document)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, err := localrender.PrepareSchemaDetailBody(detail, schema, document, &node, &exampleFragment)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fragment, err := localrender.PrepareSchemaDetail(detail, schema, document, &header, &body)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	data.Selected = &detail
+	data.SchemaView = &schema
+	data.SchemaNode = &node
+	data.SchemaDetailHeader = &header
+	data.SchemaDetailExample = &exampleFragment
+	data.SchemaDetailBody = &body
+	var legacy, delegated bytes.Buffer
+	if err := catalogSchemaDetail(data).Render(context.Background(), &legacy); err != nil {
+		t.Fatal(err)
+	}
+	data.SchemaDetail = &fragment
+	if err := catalogSchemaDetail(data).Render(context.Background(), &delegated); err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(legacy.Bytes(), delegated.Bytes()) {
+		index := firstDifferentByte(legacy.Bytes(), delegated.Bytes())
+		t.Fatalf("prepared schema detail changed complete SSR bytes at byte %d:\nlegacy=%q\ndelegated=%q", index, nearbyBytes(legacy.Bytes(), index), nearbyBytes(delegated.Bytes(), index))
+	}
+}
+
 func renderLegacySchemaDetailExample(example string) ([]byte, error) {
 	var output bytes.Buffer
 	if err := codeExample("Root JSON Schema", "json", example).Render(context.Background(), &output); err != nil {

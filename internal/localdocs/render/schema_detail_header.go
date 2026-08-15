@@ -20,8 +20,9 @@ var errInvalidSchemaDetailHeaderFragment = errors.New("local docs schema-detail 
 // shown above a prepared schema-node body. Actions and provenance stay at the
 // catalog composition boundary and are rendered through caller components.
 type SchemaDetailHeaderFragment struct {
-	data  schemaDetailHeaderData
-	valid bool
+	data    schemaDetailHeaderData
+	binding schemaDetailPreparationBinding
+	valid   bool
 }
 
 type schemaDetailHeaderData struct {
@@ -90,7 +91,11 @@ func PrepareSchemaDetailHeader(
 		Version: version, TypeLabel: typeLabel,
 		Title: projected.Heading, Description: projected.Description,
 	}
-	return SchemaDetailHeaderFragment{data: data, valid: true}, nil
+	binding, err := bindSchemaDetailPreparation(detail, document.Key)
+	if err != nil {
+		return SchemaDetailHeaderFragment{}, invalidSchemaDetailHeaderField("preparation context")
+	}
+	return SchemaDetailHeaderFragment{data: data, binding: binding, valid: true}, nil
 }
 
 // SchemaDetailHeader renders the admitted schema header with composition-owned

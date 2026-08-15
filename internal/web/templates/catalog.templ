@@ -131,6 +131,7 @@ type CatalogPageData struct {
 	SchemaDetailHeader *localrender.SchemaDetailHeaderFragment
 	SchemaDetailExample *localrender.SchemaDetailExampleFragment
 	SchemaDetailBody *localrender.SchemaDetailBodyFragment
+	SchemaDetail *localrender.SchemaDetailFragment
 	DownloadHref string
 	PageMarkdownHref string
 	CapabilityFooter CapabilityFooterData
@@ -1039,34 +1040,38 @@ templ catalogOrganizationAvatar(item CatalogOrganizationItem) {
 
 templ catalogSchemaDetail(data CatalogPageData) {
 	{{ schema := *data.Selected.Schema }}
-	<article id={ schema.Anchor } data-catalog-detail="schema" class="space-y-6">
-		if data.SchemaDetailHeader != nil {
-			@localrender.SchemaDetailHeader(*data.SchemaDetailHeader, catalogSchemaDetailActions(data, schema.Anchor), catalogSourceStatus(data))
-		}
-		if data.SchemaDetailBody != nil {
-			@localrender.SchemaDetailBody(*data.SchemaDetailBody)
-		} else {
-			if data.SchemaNode != nil && data.SchemaDetailExample != nil {
-				<div class="manja-schema-detail-layout">
-					<div class="manja-schema-tree-panel">
-						@localrender.SchemaNode(*data.SchemaNode)
-					</div>
-					<aside class="manja-schema-example-panel" aria-label="Root JSON Schema">
-						@localrender.SchemaDetailExample(*data.SchemaDetailExample)
-					</aside>
-				</div>
+	if data.SchemaDetail != nil {
+		@localrender.SchemaDetail(*data.SchemaDetail, catalogSchemaDetailActions(data, schema.Anchor), catalogSourceStatus(data))
+	} else {
+		<article id={ schema.Anchor } data-catalog-detail="schema" class="space-y-6">
+			if data.SchemaDetailHeader != nil {
+				@localrender.SchemaDetailHeader(*data.SchemaDetailHeader, catalogSchemaDetailActions(data, schema.Anchor), catalogSourceStatus(data))
+			}
+			if data.SchemaDetailBody != nil {
+				@localrender.SchemaDetailBody(*data.SchemaDetailBody)
 			} else {
-				if data.SchemaNode != nil {
-					@localrender.SchemaNode(*data.SchemaNode)
-				}
-				if data.SchemaDetailExample != nil {
-					<section aria-label="Root JSON Schema">
-						@localrender.SchemaDetailExample(*data.SchemaDetailExample)
-					</section>
+				if data.SchemaNode != nil && data.SchemaDetailExample != nil {
+					<div class="manja-schema-detail-layout">
+						<div class="manja-schema-tree-panel">
+							@localrender.SchemaNode(*data.SchemaNode)
+						</div>
+						<aside class="manja-schema-example-panel" aria-label="Root JSON Schema">
+							@localrender.SchemaDetailExample(*data.SchemaDetailExample)
+						</aside>
+					</div>
+				} else {
+					if data.SchemaNode != nil {
+						@localrender.SchemaNode(*data.SchemaNode)
+					}
+					if data.SchemaDetailExample != nil {
+						<section aria-label="Root JSON Schema">
+							@localrender.SchemaDetailExample(*data.SchemaDetailExample)
+						</section>
+					}
 				}
 			}
-		}
-	</article>
+		</article>
+	}
 }
 
 templ catalogSchemaDetailActions(data CatalogPageData, anchor string) {
