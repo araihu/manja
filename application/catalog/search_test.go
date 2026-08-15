@@ -367,6 +367,31 @@ func TestSearchDeadlineIsTypedAndDoesNotDisableService(t *testing.T) {
 	}
 }
 
+func TestSearchStaticRecordCacheStillVerifiesChildren(t *testing.T) {
+	t.Parallel()
+
+	service, snapshot := compiledSearchFixture(t)
+	reference := service.directory.RecordSegments[0]
+	segment := service.recordSegments[reference.Path].segment
+	if len(segment.Records) == 0 {
+		t.Fatal("static record cache is empty")
+	}
+
+	corrupt := *service
+	corrupt.children = make(map[string]ChildArtifact, len(service.children))
+	for pathValue, child := range service.children {
+		corrupt.children[pathValue] = child
+	}
+	child := corrupt.children[reference.Path]
+	child.Bytes = append([]byte(nil), child.Bytes...)
+	child.Bytes[len(child.Bytes)-1] ^= 1
+	corrupt.children[reference.Path] = child
+
+	if _, err := corrupt.Search(context.Background(), snapshot.ID, string(segment.Records[0].DetailID)); err == nil || !strings.Contains(err.Error(), "digest differs") {
+		t.Fatalf("corrupt static record child error = %v", err)
+	}
+}
+
 func TestSearchRejectsCorruptChildAndInvalidExactCoordinate(t *testing.T) {
 	t.Parallel()
 

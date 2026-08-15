@@ -52,12 +52,18 @@ func (query CanonicalSearchQuery) String() string {
 }
 
 type SearchService struct {
-	catalogID  string
-	snapshotID SnapshotID
-	directory  SearchDirectoryV1
-	children   map[string]ChildArtifact
-	child      func(context.Context, string, string, uint64, string) (ChildArtifact, error)
-	deadline   time.Duration
+	catalogID      string
+	snapshotID     SnapshotID
+	directory      SearchDirectoryV1
+	children       map[string]ChildArtifact
+	recordSegments map[string]searchRecordSegmentCacheEntry
+	child          func(context.Context, string, string, uint64, string) (ChildArtifact, error)
+	deadline       time.Duration
+}
+
+type searchRecordSegmentCacheEntry struct {
+	reference SearchRecordSegmentReferenceV1
+	segment   SearchRecordSegmentV1
 }
 
 func NewSearchService(snapshot CompiledSnapshot) (*SearchService, error) {
@@ -90,6 +96,10 @@ func NewSearchService(snapshot CompiledSnapshot) (*SearchService, error) {
 		return nil, err
 	}
 	service.children = children
+	service.recordSegments, err = prepareSearchRecordSegments(children, directory.RecordSegments)
+	if err != nil {
+		return nil, err
+	}
 	return service, nil
 }
 
@@ -487,12 +497,13 @@ func (service *SearchService) loadSearchRecords(ctx context.Context, recordIDs [
 		if err != nil {
 			return nil, err
 		}
-		var segment SearchRecordSegmentV1
-		if err := decodeCanonicalSearchChild(child.Bytes, &segment); err != nil {
-			return nil, fmt.Errorf("decode search record segment %q: %w", reference.Path, err)
-		}
-		if segment.SchemaVersion != 1 || segment.SearchVersion != searchVersion || segment.FirstRecord != reference.FirstRecord || len(segment.Records) != int(reference.Records) {
-			return nil, fmt.Errorf("search record segment %q is invalid", reference.Path)
+		cached, ok := service.recordSegments[reference.Path]
+		segment := cached.segment
+		if !ok || cached.reference != reference {
+			segment, err = decodeSearchRecordSegment(child, reference)
+			if err != nil {
+				return nil, err
+			}
 		}
 		for offset, record := range segment.Records {
 			byID[segment.FirstRecord+uint32(offset)] = record
@@ -507,6 +518,36 @@ func (service *SearchService) loadSearchRecords(ctx context.Context, recordIDs [
 		result = append(result, record)
 	}
 	return result, nil
+}
+
+func prepareSearchRecordSegments(children map[string]ChildArtifact, references []SearchRecordSegmentReferenceV1) (map[string]searchRecordSegmentCacheEntry, error) {
+	segments := make(map[string]searchRecordSegmentCacheEntry, len(references))
+	for _, reference := range references {
+		child, exists := children[reference.Path]
+		if !exists || child.Kind != "search-record" {
+			return nil, fmt.Errorf("search child %q is missing", reference.Path)
+		}
+		if err := verifySearchChild(child, reference.Length, reference.SHA256); err != nil {
+			return nil, err
+		}
+		segment, err := decodeSearchRecordSegment(child, reference)
+		if err != nil {
+			return nil, err
+		}
+		segments[reference.Path] = searchRecordSegmentCacheEntry{reference: reference, segment: segment}
+	}
+	return segments, nil
+}
+
+func decodeSearchRecordSegment(child ChildArtifact, reference SearchRecordSegmentReferenceV1) (SearchRecordSegmentV1, error) {
+	var segment SearchRecordSegmentV1
+	if err := decodeCanonicalSearchChild(child.Bytes, &segment); err != nil {
+		return SearchRecordSegmentV1{}, fmt.Errorf("decode search record segment %q: %w", reference.Path, err)
+	}
+	if segment.SchemaVersion != 1 || segment.SearchVersion != searchVersion || segment.FirstRecord != reference.FirstRecord || len(segment.Records) != int(reference.Records) {
+		return SearchRecordSegmentV1{}, fmt.Errorf("search record segment %q is invalid", reference.Path)
+	}
+	return segment, nil
 }
 
 func reserveSearchReference(receipt *searchLoadReceipt, reference SearchSegmentReferenceV1, maxSegments int) error {
