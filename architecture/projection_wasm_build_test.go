@@ -109,6 +109,18 @@ func TestSchemaDetailExampleFragmentUsesOneCanonicalCatalogComponent(t *testing.
 	}
 }
 
+func TestSchemaDetailBodyFragmentUsesOneCanonicalCatalogComponent(t *testing.T) {
+	root := repositoryRoot(t)
+	source, err := os.ReadFile(filepath.Join(root, "internal", "web", "templates", "catalog.templ"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(source)
+	if !strings.Contains(text, "@localrender.SchemaDetailBody(*data.SchemaDetailBody)") {
+		t.Fatal("catalog template does not delegate to canonical schema-detail body renderer")
+	}
+}
+
 func TestOperationHeaderFragmentUsesOneCanonicalComponent(t *testing.T) {
 	root := repositoryRoot(t)
 	source, err := os.ReadFile(filepath.Join(root, "internal", "web", "templates", "catalog.templ"))

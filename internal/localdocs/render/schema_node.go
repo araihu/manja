@@ -28,8 +28,9 @@ const (
 var errInvalidSchemaNodeFragment = errors.New("local docs schema-node fragment is invalid")
 
 type SchemaNodeFragment struct {
-	data  schemaNodeData
-	valid bool
+	data    schemaNodeData
+	binding schemaDetailPreparationBinding
+	valid   bool
 }
 
 type schemaNodeData struct {
@@ -158,7 +159,11 @@ func PrepareSchemaNode(detail catalog.DetailRecordV1, node projection.SchemaNode
 			return SchemaNodeFragment{}, err
 		}
 	}
-	return SchemaNodeFragment{data: data, valid: true}, nil
+	binding, err := bindSchemaDetailPreparation(detail, schemaDocumentKeyFromHref(documentHref))
+	if err != nil {
+		return SchemaNodeFragment{}, invalidField("preparation context")
+	}
+	return SchemaNodeFragment{data: data, binding: binding, valid: true}, nil
 }
 
 func validateSchemaDetail(detail catalog.DetailRecordV1, documentHref string) error {

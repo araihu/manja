@@ -377,6 +377,11 @@ func (handler *CatalogHandler) catalogPageDataWithSidebarQuery(
 					}
 					data.SchemaDetailExample = &schemaExample
 				}
+				schemaBody, err := localrender.PrepareSchemaDetailBody(detail, *data.SchemaView, document, data.SchemaNode, data.SchemaDetailExample)
+				if err != nil {
+					return templates.CatalogPageData{}, err
+				}
+				data.SchemaDetailBody = &schemaBody
 			}
 		} else if selectedNode != "" {
 			return templates.CatalogPageData{}, errCatalogPageNotFound

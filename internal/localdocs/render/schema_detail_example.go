@@ -20,8 +20,9 @@ var errInvalidSchemaDetailExampleFragment = errors.New("local docs schema-detail
 // below a prepared schema header. It receives already-prepared projection
 // content and never reparses source JSON.
 type SchemaDetailExampleFragment struct {
-	data  schemaDetailExampleData
-	valid bool
+	data    schemaDetailExampleData
+	binding schemaDetailPreparationBinding
+	valid   bool
 }
 
 type schemaDetailExampleData struct {
@@ -56,7 +57,11 @@ func PrepareSchemaDetailExample(detail catalog.DetailRecordV1, schema domain.Sch
 	if !utf8.ValidString(projected.ExampleSchemaJSON) || len(projected.ExampleSchemaJSON) > maximumHTMLFragmentBytes {
 		return SchemaDetailExampleFragment{}, invalidSchemaDetailExampleField("example bytes")
 	}
-	return SchemaDetailExampleFragment{data: schemaDetailExampleData{JSON: projected.ExampleSchemaJSON}, valid: true}, nil
+	binding, err := bindSchemaDetailPreparation(detail, document.Key)
+	if err != nil {
+		return SchemaDetailExampleFragment{}, invalidSchemaDetailExampleField("preparation context")
+	}
+	return SchemaDetailExampleFragment{data: schemaDetailExampleData{JSON: projected.ExampleSchemaJSON}, binding: binding, valid: true}, nil
 }
 
 // SchemaDetailExample renders the admitted schema example code block.
