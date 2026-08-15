@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"path"
 	"reflect"
+	"strconv"
 	"strings"
 	"unicode"
 	"unicode/utf8"
@@ -55,7 +56,8 @@ func validateCanonicalIdentity(name, value string, allowEmpty bool) error {
 }
 
 func validateUTF8Strings(name string, value any) error {
-	return validateUTF8Value(name, reflect.ValueOf(value), make(map[utf8Visit]struct{}))
+	path := utf8Path{root: name}
+	return validateUTF8Value(&path, reflect.ValueOf(value), make(map[utf8Visit]struct{}))
 }
 
 type utf8Visit struct {
@@ -63,7 +65,73 @@ type utf8Visit struct {
 	pointer uintptr
 }
 
-func validateUTF8Value(name string, value reflect.Value, visited map[utf8Visit]struct{}) error {
+type utf8PathSegmentKind uint8
+
+const (
+	utf8PathField utf8PathSegmentKind = iota
+	utf8PathMapKey
+	utf8PathMapValue
+	utf8PathIndex
+)
+
+type utf8PathSegment struct {
+	kind  utf8PathSegmentKind
+	field string
+	index int
+}
+
+type utf8Path struct {
+	root     string
+	segments []utf8PathSegment
+}
+
+func (p *utf8Path) pushField(field string) {
+	p.segments = append(p.segments, utf8PathSegment{kind: utf8PathField, field: field})
+}
+
+func (p *utf8Path) pushMapKey() {
+	p.segments = append(p.segments, utf8PathSegment{kind: utf8PathMapKey})
+}
+
+func (p *utf8Path) pushMapValue() {
+	p.segments = append(p.segments, utf8PathSegment{kind: utf8PathMapValue})
+}
+
+func (p *utf8Path) pushIndex(index int) {
+	p.segments = append(p.segments, utf8PathSegment{kind: utf8PathIndex, index: index})
+}
+
+func (p *utf8Path) pop() {
+	p.segments = p.segments[:len(p.segments)-1]
+}
+
+func (p *utf8Path) string() string {
+	var builder strings.Builder
+	builder.Grow(len(p.root) + len(p.segments)*4)
+	builder.WriteString(p.root)
+	for _, segment := range p.segments {
+		switch segment.kind {
+		case utf8PathField:
+			builder.WriteByte('.')
+			builder.WriteString(segment.field)
+		case utf8PathMapKey:
+			builder.WriteString(" map key")
+		case utf8PathMapValue:
+			builder.WriteString(" map value")
+		case utf8PathIndex:
+			builder.WriteByte('[')
+			builder.WriteString(strconv.Itoa(segment.index))
+			builder.WriteByte(']')
+		}
+	}
+	return builder.String()
+}
+
+func (p *utf8Path) invalidUTF8Error() error {
+	return fmt.Errorf("%s must contain valid UTF-8", p.string())
+}
+
+func validateUTF8Value(path *utf8Path, value reflect.Value, visited map[utf8Visit]struct{}) error {
 	if !value.IsValid() {
 		return nil
 	}
@@ -72,7 +140,7 @@ func validateUTF8Value(name string, value reflect.Value, visited map[utf8Visit]s
 		if value.IsNil() {
 			return nil
 		}
-		return validateUTF8Value(name, value.Elem(), visited)
+		return validateUTF8Value(path, value.Elem(), visited)
 	case reflect.Pointer:
 		if value.IsNil() {
 			return nil
@@ -82,10 +150,10 @@ func validateUTF8Value(name string, value reflect.Value, visited map[utf8Visit]s
 			return nil
 		}
 		visited[visit] = struct{}{}
-		return validateUTF8Value(name, value.Elem(), visited)
+		return validateUTF8Value(path, value.Elem(), visited)
 	case reflect.String:
 		if !utf8.ValidString(value.String()) {
-			return fmt.Errorf("%s must contain valid UTF-8", name)
+			return path.invalidUTF8Error()
 		}
 	case reflect.Struct:
 		typ := value.Type()
@@ -94,23 +162,35 @@ func validateUTF8Value(name string, value reflect.Value, visited map[utf8Visit]s
 			if field.PkgPath != "" {
 				continue
 			}
-			if err := validateUTF8Value(name+"."+field.Name, value.Field(index), visited); err != nil {
+			path.pushField(field.Name)
+			err := validateUTF8Value(path, value.Field(index), visited)
+			path.pop()
+			if err != nil {
 				return err
 			}
 		}
 	case reflect.Map:
 		iterator := value.MapRange()
 		for iterator.Next() {
-			if err := validateUTF8Value(name+" map key", iterator.Key(), visited); err != nil {
+			path.pushMapKey()
+			err := validateUTF8Value(path, iterator.Key(), visited)
+			path.pop()
+			if err != nil {
 				return err
 			}
-			if err := validateUTF8Value(name+" map value", iterator.Value(), visited); err != nil {
+			path.pushMapValue()
+			err = validateUTF8Value(path, iterator.Value(), visited)
+			path.pop()
+			if err != nil {
 				return err
 			}
 		}
 	case reflect.Slice, reflect.Array:
 		for index := 0; index < value.Len(); index++ {
-			if err := validateUTF8Value(fmt.Sprintf("%s[%d]", name, index), value.Index(index), visited); err != nil {
+			path.pushIndex(index)
+			err := validateUTF8Value(path, value.Index(index), visited)
+			path.pop()
+			if err != nil {
 				return err
 			}
 		}
