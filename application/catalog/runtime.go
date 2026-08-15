@@ -218,6 +218,29 @@ func (runtime *Runtime) FallbackMountDurably(
 	generation uint64,
 	persist func(*RouteTable) error,
 ) (*RouteTable, error) {
+	return runtime.fallbackMountDurably(mount, corrupt, generation, true, persist)
+}
+
+// DisableMountDurably removes a corrupt mount without promoting its previous
+// generation. Callers use this when the previous snapshot also fails
+// immutable preflight; serving an unverified fallback would resurrect bad
+// state under a different identity.
+func (runtime *Runtime) DisableMountDurably(
+	mount string,
+	corrupt SnapshotID,
+	generation uint64,
+	persist func(*RouteTable) error,
+) (*RouteTable, error) {
+	return runtime.fallbackMountDurably(mount, corrupt, generation, false, persist)
+}
+
+func (runtime *Runtime) fallbackMountDurably(
+	mount string,
+	corrupt SnapshotID,
+	generation uint64,
+	usePrevious bool,
+	persist func(*RouteTable) error,
+) (*RouteTable, error) {
 	if err := validateRuntimeMount(mount); err != nil {
 		return nil, err
 	}
@@ -232,7 +255,7 @@ func (runtime *Runtime) FallbackMountDurably(
 		return nil, fmt.Errorf("%w: mount %q no longer serves %q", ErrStaleSnapshot, mount, corrupt)
 	}
 	next := cloneRouteTable(current)
-	if state.Previous == nil {
+	if !usePrevious || state.Previous == nil {
 		delete(next.Mounts, mount)
 	} else {
 		next.Mounts[mount] = MountState{Active: cloneRuntimeSnapshot(*state.Previous)}

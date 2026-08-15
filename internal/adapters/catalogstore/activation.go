@@ -3,14 +3,17 @@ package catalogstore
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
+	"sort"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	"github.com/araihu/manja/application/catalog"
 	storeprimitives "github.com/araihu/manja/internal/adapters/store"
@@ -29,6 +32,18 @@ type ActivationReceipt struct {
 // after the complete next route table has been built and encoded. Either may
 // abort before the durable route pointer or runtime table changes.
 type ActivationAdmission func() error
+
+var (
+	ErrActivationPending  = errors.New("catalogstore: activation recovery pending")
+	ErrActivationIdentity = errors.New("catalogstore: activation identity mismatch")
+)
+
+const (
+	maxDurableRouteTableBytes     = 1 << 20
+	maxActivationJournalBytes     = 16 << 10
+	maxDurableMounts              = 64
+	maxArchivedActivationJournals = 16
+)
 
 type ActivationCoordinator struct {
 	store   *Store
@@ -53,13 +68,15 @@ type durableRouteTableV1 struct {
 }
 
 type durableMountV1 struct {
-	Active   catalog.SnapshotID `json:"active"`
-	Previous catalog.SnapshotID `json:"previous,omitempty"`
+	CatalogID string             `json:"catalogId,omitempty"`
+	Active    catalog.SnapshotID `json:"active"`
+	Previous  catalog.SnapshotID `json:"previous,omitempty"`
 }
 
 type activationJournalV1 struct {
 	SchemaVersion uint32             `json:"schemaVersion"`
 	Mount         string             `json:"mount"`
+	CatalogID     string             `json:"catalogId,omitempty"`
 	Candidate     catalog.SnapshotID `json:"candidate"`
 	ExpectedOld   catalog.SnapshotID `json:"expectedOld,omitempty"`
 	Generation    uint64             `json:"generation"`
@@ -120,6 +137,12 @@ func (coordinator *ActivationCoordinator) ActivateAdmitted(
 ) (ActivationReceipt, error) {
 	coordinator.commit.Lock()
 	defer coordinator.commit.Unlock()
+	if err := ctx.Err(); err != nil {
+		return ActivationReceipt{}, err
+	}
+	if err := coordinator.rejectPendingJournal(); err != nil {
+		return ActivationReceipt{}, err
+	}
 
 	materialization, err := coordinator.store.Publish(ctx, candidate)
 	if errors.Is(err, ErrStorageBudget) {
@@ -143,6 +166,9 @@ func (coordinator *ActivationCoordinator) ActivateAdmitted(
 	if err := coordinator.runtime.CheckMount(mount, expectedOld, generation); err != nil {
 		return ActivationReceipt{}, err
 	}
+	if state, exists := coordinator.runtime.Table().Mounts[mount]; exists && state.Active.Directory.CatalogID != verified.Directory.CatalogID {
+		return ActivationReceipt{}, fmt.Errorf("%w: mount %q catalog changed from %q to %q", ErrActivationIdentity, mount, state.Active.Directory.CatalogID, verified.Directory.CatalogID)
+	}
 	// Quiesce before taking Runtime's writer lock. In-flight renderers may need
 	// that lock while draining their existing admissions.
 	if quiesce != nil {
@@ -158,7 +184,7 @@ func (coordinator *ActivationCoordinator) ActivateAdmitted(
 			return ActivationReceipt{}, err
 		}
 	}
-	journal := activationJournalV1{SchemaVersion: 1, Mount: mount, Candidate: candidate.ID, ExpectedOld: expectedOld, Generation: generation}
+	journal := activationJournalV1{SchemaVersion: 1, Mount: mount, CatalogID: string(verified.Directory.CatalogID), Candidate: candidate.ID, ExpectedOld: expectedOld, Generation: generation}
 	persist := func(table *catalog.RouteTable) error {
 		data, err := encodeRouteTable(table)
 		if err != nil {
@@ -211,7 +237,7 @@ func (coordinator *ActivationCoordinator) writeRouteTable(table *catalog.RouteTa
 func encodeRouteTable(table *catalog.RouteTable) ([]byte, error) {
 	persisted := durableRouteTableV1{SchemaVersion: 1, Generation: table.Generation, Mounts: make(map[string]durableMountV1, len(table.Mounts))}
 	for mount, state := range table.Mounts {
-		entry := durableMountV1{Active: state.Active.ID}
+		entry := durableMountV1{CatalogID: state.Active.Directory.CatalogID, Active: state.Active.ID}
 		if state.Previous != nil {
 			entry.Previous = state.Previous.ID
 		}
@@ -264,13 +290,24 @@ func (coordinator *ActivationCoordinator) journalPath() string {
 }
 
 func decodeStrict[T any](data []byte, result *T) error {
+	if len(data) == 0 || !utf8.Valid(data) {
+		return fmt.Errorf("invalid UTF-8 or empty JSON")
+	}
 	decoder := json.NewDecoder(bytes.NewReader(data))
 	decoder.DisallowUnknownFields()
+	decoder.UseNumber()
 	if err := decoder.Decode(result); err != nil {
 		return err
 	}
 	if err := decoder.Decode(new(any)); !errors.Is(err, io.EOF) {
 		return fmt.Errorf("trailing JSON data")
+	}
+	canonical, err := json.Marshal(result)
+	if err != nil {
+		return fmt.Errorf("re-encode JSON: %w", err)
+	}
+	if !bytes.Equal(canonical, data) {
+		return fmt.Errorf("non-canonical JSON")
 	}
 	return nil
 }
@@ -280,9 +317,58 @@ func (coordinator *ActivationCoordinator) archiveJournal(data []byte) error {
 	if err := os.MkdirAll(directory, 0o700); err != nil {
 		return err
 	}
-	name := fmt.Sprintf("%d.json", time.Now().UTC().UnixNano())
+	digest := sha256.Sum256(data)
+	name := fmt.Sprintf("%d-%x.json", time.Now().UTC().UnixNano(), digest[:8])
 	if err := storeprimitives.DurableAtomicWrite(filepath.Join(directory, name), data, 0o600); err != nil {
 		return err
 	}
+	if err := coordinator.trimArchivedJournals(directory); err != nil {
+		return err
+	}
 	return coordinator.removeJournal()
+}
+
+func (coordinator *ActivationCoordinator) rejectPendingJournal() error {
+	_, err := os.Stat(coordinator.journalPath())
+	switch {
+	case err == nil:
+		return ErrActivationPending
+	case os.IsNotExist(err):
+		return nil
+	default:
+		return fmt.Errorf("catalogstore: inspect activation journal: %w", err)
+	}
+}
+
+func (coordinator *ActivationCoordinator) trimArchivedJournals(directory string) error {
+	entries, err := os.ReadDir(directory)
+	if err != nil {
+		return err
+	}
+	if len(entries) <= maxArchivedActivationJournals {
+		return nil
+	}
+	// ReadDir returns lexical order. Names contain a UTC nanosecond prefix, so
+	// the oldest archived entries sort first. Ignore non-JSON files rather than
+	// treating unrelated operator files as activation journals.
+	files := make([]os.DirEntry, 0, len(entries))
+	for _, entry := range entries {
+		if entry.IsDir() || filepath.Ext(entry.Name()) != ".json" {
+			continue
+		}
+		files = append(files, entry)
+	}
+	sort.Slice(files, func(left, right int) bool { return files[left].Name() < files[right].Name() })
+	remove := len(files) - maxArchivedActivationJournals
+	changed := false
+	for index := 0; index < remove; index++ {
+		if err := os.Remove(filepath.Join(directory, files[index].Name())); err != nil {
+			return err
+		}
+		changed = true
+	}
+	if changed {
+		return storeprimitives.SyncDirectory(directory)
+	}
+	return nil
 }

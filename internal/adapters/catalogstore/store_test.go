@@ -126,11 +126,15 @@ func compiledFixture(t *testing.T) catalog.CompiledSnapshot {
 }
 
 func compiledFixtureVersion(t *testing.T, suffix string) catalog.CompiledSnapshot {
+	return compiledFixtureCatalogVersion(t, "catalog", suffix)
+}
+
+func compiledFixtureCatalogVersion(t *testing.T, catalogID, suffix string) catalog.CompiledSnapshot {
 	t.Helper()
 	source := []byte(`{"openapi":"3.0.3","info":{"title":"Fixture","version":"v1"},"paths":{"/` + suffix + `":{"get":{"operationId":"list` + suffix + `","responses":{"200":{"description":"ok"}}}}}}`)
 	revisionDigest := sha256.Sum256(source)
 	candidate := domain.CatalogCandidate{
-		ID: "catalog", Title: "Catalog", DefaultDocumentKey: "fixture-v1", ProfileID: domain.CompatibilityProfileStrict,
+		ID: catalogID, Title: "Catalog", DefaultDocumentKey: "fixture-v1", ProfileID: domain.CompatibilityProfileStrict,
 		Revision:  domain.CatalogRevision{Kind: domain.CatalogRevisionFiles, ID: "files-fixture", ManifestDigest: hex.EncodeToString(revisionDigest[:])},
 		Documents: []domain.CatalogDocument{{Key: "fixture-v1", SourcePath: "fixture.json", Format: domain.CatalogFormatJSON, Bytes: source}},
 	}

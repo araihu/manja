@@ -1,6 +1,7 @@
 package catalogstore
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"os"
@@ -406,6 +407,95 @@ func TestActivationReclaimsUnreferencedStorageBeforeAdmissionRetry(t *testing.T)
 	}
 	if _, err := coordinator.store.Preflight(context.Background(), snapshot.ID); err != nil {
 		t.Fatalf("admitted snapshot unreadable after reclamation: %v", err)
+	}
+}
+
+func TestPendingActivationJournalBlocksLaterTransition(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	runtime := catalog.NewRuntime(1)
+	coordinator, err := OpenActivationCoordinator(context.Background(), root, runtime)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer coordinator.Close()
+	first := compiledFixtureVersion(t, "first")
+	second := compiledFixtureVersion(t, "second")
+	third := compiledFixtureVersion(t, "third")
+	if _, err := coordinator.Activate(context.Background(), "/catalog", "", 1, first); err != nil {
+		t.Fatal(err)
+	}
+	errCrash := errors.New("simulated process crash")
+	coordinator.hooks.afterJournal = func() error { return errCrash }
+	if _, err := coordinator.Activate(context.Background(), "/catalog", first.ID, 1, second); !errors.Is(err, errCrash) {
+		t.Fatalf("second activation error = %v, want %v", err, errCrash)
+	}
+	before := runtime.Table()
+	if _, err := coordinator.Activate(context.Background(), "/catalog", first.ID, 1, third); !errors.Is(err, ErrActivationPending) {
+		t.Fatalf("third activation error = %v, want %v", err, ErrActivationPending)
+	}
+	after := runtime.Table()
+	if after.Generation != before.Generation || after.Mounts["/catalog"].Active.ID != before.Mounts["/catalog"].Active.ID {
+		t.Fatalf("pending activation changed last-known-good route: before=%#v after=%#v", before, after)
+	}
+	journal, err := os.ReadFile(coordinator.journalPath())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Contains(journal, []byte(second.ID)) || bytes.Contains(journal, []byte(third.ID)) {
+		t.Fatalf("pending journal changed after rejected transition: %s", journal)
+	}
+}
+
+func TestActivationRejectsCatalogIdentityChange(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	runtime := catalog.NewRuntime(1)
+	coordinator, err := OpenActivationCoordinator(context.Background(), root, runtime)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer coordinator.Close()
+	first := compiledFixtureCatalogVersion(t, "catalog", "first")
+	other := compiledFixtureCatalogVersion(t, "other", "other")
+	if _, err := coordinator.Activate(context.Background(), "/catalog", "", 1, first); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := coordinator.Activate(context.Background(), "/catalog", first.ID, 1, other); !errors.Is(err, ErrActivationIdentity) {
+		t.Fatalf("cross-catalog activation error = %v, want %v", err, ErrActivationIdentity)
+	}
+	if active := runtime.Table().Mounts["/catalog"].Active.ID; active != first.ID {
+		t.Fatalf("cross-catalog activation changed active LKG to %q, want %q", active, first.ID)
+	}
+}
+
+func TestHandleCorruptionDoesNotResurrectCorruptPrevious(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	runtime := catalog.NewRuntime(1)
+	coordinator, err := OpenActivationCoordinator(context.Background(), root, runtime)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer coordinator.Close()
+	first := compiledFixtureVersion(t, "first")
+	second := compiledFixtureVersion(t, "second")
+	if _, err := coordinator.Activate(context.Background(), "/catalog", "", 1, first); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := coordinator.Activate(context.Background(), "/catalog", first.ID, 1, second); err != nil {
+		t.Fatal(err)
+	}
+	corruptCompiledChild(t, coordinator.store, first)
+	corruptCompiledChild(t, coordinator.store, second)
+	if err := coordinator.HandleCorruption(context.Background(), "/catalog", second.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, exists := runtime.Table().Mounts["/catalog"]; exists {
+		t.Fatalf("corruption fallback resurrected an invalid previous snapshot: %#v", runtime.Table())
 	}
 }
 

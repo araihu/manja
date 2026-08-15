@@ -2,6 +2,7 @@ package catalogstore
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -61,11 +62,34 @@ func (coordinator *ActivationCoordinator) HandleCorruption(ctx context.Context, 
 	coordinator.commit.Lock()
 	defer coordinator.commit.Unlock()
 	table := coordinator.runtime.Table()
-	next, err := coordinator.runtime.FallbackMountDurably(mount, snapshotID, table.Generation, coordinator.writeRouteTable)
-	if err != nil {
+	state, exists := table.Mounts[mount]
+	if !exists || state.Active.ID != snapshotID {
+		return fmt.Errorf("%w: mount %q no longer serves %q", catalog.ErrStaleSnapshot, mount, snapshotID)
+	}
+	if err := coordinator.rejectPendingJournal(); err != nil {
 		return err
 	}
-	_ = next
+	if state.Previous != nil {
+		if _, err := coordinator.store.Preflight(ctx, state.Previous.ID); err != nil {
+			if !errors.Is(err, ErrCorruptSnapshot) {
+				return err
+			}
+			// Remove the mount durably before quarantine. A failed quarantine
+			// must never leave an unverified previous generation serving.
+			if _, disableErr := coordinator.runtime.DisableMountDurably(mount, snapshotID, table.Generation, coordinator.writeRouteTable); disableErr != nil {
+				return disableErr
+			}
+			if err := coordinator.quarantine(state.Previous.ID); err != nil {
+				return err
+			}
+		} else {
+			if _, err := coordinator.runtime.FallbackMountDurably(mount, snapshotID, table.Generation, coordinator.writeRouteTable); err != nil {
+				return err
+			}
+		}
+	} else if _, err := coordinator.runtime.DisableMountDurably(mount, snapshotID, table.Generation, coordinator.writeRouteTable); err != nil {
+		return err
+	}
 	if err := coordinator.quarantine(snapshotID); err != nil {
 		return err
 	}
