@@ -1349,3 +1349,15 @@ notices stay separate, and licensing/package-generation Task 8 remains stopped.
 Hosted SaaS stays deferred, active-theme work stays excluded, and unbounded
 browser/offline/lifecycle behavior stays outside OC-04AE and OC-03. No merge,
 release, deployment, cleanup, or other lifecycle action is authorized here.
+
+### Round-3 reconciler baseline (2026-08-15)
+
+This dedicated round-3 ref starts from frozen feature head
+`e67e2b1b0b10904b9800aa4b47c6d1dcebb423ed`, tree
+`1e37ccea7ac9e198c13f4d4089c913e15ecf2b86`, parent
+`eccc468013b5b93eb48929db2071d6aa7b1a150f`, and merge-base
+`origin/main` `507c5ea9fcdc8cee670a023dbb82f348ba2ed763`. Two Luna Max packets
+are expected: OC-04 offline hardening and OC-02 artifact package gate. OC-01/
+OC-02 external handoff bytes remain preserved and out of scope. Compare exact
+base/head/tree/status and owned paths before any selection; reviews, merge,
+release, deployment, cleanup, and other lifecycle actions remain held.
