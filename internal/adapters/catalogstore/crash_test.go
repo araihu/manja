@@ -294,3 +294,66 @@ func TestRecoveryDoesNotGuessLegacyFallbackCatalogIdentity(t *testing.T) {
 		t.Fatalf("legacy route table guessed a fallback catalog: %#v", recoveredRuntime.Table())
 	}
 }
+
+func TestRecoveryPreservesHealthyActiveWhenPreviousCatalogDiffers(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	coordinator, err := OpenActivationCoordinator(context.Background(), root, catalog.NewRuntime(1))
+	if err != nil {
+		t.Fatal(err)
+	}
+	active := compiledFixtureCatalogVersion(t, "catalog", "active")
+	previous := compiledFixtureCatalogVersion(t, "other", "previous")
+	for _, snapshot := range []catalog.CompiledSnapshot{active, previous} {
+		if _, err := coordinator.store.Publish(context.Background(), snapshot); err != nil {
+			_ = coordinator.Close()
+			t.Fatal(err)
+		}
+	}
+	routes, err := json.Marshal(durableRouteTableV1{
+		SchemaVersion: 1,
+		Generation:    1,
+		Mounts: map[string]durableMountV1{
+			"/catalog": {CatalogID: "catalog", Active: active.ID, Previous: previous.ID},
+		},
+	})
+	if err != nil {
+		_ = coordinator.Close()
+		t.Fatal(err)
+	}
+	if err := coordinator.writeRouteTableBytes(routes); err != nil {
+		_ = coordinator.Close()
+		t.Fatal(err)
+	}
+	if err := coordinator.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	recoveredRuntime := catalog.NewRuntime(0)
+	recovered, err := OpenActivationCoordinator(context.Background(), root, recoveredRuntime)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer recovered.Close()
+	state, exists := recoveredRuntime.Table().Mounts["/catalog"]
+	if !exists || state.Active.ID != active.ID || state.Previous != nil {
+		t.Fatalf("healthy active was not retained after rejecting mismatched previous: %#v", recoveredRuntime.Table())
+	}
+	if _, err := os.Stat(filepath.Join(root, "quarantine", string(previous.ID))); err != nil {
+		t.Fatalf("mismatched previous snapshot was not quarantined: %v", err)
+	}
+
+	persisted, err := os.ReadFile(filepath.Join(root, "state", "routes.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var table durableRouteTableV1
+	if err := decodeStrict(persisted, &table); err != nil {
+		t.Fatal(err)
+	}
+	entry := table.Mounts["/catalog"]
+	if entry.Active != active.ID || entry.Previous != "" || entry.CatalogID != "catalog" {
+		t.Fatalf("repaired route entry = %#v", entry)
+	}
+}

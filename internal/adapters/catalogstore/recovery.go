@@ -146,9 +146,12 @@ func (coordinator *ActivationCoordinator) restoreDurableRoutes(ctx context.Conte
 					if quarantineErr := coordinator.quarantine(entry.Previous); quarantineErr != nil {
 						return quarantineErr
 					}
-					continue
+					// Active is already verified. Drop only the mismatched
+					// previous generation; never turn a healthy route into a
+					// missing mount because rollback metadata is corrupt.
+				} else {
+					state.Previous = &previous
 				}
-				state.Previous = &previous
 			}
 		}
 		table.Mounts[mount] = state
