@@ -1076,6 +1076,55 @@ Technical, design, and product reviews are suspended. No review starts until
 an explicit user signal. Merge, release, deployment, cleanup, and other
 lifecycle actions remain unauthorized.
 
+### Frozen packet reconciliation (2026-08-15)
+
+OC-04AC frozen packet: worktree `/tmp/manja-oc04ac-hybrid-eligibility`, branch
+`codex/oc04ac-hybrid-eligibility`, exact head
+`5da9abad2b5b53d08597b1357fb002e212f7d6cd`, tree
+`c86ce4a9e36ad1785bff1ee05611b0dcec883a02`, parent/base
+`c20241437b6309b5ce73d8ab30f14e3be9812552` / tree
+`ea4643cc4b5b61226c859c3880ab727488d9a098`, clean status. Its bounded scope
+binds public descriptor resources with fail-closed CatalogID/manifest identity,
+canonical manifest/catalog/search/projection URLs, immutable copies, and
+admission; it does not add lifecycle or hosted behavior.
+
+OC-02 frozen packet: worktree
+`/Users/guilhermecastro/.codex/worktrees/oc02-luna-max/manja`, branch
+`codex/oc02-legal-luna-max`, exact head
+`3ee22169626fb12fef5cd4fa7c542d64e7f9dfcb`, tree
+`f2c4c3f964d1f20aab405dd04f7b69d9cc9338dd`, parent/base
+`c20241437b6309b5ce73d8ab30f14e3be9812552` / tree
+`ea4643cc4b5b61226c859c3880ab727488d9a098`, clean status. Its bounded scope
+adds the distribution evidence gate and legal documentation while preserving
+strict rights authority, attribution, SBOM, digest, package, and OCI checks;
+provenance remains `BLOCKED` and no artifacts are invented.
+
+Frozen packet paths are disjoint: OC-04AC owns `internal/localdocs/**` and
+`internal/web/catalog_enhancement*`; OC-02 owns `cmd/distribution-gate/**`,
+`internal/distribution/**`, and `docs/legal/distribution-gate.md`. Both packets
+are therefore compatible and selected unchanged. Their original frozen refs
+and worktrees remain preserved. Reconciliation cherry-picked OC-04AC as
+`3ae4ff2bfe8810e89eb837c90012679c9aa7086e` and OC-02 as
+`7dd2de55c1ece08471b19a82c6ac7a2b6b33a284`; these are scope dispositions, not
+technical, design, or product review verdicts.
+
+Post-reconciliation receipts: focused localdocs/web/distribution, architecture
+and Wasm-boundary, webassets, vet, `GOWORK=off go mod tidy -diff`, templ
+generation (`updates=0`), strict Muamba sync/verify/generate-go check, Redocly
+bundle/lint, API code generation, root `GOWORK=off go test ./... -count=1`, and
+site `GOWORK=off go test ./... -count=1` passed; generated and tracked trees
+remained clean. Root race remains blocked only by timing failures:
+`application/catalog` `TestCompilerCompilesCompleteLockedKubernetesCatalog`
+ended with `global Kubernetes search "apps v1 deployment": search_deadline`
+after 297.99s, and `internal/selfhosted`
+`TestDefaultGitHubFixtureStartsWithinDeadline` hit a 30s startup deadline in
+the full run. The isolated self-hosted rerun passed in 12.430s; isolated
+catalog rerun reproduced `search_deadline` after 227.84s. Other race packages
+passed. These external blockers remain explicit and do not become acceptance.
+
+No technical, design, or product review has started. Merge, release,
+deployment, cleanup, and other lifecycle actions remain unauthorized.
+
 ## PR Gate
 
 At `2026-08-11T18:54:35Z`, [PR
