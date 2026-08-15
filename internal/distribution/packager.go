@@ -388,8 +388,9 @@ func GenerateSBOM(name, version string, dependencies []DependencyEvidence) ([]by
 
 // ArtifactRequest describes one actual root to package. RootDigest, when
 // supplied, must equal the canonical complete-root digest before packaging.
-// ExpectedDigest, when supplied, must equal the resulting deterministic tar
-// bytes. The two checks prevent source-root and final-artifact substitution.
+// ExpectedDigest must be an independently supplied digest of the resulting
+// deterministic tar bytes. The two checks prevent source-root and
+// final-artifact substitution.
 type ArtifactRequest struct {
 	Name                     string             `json:"name"`
 	Kind                     ArtifactKind       `json:"kind"`
@@ -630,6 +631,9 @@ func inspectRequestedArtifact(request ArtifactRequest, policy Policy, dependenci
 	}
 	if request.ExpectedDigest != "" && !validDigest(request.ExpectedDigest) {
 		findings = append(findings, Finding{Code: "artifact.digest.invalid", Subject: request.Name, Detail: "expected artifact digest must be immutable"})
+	}
+	if request.ExpectedDigest == "" {
+		findings = append(findings, Finding{Code: "artifact.archive.digest_missing", Subject: request.Name, Detail: "packaging PASS requires an independently supplied expected archive digest"})
 	}
 	if generateMaterials {
 		sbomBytes, sbom, err := GenerateSBOM(request.Name, "", dependenciesForArtifact(request.Dependencies, dependencies))

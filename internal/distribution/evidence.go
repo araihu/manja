@@ -516,6 +516,9 @@ func validateFile(file FileEvidence, expectedPath string) []Finding {
 	if file.Size <= 0 {
 		findings = append(findings, Finding{Code: "artifact.file.size_invalid", Subject: file.Path, Detail: "file size must be positive"})
 	}
+	if file.Mode == 0 || file.Mode&^uint32(0o777) != 0 {
+		findings = append(findings, Finding{Code: "artifact.file.mode_invalid", Subject: file.Path, Detail: "file mode must contain explicit portable permission bits"})
+	}
 	if !validDigest(file.Digest) {
 		findings = append(findings, Finding{Code: "artifact.file.digest_invalid", Subject: file.Path, Detail: "file requires a lowercase SHA-256 or SHA-384 digest"})
 	}

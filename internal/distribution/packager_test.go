@@ -218,7 +218,7 @@ func TestPackReportsMissingOutputDirectoryAfterGates(t *testing.T) {
 		Provenance:   AuthorityEvidence{Status: StatusPass, Reference: "provenance-receipt", Digest: "sha256:" + strings.Repeat("1", 64)},
 		RightsHolder: AuthorityEvidence{Status: StatusPass, Reference: "rights-receipt", Digest: "sha256:" + strings.Repeat("2", 64)},
 		Legal:        legal, LegalRoot: legalRoot,
-		Artifacts: []ArtifactRequest{{Name: "manja", Kind: ArtifactBinary, Source: "git:test", Root: root}},
+		Artifacts: []ArtifactRequest{{Name: "manja", Kind: ArtifactBinary, Source: "git:test", Root: root, ExpectedDigest: "sha256:" + strings.Repeat("f", 64)}},
 	}, DefaultPolicy())
 	if err == nil {
 		t.Fatal("Pack accepted a missing output directory")
@@ -248,13 +248,15 @@ func TestPackPassesSyntheticAuthorityAndPlacesNotices(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	artifactRequest := ArtifactRequest{Name: "manja", Kind: ArtifactBinary, Source: "git:test", Root: root, RootDigest: rootInventory.Digest}
+	artifactRequest.ExpectedDigest = expectedPackageDigest(t, artifactRequest, DefaultPolicy(), legalRoot, legal, nil)
 	output := filepath.Join(t.TempDir(), "release")
 	packageRequest := PackageRequest{
 		Subject:      SubjectEvidence{CommitSHA: strings.Repeat("a", 40), TreeSHA: strings.Repeat("b", 40)},
 		Provenance:   AuthorityEvidence{Status: StatusPass, Reference: "provenance-receipt", Digest: "sha256:" + strings.Repeat("1", 64)},
 		RightsHolder: AuthorityEvidence{Status: StatusPass, Reference: "rights-receipt", Digest: "sha256:" + strings.Repeat("2", 64)},
 		Legal:        legal, LegalRoot: legalRoot,
-		Artifacts: []ArtifactRequest{{Name: "manja", Kind: ArtifactBinary, Source: "git:test", Root: root, RootDigest: rootInventory.Digest}},
+		Artifacts: []ArtifactRequest{artifactRequest},
 		OutputDir: output,
 	}
 	result, err := Pack(packageRequest, DefaultPolicy())
@@ -370,6 +372,8 @@ func TestPackDoesNotLeaveArtifactsWhenLaterPackageFails(t *testing.T) {
 	legalRoot, legal := testLegalEvidence(t)
 	output := filepath.Join(t.TempDir(), "release")
 	wrongDigest := "sha256:" + strings.Repeat("f", 64)
+	firstRequest := ArtifactRequest{Name: "first", Kind: ArtifactBinary, Source: "git:first", Root: firstRoot}
+	firstRequest.ExpectedDigest = expectedPackageDigest(t, firstRequest, DefaultPolicy(), legalRoot, legal, nil)
 
 	result, err := Pack(PackageRequest{
 		Subject:      SubjectEvidence{CommitSHA: strings.Repeat("a", 40), TreeSHA: strings.Repeat("b", 40)},
@@ -378,7 +382,7 @@ func TestPackDoesNotLeaveArtifactsWhenLaterPackageFails(t *testing.T) {
 		Legal:        legal,
 		LegalRoot:    legalRoot,
 		Artifacts: []ArtifactRequest{
-			{Name: "first", Kind: ArtifactBinary, Source: "git:first", Root: firstRoot},
+			firstRequest,
 			{Name: "second", Kind: ArtifactBinary, Source: "git:second", Root: secondRoot, ExpectedDigest: wrongDigest},
 		},
 		OutputDir: output,
@@ -456,6 +460,31 @@ func TestPackRejectsUnsafeSBOMPlacement(t *testing.T) {
 	}
 	if result.Result.Status != StatusBlocked || !result.Result.HasCode("artifact.sbom.path_unsafe") {
 		t.Fatalf("result = %#v, want unsafe-SBOM-path blocker", result.Result)
+	}
+}
+
+func TestPackRejectsMissingExpectedArchiveDigest(t *testing.T) {
+	root := t.TempDir()
+	writeTestFile(t, root, "bin/manja", "binary")
+	legalRoot, legal := testLegalEvidence(t)
+	output := filepath.Join(t.TempDir(), "release")
+
+	result, err := Pack(PackageRequest{
+		Subject:      SubjectEvidence{CommitSHA: strings.Repeat("a", 40), TreeSHA: strings.Repeat("b", 40)},
+		Provenance:   AuthorityEvidence{Status: StatusPass, Reference: "provenance-receipt", Digest: "sha256:" + strings.Repeat("1", 64)},
+		RightsHolder: AuthorityEvidence{Status: StatusPass, Reference: "rights-receipt", Digest: "sha256:" + strings.Repeat("2", 64)},
+		Legal:        legal, LegalRoot: legalRoot,
+		Artifacts: []ArtifactRequest{{Name: "manja", Kind: ArtifactBinary, Source: "git:test", Root: root}},
+		OutputDir: output,
+	}, DefaultPolicy())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Result.Status != StatusBlocked || !result.Result.HasCode("artifact.archive.digest_missing") {
+		t.Fatalf("result = %#v, want missing-independent-digest blocker", result.Result)
+	}
+	if _, err := os.Stat(output); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("output directory exists without independent digest: %v", err)
 	}
 }
 
@@ -546,8 +575,12 @@ func fileEvidenceFromPath(t *testing.T, root, relative string) FileEvidence {
 	if err != nil {
 		t.Fatal(err)
 	}
+	info, err := os.Stat(pathValue)
+	if err != nil {
+		t.Fatal(err)
+	}
 	digest := sha256.Sum256(data)
-	return FileEvidence{Path: relative, Type: "regular", Size: int64(len(data)), Digest: "sha256:" + hex.EncodeToString(digest[:])}
+	return FileEvidence{Path: relative, Type: "regular", Size: int64(len(data)), Mode: uint32(info.Mode().Perm()), Digest: "sha256:" + hex.EncodeToString(digest[:])}
 }
 
 func inventoryHas(files []FileEvidence, pathValue string) bool {
@@ -586,4 +619,24 @@ func testLegalEvidence(t *testing.T) (string, LegalEvidence) {
 		Notice:     fileEvidenceFromPath(t, legalRoot, "NOTICE"),
 		ThirdParty: fileEvidenceFromPath(t, legalRoot, "THIRD_PARTY_NOTICES.md"),
 	}
+}
+
+func expectedPackageDigest(t *testing.T, request ArtifactRequest, policy Policy, legalRoot string, legal LegalEvidence, dependencies []DependencyEvidence) string {
+	t.Helper()
+	prepareRequest := request
+	prepareRequest.ExpectedDigest = "sha256:" + strings.Repeat("0", 64)
+	artifact, findings := inspectRequestedArtifact(prepareRequest, policy, dependencies, true)
+	if len(findings) != 0 {
+		t.Fatalf("inspectRequestedArtifact findings = %#v", findings)
+	}
+	packaged, _, err := packageOne(request, artifact, PackageRequest{
+		Legal:        legal,
+		LegalRoot:    legalRoot,
+		Dependencies: dependencies,
+		OutputDir:    t.TempDir(),
+	}, policy)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return packaged.Digest
 }

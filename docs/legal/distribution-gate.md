@@ -26,13 +26,13 @@ license identifier, scope (`shipped`, `build-only`, or `test-only`), source,
 and a reproducible digest. For each produced artifact, it records the exact
 source identity and digest, a complete/fresh/digest-bound inspection receipt,
 a complete CycloneDX-JSON or SPDX-JSON SBOM receipt, and a recursive regular
-file inventory with sizes and digests. Artifact dependency names must resolve
+file inventory with sizes, explicit portable permission modes, and digests. Artifact dependency names must resolve
 to exactly one dependency evidence record; build-only and test-only records
 cannot enter a produced artifact.
 
 `LICENSE`, `NOTICE`, and `THIRD_PARTY_NOTICES.md` are required in every
 runtime artifact only after both authority receipts are `PASS`. Their file
-paths, regular-file type, positive size, and immutable digest are checked
+paths, regular-file type, positive size, explicit portable permission mode, and immutable digest are checked
 against the actual source/final bytes. The packager copies caller-supplied
 legal bytes only after that clearance; it never synthesizes their contents.
 The same required paths must be present in the final artifact inventory.

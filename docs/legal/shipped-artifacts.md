@@ -145,12 +145,14 @@ build do not have a durable lawful pin for the exact macOS renderer and system
 Arial font bytes. That acquisition gate, the complete composition's first-party
 authority, and the separate Kubernetes preview provenance remain blocked.
 
-The public product site is not social-ready at this snapshot. `/` and `/docs`
-render route-specific title and description in initial HTML, but emit no
-canonical URL, `og:url`, other Open Graph tags, explicit X Card tags, or social
-preview image. `site/internal/site/static` contains no preview image. This is a
-release artifact gap, not authorization to edit the site or its styling in
-OC-01.
+The current HEAD product-site handler emits route-specific title and
+description, canonical URLs, `og:url`, the required Open Graph fields, explicit
+X Card tags, and the tracked Manja preview URL in initial HTML for `/` and
+`/docs`. The site handler also serves the Manja preview at
+`/manja-assets/manja-social.png`; the focused tests verify its PNG bytes and
+dimensions. These are current source/test observations, not proof of deployed
+or lawfully cleared bytes. Portable preview regeneration, complete first-party
+authority, and redistribution remain **BLOCKED**.
 
 ## Required Gate Before Distribution
 

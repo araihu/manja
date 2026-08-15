@@ -150,6 +150,16 @@ func TestEvaluateRejectsIncompleteSBOM(t *testing.T) {
 	}
 }
 
+func TestEvaluateRejectsMissingFileMode(t *testing.T) {
+	evidence := validEvidence()
+	evidence.Artifacts[0].Files[0].Mode = 0
+
+	result := Evaluate(evidence, DefaultPolicy())
+	if result.Status != StatusBlocked || !result.HasCode("artifact.file.mode_invalid") {
+		t.Fatalf("result = %#v, want missing-mode blocker", result)
+	}
+}
+
 func TestEvaluateRejectsSBOMDigestDifferentFromInventory(t *testing.T) {
 	evidence := validEvidence()
 	evidence.Artifacts[0].Files[3].Digest = "sha256:" + strings.Repeat("b", 64)
@@ -342,7 +352,7 @@ func validEvidence() Evidence {
 					validFile("LICENSE", 11),
 					validFile("NOTICE", 7),
 					validFile("THIRD_PARTY_NOTICES.md", 23),
-					{Path: "sbom/manja-runtime.cdx.json", Type: "regular", Size: 31, Digest: "sha256:" + strings.Repeat("a", 64)},
+					{Path: "sbom/manja-runtime.cdx.json", Type: "regular", Size: 31, Mode: 0o644, Digest: "sha256:" + strings.Repeat("a", 64)},
 				},
 			},
 		},
@@ -350,5 +360,5 @@ func validEvidence() Evidence {
 }
 
 func validFile(path string, size int64) FileEvidence {
-	return FileEvidence{Path: path, Type: "regular", Size: size, Digest: "sha256:" + strings.Repeat("8", 64)}
+	return FileEvidence{Path: path, Type: "regular", Size: size, Mode: 0o644, Digest: "sha256:" + strings.Repeat("8", 64)}
 }
