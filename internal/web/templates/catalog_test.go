@@ -525,6 +525,154 @@ func TestCatalogDocumentOverviewRendersOnlyDeclaredOpenAPIInfo(t *testing.T) {
 	}
 }
 
+func TestPreparedCatalogDocumentInfoMatchesLegacySSRBytes(t *testing.T) {
+	for mask := 0; mask < 512; mask++ {
+		mask := mask
+		t.Run(fmt.Sprintf("contact=%d/license=%d/terms=%t", (mask>>6)&7, (mask>>3)&7, mask&1 != 0), func(t *testing.T) {
+			document := catalog.DocumentDirectoryV1{Key: "core-v1", Overview: projection.Overview{}}
+			if mask&64 != 0 {
+				document.Overview.Contact.Name = "API <Support>"
+			}
+			if mask&32 != 0 {
+				document.Overview.Contact.URL = "https://example.test/support?a=1&b=2"
+			}
+			if mask&16 != 0 {
+				document.Overview.Contact.Email = "support@example.test"
+			}
+			if mask&8 != 0 {
+				document.Overview.License.Name = "Apache 2.0"
+			}
+			if mask&4 != 0 {
+				document.Overview.License.URL = "https://example.test/license"
+			}
+			if mask&2 != 0 {
+				document.Overview.License.Identifier = "Apache-2.0"
+			}
+			if mask&1 != 0 {
+				document.Overview.TermsOfService = "https://example.test/terms"
+			}
+
+			fragment, err := localrender.PrepareCatalogDocumentInfo(document)
+			if err != nil {
+				t.Fatal(err)
+			}
+			data := CatalogPageData{Document: &document, DocumentInfo: &fragment}
+			var delegated bytes.Buffer
+			if err := catalogDocumentInfo(data).Render(context.Background(), &delegated); err != nil {
+				t.Fatal(err)
+			}
+			legacy, err := renderLegacyCatalogDocumentInfo(document)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !bytes.Equal(legacy, delegated.Bytes()) {
+				index := firstDifferentByte(legacy, delegated.Bytes())
+				t.Fatalf("prepared document info changed SSR bytes at byte %d:\nlegacy=%q\ndelegated=%q", index, nearbyBytes(legacy, index), nearbyBytes(delegated.Bytes(), index))
+			}
+		})
+	}
+}
+
+func renderLegacyCatalogDocumentInfo(document catalog.DocumentDirectoryV1) ([]byte, error) {
+	legacyURL := func(value string) string {
+		safe, err := templ.JoinURLErrs(templ.URL(value))
+		if err != nil {
+			return ""
+		}
+		return templ.EscapeString(safe)
+	}
+	legacyAttribute := func(value string) string {
+		resolved, err := templ.ResolveAttributeValue(value)
+		if err != nil {
+			return ""
+		}
+		return resolved
+	}
+	contact := document.Overview.Contact
+	license := document.Overview.License
+	showContact := strings.TrimSpace(contact.Name) != "" || strings.TrimSpace(contact.URL) != "" || strings.TrimSpace(contact.Email) != ""
+	showLicense := strings.TrimSpace(license.Name) != "" || strings.TrimSpace(license.URL) != "" || strings.TrimSpace(license.Identifier) != ""
+	showTerms := strings.TrimSpace(document.Overview.TermsOfService) != ""
+	var output bytes.Buffer
+	if !showContact && !showLicense && !showTerms {
+		return output.Bytes(), nil
+	}
+	component := templ.ComponentFunc(func(_ context.Context, writer io.Writer) error {
+		write := func(value string) error {
+			_, err := io.WriteString(writer, value)
+			return err
+		}
+		if err := write(`<dl class="mb-8 grid gap-4 rounded-radius border border-outline bg-surface p-5 sm:grid-cols-2 xl:grid-cols-3 dark:border-outline-dark dark:bg-surface-dark" aria-label="OpenAPI information">`); err != nil {
+			return err
+		}
+		if showContact {
+			if err := write(`<div class="min-w-0"><dt class="text-xs font-semibold uppercase tracking-wide text-on-surface-muted dark:text-on-surface-dark-muted">Contact</dt><dd class="mt-2 grid min-w-0 gap-1 text-sm">`); err != nil {
+				return err
+			}
+			if contact.Name != "" {
+				if err := write(`<span class="font-semibold text-on-surface-strong dark:text-on-surface-dark-strong">` + templ.EscapeString(contact.Name) + `</span> `); err != nil {
+					return err
+				}
+			}
+			if contact.URL != "" {
+				if err := write(`<a href="` + legacyURL(contact.URL) + `" rel="noreferrer" class="min-w-0 truncate text-primary hover:underline dark:text-primary-dark" title="` + legacyAttribute(contact.URL) + `">` + templ.EscapeString(contact.URL) + `</a> `); err != nil {
+					return err
+				}
+			}
+			if contact.Email != "" {
+				if err := write(`<a href="` + legacyURL("mailto:"+contact.Email) + `" class="min-w-0 truncate text-primary hover:underline dark:text-primary-dark" title="` + legacyAttribute(contact.Email) + `">` + templ.EscapeString(contact.Email) + `</a>`); err != nil {
+					return err
+				}
+			}
+			if err := write(`</dd></div>`); err != nil {
+				return err
+			}
+		}
+		if showLicense {
+			if err := write(`<div class="min-w-0"><dt class="text-xs font-semibold uppercase tracking-wide text-on-surface-muted dark:text-on-surface-dark-muted">License</dt><dd class="mt-2 grid min-w-0 gap-1 text-sm">`); err != nil {
+				return err
+			}
+			if license.URL != "" {
+				if err := write(`<a href="` + legacyURL(license.URL) + `" rel="noreferrer" class="min-w-0 truncate font-semibold text-primary hover:underline dark:text-primary-dark" title="` + legacyAttribute(license.URL) + `">`); err != nil {
+					return err
+				}
+				if license.Name != "" {
+					if err := write(templ.EscapeString(license.Name)); err != nil {
+						return err
+					}
+				} else if err := write(`View license`); err != nil {
+					return err
+				}
+				if err := write(`</a> `); err != nil {
+					return err
+				}
+			} else if license.Name != "" {
+				if err := write(`<span class="font-semibold text-on-surface-strong dark:text-on-surface-dark-strong">` + templ.EscapeString(license.Name) + `</span> `); err != nil {
+					return err
+				}
+			}
+			if license.Identifier != "" {
+				if err := write(`<code class="text-xs text-on-surface-muted dark:text-on-surface-dark-muted">` + templ.EscapeString(license.Identifier) + `</code>`); err != nil {
+					return err
+				}
+			}
+			if err := write(`</dd></div>`); err != nil {
+				return err
+			}
+		}
+		if showTerms {
+			if err := write(`<div class="min-w-0"><dt class="text-xs font-semibold uppercase tracking-wide text-on-surface-muted dark:text-on-surface-dark-muted">Terms of service</dt><dd class="mt-2 min-w-0 text-sm"><a href="` + legacyURL(document.Overview.TermsOfService) + `" rel="noreferrer" class="block min-w-0 truncate font-semibold text-primary hover:underline dark:text-primary-dark" title="` + legacyAttribute(document.Overview.TermsOfService) + `">View terms</a></dd></div>`); err != nil {
+				return err
+			}
+		}
+		return write(`</dl>`)
+	})
+	if err := component.Render(context.Background(), &output); err != nil {
+		return nil, err
+	}
+	return output.Bytes(), nil
+}
+
 func TestCatalogDocumentSidebarGroupsOperationsUnderOnePathsItem(t *testing.T) {
 	t.Parallel()
 

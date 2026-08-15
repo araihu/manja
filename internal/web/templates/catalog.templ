@@ -103,6 +103,7 @@ type CatalogPageData struct {
 	Document *catalog.DocumentDirectoryV1
 	DocumentHref string
 	DocumentHeader *localrender.CatalogDocumentHeaderFragment
+	DocumentInfo *localrender.CatalogDocumentInfoFragment
 	CatalogReadme string
 	CatalogLicense CatalogOrganizationLicenseData
 	SchemaLinks map[string]string
@@ -221,20 +222,6 @@ func catalogDocumentTableConfig(data CatalogPageData) table.Config {
 		HTMX: &table.HTMXConfig{Endpoint: catalogDocumentTableEndpoint(data.Mount)},
 		RootClass: "catalog-documents-table",
 	}
-}
-
-func catalogDocumentHasContact(document catalog.DocumentDirectoryV1) bool {
-	contact := document.Overview.Contact
-	return strings.TrimSpace(contact.Name) != "" || strings.TrimSpace(contact.URL) != "" || strings.TrimSpace(contact.Email) != ""
-}
-
-func catalogDocumentHasLicense(document catalog.DocumentDirectoryV1) bool {
-	license := document.Overview.License
-	return strings.TrimSpace(license.Name) != "" || strings.TrimSpace(license.URL) != "" || strings.TrimSpace(license.Identifier) != ""
-}
-
-func catalogDocumentHasInfoLinks(document catalog.DocumentDirectoryV1) bool {
-	return strings.TrimSpace(document.Overview.TermsOfService) != "" || catalogDocumentHasContact(document) || catalogDocumentHasLicense(document)
 }
 
 templ catalogSidebarIconFrame(symbol icon.Symbol) {
@@ -786,55 +773,7 @@ templ catalogDocument(data CatalogPageData) {
 			@catalogDocumentHeader(data)
 		}
 		if data.Selected == nil {
-			if catalogDocumentHasInfoLinks(*data.Document) {
-				<dl class="mb-8 grid gap-4 rounded-radius border border-outline bg-surface p-5 sm:grid-cols-2 xl:grid-cols-3 dark:border-outline-dark dark:bg-surface-dark" aria-label="OpenAPI information">
-					if catalogDocumentHasContact(*data.Document) {
-						<div class="min-w-0">
-							<dt class="text-xs font-semibold uppercase tracking-wide text-on-surface-muted dark:text-on-surface-dark-muted">Contact</dt>
-							<dd class="mt-2 grid min-w-0 gap-1 text-sm">
-								if data.Document.Overview.Contact.Name != "" {
-									<span class="font-semibold text-on-surface-strong dark:text-on-surface-dark-strong">{ data.Document.Overview.Contact.Name }</span>
-								}
-								if data.Document.Overview.Contact.URL != "" {
-									<a href={ templpkg.URL(data.Document.Overview.Contact.URL) } rel="noreferrer" class="min-w-0 truncate text-primary hover:underline dark:text-primary-dark" title={ data.Document.Overview.Contact.URL }>{ data.Document.Overview.Contact.URL }</a>
-								}
-								if data.Document.Overview.Contact.Email != "" {
-									<a href={ templpkg.URL("mailto:" + data.Document.Overview.Contact.Email) } class="min-w-0 truncate text-primary hover:underline dark:text-primary-dark" title={ data.Document.Overview.Contact.Email }>{ data.Document.Overview.Contact.Email }</a>
-								}
-							</dd>
-						</div>
-					}
-					if catalogDocumentHasLicense(*data.Document) {
-						<div class="min-w-0">
-							<dt class="text-xs font-semibold uppercase tracking-wide text-on-surface-muted dark:text-on-surface-dark-muted">License</dt>
-							<dd class="mt-2 grid min-w-0 gap-1 text-sm">
-								if data.Document.Overview.License.URL != "" {
-									<a href={ templpkg.URL(data.Document.Overview.License.URL) } rel="noreferrer" class="min-w-0 truncate font-semibold text-primary hover:underline dark:text-primary-dark" title={ data.Document.Overview.License.URL }>
-										if data.Document.Overview.License.Name != "" {
-											{ data.Document.Overview.License.Name }
-										} else {
-											View license
-										}
-									</a>
-								} else if data.Document.Overview.License.Name != "" {
-									<span class="font-semibold text-on-surface-strong dark:text-on-surface-dark-strong">{ data.Document.Overview.License.Name }</span>
-								}
-								if data.Document.Overview.License.Identifier != "" {
-									<code class="text-xs text-on-surface-muted dark:text-on-surface-dark-muted">{ data.Document.Overview.License.Identifier }</code>
-								}
-							</dd>
-						</div>
-					}
-					if data.Document.Overview.TermsOfService != "" {
-						<div class="min-w-0">
-							<dt class="text-xs font-semibold uppercase tracking-wide text-on-surface-muted dark:text-on-surface-dark-muted">Terms of service</dt>
-							<dd class="mt-2 min-w-0 text-sm">
-								<a href={ templpkg.URL(data.Document.Overview.TermsOfService) } rel="noreferrer" class="block min-w-0 truncate font-semibold text-primary hover:underline dark:text-primary-dark" title={ data.Document.Overview.TermsOfService }>View terms</a>
-							</dd>
-						</div>
-					}
-				</dl>
-			}
+			@catalogDocumentInfo(data)
 			<div class="grid gap-4 sm:grid-cols-2">
 				@catalogMetric("Operations", fmt.Sprintf("%d", len(data.Document.Operations)))
 				@catalogMetric("Schemas", fmt.Sprintf("%d", len(data.Document.Schemas)))
@@ -899,6 +838,25 @@ templ catalogDocumentHeader(data CatalogPageData) {
 	} else {
 		@catalogDocumentHeaderFallback(data)
 	}
+}
+
+templ catalogDocumentInfo(data CatalogPageData) {
+	if data.DocumentInfo != nil {
+		@localrender.CatalogDocumentInfo(*data.DocumentInfo)
+	} else {
+		@catalogDocumentInfoFallback(data)
+	}
+}
+
+func catalogDocumentInfoFallback(data CatalogPageData) templpkg.Component {
+	if data.Document == nil {
+		return templpkg.NopComponent
+	}
+	fragment, err := localrender.PrepareCatalogDocumentInfo(*data.Document)
+	if err != nil {
+		return templpkg.NopComponent
+	}
+	return localrender.CatalogDocumentInfo(fragment)
 }
 
 func catalogDocumentHeaderFallback(data CatalogPageData) templpkg.Component {

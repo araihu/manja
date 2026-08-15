@@ -148,6 +148,21 @@ func TestCatalogDocumentHeaderFragmentUsesOneCanonicalCatalogComponent(t *testin
 	}
 }
 
+func TestCatalogDocumentInfoFragmentUsesOneCanonicalCatalogComponent(t *testing.T) {
+	root := repositoryRoot(t)
+	source, err := os.ReadFile(filepath.Join(root, "internal", "web", "templates", "catalog.templ"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(source)
+	if strings.Contains(text, `aria-label="OpenAPI information"`) {
+		t.Fatal("catalog template retains a second document-info renderer")
+	}
+	if !strings.Contains(text, "@localrender.CatalogDocumentInfo(*data.DocumentInfo") {
+		t.Fatal("catalog template does not delegate to canonical document-info renderer")
+	}
+}
+
 func TestOperationHeaderFragmentUsesOneCanonicalComponent(t *testing.T) {
 	root := repositoryRoot(t)
 	source, err := os.ReadFile(filepath.Join(root, "internal", "web", "templates", "catalog.templ"))
