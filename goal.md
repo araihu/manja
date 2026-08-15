@@ -1416,6 +1416,33 @@ SBOM remains explicitly deferred by product direction. Legal authority,
 attribution, redistribution, hybrid offline runtime, recovery lifecycle, and
 final packaging remain incomplete and cannot be inferred from groundwork.
 
+Implementer B packet was frozen from the exact phase head in
+`/private/tmp/manja-oc04-sw-allowlist-impl-b`, branch
+`codex/oc04-sw-allowlist-impl-b`: commit
+`a7485086f383434298f62ece08cf95e77b0b34f3`, tree
+`be3f619389e66c8075e0db1b411c9431302568f5`, parent
+`37241b468f37d2e00c39eecc7eb6dbc26c64d06a` / tree
+`489a59746b0121bc78726768511b305aef6cc2ba`, clean status. Its owned paths
+are `internal/web/catalog_assets.go` and
+`internal/web/catalog_assets_allowlist_test.go`; it is disjoint from the
+pending Implementer A paths. The packet adds exact embedded Manja/Goshtoso
+public-asset allowlists, same-origin pathname-only GET/HEAD handling, and the
+existing Service-Worker-Allowed header seam. It adds no Service Worker
+registration, offline shell, UI, or lifecycle behavior.
+
+The reconciler cherry-picked B unchanged as
+`0438d02672c875b1794d46a3eec4dbc53708ca16`, tree
+`be3f619389e66c8075e0db1b411c9431302568f5`, direct parent
+`37241b468f37d2e00c39eecc7eb6dbc26c64d06a`. No conflict or manual scope edit
+occurred; this is a scope disposition, not a technical, design, or product
+review verdict. Focused `GOWORK=off go test ./internal/web -count=1`, targeted
+asset/provenance tests, architecture tests, vet, strict Muamba verification,
+webassets check, templ generation (`updates=0`), and diff checks passed. The
+branch was up to date with `origin/main`
+`507c5ea9fcdc8cee670a023dbb82f348ba2ed763` and pushed; staged, unstaged, and
+untracked counts are zero. Implementer A remains unintegrated pending its
+clean frozen packet.
+
 ## PR Gate
 
 At `2026-08-11T18:54:35Z`, [PR
