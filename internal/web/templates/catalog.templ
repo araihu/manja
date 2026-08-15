@@ -129,6 +129,7 @@ type CatalogPageData struct {
 	Search *CatalogSearchData
 	SchemaNode *localrender.SchemaNodeFragment
 	SchemaDetailHeader *localrender.SchemaDetailHeaderFragment
+	SchemaDetailExample *localrender.SchemaDetailExampleFragment
 	DownloadHref string
 	PageMarkdownHref string
 	CapabilityFooter CapabilityFooterData
@@ -1041,22 +1042,22 @@ templ catalogSchemaDetail(data CatalogPageData) {
 		if data.SchemaDetailHeader != nil {
 			@localrender.SchemaDetailHeader(*data.SchemaDetailHeader, catalogSchemaDetailActions(data, schema.Anchor), catalogSourceStatus(data))
 		}
-		if data.SchemaNode != nil && schema.ExampleSchemaJSON != "" {
+		if data.SchemaNode != nil && data.SchemaDetailExample != nil {
 			<div class="manja-schema-detail-layout">
 				<div class="manja-schema-tree-panel">
 					@localrender.SchemaNode(*data.SchemaNode)
 				</div>
 				<aside class="manja-schema-example-panel" aria-label="Root JSON Schema">
-					@codeExample("Root JSON Schema", "json", schema.ExampleSchemaJSON)
+					@localrender.SchemaDetailExample(*data.SchemaDetailExample)
 				</aside>
 			</div>
 		} else {
 			if data.SchemaNode != nil {
 				@localrender.SchemaNode(*data.SchemaNode)
 			}
-			if schema.ExampleSchemaJSON != "" {
+			if data.SchemaDetailExample != nil {
 				<section aria-label="Root JSON Schema">
-					@codeExample("Root JSON Schema", "json", schema.ExampleSchemaJSON)
+					@localrender.SchemaDetailExample(*data.SchemaDetailExample)
 				</section>
 			}
 		}

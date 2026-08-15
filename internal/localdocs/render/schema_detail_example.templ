@@ -1,0 +1,12 @@
+package render
+
+import "github.com/araihu/goshtoso/components/codeblock"
+
+templ schemaDetailExample(data schemaDetailExampleData) {
+	@codeblock.CodeBlock(codeblock.Config{
+		Label: "Root JSON Schema",
+		Language: "json",
+		Code: data.JSON,
+		MaxHeight: "24rem",
+	})
+}
