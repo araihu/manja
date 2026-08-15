@@ -298,6 +298,13 @@ func (handler *CatalogHandler) catalogPageDataWithSidebarQuery(
 				return templates.CatalogPageData{}, err
 			}
 			data.OperationSchemaTrees = &operationSchemaTrees
+			if len(detail.Operation.Responses) > 0 {
+				operationResponses, err := localrender.PrepareOperationResponses(detail, *operation, operationResponseMedia, operationResponseDetails, operationExamples, operationSchemaTrees)
+				if err != nil {
+					return templates.CatalogPageData{}, err
+				}
+				data.OperationResponses = &operationResponses
+			}
 			if detail.Operation.HasRequestBody {
 				operationRequestBody, err := localrender.PrepareOperationRequestBody(detail, *operation, *data.OperationRequestBodyMedia, operationSchemaTrees)
 				if err != nil {

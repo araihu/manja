@@ -22,8 +22,9 @@ var errInvalidOperationResponseMediaFragment = errors.New("local docs operation 
 // OperationResponseMediaFragment holds admitted SSR-equivalent response media labels.
 // It intentionally excludes response descriptions, headers, examples, and schema trees.
 type OperationResponseMediaFragment struct {
-	media [][]operationResponseMediaData
-	valid bool
+	media   [][]operationResponseMediaData
+	binding operationPreparationBinding
+	valid   bool
 }
 
 type operationResponseMediaData struct {
@@ -95,6 +96,10 @@ func PrepareOperationResponseMedia(
 	}
 	if len(resolver.used) != len(resolver.nodes) {
 		return OperationResponseMediaFragment{}, invalidOperationResponseMediaField("schema-node inventory")
+	}
+	fragment.binding, err = bindOperationPreparation(detail, operation, documentHref, schemaLinks)
+	if err != nil {
+		return OperationResponseMediaFragment{}, invalidOperationResponseMediaField("preparation context")
 	}
 	return fragment, nil
 }

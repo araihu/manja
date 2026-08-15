@@ -965,9 +965,30 @@ snag occurred. Public standalone fallback rendering, response/request shells,
 request composer and rail, browser activation, Wasm runtime wiring, Service
 Worker, offline/storage, SaaS, theme, legal, packaging, and lifecycle actions
 remain outside this checkpoint. Open Core remains incomplete.
+OC-04P starts from exact accepted OC-04O parent
+`93a4988788f051a2aab813bc3cd7d0cc22ddffef`, tree
+`fb434eb054537086bd475272a191aa67b2693e75`. It prepares the remaining direct
+SSR operation-response section as one bounded parser-free fragment: response
+heading, status badges and titles, outer and media accordions, descriptions,
+headers, media summaries, schema-property trees, and explicit examples are
+assembled from copied OC-04I/J/K/L child data. Admission binds every child to
+the same immutable detail/domain parent and document-link context, rejects
+mixed contexts, inconsistent inventories/identities, invalid children, and
+oversized output, then retains copied render values only. Catalog SSR/no-JS
+endpoint bytes remain exact, including Goshtoso accordion semantics, existing
+ARIA landmarks/labels, Alpine no-JS disclosure markup, focus states,
+responsive layouts, HTMX schema links, and light/dark semantic tokens. Root
+and nested real handlers render exactly one prepared response section. The
+templ generator initially reported `templ redeclared` after a redundant
+explicit templ import; removing that unused import and regenerating resolved
+the generated-template friction without a Goshtoso component change. Public
+standalone fallback rendering, request/endpoint shells, request composer and
+rail, browser activation, Wasm runtime wiring, Service Worker,
+offline/storage, SaaS, theme, legal, packaging, and lifecycle actions remain
+outside this checkpoint. Open Core remains incomplete.
 These checkpoints are groundwork, not proof of a complete operation body/main
 Wasm HTML renderer, browser activation, Service Worker, offline storage,
-rollback, tombstones, response rendering,
+rollback, tombstones, endpoint-shell/request-rail rendering,
 parity beyond these bounded operation fragments, or performance
 acceptance.
 
@@ -1007,10 +1028,10 @@ Before merge:
 
 ## Next Action
 
-Submit the frozen OC-04O child of exact accepted OC-04N correction parent
-`2b1e8d91bc2ef8c957a8fd413c71427c971c5e8d`, with clean status, fail-closed
+Submit the frozen OC-04P child of exact accepted OC-04O parent
+`93a4988788f051a2aab813bc3cd7d0cc22ddffef`, with clean status, fail-closed
 mutation receipts, exact whole-endpoint SSR/no-JS parity, root/nested
-real-handler proof, preserved OC-04A-N behavior, architecture/Wasm-boundary,
+real-handler proof, preserved OC-04A-O behavior, architecture/Wasm-boundary,
 race, vet, generation, Muamba, webassets, and uncached standalone root-suite
 receipts for fresh independent review. PM chooses and separately authorizes any
 integration path.
@@ -1019,7 +1040,7 @@ review, and substantive CodeRabbit gates; absence or failure blocks integration.
 Overall provenance remains `BLOCKED`; legal authority and final-artifact
 notices stay separate, and licensing/package-generation Task 8 remains stopped.
 Hosted SaaS stays deferred, active-theme work stays excluded, and OC-04 hybrid
-SSR/Wasm/offline remains Open Core; complete operation main/response rendering, browser ABI
+SSR/Wasm/offline remains Open Core; complete operation main/shell/rail rendering, browser ABI
 and activation, Service Worker, offline storage, rollback, tombstones,
 kill-switch lifecycle, and UI work stay separate from these operation-header
 and prepared operation-fragment checkpoints. No push, merge, release,

@@ -177,6 +177,23 @@ func TestOperationNavigationFragmentUsesCanonicalCatalogComponent(t *testing.T) 
 	}
 }
 
+func TestOperationResponsesFragmentUsesCanonicalCatalogComponent(t *testing.T) {
+	root := repositoryRoot(t)
+	source, err := os.ReadFile(filepath.Join(root, "internal", "web", "templates", "public.templ"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(source)
+	for _, want := range []string{
+		"if opts.OperationResponses != nil",
+		"@localrender.OperationResponses(*opts.OperationResponses)",
+	} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("catalog operation responses do not delegate to canonical local renderer %q", want)
+		}
+	}
+}
+
 func TestLocalDocsActivationWasmBuildAndBoundary(t *testing.T) {
 	list := command(repositoryRoot(t), "go", "list", "-deps", "./internal/localdocs")
 	list.Env = append(list.Env, "GOOS=js", "GOARCH=wasm", "GOWORK=off")

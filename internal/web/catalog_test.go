@@ -228,6 +228,44 @@ func TestCatalogPreparedOperationNavigationRendersThroughRootAndNestedHandlers(t
 	}
 }
 
+func TestCatalogPreparedOperationResponsesRenderThroughRootAndNestedHandlers(t *testing.T) {
+	t.Parallel()
+
+	for _, mount := range []string{"/", "/kubernetes"} {
+		mount := mount
+		t.Run(mount, func(t *testing.T) {
+			t.Parallel()
+			handler, _ := catalogHandlerFixture(t, mount)
+			base := mount
+			if base != "/" {
+				base += "/"
+			}
+			detailID := "detail-sha256-" + strings.Repeat("a", 64)
+			response := httptest.NewRecorder()
+			handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, base+"documents/core-v1/?selected="+detailID, nil))
+			if response.Code != http.StatusOK {
+				t.Fatalf("operation route = %d body=%q", response.Code, response.Body.String())
+			}
+			body := response.Body.String()
+			for _, want := range []string{
+				`aria-label="Responses"`,
+				`id="` + detailID + `-responses"`,
+				`data-manja-response-section="media-type"`,
+				`data-manja-response-section="description"`,
+				`aria-label="Response body schema tree"`,
+				`dark:border-outline-dark`,
+			} {
+				if !strings.Contains(body, want) {
+					t.Errorf("prepared responses missing %q", want)
+				}
+			}
+			if strings.Count(body, `aria-label="Responses"`) != 1 {
+				t.Fatalf("prepared responses rendered more than once: %d", strings.Count(body, `aria-label="Responses"`))
+			}
+		})
+	}
+}
+
 func TestCatalogSidebarTargetReturnsOnlySidebarFragment(t *testing.T) {
 	t.Parallel()
 
@@ -776,6 +814,9 @@ func TestCatalogSelectedOperationPreparesRequestBodyMediaSummary(t *testing.T) {
 			if data.OperationSchemaTrees == nil {
 				t.Fatal("selected operation did not prepare request/response schema trees")
 			}
+			if data.OperationResponses == nil {
+				t.Fatal("selected operation did not prepare complete responses section")
+			}
 			body, err := data.OperationRequestBodyMedia.MediaBytes(context.Background(), 0)
 			if err != nil {
 				t.Fatal(err)
@@ -883,6 +924,15 @@ func TestCatalogSelectedOperationPreparesResponseMediaSummary(t *testing.T) {
 					t.Errorf("prepared catalog response schema tree missing %q in %s", want, schemaTree)
 				}
 			}
+			responses, err := data.OperationResponses.Bytes(context.Background())
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, want := range []string{`aria-label="Responses"`, `data-manja-response-section="media-type"`, `aria-label="Response body schema tree"`} {
+				if !strings.Contains(string(responses), want) {
+					t.Errorf("prepared complete responses missing %q in %s", want, responses)
+				}
+			}
 		})
 	}
 }
@@ -970,6 +1020,9 @@ func TestCatalogOperationWithoutRequestBodyKeepsMediaFragmentAbsent(t *testing.T
 	}
 	if data.OperationRequestBodyMedia != nil {
 		t.Fatal("operation without request body prepared a media fragment")
+	}
+	if data.OperationResponses != nil {
+		t.Fatal("operation without responses prepared a responses section")
 	}
 }
 

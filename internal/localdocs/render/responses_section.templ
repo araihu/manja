@@ -1,0 +1,138 @@
+package render
+
+import (
+	"strings"
+
+	"github.com/araihu/goshtoso/components/accordion"
+	"github.com/araihu/goshtoso/components/badge"
+)
+
+templ operationResponses(data operationResponsesData) {
+	<section class="manja-endpoint-responses-section grid gap-5" aria-label="Responses">
+		<h4 class="font-title text-2xl font-bold text-on-surface-strong dark:text-on-surface-dark-strong">Responses</h4>
+		@accordion.Accordion(operationResponsesAccordionConfig(data))
+	</section>
+}
+
+func operationResponsesAccordionConfig(data operationResponsesData) accordion.AccordionConfig {
+	items := make([]accordion.AccordionItem, 0, len(data.Responses))
+	for responseIndex := range data.Responses {
+		response := data.Responses[responseIndex]
+		items = append(items, accordion.AccordionItem{
+			ID:      data.OperationID + "-response-" + responseAnchor(response.Status),
+			Title:   response.Title,
+			Icon:    operationResponseStatusBadge(response.Status),
+			Content: operationResponsePanel(data, responseIndex),
+		})
+	}
+	return accordion.AccordionConfig{
+		ID:         data.OperationID + "-responses",
+		Items:      items,
+		Appearance: accordion.AppearancePlain,
+		RootClass:  "manja-response-accordion",
+	}
+}
+
+func responseAnchor(status string) string {
+	id := anchorFragment(status)
+	if id == "" {
+		return "default"
+	}
+	return id
+}
+
+templ operationResponseStatusBadge(status string) {
+	@badge.Badge(badge.Config{
+		Label:     status,
+		Tone:      operationResponseBadgeTone(status),
+		RootClass: "font-mono font-bold",
+	})
+}
+
+func operationResponseBadgeTone(status string) badge.Tone {
+	trimmed := strings.TrimSpace(status)
+	if strings.HasPrefix(trimmed, "2") {
+		return badge.ToneSuccess
+	}
+	if strings.HasPrefix(trimmed, "3") {
+		return badge.TonePrimary
+	}
+	if strings.HasPrefix(trimmed, "4") {
+		return badge.ToneWarning
+	}
+	if strings.HasPrefix(trimmed, "5") {
+		return badge.ToneDanger
+	}
+	return badge.ToneDefault
+}
+
+templ operationResponsePanel(data operationResponsesData, responseIndex int) {
+	{{ response := data.Responses[responseIndex] }}
+	<section class="grid gap-4">
+		if len(response.Media) == 0 {
+			@operationResponseDetails(response.Details, data.OperationID+"-"+anchorFragment(response.Status)+"-headers", data.SchemaLinks)
+		}
+		@operationResponseMediaList(data, responseIndex)
+	</section>
+}
+
+templ operationResponseMediaList(data operationResponsesData, responseIndex int) {
+	{{ response := data.Responses[responseIndex] }}
+	if len(response.Media) > 0 {
+		if len(response.Media) > 1 {
+			@accordion.Accordion(operationResponseMediaAccordionConfig(data, responseIndex))
+		} else {
+			<div class="grid gap-4">
+				@operationResponseMediaBlock(data, responseIndex, 0, false)
+			</div>
+		}
+	}
+}
+
+func operationResponseMediaAccordionConfig(data operationResponsesData, responseIndex int) accordion.AccordionConfig {
+	response := data.Responses[responseIndex]
+	items := make([]accordion.AccordionItem, 0, len(response.Media))
+	for mediaIndex := range response.Media {
+		media := response.Media[mediaIndex]
+		items = append(items, accordion.AccordionItem{
+			ID:                data.OperationID + "-response-" + anchorFragment(response.Status) + "-" + anchorFragment(media.Summary.ContentType),
+			Title:             media.Summary.ContentType,
+			Content:           operationResponseMediaBlock(data, responseIndex, mediaIndex, true),
+			InitiallyExpanded: mediaIndex == 0,
+		})
+	}
+	return accordion.AccordionConfig{
+		ID:         data.OperationID + "-response-" + anchorFragment(response.Status) + "-media-types",
+		Items:      items,
+		Appearance: accordion.AppearancePlain,
+		RootClass:  "manja-response-media-accordion",
+	}
+}
+
+templ operationResponseMediaBlock(data operationResponsesData, responseIndex int, mediaIndex int, inAccordion bool) {
+	{{ response := data.Responses[responseIndex] }}
+	{{ media := response.Media[mediaIndex] }}
+	{{ idPrefix := data.OperationID+"-response-"+anchorFragment(response.Status) }}
+	{{ blockClass := "manja-response-media-block" }}
+	if inAccordion {
+		{{ blockClass += " grid gap-4" }}
+	} else {
+		{{ blockClass += " border-t border-outline pt-6 pb-5 dark:border-outline-dark" }}
+	}
+	<div class={ blockClass }>
+		<div class="manja-response-panel-layout">
+			<div class="manja-response-panel-main grid gap-4">
+				<div data-manja-response-section="media-type" class="flex flex-wrap items-center gap-3">
+					@operationResponseMedia(media.Summary)
+				</div>
+				@operationResponseDetails(response.Details, idPrefix+"-"+anchorFragment(media.Summary.ContentType)+"-headers", data.SchemaLinks)
+				@operationSchemaProperties(media.Tree)
+			</div>
+			if media.Example.visible {
+				<aside class="manja-response-panel-example" aria-label={ "Response " + response.Status + " " + media.Summary.ContentType + " example" }>
+					@operationResponseExample(media.Example)
+				</aside>
+			}
+		</div>
+	</div>
+}

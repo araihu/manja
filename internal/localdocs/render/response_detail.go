@@ -27,6 +27,7 @@ var errInvalidOperationResponseDetailsFragment = errors.New("local docs operatio
 type OperationResponseDetailsFragment struct {
 	responses   []operationResponseDetailData
 	schemaLinks map[string]string
+	binding     operationPreparationBinding
 	valid       bool
 }
 
@@ -107,6 +108,10 @@ func PrepareOperationResponseDetails(
 	}
 	if len(resolver.used) != len(resolver.nodes) {
 		return OperationResponseDetailsFragment{}, invalidOperationResponseDetailsField("schema-node inventory")
+	}
+	fragment.binding, err = bindOperationPreparation(detail, operation, documentHref, schemaLinks)
+	if err != nil {
+		return OperationResponseDetailsFragment{}, invalidOperationResponseDetailsField("preparation context")
 	}
 	return fragment, nil
 }

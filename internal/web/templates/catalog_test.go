@@ -1085,6 +1085,24 @@ func TestPreparedOperationResponseMediaMatchesCatalogSSRBytes(t *testing.T) {
 		index := firstDifferentByte(legacy.Bytes(), delegated.Bytes())
 		t.Fatalf("delegated response-media summary changed complete SSR endpoint bytes at byte %d:\nlegacy=%q\ndelegated=%q", index, nearbyBytes(legacy.Bytes(), index), nearbyBytes(delegated.Bytes(), index))
 	}
+	operationSchemaTrees, err := localrender.PrepareOperationSchemaTrees(detail, operation, nodes[:5], documentHref, schemaLinks)
+	if err != nil {
+		t.Fatal(err)
+	}
+	operationResponses, err := localrender.PrepareOperationResponses(detail, operation, fragment, responseDetails, operationExamples, operationSchemaTrees)
+	if err != nil {
+		t.Fatal(err)
+	}
+	baseOptions.OperationSchemaTrees = &operationSchemaTrees
+	baseOptions.OperationResponses = &operationResponses
+	delegated.Reset()
+	if err := endpointSection(operation, nil, "", baseOptions, OperationNavigationData{}).Render(context.Background(), &delegated); err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(legacy.Bytes(), delegated.Bytes()) {
+		index := firstDifferentByte(legacy.Bytes(), delegated.Bytes())
+		t.Fatalf("prepared complete responses changed SSR/no-JS endpoint bytes at byte %d:\nlegacy=%q\nprepared=%q", index, nearbyBytes(legacy.Bytes(), index), nearbyBytes(delegated.Bytes(), index))
+	}
 }
 
 func TestPreparedOperationSchemaTreesMatchCompleteCatalogSSRBytes(t *testing.T) {

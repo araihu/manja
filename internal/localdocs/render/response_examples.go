@@ -30,6 +30,7 @@ const maximumOperationExampleRecords = 4096
 type OperationExamplesFragment struct {
 	responses   [][]operationResponseExampleData
 	codeSamples []operationCodeSampleData
+	parent      [sha256.Size]byte
 	valid       bool
 }
 
@@ -171,6 +172,10 @@ func PrepareOperationExamples(detail catalog.DetailRecordV1, operation domain.Op
 		}
 		codeIDs[sample.ID] = struct{}{}
 		fragment.codeSamples = append(fragment.codeSamples, operationCodeSampleData{DisplayLabel: "Request Sample: " + prepared.Label, Language: prepared.Language, Code: prepared.Code})
+	}
+	fragment.parent, err = bindOperationPreparationParent(detail, operation)
+	if err != nil {
+		return OperationExamplesFragment{}, invalidOperationExamplesField("preparation context")
 	}
 	return fragment, nil
 }

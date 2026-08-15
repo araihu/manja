@@ -91,6 +91,7 @@ type PublicDocsOptions struct {
 	OperationResponseDetails  *localrender.OperationResponseDetailsFragment
 	OperationExamples         *localrender.OperationExamplesFragment
 	OperationSchemaTrees      *localrender.OperationSchemaTreesFragment
+	OperationResponses        *localrender.OperationResponsesFragment
 	OperationNavigation       *localrender.OperationNavigationFragment
 	Selection                 *PublicDocsSelection
 	SchemaLinks               map[string]string
@@ -1067,10 +1068,14 @@ templ endpointSection(op core.Operation, servers []core.SpecServer, exampleSpecJ
 							</section>
 						}
 						if len(op.Responses) > 0 {
-							<section class="manja-endpoint-responses-section grid gap-5" aria-label="Responses">
-								<h4 class="font-title text-2xl font-bold text-on-surface-strong dark:text-on-surface-dark-strong">Responses</h4>
-								@accordion.Accordion(responseAccordionConfig(opID, op.Responses, exampleSpecJSON, opts))
-							</section>
+							if opts.OperationResponses != nil {
+								@localrender.OperationResponses(*opts.OperationResponses)
+							} else {
+								<section class="manja-endpoint-responses-section grid gap-5" aria-label="Responses">
+									<h4 class="font-title text-2xl font-bold text-on-surface-strong dark:text-on-surface-dark-strong">Responses</h4>
+									@accordion.Accordion(responseAccordionConfig(opID, op.Responses, exampleSpecJSON, opts))
+								</section>
+							}
 						}
 					</div>
 				}
