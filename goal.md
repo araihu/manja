@@ -1218,6 +1218,35 @@ The reconciled worktree remains review-held and lifecycle-held. No technical,
 design, or product review has started. Merge, release, deployment, cleanup,
 and other lifecycle actions remain unauthorized.
 
+### OC-04AE / OC-03 next reconciliation cycle (2026-08-15)
+
+This Luna Max cycle starts from exact base `69c9516b79131ee7c72b67410de7e0c2ef5957ee`,
+tree `f2f7f5fe5c09977bf101280da4fcf20c58e9e1ba`, on the dedicated reconciler
+worktree. The prior OC-04AD gate blockers are resolved: static search-record
+segments now cache only after exact child identity verification, and self-hosted
+startup joins the startup goroutine before the stopgate deadline. Uncached root
+normal and root race suites passed on the reconciled identity; the prior catalog
+`search_deadline` and self-hosted 30-second startup failures are no longer open.
+
+The next bounded implementation lanes are:
+
+- OC-04AE: browser ABI and activation seam for the admitted immutable projection
+  contract, preserving SSR/no-JS byte parity, parser-free boundaries, and
+  fail-closed identity checks. Service Worker, offline storage, UI, and broader
+  lifecycle behavior stay excluded.
+- OC-03: activation journal, last-known-good (LKG) state, and crash-safe rollback
+  seam, with durable identity binding, atomic recovery, and rejected-transition
+  invariants. Deployment, release, rollback of external services, cleanup, and
+  hosted behavior stay excluded.
+
+Two implementer packets must arrive with exact base/head/tree, staged/unstaged/
+untracked status, owned paths, and captured focused/full gate receipts. The
+reconciler compares paths and identity independently, selects only disjoint
+compatible packets, preserves rejected or overlapping work unchanged outside
+this branch, and records blockers as blockers. Technical, design, and product
+reviews remain suspended until explicit user authorization; merge, release,
+deployment, cleanup, and other lifecycle actions remain unauthorized.
+
 ## PR Gate
 
 At `2026-08-11T18:54:35Z`, [PR
@@ -1254,20 +1283,16 @@ Before merge:
 
 ## Next Action
 
-Submit the frozen OC-04R child of exact accepted OC-04Q parent
-`fdd08c3b43725eb7ba8423933a58c809d1a897fc`, with clean status, fail-closed
-mutation receipts, exact whole-endpoint SSR/no-JS parity, root/nested
-real-handler proof, preserved OC-04A-Q behavior, architecture/Wasm-boundary,
-race, vet, generation, Muamba, webassets, and uncached standalone root-suite
-receipts for fresh independent review. PM chooses and separately authorizes any
+Await the two frozen OC-04AE and OC-03 implementer packets from the exact cycle
+base. Compare exact identities, status, owned paths, and receipts; consolidate
+only disjoint compatible changes; then run focused and complete root gates,
+rebase and push the evolving reconciler checkpoint, and verify exact
+SHA/tree/status after each movement. PM chooses and separately authorizes any
 integration path.
 Any push, PR, or head movement restarts exact-head CI, CodeQL, independent
 review, and substantive CodeRabbit gates; absence or failure blocks integration.
 Overall provenance remains `BLOCKED`; legal authority and final-artifact
 notices stay separate, and licensing/package-generation Task 8 remains stopped.
-Hosted SaaS stays deferred, active-theme work stays excluded, and OC-04 hybrid
-SSR/Wasm/offline remains Open Core; complete operation main/shell/rail rendering, browser ABI
-and activation, Service Worker, offline storage, rollback, tombstones,
-kill-switch lifecycle, and UI work stay separate from these operation-header
-and prepared operation-fragment checkpoints. No push, merge, release,
-deployment, cleanup, or other lifecycle action is authorized here.
+Hosted SaaS stays deferred, active-theme work stays excluded, and unbounded
+browser/offline/lifecycle behavior stays outside OC-04AE and OC-03. No merge,
+release, deployment, cleanup, or other lifecycle action is authorized here.
