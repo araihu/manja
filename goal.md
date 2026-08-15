@@ -1,6 +1,6 @@
 # Manja Open Core Product Goal
 
-Updated: 2026-08-12
+Updated: 2026-08-15
 
 ## Objective
 
@@ -1045,6 +1045,36 @@ The root race run and its isolated reproduction exited only on
 with `global Kubernetes search "apps v1 deployment": search_deadline`; all
 other root race packages passed. Full root and root-race gates therefore remain
 explicitly blocked by those external timing failures, not silently accepted.
+
+### Open Core continuation: OC-04AC hybrid and OC-02 legal (2026-08-15)
+
+This Luna Max reconciliation cycle starts from exact base
+`c20241437b6309b5ce73d8ab30f14e3be9812552`, tree
+`ea4643cc4b5b61226c859c3880ab727488d9a098`; fetched `origin/main` is exact
+`507c5ea9fcdc8cee670a023dbb82f348ba2ed763` and remains the ancestry base.
+The reconciler owns dedicated branch `codex/opencore-reconciler-luna-max`
+and worktree `/private/tmp/manja-opencore-reconciler-luna-max`.
+
+Two implementation lanes are active from this exact identity:
+
+- OC-04AC hybrid SSR/Wasm/offline bounded implementation on
+  `codex/oc04ac-hybrid-implementer`;
+- OC-02 legal artifacts and self-hosted packaging on
+  `codex/oc02-legal-artifacts`.
+
+Neither packet is frozen or integrated at cycle start. Each packet must arrive
+with exact base/head/tree, staged/unstaged/untracked status, owned diff, and
+gate receipts. Reconciliation compares scope and identity, consolidates only
+compatible work, preserves overlapping or invalid packets unchanged outside
+this branch, and records external blockers without converting them to passes.
+OC-04AC must preserve SSR/no-JS byte parity and parser-free boundaries; OC-02
+must keep rights authority, attribution, notices, SBOM, and packaging evidence
+distinct. Hosted SaaS, active theme work, browser/offline/lifecycle actions
+outside the bounded OC-04AC packet remain excluded.
+
+Technical, design, and product reviews are suspended. No review starts until
+an explicit user signal. Merge, release, deployment, cleanup, and other
+lifecycle actions remain unauthorized.
 
 ## PR Gate
 
