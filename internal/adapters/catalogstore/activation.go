@@ -27,6 +27,13 @@ type ActivationReceipt struct {
 	Location   string
 }
 
+type WithdrawalReceipt struct {
+	Mount      string
+	State      catalog.TombstoneState
+	SnapshotID catalog.SnapshotID
+	Generation uint64
+}
+
 // ActivationAdmission is a context-capturing boundary hook. ActivateAdmitted
 // first uses one to quiesce callers after immutable preflight, then another
 // after the complete next route table has been built and encoded. Either may
@@ -62,9 +69,10 @@ type activationHooks struct {
 }
 
 type durableRouteTableV1 struct {
-	SchemaVersion uint32                    `json:"schemaVersion"`
-	Generation    uint64                    `json:"generation"`
-	Mounts        map[string]durableMountV1 `json:"mounts"`
+	SchemaVersion uint32                        `json:"schemaVersion"`
+	Generation    uint64                        `json:"generation"`
+	Mounts        map[string]durableMountV1     `json:"mounts"`
+	Tombstones    map[string]durableTombstoneV1 `json:"tombstones,omitempty"`
 }
 
 type durableMountV1 struct {
@@ -73,14 +81,27 @@ type durableMountV1 struct {
 	Previous  catalog.SnapshotID `json:"previous,omitempty"`
 }
 
-type activationJournalV1 struct {
-	SchemaVersion uint32             `json:"schemaVersion"`
-	Mount         string             `json:"mount"`
-	CatalogID     string             `json:"catalogId,omitempty"`
-	Candidate     catalog.SnapshotID `json:"candidate"`
-	ExpectedOld   catalog.SnapshotID `json:"expectedOld,omitempty"`
-	Generation    uint64             `json:"generation"`
+type durableTombstoneV1 struct {
+	State      catalog.TombstoneState `json:"state"`
+	CatalogID  string                 `json:"catalogId"`
+	SnapshotID catalog.SnapshotID     `json:"snapshotId"`
 }
+
+type activationJournalV1 struct {
+	SchemaVersion uint32              `json:"schemaVersion"`
+	Mount         string              `json:"mount"`
+	CatalogID     string              `json:"catalogId,omitempty"`
+	Candidate     catalog.SnapshotID  `json:"candidate"`
+	ExpectedOld   catalog.SnapshotID  `json:"expectedOld,omitempty"`
+	Generation    uint64              `json:"generation"`
+	Operation     string              `json:"operation,omitempty"`
+	Tombstone     *durableTombstoneV1 `json:"tombstone,omitempty"`
+}
+
+const (
+	activationOperationWithdraw    = "withdraw"
+	activationOperationReauthorize = "reauthorize"
+)
 
 func OpenActivationCoordinator(ctx context.Context, root string, runtime *catalog.Runtime) (*ActivationCoordinator, error) {
 	if runtime == nil {
@@ -126,6 +147,164 @@ func (coordinator *ActivationCoordinator) Activate(
 	return coordinator.ActivateAdmitted(ctx, mount, expectedOld, generation, candidate, nil, nil)
 }
 
+func (coordinator *ActivationCoordinator) Withdraw(
+	ctx context.Context,
+	mount string,
+	expectedActive catalog.SnapshotID,
+	generation uint64,
+	state catalog.TombstoneState,
+) (WithdrawalReceipt, error) {
+	coordinator.commit.Lock()
+	defer coordinator.commit.Unlock()
+	if err := ctx.Err(); err != nil {
+		return WithdrawalReceipt{}, err
+	}
+	if err := coordinator.rejectPendingJournal(); err != nil {
+		return WithdrawalReceipt{}, err
+	}
+	current := coordinator.runtime.Table()
+	active, exists := current.Mounts[mount]
+	if !exists {
+		return WithdrawalReceipt{}, fmt.Errorf("%w: mount %q has no active snapshot", catalog.ErrStaleSnapshot, mount)
+	}
+	tombstone := catalog.MountTombstone{State: state, CatalogID: active.Active.Directory.CatalogID, SnapshotID: active.Active.ID}
+	persisted := durableTombstone(tombstone)
+	journal := activationJournalV1{
+		SchemaVersion: 1,
+		Mount:         mount,
+		CatalogID:     tombstone.CatalogID,
+		ExpectedOld:   expectedActive,
+		Generation:    generation,
+		Operation:     activationOperationWithdraw,
+		Tombstone:     &persisted,
+	}
+	persist := func(table *catalog.RouteTable) error {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		if err := coordinator.writeJournal(journal); err != nil {
+			return err
+		}
+		if coordinator.hooks.afterJournal != nil {
+			if err := coordinator.hooks.afterJournal(); err != nil {
+				return err
+			}
+		}
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		if err := coordinator.writeRouteTable(table); err != nil {
+			return err
+		}
+		if coordinator.hooks.afterPointer != nil {
+			return coordinator.hooks.afterPointer()
+		}
+		return nil
+	}
+	if _, err := coordinator.runtime.WithdrawMountDurably(mount, expectedActive, generation, tombstone, persist); err != nil {
+		return WithdrawalReceipt{}, err
+	}
+	if coordinator.hooks.afterRuntime != nil {
+		if err := coordinator.hooks.afterRuntime(); err != nil {
+			return WithdrawalReceipt{}, err
+		}
+	}
+	if err := coordinator.removeJournal(); err != nil {
+		return WithdrawalReceipt{}, err
+	}
+	return WithdrawalReceipt{Mount: mount, State: state, SnapshotID: tombstone.SnapshotID, Generation: generation}, nil
+}
+
+func (coordinator *ActivationCoordinator) Reauthorize(
+	ctx context.Context,
+	mount string,
+	generation uint64,
+	candidate catalog.CompiledSnapshot,
+) (ActivationReceipt, error) {
+	coordinator.commit.Lock()
+	defer coordinator.commit.Unlock()
+	if err := ctx.Err(); err != nil {
+		return ActivationReceipt{}, err
+	}
+	if err := coordinator.rejectPendingJournal(); err != nil {
+		return ActivationReceipt{}, err
+	}
+	materialization, err := coordinator.store.Publish(ctx, candidate)
+	if errors.Is(err, ErrStorageBudget) {
+		if collectErr := coordinator.garbageCollectLocked(ctx); collectErr != nil {
+			return ActivationReceipt{}, collectErr
+		}
+		materialization, err = coordinator.store.Publish(ctx, candidate)
+	}
+	if err != nil {
+		return ActivationReceipt{}, err
+	}
+	verified, err := coordinator.store.Preflight(ctx, candidate.ID)
+	if err != nil {
+		return ActivationReceipt{}, err
+	}
+	if coordinator.hooks.afterPreflight != nil {
+		if err := coordinator.hooks.afterPreflight(); err != nil {
+			return ActivationReceipt{}, err
+		}
+	}
+	if err := ctx.Err(); err != nil {
+		return ActivationReceipt{}, err
+	}
+	current := coordinator.runtime.Table()
+	tombstone, exists := current.Tombstones[mount]
+	if !exists {
+		return ActivationReceipt{}, fmt.Errorf("%w: mount %q is not tombstoned", catalog.ErrMountUnavailable, mount)
+	}
+	if tombstone.CatalogID != verified.Directory.CatalogID {
+		return ActivationReceipt{}, fmt.Errorf("%w: mount %q catalog changed from %q to %q", ErrActivationIdentity, mount, tombstone.CatalogID, verified.Directory.CatalogID)
+	}
+	journal := activationJournalV1{
+		SchemaVersion: 1,
+		Mount:         mount,
+		CatalogID:     string(verified.Directory.CatalogID),
+		Candidate:     candidate.ID,
+		ExpectedOld:   tombstone.SnapshotID,
+		Generation:    generation,
+		Operation:     activationOperationReauthorize,
+	}
+	persist := func(table *catalog.RouteTable) error {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		if err := coordinator.writeJournal(journal); err != nil {
+			return err
+		}
+		if coordinator.hooks.afterJournal != nil {
+			if err := coordinator.hooks.afterJournal(); err != nil {
+				return err
+			}
+		}
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		if err := coordinator.writeRouteTable(table); err != nil {
+			return err
+		}
+		if coordinator.hooks.afterPointer != nil {
+			return coordinator.hooks.afterPointer()
+		}
+		return nil
+	}
+	if _, err := coordinator.runtime.ReauthorizeMountDurably(mount, generation, verified, persist); err != nil {
+		return ActivationReceipt{}, err
+	}
+	if coordinator.hooks.afterRuntime != nil {
+		if err := coordinator.hooks.afterRuntime(); err != nil {
+			return ActivationReceipt{}, err
+		}
+	}
+	if err := coordinator.removeJournal(); err != nil {
+		return ActivationReceipt{}, err
+	}
+	return ActivationReceipt{Mount: mount, SnapshotID: candidate.ID, PreviousID: "", Generation: generation, Location: materialization.Location}, nil
+}
+
 func (coordinator *ActivationCoordinator) ActivateAdmitted(
 	ctx context.Context,
 	mount string,
@@ -163,6 +342,9 @@ func (coordinator *ActivationCoordinator) ActivateAdmitted(
 			return ActivationReceipt{}, err
 		}
 	}
+	if err := ctx.Err(); err != nil {
+		return ActivationReceipt{}, err
+	}
 	if err := coordinator.runtime.CheckMount(mount, expectedOld, generation); err != nil {
 		return ActivationReceipt{}, err
 	}
@@ -186,6 +368,9 @@ func (coordinator *ActivationCoordinator) ActivateAdmitted(
 	}
 	journal := activationJournalV1{SchemaVersion: 1, Mount: mount, CatalogID: string(verified.Directory.CatalogID), Candidate: candidate.ID, ExpectedOld: expectedOld, Generation: generation}
 	persist := func(table *catalog.RouteTable) error {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
 		data, err := encodeRouteTable(table)
 		if err != nil {
 			return err
@@ -195,6 +380,9 @@ func (coordinator *ActivationCoordinator) ActivateAdmitted(
 				return err
 			}
 		}
+		if err := ctx.Err(); err != nil {
+			return err
+		}
 		if err := coordinator.writeJournal(journal); err != nil {
 			return err
 		}
@@ -202,6 +390,9 @@ func (coordinator *ActivationCoordinator) ActivateAdmitted(
 			if err := coordinator.hooks.afterJournal(); err != nil {
 				return err
 			}
+		}
+		if err := ctx.Err(); err != nil {
+			return err
 		}
 		if err := coordinator.writeRouteTableBytes(data); err != nil {
 			return err
@@ -235,7 +426,7 @@ func (coordinator *ActivationCoordinator) writeRouteTable(table *catalog.RouteTa
 }
 
 func encodeRouteTable(table *catalog.RouteTable) ([]byte, error) {
-	persisted := durableRouteTableV1{SchemaVersion: 1, Generation: table.Generation, Mounts: make(map[string]durableMountV1, len(table.Mounts))}
+	persisted := durableRouteTableV1{SchemaVersion: 1, Generation: table.Generation, Mounts: make(map[string]durableMountV1, len(table.Mounts)), Tombstones: make(map[string]durableTombstoneV1, len(table.Tombstones))}
 	for mount, state := range table.Mounts {
 		entry := durableMountV1{CatalogID: state.Active.Directory.CatalogID, Active: state.Active.ID}
 		if state.Previous != nil {
@@ -243,11 +434,22 @@ func encodeRouteTable(table *catalog.RouteTable) ([]byte, error) {
 		}
 		persisted.Mounts[mount] = entry
 	}
+	for mount, tombstone := range table.Tombstones {
+		persisted.Tombstones[mount] = durableTombstone(tombstone)
+	}
 	data, err := json.Marshal(persisted)
 	if err != nil {
 		return nil, fmt.Errorf("catalogstore: encode route table: %w", err)
 	}
 	return data, nil
+}
+
+func durableTombstone(value catalog.MountTombstone) durableTombstoneV1 {
+	return durableTombstoneV1{State: value.State, CatalogID: value.CatalogID, SnapshotID: value.SnapshotID}
+}
+
+func runtimeTombstone(value durableTombstoneV1) catalog.MountTombstone {
+	return catalog.MountTombstone{State: value.State, CatalogID: value.CatalogID, SnapshotID: value.SnapshotID}
 }
 
 func (coordinator *ActivationCoordinator) writeRouteTableBytes(data []byte) error {

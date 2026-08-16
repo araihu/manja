@@ -129,6 +129,38 @@ func TestActivationAdmissionRunsAfterStagingAndBeforeRoutePublication(t *testing
 	}
 }
 
+func TestActivationCancellationAfterPreflightLeavesLKGUnchanged(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	runtime := catalog.NewRuntime(2)
+	coordinator, err := OpenActivationCoordinator(context.Background(), root, runtime)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer coordinator.Close()
+	first := compiledFixtureVersion(t, "first")
+	second := compiledFixtureVersion(t, "second")
+	if _, err := coordinator.Activate(context.Background(), "/catalog", "", 2, first); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	coordinator.hooks.afterPreflight = func() error {
+		cancel()
+		return nil
+	}
+	if _, err := coordinator.ActivateAdmitted(ctx, "/catalog", first.ID, 2, second, nil, nil); !errors.Is(err, context.Canceled) {
+		t.Fatalf("cancelled activation error = %v, want %v", err, context.Canceled)
+	}
+	if active := runtime.Table().Mounts["/catalog"].Active.ID; active != first.ID {
+		t.Fatalf("cancelled activation changed LKG to %q, want %q", active, first.ID)
+	}
+	if _, err := os.Stat(coordinator.journalPath()); !os.IsNotExist(err) {
+		t.Fatalf("cancelled activation journal = %v, want absent", err)
+	}
+}
+
 func TestUnchangedActivationStillRunsPostStagingAdmission(t *testing.T) {
 	t.Parallel()
 
@@ -445,6 +477,85 @@ func TestPendingActivationJournalBlocksLaterTransition(t *testing.T) {
 	}
 	if !bytes.Contains(journal, []byte(second.ID)) || bytes.Contains(journal, []byte(third.ID)) {
 		t.Fatalf("pending journal changed after rejected transition: %s", journal)
+	}
+}
+
+func TestWithdrawalPersistsTombstoneAndBlocksRestartReactivation(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	runtime := catalog.NewRuntime(1)
+	coordinator, err := OpenActivationCoordinator(context.Background(), root, runtime)
+	if err != nil {
+		t.Fatal(err)
+	}
+	first := compiledFixture(t)
+	if _, err := coordinator.Activate(context.Background(), "/catalog", "", 1, first); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := coordinator.Withdraw(context.Background(), "/catalog", first.ID, 1, catalog.TombstoneWithdrawn); err != nil {
+		t.Fatal(err)
+	}
+	if err := coordinator.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	restarted := catalog.NewRuntime(0)
+	reopened, err := OpenActivationCoordinator(context.Background(), root, restarted)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer reopened.Close()
+	if _, exists := restarted.Table().Mounts["/catalog"]; exists {
+		t.Fatalf("withdrawn route was restored as active: %#v", restarted.Table())
+	}
+	if tombstone, exists := restarted.Table().Tombstones["/catalog"]; !exists || tombstone.State != catalog.TombstoneWithdrawn || tombstone.SnapshotID != first.ID {
+		t.Fatalf("recovered tombstone = %#v, exists=%t", tombstone, exists)
+	}
+	if _, err := reopened.Activate(context.Background(), "/catalog", "", 1, compiledFixtureVersion(t, "successor")); !errors.Is(err, catalog.ErrMountWithdrawn) {
+		t.Fatalf("implicit reactivation error = %v, want %v", err, catalog.ErrMountWithdrawn)
+	}
+}
+
+func TestReauthorizePersistsFreshActiveWithoutTombstonedPrevious(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	runtime := catalog.NewRuntime(1)
+	coordinator, err := OpenActivationCoordinator(context.Background(), root, runtime)
+	if err != nil {
+		t.Fatal(err)
+	}
+	first := compiledFixtureVersion(t, "first")
+	second := compiledFixtureVersion(t, "second")
+	if _, err := coordinator.Activate(context.Background(), "/catalog", "", 1, first); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := coordinator.Withdraw(context.Background(), "/catalog", first.ID, 1, catalog.TombstoneDeleted); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := coordinator.Reauthorize(context.Background(), "/catalog", 1, second); err != nil {
+		t.Fatal(err)
+	}
+	state := runtime.Table().Mounts["/catalog"]
+	if state.Active.ID != second.ID || state.Previous != nil {
+		t.Fatalf("reauthorized state = %#v", state)
+	}
+	if _, exists := runtime.Table().Tombstones["/catalog"]; exists {
+		t.Fatalf("reauthorized tombstone remains: %#v", runtime.Table())
+	}
+	if err := coordinator.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	restarted := catalog.NewRuntime(0)
+	reopened, err := OpenActivationCoordinator(context.Background(), root, restarted)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer reopened.Close()
+	if got := restarted.Table().Mounts["/catalog"].Active.ID; got != second.ID {
+		t.Fatalf("recovered reauthorized active = %q, want %q", got, second.ID)
 	}
 }
 

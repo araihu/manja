@@ -357,3 +357,158 @@ func TestRecoveryPreservesHealthyActiveWhenPreviousCatalogDiffers(t *testing.T) 
 		t.Fatalf("repaired route entry = %#v", entry)
 	}
 }
+
+func TestWithdrawalCrashRecoveryAtDurableBoundaries(t *testing.T) {
+	t.Parallel()
+
+	errCrash := errors.New("simulated withdrawal crash")
+	for _, test := range []struct {
+		name  string
+		hooks activationHooks
+	}{
+		{name: "after journal fsync", hooks: activationHooks{afterJournal: func() error { return errCrash }}},
+		{name: "after tombstone pointer replace", hooks: activationHooks{afterPointer: func() error { return errCrash }}},
+		{name: "after in-process swap", hooks: activationHooks{afterRuntime: func() error { return errCrash }}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			root := t.TempDir()
+			runtime := catalog.NewRuntime(1)
+			coordinator, err := OpenActivationCoordinator(context.Background(), root, runtime)
+			if err != nil {
+				t.Fatal(err)
+			}
+			first := compiledFixtureVersion(t, "withdraw")
+			if _, err := coordinator.Activate(context.Background(), "/catalog", "", 1, first); err != nil {
+				t.Fatal(err)
+			}
+			coordinator.hooks = test.hooks
+			if _, err := coordinator.Withdraw(context.Background(), "/catalog", first.ID, 1, catalog.TombstoneWithdrawn); !errors.Is(err, errCrash) {
+				t.Fatalf("withdrawal error = %v, want %v", err, errCrash)
+			}
+			if err := coordinator.Close(); err != nil {
+				t.Fatal(err)
+			}
+
+			restarted := catalog.NewRuntime(0)
+			reopened, err := OpenActivationCoordinator(context.Background(), root, restarted)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer reopened.Close()
+			if _, active := restarted.Table().Mounts["/catalog"]; active {
+				t.Fatalf("withdrawal recovered active route: %#v", restarted.Table())
+			}
+			if tombstone, exists := restarted.Table().Tombstones["/catalog"]; !exists || tombstone.SnapshotID != first.ID {
+				t.Fatalf("withdrawal recovered tombstone = %#v, exists=%t", tombstone, exists)
+			}
+		})
+	}
+}
+
+func TestReauthorizationCrashRecoveryAfterJournalFsync(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	runtime := catalog.NewRuntime(1)
+	coordinator, err := OpenActivationCoordinator(context.Background(), root, runtime)
+	if err != nil {
+		t.Fatal(err)
+	}
+	first := compiledFixtureVersion(t, "first")
+	second := compiledFixtureVersion(t, "second")
+	if _, err := coordinator.Activate(context.Background(), "/catalog", "", 1, first); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := coordinator.Withdraw(context.Background(), "/catalog", first.ID, 1, catalog.TombstoneWithdrawn); err != nil {
+		t.Fatal(err)
+	}
+	errCrash := errors.New("simulated reauthorization crash")
+	coordinator.hooks.afterJournal = func() error { return errCrash }
+	if _, err := coordinator.Reauthorize(context.Background(), "/catalog", 1, second); !errors.Is(err, errCrash) {
+		t.Fatalf("reauthorization error = %v, want %v", err, errCrash)
+	}
+	if err := coordinator.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	restarted := catalog.NewRuntime(0)
+	reopened, err := OpenActivationCoordinator(context.Background(), root, restarted)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer reopened.Close()
+	state, active := restarted.Table().Mounts["/catalog"]
+	if !active || state.Active.ID != second.ID || len(restarted.Table().Tombstones) != 0 {
+		t.Fatalf("reauthorization recovery = %#v", restarted.Table())
+	}
+}
+
+func TestRecoveryRejectsInvalidTombstoneRoute(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	coordinator, err := OpenActivationCoordinator(context.Background(), root, catalog.NewRuntime(1))
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, err := json.Marshal(durableRouteTableV1{
+		SchemaVersion: 1,
+		Generation:    1,
+		Mounts:        map[string]durableMountV1{},
+		Tombstones: map[string]durableTombstoneV1{
+			"/catalog": {State: catalog.TombstoneWithdrawn, CatalogID: "catalog", SnapshotID: "invalid"},
+		},
+	})
+	if err != nil {
+		_ = coordinator.Close()
+		t.Fatal(err)
+	}
+	if err := coordinator.writeRouteTableBytes(data); err != nil {
+		_ = coordinator.Close()
+		t.Fatal(err)
+	}
+	if err := coordinator.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := OpenActivationCoordinator(context.Background(), root, catalog.NewRuntime(0)); !errors.Is(err, ErrCorruptSnapshot) {
+		t.Fatalf("invalid tombstone route error = %v, want %v", err, ErrCorruptSnapshot)
+	}
+}
+
+func TestTombstoneSurvivesPhysicalSnapshotPurge(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	runtime := catalog.NewRuntime(1)
+	coordinator, err := OpenActivationCoordinator(context.Background(), root, runtime)
+	if err != nil {
+		t.Fatal(err)
+	}
+	first := compiledFixture(t)
+	if _, err := coordinator.Activate(context.Background(), "/catalog", "", 1, first); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := coordinator.Withdraw(context.Background(), "/catalog", first.ID, 1, catalog.TombstoneWithdrawn); err != nil {
+		t.Fatal(err)
+	}
+	path, err := coordinator.store.snapshotPath(first.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.RemoveAll(path); err != nil {
+		t.Fatal(err)
+	}
+	if err := coordinator.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	restarted := catalog.NewRuntime(0)
+	reopened, err := OpenActivationCoordinator(context.Background(), root, restarted)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer reopened.Close()
+	if tombstone, exists := restarted.Table().Tombstones["/catalog"]; !exists || tombstone.SnapshotID != first.ID {
+		t.Fatalf("purged tombstone = %#v, exists=%t", tombstone, exists)
+	}
+}

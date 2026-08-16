@@ -36,16 +36,56 @@ func (coordinator *ActivationCoordinator) recover(ctx context.Context) error {
 	if err := validateActivationJournal(journal); err != nil {
 		return fmt.Errorf("%w: invalid activation journal: %v", ErrCorruptSnapshot, err)
 	}
+	operation := journal.Operation
+	if operation == "" {
+		operation = "activate"
+	}
 	table := coordinator.runtime.Table()
-	if state, exists := table.Mounts[journal.Mount]; exists && state.Active.ID == journal.Candidate {
-		if journal.CatalogID != "" && state.Active.Directory.CatalogID != journal.CatalogID {
-			return fmt.Errorf("%w: activation journal catalog %q differs from active catalog %q", ErrCorruptSnapshot, journal.CatalogID, state.Active.Directory.CatalogID)
+	switch operation {
+	case activationOperationWithdraw:
+		if journal.Tombstone == nil {
+			return fmt.Errorf("%w: withdrawal journal has no tombstone", ErrCorruptSnapshot)
 		}
-		return coordinator.removeJournal()
+		want := runtimeTombstone(*journal.Tombstone)
+		if _, active := table.Mounts[journal.Mount]; !active {
+			if got, tombstoned := table.Tombstones[journal.Mount]; tombstoned && got == want {
+				return coordinator.removeJournal()
+			}
+		}
+	case activationOperationReauthorize:
+		if state, exists := table.Mounts[journal.Mount]; exists && state.Active.ID == journal.Candidate {
+			if state.Previous == nil {
+				if _, tombstoned := table.Tombstones[journal.Mount]; tombstoned {
+					return fmt.Errorf("%w: completed reauthorization still has tombstone", ErrCorruptSnapshot)
+				}
+				if journal.CatalogID != "" && state.Active.Directory.CatalogID != journal.CatalogID {
+					return fmt.Errorf("%w: activation journal catalog %q differs from active catalog %q", ErrCorruptSnapshot, journal.CatalogID, state.Active.Directory.CatalogID)
+				}
+				return coordinator.removeJournal()
+			}
+		}
+	default:
+		if state, exists := table.Mounts[journal.Mount]; exists && state.Active.ID == journal.Candidate {
+			if journal.CatalogID != "" && state.Active.Directory.CatalogID != journal.CatalogID {
+				return fmt.Errorf("%w: activation journal catalog %q differs from active catalog %q", ErrCorruptSnapshot, journal.CatalogID, state.Active.Directory.CatalogID)
+			}
+			return coordinator.removeJournal()
+		}
 	}
 	current := catalog.SnapshotID("")
-	if state, exists := table.Mounts[journal.Mount]; exists {
-		current = state.Active.ID
+	switch operation {
+	case activationOperationWithdraw:
+		if state, exists := table.Mounts[journal.Mount]; exists {
+			current = state.Active.ID
+		}
+	case activationOperationReauthorize:
+		if tombstone, exists := table.Tombstones[journal.Mount]; exists {
+			current = tombstone.SnapshotID
+		}
+	default:
+		if state, exists := table.Mounts[journal.Mount]; exists {
+			current = state.Active.ID
+		}
 	}
 	if table.Generation != journal.Generation || current != journal.ExpectedOld {
 		if err := coordinator.archiveJournal(journalBytes); err != nil {
@@ -53,18 +93,36 @@ func (coordinator *ActivationCoordinator) recover(ctx context.Context) error {
 		}
 		return nil
 	}
-	verified, err := coordinator.store.Preflight(ctx, journal.Candidate)
-	if err != nil {
-		return err
-	}
-	if journal.CatalogID != "" && verified.Directory.CatalogID != journal.CatalogID {
-		return fmt.Errorf("%w: activation candidate catalog %q differs from journal catalog %q", ErrCorruptSnapshot, verified.Directory.CatalogID, journal.CatalogID)
-	}
-	if state, exists := table.Mounts[journal.Mount]; exists && state.Active.ID == journal.ExpectedOld && state.Active.Directory.CatalogID != verified.Directory.CatalogID {
-		return fmt.Errorf("%w: activation candidate catalog %q differs from active catalog %q", ErrCorruptSnapshot, verified.Directory.CatalogID, state.Active.Directory.CatalogID)
-	}
-	if _, err := coordinator.runtime.ActivateMountDurablyBounded(journal.Mount, journal.ExpectedOld, journal.Generation, verified, coordinator.writeRouteTable); err != nil {
-		return fmt.Errorf("catalogstore: recover activation: %w", err)
+	switch operation {
+	case activationOperationWithdraw:
+		if _, err := coordinator.runtime.WithdrawMountDurably(journal.Mount, journal.ExpectedOld, journal.Generation, runtimeTombstone(*journal.Tombstone), coordinator.writeRouteTable); err != nil {
+			return fmt.Errorf("catalogstore: recover withdrawal: %w", err)
+		}
+	case activationOperationReauthorize:
+		verified, preflightErr := coordinator.store.Preflight(ctx, journal.Candidate)
+		if preflightErr != nil {
+			return preflightErr
+		}
+		if journal.CatalogID != "" && verified.Directory.CatalogID != journal.CatalogID {
+			return fmt.Errorf("%w: activation candidate catalog %q differs from journal catalog %q", ErrCorruptSnapshot, verified.Directory.CatalogID, journal.CatalogID)
+		}
+		if _, err := coordinator.runtime.ReauthorizeMountDurably(journal.Mount, journal.Generation, verified, coordinator.writeRouteTable); err != nil {
+			return fmt.Errorf("catalogstore: recover reauthorization: %w", err)
+		}
+	default:
+		verified, preflightErr := coordinator.store.Preflight(ctx, journal.Candidate)
+		if preflightErr != nil {
+			return preflightErr
+		}
+		if journal.CatalogID != "" && verified.Directory.CatalogID != journal.CatalogID {
+			return fmt.Errorf("%w: activation candidate catalog %q differs from journal catalog %q", ErrCorruptSnapshot, verified.Directory.CatalogID, journal.CatalogID)
+		}
+		if state, exists := table.Mounts[journal.Mount]; exists && state.Active.ID == journal.ExpectedOld && state.Active.Directory.CatalogID != verified.Directory.CatalogID {
+			return fmt.Errorf("%w: activation candidate catalog %q differs from active catalog %q", ErrCorruptSnapshot, verified.Directory.CatalogID, state.Active.Directory.CatalogID)
+		}
+		if _, err := coordinator.runtime.ActivateMountDurablyBounded(journal.Mount, journal.ExpectedOld, journal.Generation, verified, coordinator.writeRouteTable); err != nil {
+			return fmt.Errorf("catalogstore: recover activation: %w", err)
+		}
 	}
 	return coordinator.removeJournal()
 }
@@ -84,9 +142,15 @@ func (coordinator *ActivationCoordinator) restoreDurableRoutes(ctx context.Conte
 	if err := validateDurableRouteTable(persisted); err != nil {
 		return fmt.Errorf("%w: invalid durable routes: %v", ErrCorruptSnapshot, err)
 	}
-	table := &catalog.RouteTable{Generation: persisted.Generation, Mounts: make(map[string]catalog.MountState, len(persisted.Mounts))}
+	table := &catalog.RouteTable{Generation: persisted.Generation, Mounts: make(map[string]catalog.MountState, len(persisted.Mounts)), Tombstones: make(map[string]catalog.MountTombstone, len(persisted.Tombstones))}
+	for mount, tombstone := range persisted.Tombstones {
+		table.Tombstones[mount] = runtimeTombstone(tombstone)
+	}
 	repaired := false
 	for mount, entry := range persisted.Mounts {
+		if _, withdrawn := table.Tombstones[mount]; withdrawn {
+			return fmt.Errorf("%w: mount %q has active snapshot and tombstone", ErrCorruptSnapshot, mount)
+		}
 		active, err := coordinator.store.Preflight(ctx, entry.Active)
 		if err == nil && entry.CatalogID != "" && active.Directory.CatalogID != entry.CatalogID {
 			err = fmt.Errorf("%w: active catalog %q differs from route catalog %q", ErrCorruptSnapshot, active.Directory.CatalogID, entry.CatalogID)
@@ -187,7 +251,14 @@ func validateActivationJournal(journal activationJournalV1) error {
 	if !validActivationMount(journal.Mount) {
 		return fmt.Errorf("mount %q is invalid", journal.Mount)
 	}
-	if !validSnapshotID(journal.Candidate) {
+	operation := journal.Operation
+	if operation == "" {
+		operation = "activate"
+	}
+	if operation != "activate" && operation != activationOperationWithdraw && operation != activationOperationReauthorize {
+		return fmt.Errorf("operation %q is invalid", operation)
+	}
+	if operation != activationOperationWithdraw && !validSnapshotID(journal.Candidate) {
 		return fmt.Errorf("candidate snapshot %q is invalid", journal.Candidate)
 	}
 	if journal.ExpectedOld != "" && !validSnapshotID(journal.ExpectedOld) {
@@ -198,6 +269,32 @@ func validateActivationJournal(journal activationJournalV1) error {
 			return fmt.Errorf("catalog identity: %w", err)
 		}
 	}
+	if operation == activationOperationWithdraw {
+		if journal.Tombstone == nil {
+			return fmt.Errorf("withdrawal tombstone is missing")
+		}
+		if err := validateDurableTombstone(*journal.Tombstone); err != nil {
+			return err
+		}
+		if journal.ExpectedOld != journal.Tombstone.SnapshotID {
+			return fmt.Errorf("withdrawal expected snapshot does not match tombstone")
+		}
+		if journal.Candidate != "" {
+			return fmt.Errorf("withdrawal candidate must be empty")
+		}
+	} else if operation == activationOperationReauthorize {
+		if journal.Tombstone != nil {
+			return fmt.Errorf("reauthorization journal must not carry tombstone")
+		}
+		if journal.ExpectedOld == "" {
+			return fmt.Errorf("reauthorization expected snapshot is missing")
+		}
+		if journal.Candidate == journal.ExpectedOld {
+			return fmt.Errorf("reauthorization candidate reuses expected snapshot")
+		}
+	} else if journal.Tombstone != nil {
+		return fmt.Errorf("activation journal must not carry tombstone")
+	}
 	return nil
 }
 
@@ -205,7 +302,7 @@ func validateDurableRouteTable(table durableRouteTableV1) error {
 	if table.Mounts == nil {
 		return fmt.Errorf("mounts are missing")
 	}
-	if len(table.Mounts) > maxDurableMounts {
+	if len(table.Mounts)+len(table.Tombstones) > maxDurableMounts {
 		return fmt.Errorf("mounts exceed %d", maxDurableMounts)
 	}
 	for mount, entry := range table.Mounts {
@@ -228,6 +325,27 @@ func validateDurableRouteTable(table durableRouteTableV1) error {
 				return fmt.Errorf("catalog identity: %w", err)
 			}
 		}
+	}
+	for mount, tombstone := range table.Tombstones {
+		if !validActivationMount(mount) {
+			return fmt.Errorf("tombstone mount %q is invalid", mount)
+		}
+		if err := validateDurableTombstone(tombstone); err != nil {
+			return fmt.Errorf("tombstone %q: %w", mount, err)
+		}
+	}
+	return nil
+}
+
+func validateDurableTombstone(tombstone durableTombstoneV1) error {
+	if tombstone.State != catalog.TombstoneWithdrawn && tombstone.State != catalog.TombstoneDeleted {
+		return fmt.Errorf("state %q is invalid", tombstone.State)
+	}
+	if !validSnapshotID(tombstone.SnapshotID) {
+		return fmt.Errorf("snapshot %q is invalid", tombstone.SnapshotID)
+	}
+	if err := domain.ValidateCatalogID(tombstone.CatalogID); err != nil {
+		return fmt.Errorf("catalog identity: %w", err)
 	}
 	return nil
 }
