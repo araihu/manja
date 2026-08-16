@@ -8,6 +8,8 @@ import (
 	"sync"
 	"sync/atomic"
 	"unicode"
+
+	"github.com/araihu/manja/domain"
 )
 
 var (
@@ -16,8 +18,26 @@ var (
 	ErrStaleSnapshot    = errors.New("catalog: stale snapshot")
 	ErrStaleGeneration  = errors.New("catalog: stale configuration generation")
 	ErrMountUnavailable = errors.New("catalog: mount unavailable")
+	ErrMountWithdrawn   = errors.New("catalog: mount withdrawn")
+	ErrInvalidTombstone = errors.New("catalog: invalid mount tombstone")
 	ErrRuntimeBusy      = errors.New("catalog: runtime has active admissions")
 )
+
+type TombstoneState string
+
+const (
+	TombstoneWithdrawn TombstoneState = "withdrawn"
+	TombstoneDeleted   TombstoneState = "deleted"
+)
+
+// MountTombstone is durable authority that prevents a withdrawn route from
+// being implicitly reactivated. SnapshotID records the last public identity;
+// it is not a serving pointer and may be garbage-collected after withdrawal.
+type MountTombstone struct {
+	State      TombstoneState
+	CatalogID  string
+	SnapshotID SnapshotID
+}
 
 // RuntimeSnapshot is the verified, immutable snapshot admitted for rendering.
 // Location names the content-addressed directory that owns Directory and Search.
@@ -37,6 +57,7 @@ type MountState struct {
 type RouteTable struct {
 	Generation uint64
 	Mounts     map[string]MountState
+	Tombstones map[string]MountTombstone
 }
 
 // MountActivation is the bounded result of one durable route transition. It
@@ -59,7 +80,7 @@ type Runtime struct {
 
 func NewRuntime(generation uint64) *Runtime {
 	runtime := &Runtime{refs: make(map[SnapshotID]uint64)}
-	runtime.table.Store(&RouteTable{Generation: generation, Mounts: make(map[string]MountState)})
+	runtime.table.Store(&RouteTable{Generation: generation, Mounts: make(map[string]MountState), Tombstones: make(map[string]MountTombstone)})
 	return runtime
 }
 
@@ -78,6 +99,9 @@ func (runtime *Runtime) CheckMount(mount string, expectedOld SnapshotID, generat
 	current := runtime.table.Load()
 	if current.Generation != generation {
 		return fmt.Errorf("%w: expected %d, current %d", ErrStaleGeneration, generation, current.Generation)
+	}
+	if _, withdrawn := current.Tombstones[mount]; withdrawn {
+		return fmt.Errorf("%w: mount %q", ErrMountWithdrawn, mount)
 	}
 	state, exists := current.Mounts[mount]
 	if exists && state.Active.ID != expectedOld {
@@ -138,6 +162,9 @@ func (runtime *Runtime) activateMountDurably(
 	current := runtime.table.Load()
 	if current.Generation != generation {
 		return MountActivation{}, nil, fmt.Errorf("%w: expected %d, current %d", ErrStaleGeneration, generation, current.Generation)
+	}
+	if _, withdrawn := current.Tombstones[mount]; withdrawn {
+		return MountActivation{}, nil, fmt.Errorf("%w: mount %q", ErrMountWithdrawn, mount)
 	}
 	state, exists := current.Mounts[mount]
 	if exists {
@@ -206,8 +233,120 @@ func (runtime *Runtime) ReplaceRoutes(expectedGeneration, nextGeneration uint64,
 	if current.Generation != expectedGeneration {
 		return fmt.Errorf("%w: expected %d, current %d", ErrStaleGeneration, expectedGeneration, current.Generation)
 	}
-	runtime.table.Store(&RouteTable{Generation: nextGeneration, Mounts: validated})
+	for mount := range validated {
+		if _, withdrawn := current.Tombstones[mount]; withdrawn {
+			return fmt.Errorf("%w: mount %q requires explicit reauthorization", ErrMountWithdrawn, mount)
+		}
+	}
+	runtime.table.Store(&RouteTable{Generation: nextGeneration, Mounts: validated, Tombstones: cloneTombstones(current.Tombstones)})
 	return nil
+}
+
+// WithdrawMountDurably removes a serving route and records durable tombstone
+// authority in one pointer transition. A failed persist callback leaves both
+// the active route and tombstone state unchanged.
+func (runtime *Runtime) WithdrawMountDurably(
+	mount string,
+	expectedActive SnapshotID,
+	generation uint64,
+	tombstone MountTombstone,
+	persist func(*RouteTable) error,
+) (*RouteTable, error) {
+	if err := validateRuntimeMount(mount); err != nil {
+		return nil, err
+	}
+	if err := validateTombstoneState(tombstone.State); err != nil {
+		return nil, err
+	}
+
+	runtime.writes.Lock()
+	defer runtime.writes.Unlock()
+	current := runtime.table.Load()
+	if current.Generation != generation {
+		return nil, fmt.Errorf("%w: expected %d, current %d", ErrStaleGeneration, generation, current.Generation)
+	}
+	state, exists := current.Mounts[mount]
+	if !exists {
+		if existing, tombstoned := current.Tombstones[mount]; tombstoned && existing == tombstone {
+			return cloneRouteTable(current), nil
+		}
+		if _, tombstoned := current.Tombstones[mount]; tombstoned {
+			return nil, fmt.Errorf("%w: mount %q", ErrMountWithdrawn, mount)
+		}
+		return nil, fmt.Errorf("%w: mount %q has no active snapshot", ErrStaleSnapshot, mount)
+	}
+	if state.Active.ID != expectedActive {
+		return nil, fmt.Errorf("%w: mount %q expected %q, current %q", ErrStaleSnapshot, mount, expectedActive, state.Active.ID)
+	}
+	if tombstone.SnapshotID == "" {
+		tombstone.SnapshotID = state.Active.ID
+	}
+	if tombstone.CatalogID == "" {
+		tombstone.CatalogID = state.Active.Directory.CatalogID
+	}
+	if err := validateRuntimeTombstone(tombstone); err != nil {
+		return nil, err
+	}
+	if tombstone.SnapshotID != state.Active.ID || tombstone.CatalogID != state.Active.Directory.CatalogID {
+		return nil, fmt.Errorf("%w: mount %q identity does not match active snapshot", ErrInvalidTombstone, mount)
+	}
+	next := cloneRouteTable(current)
+	delete(next.Mounts, mount)
+	next.Tombstones[mount] = tombstone
+	if persist != nil {
+		if err := persist(cloneRouteTable(next)); err != nil {
+			return nil, err
+		}
+	}
+	runtime.table.Store(next)
+	return cloneRouteTable(next), nil
+}
+
+// ReauthorizeMountDurably is the only transition that may recreate a
+// tombstoned route. It installs a fresh active snapshot and clears tombstone
+// authority atomically; it never promotes tombstoned bytes as previous state.
+func (runtime *Runtime) ReauthorizeMountDurably(
+	mount string,
+	generation uint64,
+	candidate RuntimeSnapshot,
+	persist func(*RouteTable) error,
+) (*RouteTable, error) {
+	if err := validateRuntimeMount(mount); err != nil {
+		return nil, err
+	}
+	if err := validateRuntimeSnapshot(candidate); err != nil {
+		return nil, err
+	}
+
+	runtime.writes.Lock()
+	defer runtime.writes.Unlock()
+	current := runtime.table.Load()
+	if current.Generation != generation {
+		return nil, fmt.Errorf("%w: expected %d, current %d", ErrStaleGeneration, generation, current.Generation)
+	}
+	tombstone, tombstoned := current.Tombstones[mount]
+	if !tombstoned {
+		return nil, fmt.Errorf("%w: mount %q is not tombstoned", ErrMountUnavailable, mount)
+	}
+	if _, active := current.Mounts[mount]; active {
+		return nil, fmt.Errorf("%w: mount %q still has an active snapshot", ErrStaleSnapshot, mount)
+	}
+	if tombstone.CatalogID != candidate.Directory.CatalogID {
+		return nil, fmt.Errorf("%w: mount %q catalog changed from %q to %q", ErrInvalidTombstone, mount, tombstone.CatalogID, candidate.Directory.CatalogID)
+	}
+	if tombstone.SnapshotID == candidate.ID {
+		return nil, fmt.Errorf("%w: mount %q reuses tombstoned snapshot %q", ErrInvalidTombstone, mount, candidate.ID)
+	}
+	next := cloneRouteTable(current)
+	delete(next.Tombstones, mount)
+	next.Mounts[mount] = MountState{Active: cloneRuntimeSnapshot(candidate)}
+	if persist != nil {
+		if err := persist(cloneRouteTable(next)); err != nil {
+			return nil, err
+		}
+	}
+	runtime.table.Store(next)
+	return cloneRouteTable(next), nil
 }
 
 // FallbackMountDurably removes a corrupt active snapshot and promotes at most
@@ -304,6 +443,17 @@ func (runtime *Runtime) RestoreTable(table *RouteTable) error {
 				return err
 			}
 		}
+		if _, withdrawn := table.Tombstones[mount]; withdrawn {
+			return fmt.Errorf("%w: mount %q has active snapshot and tombstone", ErrInvalidTombstone, mount)
+		}
+	}
+	for mount, tombstone := range table.Tombstones {
+		if err := validateRuntimeMount(mount); err != nil {
+			return err
+		}
+		if err := validateRuntimeTombstone(tombstone); err != nil {
+			return err
+		}
 	}
 	runtime.writes.Lock()
 	defer runtime.writes.Unlock()
@@ -335,6 +485,9 @@ func (runtime *Runtime) AdmitSnapshot(mount string, id SnapshotID) (*Admission, 
 	defer runtime.writes.Unlock()
 	state, ok := runtime.table.Load().Mounts[mount]
 	if !ok {
+		if _, withdrawn := runtime.table.Load().Tombstones[mount]; withdrawn {
+			return nil, fmt.Errorf("%w: mount %q", ErrMountWithdrawn, mount)
+		}
 		return nil, fmt.Errorf("%w: %q", ErrMountUnavailable, mount)
 	}
 	selected := state.Active
@@ -402,8 +555,31 @@ func validateRuntimeSnapshot(value RuntimeSnapshot) error {
 	return nil
 }
 
+func validateTombstoneState(value TombstoneState) error {
+	if value != TombstoneWithdrawn && value != TombstoneDeleted {
+		return fmt.Errorf("%w: state %q", ErrInvalidTombstone, value)
+	}
+	return nil
+}
+
+func validateRuntimeTombstone(value MountTombstone) error {
+	if err := validateTombstoneState(value.State); err != nil {
+		return err
+	}
+	if !strings.HasPrefix(string(value.SnapshotID), "snapshot-sha256-") {
+		return fmt.Errorf("%w: snapshot %q", ErrInvalidTombstone, value.SnapshotID)
+	}
+	if err := validateRuntimeSnapshot(RuntimeSnapshot{ID: value.SnapshotID, Location: "tombstone", Directory: CatalogArtifactV1{SchemaVersion: 1}, Search: SearchDirectoryV1{SchemaVersion: 1}}); err != nil {
+		return fmt.Errorf("%w: snapshot %q", ErrInvalidTombstone, value.SnapshotID)
+	}
+	if err := domain.ValidateCatalogID(value.CatalogID); err != nil {
+		return fmt.Errorf("%w: catalog identity: %v", ErrInvalidTombstone, err)
+	}
+	return nil
+}
+
 func cloneRouteTable(source *RouteTable) *RouteTable {
-	result := &RouteTable{Generation: source.Generation, Mounts: make(map[string]MountState, len(source.Mounts))}
+	result := &RouteTable{Generation: source.Generation, Mounts: make(map[string]MountState, len(source.Mounts)), Tombstones: cloneTombstones(source.Tombstones)}
 	for mount, state := range source.Mounts {
 		cloned := MountState{Active: cloneRuntimeSnapshot(state.Active)}
 		if state.Previous != nil {
@@ -411,6 +587,14 @@ func cloneRouteTable(source *RouteTable) *RouteTable {
 			cloned.Previous = &previous
 		}
 		result.Mounts[mount] = cloned
+	}
+	return result
+}
+
+func cloneTombstones(source map[string]MountTombstone) map[string]MountTombstone {
+	result := make(map[string]MountTombstone, len(source))
+	for mount, tombstone := range source {
+		result[mount] = tombstone
 	}
 	return result
 }

@@ -205,6 +205,105 @@ func TestRuntimeFallbackPromotesOnlyPreviousAndCanDisableMount(t *testing.T) {
 	}
 }
 
+func TestRuntimeWithdrawalPersistsTombstoneAndBlocksImplicitReactivation(t *testing.T) {
+	t.Parallel()
+
+	runtime := NewRuntime(1)
+	first := runtimeSnapshotFixture("a")
+	second := runtimeSnapshotFixture("b")
+	if _, err := runtime.ActivateMount("/catalog", "", 1, first); err != nil {
+		t.Fatal(err)
+	}
+	tombstone := MountTombstone{
+		State:      TombstoneWithdrawn,
+		CatalogID:  first.Directory.CatalogID,
+		SnapshotID: first.ID,
+	}
+	if _, err := runtime.WithdrawMountDurably("/catalog", first.ID, 1, tombstone, nil); err != nil {
+		t.Fatal(err)
+	}
+	table := runtime.Table()
+	if _, exists := table.Mounts["/catalog"]; exists {
+		t.Fatalf("withdrawn mount remains active: %#v", table)
+	}
+	if got := table.Tombstones["/catalog"]; got != tombstone {
+		t.Fatalf("tombstone = %#v, want %#v", got, tombstone)
+	}
+	if _, err := runtime.ActivateMount("/catalog", "", 1, second); !errors.Is(err, ErrMountWithdrawn) {
+		t.Fatalf("implicit reactivation error = %v, want %v", err, ErrMountWithdrawn)
+	}
+	if _, err := runtime.Admit("/catalog"); !errors.Is(err, ErrMountWithdrawn) {
+		t.Fatalf("withdrawn admission error = %v, want %v", err, ErrMountWithdrawn)
+	}
+}
+
+func TestRuntimeReauthorizationAtomicallyReplacesTombstone(t *testing.T) {
+	t.Parallel()
+
+	runtime := NewRuntime(1)
+	first := runtimeSnapshotFixture("a")
+	second := runtimeSnapshotFixture("b")
+	second.Directory.CatalogID = first.Directory.CatalogID
+	if _, err := runtime.ActivateMount("/catalog", "", 1, first); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := runtime.WithdrawMountDurably("/catalog", first.ID, 1, MountTombstone{
+		State: TombstoneDeleted, CatalogID: first.Directory.CatalogID, SnapshotID: first.ID,
+	}, nil); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := runtime.ReauthorizeMountDurably("/catalog", 1, second, nil); err != nil {
+		t.Fatal(err)
+	}
+	table := runtime.Table()
+	state, exists := table.Mounts["/catalog"]
+	if !exists || state.Active.ID != second.ID || state.Previous != nil {
+		t.Fatalf("reauthorized route = %#v", table)
+	}
+	if _, exists := table.Tombstones["/catalog"]; exists {
+		t.Fatalf("reauthorized tombstone remains: %#v", table)
+	}
+}
+
+func TestRuntimeReauthorizationRejectsTombstonedSnapshotIdentity(t *testing.T) {
+	t.Parallel()
+
+	runtime := NewRuntime(1)
+	first := runtimeSnapshotFixture("a")
+	if _, err := runtime.ActivateMount("/catalog", "", 1, first); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := runtime.WithdrawMountDurably("/catalog", first.ID, 1, MountTombstone{
+		State: TombstoneWithdrawn, CatalogID: first.Directory.CatalogID, SnapshotID: first.ID,
+	}, nil); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := runtime.ReauthorizeMountDurably("/catalog", 1, first, nil); !errors.Is(err, ErrInvalidTombstone) {
+		t.Fatalf("tombstoned snapshot reauthorization error = %v, want %v", err, ErrInvalidTombstone)
+	}
+}
+
+func TestRuntimeWithdrawalDoesNotPublishWhenPersistenceFails(t *testing.T) {
+	t.Parallel()
+
+	runtime := NewRuntime(1)
+	first := runtimeSnapshotFixture("a")
+	if _, err := runtime.ActivateMount("/catalog", "", 1, first); err != nil {
+		t.Fatal(err)
+	}
+	want := errors.New("tombstone write failed")
+	_, err := runtime.WithdrawMountDurably("/catalog", first.ID, 1, MountTombstone{
+		State: TombstoneWithdrawn, CatalogID: first.Directory.CatalogID, SnapshotID: first.ID,
+	}, func(*RouteTable) error { return want })
+	if !errors.Is(err, want) {
+		t.Fatalf("withdrawal error = %v, want %v", err, want)
+	}
+	table := runtime.Table()
+	if table.Mounts["/catalog"].Active.ID != first.ID || len(table.Tombstones) != 0 {
+		t.Fatalf("failed withdrawal changed runtime: %#v", table)
+	}
+}
+
 func runtimeSnapshotFixture(suffix string) RuntimeSnapshot {
 	return RuntimeSnapshot{
 		ID:       SnapshotID("snapshot-sha256-" + repeatRuntimeHex(suffix)),
