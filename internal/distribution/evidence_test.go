@@ -500,7 +500,7 @@ func validEvidence() Evidence {
 			{
 				Name:       "manja-runtime",
 				Kind:       ArtifactBinary,
-				Source:     "git:c20241437b6309b5ce73d8ab30f14e3be9812552",
+				Source:     "git:example.com/manja@c20241437b6309b5ce73d8ab30f14e3be9812552",
 				Digest:     "sha256:" + strings.Repeat("7", 64),
 				Inspection: InspectionEvidence{Complete: true, FreshRoot: true, DigestBound: true},
 				SBOM: SBOMEvidence{

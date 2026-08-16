@@ -412,7 +412,7 @@ func authorityBindingMatches(authority AuthorityEvidence) bool {
 	if matches == nil || binding.reference == "" || binding.commit == "" || binding.tree == "" || binding.path == "" || binding.blob == "" || binding.digest == "" || len(binding.receipt) == 0 {
 		return false
 	}
-	if binding.reference != authority.Reference || binding.commit != matches[1] || binding.path != matches[2] || binding.blob != matches[3] || binding.digest != authority.Digest {
+	if binding.reference != authority.Reference || binding.commit != matches[2] || binding.path != matches[3] || binding.tree != matches[4] || binding.blob != matches[5] || binding.digest != authority.Digest {
 		return false
 	}
 	if !sha1Pattern.MatchString(binding.commit) || !sha1Pattern.MatchString(binding.tree) || !sha1Pattern.MatchString(binding.blob) {
