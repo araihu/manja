@@ -207,6 +207,49 @@ func TestRecoveryRejectsActivationJournalAcrossCatalogIdentity(t *testing.T) {
 	}
 }
 
+func TestRecoveryRejectsWithdrawalJournalCatalogIdentityMutation(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	runtime := catalog.NewRuntime(1)
+	coordinator, err := OpenActivationCoordinator(context.Background(), root, runtime)
+	if err != nil {
+		t.Fatal(err)
+	}
+	first := compiledFixtureCatalogVersion(t, "catalog", "first")
+	if _, err := coordinator.Activate(context.Background(), "/catalog", "", 1, first); err != nil {
+		t.Fatal(err)
+	}
+	errCrash := errors.New("simulated withdrawal crash")
+	coordinator.hooks.afterJournal = func() error { return errCrash }
+	if _, err := coordinator.Withdraw(context.Background(), "/catalog", first.ID, 1, catalog.TombstoneWithdrawn); !errors.Is(err, errCrash) {
+		t.Fatalf("withdrawal error = %v, want %v", err, errCrash)
+	}
+	var journal activationJournalV1
+	data, err := os.ReadFile(coordinator.journalPath())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := decodeStrict(data, &journal); err != nil {
+		t.Fatal(err)
+	}
+	if journal.Tombstone == nil {
+		t.Fatal("withdrawal journal omitted tombstone")
+	}
+	journal.CatalogID = "other"
+	if err := coordinator.writeJournal(journal); err != nil {
+		t.Fatal(err)
+	}
+	if err := coordinator.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err = OpenActivationCoordinator(context.Background(), root, catalog.NewRuntime(0))
+	if !errors.Is(err, ErrCorruptSnapshot) {
+		t.Fatalf("mutated withdrawal journal recovery error = %v, want %v", err, ErrCorruptSnapshot)
+	}
+}
+
 func TestRecoveryRejectsRouteCatalogIdentityMismatch(t *testing.T) {
 	t.Parallel()
 

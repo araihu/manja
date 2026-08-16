@@ -317,6 +317,9 @@ func validateActivationJournal(journal activationJournalV1) error {
 		if err := validateDurableTombstone(*journal.Tombstone); err != nil {
 			return err
 		}
+		if journal.CatalogID != journal.Tombstone.CatalogID {
+			return fmt.Errorf("withdrawal catalog identity does not match tombstone")
+		}
 		if journal.ExpectedOld != journal.Tombstone.SnapshotID {
 			return fmt.Errorf("withdrawal expected snapshot does not match tombstone")
 		}
