@@ -64,6 +64,23 @@ test('worker runtime assets use an exact same-origin allowlist', () => {
   assert.equal(worker.isStaticAssetPath('/manja-assets/local-docs/_worker.test.mjs'), false)
 })
 
+test('default runtime asset manifest binds every embedded JS and Wasm byte', () => {
+  const files = {
+    '/manja-assets/local-docs/sw.js': new URL('./sw.js', import.meta.url),
+    '/manja-assets/local-docs/storage.js': new URL('./storage.js', import.meta.url),
+    '/manja-assets/local-docs.js': new URL('../local-docs.js', import.meta.url),
+    '/manja-assets/local-docs/wasm_exec.js': new URL('./wasm_exec.js', import.meta.url),
+    '/manja-assets/local-docs/manja.wasm': new URL('./manja.wasm', import.meta.url),
+    '/manja-assets/local-docs/manja.wasm.br': new URL('./manja.wasm.br', import.meta.url),
+  }
+  for (const path of worker.DEFAULT_STATIC_ASSETS) {
+    const expected = worker.DEFAULT_STATIC_ASSET_EXPECTATIONS[path]
+    const body = fs.readFileSync(files[path])
+    assert.equal(expected.length, body.byteLength, path)
+    assert.equal(expected.sha256, digest(body), path)
+  }
+})
+
 test('static runtime assets refresh validated bytes and retain the newest offline fallback', async () => {
   const entries = new Map()
   const cache = {
@@ -138,6 +155,42 @@ test('default runtime asset caching rejects an invalid wasm response before offl
 
   online = false
   await assert.rejects(() => worker.cachedStaticAsset(scope, '/manja-assets/local-docs/manja.wasm', 'manja-local-docs-assets-v1', fetchImplementation), /offline/)
+})
+
+test('default runtime asset caching rejects same-length invalid production bytes before cache replacement', async () => {
+  const entries = new Map()
+  const cache = {
+    async match(request) {
+      const response = entries.get(String(request))
+      return response ? response.clone() : undefined
+    },
+    async put(request, response) {
+      entries.set(String(request), response.clone())
+    },
+    async delete(request) {
+      return entries.delete(String(request))
+    },
+  }
+  const scope = { caches: { open: async () => cache } }
+  const path = '/manja-assets/local-docs/sw.js'
+  const original = fs.readFileSync(new URL('./sw.js', import.meta.url))
+  const invalid = new Uint8Array(original)
+  invalid[invalid.length - 1] ^= 1
+  assert.equal(invalid.byteLength, original.byteLength)
+  let online = true
+  const fetchImplementation = async () => {
+    if (!online) throw new Error('offline')
+    return new Response(invalid, { status: 200 })
+  }
+
+  await assert.rejects(
+    () => worker.cachedStaticAsset(scope, path, 'manja-local-docs-assets-v1', fetchImplementation),
+    /fallback asset digest differs/,
+  )
+  assert.equal(entries.has(path), false)
+
+  online = false
+  await assert.rejects(() => worker.cachedStaticAsset(scope, path, 'manja-local-docs-assets-v1', fetchImplementation), /offline/)
 })
 
 test('worker rejects duplicate manifest keys and binds child bytes to declared digest', async () => {
@@ -285,6 +338,60 @@ test('normal SSR withdrawal tombstones before offline reload fallback', async ()
   assert.equal(await storage.getShell(value.publicationKey, value.offlineShellUrl, value), undefined)
 
   await assert.rejects(() => worker.cachedOrFetched({}, storage, value, request, async () => { throw new Error('offline') }), /offline/)
+})
+
+test('withdrawal disables in-memory routing before delayed tombstone so concurrent navigation cannot serve stale shell', async () => {
+  const value = descriptor()
+  const baseStorage = storageModule.createMemoryStorage()
+  await baseStorage.commitGeneration(value, { ...generationFor(value), projectionBytes: bytes('projection'), manifestBytes: bytes('{}') })
+  await baseStorage.activate(value.publicationKey, value.revisionId)
+  await baseStorage.putShell(value.publicationKey, value.offlineShellUrl, new Response('STALE SHELL'), value)
+
+  let tombstoneStarted
+  const tombstoneStartedPromise = new Promise((resolve) => { tombstoneStarted = resolve })
+  let releaseTombstone
+  const tombstoneRelease = new Promise((resolve) => { releaseTombstone = resolve })
+  const storage = {
+    ...baseStorage,
+    async tombstone(...args) {
+      tombstoneStarted()
+      await tombstoneRelease
+      return baseStorage.tombstone(...args)
+    },
+  }
+  const listeners = {}
+  const scope = {
+    location: { origin: 'https://docs.test' },
+    addEventListener: (type, listener) => { listeners[type] = listener },
+    clients: { matchAll: async () => [] },
+  }
+  let networkCalls = 0
+  const runtime = worker.register(scope, {
+    storage,
+    fetch: async (request) => {
+      networkCalls++
+      if (networkCalls === 1 && String(request.url || request).endsWith('/documents/api/')) {
+        return new Response('<main>withdrawn</main>', { status: 200, headers: { 'X-Manja-Publication-State': 'private' } })
+      }
+      throw new Error('offline')
+    },
+  })
+  await runtime.configure(value)
+
+  const withdrawnRequest = { method: 'GET', mode: 'navigate', credentials: 'omit', url: 'https://docs.test/docs/documents/api/', headers: new Headers() }
+  const withdrawnEvent = { request: withdrawnRequest, respondWith: (promise) => { withdrawnEvent.pending = promise } }
+  listeners.fetch(withdrawnEvent)
+  await tombstoneStartedPromise
+
+  const concurrentRequest = { method: 'GET', mode: 'navigate', credentials: 'omit', url: 'https://docs.test/docs/documents/api/', headers: new Headers() }
+  const concurrentEvent = { request: concurrentRequest, respondWith: (promise) => { concurrentEvent.pending = promise } }
+  listeners.fetch(concurrentEvent)
+  await assert.rejects(() => concurrentEvent.pending, /offline/)
+
+  releaseTombstone()
+  const withdrawn = await withdrawnEvent.pending
+  assert.equal(withdrawn.status, 200)
+  assert.equal(runtime.disabled.has(value.publicationKey), true)
 })
 
 test('offline revalidation recovers the persisted manifest before reporting fallback', async () => {

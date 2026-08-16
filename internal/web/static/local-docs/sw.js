@@ -1,3 +1,7 @@
+if (typeof importScripts === "function" && typeof globalThis !== "undefined" && !globalThis.ManjaLocalDocsAssetManifest) {
+  try { importScripts("/manja-assets/local-docs/runtime-assets.js") } catch (_) {}
+}
+
 (function (root, factory) {
   "use strict"
   const api = factory(root)
@@ -31,20 +35,31 @@
     STATIC_PREFIX + "manja.wasm",
     STATIC_PREFIX + "manja.wasm.br",
   ]
-  // These bytes are served from the same fixed, repository-owned asset
-  // allowlist on every public-docs mount. Keep their bounds and digests here
-  // so a successful 200 cannot turn an invalid runtime into an offline cache.
-  // sw.js validates its exact byte length; its digest cannot be self-referential.
-  const DEFAULT_STATIC_ASSET_EXPECTATIONS = Object.freeze({
-    [STATIC_PREFIX + "sw.js"]: Object.freeze({ length: 52100 }),
-    [STATIC_PREFIX + "storage.js"]: Object.freeze({ length: 38283, sha256: "0015b9ed3a81ebf3ecb832c07d797dbbf53149c27d5cc0465805ed4dd595e260" }),
-    "/manja-assets/local-docs.js": Object.freeze({ length: 23410, sha256: "5d371c71d4db710f721c1cfccc846c5e390fd40da50147a2efb628bb6f8174ac" }),
-    [STATIC_PREFIX + "wasm_exec.js"]: Object.freeze({ length: 16992, sha256: "0c949f4996f9a89698e4b5c586de32249c3b69b7baadb64d220073cc04acba14" }),
-    [STATIC_PREFIX + "manja.wasm"]: Object.freeze({ length: 2120526, sha256: "ac0f768328de603c27820941f0fb9248e29c55a9baa0d7824e3822b92d352aab" }),
-    [STATIC_PREFIX + "manja.wasm.br"]: Object.freeze({ length: 475479, sha256: "3ed06ecf74038cc79fd46e56ccec375b6ca803c86829b8537c0be9b67df63324" }),
-  })
+
+  // The companion is generated from the embedded production bytes. Keeping
+  // sw.js outside its own source avoids a self-referential digest while still
+  // binding every default JS/Wasm response to immutable build metadata.
+  let assetManifest = global && global.ManjaLocalDocsAssetManifest
+  if (!assetManifest && typeof module === "object" && module.exports && typeof require === "function") {
+    try { assetManifest = require("./runtime-assets.js") } catch (_) {}
+  }
+  const DEFAULT_STATIC_ASSET_EXPECTATIONS = Object.freeze(DEFAULT_STATIC_ASSETS.reduce((result, path) => {
+    const expected = assetManifest && assetManifest.schemaVersion === 1 && assetManifest.assets && assetManifest.assets[path]
+    if (expected && Number.isSafeInteger(expected.length) && expected.length > 0 && expected.length <= MAX_ASSET_BYTES && typeof expected.sha256 === "string" && DIGEST_PATTERN.test(expected.sha256)) {
+      result[path] = Object.freeze({ length: expected.length, sha256: expected.sha256 })
+    }
+    return result
+  }, Object.create(null)))
 
   function fail(message) { throw new Error(message) }
+
+  function routingIsDisabled(routingDisabled) {
+    return typeof routingDisabled === "function" && routingDisabled()
+  }
+
+  function ensureRoutingEnabled(routingDisabled) {
+    if (routingIsDisabled(routingDisabled)) fail("publication disabled")
+  }
 
   function sameOriginURL(value, origin) {
     if (typeof value !== "string" || value.charAt(0) !== "/" || value.indexOf("\\") !== -1 || value.indexOf("%") !== -1 || value.indexOf("#") !== -1 || value.indexOf("?") !== -1) return null
@@ -439,14 +454,18 @@
     }
   }
 
-  async function commitCandidate({ storage, descriptor, candidate, prepare, activate }) {
+  async function commitCandidate({ storage, descriptor, candidate, prepare, activate, routingDisabled }) {
     if (!storage || !descriptor || !candidate || !(candidate.projectionBytes instanceof Uint8Array)) fail("candidate projection is invalid")
+    ensureRoutingEnabled(routingDisabled)
     const key = descriptor.publicationKey
     let token
     try {
       await storage.commitGeneration({ ...descriptor, ...candidate }, candidate)
+      ensureRoutingEnabled(routingDisabled)
       if (typeof prepare === "function") await prepare(candidate)
+      ensureRoutingEnabled(routingDisabled)
       token = await storage.activate(key, candidate.revisionId || descriptor.revisionId)
+      ensureRoutingEnabled(routingDisabled)
       if (typeof activate === "function") await activate(candidate)
     } catch (error) {
       if (token && typeof storage.rollback === "function") await storage.rollback(key, token).catch(() => {})
@@ -456,20 +475,29 @@
     return { kind: "activated", revisionId: candidate.revisionId || descriptor.revisionId }
   }
 
-  async function recoverPersistedManifest(storage, descriptor, cryptoImplementation, checkedAt) {
+  async function recoverPersistedManifest(storage, descriptor, cryptoImplementation, checkedAt, routingDisabled) {
     if (!storage || typeof storage.loadActive !== "function") return undefined
+    ensureRoutingEnabled(routingDisabled)
     const candidates = []
     try { candidates.push(await storage.loadActive(descriptor.publicationKey)) } catch (_) {}
+    ensureRoutingEnabled(routingDisabled)
     if (typeof storage.loadPrevious === "function") {
       try { candidates.push(await storage.loadPrevious(descriptor.publicationKey)) } catch (_) {}
+      ensureRoutingEnabled(routingDisabled)
     }
     for (const candidate of candidates) {
       if (!candidate || candidate.publicationKey !== descriptor.publicationKey || candidate.revisionId !== descriptor.revisionId || candidate.projectionDigest !== descriptor.projectionDigest || candidate.snapshotId !== descriptor.snapshotId || !(candidate.manifestBytes instanceof Uint8Array)) continue
       try {
         await parseManifest(candidate.manifestBytes, descriptor, cryptoImplementation)
-        if (typeof storage.observe === "function") await storage.observe(descriptor.publicationKey, { etag: candidate.etag || "", lastObservedAt: checkedAt })
+        ensureRoutingEnabled(routingDisabled)
+        if (typeof storage.observe === "function") {
+          await storage.observe(descriptor.publicationKey, { etag: candidate.etag || "", lastObservedAt: checkedAt })
+          ensureRoutingEnabled(routingDisabled)
+        }
         return { kind: "ready", revisionId: candidate.revisionId, offline: true }
-      } catch (_) {}
+      } catch (error) {
+        ensureRoutingEnabled(routingDisabled)
+      }
     }
     return undefined
   }
@@ -493,14 +521,17 @@
     return undefined
   }
 
-  async function disablePublication(storage, descriptor, reason, state = "revoked") {
+  async function disablePublication(storage, descriptor, reason, state = "revoked", disableRouting) {
     if (!storage || !descriptor) return
+    if (typeof disableRouting === "function") disableRouting(descriptor.publicationKey)
     if (typeof storage.tombstone === "function") await storage.tombstone(descriptor.publicationKey, reason, state)
   }
 
-  async function revalidate({ storage, descriptor, fetch: fetchImplementation, origin, cryptoImplementation, prepare, activate, now }) {
+  async function revalidate({ storage, descriptor, fetch: fetchImplementation, origin, cryptoImplementation, prepare, activate, now, routingDisabled, disableRouting }) {
+    ensureRoutingEnabled(routingDisabled)
     const checkedAt = now instanceof Date ? now.toISOString() : typeof now === "string" ? now : new Date().toISOString()
     const state = await storage.loadMetadata(descriptor.publicationKey)
+    ensureRoutingEnabled(routingDisabled)
     if (state && state.disabled && (!state.tombstone || state.tombstone.revisionId === descriptor.revisionId)) return { kind: "disabled", reason: state.tombstone && state.tombstone.reason }
     const headers = { Accept: "application/json" }
     if (state && state.etag) headers["If-None-Match"] = state.etag
@@ -508,33 +539,51 @@
     if (!requestURL) fail("manifest route is not same-origin")
     let response
     try { response = await fetchImplementation(requestURL.href, { method: "GET", cache: "no-store", credentials: "same-origin", headers }) } catch (error) {
-      const recovered = await recoverPersistedManifest(storage, descriptor, cryptoImplementation, checkedAt)
+      const recovered = await recoverPersistedManifest(storage, descriptor, cryptoImplementation, checkedAt, routingDisabled)
+      ensureRoutingEnabled(routingDisabled)
       return recovered || { kind: "fallback", error: String(error && error.message || error).slice(0, 256) }
     }
-    if (isWithdrawalResponse(response, "resource")) { await disablePublication(storage, descriptor, `HTTP ${response.status}`, withdrawalState(response)); return { kind: "disabled", status: response.status } }
-    if (response.status === 304) { await storage.observe(descriptor.publicationKey, { etag: response.headers.get("ETag") || (state && state.etag) || "", lastObservedAt: checkedAt }); return { kind: "ready", unchanged: true } }
+    if (isWithdrawalResponse(response, "resource")) { await disablePublication(storage, descriptor, `HTTP ${response.status}`, withdrawalState(response), disableRouting); return { kind: "disabled", status: response.status } }
+    ensureRoutingEnabled(routingDisabled)
+    if (response.status === 304) {
+      await storage.observe(descriptor.publicationKey, { etag: response.headers.get("ETag") || (state && state.etag) || "", lastObservedAt: checkedAt })
+      ensureRoutingEnabled(routingDisabled)
+      return { kind: "ready", unchanged: true }
+    }
     if (!response.ok) {
-      const recovered = await recoverPersistedManifest(storage, descriptor, cryptoImplementation, checkedAt)
+      const recovered = await recoverPersistedManifest(storage, descriptor, cryptoImplementation, checkedAt, routingDisabled)
+      ensureRoutingEnabled(routingDisabled)
       return recovered || { kind: "fallback", error: `HTTP ${response.status}` }
     }
     let body
-    try { body = await readBoundedResponse(response, MAX_MANIFEST_BYTES); await parseManifest(body, descriptor, cryptoImplementation) } catch (error) { return { kind: "fallback", error: String(error && error.message || error).slice(0, 256) } }
+    try { body = await readBoundedResponse(response, MAX_MANIFEST_BYTES); await parseManifest(body, descriptor, cryptoImplementation) } catch (error) {
+      ensureRoutingEnabled(routingDisabled)
+      return { kind: "fallback", error: String(error && error.message || error).slice(0, 256) }
+    }
+    ensureRoutingEnabled(routingDisabled)
     const active = await storage.loadActive(descriptor.publicationKey)
-    if (active && active.projectionDigest === descriptor.projectionDigest && active.revisionId === descriptor.revisionId) { await storage.observe(descriptor.publicationKey, { etag: response.headers.get("ETag") || "", lastObservedAt: checkedAt }); return { kind: "ready", unchanged: true } }
+    ensureRoutingEnabled(routingDisabled)
+    if (active && active.projectionDigest === descriptor.projectionDigest && active.revisionId === descriptor.revisionId) {
+      await storage.observe(descriptor.publicationKey, { etag: response.headers.get("ETag") || "", lastObservedAt: checkedAt })
+      ensureRoutingEnabled(routingDisabled)
+      return { kind: "ready", unchanged: true }
+    }
     const candidate = { publicationKey: descriptor.publicationKey, revisionId: descriptor.revisionId, projectionDigest: descriptor.projectionDigest, snapshotId: descriptor.snapshotId, projectionBytes: body, manifestBytes: body, etag: response.headers.get("ETag") || "", lastObservedAt: checkedAt, shellURL: descriptor.offlineShellUrl }
-    await commitCandidate({ storage, descriptor, candidate, prepare, activate })
+    await commitCandidate({ storage, descriptor, candidate, prepare, activate, routingDisabled })
     return { kind: "ready", revisionId: candidate.revisionId, changed: true }
   }
 
-  async function cachedOrFetched(scope, storage, descriptor, request, fetchImplementation) {
+  async function cachedOrFetched(scope, storage, descriptor, request, fetchImplementation, routingDisabled, disableRouting) {
     const network = fetchImplementation || ((value, init) => scope.fetch(value, init))
     const routeKind = request.mode === "navigate" ? "document" : "resource"
+    ensureRoutingEnabled(routingDisabled)
     try {
       const response = await network(request)
       if (isCanonicalShellWithdrawal(response, descriptor, request)) {
-        await disablePublication(storage, descriptor, `HTTP ${response.status}`, withdrawalState(response))
+        await disablePublication(storage, descriptor, `HTTP ${response.status}`, withdrawalState(response), disableRouting)
         return response
       }
+      ensureRoutingEnabled(routingDisabled)
       const pathname = new URL(request.url).pathname
       const canonicalShell = pathname === descriptor.offlineShellUrl
       const anonymousShellRequest = request.credentials === undefined || request.credentials === "omit"
@@ -542,32 +591,50 @@
         await readBoundedResponse(response.clone ? response.clone() : response, MAX_SPEC_BYTES)
       }
       await validateManifestChild(storage, descriptor, request, response)
+      ensureRoutingEnabled(routingDisabled)
       if (response.ok && !isHTMXRequest(request) && canonicalShell && anonymousShellRequest) {
         validatePublicShellResponse(response, descriptor, new URL(request.url).origin)
         await validateShell(response.clone ? response.clone() : response)
+        ensureRoutingEnabled(routingDisabled)
         await storage.putShell(descriptor.publicationKey, descriptor.offlineShellUrl, response.clone(), descriptor)
       } else if (response.ok && routeKind !== "document") {
+        ensureRoutingEnabled(routingDisabled)
         try { await storage.putAsset(descriptor.publicationKey, request.url, response.clone(), descriptor) } catch (_) {}
       }
+      ensureRoutingEnabled(routingDisabled)
       return response
     } catch (error) {
+      if (routingIsDisabled(routingDisabled)) throw error
       if (typeof storage.isDisabled === "function" && await storage.isDisabled(descriptor.publicationKey)) throw error
       const pathname = new URL(request.url).pathname
       if (pathname === descriptor.projectionManifestUrl) {
         const persisted = await persistedManifestResponse(storage, descriptor, scope && scope.crypto || global.crypto)
-        if (persisted) return persisted
+        if (persisted) {
+          ensureRoutingEnabled(routingDisabled)
+          return persisted
+        }
       }
       const cached = await (request.mode === "navigate" ? storage.getShell(descriptor.publicationKey, descriptor.offlineShellUrl, descriptor) : storage.getAsset(descriptor.publicationKey, request.url, descriptor))
+      if (routingIsDisabled(routingDisabled)) throw error
       if (cached) {
         if (request.mode === "navigate") {
           validatePublicShellResponse(cached, descriptor, new URL(request.url).origin)
           await validateShell(cached.clone ? cached.clone() : cached)
         }
         else await validateManifestChild(storage, descriptor, request, cached)
+        ensureRoutingEnabled(routingDisabled)
         return cached
       }
       throw error
     }
+  }
+
+  async function fetchedWhileDisabled(storage, descriptor, request, fetchImplementation, disableRouting) {
+    const response = await fetchImplementation(request, { cache: "no-store" })
+    if (isCanonicalShellWithdrawal(response, descriptor, request)) {
+      await disablePublication(storage, descriptor, `HTTP ${response.status}`, withdrawalState(response), disableRouting)
+    }
+    return response
   }
 
   function isStaticAssetPath(pathname) {
@@ -588,9 +655,14 @@
     return expected ? { ...expected } : undefined
   }
 
-  async function cachedStaticAsset(scope, request, cacheName, fetchImplementation, expected) {
+  async function cachedStaticAsset(scope, request, cacheName, fetchImplementation, expected, routingDisabled) {
     expected = expected || staticAssetExpectation(request)
+    let requestPath = ""
+    try { requestPath = new URL(typeof request === "string" ? request : request && request.url || "", "https://manja-local-docs.invalid").pathname } catch (_) {}
+    if (isStaticAssetPath(requestPath) && (!expected || !validDigest(expected.sha256))) fail("fallback asset digest manifest unavailable")
+    ensureRoutingEnabled(routingDisabled)
     const cache = await scope.caches.open(cacheName)
+    ensureRoutingEnabled(routingDisabled)
     const network = fetchImplementation || ((value, init) => scope.fetch(value, init))
     let networkError
     try {
@@ -601,6 +673,7 @@
       if (expected && expected.length !== undefined && bytes.byteLength !== expected.length) fail("fallback asset length differs")
       if (expected && expected.sha256 && await sha256(bytes) !== expected.sha256) fail("fallback asset digest differs")
       // Validate complete network bytes before replacing the stable cache key.
+      ensureRoutingEnabled(routingDisabled)
       await cache.put(request, response.clone ? response.clone() : response)
       return response
     } catch (error) {
@@ -616,6 +689,7 @@
           if (expected.length !== undefined && cachedBytes.byteLength !== expected.length) fail("fallback asset length differs")
           if (expected.sha256 && await sha256(cachedBytes) !== expected.sha256) fail("fallback asset digest differs")
         }
+        ensureRoutingEnabled(routingDisabled)
         return cached
       } catch (_) {
         await cache.delete(request).catch(() => {})
@@ -639,39 +713,45 @@
     return `manja-local-docs-assets-v1::${encodeURIComponent(descriptor.publicationKey)}::${encodeURIComponent(descriptor.revisionId)}::${descriptor.projectionDigest}`
   }
 
-  async function cacheDescriptorAssets(scope, descriptor, cacheName, fetchImplementation) {
+  async function cacheDescriptorAssets(scope, descriptor, cacheName, fetchImplementation, routingDisabled) {
     if (!scope.caches || !Array.isArray(descriptor.fallbackAssets)) return true
     let ready = true
     for (const asset of descriptor.fallbackAssets) {
-      try { await cachedStaticAsset(scope, asset.url, cacheName, fetchImplementation, asset) } catch (_) { ready = false }
-    }
-    return ready
-  }
-
-  async function cacheStaticAssets(scope, cacheName, fetchImplementation, assets) {
-    if (!scope.caches) return true
-    let ready = true
-    for (const asset of assets) {
-      if (typeof asset !== "string") continue
       try {
-        await cachedStaticAsset(scope, asset, cacheName, fetchImplementation, staticAssetExpectation(asset))
+        ensureRoutingEnabled(routingDisabled)
+        await cachedStaticAsset(scope, asset.url, cacheName, fetchImplementation, asset, routingDisabled)
       } catch (_) { ready = false }
     }
     return ready
   }
 
-  async function cacheOfflineShell(storage, descriptor, fetchImplementation) {
+  async function cacheStaticAssets(scope, cacheName, fetchImplementation, assets, routingDisabled) {
+    if (!scope.caches) return true
+    let ready = true
+    for (const asset of assets) {
+      if (typeof asset !== "string") continue
+      try {
+        ensureRoutingEnabled(routingDisabled)
+        await cachedStaticAsset(scope, asset, cacheName, fetchImplementation, staticAssetExpectation(asset), routingDisabled)
+      } catch (_) { ready = false }
+    }
+    return ready
+  }
+
+  async function cacheOfflineShell(storage, descriptor, fetchImplementation, routingDisabled, disableRouting) {
     if (!descriptor.offlineShellUrl || !storage || typeof storage.putShell !== "function") return false
+    ensureRoutingEnabled(routingDisabled)
     const origin = global.location && global.location.origin || "https://manja-local-docs.invalid"
     if (!isPublicShellURL(descriptor.offlineShellUrl, descriptor, origin)) return false
     try {
       const response = await fetchImplementation(descriptor.offlineShellUrl, { method: "GET", cache: "no-store", credentials: "omit", redirect: "error" })
       if (isWithdrawalResponse(response, "document") || response.status === 404) {
-        await disablePublication(storage, descriptor, `HTTP ${response.status}`, withdrawalState(response))
+        await disablePublication(storage, descriptor, `HTTP ${response.status}`, withdrawalState(response), disableRouting)
         return false
       }
       validatePublicShellResponse(response, descriptor, origin)
       await validateShell(response.clone ? response.clone() : response)
+      ensureRoutingEnabled(routingDisabled)
       await storage.putShell(descriptor.publicationKey, descriptor.offlineShellUrl, response.clone ? response.clone() : response, descriptor)
       return true
     } catch (_) { return false }
@@ -695,6 +775,9 @@
     const route = options.route
     const fetchImplementation = options.fetch || ((value, init) => scope.fetch(value, init))
     const origin = scope.location && scope.location.origin
+    const disableRouting = (publicationKey) => {
+      disabled.add(publicationKey)
+    }
     const post = async (message) => {
       if (!scope.clients || typeof scope.clients.matchAll !== "function") return
       const clients = await scope.clients.matchAll({ type: "window", includeUncontrolled: true })
@@ -705,9 +788,14 @@
       if (disabled.has(descriptor.publicationKey)) return { ok: false, reason: "publication disabled" }
       if (await storage.isDisabled(descriptor.publicationKey)) {
         const current = await storage.loadMetadata(descriptor.publicationKey)
+        ensureRoutingEnabled(() => disabled.has(descriptor.publicationKey))
         if (current && current.tombstone && current.tombstone.revisionId === descriptor.revisionId) return { ok: false, reason: "publication tombstoned" }
       }
-      if (typeof storage.observe === "function") await storage.observe(descriptor.publicationKey, descriptor)
+      ensureRoutingEnabled(() => disabled.has(descriptor.publicationKey))
+      if (typeof storage.observe === "function") {
+        await storage.observe(descriptor.publicationKey, descriptor)
+        ensureRoutingEnabled(() => disabled.has(descriptor.publicationKey))
+      }
       descriptors.set(descriptor.publicationKey, descriptor)
       if (source && typeof source.postMessage === "function") source.postMessage({ type: "manja:configured", publicationKey: descriptor.publicationKey })
       return { ok: true, descriptor }
@@ -722,7 +810,17 @@
     function revalidateDescriptor(descriptor) {
       let operation = revalidators.get(descriptor.publicationKey)
       if (!operation) {
-        operation = createRevalidator(() => revalidate({ storage, descriptor, fetch: fetchImplementation, origin, cryptoImplementation: scope.crypto || global.crypto, prepare: options.prepare, activate: options.activate }))
+        operation = createRevalidator(() => revalidate({
+          storage,
+          descriptor,
+          fetch: fetchImplementation,
+          origin,
+          cryptoImplementation: scope.crypto || global.crypto,
+          prepare: options.prepare,
+          activate: options.activate,
+          routingDisabled: () => disabled.has(descriptor.publicationKey),
+          disableRouting,
+        }))
         revalidators.set(descriptor.publicationKey, operation)
       }
       return operation()
@@ -734,7 +832,7 @@
       const metadata = await storage.listMetadata()
       for (const value of metadata) {
         const descriptor = descriptorFromMetadata(value, origin)
-        if (descriptor && isAllowedRequest({ method: "GET", url: url.href }, descriptor, origin)) {
+        if (descriptor && !disabled.has(descriptor.publicationKey) && isAllowedRequest({ method: "GET", url: url.href }, descriptor, origin)) {
           descriptors.set(descriptor.publicationKey, descriptor)
           return descriptor
         }
@@ -753,8 +851,10 @@
       if (message.type === "manja:configure") {
         const pending = configure(message.descriptor, event.source).then(async (result) => {
           if (!result.ok) return result
+          ensureRoutingEnabled(() => disabled.has(result.descriptor.publicationKey))
           const cacheName = storageAPI && storageAPI.CACHE_NAME || "manja-local-docs-assets-v1"
           const previousState = await storage.loadMetadata(result.descriptor.publicationKey)
+          ensureRoutingEnabled(() => disabled.has(result.descriptor.publicationKey))
           const reenable = previousState && previousState.disabled === true
           if (reenable) {
             const refreshed = await revalidateDescriptor(result.descriptor)
@@ -763,15 +863,18 @@
               return { ok: false, reason: refreshed.error || "replacement publication unavailable" }
             }
           }
-          const staticReady = await cacheStaticAssets(scope, cacheName, fetchImplementation, DEFAULT_STATIC_ASSETS)
-          const assetsReady = staticReady && await cacheDescriptorAssets(scope, result.descriptor, descriptorGenerationCacheName(storageAPI, result.descriptor), fetchImplementation)
-          let shellReady = await cacheOfflineShell(storage, result.descriptor, fetchImplementation)
+          const routingDisabled = () => disabled.has(result.descriptor.publicationKey)
+          const staticReady = await cacheStaticAssets(scope, cacheName, fetchImplementation, DEFAULT_STATIC_ASSETS, routingDisabled)
+          const assetsReady = staticReady && await cacheDescriptorAssets(scope, result.descriptor, descriptorGenerationCacheName(storageAPI, result.descriptor), fetchImplementation, routingDisabled)
+          let shellReady = await cacheOfflineShell(storage, result.descriptor, fetchImplementation, routingDisabled, disableRouting)
           if (!shellReady && typeof storage.getShell === "function") {
             try {
+              ensureRoutingEnabled(() => disabled.has(result.descriptor.publicationKey))
               const persistedShell = await storage.getShell(result.descriptor.publicationKey, result.descriptor.offlineShellUrl, result.descriptor)
               if (persistedShell) {
                 validatePublicShellResponse(persistedShell, result.descriptor, origin)
                 await validateShell(persistedShell.clone ? persistedShell.clone() : persistedShell)
+                ensureRoutingEnabled(() => disabled.has(result.descriptor.publicationKey))
                 shellReady = true
               }
             } catch (_) {}
@@ -781,6 +884,7 @@
             return { ok: false, reason: "offline shell or fallback asset unavailable" }
           }
           try {
+            ensureRoutingEnabled(() => disabled.has(result.descriptor.publicationKey))
             const ready = reenable ? { kind: "ready", unchanged: true } : await revalidateDescriptor(result.descriptor)
             await notify(event.source, { type: "manja:local-ready", ...ready })
           } catch (error) {
@@ -795,12 +899,12 @@
         const configured = configurations.get(message.publicationKey)
         const descriptorPromise = configured ? configured.then(() => descriptors.get(message.publicationKey)) : Promise.resolve(descriptors.get(message.publicationKey) || [...descriptors.values()][0])
         event.waitUntil(descriptorPromise.then((descriptor) => {
-          if (!descriptor) return undefined
+          if (!descriptor || disabled.has(descriptor.publicationKey)) return undefined
           return revalidateDescriptor(descriptor).then((result) => notify(event.source, { type: "manja:local-ready", ...result })).catch((error) => notify(event.source, { type: "manja:local-fallback", reason: String(error.message || error).slice(0, 256) }))
         }))
       } else if (message.type === "manja:disable") {
         const descriptor = descriptors.get(message.publicationKey)
-        if (descriptor) { disabled.add(descriptor.publicationKey); descriptors.delete(descriptor.publicationKey); event.waitUntil(disablePublication(storage, descriptor, message.reason || "disabled", message.state || "disabled")) }
+        if (descriptor) { disableRouting(descriptor.publicationKey); event.waitUntil(disablePublication(storage, descriptor, message.reason || "disabled", message.state || "disabled")) }
       } else if (message.type === "manja:claim-client" && scope.clients?.claim) event.waitUntil(scope.clients.claim())
     })
     scope.addEventListener("fetch", (event) => {
@@ -816,8 +920,9 @@
       const fallbackAsset = findFallbackAsset(descriptors, url)
       if (fallbackAsset && scope.caches) {
         event.respondWith((async () => {
-          if (disabled.has(fallbackAsset.descriptor.publicationKey) || typeof storage.isDisabled === "function" && await storage.isDisabled(fallbackAsset.descriptor.publicationKey)) return fetchImplementation(request)
-          return cachedStaticAsset(scope, request, descriptorGenerationCacheName(storageAPI, fallbackAsset.descriptor), fetchImplementation, fallbackAsset.asset)
+          if (disabled.has(fallbackAsset.descriptor.publicationKey)) return fetchedWhileDisabled(storage, fallbackAsset.descriptor, request, fetchImplementation, disableRouting)
+          if (typeof storage.isDisabled === "function" && await storage.isDisabled(fallbackAsset.descriptor.publicationKey)) return fetchImplementation(request)
+          return cachedStaticAsset(scope, request, descriptorGenerationCacheName(storageAPI, fallbackAsset.descriptor), fetchImplementation, fallbackAsset.asset, () => disabled.has(fallbackAsset.descriptor.publicationKey))
         })())
         return
       }
@@ -826,10 +931,17 @@
         const descriptor = await descriptorForURL(url)
         // Unconfigured routes retain the SSR fallback: event.respondWith(fetch(request)).
         if (!descriptor || !isAllowedRequest(request, descriptor, origin)) return fetchImplementation(request)
+        if (disabled.has(descriptor.publicationKey)) return fetchedWhileDisabled(storage, descriptor, request, fetchImplementation, disableRouting)
         if (isHTMXRequest(request) && typeof route === "function") {
-          return Promise.resolve().then(() => route(request, descriptor)).catch(() => cachedOrFetched(scope, storage, descriptor, request, fetchImplementation))
+          return Promise.resolve().then(async () => {
+            const routingDisabled = () => disabled.has(descriptor.publicationKey)
+            ensureRoutingEnabled(routingDisabled)
+            const response = await route(request, descriptor)
+            ensureRoutingEnabled(routingDisabled)
+            return response
+          }).catch(() => cachedOrFetched(scope, storage, descriptor, request, fetchImplementation, () => disabled.has(descriptor.publicationKey), disableRouting))
         }
-        return cachedOrFetched(scope, storage, descriptor, request, fetchImplementation)
+        return cachedOrFetched(scope, storage, descriptor, request, fetchImplementation, () => disabled.has(descriptor.publicationKey), disableRouting)
       })())
     })
     return { storage, descriptors, configure, revalidate: revalidateDescriptor, disabled }
