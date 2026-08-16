@@ -1525,17 +1525,41 @@ Before merge:
 - every actionable finding is fixed and rereviewed;
 - final PR scope contains Open Core work only.
 
+## Scope decision: OC-03, OC-04, and closure (2026-08-16)
+
+The remaining execution scope is intentionally narrowed to functionality:
+
+- **OC-03:** finish the self-hosted activation lifecycle, including durable
+  journal/LKG state, atomic recovery and rollback, corruption/quota/network
+  failure handling, withdrawal/tombstone behavior, and kill-switch semantics.
+- **OC-04:** finish the hybrid SSR/Wasm/offline runtime, including real browser
+  activation, Service Worker/offline shell and storage lifecycle, public-only
+  eligibility, reload/deep-link/search/navigation offline behavior, SSR
+  fallback, parity, security, and performance evidence.
+- **Closure:** freeze the final implementation identity, run one independent
+  review for OC-03, one for OC-04, and one final scope/closure review, then stop
+  this task pending explicit integration authority.
+
+### Backlog / roadmap: OC-01 and OC-02
+
+OC-01 provenance/first-party authority/attribution/redistribution and OC-02
+license/NOTICE/deterministic packaging are moved to the backlog. They are not
+part of this functionality-focused closure. The project root license remains
+MIT, but bundled/external material clearance and final legal distribution
+evidence are deferred. SBOM is explicitly skipped by product direction.
+
+Hosted SaaS, active-theme rollout, and Task 8 remain outside this scope.
+
 ## Next Action
 
-Run the two isolated implementers from the reconciler branch, then consolidate
-their compatible commits with exact ancestry, rebase against `origin/main`, and
-push the feature branch frequently. Keep technical/design/product reviews
-paused until an explicit product-manager review signal. After that signal,
-freeze one exact candidate and start independent reviews; any correction or
-HEAD/tree/base/byte movement requires a new freeze and new reviews.
+Continue OC-03 and OC-04 in bounded isolated worktrees, consolidate only
+compatible commits with exact ancestry, rebase against `origin/main`, and push
+the feature branch frequently. Hold reviews until both functionality blocks
+are complete; then freeze one exact candidate and run one independent review
+for OC-03, one for OC-04, and one final scope/closure review. Any correction or
+HEAD/tree/base/byte movement requires a new freeze and the affected review.
 
-Overall provenance remains `BLOCKED`; legal authority, attribution,
-redistribution, final notices, SBOM, hybrid offline runtime, and recovery
-lifecycle remain incomplete. Hosted SaaS and active-theme work stay excluded.
-No merge, release, deployment, cleanup, or other lifecycle action is implied by
-green tests, ACCEPT, or a push.
+OC-01 and OC-02 remain backlog items. SBOM is explicitly skipped. Hosted SaaS,
+active-theme rollout, and Task 8 stay excluded. Merge, release, deployment,
+cleanup, and other lifecycle actions are not implied by green tests, ACCEPT, or
+a push.
