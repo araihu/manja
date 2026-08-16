@@ -49,6 +49,12 @@
     return Boolean(parsed) && pieces.indexOf("manage") === -1 && pieces.indexOf("api") === -1;
   }
 
+  function publicPath(value) {
+    if (typeof value !== "string") return false;
+    var pieces = value.split("/").filter(Boolean);
+    return pieces.indexOf("manage") === -1 && pieces.indexOf("api") === -1;
+  }
+
   function canonicalIdentity(value) {
     return typeof value === "string" && value.length > 0 && value === value.trim() && !/[\u0000-\u001f\u007f]/.test(value);
   }
@@ -76,11 +82,11 @@
         fail("descriptor route is invalid");
       }
     });
-    if (descriptor.offlineShellUrl !== undefined && (!sameOriginPath(descriptor.offlineShellUrl) || descriptor.offlineShellUrl !== descriptor.publicationBase + "_manja/offline-shell")) {
+    if (descriptor.offlineShellUrl !== undefined && (!sameOriginPath(descriptor.offlineShellUrl) || !publicPath(descriptor.offlineShellUrl) || descriptor.offlineShellUrl !== descriptor.publicationBase + "_manja/offline-shell")) {
       fail("descriptor offline shell route is invalid");
     }
     if (descriptor.fallbackAssets !== undefined && (!Array.isArray(descriptor.fallbackAssets) || descriptor.fallbackAssets.some(function (asset) {
-      return !asset || typeof asset !== "object" || !sameOriginPath(asset.url) || asset.length !== undefined && (!Number.isSafeInteger(asset.length) || asset.length <= 0 || asset.length > 16 * 1024 * 1024) || asset.sha256 !== undefined && !sha256(asset.sha256);
+      return !asset || typeof asset !== "object" || !sameOriginPath(asset.url) || !publicPath(asset.url) || asset.length !== undefined && (!Number.isSafeInteger(asset.length) || asset.length <= 0 || asset.length > 16 * 1024 * 1024) || asset.sha256 !== undefined && !sha256(asset.sha256);
     }))) {
       fail("descriptor fallback asset is invalid");
     }

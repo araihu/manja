@@ -71,6 +71,13 @@
     }
   }
 
+  function isPublicShellURL(value, descriptor, origin) {
+    if (!descriptor || typeof descriptor.publicationBase !== "string") return false
+    const expected = descriptor.publicationBase + "_manja/offline-shell"
+    const parsed = sameOriginURL(value, origin)
+    return Boolean(parsed) && value === expected && !isManagementPath(parsed.pathname)
+  }
+
   function validateFallbackAsset(asset, origin) {
     if (!asset || typeof asset !== "object" || !sameOriginURL(asset.url, origin)) fail("fallback asset route is not same-origin")
     if (isManagementPath(new URL(asset.url, origin).pathname)) fail("fallback asset route is reserved")
@@ -84,6 +91,7 @@
     if (!validBase(input.publicationBase, origin)) fail("descriptor publication base is invalid")
     if (input.public === false || input.anonymous === false || input.private === true || input.disabled === true || (input.eligibility && (input.eligibility.public === false || input.eligibility.anonymous === false))) fail("descriptor public eligibility is invalid")
     const routes = expectedDescriptorRoutes(input)
+    if (!isPublicShellURL(routes.offlineShellUrl, input, origin)) fail("descriptor offline shell route is not public")
     Object.keys(routes).forEach((key) => {
       if (input[key] !== undefined && !sameOriginURL(input[key], origin)) fail("descriptor route is not same-origin")
       if (!sameOriginURL(routes[key], origin)) fail("descriptor route is not same-origin")
@@ -169,6 +177,20 @@
   function isHTMXRequest(request) {
     if (!request || !request.headers || typeof request.headers.get !== "function") return false
     return request.headers.get("HX-Request") === "true" || request.headers.get("Accept") && request.headers.get("Accept").indexOf("text/html") !== -1 && request.mode !== "navigate"
+  }
+
+  function validatePublicShellResponse(response, descriptor, origin) {
+    if (!response || !response.ok || response.status !== 200) fail("offline shell response is not public")
+    if (response.redirected || response.type === "opaqueredirect") fail("offline shell response redirected")
+    if (response.url) {
+      const expected = new URL(descriptor.offlineShellUrl, origin || (global.location && global.location.origin) || "https://manja-local-docs.invalid")
+      const actual = sameOriginURL(response.url, expected.origin)
+      if (!actual || actual.pathname !== expected.pathname) fail("offline shell response route differs")
+    }
+    for (const header of ["WWW-Authenticate", "Set-Cookie", "X-Manja-Authenticated", "X-Manja-Auth", "X-Authenticated-User", "X-Auth-Request-User"]) {
+      if (response.headers && response.headers.get(header)) fail("offline shell response is authenticated")
+    }
+    return response
   }
 
   function isWithdrawalResponse(response, kind = "resource") {
@@ -404,6 +426,24 @@
     return { kind: "activated", revisionId: candidate.revisionId || descriptor.revisionId }
   }
 
+  async function recoverPersistedManifest(storage, descriptor, cryptoImplementation, checkedAt) {
+    if (!storage || typeof storage.loadActive !== "function") return undefined
+    const candidates = []
+    try { candidates.push(await storage.loadActive(descriptor.publicationKey)) } catch (_) {}
+    if (typeof storage.loadPrevious === "function") {
+      try { candidates.push(await storage.loadPrevious(descriptor.publicationKey)) } catch (_) {}
+    }
+    for (const candidate of candidates) {
+      if (!candidate || candidate.publicationKey !== descriptor.publicationKey || candidate.revisionId !== descriptor.revisionId || candidate.projectionDigest !== descriptor.projectionDigest || candidate.snapshotId !== descriptor.snapshotId || !(candidate.manifestBytes instanceof Uint8Array)) continue
+      try {
+        await parseManifest(candidate.manifestBytes, descriptor, cryptoImplementation)
+        if (typeof storage.observe === "function") await storage.observe(descriptor.publicationKey, { etag: candidate.etag || "", lastObservedAt: checkedAt })
+        return { kind: "ready", revisionId: candidate.revisionId, offline: true }
+      } catch (_) {}
+    }
+    return undefined
+  }
+
   async function disablePublication(storage, descriptor, reason, state = "revoked") {
     if (!storage || !descriptor) return
     if (typeof storage.tombstone === "function") await storage.tombstone(descriptor.publicationKey, reason, state)
@@ -418,10 +458,16 @@
     const requestURL = sameOriginURL(descriptor.projectionManifestUrl, origin)
     if (!requestURL) fail("manifest route is not same-origin")
     let response
-    try { response = await fetchImplementation(requestURL.href, { method: "GET", cache: "no-store", credentials: "same-origin", headers }) } catch (error) { return { kind: "fallback", error: String(error && error.message || error).slice(0, 256) } }
+    try { response = await fetchImplementation(requestURL.href, { method: "GET", cache: "no-store", credentials: "same-origin", headers }) } catch (error) {
+      const recovered = await recoverPersistedManifest(storage, descriptor, cryptoImplementation, checkedAt)
+      return recovered || { kind: "fallback", error: String(error && error.message || error).slice(0, 256) }
+    }
     if (isWithdrawalResponse(response, "resource")) { await disablePublication(storage, descriptor, `HTTP ${response.status}`, response.status === 404 ? "deleted" : "revoked"); return { kind: "disabled", status: response.status } }
     if (response.status === 304) { await storage.observe(descriptor.publicationKey, { etag: response.headers.get("ETag") || (state && state.etag) || "", lastObservedAt: checkedAt }); return { kind: "ready", unchanged: true } }
-    if (!response.ok) return { kind: "fallback", error: `HTTP ${response.status}` }
+    if (!response.ok) {
+      const recovered = await recoverPersistedManifest(storage, descriptor, cryptoImplementation, checkedAt)
+      return recovered || { kind: "fallback", error: `HTTP ${response.status}` }
+    }
     let body
     try { body = await readBoundedResponse(response, MAX_MANIFEST_BYTES); await parseManifest(body, descriptor, cryptoImplementation) } catch (error) { return { kind: "fallback", error: String(error && error.message || error).slice(0, 256) } }
     const active = await storage.loadActive(descriptor.publicationKey)
@@ -441,20 +487,28 @@
         return response
       }
       const pathname = new URL(request.url).pathname
+      const canonicalShell = pathname === descriptor.offlineShellUrl
+      const anonymousShellRequest = request.credentials === undefined || request.credentials === "omit"
       if (response.ok && pathname.indexOf(descriptor.publicationBase + "openapi/") === 0) {
         await readBoundedResponse(response.clone ? response.clone() : response, MAX_SPEC_BYTES)
       }
       await validateManifestChild(storage, descriptor, request, response)
-      if (response.ok && !isHTMXRequest(request) && (routeKind === "document" || new URL(request.url).pathname === descriptor.offlineShellUrl)) {
-        try { await validateShell(response.clone ? response.clone() : response); await storage.putShell(descriptor.publicationKey, descriptor.offlineShellUrl, response.clone()) } catch (_) {}
-      } else if (response.ok) {
-        try { await storage.putAsset(descriptor.publicationKey, request.url, response.clone()) } catch (_) {}
+      if (response.ok && !isHTMXRequest(request) && canonicalShell && anonymousShellRequest) {
+        validatePublicShellResponse(response, descriptor, new URL(request.url).origin)
+        await validateShell(response.clone ? response.clone() : response)
+        await storage.putShell(descriptor.publicationKey, descriptor.offlineShellUrl, response.clone(), descriptor)
+      } else if (response.ok && routeKind !== "document") {
+        try { await storage.putAsset(descriptor.publicationKey, request.url, response.clone(), descriptor) } catch (_) {}
       }
       return response
     } catch (error) {
-      const cached = await (request.mode === "navigate" ? storage.getShell(descriptor.publicationKey, descriptor.offlineShellUrl) : storage.getAsset(descriptor.publicationKey, request.url))
+      if (typeof storage.isDisabled === "function" && await storage.isDisabled(descriptor.publicationKey)) throw error
+      const cached = await (request.mode === "navigate" ? storage.getShell(descriptor.publicationKey, descriptor.offlineShellUrl, descriptor) : storage.getAsset(descriptor.publicationKey, request.url, descriptor))
       if (cached) {
-        if (request.mode === "navigate") await validateShell(cached.clone ? cached.clone() : cached)
+        if (request.mode === "navigate") {
+          validatePublicShellResponse(cached, descriptor, new URL(request.url).origin)
+          await validateShell(cached.clone ? cached.clone() : cached)
+        }
         else await validateManifestChild(storage, descriptor, request, cached)
         return cached
       }
@@ -502,6 +556,13 @@
     return undefined
   }
 
+  function descriptorGenerationCacheName(storageAPI, descriptor) {
+    if (storageAPI && typeof storageAPI.generationCacheName === "function") {
+      return storageAPI.generationCacheName(descriptor.publicationKey, descriptor)
+    }
+    return `manja-local-docs-assets-v1::${encodeURIComponent(descriptor.publicationKey)}::${encodeURIComponent(descriptor.revisionId)}::${descriptor.projectionDigest}`
+  }
+
   async function cacheDescriptorAssets(scope, descriptor, cacheName, fetchImplementation) {
     if (!scope.caches || !Array.isArray(descriptor.fallbackAssets)) return true
     let ready = true
@@ -529,16 +590,15 @@
 
   async function cacheOfflineShell(storage, descriptor, fetchImplementation) {
     if (!descriptor.offlineShellUrl || !storage || typeof storage.putShell !== "function") return false
-    for (const shellURL of [descriptor.offlineShellUrl, descriptor.publicationBase]) {
-      try {
-        const response = await fetchImplementation(shellURL, { method: "GET", cache: "no-store", credentials: "same-origin" })
-        if (!response || !response.ok) continue
-        await validateShell(response.clone ? response.clone() : response)
-        await storage.putShell(descriptor.publicationKey, descriptor.offlineShellUrl, response.clone ? response.clone() : response)
-        return true
-      } catch (_) {}
-    }
-    return false
+    const origin = global.location && global.location.origin
+    if (!isPublicShellURL(descriptor.offlineShellUrl, descriptor, origin)) return false
+    try {
+      const response = await fetchImplementation(descriptor.offlineShellUrl, { method: "GET", cache: "no-store", credentials: "omit", redirect: "error" })
+      validatePublicShellResponse(response, descriptor)
+      await validateShell(response.clone ? response.clone() : response)
+      await storage.putShell(descriptor.publicationKey, descriptor.offlineShellUrl, response.clone ? response.clone() : response, descriptor)
+      return true
+    } catch (_) { return false }
   }
 
   function findDescriptor(descriptors, requestURL) {
@@ -628,7 +688,7 @@
             }
           }
           const staticReady = await cacheStaticAssets(scope, cacheName, fetchImplementation, DEFAULT_STATIC_ASSETS)
-          const assetsReady = staticReady && await cacheDescriptorAssets(scope, result.descriptor, cacheName, fetchImplementation)
+          const assetsReady = staticReady && await cacheDescriptorAssets(scope, result.descriptor, descriptorGenerationCacheName(storageAPI, result.descriptor), fetchImplementation)
           const shellReady = await cacheOfflineShell(storage, result.descriptor, fetchImplementation)
           if (!assetsReady || !shellReady) {
             await notify(event.source, { type: "manja:local-fallback", reason: "offline shell or fallback asset unavailable" })
@@ -669,7 +729,10 @@
       }
       const fallbackAsset = findFallbackAsset(descriptors, url)
       if (fallbackAsset && scope.caches) {
-        event.respondWith(cachedStaticAsset(scope, request, storageAPI && storageAPI.CACHE_NAME || "manja-local-docs-assets-v1", fetchImplementation, fallbackAsset.asset))
+        event.respondWith((async () => {
+          if (disabled.has(fallbackAsset.descriptor.publicationKey) || typeof storage.isDisabled === "function" && await storage.isDisabled(fallbackAsset.descriptor.publicationKey)) return fetchImplementation(request)
+          return cachedStaticAsset(scope, request, descriptorGenerationCacheName(storageAPI, fallbackAsset.descriptor), fetchImplementation, fallbackAsset.asset)
+        })())
         return
       }
       if (isManagementPath(url.pathname)) return
@@ -695,6 +758,7 @@
     MAX_SHELL_BYTES,
     ROOT_SCOPE,
     cachedOrFetched,
+    cacheOfflineShell,
     commitCandidate,
     createRevalidator,
     descriptorFromMetadata,
@@ -704,6 +768,7 @@
     isHTMXRequest,
     isWithdrawalResponse,
     parseManifest,
+    recoverPersistedManifest,
     readBoundedResponse,
     revalidate,
     register,
@@ -711,6 +776,7 @@
     sha256,
     validateDescriptor,
     validateManifestChild,
+    validatePublicShellResponse,
     validateShell,
   }
 }))

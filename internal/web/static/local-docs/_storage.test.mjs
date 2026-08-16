@@ -66,3 +66,44 @@ test('storage tombstones before purge and never resurrects withdrawn bytes', asy
   assert.equal(await storage.loadActive(value.publicationKey), undefined)
   assert.equal((await storage.loadMetadata(value.publicationKey)).tombstone.state, 'revoked')
 })
+
+test('disabled publication blocks shell and asset reads even when purge fails', async () => {
+  const storage = storageModule.createMemoryStorage()
+  const value = descriptor('public-api', 'revision-a')
+  const record = generation('public-api', 'revision-a')
+  await storage.commitGeneration(value, record)
+  await storage.activate(value.publicationKey, value.revisionId)
+  await storage.putShell(value.publicationKey, value.offlineShellUrl, new Response('shell'), value)
+  await storage.putAsset(value.publicationKey, '/docs/app.js', new Response('asset'), value)
+  storage.setHooks({ purge: async () => { throw new Error('quota') } })
+
+  await storage.tombstone(value.publicationKey, 'HTTP 410', 'revoked')
+
+  assert.equal(await storage.getShell(value.publicationKey, value.offlineShellUrl, value), undefined)
+  assert.equal(await storage.getAsset(value.publicationKey, '/docs/app.js', value), undefined)
+})
+
+test('cache identity binds publication revision and digest and prunes beyond two generations', async () => {
+  const storage = storageModule.createMemoryStorage()
+  const values = ['a', 'b', 'c'].map((letter, index) => {
+    const projectionDigest = letter.repeat(64)
+    return {
+      ...descriptor('public-api', `revision-${index + 1}`),
+      revisionId: `revision-${index + 1}`,
+      projectionDigest,
+      snapshotId: `snapshot-sha256-${projectionDigest}`,
+    }
+  })
+  for (const value of values) {
+    await storage.commitGeneration(value, { ...generation(value.publicationKey, value.revisionId), projectionDigest: value.projectionDigest, snapshotId: value.snapshotId })
+    await storage.activate(value.publicationKey, value.revisionId)
+    await storage.putShell(value.publicationKey, value.offlineShellUrl, new Response(value.revisionId), value)
+    await storage.putAsset(value.publicationKey, '/docs/app.js', new Response(value.revisionId), value)
+  }
+
+  assert.equal(await (await storage.getShell(values[2].publicationKey, values[2].offlineShellUrl, values[2])).text(), 'revision-3')
+  assert.equal(await (await storage.getAsset(values[2].publicationKey, '/docs/app.js', values[2])).text(), 'revision-3')
+  assert.equal(await storage.getShell(values[0].publicationKey, values[0].offlineShellUrl, values[0]), undefined)
+  assert.equal(await storage.getAsset(values[0].publicationKey, '/docs/app.js', values[0]), undefined)
+  assert.deepEqual(storage.snapshot().generations.map((item) => item.revisionId).sort(), ['revision-2', 'revision-3'])
+})

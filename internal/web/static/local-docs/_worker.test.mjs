@@ -48,6 +48,19 @@ test('worker validates public eligibility and intercepts only same-origin reader
   assert.equal(worker.isStaticAssetPath('/manja-assets/local-docs/sw.js'), true)
 })
 
+test('worker runtime assets use an exact same-origin allowlist', () => {
+  assert.deepEqual(worker.DEFAULT_STATIC_ASSETS, [
+    '/manja-assets/local-docs/sw.js',
+    '/manja-assets/local-docs/storage.js',
+    '/manja-assets/local-docs.js',
+    '/manja-assets/local-docs/wasm_exec.js',
+    '/manja-assets/local-docs/manja.wasm',
+    '/manja-assets/local-docs/manja.wasm.br',
+  ])
+  for (const path of worker.DEFAULT_STATIC_ASSETS) assert.equal(worker.isStaticAssetPath(path), true)
+  assert.equal(worker.isStaticAssetPath('/manja-assets/local-docs/_worker.test.mjs'), false)
+})
+
 test('worker rejects duplicate manifest keys and binds child bytes to declared digest', async () => {
   const identity = { schemaVersion: 1, catalogId: 'public-api', revisionId: 'revision-1', projectionFormat: 'projection-v2' }
   const projectionDigest = digest(JSON.stringify(identity))
@@ -105,6 +118,64 @@ test('revalidation is single-flight and network failure serves validated offline
   const request = { method: 'GET', mode: 'navigate', url: 'https://docs.test/docs/documents/api/', headers: new Headers() }
   const response = await worker.cachedOrFetched({}, storage, value, request, async () => { throw new Error('offline') })
   assert.equal(await response.text(), '<main>offline</main>')
+})
+
+test('offline revalidation recovers the persisted manifest before reporting fallback', async () => {
+  const storage = storageModule.createMemoryStorage()
+  const identity = { schemaVersion: 1, catalogId: 'public-api', revisionId: 'revision-1', projectionFormat: 'projection-v2' }
+  const projectionDigest = digest(JSON.stringify(identity))
+  const value = descriptor({
+    projectionDigest,
+    snapshotId: `snapshot-sha256-${projectionDigest}`,
+    projectionManifestUrl: `/docs/snapshots/snapshot-sha256-${projectionDigest}/manifest.json`,
+    catalogUrl: `/docs/snapshots/snapshot-sha256-${projectionDigest}/catalog.json`,
+    searchDataBase: `/docs/snapshots/snapshot-sha256-${projectionDigest}/search-data/`,
+    projectionDataBase: `/docs/snapshots/snapshot-sha256-${projectionDigest}/projection-data/`,
+  })
+  const manifest = JSON.stringify({ schemaVersion: 1, snapshotId: value.snapshotId, identity, children: [] })
+  await storage.commitGeneration(value, { ...generationFor(value), projectionBytes: bytes('projection'), manifestBytes: bytes(manifest) })
+  await storage.activate(value.publicationKey, value.revisionId)
+
+  const result = await worker.revalidate({ storage, descriptor: value, fetch: async () => { throw new Error('offline') }, origin: 'https://docs.test' })
+
+  assert.deepEqual(result, { kind: 'ready', revisionId: value.revisionId, offline: true })
+})
+
+test('offline shell accepts only the public allowlist and omits credentials', async () => {
+  const value = descriptor()
+  assert.throws(() => worker.validateDescriptor({ ...value, offlineShellUrl: '/manage/offline-shell' }, 'https://docs.test'), /offline shell route/)
+  const storage = storageModule.createMemoryStorage()
+  await storage.observe(value.publicationKey, value)
+  let requestInit
+  const cached = await worker.cacheOfflineShell(storage, value, async (_url, init) => {
+    requestInit = init
+    return new Response('<main>private</main>', { status: 200, headers: { 'X-Manja-Authenticated': 'true' } })
+  })
+
+  assert.equal(cached, false)
+  assert.equal(requestInit.credentials, 'omit')
+  assert.equal(await storage.getShell(value.publicationKey, value.offlineShellUrl, value), undefined)
+})
+
+test('deep-link navigation never replaces canonical offline shell', async () => {
+  const value = descriptor()
+  const storage = storageModule.createMemoryStorage()
+  await storage.commitGeneration(value, { ...generationFor(value), projectionBytes: bytes('projection'), manifestBytes: bytes('{}') })
+  await storage.activate(value.publicationKey, value.revisionId)
+  await storage.putShell(value.publicationKey, value.offlineShellUrl, new Response('<main>canonical</main>'), value)
+  const request = { method: 'GET', mode: 'navigate', url: 'https://docs.test/docs/documents/api/', headers: new Headers() }
+
+  const online = await worker.cachedOrFetched({}, storage, value, request, async () => new Response('<main>deep-link</main>', { status: 200 }))
+  assert.equal(await online.text(), '<main>deep-link</main>')
+  const offline = await worker.cachedOrFetched({}, storage, value, request, async () => { throw new Error('offline') })
+  assert.equal(await offline.text(), '<main>canonical</main>')
+
+  const credentialStorage = storageModule.createMemoryStorage()
+  await credentialStorage.commitGeneration(value, { ...generationFor(value), projectionBytes: bytes('projection'), manifestBytes: bytes('{}') })
+  await credentialStorage.activate(value.publicationKey, value.revisionId)
+  const credentialedShell = { method: 'GET', mode: 'navigate', credentials: 'include', url: `https://docs.test${value.offlineShellUrl}`, headers: new Headers() }
+  await worker.cachedOrFetched({}, credentialStorage, value, credentialedShell, async () => new Response('<main>credentialed</main>', { status: 200 }))
+  assert.equal(await credentialStorage.getShell(value.publicationKey, value.offlineShellUrl, value), undefined)
 })
 
 test('worker configuration activates public revision and caches shell without intercepting management', async () => {
