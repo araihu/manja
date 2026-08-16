@@ -157,6 +157,21 @@ test('offline shell accepts only the public allowlist and omits credentials', as
   assert.equal(await storage.getShell(value.publicationKey, value.offlineShellUrl, value), undefined)
 })
 
+test('offline shell accepts the absolute URL returned by a real HTTP fetch', async () => {
+  const value = descriptor()
+  const storage = storageModule.createMemoryStorage()
+  await storage.observe(value.publicationKey, value)
+  const response = new Response('<main>public shell</main>', { status: 200, headers: { 'Content-Security-Policy': "default-src 'self'" } })
+  Object.defineProperty(response, 'url', { value: 'https://docs.test/docs/_manja/offline-shell' })
+  assert.doesNotThrow(() => worker.validatePublicShellResponse(response, value, 'https://docs.test'))
+  const cachedResponse = new Response('<main>public shell</main>', { status: 200, headers: { 'Content-Security-Policy': "default-src 'self'" } })
+  Object.defineProperty(cachedResponse, 'url', { value: 'https://manja-local-docs.invalid/docs/_manja/offline-shell' })
+
+  const cached = await worker.cacheOfflineShell(storage, value, async () => cachedResponse)
+  assert.equal(cached, true)
+  assert.equal(await (await storage.getShell(value.publicationKey, value.offlineShellUrl, value)).text(), '<main>public shell</main>')
+})
+
 test('deep-link navigation never replaces canonical offline shell', async () => {
   const value = descriptor()
   const storage = storageModule.createMemoryStorage()

@@ -5,12 +5,15 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 
+	web "github.com/araihu/manja/internal/web"
 	"github.com/mxschmitt/playwright-go"
 )
 
@@ -335,6 +338,150 @@ func TestLocalDocsEnhancerRejectsCrossOriginDescriptorBeforeFetching(t *testing.
 	}
 }
 
+func TestLocalDocsEnhancerServesRealWasmAndPersistsBrowserState(t *testing.T) {
+	descriptorJSON, manifestJSON := localDocsFixture(t, "/docs/")
+	var descriptor localDocsDescriptor
+	if err := json.Unmarshal([]byte(descriptorJSON), &descriptor); err != nil {
+		t.Fatal(err)
+	}
+	manifestBytes := []byte(manifestJSON)
+	assets := web.NewCatalogAssetsHandler()
+	var requestMu sync.Mutex
+	requests := make(map[string]int)
+	handler := http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		requestMu.Lock()
+		requests[request.URL.Path]++
+		requestMu.Unlock()
+
+		switch request.URL.Path {
+		case "/docs/":
+			response.Header().Set("Content-Type", "text/html; charset=utf-8")
+			_, _ = fmt.Fprintf(response, `<main id="ssr"><h1>Rendered on the server</h1><p>Projection remains visible.</p></main><script id="manja-local-docs-descriptor" type="application/json">%s</script><script src="/manja-assets/local-docs.js"></script>`, descriptorJSON)
+		case descriptor.ProjectionManifestURL:
+			response.Header().Set("Content-Type", "application/json")
+			response.Header().Set("Content-Length", fmt.Sprint(len(manifestBytes)))
+			response.Header().Set("ETag", `"local-docs-browser-fixture"`)
+			_, _ = response.Write(manifestBytes)
+		case "/docs/_manja/offline-shell":
+			response.Header().Set("Content-Type", "text/html; charset=utf-8")
+			response.Header().Set("Content-Security-Policy", "default-src 'self'")
+			_, _ = io.WriteString(response, `<main id="offline-shell"><h1>Offline shell</h1></main>`)
+		default:
+			assets.ServeHTTP(response, request)
+		}
+	})
+	server := httptest.NewServer(handler)
+	t.Cleanup(server.Close)
+
+	page := browserPage(t)
+	if _, err := page.Goto(server.URL + "/docs/"); err != nil {
+		t.Fatal(err)
+	}
+	waitOptions := playwright.PageWaitForFunctionOptions{Timeout: playwright.Float(30_000)}
+	if _, err := page.WaitForFunction(`() => document.documentElement.dataset.manjaLocalDocsState === 'ready' && document.documentElement.dataset.manjaLocalDocsWorker === 'ready'`, nil, waitOptions); err != nil {
+		debug, _ := page.Evaluate(`() => ({state: document.documentElement.dataset.manjaLocalDocsState || '', reason: document.documentElement.dataset.manjaLocalDocsReason || '', worker: document.documentElement.dataset.manjaLocalDocsWorker || '', workerReason: document.documentElement.dataset.manjaLocalDocsWorkerReason || ''})`)
+		requestMu.Lock()
+		requestSnapshot := fmt.Sprintf("%#v", requests)
+		requestMu.Unlock()
+		t.Fatalf("real local-docs browser activation failed: %v; debug=%#v; requests=%s", err, debug, requestSnapshot)
+	}
+
+	receipt, err := page.Evaluate(`async () => {
+		const requestValue = (request) => new Promise((resolve, reject) => {
+			request.onsuccess = () => resolve(request.result)
+			request.onerror = () => reject(request.error || new Error('IndexedDB request failed'))
+		})
+		const database = await new Promise((resolve, reject) => {
+			const request = indexedDB.open('manja-local-docs')
+			request.onsuccess = () => resolve(request.result)
+			request.onerror = () => reject(request.error || new Error('IndexedDB open failed'))
+		})
+		const transaction = database.transaction(['publications', 'generations'], 'readonly')
+		const metadataRequest = transaction.objectStore('publications').get('public-core')
+		const generationsRequest = transaction.objectStore('generations').getAll()
+		const [metadata, generations] = await Promise.all([requestValue(metadataRequest), requestValue(generationsRequest)])
+		const cacheNames = await caches.keys()
+		const staticCache = await caches.open('manja-local-docs-assets-v1')
+		const wasm = await staticCache.match(new URL('/manja-assets/local-docs/manja.wasm', location.origin).href)
+		let shell = false
+		for (const name of cacheNames.filter((value) => value.startsWith('manja-local-docs-assets-v1::public-core::'))) {
+			const cached = await (await caches.open(name)).match(new URL('/docs/_manja/offline-shell', location.origin).href)
+			if (cached) shell = true
+		}
+		return {
+			state: document.documentElement.dataset.manjaLocalDocsState || '',
+			worker: document.documentElement.dataset.manjaLocalDocsWorker || '',
+			wasmABI: Boolean(window.ManjaLocalDocs && typeof window.ManjaLocalDocs.activate === 'function'),
+			wasmStatus: wasm ? wasm.status : 0,
+			wasmType: wasm ? wasm.headers.get('Content-Type') || '' : '',
+			cacheNames,
+			shell,
+			metadata: metadata ? {
+				publicationKey: metadata.publicationKey,
+				activeRevision: metadata.activeRevision,
+				activeDigest: metadata.activeDigest,
+				disabled: metadata.disabled === true,
+			} : null,
+			generations: generations.map((value) => ({
+				publicationKey: value.publicationKey,
+				revisionId: value.revisionId,
+				projectionDigest: value.projectionDigest,
+				projectionBytesLength: value.projectionBytes ? value.projectionBytes.byteLength : 0,
+				manifestBytesLength: value.manifestBytes ? value.manifestBytes.byteLength : 0,
+			})),
+		}
+	}`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	values, ok := receipt.(map[string]any)
+	if !ok {
+		t.Fatalf("browser receipt = %#v", receipt)
+	}
+	wasmStatus, wasmStatusOK := browserInteger(values["wasmStatus"])
+	if values["state"] != "ready" || values["worker"] != "ready" || values["wasmABI"] != true || !wasmStatusOK || wasmStatus != http.StatusOK || values["shell"] != true {
+		t.Fatalf("browser receipt did not prove served runtime and shell cache: %#v", values)
+	}
+	metadata, ok := values["metadata"].(map[string]any)
+	if !ok || metadata["publicationKey"] != descriptor.PublicationKey || metadata["activeRevision"] != descriptor.RevisionID || metadata["activeDigest"] != descriptor.ProjectionDigest || metadata["disabled"] != false {
+		t.Fatalf("browser IndexedDB metadata = %#v", values["metadata"])
+	}
+	generations, ok := values["generations"].([]any)
+	if !ok || len(generations) != 1 {
+		t.Fatalf("browser IndexedDB generations = %#v", values["generations"])
+	}
+	generation, ok := generations[0].(map[string]any)
+	projectionBytesLength, projectionBytesOK := browserInteger(generation["projectionBytesLength"])
+	manifestBytesLength, manifestBytesOK := browserInteger(generation["manifestBytesLength"])
+	if !ok || generation["publicationKey"] != descriptor.PublicationKey || generation["revisionId"] != descriptor.RevisionID || generation["projectionDigest"] != descriptor.ProjectionDigest || !projectionBytesOK || projectionBytesLength != len(manifestBytes) || !manifestBytesOK || manifestBytesLength != len(manifestBytes) {
+		t.Fatalf("browser IndexedDB generation = %#v", generations[0])
+	}
+
+	requestMu.Lock()
+	defer requestMu.Unlock()
+	for _, path := range []string{
+		"/manja-assets/local-docs.js",
+		"/manja-assets/local-docs/sw.js",
+		"/manja-assets/local-docs/storage.js",
+		"/manja-assets/local-docs/wasm_exec.js",
+		"/manja-assets/local-docs/manja.wasm",
+		"/manja-assets/local-docs/manja.wasm.br",
+		descriptor.ProjectionManifestURL,
+		"/docs/_manja/offline-shell",
+	} {
+		if requests[path] == 0 {
+			t.Errorf("real browser never requested served asset %s; requests=%#v", path, requests)
+		}
+	}
+	ssr, err := page.Locator("#ssr").TextContent()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(ssr, "Rendered on the server") {
+		t.Fatalf("browser activation replaced SSR body: %q", ssr)
+	}
+}
+
 func localDocsFixture(t *testing.T, publicationBase string) (string, string) {
 	t.Helper()
 	identity := localDocsIdentity{SchemaVersion: 1, CatalogID: "core", RevisionID: "revision-immutable-1", ProjectionFormat: "projection-v2"}
@@ -365,6 +512,17 @@ func descriptorSnapshot(descriptorJSON string) string {
 		return ""
 	}
 	return descriptor.SnapshotID
+}
+
+func browserInteger(value any) (int, bool) {
+	switch value := value.(type) {
+	case int:
+		return value, true
+	case float64:
+		return int(value), value == float64(int(value))
+	default:
+		return 0, false
+	}
 }
 
 func localDocsPage(t *testing.T) playwright.Page {

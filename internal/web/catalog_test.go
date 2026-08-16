@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"image/png"
 	"io"
+	"io/fs"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -1790,6 +1791,76 @@ func TestCatalogAssetsServeRootScopedLocalDocsServiceWorker(t *testing.T) {
 		if !strings.Contains(response.Body.String(), contract) {
 			t.Errorf("local docs Service Worker asset missing %q", contract)
 		}
+	}
+}
+
+func TestCatalogAssetsServeDeterministicLocalDocsWasmRuntime(t *testing.T) {
+	t.Parallel()
+
+	for _, test := range []struct {
+		name        string
+		path        string
+		embedded    string
+		length      int
+		digest      string
+		contentType string
+		prefix      []byte
+	}{
+		{
+			name:        "wasm runtime",
+			path:        "/manja-assets/local-docs/wasm_exec.js",
+			embedded:    "static/local-docs/wasm_exec.js",
+			length:      16_992,
+			digest:      "0c949f4996f9a89698e4b5c586de32249c3b69b7baadb64d220073cc04acba14",
+			contentType: "text/javascript",
+		},
+		{
+			name:        "wasm binary",
+			path:        "/manja-assets/local-docs/manja.wasm",
+			embedded:    "static/local-docs/manja.wasm",
+			length:      2_110_671,
+			digest:      "7da5b0ba81060a82d8927c05a2396a585c7ba157b25a6bd5fd5a97d3f004a67b",
+			contentType: "application/wasm",
+			prefix:      []byte{0x00, 'a', 's', 'm'},
+		},
+		{
+			name:     "brotli wasm binary",
+			path:     "/manja-assets/local-docs/manja.wasm.br",
+			embedded: "static/local-docs/manja.wasm.br",
+			length:   475_081,
+			digest:   "51dfb4b317f86b48e1f09a75610742bddc3359988c4c75891996779f1f118efd",
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+
+			want, err := fs.ReadFile(catalogStaticFiles, test.embedded)
+			if err != nil {
+				t.Fatal(err)
+			}
+			response := httptest.NewRecorder()
+			NewCatalogAssetsHandler().ServeHTTP(response, httptest.NewRequest(http.MethodGet, test.path, nil))
+			if response.Code != http.StatusOK {
+				t.Fatalf("%s = %d, want 200", test.path, response.Code)
+			}
+			body := response.Body.Bytes()
+			if len(body) != test.length || len(want) != test.length {
+				t.Fatalf("%s length = %d (embedded %d), want %d", test.path, len(body), len(want), test.length)
+			}
+			if !bytes.Equal(body, want) {
+				t.Fatalf("%s response differs from embedded bytes", test.path)
+			}
+			digest := sha256.Sum256(body)
+			if got := hex.EncodeToString(digest[:]); got != test.digest {
+				t.Fatalf("%s sha256 = %s, want %s", test.path, got, test.digest)
+			}
+			if len(test.prefix) > 0 && !bytes.HasPrefix(body, test.prefix) {
+				t.Fatalf("%s does not have expected WebAssembly magic", test.path)
+			}
+			if test.contentType != "" && !strings.HasPrefix(response.Header().Get("Content-Type"), test.contentType) {
+				t.Fatalf("%s content type = %q, want prefix %q", test.path, response.Header().Get("Content-Type"), test.contentType)
+			}
+		})
 	}
 }
 

@@ -184,8 +184,9 @@
     if (response.redirected || response.type === "opaqueredirect") fail("offline shell response redirected")
     if (response.url) {
       const expected = new URL(descriptor.offlineShellUrl, origin || (global.location && global.location.origin) || "https://manja-local-docs.invalid")
-      const actual = sameOriginURL(response.url, expected.origin)
-      if (!actual || actual.pathname !== expected.pathname) fail("offline shell response route differs")
+      let actual
+      try { actual = new URL(response.url, expected.origin) } catch (_) { actual = undefined }
+      if (!actual || actual.origin !== expected.origin || actual.username !== "" || actual.password !== "" || actual.pathname !== expected.pathname || actual.search !== "" || actual.hash !== "") fail("offline shell response route differs")
     }
     for (const header of ["WWW-Authenticate", "Set-Cookie", "X-Manja-Authenticated", "X-Manja-Auth", "X-Authenticated-User", "X-Auth-Request-User"]) {
       if (response.headers && response.headers.get(header)) fail("offline shell response is authenticated")
@@ -590,11 +591,11 @@
 
   async function cacheOfflineShell(storage, descriptor, fetchImplementation) {
     if (!descriptor.offlineShellUrl || !storage || typeof storage.putShell !== "function") return false
-    const origin = global.location && global.location.origin
+    const origin = global.location && global.location.origin || "https://manja-local-docs.invalid"
     if (!isPublicShellURL(descriptor.offlineShellUrl, descriptor, origin)) return false
     try {
       const response = await fetchImplementation(descriptor.offlineShellUrl, { method: "GET", cache: "no-store", credentials: "omit", redirect: "error" })
-      validatePublicShellResponse(response, descriptor)
+      validatePublicShellResponse(response, descriptor, origin)
       await validateShell(response.clone ? response.clone() : response)
       await storage.putShell(descriptor.publicationKey, descriptor.offlineShellUrl, response.clone ? response.clone() : response, descriptor)
       return true
