@@ -130,6 +130,40 @@ func TestCatalogEnhancementOfflineShellRevocationIsAuthoritative(t *testing.T) {
 	}
 }
 
+func TestCatalogEnhancementOfflineShellWithdrawsWhenEligibilityDisappears(t *testing.T) {
+	baseHandler, snapshot := catalogHandlerFixture(t, "/kubernetes")
+	base := baseHandler.(*CatalogHandler)
+	snapshot = catalogEnhancementSnapshot(t, snapshot)
+	runtime := catalog.NewRuntime(1)
+	if _, err := runtime.ActivateMount("/kubernetes", "", 1, snapshot); err != nil {
+		t.Fatal(err)
+	}
+	for _, test := range []struct {
+		name        string
+		eligibility CatalogPublicEligibility
+	}{
+		{name: "absent"},
+		{name: "private", eligibility: CatalogPublicEligibility{CatalogID: snapshot.Directory.CatalogID, PublicationKey: "public-kubernetes", Anonymous: true}},
+		{name: "non-anonymous", eligibility: CatalogPublicEligibility{CatalogID: snapshot.Directory.CatalogID, PublicationKey: "public-kubernetes", Public: true}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			handler := NewCatalogHandlerWithOrganizationAndEnhancement(runtime, base.children, base.presentation, base.organization, CatalogEnhancementPolicy{Publications: map[string]CatalogPublicEligibility{
+				"/kubernetes": test.eligibility,
+			}})
+			shell := httptest.NewRecorder()
+			handler.ServeHTTP(shell, httptest.NewRequest(http.MethodGet, "/kubernetes/_manja/offline-shell", nil))
+			if shell.Code != http.StatusNotFound || strings.Contains(shell.Body.String(), `data-manja-catalog-shell="true"`) || shell.Header().Get("X-Manja-Publication-State") != "" {
+				t.Fatalf("ineligible offline shell = %d headers=%#v body=%q", shell.Code, shell.Header(), shell.Body.String())
+			}
+			page := httptest.NewRecorder()
+			handler.ServeHTTP(page, httptest.NewRequest(http.MethodGet, "/kubernetes/", nil))
+			if page.Code != http.StatusOK || !strings.Contains(page.Body.String(), `data-manja-catalog-shell="true"`) || strings.Contains(page.Body.String(), `id="manja-local-docs-descriptor"`) {
+				t.Fatalf("SSR fallback under %s eligibility = %d body=%q", test.name, page.Code, page.Body.String())
+			}
+		})
+	}
+}
+
 func TestCatalogEnhancementDescriptorFailsClosed(t *testing.T) {
 	baseHandler, valid := catalogHandlerFixture(t, "/kubernetes")
 	base := baseHandler.(*CatalogHandler)

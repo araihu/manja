@@ -205,6 +205,21 @@
     return PUBLIC_STATES.has(state)
   }
 
+  function withdrawalState(response) {
+    const state = String(response && response.headers && response.headers.get("X-Manja-Publication-State") || "").toLowerCase()
+    if (PUBLIC_STATES.has(state)) return state
+    return response && response.status === 404 ? "deleted" : "revoked"
+  }
+
+  function isCanonicalShellWithdrawal(response, descriptor, request) {
+    if (!response) return false
+    if (isWithdrawalResponse(response, request && request.mode === "navigate" ? "document" : "resource")) return true
+    // A disappeared canonical shell is an eligibility withdrawal even when the
+    // server's 404 has no state header. Other document 404s keep SSR fallback.
+    if (response.status !== 404 || !descriptor || !request) return false
+    try { return new URL(request.url).pathname === descriptor.offlineShellUrl } catch (_) { return false }
+  }
+
   async function sha256(value, cryptoImplementation) {
     const implementation = cryptoImplementation || global.crypto
     if (!implementation || !implementation.subtle) fail("Web Crypto SHA-256 is unavailable")
@@ -484,7 +499,7 @@
       const recovered = await recoverPersistedManifest(storage, descriptor, cryptoImplementation, checkedAt)
       return recovered || { kind: "fallback", error: String(error && error.message || error).slice(0, 256) }
     }
-    if (isWithdrawalResponse(response, "resource")) { await disablePublication(storage, descriptor, `HTTP ${response.status}`, response.status === 404 ? "deleted" : "revoked"); return { kind: "disabled", status: response.status } }
+    if (isWithdrawalResponse(response, "resource")) { await disablePublication(storage, descriptor, `HTTP ${response.status}`, withdrawalState(response)); return { kind: "disabled", status: response.status } }
     if (response.status === 304) { await storage.observe(descriptor.publicationKey, { etag: response.headers.get("ETag") || (state && state.etag) || "", lastObservedAt: checkedAt }); return { kind: "ready", unchanged: true } }
     if (!response.ok) {
       const recovered = await recoverPersistedManifest(storage, descriptor, cryptoImplementation, checkedAt)
@@ -504,8 +519,8 @@
     const routeKind = request.mode === "navigate" ? "document" : "resource"
     try {
       const response = await network(request)
-      if (isWithdrawalResponse(response, routeKind)) {
-        await disablePublication(storage, descriptor, `HTTP ${response.status}`, response.status === 404 ? "deleted" : "revoked")
+      if (isCanonicalShellWithdrawal(response, descriptor, request)) {
+        await disablePublication(storage, descriptor, `HTTP ${response.status}`, withdrawalState(response))
         return response
       }
       const pathname = new URL(request.url).pathname
@@ -552,27 +567,37 @@
 
   async function cachedStaticAsset(scope, request, cacheName, fetchImplementation, expected) {
     const cache = await scope.caches.open(cacheName)
+    const network = fetchImplementation || ((value, init) => scope.fetch(value, init))
+    let networkError
+    try {
+      const response = await network(request, { credentials: "same-origin", cache: "no-store" })
+      if (!response || !response.ok) fail("static asset request failed")
+      const maximum = expected && expected.length ? expected.length : MAX_ASSET_BYTES
+      const bytes = await readBoundedResponse(response.clone ? response.clone() : response, maximum)
+      if (expected && expected.length !== undefined && bytes.byteLength !== expected.length) fail("fallback asset length differs")
+      if (expected && expected.sha256 && await sha256(bytes) !== expected.sha256) fail("fallback asset digest differs")
+      // Validate complete network bytes before replacing the stable cache key.
+      await cache.put(request, response.clone ? response.clone() : response)
+      return response
+    } catch (error) {
+      networkError = error
+    }
     const cached = await cache.match(request)
     if (cached) {
-      if (!expected) return cached
       try {
-        const cachedBytes = await readBoundedResponse(cached.clone ? cached.clone() : cached, expected.length || MAX_ASSET_BYTES)
-        if (expected.length !== undefined && cachedBytes.byteLength !== expected.length) fail("fallback asset length differs")
-        if (expected.sha256 && await sha256(cachedBytes) !== expected.sha256) fail("fallback asset digest differs")
+        if (!expected) {
+          await readBoundedResponse(cached.clone ? cached.clone() : cached, MAX_ASSET_BYTES)
+        } else {
+          const cachedBytes = await readBoundedResponse(cached.clone ? cached.clone() : cached, expected.length || MAX_ASSET_BYTES)
+          if (expected.length !== undefined && cachedBytes.byteLength !== expected.length) fail("fallback asset length differs")
+          if (expected.sha256 && await sha256(cachedBytes) !== expected.sha256) fail("fallback asset digest differs")
+        }
         return cached
       } catch (_) {
         await cache.delete(request).catch(() => {})
       }
     }
-    const response = await fetchImplementation(request)
-    if (response && response.ok) {
-      const maximum = expected && expected.length ? expected.length : MAX_ASSET_BYTES
-      const bytes = await readBoundedResponse(response.clone ? response.clone() : response, maximum)
-      if (expected && expected.length !== undefined && bytes.byteLength !== expected.length) fail("fallback asset length differs")
-      if (expected && expected.sha256 && await sha256(bytes) !== expected.sha256) fail("fallback asset digest differs")
-      await cache.put(request, response.clone())
-    }
-    return response
+    throw networkError || new Error("static asset unavailable")
   }
 
   function findFallbackAsset(descriptors, requestURL) {
@@ -602,19 +627,10 @@
   async function cacheStaticAssets(scope, cacheName, fetchImplementation, assets) {
     if (!scope.caches) return true
     let ready = true
-    const cache = await scope.caches.open(cacheName)
     for (const asset of assets) {
       if (typeof asset !== "string") continue
       try {
-        const cached = await cache.match(asset)
-        if (cached && cached.ok) {
-          await readBoundedResponse(cached.clone ? cached.clone() : cached, MAX_ASSET_BYTES)
-          continue
-        }
-        const response = await fetchImplementation(asset, { credentials: "same-origin", cache: "no-store" })
-        if (!response || !response.ok) throw new Error("static asset request failed")
-        await readBoundedResponse(response.clone ? response.clone() : response, MAX_ASSET_BYTES)
-        await cache.put(asset, response.clone ? response.clone() : response)
+        await cachedStaticAsset(scope, asset, cacheName, fetchImplementation)
       } catch (_) { ready = false }
     }
     return ready
@@ -626,8 +642,8 @@
     if (!isPublicShellURL(descriptor.offlineShellUrl, descriptor, origin)) return false
     try {
       const response = await fetchImplementation(descriptor.offlineShellUrl, { method: "GET", cache: "no-store", credentials: "omit", redirect: "error" })
-      if (isWithdrawalResponse(response, "document")) {
-        await disablePublication(storage, descriptor, `HTTP ${response.status}`, response.status === 404 ? "deleted" : "revoked")
+      if (isWithdrawalResponse(response, "document") || response.status === 404) {
+        await disablePublication(storage, descriptor, `HTTP ${response.status}`, withdrawalState(response))
         return false
       }
       validatePublicShellResponse(response, descriptor, origin)
@@ -804,7 +820,9 @@
     MAX_SHELL_BYTES,
     ROOT_SCOPE,
     cachedOrFetched,
+    cachedStaticAsset,
     cacheOfflineShell,
+    cacheStaticAssets,
     commitCandidate,
     createRevalidator,
     descriptorFromMetadata,
@@ -813,6 +831,7 @@
     isAllowedRequest,
     isHTMXRequest,
     isWithdrawalResponse,
+    withdrawalState,
     parseManifest,
     recoverPersistedManifest,
     persistedManifestResponse,

@@ -63,6 +63,43 @@ test('worker runtime assets use an exact same-origin allowlist', () => {
   assert.equal(worker.isStaticAssetPath('/manja-assets/local-docs/_worker.test.mjs'), false)
 })
 
+test('static runtime assets refresh validated bytes and retain the newest offline fallback', async () => {
+  const entries = new Map()
+  const cache = {
+    async match(request) {
+      const response = entries.get(String(request))
+      return response ? response.clone() : undefined
+    },
+    async put(request, response) {
+      entries.set(String(request), response.clone())
+    },
+    async delete(request) {
+      return entries.delete(String(request))
+    },
+  }
+  const scope = { caches: { open: async () => cache } }
+  for (const path of ['/manja-assets/local-docs.js', '/manja-assets/local-docs/manja.wasm']) {
+    let current = 'runtime-v1'
+    let online = true
+    const fetchImplementation = async () => {
+      if (!online) throw new Error('offline')
+      return new Response(bytes(current), { status: 200 })
+    }
+    const expected = () => ({ length: bytes(current).byteLength, sha256: digest(bytes(current)) })
+
+    const first = await worker.cachedStaticAsset(scope, path, 'manja-local-docs-assets-v1', fetchImplementation, expected())
+    assert.equal(await first.text(), 'runtime-v1', path)
+
+    current = 'runtime-v2'
+    const second = await worker.cachedStaticAsset(scope, path, 'manja-local-docs-assets-v1', fetchImplementation, expected())
+    assert.equal(await second.text(), 'runtime-v2', path)
+
+    online = false
+    const offline = await worker.cachedStaticAsset(scope, path, 'manja-local-docs-assets-v1', fetchImplementation, expected())
+    assert.equal(await offline.text(), 'runtime-v2', path)
+  }
+})
+
 test('worker rejects duplicate manifest keys and binds child bytes to declared digest', async () => {
   const identity = { schemaVersion: 1, catalogId: 'public-api', revisionId: 'revision-1', projectionFormat: 'projection-v2' }
   const projectionDigest = digest(JSON.stringify(identity))
@@ -149,6 +186,44 @@ test('withdrawn offline shell tombstones before returning and blocks cached byte
   assert.equal((await storage.loadMetadata(value.publicationKey)).disabled, true)
   assert.equal(await storage.getShell(value.publicationKey, value.offlineShellUrl, value), undefined)
   await assert.rejects(() => worker.cachedOrFetched({}, storage, value, request, async () => { throw new Error('offline') }), /offline/)
+})
+
+test('offline shell 404 without a state header tombstones before fallback', async () => {
+  const value = descriptor()
+  const storage = storageModule.createMemoryStorage()
+  await storage.commitGeneration(value, { ...generationFor(value), projectionBytes: bytes('projection'), manifestBytes: bytes('{}') })
+  await storage.activate(value.publicationKey, value.revisionId)
+  await storage.putShell(value.publicationKey, value.offlineShellUrl, new Response('<main>stale</main>'), value)
+  const request = { method: 'GET', mode: 'navigate', credentials: 'omit', url: `https://docs.test${value.offlineShellUrl}`, headers: new Headers() }
+
+  const absent = await worker.cachedOrFetched({}, storage, value, request, async () => new Response('not found', { status: 404 }))
+  assert.equal(absent.status, 404)
+  const state = await storage.loadMetadata(value.publicationKey)
+  assert.equal(state.disabled, true)
+  assert.equal(state.tombstone.state, 'deleted')
+  assert.equal(await storage.getShell(value.publicationKey, value.offlineShellUrl, value), undefined)
+  assert.equal(storage.snapshot().generations.length, 0)
+  await assert.rejects(() => worker.cachedOrFetched({}, storage, value, request, async () => { throw new Error('offline') }), /offline/)
+})
+
+test('private and non-anonymous shell responses tombstone before cached fallback', async () => {
+  for (const [name, response, expectedState] of [
+    ['private', new Response('private', { status: 404, headers: { 'X-Manja-Publication-State': 'private' } }), 'private'],
+    ['non-anonymous', new Response('restricted', { status: 200, headers: { 'X-Manja-Publication-State': 'private' } }), 'private'],
+  ]) {
+    const value = descriptor()
+    const storage = storageModule.createMemoryStorage()
+    await storage.commitGeneration(value, { ...generationFor(value), projectionBytes: bytes('projection'), manifestBytes: bytes('{}') })
+    await storage.activate(value.publicationKey, value.revisionId)
+    await storage.putShell(value.publicationKey, value.offlineShellUrl, new Response('<main>stale</main>'), value)
+    const cached = await worker.cacheOfflineShell(storage, value, async () => response)
+    assert.equal(cached, false, name)
+    const state = await storage.loadMetadata(value.publicationKey)
+    assert.equal(state.disabled, true, name)
+    assert.equal(state.tombstone.state, expectedState, name)
+    assert.equal(await storage.getShell(value.publicationKey, value.offlineShellUrl, value), undefined, name)
+    assert.equal(storage.snapshot().generations.length, 0, name)
+  }
 })
 
 test('offline revalidation recovers the persisted manifest before reporting fallback', async () => {
