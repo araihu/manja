@@ -405,6 +405,81 @@ func TestWithdrawalCrashRecoveryAtDurableBoundaries(t *testing.T) {
 	}
 }
 
+func TestWithdrawalJournalWinsOverCorruptOrMissingActiveAndPrevious(t *testing.T) {
+	t.Parallel()
+
+	errCrash := errors.New("simulated withdrawal crash")
+	for _, test := range []struct {
+		name    string
+		remove  bool
+		corrupt bool
+	}{
+		{name: "corrupt active", corrupt: true},
+		{name: "missing active", remove: true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			root := t.TempDir()
+			runtime := catalog.NewRuntime(1)
+			coordinator, err := OpenActivationCoordinator(context.Background(), root, runtime)
+			if err != nil {
+				t.Fatal(err)
+			}
+			first := compiledFixtureVersion(t, "withdraw-previous")
+			second := compiledFixtureVersion(t, "withdraw-active")
+			if _, err := coordinator.Activate(context.Background(), "/catalog", "", 1, first); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := coordinator.Activate(context.Background(), "/catalog", first.ID, 1, second); err != nil {
+				t.Fatal(err)
+			}
+			coordinator.hooks.afterJournal = func() error { return errCrash }
+			if _, err := coordinator.Withdraw(context.Background(), "/catalog", second.ID, 1, catalog.TombstoneWithdrawn); !errors.Is(err, errCrash) {
+				t.Fatalf("withdrawal error = %v, want %v", err, errCrash)
+			}
+			activePath, err := coordinator.store.snapshotPath(second.ID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if test.remove {
+				if err := os.RemoveAll(activePath); err != nil {
+					t.Fatal(err)
+				}
+			} else if test.corrupt {
+				corruptCompiledChild(t, coordinator.store, second)
+			}
+			if err := coordinator.Close(); err != nil {
+				t.Fatal(err)
+			}
+
+			restarted := catalog.NewRuntime(0)
+			reopened, err := OpenActivationCoordinator(context.Background(), root, restarted)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer reopened.Close()
+			table := restarted.Table()
+			if _, active := table.Mounts["/catalog"]; active {
+				t.Fatalf("withdrawal recovered active or previous route: %#v", table)
+			}
+			tombstone, exists := table.Tombstones["/catalog"]
+			if !exists || tombstone.State != catalog.TombstoneWithdrawn || tombstone.SnapshotID != second.ID {
+				t.Fatalf("withdrawal recovered tombstone = %#v, exists=%t", tombstone, exists)
+			}
+			if _, err := restarted.ActivateMount("/catalog", "", 1, catalog.RuntimeSnapshot{
+				ID:       second.ID,
+				Location: "missing",
+				Directory: catalog.CatalogArtifactV1{
+					SchemaVersion: 1,
+					CatalogID:     "catalog",
+				},
+				Search: catalog.SearchDirectoryV1{SchemaVersion: 1},
+			}); !errors.Is(err, catalog.ErrMountWithdrawn) {
+				t.Fatalf("implicit reactivation error = %v, want %v", err, catalog.ErrMountWithdrawn)
+			}
+		})
+	}
+}
+
 func TestReauthorizationCrashRecoveryAfterJournalFsync(t *testing.T) {
 	t.Parallel()
 

@@ -9,6 +9,7 @@ import (
 	"sync/atomic"
 	"unicode"
 
+	"github.com/araihu/manja/application/projection"
 	"github.com/araihu/manja/domain"
 )
 
@@ -497,9 +498,10 @@ func (runtime *Runtime) AdmitSnapshot(mount string, id SnapshotID) (*Admission, 
 		}
 		selected = *state.Previous
 	}
+	selected = cloneRuntimeSnapshot(selected)
 	runtime.refs[selected.ID]++
-	// Runtime owns an immutable deep copy from activation. Admissions share its
-	// read-only slices so request cost is independent of catalog size.
+	// Runtime owns an immutable deep copy from activation. Admissions receive
+	// another copy so callers cannot mutate active or previous route state.
 	admission := &Admission{Mount: mount, Snapshot: selected}
 	admission.release = func() {
 		runtime.writes.Lock()
@@ -604,6 +606,15 @@ func cloneRuntimeSnapshot(source RuntimeSnapshot) RuntimeSnapshot {
 	result.Directory.Documents = append([]DocumentDirectoryV1(nil), source.Directory.Documents...)
 	for index := range result.Directory.Documents {
 		document := &result.Directory.Documents[index]
+		document.SecuritySchemes = append([]SecuritySchemeDirectoryV1(nil), document.SecuritySchemes...)
+		document.Overview.Servers = append([]projection.Server(nil), document.Overview.Servers...)
+		for serverIndex := range document.Overview.Servers {
+			server := &document.Overview.Servers[serverIndex]
+			server.Variables = append([]projection.ServerVariable(nil), server.Variables...)
+			for variableIndex := range server.Variables {
+				server.Variables[variableIndex].Enum = append([]projection.TextRecord(nil), server.Variables[variableIndex].Enum...)
+			}
+		}
 		document.SchemaNodeShards = append([]ShardReferenceV1(nil), document.SchemaNodeShards...)
 		document.Operations = append([]OperationDirectoryV1(nil), document.Operations...)
 		for operationIndex := range document.Operations {

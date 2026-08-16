@@ -4,8 +4,10 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -42,6 +44,91 @@ func TestActivationPersistsAndRestoresExactRouteTable(t *testing.T) {
 	defer reopened.Close()
 	if table := restarted.Table(); table.Generation != 7 || table.Mounts["/catalog"].Active.ID != snapshot.ID {
 		t.Fatalf("recovered route table = %#v", table)
+	}
+}
+
+func TestDurableStateWritersRejectOversizedDataBeforeWrite(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	coordinator, err := OpenActivationCoordinator(context.Background(), root, catalog.NewRuntime(1))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer coordinator.Close()
+
+	journal := activationJournalV1{SchemaVersion: 1, Mount: "/" + strings.Repeat("j", maxActivationJournalBytes), Generation: 1}
+	if err := coordinator.writeJournal(journal); !errors.Is(err, ErrStorageBudget) {
+		t.Fatalf("oversized journal error = %v, want %v", err, ErrStorageBudget)
+	}
+	if _, err := os.Stat(coordinator.journalPath()); !os.IsNotExist(err) {
+		t.Fatalf("oversized journal write left state: %v", err)
+	}
+
+	if err := coordinator.writeRouteTableBytes(bytes.Repeat([]byte("x"), maxDurableRouteTableBytes+1)); !errors.Is(err, ErrStorageBudget) {
+		t.Fatalf("oversized route table error = %v, want %v", err, ErrStorageBudget)
+	}
+	if _, err := os.Stat(coordinator.routeTablePath()); !os.IsNotExist(err) {
+		t.Fatalf("oversized route table write left state: %v", err)
+	}
+
+	mounts := make(map[string]catalog.MountState, maxDurableMounts+1)
+	for index := 0; index <= maxDurableMounts; index++ {
+		mounts["/mount-"+strings.Repeat("x", index+1)] = catalog.MountState{Active: catalog.RuntimeSnapshot{
+			ID:       catalog.SnapshotID("snapshot-sha256-" + strings.Repeat("a", 64)),
+			Location: "memory",
+			Directory: catalog.CatalogArtifactV1{
+				SchemaVersion: 1,
+				CatalogID:     "catalog",
+			},
+			Search: catalog.SearchDirectoryV1{SchemaVersion: 1},
+		}}
+	}
+	if _, err := encodeRouteTable(&catalog.RouteTable{Generation: 1, Mounts: mounts}); !errors.Is(err, ErrStorageBudget) {
+		t.Fatalf("oversized route mount count error = %v, want %v", err, ErrStorageBudget)
+	}
+}
+
+func TestOversizedActivationFailsBeforePublishingOrServing(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	runtime := catalog.NewRuntime(1)
+	coordinator, err := OpenActivationCoordinator(context.Background(), root, runtime)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer coordinator.Close()
+
+	for index := 0; index < maxDurableMounts; index++ {
+		mount := "/existing-" + strings.Repeat("x", index+1)
+		snapshot := catalog.RuntimeSnapshot{
+			ID:       catalog.SnapshotID("snapshot-sha256-" + fmt.Sprintf("%064x", index+1)),
+			Location: "memory",
+			Directory: catalog.CatalogArtifactV1{
+				SchemaVersion: 1,
+				CatalogID:     "catalog",
+			},
+			Search: catalog.SearchDirectoryV1{SchemaVersion: 1},
+		}
+		if _, err := runtime.ActivateMount(mount, "", 1, snapshot); err != nil {
+			t.Fatal(err)
+		}
+	}
+	before := runtime.Table()
+	candidate := compiledFixtureVersion(t, "oversized")
+	if _, err := coordinator.Activate(context.Background(), "/new", "", 1, candidate); !errors.Is(err, ErrStorageBudget) {
+		t.Fatalf("oversized mount-count activation error = %v, want %v", err, ErrStorageBudget)
+	}
+	after := runtime.Table()
+	if len(after.Mounts) != len(before.Mounts) || after.Mounts["/new"].Active.ID != "" {
+		t.Fatalf("oversized activation changed runtime: before=%#v after=%#v", before, after)
+	}
+	if _, err := os.Stat(filepath.Join(root, "snapshots", string(candidate.ID))); !os.IsNotExist(err) {
+		t.Fatalf("oversized activation published candidate: %v", err)
+	}
+	if _, err := os.Stat(coordinator.journalPath()); !os.IsNotExist(err) {
+		t.Fatalf("oversized activation left journal: %v", err)
 	}
 }
 

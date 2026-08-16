@@ -19,12 +19,9 @@ func (coordinator *ActivationCoordinator) recover(ctx context.Context) error {
 	if err := coordinator.removeIncompleteStaging(); err != nil {
 		return err
 	}
-	if err := coordinator.restoreDurableRoutes(ctx); err != nil {
-		return err
-	}
 	journalBytes, err := readDurableState(coordinator.journalPath(), maxActivationJournalBytes)
 	if os.IsNotExist(err) {
-		return nil
+		return coordinator.restoreDurableRoutes(ctx, nil)
 	}
 	if err != nil {
 		return fmt.Errorf("%w: read activation journal: %v", ErrCorruptSnapshot, err)
@@ -36,10 +33,25 @@ func (coordinator *ActivationCoordinator) recover(ctx context.Context) error {
 	if err := validateActivationJournal(journal); err != nil {
 		return fmt.Errorf("%w: invalid activation journal: %v", ErrCorruptSnapshot, err)
 	}
-	operation := journal.Operation
-	if operation == "" {
-		operation = "activate"
+	var protectedWithdrawal *activationJournalV1
+	if journalOperation(journal) == activationOperationWithdraw {
+		protectedWithdrawal = &journal
 	}
+	if err := coordinator.restoreDurableRoutes(ctx, protectedWithdrawal); err != nil {
+		return err
+	}
+	return coordinator.recoverJournal(ctx, journalBytes, journal)
+}
+
+func journalOperation(journal activationJournalV1) string {
+	if journal.Operation == "" {
+		return "activate"
+	}
+	return journal.Operation
+}
+
+func (coordinator *ActivationCoordinator) recoverJournal(ctx context.Context, journalBytes []byte, journal activationJournalV1) error {
+	operation := journalOperation(journal)
 	table := coordinator.runtime.Table()
 	switch operation {
 	case activationOperationWithdraw:
@@ -127,9 +139,24 @@ func (coordinator *ActivationCoordinator) recover(ctx context.Context) error {
 	return coordinator.removeJournal()
 }
 
-func (coordinator *ActivationCoordinator) restoreDurableRoutes(ctx context.Context) error {
+func (coordinator *ActivationCoordinator) restoreDurableRoutes(ctx context.Context, protectedWithdrawal *activationJournalV1) error {
 	data, err := readDurableState(coordinator.routeTablePath(), maxDurableRouteTableBytes)
 	if os.IsNotExist(err) {
+		if protectedWithdrawal == nil {
+			return nil
+		}
+		tombstone := runtimeTombstone(*protectedWithdrawal.Tombstone)
+		table := &catalog.RouteTable{
+			Generation: protectedWithdrawal.Generation,
+			Mounts:     make(map[string]catalog.MountState),
+			Tombstones: map[string]catalog.MountTombstone{protectedWithdrawal.Mount: tombstone},
+		}
+		if err := coordinator.writeRouteTable(table); err != nil {
+			return fmt.Errorf("catalogstore: persist withdrawal recovery: %w", err)
+		}
+		if err := coordinator.runtime.RestoreTable(table); err != nil {
+			return fmt.Errorf("%w: restore runtime routes: %v", ErrCorruptSnapshot, err)
+		}
 		return nil
 	}
 	if err != nil {
@@ -139,15 +166,29 @@ func (coordinator *ActivationCoordinator) restoreDurableRoutes(ctx context.Conte
 	if err := decodeStrict(data, &persisted); err != nil || persisted.SchemaVersion != 1 {
 		return fmt.Errorf("%w: invalid durable routes: %v", ErrCorruptSnapshot, err)
 	}
-	if err := validateDurableRouteTable(persisted); err != nil {
+	protectedMount := ""
+	if protectedWithdrawal != nil && persisted.Generation == protectedWithdrawal.Generation {
+		protectedMount = protectedWithdrawal.Mount
+	}
+	if err := validateDurableRouteTableExcept(persisted, protectedMount); err != nil {
 		return fmt.Errorf("%w: invalid durable routes: %v", ErrCorruptSnapshot, err)
 	}
 	table := &catalog.RouteTable{Generation: persisted.Generation, Mounts: make(map[string]catalog.MountState, len(persisted.Mounts)), Tombstones: make(map[string]catalog.MountTombstone, len(persisted.Tombstones))}
 	for mount, tombstone := range persisted.Tombstones {
+		if mount == protectedMount {
+			continue
+		}
 		table.Tombstones[mount] = runtimeTombstone(tombstone)
 	}
 	repaired := false
+	if protectedMount != "" {
+		table.Tombstones[protectedMount] = runtimeTombstone(*protectedWithdrawal.Tombstone)
+		repaired = true
+	}
 	for mount, entry := range persisted.Mounts {
+		if mount == protectedMount {
+			continue
+		}
 		if _, withdrawn := table.Tombstones[mount]; withdrawn {
 			return fmt.Errorf("%w: mount %q has active snapshot and tombstone", ErrCorruptSnapshot, mount)
 		}
@@ -299,6 +340,10 @@ func validateActivationJournal(journal activationJournalV1) error {
 }
 
 func validateDurableRouteTable(table durableRouteTableV1) error {
+	return validateDurableRouteTableExcept(table, "")
+}
+
+func validateDurableRouteTableExcept(table durableRouteTableV1, protectedMount string) error {
 	if table.Mounts == nil {
 		return fmt.Errorf("mounts are missing")
 	}
@@ -308,6 +353,9 @@ func validateDurableRouteTable(table durableRouteTableV1) error {
 	for mount, entry := range table.Mounts {
 		if !validActivationMount(mount) {
 			return fmt.Errorf("mount %q is invalid", mount)
+		}
+		if mount == protectedMount {
+			continue
 		}
 		if !validSnapshotID(entry.Active) {
 			return fmt.Errorf("active snapshot %q is invalid", entry.Active)
@@ -329,6 +377,9 @@ func validateDurableRouteTable(table durableRouteTableV1) error {
 	for mount, tombstone := range table.Tombstones {
 		if !validActivationMount(mount) {
 			return fmt.Errorf("tombstone mount %q is invalid", mount)
+		}
+		if mount == protectedMount {
+			continue
 		}
 		if err := validateDurableTombstone(tombstone); err != nil {
 			return fmt.Errorf("tombstone %q: %w", mount, err)

@@ -4,6 +4,8 @@ import (
 	"errors"
 	"sync"
 	"testing"
+
+	"github.com/araihu/manja/application/projection"
 )
 
 func TestRuntimeActivationRejectsStaleSameMountAndPreservesDifferentMounts(t *testing.T) {
@@ -113,6 +115,54 @@ func TestRuntimeAdmissionPinsOldSnapshotUntilRelease(t *testing.T) {
 	admission.Release()
 	if runtime.ReferenceCount(first.ID) != 0 {
 		t.Fatalf("release count = %d", runtime.ReferenceCount(first.ID))
+	}
+}
+
+func TestRuntimeDeepCopiesNestedSnapshotMetadataForTableAndAdmission(t *testing.T) {
+	t.Parallel()
+
+	runtime := NewRuntime(1)
+	candidate := runtimeSnapshotFixture("a")
+	candidate.Directory.Documents = []DocumentDirectoryV1{{
+		Key: "document",
+		Overview: projection.Overview{Servers: []projection.Server{{
+			ID: "server",
+			Variables: []projection.ServerVariable{{
+				ID:   "variable",
+				Enum: []projection.TextRecord{{ID: "enum", Value: "one"}},
+			}},
+		}}},
+		SecuritySchemes: []SecuritySchemeDirectoryV1{{Name: "scheme", Description: "original"}},
+	}}
+	if _, err := runtime.ActivateMount("/catalog", "", 1, candidate); err != nil {
+		t.Fatal(err)
+	}
+
+	candidate.Directory.Documents[0].SecuritySchemes[0].Name = "candidate-mutated"
+	candidate.Directory.Documents[0].Overview.Servers[0].Variables[0].Enum[0].Value = "candidate-mutated"
+	stored := runtime.Table().Mounts["/catalog"].Active
+	if stored.Directory.Documents[0].SecuritySchemes[0].Name != "scheme" || stored.Directory.Documents[0].Overview.Servers[0].Variables[0].Enum[0].Value != "one" {
+		t.Fatalf("candidate mutation changed active snapshot: %#v", stored.Directory.Documents[0])
+	}
+
+	admission, err := runtime.Admit("/catalog")
+	if err != nil {
+		t.Fatal(err)
+	}
+	admission.Snapshot.Directory.Documents[0].SecuritySchemes[0].Description = "admission-mutated"
+	admission.Snapshot.Directory.Documents[0].Overview.Servers[0].Variables[0].Enum[0].Value = "admission-mutated"
+	admission.Release()
+	stored = runtime.Table().Mounts["/catalog"].Active
+	if stored.Directory.Documents[0].SecuritySchemes[0].Description != "original" || stored.Directory.Documents[0].Overview.Servers[0].Variables[0].Enum[0].Value != "one" {
+		t.Fatalf("admission mutation changed active snapshot: %#v", stored.Directory.Documents[0])
+	}
+
+	table := runtime.Table()
+	table.Mounts["/catalog"].Active.Directory.Documents[0].SecuritySchemes[0].Name = "table-mutated"
+	table.Mounts["/catalog"].Active.Directory.Documents[0].Overview.Servers[0].Variables[0].Enum[0].Value = "table-mutated"
+	stored = runtime.Table().Mounts["/catalog"].Active
+	if stored.Directory.Documents[0].SecuritySchemes[0].Name != "scheme" || stored.Directory.Documents[0].Overview.Servers[0].Variables[0].Enum[0].Value != "one" {
+		t.Fatalf("table mutation changed active snapshot: %#v", stored.Directory.Documents[0])
 	}
 }
 

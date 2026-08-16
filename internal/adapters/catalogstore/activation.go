@@ -178,8 +178,18 @@ func (coordinator *ActivationCoordinator) Withdraw(
 		Operation:     activationOperationWithdraw,
 		Tombstone:     &persisted,
 	}
+	if err := validateActivationJournalSize(journal); err != nil {
+		return WithdrawalReceipt{}, err
+	}
+	if err := coordinator.validateWithdrawalBounds(mount, expectedActive, generation, tombstone); err != nil {
+		return WithdrawalReceipt{}, err
+	}
 	persist := func(table *catalog.RouteTable) error {
 		if err := ctx.Err(); err != nil {
+			return err
+		}
+		data, err := encodeRouteTable(table)
+		if err != nil {
 			return err
 		}
 		if err := coordinator.writeJournal(journal); err != nil {
@@ -193,7 +203,7 @@ func (coordinator *ActivationCoordinator) Withdraw(
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		if err := coordinator.writeRouteTable(table); err != nil {
+		if err := coordinator.writeRouteTableBytes(data); err != nil {
 			return err
 		}
 		if coordinator.hooks.afterPointer != nil {
@@ -229,6 +239,29 @@ func (coordinator *ActivationCoordinator) Reauthorize(
 	if err := coordinator.rejectPendingJournal(); err != nil {
 		return ActivationReceipt{}, err
 	}
+	current := coordinator.runtime.Table()
+	tombstone, exists := current.Tombstones[mount]
+	if !exists {
+		return ActivationReceipt{}, fmt.Errorf("%w: mount %q is not tombstoned", catalog.ErrMountUnavailable, mount)
+	}
+	if candidate.Directory.CatalogID != "" && tombstone.CatalogID != candidate.Directory.CatalogID {
+		return ActivationReceipt{}, fmt.Errorf("%w: mount %q catalog changed from %q to %q", ErrActivationIdentity, mount, tombstone.CatalogID, candidate.Directory.CatalogID)
+	}
+	journal := activationJournalV1{
+		SchemaVersion: 1,
+		Mount:         mount,
+		CatalogID:     candidate.Directory.CatalogID,
+		Candidate:     candidate.ID,
+		ExpectedOld:   tombstone.SnapshotID,
+		Generation:    generation,
+		Operation:     activationOperationReauthorize,
+	}
+	if err := validateActivationJournalSize(journal); err != nil {
+		return ActivationReceipt{}, err
+	}
+	if err := coordinator.validateReauthorizationBounds(mount, generation, candidate); err != nil {
+		return ActivationReceipt{}, err
+	}
 	materialization, err := coordinator.store.Publish(ctx, candidate)
 	if errors.Is(err, ErrStorageBudget) {
 		if collectErr := coordinator.garbageCollectLocked(ctx); collectErr != nil {
@@ -251,15 +284,15 @@ func (coordinator *ActivationCoordinator) Reauthorize(
 	if err := ctx.Err(); err != nil {
 		return ActivationReceipt{}, err
 	}
-	current := coordinator.runtime.Table()
-	tombstone, exists := current.Tombstones[mount]
+	current = coordinator.runtime.Table()
+	tombstone, exists = current.Tombstones[mount]
 	if !exists {
 		return ActivationReceipt{}, fmt.Errorf("%w: mount %q is not tombstoned", catalog.ErrMountUnavailable, mount)
 	}
 	if tombstone.CatalogID != verified.Directory.CatalogID {
 		return ActivationReceipt{}, fmt.Errorf("%w: mount %q catalog changed from %q to %q", ErrActivationIdentity, mount, tombstone.CatalogID, verified.Directory.CatalogID)
 	}
-	journal := activationJournalV1{
+	journal = activationJournalV1{
 		SchemaVersion: 1,
 		Mount:         mount,
 		CatalogID:     string(verified.Directory.CatalogID),
@@ -270,6 +303,10 @@ func (coordinator *ActivationCoordinator) Reauthorize(
 	}
 	persist := func(table *catalog.RouteTable) error {
 		if err := ctx.Err(); err != nil {
+			return err
+		}
+		data, err := encodeRouteTable(table)
+		if err != nil {
 			return err
 		}
 		if err := coordinator.writeJournal(journal); err != nil {
@@ -283,7 +320,7 @@ func (coordinator *ActivationCoordinator) Reauthorize(
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		if err := coordinator.writeRouteTable(table); err != nil {
+		if err := coordinator.writeRouteTableBytes(data); err != nil {
 			return err
 		}
 		if coordinator.hooks.afterPointer != nil {
@@ -320,6 +357,20 @@ func (coordinator *ActivationCoordinator) ActivateAdmitted(
 		return ActivationReceipt{}, err
 	}
 	if err := coordinator.rejectPendingJournal(); err != nil {
+		return ActivationReceipt{}, err
+	}
+	journal := activationJournalV1{
+		SchemaVersion: 1,
+		Mount:         mount,
+		CatalogID:     candidate.Directory.CatalogID,
+		Candidate:     candidate.ID,
+		ExpectedOld:   expectedOld,
+		Generation:    generation,
+	}
+	if err := validateActivationJournalSize(journal); err != nil {
+		return ActivationReceipt{}, err
+	}
+	if err := coordinator.validateActivationBounds(mount, expectedOld, generation, candidate); err != nil {
 		return ActivationReceipt{}, err
 	}
 
@@ -366,7 +417,7 @@ func (coordinator *ActivationCoordinator) ActivateAdmitted(
 			return ActivationReceipt{}, err
 		}
 	}
-	journal := activationJournalV1{SchemaVersion: 1, Mount: mount, CatalogID: string(verified.Directory.CatalogID), Candidate: candidate.ID, ExpectedOld: expectedOld, Generation: generation}
+	journal = activationJournalV1{SchemaVersion: 1, Mount: mount, CatalogID: string(verified.Directory.CatalogID), Candidate: candidate.ID, ExpectedOld: expectedOld, Generation: generation}
 	persist := func(table *catalog.RouteTable) error {
 		if err := ctx.Err(); err != nil {
 			return err
@@ -425,7 +476,67 @@ func (coordinator *ActivationCoordinator) writeRouteTable(table *catalog.RouteTa
 	return coordinator.writeRouteTableBytes(data)
 }
 
+func (coordinator *ActivationCoordinator) validateActivationBounds(mount string, expectedOld catalog.SnapshotID, generation uint64, candidate catalog.CompiledSnapshot) error {
+	if err := coordinator.runtime.CheckMount(mount, expectedOld, generation); err != nil {
+		return err
+	}
+	if candidate.ID == expectedOld {
+		return nil
+	}
+	current := coordinator.runtime.Table()
+	state, exists := current.Mounts[mount]
+	next := catalog.MountState{Active: catalog.RuntimeSnapshot{
+		ID: candidate.ID,
+		Directory: catalog.CatalogArtifactV1{
+			CatalogID: candidate.Directory.CatalogID,
+		},
+	}}
+	if exists {
+		previous := state.Active
+		next.Previous = &previous
+	}
+	current.Mounts[mount] = next
+	_, err := encodeRouteTable(current)
+	return err
+}
+
+func (coordinator *ActivationCoordinator) validateWithdrawalBounds(mount string, expectedActive catalog.SnapshotID, generation uint64, tombstone catalog.MountTombstone) error {
+	if err := coordinator.runtime.CheckMount(mount, expectedActive, generation); err != nil {
+		return err
+	}
+	current := coordinator.runtime.Table()
+	delete(current.Mounts, mount)
+	current.Tombstones[mount] = tombstone
+	_, err := encodeRouteTable(current)
+	return err
+}
+
+func (coordinator *ActivationCoordinator) validateReauthorizationBounds(mount string, generation uint64, candidate catalog.CompiledSnapshot) error {
+	current := coordinator.runtime.Table()
+	if current.Generation != generation {
+		return fmt.Errorf("%w: expected %d, current %d", catalog.ErrStaleGeneration, generation, current.Generation)
+	}
+	if _, exists := current.Tombstones[mount]; !exists {
+		return fmt.Errorf("%w: mount %q is not tombstoned", catalog.ErrMountUnavailable, mount)
+	}
+	delete(current.Tombstones, mount)
+	current.Mounts[mount] = catalog.MountState{Active: catalog.RuntimeSnapshot{
+		ID: candidate.ID,
+		Directory: catalog.CatalogArtifactV1{
+			CatalogID: candidate.Directory.CatalogID,
+		},
+	}}
+	_, err := encodeRouteTable(current)
+	return err
+}
+
 func encodeRouteTable(table *catalog.RouteTable) ([]byte, error) {
+	if table == nil {
+		return nil, fmt.Errorf("%w: route table is nil", ErrStorageBudget)
+	}
+	if len(table.Mounts)+len(table.Tombstones) > maxDurableMounts {
+		return nil, fmt.Errorf("%w: route mounts exceed %d", ErrStorageBudget, maxDurableMounts)
+	}
 	persisted := durableRouteTableV1{SchemaVersion: 1, Generation: table.Generation, Mounts: make(map[string]durableMountV1, len(table.Mounts)), Tombstones: make(map[string]durableTombstoneV1, len(table.Tombstones))}
 	for mount, state := range table.Mounts {
 		entry := durableMountV1{CatalogID: state.Active.Directory.CatalogID, Active: state.Active.ID}
@@ -441,6 +552,9 @@ func encodeRouteTable(table *catalog.RouteTable) ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("catalogstore: encode route table: %w", err)
 	}
+	if len(data) > maxDurableRouteTableBytes {
+		return nil, fmt.Errorf("%w: route table is %d bytes, maximum is %d", ErrStorageBudget, len(data), maxDurableRouteTableBytes)
+	}
 	return data, nil
 }
 
@@ -453,6 +567,9 @@ func runtimeTombstone(value durableTombstoneV1) catalog.MountTombstone {
 }
 
 func (coordinator *ActivationCoordinator) writeRouteTableBytes(data []byte) error {
+	if len(data) > maxDurableRouteTableBytes {
+		return fmt.Errorf("%w: route table is %d bytes, maximum is %d", ErrStorageBudget, len(data), maxDurableRouteTableBytes)
+	}
 	if err := storeprimitives.DurableAtomicWrite(coordinator.routeTablePath(), data, 0o600); err != nil {
 		return fmt.Errorf("catalogstore: persist route table: %w", err)
 	}
@@ -460,14 +577,30 @@ func (coordinator *ActivationCoordinator) writeRouteTableBytes(data []byte) erro
 }
 
 func (coordinator *ActivationCoordinator) writeJournal(journal activationJournalV1) error {
-	data, err := json.Marshal(journal)
+	data, err := encodeActivationJournal(journal)
 	if err != nil {
-		return fmt.Errorf("catalogstore: encode activation journal: %w", err)
+		return err
 	}
 	if err := storeprimitives.DurableAtomicWrite(coordinator.journalPath(), data, 0o600); err != nil {
 		return fmt.Errorf("catalogstore: persist activation journal: %w", err)
 	}
 	return nil
+}
+
+func encodeActivationJournal(journal activationJournalV1) ([]byte, error) {
+	data, err := json.Marshal(journal)
+	if err != nil {
+		return nil, fmt.Errorf("catalogstore: encode activation journal: %w", err)
+	}
+	if len(data) > maxActivationJournalBytes {
+		return nil, fmt.Errorf("%w: activation journal is %d bytes, maximum is %d", ErrStorageBudget, len(data), maxActivationJournalBytes)
+	}
+	return data, nil
+}
+
+func validateActivationJournalSize(journal activationJournalV1) error {
+	_, err := encodeActivationJournal(journal)
+	return err
 }
 
 func (coordinator *ActivationCoordinator) removeJournal() error {
