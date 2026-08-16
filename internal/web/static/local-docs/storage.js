@@ -15,6 +15,7 @@
   const MAX_GENERATIONS = 2
   const SCHEMA_VERSION = 1
   const DIGEST_PATTERN = /^[0-9a-f]{64}$/
+  const browserPublicationLocks = new WeakMap()
 
   function cloneBytes(value, name) {
     if (!(value instanceof Uint8Array)) throw new TypeError(`${name} must be a Uint8Array`)
@@ -43,6 +44,24 @@
 
   function key(publicationKey, revisionId) {
     return `${validPublicationKey(publicationKey)}\u0000${validRevision(revisionId)}`
+  }
+
+  function nextEpoch(state) {
+    const current = Number.isSafeInteger(state && state.epoch) && state.epoch >= 0 ? state.epoch : 0
+    state.epoch = current === Number.MAX_SAFE_INTEGER ? 1 : current + 1
+    return state.epoch
+  }
+
+  function enqueuePublication(locks, publicationKey, operation) {
+    const normalized = validPublicationKey(publicationKey)
+    const previous = locks.get(normalized) || Promise.resolve()
+    const current = previous.catch(() => {}).then(() => operation(normalized))
+    const completion = current.then(
+      () => { if (locks.get(normalized) === completion) locks.delete(normalized) },
+      () => { if (locks.get(normalized) === completion) locks.delete(normalized) },
+    )
+    locks.set(normalized, completion)
+    return current
   }
 
   function cacheGeneration(publicationKey, state, value = {}) {
@@ -117,12 +136,14 @@
       lastUsedAt: value.lastUsedAt || "",
       shellRevision: value.shellRevision || "",
       shellDigest: value.shellDigest || "",
+      epoch: Number.isSafeInteger(value.epoch) && value.epoch >= 0 ? value.epoch : 0,
       disabled: value.disabled === true,
       tombstone: value.tombstone ? {
         state: value.tombstone.state || "revoked",
         reason: value.tombstone.reason || "",
         observedAt: value.tombstone.observedAt || "",
         revisionId: value.tombstone.revisionId || "",
+        epoch: Number.isSafeInteger(value.tombstone.epoch) && value.tombstone.epoch >= 0 ? value.tombstone.epoch : 0,
       } : undefined,
     }
   }
@@ -158,6 +179,7 @@
       lastUsedAt: nowISO(now),
       shellRevision: "",
       shellDigest: "",
+      epoch: 0,
       disabled: false,
     }
   }
@@ -184,6 +206,7 @@
     const shells = new Map()
     const assets = new Map()
     const hooks = {}
+    const locks = new Map()
     let recreationAttempted = false
 
     const getMetadata = (publicationKey) => metadata.get(validPublicationKey(publicationKey))
@@ -257,103 +280,130 @@
       async commitGeneration(descriptor, candidate) {
         const publicationKey = validPublicationKey(descriptor.publicationKey)
         const revisionId = validRevision(candidate.revisionId || descriptor.revisionId)
-        const state = ensureMetadata(publicationKey)
-        if (state.disabled && state.tombstone && state.tombstone.revisionId === revisionId) throw new Error("publication is tombstoned")
-        rememberDescriptor(state, descriptor)
-        rememberDescriptor(state, candidate)
-        const record = cloneGeneration({
-          ...candidate,
-          publicationKey,
-          revisionId,
-          projectionDigest: candidate.projectionDigest || descriptor.projectionDigest,
-          snapshotId: candidate.snapshotId || descriptor.snapshotId,
-          shellURL: candidate.shellURL || descriptor.offlineShellUrl || "",
-          createdAt: candidate.createdAt || nowISO(options.now),
+        return enqueuePublication(locks, publicationKey, async () => {
+          const state = ensureMetadata(publicationKey)
+          if (state.disabled && state.tombstone && state.tombstone.revisionId === revisionId) throw new Error("publication is tombstoned")
+          rememberDescriptor(state, descriptor)
+          rememberDescriptor(state, candidate)
+          const record = cloneGeneration({
+            ...candidate,
+            publicationKey,
+            revisionId,
+            projectionDigest: candidate.projectionDigest || descriptor.projectionDigest,
+            snapshotId: candidate.snapshotId || descriptor.snapshotId,
+            shellURL: candidate.shellURL || descriptor.offlineShellUrl || "",
+            createdAt: candidate.createdAt || nowISO(options.now),
+          })
+          generations.set(key(publicationKey, revisionId), record)
+          state.candidateRevision = revisionId
+          state.candidateDigest = record.projectionDigest
+          state.lastUsedAt = nowISO(options.now)
+          nextEpoch(state)
+          metadata.set(publicationKey, state)
+          return cloneGeneration(record)
         })
-        generations.set(key(publicationKey, revisionId), record)
-        state.candidateRevision = revisionId
-        state.candidateDigest = record.projectionDigest
-        state.lastUsedAt = nowISO(options.now)
-        metadata.set(publicationKey, state)
-        return cloneGeneration(record)
       },
       async activate(publicationKey, revisionId) {
         const normalized = validPublicationKey(publicationKey)
-        const state = ensureMetadata(normalized)
-        const candidate = storedGeneration(normalized, revisionId)
-        if (!candidate) throw new Error("candidate generation is unavailable")
-        if (state.disabled && state.tombstone && state.tombstone.revisionId === revisionId) throw new Error("publication is tombstoned")
-        const token = {
-          metadata: cloneMetadata(state),
-          active: state.activeRevision ? storedGeneration(normalized, state.activeRevision, state.activeDigest) : undefined,
-          previous: state.previousRevision ? storedGeneration(normalized, state.previousRevision, state.previousDigest) : undefined,
-        }
-        state.previousRevision = state.activeRevision && state.activeRevision !== revisionId ? state.activeRevision : state.previousRevision
-        state.previousDigest = state.activeRevision && state.activeRevision !== revisionId ? state.activeDigest : state.previousDigest
-        state.activeRevision = revisionId
-        state.activeDigest = candidate.projectionDigest
-        state.candidateRevision = ""
-        state.candidateDigest = ""
-        state.disabled = false
-        delete state.tombstone
-        state.lastUsedAt = nowISO(options.now)
-        state.lastObservedAt = candidate.lastObservedAt || state.lastObservedAt
-        state.etag = candidate.etag || state.etag
-        metadata.set(normalized, state)
-        prune(normalized, state)
-        pruneCaches(normalized, state)
-        await evict()
-        return token
+        return enqueuePublication(locks, normalized, async () => {
+          const state = ensureMetadata(normalized)
+          const candidate = storedGeneration(normalized, revisionId)
+          if (!candidate) throw new Error("candidate generation is unavailable")
+          if (state.disabled && state.tombstone && state.tombstone.revisionId === revisionId) throw new Error("publication is tombstoned")
+          const token = {
+            metadata: cloneMetadata(state),
+            active: state.activeRevision ? storedGeneration(normalized, state.activeRevision, state.activeDigest) : undefined,
+            previous: state.previousRevision ? storedGeneration(normalized, state.previousRevision, state.previousDigest) : undefined,
+          }
+          state.previousRevision = state.activeRevision && state.activeRevision !== revisionId ? state.activeRevision : state.previousRevision
+          state.previousDigest = state.activeRevision && state.activeRevision !== revisionId ? state.activeDigest : state.previousDigest
+          state.activeRevision = revisionId
+          state.activeDigest = candidate.projectionDigest
+          state.candidateRevision = ""
+          state.candidateDigest = ""
+          state.disabled = false
+          delete state.tombstone
+          state.lastUsedAt = nowISO(options.now)
+          state.lastObservedAt = candidate.lastObservedAt || state.lastObservedAt
+          state.etag = candidate.etag || state.etag
+          token.activatedRevision = revisionId
+          token.activatedDigest = candidate.projectionDigest
+          token.activationEpoch = nextEpoch(state)
+          metadata.set(normalized, state)
+          prune(normalized, state)
+          pruneCaches(normalized, state)
+          await evict()
+          return token
+        })
       },
-      async rollback(publicationKey, token) {
+      async restoreMetadata(publicationKey, token) {
         const normalized = validPublicationKey(publicationKey)
         if (!token || !token.metadata) throw new Error("rollback token is invalid")
-        const state = cloneMetadata(token.metadata)
-        metadata.set(normalized, state)
-        if (token.active) generations.set(key(normalized, token.active.revisionId), cloneGeneration(token.active))
-        if (token.previous) generations.set(key(normalized, token.previous.revisionId), cloneGeneration(token.previous))
-        prune(normalized, state)
-        pruneCaches(normalized, state)
-        return cloneMetadata(state)
+        return enqueuePublication(locks, normalized, async () => {
+          const current = getMetadata(normalized)
+          if (!current || current.epoch !== token.activationEpoch || current.activeRevision !== token.activatedRevision || current.activeDigest !== token.activatedDigest) return cloneMetadata(current)
+          const state = cloneMetadata(token.metadata)
+          state.epoch = nextEpoch(current)
+          metadata.set(normalized, state)
+          if (token.active) generations.set(key(normalized, token.active.revisionId), cloneGeneration(token.active))
+          if (token.previous) generations.set(key(normalized, token.previous.revisionId), cloneGeneration(token.previous))
+          prune(normalized, state)
+          pruneCaches(normalized, state)
+          return cloneMetadata(state)
+        })
+      },
+      async rollback(publicationKey, token) {
+        return storage.restoreMetadata(publicationKey, token)
       },
       async discardCandidate(publicationKey, revisionId) {
         const normalized = validPublicationKey(publicationKey)
-        const state = getMetadata(normalized)
-        if (state && state.candidateRevision === revisionId) state.candidateRevision = ""
-        if (state) metadata.set(normalized, state)
-        generations.delete(key(normalized, revisionId))
+        return enqueuePublication(locks, normalized, async () => {
+          const state = getMetadata(normalized)
+          if (state && state.candidateRevision === revisionId) {
+            state.candidateRevision = ""
+            nextEpoch(state)
+            metadata.set(normalized, state)
+          }
+          generations.delete(key(normalized, revisionId))
+        })
       },
       async observe(publicationKey, value = {}) {
-        const state = ensureMetadata(publicationKey)
-        rememberDescriptor(state, value)
-        state.lastObservedAt = typeof value.lastObservedAt === "string" ? value.lastObservedAt : nowISO(options.now)
-        if (typeof value.etag === "string") state.etag = value.etag
-        state.lastUsedAt = nowISO(options.now)
-        metadata.set(state.publicationKey, state)
-        return cloneMetadata(state)
+        return enqueuePublication(locks, publicationKey, async (normalized) => {
+          const state = ensureMetadata(normalized)
+          rememberDescriptor(state, value)
+          state.lastObservedAt = typeof value.lastObservedAt === "string" ? value.lastObservedAt : nowISO(options.now)
+          if (typeof value.etag === "string") state.etag = value.etag
+          state.lastUsedAt = nowISO(options.now)
+          metadata.set(state.publicationKey, state)
+          return cloneMetadata(state)
+        })
       },
       async tombstone(publicationKey, reason = "revoked", stateName = "revoked") {
-        const normalized = validPublicationKey(publicationKey)
-        const state = ensureMetadata(normalized)
-        const revisionId = state.activeRevision || state.candidateRevision || state.revisionId || ""
-        state.disabled = true
-        state.activeRevision = state.previousRevision = state.candidateRevision = ""
-        state.activeDigest = state.previousDigest = state.candidateDigest = ""
-        state.tombstone = { state: stateName, reason: String(reason).slice(0, 128), observedAt: nowISO(options.now), revisionId }
-        metadata.set(normalized, state)
-        await purge(normalized).catch(() => {})
-        return cloneMetadata(state)
+        return enqueuePublication(locks, publicationKey, async (normalized) => {
+          const state = ensureMetadata(normalized)
+          const revisionId = state.activeRevision || state.candidateRevision || state.revisionId || ""
+          state.disabled = true
+          state.activeRevision = state.previousRevision = state.candidateRevision = ""
+          state.activeDigest = state.previousDigest = state.candidateDigest = ""
+          const epoch = nextEpoch(state)
+          state.tombstone = { state: stateName, reason: String(reason).slice(0, 128), observedAt: nowISO(options.now), revisionId, epoch }
+          metadata.set(normalized, state)
+          await purge(normalized).catch(() => {})
+          return cloneMetadata(state)
+        })
       },
       async putShell(publicationKey, url, response, identity) {
-        const state = getMetadata(publicationKey)
-        if (!state || state.disabled) throw new Error("publication is disabled")
-        const generation = cacheGeneration(publicationKey, state, identity)
-        if (!generation) throw new Error("cache generation identity unavailable")
-        shells.set(cacheKey(publicationKey, generation, url), cloneResponse(response))
-        state.shellURL = state.offlineShellUrl = String(url)
-        state.shellRevision = generation.revisionId
-        state.shellDigest = generation.projectionDigest
-        metadata.set(state.publicationKey, state)
+        return enqueuePublication(locks, publicationKey, async (normalized) => {
+          const state = getMetadata(normalized)
+          if (!state || state.disabled) throw new Error("publication is disabled")
+          const generation = cacheGeneration(normalized, state, identity)
+          if (!generation) throw new Error("cache generation identity unavailable")
+          shells.set(cacheKey(normalized, generation, url), cloneResponse(response))
+          state.shellURL = state.offlineShellUrl = String(url)
+          state.shellRevision = generation.revisionId
+          state.shellDigest = generation.projectionDigest
+          metadata.set(state.publicationKey, state)
+        })
       },
       async getShell(publicationKey, url, identity) {
         const state = getMetadata(publicationKey)
@@ -362,16 +412,17 @@
         return generation ? cloneResponse(shells.get(cacheKey(publicationKey, generation, url))) : undefined
       },
       async putAsset(publicationKey, url, response, identity) {
-        const state = getMetadata(publicationKey)
-        if (!state || state.disabled) throw new Error("publication is disabled")
-        const normalized = validPublicationKey(publicationKey)
-        const generation = cacheGeneration(publicationKey, state, identity)
-        if (!generation) throw new Error("cache generation identity unavailable")
-        const assetURL = String(url)
-        assets.set(cacheKey(normalized, generation, assetURL), cloneResponse(response))
-        if (!state.assetURLs.includes(assetURL)) state.assetURLs.push(assetURL)
-        if (state.assetURLs.length > 256) state.assetURLs = state.assetURLs.slice(-256)
-        metadata.set(normalized, state)
+        return enqueuePublication(locks, publicationKey, async (normalized) => {
+          const state = getMetadata(normalized)
+          if (!state || state.disabled) throw new Error("publication is disabled")
+          const generation = cacheGeneration(normalized, state, identity)
+          if (!generation) throw new Error("cache generation identity unavailable")
+          const assetURL = String(url)
+          assets.set(cacheKey(normalized, generation, assetURL), cloneResponse(response))
+          if (!state.assetURLs.includes(assetURL)) state.assetURLs.push(assetURL)
+          if (state.assetURLs.length > 256) state.assetURLs = state.assetURLs.slice(-256)
+          metadata.set(normalized, state)
+        })
       },
       async getAsset(publicationKey, url, identity) {
         const state = getMetadata(publicationKey)
@@ -444,6 +495,11 @@
     if (!scope || !scope.indexedDB || !scope.caches) throw new Error("IndexedDB and CacheStorage are required")
     let databasePromise
     let recreationAttempted = false
+    let locks = browserPublicationLocks.get(scope)
+    if (!locks) {
+      locks = new Map()
+      browserPublicationLocks.set(scope, locks)
+    }
     const now = () => nowISO(options.now)
     const db = () => { if (!databasePromise) databasePromise = openDatabase(scope); return databasePromise }
     async function read(storeName, storeKey) {
@@ -499,6 +555,12 @@
         transaction.onabort = resolve
       })
     }
+    async function evict(excludedPublicationKey = "") {
+      const excluded = excludedPublicationKey ? validPublicationKey(excludedPublicationKey) : ""
+      const values = await storage.listMetadata()
+      const candidates = values.filter((value) => !value.disabled && value.publicationKey !== excluded).sort((left, right) => String(right.lastUsedAt).localeCompare(String(left.lastUsedAt)))
+      for (const value of candidates.slice(MAX_PUBLICATIONS)) await storage.tombstone(value.publicationKey, "lru eviction", "evicted").catch(() => {})
+    }
     const storage = {
       async loadMetadata(publicationKey) { return cloneMetadata(await read(METADATA_STORE, validPublicationKey(publicationKey))) },
       async listMetadata() {
@@ -519,106 +581,136 @@
       async commitGeneration(descriptor, candidate) {
         const publicationKey = validPublicationKey(descriptor.publicationKey)
         const revisionId = validRevision(candidate.revisionId || descriptor.revisionId)
-        const state = (await storage.loadMetadata(publicationKey)) || emptyMetadata(publicationKey, options.now)
-        if (state.disabled && state.tombstone && state.tombstone.revisionId === revisionId) throw new Error("publication is tombstoned")
-        rememberDescriptor(state, descriptor)
-        rememberDescriptor(state, candidate)
-        const record = cloneGeneration({ ...candidate, publicationKey, revisionId, projectionDigest: candidate.projectionDigest || descriptor.projectionDigest, snapshotId: candidate.snapshotId || descriptor.snapshotId, shellURL: candidate.shellURL || descriptor.offlineShellUrl || "", createdAt: candidate.createdAt || now() })
-        state.candidateRevision = revisionId
-        state.candidateDigest = record.projectionDigest
-        state.lastUsedAt = now()
-        await write([METADATA_STORE, GENERATION_STORE], (transaction) => {
-          transaction.objectStore(GENERATION_STORE).put(serialiseGeneration(record))
-          transaction.objectStore(METADATA_STORE).put(state)
+        return enqueuePublication(locks, publicationKey, async () => {
+          const state = (await storage.loadMetadata(publicationKey)) || emptyMetadata(publicationKey, options.now)
+          if (state.disabled && state.tombstone && state.tombstone.revisionId === revisionId) throw new Error("publication is tombstoned")
+          rememberDescriptor(state, descriptor)
+          rememberDescriptor(state, candidate)
+          const record = cloneGeneration({ ...candidate, publicationKey, revisionId, projectionDigest: candidate.projectionDigest || descriptor.projectionDigest, snapshotId: candidate.snapshotId || descriptor.snapshotId, shellURL: candidate.shellURL || descriptor.offlineShellUrl || "", createdAt: candidate.createdAt || now() })
+          state.candidateRevision = revisionId
+          state.candidateDigest = record.projectionDigest
+          state.lastUsedAt = now()
+          nextEpoch(state)
+          await write([METADATA_STORE, GENERATION_STORE], (transaction) => {
+            transaction.objectStore(GENERATION_STORE).put(serialiseGeneration(record))
+            transaction.objectStore(METADATA_STORE).put(state)
+          })
+          return cloneGeneration(record)
         })
-        return cloneGeneration(record)
       },
       async activate(publicationKey, revisionId) {
         const normalized = validPublicationKey(publicationKey)
-        const state = await storage.loadMetadata(normalized)
-        const candidate = await storage.loadGeneration(normalized, revisionId)
-        if (!state || !candidate) throw new Error("candidate generation is unavailable")
-        if (state.disabled && state.tombstone && state.tombstone.revisionId === revisionId) throw new Error("publication is tombstoned")
-        const token = { metadata: state, active: state.activeRevision ? await storage.loadGeneration(normalized, state.activeRevision, state.activeDigest) : undefined, previous: state.previousRevision ? await storage.loadGeneration(normalized, state.previousRevision, state.previousDigest) : undefined }
-        state.previousRevision = state.activeRevision && state.activeRevision !== revisionId ? state.activeRevision : state.previousRevision
-        state.previousDigest = state.activeRevision && state.activeRevision !== revisionId ? state.activeDigest : state.previousDigest
-        state.activeRevision = revisionId
-        state.activeDigest = candidate.projectionDigest
-        state.candidateRevision = ""
-        state.candidateDigest = ""
-        state.disabled = false
-        delete state.tombstone
-        state.lastObservedAt = candidate.lastObservedAt || state.lastObservedAt
-        state.etag = candidate.etag || state.etag
-        state.lastUsedAt = now()
-        await write(METADATA_STORE, (transaction) => { transaction.objectStore(METADATA_STORE).put(state) })
-        await pruneGenerations(normalized, state)
-        await pruneGenerationCaches(normalized, state)
-        await storage.evict()
-        return token
+        return enqueuePublication(locks, normalized, async () => {
+          const state = await storage.loadMetadata(normalized)
+          const candidate = await storage.loadGeneration(normalized, revisionId)
+          if (!state || !candidate) throw new Error("candidate generation is unavailable")
+          if (state.disabled && state.tombstone && state.tombstone.revisionId === revisionId) throw new Error("publication is tombstoned")
+          const token = { metadata: state, active: state.activeRevision ? await storage.loadGeneration(normalized, state.activeRevision, state.activeDigest) : undefined, previous: state.previousRevision ? await storage.loadGeneration(normalized, state.previousRevision, state.previousDigest) : undefined }
+          state.previousRevision = state.activeRevision && state.activeRevision !== revisionId ? state.activeRevision : state.previousRevision
+          state.previousDigest = state.activeRevision && state.activeRevision !== revisionId ? state.activeDigest : state.previousDigest
+          state.activeRevision = revisionId
+          state.activeDigest = candidate.projectionDigest
+          state.candidateRevision = ""
+          state.candidateDigest = ""
+          state.disabled = false
+          delete state.tombstone
+          state.lastObservedAt = candidate.lastObservedAt || state.lastObservedAt
+          state.etag = candidate.etag || state.etag
+          state.lastUsedAt = now()
+          token.activatedRevision = revisionId
+          token.activatedDigest = candidate.projectionDigest
+          token.activationEpoch = nextEpoch(state)
+          await write(METADATA_STORE, (transaction) => { transaction.objectStore(METADATA_STORE).put(state) })
+          await pruneGenerations(normalized, state)
+          await pruneGenerationCaches(normalized, state)
+          await evict(normalized)
+          return token
+        })
+      },
+      async restoreMetadata(publicationKey, token) {
+        if (!token || !token.metadata) throw new Error("rollback token is invalid")
+        const normalized = validPublicationKey(publicationKey)
+        return enqueuePublication(locks, normalized, async () => {
+          const current = await storage.loadMetadata(normalized)
+          if (!current || current.epoch !== token.activationEpoch || current.activeRevision !== token.activatedRevision || current.activeDigest !== token.activatedDigest) return current
+          const state = cloneMetadata(token.metadata)
+          state.epoch = nextEpoch(current)
+          await write([METADATA_STORE, GENERATION_STORE], (transaction) => {
+            transaction.objectStore(METADATA_STORE).put(state)
+            if (token.active) transaction.objectStore(GENERATION_STORE).put(serialiseGeneration(token.active))
+            if (token.previous) transaction.objectStore(GENERATION_STORE).put(serialiseGeneration(token.previous))
+          })
+          await pruneGenerationCaches(normalized, state)
+          await pruneGenerations(normalized, state)
+          return cloneMetadata(state)
+        })
       },
       async rollback(publicationKey, token) {
-        if (!token || !token.metadata) throw new Error("rollback token is invalid")
-        await write([METADATA_STORE, GENERATION_STORE], (transaction) => {
-          transaction.objectStore(METADATA_STORE).put(token.metadata)
-          if (token.active) transaction.objectStore(GENERATION_STORE).put(serialiseGeneration(token.active))
-          if (token.previous) transaction.objectStore(GENERATION_STORE).put(serialiseGeneration(token.previous))
-        })
-        await pruneGenerationCaches(publicationKey, token.metadata)
-        await pruneGenerations(publicationKey, token.metadata)
-        return cloneMetadata(token.metadata)
+        return storage.restoreMetadata(publicationKey, token)
       },
       async discardCandidate(publicationKey, revisionId) {
         const normalized = validPublicationKey(publicationKey)
-        const state = await storage.loadMetadata(normalized)
-        if (!state) return
-        if (state.candidateRevision === revisionId) state.candidateRevision = ""
-        await write([METADATA_STORE, GENERATION_STORE], (transaction) => {
-          transaction.objectStore(METADATA_STORE).put(state)
-          transaction.objectStore(GENERATION_STORE).delete([normalized, validRevision(revisionId)])
+        return enqueuePublication(locks, normalized, async () => {
+          const state = await storage.loadMetadata(normalized)
+          if (!state) return
+          if (state.candidateRevision === revisionId) {
+            state.candidateRevision = ""
+            nextEpoch(state)
+          }
+          await write([METADATA_STORE, GENERATION_STORE], (transaction) => {
+            transaction.objectStore(METADATA_STORE).put(state)
+            transaction.objectStore(GENERATION_STORE).delete([normalized, validRevision(revisionId)])
+          })
         })
       },
       async observe(publicationKey, value = {}) {
-        const state = (await storage.loadMetadata(publicationKey)) || emptyMetadata(publicationKey, options.now)
-        rememberDescriptor(state, value)
-        state.lastObservedAt = typeof value.lastObservedAt === "string" ? value.lastObservedAt : now()
-        if (typeof value.etag === "string") state.etag = value.etag
-        state.lastUsedAt = now()
-        await write(METADATA_STORE, (transaction) => { transaction.objectStore(METADATA_STORE).put(state) })
-        return cloneMetadata(state)
+        return enqueuePublication(locks, publicationKey, async (normalized) => {
+          const state = (await storage.loadMetadata(normalized)) || emptyMetadata(normalized, options.now)
+          rememberDescriptor(state, value)
+          state.lastObservedAt = typeof value.lastObservedAt === "string" ? value.lastObservedAt : now()
+          if (typeof value.etag === "string") state.etag = value.etag
+          state.lastUsedAt = now()
+          await write(METADATA_STORE, (transaction) => { transaction.objectStore(METADATA_STORE).put(state) })
+          return cloneMetadata(state)
+        })
       },
       async tombstone(publicationKey, reason = "revoked", stateName = "revoked") {
         const normalized = validPublicationKey(publicationKey)
-        const state = (await storage.loadMetadata(normalized)) || emptyMetadata(normalized, options.now)
-        const revisionId = state.activeRevision || state.candidateRevision || state.revisionId || ""
-        state.disabled = true
-        state.activeRevision = state.previousRevision = state.candidateRevision = ""
-        state.activeDigest = state.previousDigest = state.candidateDigest = ""
-        state.tombstone = { state: stateName, reason: String(reason).slice(0, 128), observedAt: now(), revisionId }
-        await write(METADATA_STORE, (transaction) => { transaction.objectStore(METADATA_STORE).put(state) })
-        const cache = await scope.caches.open(CACHE_NAME)
-        await Promise.all([state.shellURL, ...(state.assetURLs || [])].filter(Boolean).map((url) => cache.delete(url).catch(() => false)))
-        await pruneGenerationCaches(normalized, state)
-        const database = await db()
-        await new Promise((resolve) => {
-          const transaction = database.transaction(GENERATION_STORE, "readwrite")
-          const request = transaction.objectStore(GENERATION_STORE).openCursor()
-          request.onsuccess = () => { const cursor = request.result; if (!cursor) return; if (cursor.value.publicationKey === normalized) cursor.delete(); cursor.continue() }
-          transaction.oncomplete = resolve
-          transaction.onerror = resolve
+        return enqueuePublication(locks, normalized, async () => {
+          const state = (await storage.loadMetadata(normalized)) || emptyMetadata(normalized, options.now)
+          const revisionId = state.activeRevision || state.candidateRevision || state.revisionId || ""
+          state.disabled = true
+          state.activeRevision = state.previousRevision = state.candidateRevision = ""
+          state.activeDigest = state.previousDigest = state.candidateDigest = ""
+          const epoch = nextEpoch(state)
+          state.tombstone = { state: stateName, reason: String(reason).slice(0, 128), observedAt: now(), revisionId, epoch }
+          await write(METADATA_STORE, (transaction) => { transaction.objectStore(METADATA_STORE).put(state) })
+          const cache = await scope.caches.open(CACHE_NAME)
+          await Promise.all([state.shellURL, ...(state.assetURLs || [])].filter(Boolean).map((url) => cache.delete(url).catch(() => false)))
+          await pruneGenerationCaches(normalized, state)
+          const database = await db()
+          await new Promise((resolve) => {
+            const transaction = database.transaction(GENERATION_STORE, "readwrite")
+            const request = transaction.objectStore(GENERATION_STORE).openCursor()
+            request.onsuccess = () => { const cursor = request.result; if (!cursor) return; if (cursor.value.publicationKey === normalized) cursor.delete(); cursor.continue() }
+            transaction.oncomplete = resolve
+            transaction.onerror = resolve
+          })
+          return cloneMetadata(state)
         })
-        return cloneMetadata(state)
       },
       async putShell(publicationKey, url, response, identity) {
-        const state = await storage.loadMetadata(publicationKey)
-        if (!state || state.disabled) throw new Error("publication is disabled")
-        const generation = cacheGeneration(publicationKey, state, identity)
-        if (!generation) throw new Error("cache generation identity unavailable")
-        state.shellURL = state.offlineShellUrl = String(url)
-        state.shellRevision = generation.revisionId
-        state.shellDigest = generation.projectionDigest
-        await write(METADATA_STORE, (transaction) => { transaction.objectStore(METADATA_STORE).put(state) })
-        await cached(url, response, generationCacheName(publicationKey, generation))
+        return enqueuePublication(locks, publicationKey, async (normalized) => {
+          const state = await storage.loadMetadata(normalized)
+          if (!state || state.disabled) throw new Error("publication is disabled")
+          const generation = cacheGeneration(normalized, state, identity)
+          if (!generation) throw new Error("cache generation identity unavailable")
+          state.shellURL = state.offlineShellUrl = String(url)
+          state.shellRevision = generation.revisionId
+          state.shellDigest = generation.projectionDigest
+          await write(METADATA_STORE, (transaction) => { transaction.objectStore(METADATA_STORE).put(state) })
+          await cached(url, response, generationCacheName(normalized, generation))
+        })
       },
       async getShell(publicationKey, url, identity) {
         const state = await storage.loadMetadata(publicationKey)
@@ -627,16 +719,18 @@
         return generation ? cached(url, undefined, generationCacheName(publicationKey, generation)) : undefined
       },
       async putAsset(publicationKey, url, response, identity) {
-        const state = await storage.loadMetadata(publicationKey)
-        if (!state || state.disabled) throw new Error("publication is disabled")
-        const generation = cacheGeneration(publicationKey, state, identity)
-        if (!generation) throw new Error("cache generation identity unavailable")
-        const assetURL = String(url)
-        state.assetURLs = Array.isArray(state.assetURLs) ? state.assetURLs : []
-        if (!state.assetURLs.includes(assetURL)) state.assetURLs.push(assetURL)
-        if (state.assetURLs.length > 256) state.assetURLs = state.assetURLs.slice(-256)
-        await write(METADATA_STORE, (transaction) => { transaction.objectStore(METADATA_STORE).put(state) })
-        await cached(assetURL, response, generationCacheName(publicationKey, generation))
+        return enqueuePublication(locks, publicationKey, async (normalized) => {
+          const state = await storage.loadMetadata(normalized)
+          if (!state || state.disabled) throw new Error("publication is disabled")
+          const generation = cacheGeneration(normalized, state, identity)
+          if (!generation) throw new Error("cache generation identity unavailable")
+          const assetURL = String(url)
+          state.assetURLs = Array.isArray(state.assetURLs) ? state.assetURLs : []
+          if (!state.assetURLs.includes(assetURL)) state.assetURLs.push(assetURL)
+          if (state.assetURLs.length > 256) state.assetURLs = state.assetURLs.slice(-256)
+          await write(METADATA_STORE, (transaction) => { transaction.objectStore(METADATA_STORE).put(state) })
+          await cached(assetURL, response, generationCacheName(normalized, generation))
+        })
       },
       async getAsset(publicationKey, url, identity) {
         const state = await storage.loadMetadata(publicationKey)
@@ -657,9 +751,7 @@
         return storage.commitGeneration(value, value)
       },
       async evict() {
-        const values = await storage.listMetadata()
-        const candidates = values.filter((value) => !value.disabled).sort((left, right) => String(right.lastUsedAt).localeCompare(String(left.lastUsedAt)))
-        for (const value of candidates.slice(MAX_PUBLICATIONS)) await storage.tombstone(value.publicationKey, "lru eviction", "evicted").catch(() => {})
+        await evict()
       },
     }
     return storage

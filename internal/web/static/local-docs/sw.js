@@ -468,7 +468,10 @@ if (typeof importScripts === "function" && typeof globalThis !== "undefined" && 
       ensureRoutingEnabled(routingDisabled)
       if (typeof activate === "function") await activate(candidate)
     } catch (error) {
-      if (token && typeof storage.rollback === "function") await storage.rollback(key, token).catch(() => {})
+      if (token) {
+        const restore = typeof storage.restoreMetadata === "function" ? storage.restoreMetadata : storage.rollback
+        if (typeof restore === "function") await restore.call(storage, key, token).catch(() => {})
+      }
       if (!token && typeof storage.discardCandidate === "function") await storage.discardCandidate(key, candidate.revisionId || descriptor.revisionId).catch(() => {})
       throw error
     }

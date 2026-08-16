@@ -394,6 +394,46 @@ test('withdrawal disables in-memory routing before delayed tombstone so concurre
   assert.equal(runtime.disabled.has(value.publicationKey), true)
 })
 
+test('withdrawal wins over a delayed activation rollback and leaves no enabled metadata or shell', async () => {
+  const previous = descriptor({ revisionId: 'revision-previous' })
+  const next = descriptor({ revisionId: 'revision-next' })
+  const storage = storageModule.createMemoryStorage()
+  await storage.commitGeneration(previous, { ...generationFor(previous), projectionBytes: bytes('previous'), manifestBytes: bytes('{}') })
+  await storage.activate(previous.publicationKey, previous.revisionId)
+  await storage.putShell(previous.publicationKey, previous.offlineShellUrl, new Response('STALE SHELL'), previous)
+
+  let activationStarted
+  const activationStartedPromise = new Promise((resolve) => { activationStarted = resolve })
+  let releaseActivation
+  const activationRelease = new Promise((resolve) => { releaseActivation = resolve })
+  const activation = worker.commitCandidate({
+    storage,
+    descriptor: next,
+    candidate: { ...generationFor(next), projectionBytes: bytes('next'), manifestBytes: bytes('{}') },
+    activate: async () => {
+      activationStarted()
+      await activationRelease
+      throw new Error('delayed activation failed')
+    },
+    routingDisabled: () => false,
+  })
+  await activationStartedPromise
+
+  await worker.disablePublication(storage, next, 'HTTP 410', 'revoked')
+  releaseActivation()
+  await assert.rejects(() => activation, /delayed activation failed/)
+
+  const state = await storage.loadMetadata(next.publicationKey)
+  assert.equal(state.disabled, true)
+  assert.equal(state.tombstone.state, 'revoked')
+  assert.equal(state.activeRevision, '')
+  assert.equal(state.previousRevision, '')
+  assert.equal(state.candidateRevision, '')
+  assert.equal(await storage.loadActive(next.publicationKey), undefined)
+  assert.equal(await storage.getShell(next.publicationKey, next.offlineShellUrl, next), undefined)
+  assert.equal(storage.snapshot().generations.length, 0)
+})
+
 test('offline revalidation recovers the persisted manifest before reporting fallback', async () => {
   const storage = storageModule.createMemoryStorage()
   const identity = { schemaVersion: 1, catalogId: 'public-api', revisionId: 'revision-1', projectionFormat: 'projection-v2' }

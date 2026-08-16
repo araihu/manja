@@ -484,6 +484,98 @@ func TestLocalDocsEnhancerServesRealWasmAndPersistsBrowserState(t *testing.T) {
 	}
 }
 
+func TestLocalDocsBrowserStorageWithdrawalWinsOverDelayedActivation(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping headless browser regression in short mode")
+	}
+	assets := web.NewCatalogAssetsHandler()
+	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		assets.ServeHTTP(response, request)
+	}))
+	t.Cleanup(server.Close)
+
+	page := browserPage(t)
+	if _, err := page.Goto(server.URL + "/"); err != nil {
+		t.Fatal(err)
+	}
+	for _, path := range []string{"storage.js", "sw.js"} {
+		if _, err := page.AddScriptTag(playwright.PageAddScriptTagOptions{URL: playwright.String(server.URL + "/manja-assets/local-docs/" + path)}); err != nil {
+			t.Fatalf("load local-docs %s: %v", path, err)
+		}
+	}
+	value, err := page.Evaluate(`async () => {
+		const digest = (letter) => letter.repeat(64)
+		const descriptor = (revisionId, projectionDigest) => ({
+			catalogId: 'browser-race',
+			publicationKey: 'public-browser-race',
+			publicationBase: '/browser-race/',
+			snapshotId: 'snapshot-sha256-' + projectionDigest,
+			revisionId,
+			projectionFormat: 'projection-v2',
+			projectionDigest,
+			offlineShellUrl: '/browser-race/_manja/offline-shell',
+		})
+		const previous = descriptor('revision-previous', digest('1'))
+		const next = descriptor('revision-next', digest('2'))
+		const storage = ManjaLocalDocsStorage.createStorage(window)
+		const generation = (value, body) => ({
+			publicationKey: value.publicationKey,
+			revisionId: value.revisionId,
+			projectionDigest: value.projectionDigest,
+			snapshotId: value.snapshotId,
+			projectionBytes: new TextEncoder().encode(body),
+			manifestBytes: new TextEncoder().encode('{}'),
+		})
+		await storage.commitGeneration(previous, generation(previous, 'previous'))
+		await storage.activate(previous.publicationKey, previous.revisionId)
+		await storage.putShell(previous.publicationKey, previous.offlineShellUrl, new Response('STALE SHELL'), previous)
+		let activationStarted
+		const activationStartedPromise = new Promise((resolve) => { activationStarted = resolve })
+		let releaseActivation
+		const activationRelease = new Promise((resolve) => { releaseActivation = resolve })
+		const activation = ManjaLocalDocsWorker.commitCandidate({
+			storage,
+			descriptor: next,
+			candidate: generation(next, 'next'),
+			activate: async () => {
+				activationStarted()
+				await activationRelease
+				throw new Error('delayed activation failed')
+			},
+			routingDisabled: () => false,
+		})
+		await activationStartedPromise
+		await ManjaLocalDocsWorker.disablePublication(storage, next, 'HTTP 410', 'revoked')
+		releaseActivation()
+		let activationError = ''
+		try { await activation } catch (error) { activationError = String(error && error.message || error) }
+		const metadata = await storage.loadMetadata(next.publicationKey)
+		const active = await storage.loadActive(next.publicationKey)
+		const shell = await storage.getShell(next.publicationKey, next.offlineShellUrl, next)
+		const cacheNames = await caches.keys()
+		return {
+			activationError,
+			disabled: metadata && metadata.disabled === true,
+			tombstone: metadata && metadata.tombstone && metadata.tombstone.state,
+			active: Boolean(active),
+			previousRevision: metadata && metadata.previousRevision,
+			candidateRevision: metadata && metadata.candidateRevision,
+			shell: Boolean(shell),
+			generationCaches: cacheNames.filter((name) => name.indexOf('manja-local-docs-assets-v1::public-browser-race::') === 0),
+		}
+	}`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	values, ok := value.(map[string]any)
+	if !ok || values["activationError"] != "delayed activation failed" || values["disabled"] != true || values["tombstone"] != "revoked" || values["active"] != false || values["previousRevision"] != "" || values["candidateRevision"] != "" || values["shell"] != false {
+		t.Fatalf("browser withdrawal race receipt = %#v", value)
+	}
+	if caches, ok := values["generationCaches"].([]any); !ok || len(caches) != 0 {
+		t.Fatalf("browser withdrawal generation caches = %#v", values["generationCaches"])
+	}
+}
+
 func localDocsFixture(t *testing.T, publicationBase string) (string, string) {
 	t.Helper()
 	identity := localDocsIdentity{SchemaVersion: 1, CatalogID: "core", RevisionID: "revision-immutable-1", ProjectionFormat: "projection-v2"}
