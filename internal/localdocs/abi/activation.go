@@ -25,6 +25,8 @@ type Descriptor struct {
 	SchemaVersion         uint32
 	CatalogID             string
 	PublicationKey        string
+	Public                bool
+	Anonymous             bool
 	PublicationBase       string
 	SnapshotID            string
 	RevisionID            string
@@ -168,7 +170,7 @@ func (activation Activation) Allows(method, pathValue string) bool {
 }
 
 func validateDescriptor(descriptor Descriptor) error {
-	if descriptor.SchemaVersion != activationSchemaVersion || !validCatalogKey(descriptor.CatalogID) || !validCatalogKey(descriptor.PublicationKey) {
+	if descriptor.SchemaVersion != activationSchemaVersion || !descriptor.Public || !descriptor.Anonymous || !validCatalogKey(descriptor.CatalogID) || !validCatalogKey(descriptor.PublicationKey) {
 		return errors.New("local docs ABI descriptor identity is invalid")
 	}
 	if !validPublicationBase(descriptor.PublicationBase) || !validCanonicalIdentity(descriptor.RevisionID) {

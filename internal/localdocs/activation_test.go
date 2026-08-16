@@ -168,6 +168,8 @@ func activationFixture(t *testing.T, publicationBase string) (DescriptorV1, []by
 		SchemaVersion:         1,
 		CatalogID:             "kubernetes",
 		PublicationKey:        "public-kubernetes",
+		Public:                true,
+		Anonymous:             true,
 		PublicationBase:       publicationBase,
 		SnapshotID:            string(snapshotID),
 		RevisionID:            identity.RevisionID,

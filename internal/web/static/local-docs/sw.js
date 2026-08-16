@@ -89,7 +89,7 @@
   function validateDescriptor(input, origin) {
     if (!input || typeof input !== "object" || input.schemaVersion !== 1 || !validCatalogKey(input.catalogId) || !validPublicationKey(input.publicationKey) || !validIdentity(input.revisionId) || input.projectionFormat !== "projection-v2" || !validDigest(input.projectionDigest) || input.snapshotId !== "snapshot-sha256-" + input.projectionDigest) fail("descriptor identity is invalid")
     if (!validBase(input.publicationBase, origin)) fail("descriptor publication base is invalid")
-    if (input.public === false || input.anonymous === false || input.private === true || input.disabled === true || (input.eligibility && (input.eligibility.public === false || input.eligibility.anonymous === false))) fail("descriptor public eligibility is invalid")
+    if (input.public !== true || input.anonymous !== true || input.private === true || input.disabled === true || (input.eligibility && (input.eligibility.public !== true || input.eligibility.anonymous !== true))) fail("descriptor public eligibility is invalid")
     const routes = expectedDescriptorRoutes(input)
     if (!isPublicShellURL(routes.offlineShellUrl, input, origin)) fail("descriptor offline shell route is not public")
     Object.keys(routes).forEach((key) => {
@@ -110,6 +110,8 @@
         schemaVersion: 1,
         catalogId: metadata.catalogId,
         publicationKey: metadata.publicationKey,
+        public: metadata.public === true,
+        anonymous: metadata.anonymous === true,
         publicationBase: metadata.publicationBase,
         snapshotId: metadata.snapshotId,
         revisionId: metadata.revisionId || metadata.activeRevision,
@@ -445,6 +447,25 @@
     return undefined
   }
 
+  async function persistedManifestResponse(storage, descriptor, cryptoImplementation) {
+    if (!storage || typeof storage.loadActive !== "function") return undefined
+    const candidates = []
+    try { candidates.push(await storage.loadActive(descriptor.publicationKey)) } catch (_) {}
+    if (typeof storage.loadPrevious === "function") {
+      try { candidates.push(await storage.loadPrevious(descriptor.publicationKey)) } catch (_) {}
+    }
+    for (const candidate of candidates) {
+      if (!candidate || candidate.publicationKey !== descriptor.publicationKey || candidate.revisionId !== descriptor.revisionId || candidate.projectionDigest !== descriptor.projectionDigest || candidate.snapshotId !== descriptor.snapshotId || !(candidate.manifestBytes instanceof Uint8Array)) continue
+      try {
+        await parseManifest(candidate.manifestBytes, descriptor, cryptoImplementation)
+        const headers = { "Content-Type": "application/json; charset=utf-8" }
+        if (candidate.etag) headers.ETag = candidate.etag
+        return new Response(candidate.manifestBytes.slice(), { status: 200, headers })
+      } catch (_) {}
+    }
+    return undefined
+  }
+
   async function disablePublication(storage, descriptor, reason, state = "revoked") {
     if (!storage || !descriptor) return
     if (typeof storage.tombstone === "function") await storage.tombstone(descriptor.publicationKey, reason, state)
@@ -504,6 +525,11 @@
       return response
     } catch (error) {
       if (typeof storage.isDisabled === "function" && await storage.isDisabled(descriptor.publicationKey)) throw error
+      const pathname = new URL(request.url).pathname
+      if (pathname === descriptor.projectionManifestUrl) {
+        const persisted = await persistedManifestResponse(storage, descriptor, scope && scope.crypto || global.crypto)
+        if (persisted) return persisted
+      }
       const cached = await (request.mode === "navigate" ? storage.getShell(descriptor.publicationKey, descriptor.offlineShellUrl, descriptor) : storage.getAsset(descriptor.publicationKey, request.url, descriptor))
       if (cached) {
         if (request.mode === "navigate") {
@@ -580,6 +606,11 @@
     for (const asset of assets) {
       if (typeof asset !== "string") continue
       try {
+        const cached = await cache.match(asset)
+        if (cached && cached.ok) {
+          await readBoundedResponse(cached.clone ? cached.clone() : cached, MAX_ASSET_BYTES)
+          continue
+        }
         const response = await fetchImplementation(asset, { credentials: "same-origin", cache: "no-store" })
         if (!response || !response.ok) throw new Error("static asset request failed")
         await readBoundedResponse(response.clone ? response.clone() : response, MAX_ASSET_BYTES)
@@ -595,6 +626,10 @@
     if (!isPublicShellURL(descriptor.offlineShellUrl, descriptor, origin)) return false
     try {
       const response = await fetchImplementation(descriptor.offlineShellUrl, { method: "GET", cache: "no-store", credentials: "omit", redirect: "error" })
+      if (isWithdrawalResponse(response, "document")) {
+        await disablePublication(storage, descriptor, `HTTP ${response.status}`, response.status === 404 ? "deleted" : "revoked")
+        return false
+      }
       validatePublicShellResponse(response, descriptor, origin)
       await validateShell(response.clone ? response.clone() : response)
       await storage.putShell(descriptor.publicationKey, descriptor.offlineShellUrl, response.clone ? response.clone() : response, descriptor)
@@ -690,7 +725,17 @@
           }
           const staticReady = await cacheStaticAssets(scope, cacheName, fetchImplementation, DEFAULT_STATIC_ASSETS)
           const assetsReady = staticReady && await cacheDescriptorAssets(scope, result.descriptor, descriptorGenerationCacheName(storageAPI, result.descriptor), fetchImplementation)
-          const shellReady = await cacheOfflineShell(storage, result.descriptor, fetchImplementation)
+          let shellReady = await cacheOfflineShell(storage, result.descriptor, fetchImplementation)
+          if (!shellReady && typeof storage.getShell === "function") {
+            try {
+              const persistedShell = await storage.getShell(result.descriptor.publicationKey, result.descriptor.offlineShellUrl, result.descriptor)
+              if (persistedShell) {
+                validatePublicShellResponse(persistedShell, result.descriptor, origin)
+                await validateShell(persistedShell.clone ? persistedShell.clone() : persistedShell)
+                shellReady = true
+              }
+            } catch (_) {}
+          }
           if (!assetsReady || !shellReady) {
             await notify(event.source, { type: "manja:local-fallback", reason: "offline shell or fallback asset unavailable" })
             return { ok: false, reason: "offline shell or fallback asset unavailable" }
@@ -770,6 +815,7 @@
     isWithdrawalResponse,
     parseManifest,
     recoverPersistedManifest,
+    persistedManifestResponse,
     readBoundedResponse,
     revalidate,
     register,

@@ -325,6 +325,8 @@ func (handler *CatalogHandler) serveAdmitted(response http.ResponseWriter, reque
 			return
 		}
 		handler.serveOverview(response, request, snapshot, mount)
+	case relative == "_manja/offline-shell":
+		handler.serveOfflineShell(response, request, snapshot, mount)
 	case relative == "catalog.json":
 		handler.redirectStable(response, request, snapshot, mount, "catalog.json")
 	case relative == "llms.txt":

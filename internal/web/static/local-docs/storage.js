@@ -92,6 +92,8 @@
       publicationKey: value.publicationKey,
       catalogId: value.catalogId || "",
       publicationBase: value.publicationBase || "",
+      public: value.public === true,
+      anonymous: value.anonymous === true,
       snapshotId: value.snapshotId || "",
       revisionId: value.revisionId || "",
       projectionFormat: value.projectionFormat || "",
@@ -131,6 +133,8 @@
       publicationKey: validPublicationKey(publicationKey),
       catalogId: "",
       publicationBase: "",
+      public: false,
+      anonymous: false,
       snapshotId: "",
       revisionId: "",
       projectionFormat: "",
@@ -163,6 +167,8 @@
     for (const field of ["catalogId", "publicationBase", "snapshotId", "revisionId", "projectionFormat", "projectionDigest", "projectionManifestUrl", "catalogUrl", "searchDataBase", "projectionDataBase"]) {
       if (typeof value[field] === "string" && value[field] !== "") state[field] = value[field]
     }
+    if (value.public === true) state.public = true
+    if (value.anonymous === true) state.anonymous = true
     if (Array.isArray(value.fallbackAssets)) state.fallbackAssets = value.fallbackAssets.filter((asset) => asset && typeof asset.url === "string").map((asset) => ({ ...asset }))
     const shellURL = value.offlineShellUrl || value.shellURL
     if (typeof shellURL === "string" && shellURL !== "") state.offlineShellUrl = state.shellURL = shellURL
@@ -394,6 +400,7 @@
   function requestPromise(request) {
     return new Promise((resolve, reject) => {
       request.onsuccess = () => resolve(request.result)
+      request.onblocked = () => reject(new Error("IndexedDB request was blocked"))
       request.onerror = () => reject(request.error || new Error("IndexedDB request failed"))
     })
   }
@@ -408,7 +415,11 @@
         if (!database.objectStoreNames.contains(GENERATION_STORE)) database.createObjectStore(GENERATION_STORE, { keyPath: ["publicationKey", "revisionId"] })
       }
       request.onblocked = () => reject(new Error("open IndexedDB local-docs state was blocked"))
-      request.onsuccess = () => resolve(request.result)
+      request.onsuccess = () => {
+        const database = request.result
+        database.onversionchange = () => database.close()
+        resolve(database)
+      }
       request.onerror = () => reject(request.error || new Error("open IndexedDB local-docs state failed"))
     })
   }
@@ -470,6 +481,24 @@
       const names = await scope.caches.keys()
       await Promise.all(names.filter((name) => name.indexOf(prefix) === 0 && !keep.has(name)).map((name) => scope.caches.delete(name).catch(() => false)))
     }
+    async function pruneGenerations(publicationKey, state) {
+      const normalized = validPublicationKey(publicationKey)
+      const keep = new Set([state.activeRevision, state.previousRevision, state.candidateRevision].filter(Boolean).slice(0, MAX_GENERATIONS))
+      const database = await db()
+      await new Promise((resolve) => {
+        const transaction = database.transaction(GENERATION_STORE, "readwrite")
+        const request = transaction.objectStore(GENERATION_STORE).openCursor()
+        request.onsuccess = () => {
+          const cursor = request.result
+          if (!cursor) return
+          if (cursor.value.publicationKey === normalized && !keep.has(cursor.value.revisionId)) cursor.delete()
+          cursor.continue()
+        }
+        transaction.oncomplete = resolve
+        transaction.onerror = resolve
+        transaction.onabort = resolve
+      })
+    }
     const storage = {
       async loadMetadata(publicationKey) { return cloneMetadata(await read(METADATA_STORE, validPublicationKey(publicationKey))) },
       async listMetadata() {
@@ -523,6 +552,7 @@
         state.etag = candidate.etag || state.etag
         state.lastUsedAt = now()
         await write(METADATA_STORE, (transaction) => { transaction.objectStore(METADATA_STORE).put(state) })
+        await pruneGenerations(normalized, state)
         await pruneGenerationCaches(normalized, state)
         await storage.evict()
         return token
@@ -535,6 +565,7 @@
           if (token.previous) transaction.objectStore(GENERATION_STORE).put(serialiseGeneration(token.previous))
         })
         await pruneGenerationCaches(publicationKey, token.metadata)
+        await pruneGenerations(publicationKey, token.metadata)
         return cloneMetadata(token.metadata)
       },
       async discardCandidate(publicationKey, revisionId) {
@@ -618,8 +649,11 @@
       async recreateFromPointer(publicationKey, value) {
         if (recreationAttempted) throw new Error("database recreation already attempted")
         recreationAttempted = true
+        const database = databasePromise ? await databasePromise.catch(() => undefined) : undefined
+        if (database && typeof database.close === "function") database.close()
         databasePromise = undefined
         await requestPromise(scope.indexedDB.deleteDatabase(DATABASE_NAME))
+        databasePromise = undefined
         return storage.commitGeneration(value, value)
       },
       async evict() {

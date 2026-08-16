@@ -28,6 +28,8 @@ type localDocsDescriptor struct {
 	SchemaVersion         uint32 `json:"schemaVersion"`
 	CatalogID             string `json:"catalogId"`
 	PublicationKey        string `json:"publicationKey"`
+	Public                bool   `json:"public"`
+	Anonymous             bool   `json:"anonymous"`
 	PublicationBase       string `json:"publicationBase"`
 	SnapshotID            string `json:"snapshotId"`
 	RevisionID            string `json:"revisionId"`
@@ -494,6 +496,7 @@ func localDocsFixture(t *testing.T, publicationBase string) (string, string) {
 	snapshot := "snapshot-sha256-" + digestHex
 	descriptorValue := localDocsDescriptor{
 		SchemaVersion: 1, CatalogID: "core", PublicationKey: "public-core", PublicationBase: publicationBase,
+		Public: true, Anonymous: true,
 		SnapshotID: snapshot, RevisionID: identity.RevisionID, ProjectionFormat: identity.ProjectionFormat, ProjectionDigest: digestHex,
 		ProjectionManifestURL: publicationBase + "snapshots/" + snapshot + "/manifest.json", CatalogURL: publicationBase + "snapshots/" + snapshot + "/catalog.json",
 		SearchDataBase: publicationBase + "snapshots/" + snapshot + "/search-data/", ProjectionDataBase: publicationBase + "snapshots/" + snapshot + "/projection-data/",

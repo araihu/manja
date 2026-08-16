@@ -36,6 +36,8 @@ test('worker validates public eligibility and intercepts only same-origin reader
   assert.equal(worker.validateDescriptor(value, origin).publicationKey, 'public-api-v1')
   assert.throws(() => worker.validateDescriptor({ ...value, public: false }, origin), /public eligibility/)
   assert.throws(() => worker.validateDescriptor({ ...value, anonymous: false }, origin), /public eligibility/)
+  assert.throws(() => worker.validateDescriptor({ ...value, public: undefined }, origin), /public eligibility/)
+  assert.throws(() => worker.validateDescriptor({ ...value, anonymous: undefined }, origin), /public eligibility/)
   assert.throws(() => worker.validateDescriptor({ ...value, projectionManifestUrl: 'https://attacker.test/manifest.json' }, origin), /same-origin/)
   assert.throws(() => worker.validateDescriptor({ ...value, fallbackAssets: [{ url: '/manage/session.js' }] }, origin), /reserved/)
   assert.equal(worker.isAllowedRequest({ method: 'GET', url: `${origin}/docs/snapshots/${value.snapshotId}/manifest.json` }, value, origin), true)
@@ -120,6 +122,35 @@ test('revalidation is single-flight and network failure serves validated offline
   assert.equal(await response.text(), '<main>offline</main>')
 })
 
+test('offline manifest fetch recovers the persisted manifest bytes before falling back', async () => {
+  const value = descriptor()
+  const identity = { schemaVersion: 1, catalogId: value.catalogId, revisionId: value.revisionId, projectionFormat: value.projectionFormat }
+  const projectionDigest = digest(JSON.stringify(identity))
+  const manifest = JSON.stringify({ schemaVersion: 1, snapshotId: `snapshot-sha256-${projectionDigest}`, identity, children: [] })
+  const persisted = { ...value, projectionDigest, snapshotId: `snapshot-sha256-${projectionDigest}`, projectionManifestUrl: `/docs/snapshots/snapshot-sha256-${projectionDigest}/manifest.json`, catalogUrl: `/docs/snapshots/snapshot-sha256-${projectionDigest}/catalog.json`, searchDataBase: `/docs/snapshots/snapshot-sha256-${projectionDigest}/search-data/`, projectionDataBase: `/docs/snapshots/snapshot-sha256-${projectionDigest}/projection-data/` }
+  const storage = storageModule.createMemoryStorage()
+  await storage.commitGeneration(persisted, { ...generationFor(persisted), projectionBytes: bytes('projection'), manifestBytes: bytes(manifest) })
+  await storage.activate(persisted.publicationKey, persisted.revisionId)
+  const request = { method: 'GET', mode: 'cors', credentials: 'same-origin', url: `https://docs.test${persisted.projectionManifestUrl}`, headers: new Headers() }
+  const response = await worker.cachedOrFetched({ crypto }, storage, persisted, request, async () => { throw new Error('offline') })
+  assert.equal(response.status, 200)
+  assert.equal(await response.text(), manifest)
+})
+
+test('withdrawn offline shell tombstones before returning and blocks cached bytes', async () => {
+  const value = descriptor()
+  const storage = storageModule.createMemoryStorage()
+  await storage.commitGeneration(value, { ...generationFor(value), projectionBytes: bytes('projection'), manifestBytes: bytes('{}') })
+  await storage.activate(value.publicationKey, value.revisionId)
+  await storage.putShell(value.publicationKey, value.offlineShellUrl, new Response('<main>canonical</main>'), value)
+  const request = { method: 'GET', mode: 'navigate', credentials: 'omit', url: `https://docs.test${value.offlineShellUrl}`, headers: new Headers() }
+  const withdrawn = await worker.cachedOrFetched({}, storage, value, request, async () => new Response('gone', { status: 410 }))
+  assert.equal(withdrawn.status, 410)
+  assert.equal((await storage.loadMetadata(value.publicationKey)).disabled, true)
+  assert.equal(await storage.getShell(value.publicationKey, value.offlineShellUrl, value), undefined)
+  await assert.rejects(() => worker.cachedOrFetched({}, storage, value, request, async () => { throw new Error('offline') }), /offline/)
+})
+
 test('offline revalidation recovers the persisted manifest before reporting fallback', async () => {
   const storage = storageModule.createMemoryStorage()
   const identity = { schemaVersion: 1, catalogId: 'public-api', revisionId: 'revision-1', projectionFormat: 'projection-v2' }
@@ -155,6 +186,17 @@ test('offline shell accepts only the public allowlist and omits credentials', as
   assert.equal(cached, false)
   assert.equal(requestInit.credentials, 'omit')
   assert.equal(await storage.getShell(value.publicationKey, value.offlineShellUrl, value), undefined)
+})
+
+test('offline shell withdrawal tombstones an active descriptor before fallback', async () => {
+  const value = descriptor()
+  const storage = storageModule.createMemoryStorage()
+  await storage.observe(value.publicationKey, value)
+  const cached = await worker.cacheOfflineShell(storage, value, async () => new Response('gone', { status: 410 }))
+  assert.equal(cached, false)
+  const state = await storage.loadMetadata(value.publicationKey)
+  assert.equal(state.disabled, true)
+  assert.equal(state.tombstone.state, 'revoked')
 })
 
 test('offline shell accepts the absolute URL returned by a real HTTP fetch', async () => {

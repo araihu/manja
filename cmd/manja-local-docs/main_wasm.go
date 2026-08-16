@@ -86,6 +86,7 @@ func descriptorFromJS(value js.Value) (abi.Descriptor, error) {
 	return abi.Descriptor{
 		SchemaVersion: schemaVersion,
 		CatalogID:     stringProperty(value, "catalogId"), PublicationKey: stringProperty(value, "publicationKey"),
+		Public: value.Get("public").Type() == js.TypeBoolean && value.Get("public").Bool(), Anonymous: value.Get("anonymous").Type() == js.TypeBoolean && value.Get("anonymous").Bool(),
 		PublicationBase: stringProperty(value, "publicationBase"), SnapshotID: stringProperty(value, "snapshotId"),
 		RevisionID: stringProperty(value, "revisionId"), ProjectionFormat: stringProperty(value, "projectionFormat"),
 		ProjectionDigest: stringProperty(value, "projectionDigest"), ProjectionManifestURL: stringProperty(value, "projectionManifestUrl"),
@@ -110,13 +111,20 @@ func manifestFromJS(value js.Value) (abi.Manifest, error) {
 	if err != nil {
 		return abi.Manifest{}, err
 	}
+	projectionFormat := stringProperty(identity, "projectionFormat")
+	if projectionFormat == "" {
+		versions := identity.Get("versions")
+		if object(versions) {
+			projectionFormat = stringProperty(versions, "projectionFormat")
+		}
+	}
 	children := value.Get("children")
 	if !array(children) {
 		return abi.Manifest{}, errors.New("manifest children must be an array")
 	}
 	result := abi.Manifest{
 		SchemaVersion: schemaVersion, SnapshotID: stringProperty(value, "snapshotId"),
-		Identity:       abi.Identity{SchemaVersion: identityVersion, CatalogID: stringProperty(identity, "catalogId"), RevisionID: stringProperty(identity, "revisionId"), ProjectionFormat: stringProperty(identity, "projectionFormat")},
+		Identity:       abi.Identity{SchemaVersion: identityVersion, CatalogID: stringProperty(identity, "catalogId"), RevisionID: stringProperty(identity, "revisionId"), ProjectionFormat: projectionFormat},
 		IdentityDigest: stringProperty(value, "identityDigest"), Children: make([]abi.Artifact, 0, children.Length()),
 	}
 	for index := 0; index < children.Length(); index++ {

@@ -11,6 +11,8 @@ type DescriptorV1 struct {
 	SchemaVersion         uint32 `json:"schemaVersion"`
 	CatalogID             string `json:"catalogId"`
 	PublicationKey        string `json:"publicationKey"`
+	Public                bool   `json:"public"`
+	Anonymous             bool   `json:"anonymous"`
 	PublicationBase       string `json:"publicationBase"`
 	SnapshotID            string `json:"snapshotId"`
 	RevisionID            string `json:"revisionId"`
@@ -62,7 +64,7 @@ func PrepareDescriptor(eligibility PublicEligibility, snapshot catalog.RuntimeSn
 	searchDataBase := descriptorURL(base, "snapshots", string(snapshot.ID), "search-data") + "/"
 	projectionDataBase := descriptorURL(base, "snapshots", string(snapshot.ID), "projection-data") + "/"
 	return DescriptorV1{
-		SchemaVersion: 1, CatalogID: eligibility.CatalogID, PublicationKey: eligibility.PublicationKey, PublicationBase: base,
+		SchemaVersion: 1, CatalogID: eligibility.CatalogID, PublicationKey: eligibility.PublicationKey, Public: true, Anonymous: true, PublicationBase: base,
 		SnapshotID: string(snapshot.ID), RevisionID: identity.RevisionID, ProjectionFormat: identity.Versions.ProjectionFormat,
 		ProjectionDigest: projectionDigest, ProjectionManifestURL: manifestURL, CatalogURL: catalogURL,
 		SearchDataBase: searchDataBase, ProjectionDataBase: projectionDataBase,

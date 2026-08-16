@@ -139,7 +139,7 @@ func validActivationFixture() (Descriptor, Manifest) {
 	digest := strings.Repeat("a", 64)
 	snapshot := "snapshot-sha256-" + strings.Repeat("b", 64)
 	descriptor := Descriptor{
-		SchemaVersion: 1, CatalogID: "core", PublicationKey: "public-core", PublicationBase: "/docs/",
+		SchemaVersion: 1, CatalogID: "core", PublicationKey: "public-core", Public: true, Anonymous: true, PublicationBase: "/docs/",
 		SnapshotID: snapshot, RevisionID: "revision-immutable-1", ProjectionFormat: "projection-v2", ProjectionDigest: strings.Repeat("b", 64),
 		ProjectionManifestURL: "/docs/snapshots/" + snapshot + "/manifest.json", CatalogURL: "/docs/snapshots/" + snapshot + "/catalog.json",
 		SearchDataBase: "/docs/snapshots/" + snapshot + "/search-data/", ProjectionDataBase: "/docs/snapshots/" + snapshot + "/projection-data/",

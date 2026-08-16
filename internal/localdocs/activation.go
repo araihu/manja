@@ -107,7 +107,7 @@ func Admit(descriptor DescriptorV1, manifestBytes []byte) (Activation, error) {
 }
 
 func validateDescriptor(descriptor DescriptorV1) error {
-	if descriptor.SchemaVersion != 1 || domain.ValidateCatalogID(descriptor.CatalogID) != nil || domain.ValidateCatalogPublicationKey(descriptor.PublicationKey) != nil {
+	if descriptor.SchemaVersion != 1 || !descriptor.Public || !descriptor.Anonymous || domain.ValidateCatalogID(descriptor.CatalogID) != nil || domain.ValidateCatalogPublicationKey(descriptor.PublicationKey) != nil {
 		return errors.New("local docs descriptor identity is invalid")
 	}
 	if !validPublicationBase(descriptor.PublicationBase) || domain.ValidateCanonicalIdentity("local docs revision id", descriptor.RevisionID, false) != nil {

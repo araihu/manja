@@ -1,6 +1,8 @@
 package web
 
 import (
+	"net/http"
+
 	"github.com/araihu/manja/application/catalog"
 	"github.com/araihu/manja/domain"
 	"github.com/araihu/manja/internal/localdocs"
@@ -54,4 +56,24 @@ func (handler *CatalogHandler) catalogEnhancementDescriptor(snapshot catalog.Run
 		return nil
 	}
 	return &descriptor
+}
+
+// serveOfflineShell is the production endpoint for the canonical anonymous
+// reader shell. It is deliberately narrower than the normal catalog route:
+// only a composition-authorized public+anonymous mount can emit shell bytes,
+// while the global enhancement kill switch emits an authoritative tombstone
+// response that a Service Worker can persist.
+func (handler *CatalogHandler) serveOfflineShell(response http.ResponseWriter, request *http.Request, snapshot catalog.RuntimeSnapshot, mount string) {
+	if handler.enhancement.Disabled {
+		response.Header().Set("Cache-Control", "no-store")
+		response.Header().Set("X-Manja-Publication-State", "revoked")
+		http.Error(response, "offline shell is revoked", http.StatusGone)
+		return
+	}
+	eligibility, exists := handler.enhancement.Publications[mount]
+	if !exists || !eligibility.Public || !eligibility.Anonymous {
+		http.NotFound(response, request)
+		return
+	}
+	handler.serveOverview(response, request, snapshot, mount)
 }

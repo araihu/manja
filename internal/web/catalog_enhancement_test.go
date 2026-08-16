@@ -17,6 +17,8 @@ type catalogEnhancementDescriptorReceipt struct {
 	SchemaVersion         uint32 `json:"schemaVersion"`
 	CatalogID             string `json:"catalogId"`
 	PublicationKey        string `json:"publicationKey"`
+	Public                bool   `json:"public"`
+	Anonymous             bool   `json:"anonymous"`
 	PublicationBase       string `json:"publicationBase"`
 	SnapshotID            string `json:"snapshotId"`
 	RevisionID            string `json:"revisionId"`
@@ -66,13 +68,65 @@ func TestCatalogEnhancementDescriptorRequiresPublicAnonymousImmutableSnapshot(t 
 			wantDigest := strings.TrimPrefix(string(snapshot.ID), "snapshot-sha256-")
 			wantCatalogURL := wantBase + "snapshots/" + string(snapshot.ID) + "/catalog.json"
 			wantSearchDataBase := wantBase + "snapshots/" + string(snapshot.ID) + "/search-data/"
-			if descriptor.SchemaVersion != 1 || descriptor.CatalogID != snapshot.Directory.CatalogID || descriptor.PublicationKey != "public-kubernetes" || descriptor.PublicationBase != wantBase || descriptor.SnapshotID != string(snapshot.ID) || descriptor.RevisionID != snapshot.Manifest.Identity.RevisionID || descriptor.ProjectionFormat != "projection-v2" || descriptor.ProjectionDigest != wantDigest || descriptor.ProjectionManifestURL != wantManifestURL || descriptor.CatalogURL != wantCatalogURL || descriptor.SearchDataBase != wantSearchDataBase || descriptor.ProjectionDataBase != wantProjectionBase {
+			if descriptor.SchemaVersion != 1 || descriptor.CatalogID != snapshot.Directory.CatalogID || descriptor.PublicationKey != "public-kubernetes" || !descriptor.Public || !descriptor.Anonymous || descriptor.PublicationBase != wantBase || descriptor.SnapshotID != string(snapshot.ID) || descriptor.RevisionID != snapshot.Manifest.Identity.RevisionID || descriptor.ProjectionFormat != "projection-v2" || descriptor.ProjectionDigest != wantDigest || descriptor.ProjectionManifestURL != wantManifestURL || descriptor.CatalogURL != wantCatalogURL || descriptor.SearchDataBase != wantSearchDataBase || descriptor.ProjectionDataBase != wantProjectionBase {
 				t.Fatalf("descriptor = %#v", descriptor)
 			}
 			if !strings.Contains(response.Body.String(), `data-manja-catalog-shell="true"`) {
 				t.Fatal("eligible response lost the SSR catalog shell")
 			}
 		})
+	}
+}
+
+func TestCatalogEnhancementOfflineShellIsRealPublicRoute(t *testing.T) {
+	for _, mount := range []string{"/", "/kubernetes"} {
+		t.Run(mount, func(t *testing.T) {
+			baseHandler, snapshot := catalogHandlerFixture(t, mount)
+			base := baseHandler.(*CatalogHandler)
+			snapshot = catalogEnhancementSnapshot(t, snapshot)
+			runtime := catalog.NewRuntime(1)
+			if _, err := runtime.ActivateMount(mount, "", 1, snapshot); err != nil {
+				t.Fatal(err)
+			}
+			handler := NewCatalogHandlerWithOrganizationAndEnhancement(runtime, base.children, base.presentation, base.organization, eligibleCatalogEnhancementPolicyForMount(snapshot, mount))
+			path := mount
+			if mount != "/" {
+				path += "/"
+			}
+			path += "_manja/offline-shell"
+			response := httptest.NewRecorder()
+			handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, path, nil))
+			if response.Code != http.StatusOK {
+				t.Fatalf("GET %s = %d body=%q", path, response.Code, response.Body.String())
+			}
+			if !strings.Contains(response.Body.String(), `data-manja-catalog-shell="true"`) || !strings.Contains(response.Body.String(), `id="manja-local-docs-descriptor"`) {
+				t.Fatalf("real offline shell lost SSR/descriptor: %s", response.Body.String())
+			}
+			if response.Header().Get("WWW-Authenticate") != "" {
+				t.Fatalf("offline shell exposed authentication challenge: %q", response.Header().Get("WWW-Authenticate"))
+			}
+		})
+	}
+}
+
+func TestCatalogEnhancementOfflineShellRevocationIsAuthoritative(t *testing.T) {
+	baseHandler, snapshot := catalogHandlerFixture(t, "/kubernetes")
+	base := baseHandler.(*CatalogHandler)
+	snapshot = catalogEnhancementSnapshot(t, snapshot)
+	runtime := catalog.NewRuntime(1)
+	if _, err := runtime.ActivateMount("/kubernetes", "", 1, snapshot); err != nil {
+		t.Fatal(err)
+	}
+	policy := eligibleCatalogEnhancementPolicyForMount(snapshot, "/kubernetes")
+	policy.Disabled = true
+	handler := NewCatalogHandlerWithOrganizationAndEnhancement(runtime, base.children, base.presentation, base.organization, policy)
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/kubernetes/_manja/offline-shell", nil))
+	if response.Code != http.StatusGone || response.Header().Get("X-Manja-Publication-State") != "revoked" {
+		t.Fatalf("revoked offline shell = %d headers=%#v body=%q", response.Code, response.Header(), response.Body.String())
+	}
+	if strings.Contains(response.Body.String(), `data-manja-catalog-shell="true"`) || strings.Contains(response.Body.String(), `id="manja-local-docs-descriptor"`) {
+		t.Fatalf("revoked offline shell served cached-capable bytes: %s", response.Body.String())
 	}
 }
 
@@ -209,8 +263,12 @@ func catalogEnhancementMultiMountHandler(t *testing.T, keys map[string]string) h
 }
 
 func eligibleCatalogEnhancementPolicy(snapshot catalog.RuntimeSnapshot) CatalogEnhancementPolicy {
+	return eligibleCatalogEnhancementPolicyForMount(snapshot, "/kubernetes")
+}
+
+func eligibleCatalogEnhancementPolicyForMount(snapshot catalog.RuntimeSnapshot, mount string) CatalogEnhancementPolicy {
 	return CatalogEnhancementPolicy{Publications: map[string]CatalogPublicEligibility{
-		"/kubernetes": {CatalogID: snapshot.Directory.CatalogID, PublicationKey: "public-kubernetes", Public: true, Anonymous: true},
+		mount: {CatalogID: snapshot.Directory.CatalogID, PublicationKey: "public-kubernetes", Public: true, Anonymous: true},
 	}}
 }
 

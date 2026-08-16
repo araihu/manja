@@ -67,7 +67,7 @@
     if (!descriptor || typeof descriptor !== "object" || descriptor.schemaVersion !== 1 || !canonicalIdentity(descriptor.catalogId) || !/^[a-z0-9][a-z0-9._-]{0,63}$/.test(descriptor.catalogId) || typeof descriptor.publicationKey !== "string" || !/^[a-z0-9][a-z0-9._-]{0,63}$/.test(descriptor.publicationKey) || !canonicalIdentity(descriptor.revisionId) || !validBase(descriptor.publicationBase) || descriptor.projectionFormat !== "projection-v2" || !sha256(descriptor.projectionDigest) || descriptor.snapshotId !== "snapshot-sha256-" + descriptor.projectionDigest) {
       fail("descriptor identity is invalid");
     }
-    if (descriptor.public === false || descriptor.anonymous === false || descriptor.private === true || descriptor.disabled === true || descriptor.eligibility && (descriptor.eligibility.public === false || descriptor.eligibility.anonymous === false)) {
+    if (descriptor.public !== true || descriptor.anonymous !== true || descriptor.private === true || descriptor.disabled === true || descriptor.eligibility && (descriptor.eligibility.public !== true || descriptor.eligibility.anonymous !== true)) {
       fail("descriptor public eligibility is invalid");
     }
     var base = descriptor.publicationBase + "snapshots/" + descriptor.snapshotId + "/";

@@ -250,6 +250,8 @@ func shardActivation(t *testing.T, detailData, nodeData []byte) Activation {
 		SchemaVersion:         1,
 		CatalogID:             "kubernetes",
 		PublicationKey:        "public-kubernetes",
+		Public:                true,
+		Anonymous:             true,
 		PublicationBase:       "/kubernetes/",
 		SnapshotID:            snapshotID,
 		RevisionID:            identity.RevisionID,
