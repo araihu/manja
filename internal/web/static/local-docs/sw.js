@@ -31,6 +31,18 @@
     STATIC_PREFIX + "manja.wasm",
     STATIC_PREFIX + "manja.wasm.br",
   ]
+  // These bytes are served from the same fixed, repository-owned asset
+  // allowlist on every public-docs mount. Keep their bounds and digests here
+  // so a successful 200 cannot turn an invalid runtime into an offline cache.
+  // sw.js validates its exact byte length; its digest cannot be self-referential.
+  const DEFAULT_STATIC_ASSET_EXPECTATIONS = Object.freeze({
+    [STATIC_PREFIX + "sw.js"]: Object.freeze({ length: 52100 }),
+    [STATIC_PREFIX + "storage.js"]: Object.freeze({ length: 38283, sha256: "0015b9ed3a81ebf3ecb832c07d797dbbf53149c27d5cc0465805ed4dd595e260" }),
+    "/manja-assets/local-docs.js": Object.freeze({ length: 23410, sha256: "5d371c71d4db710f721c1cfccc846c5e390fd40da50147a2efb628bb6f8174ac" }),
+    [STATIC_PREFIX + "wasm_exec.js"]: Object.freeze({ length: 16992, sha256: "0c949f4996f9a89698e4b5c586de32249c3b69b7baadb64d220073cc04acba14" }),
+    [STATIC_PREFIX + "manja.wasm"]: Object.freeze({ length: 2120526, sha256: "ac0f768328de603c27820941f0fb9248e29c55a9baa0d7824e3822b92d352aab" }),
+    [STATIC_PREFIX + "manja.wasm.br"]: Object.freeze({ length: 475479, sha256: "3ed06ecf74038cc79fd46e56ccec375b6ca803c86829b8537c0be9b67df63324" }),
+  })
 
   function fail(message) { throw new Error(message) }
 
@@ -565,7 +577,19 @@
     return ["sw.js", "storage.js", "local-docs.js", "wasm_exec.js", "manja.wasm", "manja.wasm.br"].includes(name)
   }
 
+  function staticAssetExpectation(request) {
+    let pathname
+    try {
+      pathname = new URL(typeof request === "string" ? request : request && request.url || "", "https://manja-local-docs.invalid").pathname
+    } catch (_) {
+      return undefined
+    }
+    const expected = DEFAULT_STATIC_ASSET_EXPECTATIONS[pathname]
+    return expected ? { ...expected } : undefined
+  }
+
   async function cachedStaticAsset(scope, request, cacheName, fetchImplementation, expected) {
+    expected = expected || staticAssetExpectation(request)
     const cache = await scope.caches.open(cacheName)
     const network = fetchImplementation || ((value, init) => scope.fetch(value, init))
     let networkError
@@ -630,7 +654,7 @@
     for (const asset of assets) {
       if (typeof asset !== "string") continue
       try {
-        await cachedStaticAsset(scope, asset, cacheName, fetchImplementation)
+        await cachedStaticAsset(scope, asset, cacheName, fetchImplementation, staticAssetExpectation(asset))
       } catch (_) { ready = false }
     }
     return ready
@@ -813,6 +837,7 @@
 
   return {
     DEFAULT_STATIC_ASSETS,
+    DEFAULT_STATIC_ASSET_EXPECTATIONS,
     MAX_ASSET_BYTES,
     MAX_CHILD_BYTES,
     MAX_MANIFEST_BYTES,
@@ -840,6 +865,7 @@
     register,
     sameOriginURL,
     sha256,
+    staticAssetExpectation,
     validateDescriptor,
     validateManifestChild,
     validatePublicShellResponse,

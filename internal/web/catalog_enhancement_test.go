@@ -139,25 +139,37 @@ func TestCatalogEnhancementOfflineShellWithdrawsWhenEligibilityDisappears(t *tes
 		t.Fatal(err)
 	}
 	for _, test := range []struct {
-		name        string
-		eligibility CatalogPublicEligibility
+		name            string
+		eligibility     CatalogPublicEligibility
+		hasEligibility  bool
+		disabled        bool
+		withdrawalState string
 	}{
-		{name: "absent"},
-		{name: "private", eligibility: CatalogPublicEligibility{CatalogID: snapshot.Directory.CatalogID, PublicationKey: "public-kubernetes", Anonymous: true}},
-		{name: "non-anonymous", eligibility: CatalogPublicEligibility{CatalogID: snapshot.Directory.CatalogID, PublicationKey: "public-kubernetes", Public: true}},
+		{name: "absent", withdrawalState: "deleted"},
+		{name: "private", hasEligibility: true, eligibility: CatalogPublicEligibility{CatalogID: snapshot.Directory.CatalogID, PublicationKey: "public-kubernetes", Anonymous: true}, withdrawalState: "private"},
+		{name: "non-anonymous", hasEligibility: true, eligibility: CatalogPublicEligibility{CatalogID: snapshot.Directory.CatalogID, PublicationKey: "public-kubernetes", Public: true}, withdrawalState: "private"},
+		{name: "withdrawn", disabled: true, withdrawalState: "revoked"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			handler := NewCatalogHandlerWithOrganizationAndEnhancement(runtime, base.children, base.presentation, base.organization, CatalogEnhancementPolicy{Publications: map[string]CatalogPublicEligibility{
-				"/kubernetes": test.eligibility,
-			}})
+			policy := CatalogEnhancementPolicy{Disabled: test.disabled}
+			if test.hasEligibility {
+				policy.Publications = map[string]CatalogPublicEligibility{"/kubernetes": test.eligibility}
+			}
+			handler := NewCatalogHandlerWithOrganizationAndEnhancement(runtime, base.children, base.presentation, base.organization, policy)
 			shell := httptest.NewRecorder()
 			handler.ServeHTTP(shell, httptest.NewRequest(http.MethodGet, "/kubernetes/_manja/offline-shell", nil))
-			if shell.Code != http.StatusNotFound || strings.Contains(shell.Body.String(), `data-manja-catalog-shell="true"`) || shell.Header().Get("X-Manja-Publication-State") != "" {
+			wantShellStatus := http.StatusNotFound
+			wantShellState := ""
+			if test.disabled {
+				wantShellStatus = http.StatusGone
+				wantShellState = "revoked"
+			}
+			if shell.Code != wantShellStatus || strings.Contains(shell.Body.String(), `data-manja-catalog-shell="true"`) || shell.Header().Get("X-Manja-Publication-State") != wantShellState {
 				t.Fatalf("ineligible offline shell = %d headers=%#v body=%q", shell.Code, shell.Header(), shell.Body.String())
 			}
 			page := httptest.NewRecorder()
 			handler.ServeHTTP(page, httptest.NewRequest(http.MethodGet, "/kubernetes/", nil))
-			if page.Code != http.StatusOK || !strings.Contains(page.Body.String(), `data-manja-catalog-shell="true"`) || strings.Contains(page.Body.String(), `id="manja-local-docs-descriptor"`) {
+			if page.Code != http.StatusOK || page.Header().Get("X-Manja-Publication-State") != test.withdrawalState || !strings.Contains(page.Body.String(), `data-manja-catalog-shell="true"`) || strings.Contains(page.Body.String(), `id="manja-local-docs-descriptor"`) {
 				t.Fatalf("SSR fallback under %s eligibility = %d body=%q", test.name, page.Code, page.Body.String())
 			}
 		})

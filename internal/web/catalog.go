@@ -313,6 +313,11 @@ func (handler *CatalogHandler) matchMount(requestPath string) (string, bool) {
 }
 
 func (handler *CatalogHandler) serveAdmitted(response http.ResponseWriter, request *http.Request, snapshot catalog.RuntimeSnapshot, mount, relative string) {
+	if relative != "_manja/offline-shell" {
+		if state := handler.catalogEnhancementWithdrawalState(snapshot, mount); state != "" {
+			response.Header().Set("X-Manja-Publication-State", state)
+		}
+	}
 	switch {
 	case relative == "":
 		if document := request.URL.Query().Get("document"); document != "" {

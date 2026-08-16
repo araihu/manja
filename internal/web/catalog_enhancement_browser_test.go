@@ -139,6 +139,41 @@ func TestCatalogEnhancementServedOfflineShellPersistsManifestAndTombstonesInBrow
 		t.Fatal(err)
 	}
 
+	// A normal SSR response that no longer carries the public enhancement
+	// descriptor must still revoke the worker's previously cached shell.
+	catalogHandler.enhancement.Publications = nil
+	withdrawnOnline, err := page.Evaluate(`async () => {
+		const response = await fetch('/kubernetes/', {cache: 'no-store'})
+		return {status: response.status, state: response.headers.get('X-Manja-Publication-State') || '', body: await response.text()}
+	}`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	withdrawnOnlineMap, ok := withdrawnOnline.(map[string]any)
+	if !ok || browserInt(withdrawnOnlineMap["status"]) != http.StatusOK || withdrawnOnlineMap["state"] != "deleted" || strings.Contains(fmt.Sprint(withdrawnOnlineMap["body"]), `id="manja-local-docs-descriptor"`) {
+		t.Fatalf("normal SSR withdrawal receipt = %#v", withdrawnOnline)
+	}
+	if err := context.SetOffline(true); err != nil {
+		t.Fatal(err)
+	}
+	_, reloadErr := page.Reload(playwright.PageReloadOptions{Timeout: playwright.Float(5_000), WaitUntil: playwright.WaitUntilStateDomcontentloaded})
+	if reloadErr == nil {
+		withdrawnOffline, err := page.Evaluate(`() => ({body: document.documentElement.outerHTML})`)
+		if err != nil {
+			t.Fatal(err)
+		}
+		withdrawnOfflineMap, ok := withdrawnOffline.(map[string]any)
+		if !ok || strings.Contains(fmt.Sprint(withdrawnOfflineMap["body"]), `data-manja-catalog-shell="true"`) {
+			t.Fatalf("offline reload served stale shell after normal SSR withdrawal: reload=%v receipt=%#v", reloadErr, withdrawnOffline)
+		}
+	}
+	if err := context.SetOffline(false); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := page.Goto(server.URL+"/kubernetes/", playwright.PageGotoOptions{WaitUntil: playwright.WaitUntilStateDomcontentloaded}); err != nil {
+		t.Fatal(err)
+	}
+
 	// The browser is still exercising the real CatalogHandler. Changing its
 	// composition-authoritative policy makes the same production route return
 	// the revocation response that the worker must tombstone.

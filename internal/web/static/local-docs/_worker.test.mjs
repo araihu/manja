@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
+import fs from 'node:fs'
 import test from 'node:test'
 
 import worker from './sw.js'
@@ -98,6 +99,45 @@ test('static runtime assets refresh validated bytes and retain the newest offlin
     const offline = await worker.cachedStaticAsset(scope, path, 'manja-local-docs-assets-v1', fetchImplementation, expected())
     assert.equal(await offline.text(), 'runtime-v2', path)
   }
+})
+
+test('default runtime asset caching rejects an invalid wasm response before offline fallback', async () => {
+  const entries = new Map()
+  const cache = {
+    async match(request) {
+      const response = entries.get(String(request))
+      return response ? response.clone() : undefined
+    },
+    async put(request, response) {
+      entries.set(String(request), response.clone())
+    },
+    async delete(request) {
+      return entries.delete(String(request))
+    },
+  }
+  const scope = { caches: { open: async () => cache } }
+  const files = {
+    '/manja-assets/local-docs/sw.js': new URL('./sw.js', import.meta.url),
+    '/manja-assets/local-docs/storage.js': new URL('./storage.js', import.meta.url),
+    '/manja-assets/local-docs.js': new URL('../local-docs.js', import.meta.url),
+    '/manja-assets/local-docs/wasm_exec.js': new URL('./wasm_exec.js', import.meta.url),
+    '/manja-assets/local-docs/manja.wasm': new URL('./manja.wasm', import.meta.url),
+    '/manja-assets/local-docs/manja.wasm.br': new URL('./manja.wasm.br', import.meta.url),
+  }
+  let online = true
+  const fetchImplementation = async (request) => {
+    if (!online) throw new Error('offline')
+    const pathname = new URL(String(request), 'https://docs.test').pathname
+    const body = pathname.endsWith('/manja.wasm') ? bytes('not-a-wasm-binary') : fs.readFileSync(files[pathname])
+    return new Response(body, { status: 200 })
+  }
+
+  const ready = await worker.cacheStaticAssets(scope, 'manja-local-docs-assets-v1', fetchImplementation, worker.DEFAULT_STATIC_ASSETS)
+  assert.equal(ready, false)
+  assert.equal(entries.has('/manja-assets/local-docs/manja.wasm'), false)
+
+  online = false
+  await assert.rejects(() => worker.cachedStaticAsset(scope, '/manja-assets/local-docs/manja.wasm', 'manja-local-docs-assets-v1', fetchImplementation), /offline/)
 })
 
 test('worker rejects duplicate manifest keys and binds child bytes to declared digest', async () => {
@@ -224,6 +264,27 @@ test('private and non-anonymous shell responses tombstone before cached fallback
     assert.equal(await storage.getShell(value.publicationKey, value.offlineShellUrl, value), undefined, name)
     assert.equal(storage.snapshot().generations.length, 0, name)
   }
+})
+
+test('normal SSR withdrawal tombstones before offline reload fallback', async () => {
+  const value = descriptor()
+  const storage = storageModule.createMemoryStorage()
+  await storage.commitGeneration(value, { ...generationFor(value), projectionBytes: bytes('projection'), manifestBytes: bytes('{}') })
+  await storage.activate(value.publicationKey, value.revisionId)
+  await storage.putShell(value.publicationKey, value.offlineShellUrl, new Response('STALE OFFLINE SHELL'), value)
+  const request = { method: 'GET', mode: 'navigate', credentials: 'omit', url: 'https://docs.test/docs/', headers: new Headers({ Accept: 'text/html' }) }
+
+  const online = await worker.cachedOrFetched({}, storage, value, request, async () => new Response('<main>SSR withdrawal</main>', {
+    status: 200,
+    headers: { 'X-Manja-Publication-State': 'private' },
+  }))
+  assert.equal(await online.text(), '<main>SSR withdrawal</main>')
+  const metadata = await storage.loadMetadata(value.publicationKey)
+  assert.equal(metadata.disabled, true)
+  assert.equal(metadata.tombstone.state, 'private')
+  assert.equal(await storage.getShell(value.publicationKey, value.offlineShellUrl, value), undefined)
+
+  await assert.rejects(() => worker.cachedOrFetched({}, storage, value, request, async () => { throw new Error('offline') }), /offline/)
 })
 
 test('offline revalidation recovers the persisted manifest before reporting fallback', async () => {

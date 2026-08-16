@@ -58,6 +58,27 @@ func (handler *CatalogHandler) catalogEnhancementDescriptor(snapshot catalog.Run
 	return &descriptor
 }
 
+// catalogEnhancementWithdrawalState makes a normal SSR response authoritative
+// for a previously configured local-docs publication. The response remains a
+// usable server-rendered page; the state only tells a known worker to tombstone
+// its local generation before it considers an offline fallback.
+func (handler *CatalogHandler) catalogEnhancementWithdrawalState(snapshot catalog.RuntimeSnapshot, mount string) string {
+	if handler.enhancement.Disabled {
+		return "revoked"
+	}
+	eligibility, exists := handler.enhancement.Publications[mount]
+	if !exists || eligibility.CatalogID == "" && eligibility.PublicationKey == "" {
+		return "deleted"
+	}
+	if !eligibility.Public || !eligibility.Anonymous {
+		return "private"
+	}
+	if handler.catalogEnhancementDescriptor(snapshot, mount) == nil {
+		return "revoked"
+	}
+	return ""
+}
+
 // serveOfflineShell is the production endpoint for the canonical anonymous
 // reader shell. It is deliberately narrower than the normal catalog route:
 // only a composition-authorized public+anonymous mount can emit shell bytes,
