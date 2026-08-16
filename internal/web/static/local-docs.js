@@ -45,7 +45,8 @@
       return false;
     }
     var parsed = sameOriginPath(value);
-    return Boolean(parsed);
+    var pieces = value.split("/").filter(Boolean);
+    return Boolean(parsed) && pieces.indexOf("manage") === -1 && pieces.indexOf("api") === -1;
   }
 
   function canonicalIdentity(value) {
@@ -57,8 +58,11 @@
   }
 
   function validateDescriptor(descriptor) {
-    if (!descriptor || typeof descriptor !== "object" || descriptor.schemaVersion !== 1 || !canonicalIdentity(descriptor.catalogId) || !canonicalIdentity(descriptor.publicationKey) || !canonicalIdentity(descriptor.revisionId) || !validBase(descriptor.publicationBase) || descriptor.projectionFormat !== "projection-v2" || !sha256(descriptor.projectionDigest) || descriptor.snapshotId !== "snapshot-sha256-" + descriptor.projectionDigest) {
+    if (!descriptor || typeof descriptor !== "object" || descriptor.schemaVersion !== 1 || !canonicalIdentity(descriptor.catalogId) || !/^[a-z0-9][a-z0-9._-]{0,63}$/.test(descriptor.catalogId) || typeof descriptor.publicationKey !== "string" || !/^[a-z0-9][a-z0-9._-]{0,63}$/.test(descriptor.publicationKey) || !canonicalIdentity(descriptor.revisionId) || !validBase(descriptor.publicationBase) || descriptor.projectionFormat !== "projection-v2" || !sha256(descriptor.projectionDigest) || descriptor.snapshotId !== "snapshot-sha256-" + descriptor.projectionDigest) {
       fail("descriptor identity is invalid");
+    }
+    if (descriptor.public === false || descriptor.anonymous === false || descriptor.private === true || descriptor.disabled === true || descriptor.eligibility && (descriptor.eligibility.public === false || descriptor.eligibility.anonymous === false)) {
+      fail("descriptor public eligibility is invalid");
     }
     var base = descriptor.publicationBase + "snapshots/" + descriptor.snapshotId + "/";
     var expected = {
@@ -72,6 +76,14 @@
         fail("descriptor route is invalid");
       }
     });
+    if (descriptor.offlineShellUrl !== undefined && (!sameOriginPath(descriptor.offlineShellUrl) || descriptor.offlineShellUrl !== descriptor.publicationBase + "_manja/offline-shell")) {
+      fail("descriptor offline shell route is invalid");
+    }
+    if (descriptor.fallbackAssets !== undefined && (!Array.isArray(descriptor.fallbackAssets) || descriptor.fallbackAssets.some(function (asset) {
+      return !asset || typeof asset !== "object" || !sameOriginPath(asset.url) || asset.length !== undefined && (!Number.isSafeInteger(asset.length) || asset.length <= 0 || asset.length > 16 * 1024 * 1024) || asset.sha256 !== undefined && !sha256(asset.sha256);
+    }))) {
+      fail("descriptor fallback asset is invalid");
+    }
     return descriptor;
   }
 
@@ -91,24 +103,125 @@
     return expectedKind !== "" && child.kind === expectedKind && Number.isSafeInteger(child.length) && child.length > 0 && child.length <= MAX_PROJECTION_CHILD_BYTES && sha256(child.sha256);
   }
 
+  function identityProjectionFormat(identity) {
+    return identity && (identity.projectionFormat || identity.versions && identity.versions.projectionFormat);
+  }
+
   function validateManifest(manifest, descriptor) {
-    if (!manifest || typeof manifest !== "object" || manifest.schemaVersion !== 1 || manifest.snapshotId !== descriptor.snapshotId || !manifest.identity || typeof manifest.identity !== "object" || manifest.identity.schemaVersion !== 1 || manifest.identity.catalogId !== descriptor.catalogId || manifest.identity.revisionId !== descriptor.revisionId || manifest.identity.projectionFormat !== descriptor.projectionFormat || !Array.isArray(manifest.children) || manifest.children.length > 10000) {
+    if (!manifest || typeof manifest !== "object" || Array.isArray(manifest) || manifest.schemaVersion !== 1 || manifest.snapshotId !== descriptor.snapshotId || !manifest.identity || typeof manifest.identity !== "object" || Array.isArray(manifest.identity) || manifest.identity.schemaVersion !== 1 || manifest.identity.catalogId !== descriptor.catalogId || manifest.identity.revisionId !== descriptor.revisionId || identityProjectionFormat(manifest.identity) !== descriptor.projectionFormat || !Array.isArray(manifest.children) || manifest.children.length > 10000) {
       fail("manifest identity is invalid");
     }
+    var allowedRoot = { schemaVersion: true, snapshotId: true, identity: true, children: true };
+    Object.keys(manifest).forEach(function (key) { if (!allowedRoot[key]) fail("manifest field is unknown"); });
+    var allowedIdentity = { schemaVersion: true, catalogId: true, catalogTitle: true, branding: true, defaultDocumentKey: true, profileId: true, revisionKind: true, revisionId: true, projectionFormat: true, commitSha: true, sourceManifestSha256: true, profileAllowlistLength: true, profileAllowlistSha256: true, versions: true, bounds: true, sources: true, children: true };
+    Object.keys(manifest.identity).forEach(function (key) { if (!allowedIdentity[key]) fail("manifest identity field is unknown"); });
     var seen = Object.create(null);
     manifest.children.forEach(function (child) {
-      var projection = child && typeof child.path === "string" && (child.path.indexOf("details/") === 0 || child.path.indexOf("schema-nodes/") === 0);
-      if (projection && !validProjectionChild(child)) {
-        fail("manifest projection child is invalid");
-      }
+      if (!child || typeof child !== "object" || Array.isArray(child)) fail("manifest child is invalid");
+      Object.keys(child).forEach(function (key) { if (key !== "path" && key !== "kind" && key !== "length" && key !== "sha256") fail("manifest child field is unknown"); });
+      if (typeof child.path !== "string" || !canonicalRelativePath(child.path) || typeof child.kind !== "string" || child.kind.length === 0 || child.kind.length > 64 || !Number.isSafeInteger(child.length) || child.length <= 0 || child.length > 64 * 1024 * 1024 || !sha256(child.sha256)) fail("manifest child is invalid");
+      if (seen[child.path]) fail("manifest child is duplicated");
+      seen[child.path] = true;
+      var projection = child.path.indexOf("details/") === 0 || child.path.indexOf("schema-nodes/") === 0;
+      if (projection && !validProjectionChild(child)) fail("manifest projection child is invalid");
       if (projection) {
-        if (seen[child.path]) {
-          fail("manifest projection child is duplicated");
-        }
-        seen[child.path] = true;
+        var expectedKind = child.path.indexOf("details/") === 0 ? "detail" : "schema-node";
+        if (child.kind !== expectedKind) fail("manifest projection child is invalid");
+      } else if (child.path === "catalog.json") {
+        if (child.kind !== "catalog") fail("manifest catalog child is invalid");
+      } else if (child.path.indexOf("sources/") === 0) {
+        if (child.kind !== "source") fail("manifest source child is invalid");
+      } else if (child.path.indexOf("support/") === 0) {
+        if (child.kind !== "support") fail("manifest support child is invalid");
+      } else if (child.path.indexOf("search/") === 0) {
+        if (child.kind.indexOf("search-") !== 0 || child.length > MAX_PROJECTION_CHILD_BYTES) fail("manifest search child is invalid");
+      } else {
+        fail("manifest child route is invalid");
       }
     });
+    if (Array.isArray(manifest.identity.children)) {
+      if (manifest.identity.children.length !== manifest.children.length) fail("manifest children differ from identity");
+      manifest.children.forEach(function (child, index) {
+        var identityChild = manifest.identity.children[index];
+        if (!identityChild || identityChild.path !== child.path || identityChild.kind !== child.kind || identityChild.length !== child.length || identityChild.sha256 !== child.sha256 || index > 0 && manifest.children[index - 1].path >= child.path) {
+          fail("manifest children differ from identity");
+        }
+      });
+    }
     return manifest;
+  }
+
+  function parseJSONStrict(text) {
+    var index = 0;
+    function whitespace() { while (index < text.length && /\s/.test(text.charAt(index))) index += 1; }
+    function stringValue() {
+      var start = index;
+      if (text.charAt(index) !== '"') fail("manifest JSON is invalid");
+      index += 1;
+      while (index < text.length) {
+        var character = text.charAt(index++);
+        if (character === "\\") { if (index >= text.length) fail("manifest JSON is invalid"); index += 1; continue; }
+        if (character === '"') {
+          try { return JSON.parse(text.slice(start, index)); } catch (_) { fail("manifest JSON is invalid"); }
+        }
+        if (character < " ") fail("manifest JSON is invalid");
+      }
+      fail("manifest JSON is invalid");
+    }
+    function value(depth) {
+      if (depth > 32) fail("manifest JSON is too deep");
+      whitespace();
+      var character = text.charAt(index);
+      if (character === "{") {
+        index += 1; whitespace(); var object = Object.create(null); var keys = Object.create(null);
+        if (text.charAt(index) === "}") { index += 1; return object; }
+        while (index < text.length) {
+          whitespace(); var key = stringValue();
+          if (keys[key]) fail("manifest JSON has duplicate keys");
+          keys[key] = true; whitespace();
+          if (text.charAt(index) !== ":") fail("manifest JSON is invalid");
+          index += 1; object[key] = value(depth + 1); whitespace();
+          if (text.charAt(index) === "}") { index += 1; return object; }
+          if (text.charAt(index) !== ",") fail("manifest JSON is invalid");
+          index += 1;
+        }
+      } else if (character === "[") {
+        index += 1; whitespace(); var array = [];
+        if (text.charAt(index) === "]") { index += 1; return array; }
+        while (index < text.length) {
+          array.push(value(depth + 1)); whitespace();
+          if (text.charAt(index) === "]") { index += 1; return array; }
+          if (text.charAt(index) !== ",") fail("manifest JSON is invalid");
+          index += 1;
+        }
+      } else if (character === '"') {
+        return stringValue();
+      } else {
+        var start = index;
+        while (index < text.length && !/[\s,\]}]/.test(text.charAt(index))) index += 1;
+        var token = text.slice(start, index);
+        if (!/^(?:true|false|null|-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?)$/.test(token)) fail("manifest JSON is invalid");
+        return JSON.parse(token);
+      }
+      fail("manifest JSON is invalid");
+    }
+    var result = value(0); whitespace();
+    if (index !== text.length) fail("manifest JSON has trailing data");
+    return result;
+  }
+
+  function identityBytes(identity) {
+    if (identity.versions === undefined && identity.projectionFormat !== undefined) {
+      return new TextEncoder().encode(JSON.stringify({ schemaVersion: identity.schemaVersion, catalogId: identity.catalogId, revisionId: identity.revisionId, projectionFormat: identity.projectionFormat }));
+    }
+    return new TextEncoder().encode(JSON.stringify({
+      schemaVersion: identity.schemaVersion, catalogId: identity.catalogId, catalogTitle: identity.catalogTitle,
+      branding: identity.branding, defaultDocumentKey: identity.defaultDocumentKey, profileId: identity.profileId,
+      revisionKind: identity.revisionKind, revisionId: identity.revisionId, commitSha: identity.commitSha,
+      sourceManifestSha256: identity.sourceManifestSha256, profileAllowlistLength: identity.profileAllowlistLength,
+      profileAllowlistSha256: identity.profileAllowlistSha256, versions: identity.versions, bounds: identity.bounds,
+      sources: identity.sources, children: identity.children
+    }));
   }
 
   function hexDigest(buffer) {
@@ -133,12 +246,12 @@
         var text = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
         var manifest;
         try {
-          manifest = JSON.parse(text);
+          manifest = parseJSONStrict(text);
         } catch (_) {
           fail("manifest JSON is invalid");
         }
         validateManifest(manifest, descriptor);
-        return global.crypto.subtle.digest("SHA-256", new TextEncoder().encode(JSON.stringify(manifest.identity))).then(function (digest) {
+        return global.crypto.subtle.digest("SHA-256", identityBytes(manifest.identity)).then(function (digest) {
           var identityDigest = hexDigest(digest);
           if (identityDigest !== descriptor.projectionDigest) {
             fail("manifest identity digest differs");
@@ -208,6 +321,10 @@
   }
 
   function mark(root, state, reason) {
+    if (state === "ready" && root.dataset.manjaLocalDocsWorker === "fallback") {
+      state = "fallback";
+      reason = root.dataset.manjaLocalDocsWorkerReason || reason || "worker unavailable";
+    }
     root.dataset.manjaLocalDocsState = state;
     if (state === "ready") {
       root.dataset.manjaLocalDocsReady = "true";
@@ -220,6 +337,19 @@
       root.dataset.manjaLocalDocsReason = reason;
     }
     root.dispatchEvent(new CustomEvent("manja:local-" + state, { detail: reason ? { reason: reason } : {} }));
+  }
+
+  function announceWorkerMessage(root, event) {
+    var message = event && event.data;
+    if (!message || typeof message.type !== "string") return;
+    if (message.type === "manja:local-ready") {
+      root.dataset.manjaLocalDocsWorker = "ready";
+      root.dispatchEvent(new CustomEvent("manja:local-ready", { bubbles: true, detail: message }));
+    } else if (message.type === "manja:local-fallback") {
+      root.dataset.manjaLocalDocsWorker = "fallback";
+      root.dataset.manjaLocalDocsWorkerReason = String(message.reason || "worker unavailable").slice(0, 256);
+      mark(root, "fallback", root.dataset.manjaLocalDocsWorkerReason);
+    }
   }
 
   function descriptorFromDocument(documentValue) {
@@ -264,6 +394,10 @@
     }
     if (options.scope !== undefined && options.scope !== "/") {
       return Promise.reject(new Error("Service Worker scope must be root-scoped"));
+    }
+    if (!root.__manjaLocalDocsWorkerListener && typeof serviceWorker.addEventListener === "function") {
+      serviceWorker.addEventListener("message", function (event) { announceWorkerMessage(root, event); });
+      root.__manjaLocalDocsWorkerListener = true;
     }
     return Promise.resolve(serviceWorker.register(workerURL.href, { scope: "/" })).then(function (registration) {
       return Promise.resolve(serviceWorker.ready || registration).then(function (ready) {
