@@ -112,13 +112,28 @@ func TestPublishImageCarriesStandardOCIMetadata(t *testing.T) {
 }
 
 func TestSelfHostedWorkflowAdaptersUseOnlyThinHostRuntimes(t *testing.T) {
-	const githubScript = "actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7"
+	githubScriptRef := regexp.MustCompile(`(?m)^\s*uses:\s+(actions/github-script@[0-9a-f]{40})\b`)
+	var expectedGitHubScript string
 	for _, name := range []string{"ci.yml", "araihu-assets.yml"} {
 		workflow := readFile(t, filepath.Join(".github", "workflows", name))
 		if violation := thinHostRuntimeViolation(workflow); violation != "" {
 			t.Errorf("%s violates thin-host allowlist: %s", name, violation)
 		}
-		assertContains(t, workflow, githubScript)
+		matches := githubScriptRef.FindAllStringSubmatch(workflow, -1)
+		if len(matches) == 0 {
+			t.Errorf("%s must use an immutable actions/github-script reference", name)
+			continue
+		}
+		for _, match := range matches {
+			ref := match[1]
+			if expectedGitHubScript == "" {
+				expectedGitHubScript = ref
+				continue
+			}
+			if ref != expectedGitHubScript {
+				t.Errorf("%s uses %s; want shared reference %s", name, ref, expectedGitHubScript)
+			}
+		}
 	}
 }
 
