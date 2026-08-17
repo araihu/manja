@@ -253,7 +253,7 @@ func TestCatalogEnhancementServedOfflineShellPersistsManifestAndTombstonesInBrow
 		const database = await new Promise((resolve, reject) => { const request = indexedDB.open('manja-local-docs'); request.onsuccess = () => resolve(request.result); request.onerror = () => reject(request.error || new Error('IndexedDB open failed')) })
 		const requestValue = (request) => new Promise((resolve, reject) => { request.onsuccess = () => resolve(request.result); request.onerror = () => reject(request.error || new Error('IndexedDB request failed')) })
 		const before = await requestValue(database.transaction('generations', 'readonly').objectStore('generations').getAll())
-		database.close()
+		database.onversionchange = () => setTimeout(() => database.close(), 50)
 		const pointer = value(3)
 		const recreated = await storage.recreateFromPointer(pointer.publicationKey, {publicationKey: pointer.publicationKey, revisionId: 'recreated-revision', projectionDigest: digest('f'), snapshotId: 'snapshot-sha256-' + digest('f'), projectionBytes: new Uint8Array([9]), manifestBytes: new Uint8Array([123, 125])})
 		const active = await storage.loadCandidate(pointer.publicationKey)

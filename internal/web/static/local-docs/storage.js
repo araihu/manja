@@ -456,6 +456,16 @@
     })
   }
 
+  function deleteDatabase(scope) {
+    return new Promise((resolve, reject) => {
+      const request = scope.indexedDB.deleteDatabase(DATABASE_NAME)
+      // A delete can be blocked while another realm handles versionchange and
+      // closes its connection. Wait for onsuccess after those connections exit.
+      request.onsuccess = () => resolve()
+      request.onerror = () => reject(request.error || new Error("delete IndexedDB local-docs state failed"))
+    })
+  }
+
   function openDatabase(scope) {
     if (!scope || !scope.indexedDB || typeof scope.indexedDB.open !== "function") return Promise.reject(new Error("IndexedDB is unavailable"))
     return new Promise((resolve, reject) => {
@@ -746,7 +756,7 @@
         const database = databasePromise ? await databasePromise.catch(() => undefined) : undefined
         if (database && typeof database.close === "function") database.close()
         databasePromise = undefined
-        await requestPromise(scope.indexedDB.deleteDatabase(DATABASE_NAME))
+        await deleteDatabase(scope)
         databasePromise = undefined
         return storage.commitGeneration(value, value)
       },
