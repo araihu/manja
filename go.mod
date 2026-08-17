@@ -8,7 +8,7 @@ require (
 	github.com/araihu/goshtoso v0.1.13
 	github.com/evanw/esbuild v0.28.1
 	github.com/getkin/kin-openapi v0.146.0
-	github.com/go-openapi/jsonpointer v0.23.1
+	github.com/go-openapi/jsonpointer v1.0.0
 	github.com/mxschmitt/playwright-go v0.6100.0
 	github.com/oapi-codegen/oapi-codegen/v2 v2.8.0
 	github.com/testcontainers/testcontainers-go v0.43.0
@@ -51,7 +51,6 @@ require (
 	github.com/go-logr/logr v1.4.3 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
 	github.com/go-ole/go-ole v1.2.6 // indirect
-	github.com/go-openapi/swag/jsonname v0.26.0 // indirect
 	github.com/go-stack/stack v1.8.1 // indirect
 	github.com/gofrs/flock v0.13.0 // indirect
 	github.com/google/uuid v1.6.0 // indirect
