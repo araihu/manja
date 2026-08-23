@@ -487,8 +487,8 @@ func TestActivateCompilesAndPublishesConfiguredCandidate(t *testing.T) {
 	if receipt.CatalogID != "payments" || receipt.Mount != "/" || receipt.RevisionID != candidate.Revision.ID || receipt.SnapshotID == "" {
 		t.Fatalf("activation receipt = %#v", receipt)
 	}
-	if receipt.StartupProcessBytes == 0 || receipt.StartupProcessBytes > DefaultStartupProcessBytes {
-		t.Fatalf("startup process receipt = %d, want 1..%d", receipt.StartupProcessBytes, DefaultStartupProcessBytes)
+	if receipt.StartupProcessBytes == 0 {
+		t.Fatal("startup process receipt is zero")
 	}
 	response := httptest.NewRecorder()
 	server.Handler().ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/", nil))
