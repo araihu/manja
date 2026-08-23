@@ -71,18 +71,22 @@ type gitCatalogIntegrity struct {
 	used        map[string]struct{}
 }
 
-func loadGitSourceProvenanceReceipt(rootDirectory, filename string) (gitSourceProvenanceReceipt, error) {
+func loadGitSourceProvenanceReceipt(rootDirectory, filename string, resourceLimits bool) (gitSourceProvenanceReceipt, error) {
 	input, err := openGitSourceProvenanceReceipt(rootDirectory, filename)
 	if err != nil {
 		return gitSourceProvenanceReceipt{}, err
 	}
 	defer input.Close()
 
-	contents, err := io.ReadAll(io.LimitReader(input, maxGitIntegrityReceiptBytes+1))
+	reader := io.Reader(input)
+	if resourceLimits {
+		reader = io.LimitReader(input, maxGitIntegrityReceiptBytes+1)
+	}
+	contents, err := io.ReadAll(reader)
 	if err != nil {
 		return gitSourceProvenanceReceipt{}, catalogIntegrityError("receipt-read", filename, err)
 	}
-	if len(contents) > maxGitIntegrityReceiptBytes {
+	if resourceLimits && len(contents) > maxGitIntegrityReceiptBytes {
 		return gitSourceProvenanceReceipt{}, catalogIntegrityError("receipt-size", filename, fmt.Errorf("Git integrity receipt exceeds %d bytes", maxGitIntegrityReceiptBytes))
 	}
 	if err := validateGitIntegrityReceiptJSON(contents); err != nil {
@@ -102,7 +106,7 @@ func loadGitSourceProvenanceReceipt(rootDirectory, filename string) (gitSourcePr
 		}
 		return gitSourceProvenanceReceipt{}, catalogIntegrityError("receipt-schema", filename, fmt.Errorf("decode Git integrity receipt: %w", err))
 	}
-	if err := validateGitSourceProvenanceReceipt(receipt); err != nil {
+	if err := validateGitSourceProvenanceReceipt(receipt, resourceLimits); err != nil {
 		return gitSourceProvenanceReceipt{}, err
 	}
 	return receipt, nil
@@ -287,7 +291,7 @@ func hasGitWindowsDrivePrefix(filename string) bool {
 	return filename[0] >= 'a' && filename[0] <= 'z' || filename[0] >= 'A' && filename[0] <= 'Z'
 }
 
-func validateGitSourceProvenanceReceipt(receipt gitSourceProvenanceReceipt) error {
+func validateGitSourceProvenanceReceipt(receipt gitSourceProvenanceReceipt, resourceLimits bool) error {
 	if receipt.SchemaVersion != 2 {
 		return catalogIntegrityError("receipt-schema", "", fmt.Errorf("schema version = %d, want 2", receipt.SchemaVersion))
 	}
@@ -323,7 +327,7 @@ func validateGitSourceProvenanceReceipt(receipt gitSourceProvenanceReceipt) erro
 	if len(receipt.Artifacts) == 0 {
 		return catalogIntegrityError("coverage-missing", "", fmt.Errorf("at least one artifact is required"))
 	}
-	if len(receipt.Artifacts) > maxCatalogInventoryEntries {
+	if resourceLimits && len(receipt.Artifacts) > maxCatalogInventoryEntries {
 		return catalogIntegrityError("coverage-unused", "", fmt.Errorf("artifact count exceeds %d", maxCatalogInventoryEntries))
 	}
 	previousPath := ""
@@ -338,8 +342,8 @@ func validateGitSourceProvenanceReceipt(receipt gitSourceProvenanceReceipt) erro
 		if artifact.Mode != "100644" && artifact.Mode != "100755" {
 			return catalogIntegrityError("mode", artifact.Path, fmt.Errorf("mode %q is not a regular Git blob mode", artifact.Mode))
 		}
-		if artifact.Size <= 0 || artifact.Size > maxCatalogSourceFileBytes {
-			return catalogIntegrityError("size", artifact.Path, fmt.Errorf("size %d is outside 1..%d", artifact.Size, maxCatalogSourceFileBytes))
+		if artifact.Size <= 0 || (resourceLimits && artifact.Size > maxCatalogSourceFileBytes) {
+			return catalogIntegrityError("size", artifact.Path, fmt.Errorf("size %d is outside the accepted range", artifact.Size))
 		}
 		if !isLowerHexLength(artifact.GitObjectID, objectLength) {
 			return catalogIntegrityError("git-object-id", artifact.Path, fmt.Errorf("Git object ID must be %d lowercase hexadecimal characters", objectLength))

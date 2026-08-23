@@ -24,6 +24,7 @@ type Config struct {
 	Version             uint32
 	DataDir             string
 	StartupProcessBytes uint64
+	ResourceLimits      bool
 	LocalDocsDisabled   bool
 	Organization        OrganizationConfig
 	Catalogs            []CatalogConfig
@@ -90,10 +91,10 @@ func validateConfig(config Config) error {
 	if len(config.Catalogs) == 0 {
 		return fmt.Errorf("renderer requires at least one catalog")
 	}
-	if len(config.Catalogs) > maxConfiguredCatalogs {
+	if config.ResourceLimits && len(config.Catalogs) > maxConfiguredCatalogs {
 		return fmt.Errorf("renderer catalogs exceed %d", maxConfiguredCatalogs)
 	}
-	if err := validateOrganization(config.Organization); err != nil {
+	if err := validateOrganization(config.Organization, config.ResourceLimits); err != nil {
 		return err
 	}
 	ids := make(map[string]struct{}, len(config.Catalogs))
@@ -112,7 +113,7 @@ func validateConfig(config Config) error {
 		if err := domain.ValidateCanonicalIdentity(fmt.Sprintf("catalog %q profile", catalog.ID), string(catalog.ProfileID), false); err != nil {
 			return err
 		}
-		if len(catalog.Readme) > maxCatalogReadmeBytes {
+		if config.ResourceLimits && len(catalog.Readme) > maxCatalogReadmeBytes {
 			return fmt.Errorf("catalog %q README exceeds %d bytes", catalog.ID, maxCatalogReadmeBytes)
 		}
 		if catalog.Readme != "" {
@@ -171,19 +172,19 @@ func validateConfig(config Config) error {
 // ValidateConfig checks renderer routing and presentation configuration without
 // constructing parsers, compilers, storage, or source adapters.
 func ValidateConfig(config Config) error {
-	if config.StartupProcessBytes == 0 {
+	if config.ResourceLimits && config.StartupProcessBytes == 0 {
 		config.StartupProcessBytes = DefaultStartupProcessBytes
 	}
 	return validateConfig(config)
 }
 
-func validateOrganization(organization OrganizationConfig) error {
+func validateOrganization(organization OrganizationConfig, resourceLimits bool) error {
 	if organization.Title != "" {
 		if err := domain.ValidateCanonicalIdentity("organization title", organization.Title, false); err != nil {
 			return err
 		}
 	}
-	if len(organization.Readme) > maxOrganizationReadmeBytes {
+	if resourceLimits && len(organization.Readme) > maxOrganizationReadmeBytes {
 		return fmt.Errorf("organization README exceeds %d bytes", maxOrganizationReadmeBytes)
 	}
 	if organization.Readme != "" {
@@ -204,7 +205,7 @@ func validateOrganization(organization OrganizationConfig) error {
 			return err
 		}
 	}
-	if len(organization.Sources) > maxOrganizationSources {
+	if resourceLimits && len(organization.Sources) > maxOrganizationSources {
 		return fmt.Errorf("organization sources exceed %d", maxOrganizationSources)
 	}
 	for index, source := range organization.Sources {

@@ -53,12 +53,13 @@ const (
 )
 
 type ActivationCoordinator struct {
-	store   *Store
-	runtime *catalog.Runtime
-	lock    *storeprimitives.ExclusiveFileLock
-	close   sync.Once
-	commit  sync.Mutex
-	hooks   activationHooks
+	store          *Store
+	runtime        *catalog.Runtime
+	resourceLimits bool
+	lock           *storeprimitives.ExclusiveFileLock
+	close          sync.Once
+	commit         sync.Mutex
+	hooks          activationHooks
 }
 
 type activationHooks struct {
@@ -104,15 +105,19 @@ const (
 )
 
 func OpenActivationCoordinator(ctx context.Context, root string, runtime *catalog.Runtime) (*ActivationCoordinator, error) {
+	return OpenActivationCoordinatorWithResourceLimits(ctx, root, runtime, true)
+}
+
+func OpenActivationCoordinatorWithResourceLimits(ctx context.Context, root string, runtime *catalog.Runtime, resourceLimits bool) (*ActivationCoordinator, error) {
 	if runtime == nil {
 		return nil, fmt.Errorf("catalogstore: runtime is required")
 	}
-	store := New(root)
+	store := NewWithResourceLimits(root, resourceLimits)
 	lock, err := storeprimitives.AcquireExclusiveFileLock(ctx, filepath.Join(root, ".catalog.lock"))
 	if err != nil {
 		return nil, fmt.Errorf("catalogstore: acquire data-directory lock: %w", err)
 	}
-	coordinator := &ActivationCoordinator{store: store, runtime: runtime, lock: lock}
+	coordinator := &ActivationCoordinator{store: store, runtime: runtime, lock: lock, resourceLimits: resourceLimits}
 	if err := coordinator.recover(ctx); err != nil {
 		_ = lock.Release()
 		return nil, err
@@ -188,7 +193,7 @@ func (coordinator *ActivationCoordinator) Withdraw(
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		data, err := encodeRouteTable(table)
+		data, err := coordinator.encodeRouteTable(table)
 		if err != nil {
 			return err
 		}
@@ -305,7 +310,7 @@ func (coordinator *ActivationCoordinator) Reauthorize(
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		data, err := encodeRouteTable(table)
+		data, err := coordinator.encodeRouteTable(table)
 		if err != nil {
 			return err
 		}
@@ -422,7 +427,7 @@ func (coordinator *ActivationCoordinator) ActivateAdmitted(
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		data, err := encodeRouteTable(table)
+		data, err := coordinator.encodeRouteTable(table)
 		if err != nil {
 			return err
 		}
@@ -469,7 +474,7 @@ func (coordinator *ActivationCoordinator) ActivateAdmitted(
 }
 
 func (coordinator *ActivationCoordinator) writeRouteTable(table *catalog.RouteTable) error {
-	data, err := encodeRouteTable(table)
+	data, err := coordinator.encodeRouteTable(table)
 	if err != nil {
 		return err
 	}
@@ -496,7 +501,7 @@ func (coordinator *ActivationCoordinator) validateActivationBounds(mount string,
 		next.Previous = &previous
 	}
 	current.Mounts[mount] = next
-	_, err := encodeRouteTable(current)
+	_, err := coordinator.encodeRouteTable(current)
 	return err
 }
 
@@ -507,7 +512,7 @@ func (coordinator *ActivationCoordinator) validateWithdrawalBounds(mount string,
 	current := coordinator.runtime.Table()
 	delete(current.Mounts, mount)
 	current.Tombstones[mount] = tombstone
-	_, err := encodeRouteTable(current)
+	_, err := coordinator.encodeRouteTable(current)
 	return err
 }
 
@@ -526,15 +531,23 @@ func (coordinator *ActivationCoordinator) validateReauthorizationBounds(mount st
 			CatalogID: candidate.Directory.CatalogID,
 		},
 	}}
-	_, err := encodeRouteTable(current)
+	_, err := coordinator.encodeRouteTable(current)
 	return err
 }
 
 func encodeRouteTable(table *catalog.RouteTable) ([]byte, error) {
+	return encodeRouteTableWithResourceLimits(table, true)
+}
+
+func (coordinator *ActivationCoordinator) encodeRouteTable(table *catalog.RouteTable) ([]byte, error) {
+	return encodeRouteTableWithResourceLimits(table, coordinator.resourceLimits)
+}
+
+func encodeRouteTableWithResourceLimits(table *catalog.RouteTable, resourceLimits bool) ([]byte, error) {
 	if table == nil {
 		return nil, fmt.Errorf("%w: route table is nil", ErrStorageBudget)
 	}
-	if len(table.Mounts)+len(table.Tombstones) > maxDurableMounts {
+	if resourceLimits && len(table.Mounts)+len(table.Tombstones) > maxDurableMounts {
 		return nil, fmt.Errorf("%w: route mounts exceed %d", ErrStorageBudget, maxDurableMounts)
 	}
 	persisted := durableRouteTableV1{SchemaVersion: 1, Generation: table.Generation, Mounts: make(map[string]durableMountV1, len(table.Mounts)), Tombstones: make(map[string]durableTombstoneV1, len(table.Tombstones))}
@@ -552,7 +565,7 @@ func encodeRouteTable(table *catalog.RouteTable) ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("catalogstore: encode route table: %w", err)
 	}
-	if len(data) > maxDurableRouteTableBytes {
+	if resourceLimits && len(data) > maxDurableRouteTableBytes {
 		return nil, fmt.Errorf("%w: route table is %d bytes, maximum is %d", ErrStorageBudget, len(data), maxDurableRouteTableBytes)
 	}
 	return data, nil
@@ -567,7 +580,7 @@ func runtimeTombstone(value durableTombstoneV1) catalog.MountTombstone {
 }
 
 func (coordinator *ActivationCoordinator) writeRouteTableBytes(data []byte) error {
-	if len(data) > maxDurableRouteTableBytes {
+	if coordinator.resourceLimits && len(data) > maxDurableRouteTableBytes {
 		return fmt.Errorf("%w: route table is %d bytes, maximum is %d", ErrStorageBudget, len(data), maxDurableRouteTableBytes)
 	}
 	if err := storeprimitives.DurableAtomicWrite(coordinator.routeTablePath(), data, 0o600); err != nil {

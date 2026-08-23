@@ -9,7 +9,11 @@ import (
 )
 
 func ValidateCatalogIndex(index CatalogIndex) error {
-	return validateCatalogIndexWithDetailHasher(index, sha256.Sum256)
+	return ValidateCatalogIndexWithOptions(index, ValidationOptions{ResourceLimits: true})
+}
+
+func ValidateCatalogIndexWithOptions(index CatalogIndex, options ValidationOptions) error {
+	return validateCatalogIndexWithDetailHasher(index, sha256.Sum256, options)
 }
 
 func ValidateCatalogID(value string) error {
@@ -27,6 +31,10 @@ func ValidateCatalogPublicationKey(value string) error {
 }
 
 func ValidateCatalogCandidate(candidate CatalogCandidate) error {
+	return ValidateCatalogCandidateWithOptions(candidate, ValidationOptions{ResourceLimits: true})
+}
+
+func ValidateCatalogCandidateWithOptions(candidate CatalogCandidate, options ValidationOptions) error {
 	if err := validateUTF8Strings("catalog candidate", candidate); err != nil {
 		return err
 	}
@@ -42,14 +50,14 @@ func ValidateCatalogCandidate(candidate CatalogCandidate) error {
 	if len(candidate.Documents) == 0 {
 		return fmt.Errorf("catalog requires at least one document")
 	}
-	if len(candidate.Documents) > maxCatalogDocuments {
+	if options.ResourceLimits && len(candidate.Documents) > maxCatalogDocuments {
 		return fmt.Errorf("catalog documents exceed %d", maxCatalogDocuments)
 	}
 	keys := make(map[string]struct{}, len(candidate.Documents))
 	paths := make(map[string]struct{}, len(candidate.Documents))
 	totalBytes := 0
 	for index, document := range candidate.Documents {
-		if err := validateCatalogDocument(index, document); err != nil {
+		if err := validateCatalogDocument(index, document, options.ResourceLimits); err != nil {
 			return err
 		}
 		if _, exists := keys[document.Key]; exists {
@@ -62,7 +70,7 @@ func ValidateCatalogCandidate(candidate CatalogCandidate) error {
 		paths[document.SourcePath] = struct{}{}
 		totalBytes += len(document.Bytes)
 	}
-	if len(candidate.SupportFiles) > maxCatalogSupportFiles {
+	if options.ResourceLimits && len(candidate.SupportFiles) > maxCatalogSupportFiles {
 		return fmt.Errorf("catalog support files exceed %d", maxCatalogSupportFiles)
 	}
 	for index, support := range candidate.SupportFiles {
@@ -72,7 +80,7 @@ func ValidateCatalogCandidate(candidate CatalogCandidate) error {
 		if len(support.Bytes) == 0 {
 			return fmt.Errorf("catalog support file %d bytes are required", index)
 		}
-		if len(support.Bytes) > maxCatalogDocumentBytes {
+		if options.ResourceLimits && len(support.Bytes) > maxCatalogDocumentBytes {
 			return fmt.Errorf("catalog support file %d exceeds %d bytes", index, maxCatalogDocumentBytes)
 		}
 		if _, exists := paths[support.SourcePath]; exists {
@@ -85,7 +93,7 @@ func ValidateCatalogCandidate(candidate CatalogCandidate) error {
 	if candidate.ProfileID == CompatibilityProfileKubernetes {
 		limit = maxKubernetesSourceBytes
 	}
-	if totalBytes > limit {
+	if options.ResourceLimits && totalBytes > limit {
 		return fmt.Errorf("catalog source bytes %d exceed %d", totalBytes, limit)
 	}
 	if candidate.DefaultDocumentKey != "" {
@@ -99,7 +107,7 @@ func ValidateCatalogCandidate(candidate CatalogCandidate) error {
 	return nil
 }
 
-func validateCatalogIndexWithDetailHasher(index CatalogIndex, hasher detailHasher) error {
+func validateCatalogIndexWithDetailHasher(index CatalogIndex, hasher detailHasher, options ValidationOptions) error {
 	if err := validateUTF8Strings("catalog index", index); err != nil {
 		return err
 	}
@@ -112,7 +120,7 @@ func validateCatalogIndexWithDetailHasher(index CatalogIndex, hasher detailHashe
 	if err := ValidateCanonicalIdentity("catalog index profile", string(index.ProfileID), false); err != nil {
 		return err
 	}
-	if len(index.Documents) == 0 || len(index.Documents) > maxCatalogDocuments {
+	if len(index.Documents) == 0 || options.ResourceLimits && len(index.Documents) > maxCatalogDocuments {
 		return fmt.Errorf("catalog index document count is invalid")
 	}
 	keys := make(map[string]struct{}, len(index.Documents))
@@ -133,7 +141,7 @@ func validateCatalogIndexWithDetailHasher(index CatalogIndex, hasher detailHashe
 			return fmt.Errorf("catalog index source path %q is duplicated", document.SourcePath)
 		}
 		paths[document.SourcePath] = struct{}{}
-		if err := ValidateSpecIndex(document.Index); err != nil {
+		if err := ValidateSpecIndexWithOptions(document.Index, options); err != nil {
 			return fmt.Errorf("catalog document %q: %w", document.Key, err)
 		}
 		for _, operation := range document.Index.Operations {
@@ -190,7 +198,7 @@ func validateCatalogRevision(revision CatalogRevision) error {
 	return nil
 }
 
-func validateCatalogDocument(index int, document CatalogDocument) error {
+func validateCatalogDocument(index int, document CatalogDocument, resourceLimits bool) error {
 	if err := validateCatalogKey(fmt.Sprintf("catalog document %d key", index), document.Key); err != nil {
 		return err
 	}
@@ -205,7 +213,7 @@ func validateCatalogDocument(index int, document CatalogDocument) error {
 	if len(document.Bytes) == 0 {
 		return fmt.Errorf("catalog document %d bytes are required", index)
 	}
-	if len(document.Bytes) > maxCatalogDocumentBytes {
+	if resourceLimits && len(document.Bytes) > maxCatalogDocumentBytes {
 		return fmt.Errorf("catalog document %d exceeds %d bytes", index, maxCatalogDocumentBytes)
 	}
 	return nil

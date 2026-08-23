@@ -56,6 +56,16 @@ func TestEmbeddedJSONRejectsMalformedAndUnboundedInput(t *testing.T) {
 	}
 }
 
+func TestEmbeddedJSONByteLimitIsOptIn(t *testing.T) {
+	input := `"` + strings.Repeat("x", maxEmbeddedJSONBytes) + `"`
+	if _, err := canonicalEmbeddedJSONWithResourceLimits(input, false); err != nil {
+		t.Fatalf("unbounded canonicalization rejected experimental JSON: %v", err)
+	}
+	if _, err := canonicalEmbeddedJSON(input); err == nil {
+		t.Fatal("bounded canonicalization accepted oversized JSON")
+	}
+}
+
 func TestEmbeddedJSONDoesNotMutateInput(t *testing.T) {
 	input := `{"z":1,"a":2}`
 	want := input

@@ -129,7 +129,7 @@ func TestValidateCatalogIndexRejectsInjectedDetailHashCollision(t *testing.T) {
 		},
 	}
 	constantHash := func([]byte) [32]byte { return [32]byte{} }
-	err := validateCatalogIndexWithDetailHasher(index, constantHash)
+	err := validateCatalogIndexWithDetailHasher(index, constantHash, ValidationOptions{ResourceLimits: true})
 	if err == nil {
 		t.Fatal("catalog index accepted different detail preimages with one digest")
 	}

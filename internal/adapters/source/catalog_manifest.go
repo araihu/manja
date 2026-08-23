@@ -28,13 +28,14 @@ const (
 )
 
 type CatalogManifest struct {
-	ID                 string
-	Title              string
-	Branding           domain.DocsBranding
-	DefaultDocumentKey string
-	ProfileID          domain.CompatibilityProfileID
-	Includes           []string
-	DocumentKeys       []CatalogDocumentKey
+	ID                    string
+	Title                 string
+	Branding              domain.DocsBranding
+	DefaultDocumentKey    string
+	ProfileID             domain.CompatibilityProfileID
+	Includes              []string
+	DocumentKeys          []CatalogDocumentKey
+	DisableResourceLimits bool
 }
 
 type CatalogDocumentKey struct {
@@ -59,18 +60,19 @@ type catalogFileReader func(context.Context, catalogInventoryEntry) (capturedCat
 type catalogFileSizer func(context.Context, catalogInventoryEntry) (int64, error)
 
 type catalogSourceBudget struct {
-	limit int64
-	used  int64
+	limit          int64
+	used           int64
+	resourceLimits bool
 }
 
 func (budget *catalogSourceBudget) reserve(size int64) error {
 	if size <= 0 {
 		return fmt.Errorf("catalog source file is empty")
 	}
-	if size > maxCatalogSourceFileBytes {
+	if budget.resourceLimits && size > maxCatalogSourceFileBytes {
 		return fmt.Errorf("catalog source file exceeds %d bytes", maxCatalogSourceFileBytes)
 	}
-	if size > budget.limit-budget.used {
+	if budget.resourceLimits && size > budget.limit-budget.used {
 		return fmt.Errorf("catalog source bytes %d exceed %d", budget.used+size, budget.limit)
 	}
 	budget.used += size
@@ -122,7 +124,8 @@ func captureCatalogCandidate(
 	if manifest.ProfileID == domain.CompatibilityProfileKubernetes {
 		limit = maxKubernetesSourceBytes
 	}
-	budget := &catalogSourceBudget{limit: limit}
+	resourceLimits := !manifest.DisableResourceLimits
+	budget := &catalogSourceBudget{limit: limit, resourceLimits: resourceLimits}
 	for _, entry := range selected {
 		verifiedSize, err := size(ctx, entry)
 		if err != nil {
@@ -136,7 +139,7 @@ func captureCatalogCandidate(
 		if err != nil {
 			return domain.CatalogCandidate{}, fmt.Errorf("read catalog document %q: %w", entry.path, err)
 		}
-		if err := validateCapturedFile(file, entry); err != nil {
+		if err := validateCapturedFile(file, entry, resourceLimits); err != nil {
 			return domain.CatalogCandidate{}, err
 		}
 		key := keyByPath[entry.path]
@@ -174,7 +177,7 @@ func captureCatalogCandidate(
 		},
 		Documents: documents, SupportFiles: supportFiles,
 	}
-	if err := domain.ValidateCatalogCandidate(candidate); err != nil {
+	if err := domain.ValidateCatalogCandidateWithOptions(candidate, domain.ValidationOptions{ResourceLimits: resourceLimits}); err != nil {
 		return domain.CatalogCandidate{}, err
 	}
 	return candidate, nil
@@ -246,14 +249,14 @@ func selectCatalogDocuments(patterns []string, inventory []catalogInventoryEntry
 	return result, nil
 }
 
-func validateCapturedFile(file capturedCatalogFile, expected catalogInventoryEntry) error {
+func validateCapturedFile(file capturedCatalogFile, expected catalogInventoryEntry, resourceLimits bool) error {
 	if file.path != expected.path || file.mode != expected.mode {
 		return fmt.Errorf("captured file identity changed for %q", expected.path)
 	}
 	if len(file.data) == 0 {
 		return fmt.Errorf("captured file %q is empty", expected.path)
 	}
-	if len(file.data) > maxCatalogSourceFileBytes {
+	if resourceLimits && len(file.data) > maxCatalogSourceFileBytes {
 		return fmt.Errorf("captured file %q exceeds %d bytes", expected.path, maxCatalogSourceFileBytes)
 	}
 	if int64(len(file.data)) != expected.size {
@@ -305,7 +308,7 @@ func captureSupportFiles(
 			if err != nil {
 				return nil, fmt.Errorf("read captured reference %q: %w", ref, err)
 			}
-			if err := validateCapturedFile(file, entry); err != nil {
+			if err := validateCapturedFile(file, entry, budget.resourceLimits); err != nil {
 				return nil, err
 			}
 			captured[ref] = file

@@ -11,6 +11,10 @@ import (
 // Sources materializes configured source adapters. Runtime-only builds exclude
 // this file and therefore cannot acquire or refresh source content.
 func (file RendererFile) Sources() []renderer.CatalogSource {
+	return file.SourcesWithResourceLimits(true)
+}
+
+func (file RendererFile) SourcesWithResourceLimits(resourceLimits bool) []renderer.CatalogSource {
 	result := make([]renderer.CatalogSource, len(file.Catalogs))
 	for index, configured := range file.Catalogs {
 		manifest := sourceadapter.CatalogManifest{
@@ -23,10 +27,11 @@ func (file RendererFile) Sources() []renderer.CatalogSource {
 				},
 				Favicon: configured.Branding.Favicon,
 			},
-			DefaultDocumentKey: configured.DefaultDocumentKey,
-			ProfileID:          domain.CompatibilityProfileID(configured.ProfileID),
-			Includes:           append([]string(nil), configured.Source.Include...),
-			DocumentKeys:       make([]sourceadapter.CatalogDocumentKey, len(configured.Source.Documents)),
+			DefaultDocumentKey:    configured.DefaultDocumentKey,
+			ProfileID:             domain.CompatibilityProfileID(configured.ProfileID),
+			Includes:              append([]string(nil), configured.Source.Include...),
+			DocumentKeys:          make([]sourceadapter.CatalogDocumentKey, len(configured.Source.Documents)),
+			DisableResourceLimits: !resourceLimits,
 		}
 		for documentIndex, document := range configured.Source.Documents {
 			manifest.DocumentKeys[documentIndex] = sourceadapter.CatalogDocumentKey{SourcePath: document.Path, Key: document.Key}

@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	core "github.com/araihu/manja/domain"
+	"github.com/araihu/manja/internal/environment"
 	app "github.com/araihu/manja/internal/selfhosted"
 )
 
@@ -24,7 +25,7 @@ type cliConfig struct {
 var serve = func(ctx context.Context, cfg cliConfig) error {
 	var handler http.Handler
 	if cfg.RendererConfig != "" {
-		catalogHandler, receipts, err := app.NewRenderer(ctx, app.RendererOptions{ConfigPath: cfg.RendererConfig, DataDir: cfg.Options.DataDir})
+		catalogHandler, receipts, err := app.NewRenderer(ctx, app.RendererOptions{ConfigPath: cfg.RendererConfig, DataDir: cfg.Options.DataDir, ResourceLimits: cfg.Options.ResourceLimits})
 		if err != nil {
 			return err
 		}
@@ -51,10 +52,15 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 	if len(args) > 0 && args[0] == "check" {
 		return runCheck(ctx, args[1:], stdout, stderr)
 	}
-	if len(args) > 0 && args[0] == "build" {
-		return runBuild(ctx, args[1:], stdout, stderr)
+	environmentConfig, err := environment.Load()
+	if err != nil {
+		fmt.Fprintf(stderr, "manja: %v\n", err)
+		return 2
 	}
-	if err := runServer(ctx, args); err != nil {
+	if len(args) > 0 && args[0] == "build" {
+		return runBuild(ctx, args[1:], stdout, stderr, environmentConfig.ResourceLimits)
+	}
+	if err := runServer(ctx, args, environmentConfig.ResourceLimits); err != nil {
 		fmt.Fprintf(stderr, "manja: %v\n", err)
 		return 1
 	}
@@ -73,7 +79,7 @@ type buildCatalogReceipt struct {
 	SnapshotID string `json:"snapshotId"`
 }
 
-func runBuild(ctx context.Context, args []string, stdout, stderr io.Writer) int {
+func runBuild(ctx context.Context, args []string, stdout, stderr io.Writer, resourceLimits bool) int {
 	fs := flag.NewFlagSet("manja build", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
 	rendererConfig := fs.String("renderer-config", "", "renderer catalog YAML config")
@@ -86,7 +92,7 @@ func runBuild(ctx context.Context, args []string, stdout, stderr io.Writer) int 
 		fmt.Fprintln(stderr, "manja build: --renderer-config and --data-dir are required; positional arguments are not accepted")
 		return 2
 	}
-	receipts, err := buildRenderer(ctx, app.RendererOptions{ConfigPath: *rendererConfig, DataDir: *dataDir})
+	receipts, err := buildRenderer(ctx, app.RendererOptions{ConfigPath: *rendererConfig, DataDir: *dataDir, ResourceLimits: resourceLimits})
 	if err != nil {
 		fmt.Fprintf(stderr, "manja build: %v\n", err)
 		return 1
@@ -102,11 +108,12 @@ func runBuild(ctx context.Context, args []string, stdout, stderr io.Writer) int 
 	return 0
 }
 
-func runServer(ctx context.Context, args []string) error {
+func runServer(ctx context.Context, args []string, resourceLimits bool) error {
 	cfg, err := configFromArgs(args)
 	if err != nil {
 		return err
 	}
+	cfg.Options.ResourceLimits = resourceLimits
 	return serve(ctx, cfg)
 }
 

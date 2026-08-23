@@ -26,6 +26,10 @@ func DecodeCatalog(data []byte) (catalog.CatalogArtifactV1, error) {
 	return decodeCanonical(data, maxCatalogBytes, validateCatalog)
 }
 
+func DecodeCatalogWithResourceLimits(data []byte, resourceLimits bool) (catalog.CatalogArtifactV1, error) {
+	return decodeCanonical(data, optionalLimit(maxCatalogBytes, resourceLimits), validateCatalog)
+}
+
 func EncodeDetailShard(value catalog.DetailShardV1) ([]byte, error) {
 	return encodeCanonical(value, maxDetailBytes, validateDetailShard)
 }
@@ -48,6 +52,10 @@ func EncodeSearchDirectory(value catalog.SearchDirectoryV1) ([]byte, error) {
 
 func DecodeSearchDirectory(data []byte) (catalog.SearchDirectoryV1, error) {
 	return decodeCanonical(data, maxSearchBytes, validateSearchDirectory)
+}
+
+func DecodeSearchDirectoryWithResourceLimits(data []byte, resourceLimits bool) (catalog.SearchDirectoryV1, error) {
+	return decodeCanonical(data, optionalLimit(maxSearchBytes, resourceLimits), validateSearchDirectory)
 }
 
 func EncodeSearchExactSegment(value catalog.SearchExactSegmentV1) ([]byte, error) {
@@ -82,6 +90,17 @@ func DecodeManifest(data []byte) (catalog.ManifestV1, error) {
 	return decodeCanonical(data, maxManifestBytes, validateManifest)
 }
 
+func DecodeManifestWithResourceLimits(data []byte, resourceLimits bool) (catalog.ManifestV1, error) {
+	return decodeCanonical(data, optionalLimit(maxManifestBytes, resourceLimits), validateManifest)
+}
+
+func optionalLimit(limit int, resourceLimits bool) int {
+	if resourceLimits {
+		return limit
+	}
+	return 0
+}
+
 func encodeCanonical[T any](value T, limit int, validate func(T) error) ([]byte, error) {
 	if err := validate(value); err != nil {
 		return nil, err
@@ -90,7 +109,7 @@ func encodeCanonical[T any](value T, limit int, validate func(T) error) ([]byte,
 	if err != nil {
 		return nil, fmt.Errorf("catalogjson: encode: %w", err)
 	}
-	if len(data) > limit {
+	if limit > 0 && len(data) > limit {
 		return nil, fmt.Errorf("catalogjson: encoded bytes %d exceed %d", len(data), limit)
 	}
 	return data, nil
@@ -98,7 +117,7 @@ func encodeCanonical[T any](value T, limit int, validate func(T) error) ([]byte,
 
 func decodeCanonical[T any](data []byte, limit int, validate func(T) error) (T, error) {
 	var zero T
-	if len(data) > limit {
+	if limit > 0 && len(data) > limit {
 		return zero, fmt.Errorf("catalogjson: input bytes %d exceed %d", len(data), limit)
 	}
 	if !utf8.Valid(data) {

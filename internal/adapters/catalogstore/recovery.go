@@ -140,7 +140,11 @@ func (coordinator *ActivationCoordinator) recoverJournal(ctx context.Context, jo
 }
 
 func (coordinator *ActivationCoordinator) restoreDurableRoutes(ctx context.Context, protectedWithdrawal *activationJournalV1) error {
-	data, err := readDurableState(coordinator.routeTablePath(), maxDurableRouteTableBytes)
+	routeTableLimit := 0
+	if coordinator.resourceLimits {
+		routeTableLimit = maxDurableRouteTableBytes
+	}
+	data, err := readDurableState(coordinator.routeTablePath(), routeTableLimit)
 	if os.IsNotExist(err) {
 		if protectedWithdrawal == nil {
 			return nil
@@ -170,7 +174,7 @@ func (coordinator *ActivationCoordinator) restoreDurableRoutes(ctx context.Conte
 	if protectedWithdrawal != nil && persisted.Generation == protectedWithdrawal.Generation {
 		protectedMount = protectedWithdrawal.Mount
 	}
-	if err := validateDurableRouteTableExcept(persisted, protectedMount); err != nil {
+	if err := validateDurableRouteTableExceptWithResourceLimits(persisted, protectedMount, coordinator.resourceLimits); err != nil {
 		return fmt.Errorf("%w: invalid durable routes: %v", ErrCorruptSnapshot, err)
 	}
 	table := &catalog.RouteTable{Generation: persisted.Generation, Mounts: make(map[string]catalog.MountState, len(persisted.Mounts)), Tombstones: make(map[string]catalog.MountTombstone, len(persisted.Tombstones))}
@@ -278,11 +282,15 @@ func readDurableState(path string, limit int) ([]byte, error) {
 		return nil, err
 	}
 	defer file.Close()
-	data, err := io.ReadAll(io.LimitReader(file, int64(limit)+1))
+	var reader io.Reader = file
+	if limit > 0 {
+		reader = io.LimitReader(file, int64(limit)+1)
+	}
+	data, err := io.ReadAll(reader)
 	if err != nil {
 		return nil, err
 	}
-	if len(data) > limit {
+	if limit > 0 && len(data) > limit {
 		return nil, fmt.Errorf("state exceeds %d bytes", limit)
 	}
 	return data, nil
@@ -347,10 +355,14 @@ func validateDurableRouteTable(table durableRouteTableV1) error {
 }
 
 func validateDurableRouteTableExcept(table durableRouteTableV1, protectedMount string) error {
+	return validateDurableRouteTableExceptWithResourceLimits(table, protectedMount, true)
+}
+
+func validateDurableRouteTableExceptWithResourceLimits(table durableRouteTableV1, protectedMount string, resourceLimits bool) error {
 	if table.Mounts == nil {
 		return fmt.Errorf("mounts are missing")
 	}
-	if len(table.Mounts)+len(table.Tombstones) > maxDurableMounts {
+	if resourceLimits && len(table.Mounts)+len(table.Tombstones) > maxDurableMounts {
 		return fmt.Errorf("mounts exceed %d", maxDurableMounts)
 	}
 	for mount, entry := range table.Mounts {

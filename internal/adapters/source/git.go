@@ -319,6 +319,10 @@ func gitCatalogRepository(ctx context.Context, repo, reference, sshPrivateKey st
 }
 
 func gitCatalogRepositoryWithObjectFormat(ctx context.Context, repo, reference, sshPrivateKey string, objectFormat gitObjectFormat) (string, string, func(), error) {
+	return gitCatalogRepositoryWithResourceLimits(ctx, repo, reference, sshPrivateKey, objectFormat, true)
+}
+
+func gitCatalogRepositoryWithResourceLimits(ctx context.Context, repo, reference, sshPrivateKey string, objectFormat gitObjectFormat, resourceLimits bool) (string, string, func(), error) {
 	if info, err := os.Stat(repo); err == nil && info.IsDir() {
 		return repo, reference, func() {}, nil
 	}
@@ -343,14 +347,25 @@ func gitCatalogRepositoryWithObjectFormat(ctx context.Context, repo, reference, 
 		cleanup()
 		return "", "", func() {}, fmt.Errorf("initialize Git catalog checkout: %w", err)
 	}
+	fetchArgs := []string{"fetch", "--quiet", "--depth=1"}
+	if resourceLimits {
+		fetchArgs = append(fetchArgs, fmt.Sprintf("--filter=blob:limit=%d", maxCatalogSourceFileBytes+1))
+	}
+	fetchArgs = append(fetchArgs, "--no-tags", repo, reference)
+	displayFetchArgs := append([]string(nil), fetchArgs...)
+	displayFetchArgs[len(displayFetchArgs)-2] = redactURL(repo)
+	diskRoot := ""
+	if resourceLimits {
+		diskRoot = directory
+	}
 	if _, err := gitOutputBytesRedactedLimit(
 		ctx,
 		directory,
 		env,
-		[]string{"fetch", "--quiet", "--depth=1", fmt.Sprintf("--filter=blob:limit=%d", maxCatalogSourceFileBytes+1), "--no-tags", redactURL(repo), reference},
+		displayFetchArgs,
 		maxGitDiagnosticBytes,
-		directory,
-		"fetch", "--quiet", "--depth=1", fmt.Sprintf("--filter=blob:limit=%d", maxCatalogSourceFileBytes+1), "--no-tags", repo, reference,
+		diskRoot,
+		fetchArgs...,
 	); err != nil {
 		cleanup()
 		return "", "", func() {}, fmt.Errorf("fetch Git catalog ref %q from %q: %w", reference, redactURL(repo), err)
@@ -436,6 +451,9 @@ type boundedGitBuffer struct {
 func (buffer *boundedGitBuffer) Write(data []byte) (int, error) {
 	if buffer.err != nil {
 		return 0, buffer.err
+	}
+	if buffer.limit == 0 {
+		return buffer.buffer.Write(data)
 	}
 	remaining := int64(buffer.limit) - int64(buffer.buffer.Len())
 	if remaining <= 0 || int64(len(data)) > remaining {

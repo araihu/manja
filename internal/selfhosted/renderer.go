@@ -42,7 +42,7 @@ func NewRenderer(ctx context.Context, options RendererOptions) (http.Handler, []
 	if err := server.Recover(ctx); err != nil {
 		return nil, nil, err
 	}
-	sources := configured.Sources()
+	sources := configured.SourcesWithResourceLimits(options.ResourceLimits)
 	receipts := make([]renderer.ActivationReceipt, 0, len(sources))
 	for index, source := range sources {
 		catalogID := configured.Catalogs[index].ID

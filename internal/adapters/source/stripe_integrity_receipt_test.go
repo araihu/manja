@@ -97,7 +97,7 @@ func TestCommittedStripeIntegrityReceiptRejectsControlledDrift(t *testing.T) {
 }
 
 func requireApprovedStripeIntegrityReceipt(root, filename string) error {
-	receipt, err := loadGitSourceProvenanceReceipt(root, filename)
+	receipt, err := loadGitSourceProvenanceReceipt(root, filename, true)
 	if err != nil {
 		return err
 	}

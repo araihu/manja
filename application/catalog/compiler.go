@@ -18,6 +18,7 @@ type CompilerOptions struct {
 	Versions         CompilerVersions
 	Bounds           Bounds
 	ProfileAllowlist []byte
+	ResourceLimits   bool
 }
 
 type Compiler struct {
@@ -32,7 +33,8 @@ func DefaultCompilerOptions() CompilerOptions {
 			CompilerFormat:     "catalog-compiler-v1", ProjectionFormat: "projection-v2",
 			SearchFormat: "catalog-search-v1", PartitionPolicy: "catalog-partition-v1",
 		},
-		Bounds: DefaultBounds(),
+		Bounds:         DefaultBounds(),
+		ResourceLimits: true,
 	}
 }
 
@@ -46,8 +48,10 @@ func NewCompiler(options CompilerOptions) (*Compiler, error) {
 			return nil, fmt.Errorf("compiler version identities are required")
 		}
 	}
-	if err := options.Bounds.Validate(BudgetUsage{}); err != nil {
-		return nil, err
+	if options.ResourceLimits {
+		if err := options.Bounds.Validate(BudgetUsage{}); err != nil {
+			return nil, err
+		}
 	}
 	options.ProfileAllowlist = append([]byte(nil), options.ProfileAllowlist...)
 	return &Compiler{options: options}, nil
@@ -57,10 +61,11 @@ func (compiler *Compiler) Compile(ctx context.Context, candidate domain.CatalogC
 	if err := ctx.Err(); err != nil {
 		return CompiledSnapshot{}, err
 	}
-	if err := domain.ValidateCatalogCandidate(candidate); err != nil {
+	validation := domain.ValidationOptions{ResourceLimits: compiler.options.ResourceLimits}
+	if err := domain.ValidateCatalogCandidateWithOptions(candidate, validation); err != nil {
 		return CompiledSnapshot{}, err
 	}
-	if err := domain.ValidateCatalogIndex(index); err != nil {
+	if err := domain.ValidateCatalogIndexWithOptions(index, validation); err != nil {
 		return CompiledSnapshot{}, err
 	}
 	if err := validateCompilerAlignment(candidate, index); err != nil {
@@ -103,7 +108,7 @@ func (compiler *Compiler) Compile(ctx context.Context, candidate domain.CatalogC
 		projectedIndex := indexed.Index
 		projectedIndex.ProjectID = candidate.ID + "-" + document.Key
 		projectedIndex.RevisionID = candidate.Revision.ID
-		projected, err := (projection.Builder{}).Build(ctx, projectedIndex)
+		projected, err := (projection.Builder{}).Build(domain.WithResourceLimits(ctx, compiler.options.ResourceLimits), projectedIndex)
 		if err != nil {
 			return CompiledSnapshot{}, fmt.Errorf("build projection for %q: %w", document.Key, err)
 		}
@@ -112,7 +117,8 @@ func (compiler *Compiler) Compile(ctx context.Context, candidate domain.CatalogC
 			return CompiledSnapshot{}, err
 		}
 		documentDirectory.Overview = projected.Overview
-		partitioned, err := PartitionDocument(document.Key, projected, documentDirectory, DefaultPartitionLimits(compiler.options.Bounds))
+		partitionLimits := DefaultPartitionLimits(compiler.options.Bounds)
+		partitioned, err := PartitionDocument(document.Key, projected, documentDirectory, partitionLimits)
 		if err != nil {
 			return CompiledSnapshot{}, fmt.Errorf("partition projection for %q: %w", document.Key, err)
 		}
@@ -150,7 +156,13 @@ func (compiler *Compiler) Compile(ctx context.Context, candidate domain.CatalogC
 		}
 	}
 	directory.SearchChild = "search/directory.json"
-	searchArtifacts, err := BuildSearchArtifacts(directory, compiler.options.Bounds)
+	var searchArtifacts SearchArtifacts
+	var err error
+	if compiler.options.ResourceLimits {
+		searchArtifacts, err = BuildSearchArtifacts(directory, compiler.options.Bounds)
+	} else {
+		searchArtifacts, err = BuildSearchArtifactsWithoutResourceLimits(directory, compiler.options.Bounds)
+	}
 	if err != nil {
 		return CompiledSnapshot{}, err
 	}
@@ -174,8 +186,10 @@ func (compiler *Compiler) Compile(ctx context.Context, candidate domain.CatalogC
 		}
 	}
 	usage.Children = uint64(len(children) + 1)
-	if err := compiler.options.Bounds.Validate(usage); err != nil {
-		return CompiledSnapshot{}, err
+	if compiler.options.ResourceLimits {
+		if err := compiler.options.Bounds.Validate(usage); err != nil {
+			return CompiledSnapshot{}, err
+		}
 	}
 
 	identities, err := childIdentities(children)
@@ -218,8 +232,10 @@ func (compiler *Compiler) Compile(ctx context.Context, candidate domain.CatalogC
 	for _, child := range children {
 		usage.SnapshotBytes += child.Length
 	}
-	if err := compiler.options.Bounds.Validate(usage); err != nil {
-		return CompiledSnapshot{}, err
+	if compiler.options.ResourceLimits {
+		if err := compiler.options.Bounds.Validate(usage); err != nil {
+			return CompiledSnapshot{}, err
+		}
 	}
 	return CompiledSnapshot{ID: snapshotID, Identity: identity, Directory: directory, Children: children}, nil
 }
