@@ -10,7 +10,7 @@ require (
 	github.com/evanw/esbuild v0.28.1
 	github.com/getkin/kin-openapi v0.146.0
 	github.com/go-openapi/jsonpointer v1.0.0
-	github.com/mxschmitt/playwright-go v0.6100.0
+	github.com/mxschmitt/playwright-go v0.6201.1
 	github.com/oapi-codegen/oapi-codegen/v2 v2.8.0
 	github.com/testcontainers/testcontainers-go v0.43.0
 	github.com/testcontainers/testcontainers-go/modules/forgejo v0.43.0
@@ -49,7 +49,6 @@ require (
 	github.com/felixge/httpsnoop v1.0.4 // indirect
 	github.com/fsnotify/fsnotify v1.7.0 // indirect
 	github.com/g4s8/envdoc v1.11.0 // indirect
-	github.com/go-jose/go-jose/v3 v3.0.5 // indirect
 	github.com/go-logr/logr v1.4.3 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
 	github.com/go-ole/go-ole v1.2.6 // indirect
