@@ -39,6 +39,14 @@ type searchExactKey struct {
 }
 
 func BuildSearchArtifacts(directory CatalogArtifactV1, bounds Bounds) (SearchArtifacts, error) {
+	return buildSearchArtifacts(directory, bounds, true)
+}
+
+func BuildSearchArtifactsWithoutResourceLimits(directory CatalogArtifactV1, bounds Bounds) (SearchArtifacts, error) {
+	return buildSearchArtifacts(directory, bounds, false)
+}
+
+func buildSearchArtifacts(directory CatalogArtifactV1, bounds Bounds, resourceLimits bool) (SearchArtifacts, error) {
 	builders := make([]searchBuildRecord, 0)
 	type schemaSearchOccurrence struct {
 		documentKey string
@@ -194,7 +202,7 @@ func BuildSearchArtifacts(directory CatalogArtifactV1, bounds Bounds) (SearchArt
 	usage.Children++
 	usage.SearchBytes += directoryChild.Length
 	sort.Slice(children, func(i, j int) bool { return children[i].Path < children[j].Path })
-	if usage.SearchBytes > bounds.SearchBytes {
+	if resourceLimits && usage.SearchBytes > bounds.SearchBytes {
 		return SearchArtifacts{}, fmt.Errorf("search usage %d exceeds %d", usage.SearchBytes, bounds.SearchBytes)
 	}
 	return SearchArtifacts{Directory: directoryValue, Children: children, Usage: usage}, nil

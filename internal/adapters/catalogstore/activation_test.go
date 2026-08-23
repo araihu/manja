@@ -87,6 +87,9 @@ func TestDurableStateWritersRejectOversizedDataBeforeWrite(t *testing.T) {
 	if _, err := encodeRouteTable(&catalog.RouteTable{Generation: 1, Mounts: mounts}); !errors.Is(err, ErrStorageBudget) {
 		t.Fatalf("oversized route mount count error = %v, want %v", err, ErrStorageBudget)
 	}
+	if _, err := encodeRouteTableWithResourceLimits(&catalog.RouteTable{Generation: 1, Mounts: mounts}, false); err != nil {
+		t.Fatalf("unbounded route table rejected experimental mount count: %v", err)
+	}
 }
 
 func TestOversizedActivationFailsBeforePublishingOrServing(t *testing.T) {

@@ -187,9 +187,10 @@ func TestValidateSpecIndexBoundsSchemaSummaryDepth(t *testing.T) {
 
 func TestValidateSpecIndexBoundsTotalSchemaSummaryNodes(t *testing.T) {
 	validator := specSchemaSummaryValidator{
-		active:     make(map[*SchemaSummary]struct{}),
-		memoHeight: make(map[*SchemaSummary]int),
-		nodes:      maxSpecSchemaSummaryNodes - 1,
+		active:         make(map[*SchemaSummary]struct{}),
+		memoHeight:     make(map[*SchemaSummary]int),
+		nodes:          maxSpecSchemaSummaryNodes - 1,
+		resourceLimits: true,
 	}
 	if err := validator.validateRoot("boundary", SchemaSummary{}); err != nil {
 		t.Fatalf("validator rejected aggregate node boundary: %v", err)

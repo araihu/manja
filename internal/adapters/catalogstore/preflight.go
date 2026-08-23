@@ -18,11 +18,15 @@ func (store *Store) Preflight(ctx context.Context, id catalog.SnapshotID) (catal
 	if err != nil {
 		return catalog.RuntimeSnapshot{}, err
 	}
-	manifestBytes, err := readBounded(filepath.Join(location, "manifest.json"), 4<<20)
+	manifestLimit := int64(0)
+	if store.resourceLimits {
+		manifestLimit = 4 << 20
+	}
+	manifestBytes, err := readBounded(filepath.Join(location, "manifest.json"), manifestLimit)
 	if err != nil {
 		return catalog.RuntimeSnapshot{}, classifyRead("manifest.json", err)
 	}
-	manifest, err := catalogjson.DecodeManifest(manifestBytes)
+	manifest, err := catalogjson.DecodeManifestWithResourceLimits(manifestBytes, store.resourceLimits)
 	if err != nil || manifest.SnapshotID != id {
 		return catalog.RuntimeSnapshot{}, fmt.Errorf("%w: decode manifest: %v", ErrCorruptSnapshot, err)
 	}
@@ -48,7 +52,7 @@ func (store *Store) Preflight(ctx context.Context, id catalog.SnapshotID) (catal
 	if err != nil {
 		return catalog.RuntimeSnapshot{}, classifyRead("catalog.json", err)
 	}
-	directory, err := catalogjson.DecodeCatalog(catalogBytes)
+	directory, err := catalogjson.DecodeCatalogWithResourceLimits(catalogBytes, store.resourceLimits)
 	if err != nil {
 		return catalog.RuntimeSnapshot{}, fmt.Errorf("%w: decode catalog: %v", ErrCorruptSnapshot, err)
 	}
@@ -63,7 +67,7 @@ func (store *Store) Preflight(ctx context.Context, id catalog.SnapshotID) (catal
 	if err != nil {
 		return catalog.RuntimeSnapshot{}, classifyRead(directory.SearchChild, err)
 	}
-	search, err := catalogjson.DecodeSearchDirectory(searchBytes)
+	search, err := catalogjson.DecodeSearchDirectoryWithResourceLimits(searchBytes, store.resourceLimits)
 	if err != nil {
 		return catalog.RuntimeSnapshot{}, fmt.Errorf("%w: decode search directory: %v", ErrCorruptSnapshot, err)
 	}
@@ -122,19 +126,20 @@ func verifyFile(path string, length uint64, digest string) error {
 }
 
 func readBounded(path string, maximum int64) ([]byte, error) {
-	if maximum <= 0 {
-		return nil, fmt.Errorf("invalid byte limit")
-	}
 	file, err := os.Open(path)
 	if err != nil {
 		return nil, err
 	}
 	defer file.Close()
-	data, err := io.ReadAll(io.LimitReader(file, maximum+1))
+	var reader io.Reader = file
+	if maximum > 0 {
+		reader = io.LimitReader(file, maximum+1)
+	}
+	data, err := io.ReadAll(reader)
 	if err != nil {
 		return nil, err
 	}
-	if int64(len(data)) > maximum {
+	if maximum > 0 && int64(len(data)) > maximum {
 		return nil, fmt.Errorf("file exceeds %d bytes", maximum)
 	}
 	return data, nil

@@ -103,7 +103,7 @@ func TestBuilderSchemaHashCollisionFailsClosed(t *testing.T) {
 	}}
 	document, err := buildWithSchemaHasher(context.Background(), input, func([]byte) [32]byte {
 		return [32]byte{1}
-	})
+	}, true)
 	if err == nil || !reflect.ValueOf(document).IsZero() || !strings.Contains(err.Error(), "hash_collision") {
 		t.Fatalf("collision build = %#v, %v; want zero document hash_collision", document, err)
 	}

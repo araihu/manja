@@ -23,17 +23,19 @@ type schemaNodeDraft struct {
 }
 
 type schemaGraphBuilder struct {
-	hasher   schemaHashFunc
-	drafts   []schemaNodeDraft
-	byDigest map[[32]byte]SchemaRef
-	edges    int
+	hasher         schemaHashFunc
+	drafts         []schemaNodeDraft
+	byDigest       map[[32]byte]SchemaRef
+	edges          int
+	resourceLimits bool
 }
 
-func newSchemaGraphBuilder(hasher schemaHashFunc) *schemaGraphBuilder {
+func newSchemaGraphBuilder(hasher schemaHashFunc, resourceLimits bool) *schemaGraphBuilder {
 	return &schemaGraphBuilder{
-		hasher:   hasher,
-		drafts:   []schemaNodeDraft{},
-		byDigest: make(map[[32]byte]SchemaRef),
+		hasher:         hasher,
+		drafts:         []schemaNodeDraft{},
+		byDigest:       make(map[[32]byte]SchemaRef),
+		resourceLimits: resourceLimits,
 	}
 }
 
@@ -44,7 +46,7 @@ func (s *buildState) internSchema(source domain.SchemaSummary) (SchemaRef, error
 	canonicalJSON := ""
 	var err error
 	if source.JSON != "" {
-		canonicalJSON, err = canonicalEmbeddedJSON(source.JSON)
+		canonicalJSON, err = canonicalEmbeddedJSONWithResourceLimits(source.JSON, s.schemaGraph.resourceLimits)
 		if err != nil {
 			return 0, err
 		}
@@ -96,10 +98,10 @@ func (s *buildState) internSchema(source domain.SchemaSummary) (SchemaRef, error
 		}
 		return existingRef, nil
 	}
-	if len(s.schemaGraph.drafts) >= maxSchemaGraphNodes {
+	if s.schemaGraph.resourceLimits && len(s.schemaGraph.drafts) >= maxSchemaGraphNodes {
 		return 0, projectionFailure("schemaNodes", "node_budget")
 	}
-	if s.schemaGraph.edges+len(properties)+len(items) > maxSchemaGraphEdges {
+	if s.schemaGraph.resourceLimits && s.schemaGraph.edges+len(properties)+len(items) > maxSchemaGraphEdges {
 		return 0, projectionFailure("schemaNodes", "edge_budget")
 	}
 	ref := SchemaRef(len(s.schemaGraph.drafts))

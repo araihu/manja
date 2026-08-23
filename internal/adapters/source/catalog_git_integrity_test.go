@@ -73,12 +73,26 @@ func TestLoadGitSourceProvenanceReceiptRejectsInvalidExpectations(t *testing.T) 
 			receipt := validTestGitSourceReceipt("sha1")
 			test.mutate(&receipt)
 			filename := writeTestGitSourceReceipt(t, receipt)
-			_, err := loadGitSourceProvenanceReceipt(filepath.Dir(filename), filepath.Base(filename))
+			_, err := loadGitSourceProvenanceReceipt(filepath.Dir(filename), filepath.Base(filename), true)
 			var integrityErr *CatalogIntegrityError
 			if !errors.As(err, &integrityErr) || integrityErr.Check != test.check || !errors.Is(err, ErrCatalogIntegrity) {
 				t.Fatalf("invalid receipt error = %#v, want integrity check %q", err, test.check)
 			}
 		})
+	}
+}
+
+func TestLoadGitSourceProvenanceReceiptResourceLimitsAreOptIn(t *testing.T) {
+	receipt := validTestGitSourceReceipt("sha1")
+	receipt.ProvenanceURL += strings.Repeat("a", maxGitIntegrityReceiptBytes)
+	receipt.Artifacts[0].Size = maxCatalogSourceFileBytes + 1
+	filename := writeTestGitSourceReceipt(t, receipt)
+
+	if _, err := loadGitSourceProvenanceReceipt(filepath.Dir(filename), filepath.Base(filename), false); err != nil {
+		t.Fatalf("default receipt validation rejected resource sizing: %v", err)
+	}
+	if _, err := loadGitSourceProvenanceReceipt(filepath.Dir(filename), filepath.Base(filename), true); err == nil {
+		t.Fatal("bounded receipt validation accepted resource sizing")
 	}
 }
 
@@ -96,7 +110,7 @@ func TestLoadGitSourceProvenanceReceiptRejectsDuplicateJSONKeys(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 			filename := writeTestGitSourceReceiptBytes(t, mutated)
-			_, err := loadGitSourceProvenanceReceipt(filepath.Dir(filename), filepath.Base(filename))
+			_, err := loadGitSourceProvenanceReceipt(filepath.Dir(filename), filepath.Base(filename), true)
 			assertCatalogIntegrityCheck(t, err, "receipt-schema")
 			if !strings.Contains(err.Error(), "duplicate") {
 				t.Fatalf("duplicate-key error = %v", err)
@@ -134,7 +148,7 @@ func TestLoadGitSourceProvenanceReceiptRejectsCaseInsensitiveAliases(t *testing.
 			alias := strings.ToUpper(key)
 			mutated := bytesReplaceOnce(t, contents, `"`+key+`":`, `"`+alias+`":`)
 			filename := writeTestGitSourceReceiptBytes(t, mutated)
-			_, err := loadGitSourceProvenanceReceipt(filepath.Dir(filename), filepath.Base(filename))
+			_, err := loadGitSourceProvenanceReceipt(filepath.Dir(filename), filepath.Base(filename), true)
 			assertCatalogIntegrityCheck(t, err, "receipt-schema")
 			if want := fmt.Sprintf("unknown field %q", alias); !strings.Contains(err.Error(), want) {
 				t.Fatalf("case-alias error = %v, want %q", err, want)
@@ -167,7 +181,7 @@ func TestLoadGitSourceProvenanceReceiptRejectsConflictingCaseAliases(t *testing.
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 			filename := writeTestGitSourceReceiptBytes(t, mutated)
-			_, err := loadGitSourceProvenanceReceipt(filepath.Dir(filename), filepath.Base(filename))
+			_, err := loadGitSourceProvenanceReceipt(filepath.Dir(filename), filepath.Base(filename), true)
 			assertCatalogIntegrityCheck(t, err, "receipt-schema")
 			if !strings.Contains(err.Error(), "unknown field") {
 				t.Fatalf("conflicting-alias error = %v", err)
@@ -185,7 +199,7 @@ func TestLoadGitSourceProvenanceReceiptRejectsLicenseMetadata(t *testing.T) {
 	}
 	contents = append(contents[:len(contents)-1], []byte(`,"license":{"name":"MIT","spdx":"MIT","upstreamPath":"LICENSE","trackedLocally":false,"size":3,"gitBlobSha":"eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee","sha256":"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"}}`)...)
 	filename := writeTestGitSourceReceiptBytes(t, contents)
-	_, err = loadGitSourceProvenanceReceipt(filepath.Dir(filename), filepath.Base(filename))
+	_, err = loadGitSourceProvenanceReceipt(filepath.Dir(filename), filepath.Base(filename), true)
 	assertCatalogIntegrityCheck(t, err, "receipt-schema")
 	if !strings.Contains(err.Error(), `unknown field "license"`) {
 		t.Fatalf("license metadata error = %v", err)

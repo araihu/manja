@@ -102,7 +102,7 @@ func TestRecoveryOnlyServerConstructsNoCompilerAndRejectsActivation(t *testing.T
 func TestServerRejectsStartupWhenProcessPeakExceedsConfiguredBudget(t *testing.T) {
 	t.Parallel()
 
-	server, err := New(Config{Version: 1, StartupProcessBytes: 1, Catalogs: []CatalogConfig{
+	server, err := New(Config{Version: 1, StartupProcessBytes: 1, ResourceLimits: true, Catalogs: []CatalogConfig{
 		{ID: "payments", Mount: "/", Title: "Payments", ProfileID: domain.CompatibilityProfileStrict},
 	}})
 	if err != nil {
@@ -114,7 +114,7 @@ func TestServerRejectsStartupWhenProcessPeakExceedsConfiguredBudget(t *testing.T
 }
 
 func TestActivateRejectsOverBudgetProcessBeforePublishing(t *testing.T) {
-	serverAPI, err := New(Config{Version: 1, StartupProcessBytes: 64 << 20, Catalogs: []CatalogConfig{
+	serverAPI, err := New(Config{Version: 1, StartupProcessBytes: 64 << 20, ResourceLimits: true, Catalogs: []CatalogConfig{
 		{ID: "payments", Mount: "/", Title: "Payments", DefaultDocumentKey: "payments-v1", ProfileID: domain.CompatibilityProfileStrict},
 	}})
 	if err != nil {
@@ -138,7 +138,7 @@ func TestActivateRejectsOverBudgetProcessBeforePublishing(t *testing.T) {
 
 func TestActivateBudgetFailureLeavesPublishedRoutesExactlyUnchanged(t *testing.T) {
 	dataDir := t.TempDir()
-	serverAPI, err := New(Config{Version: 1, DataDir: dataDir, Catalogs: []CatalogConfig{
+	serverAPI, err := New(Config{Version: 1, DataDir: dataDir, ResourceLimits: true, Catalogs: []CatalogConfig{
 		{ID: "payments", Mount: "/payments", Title: "Payments", DefaultDocumentKey: "payments-v1", ProfileID: domain.CompatibilityProfileStrict},
 		{ID: "inventory", Mount: "/inventory", Title: "Inventory", DefaultDocumentKey: "payments-v1", ProfileID: domain.CompatibilityProfileStrict},
 	}})
@@ -219,7 +219,7 @@ func TestActivateBudgetFailureLeavesPublishedRoutesExactlyUnchanged(t *testing.T
 
 func TestActivateRejectsPressureObservedAfterStagingWithoutChangingRoutes(t *testing.T) {
 	dataDir := t.TempDir()
-	serverAPI, err := New(Config{Version: 1, DataDir: dataDir, Catalogs: []CatalogConfig{
+	serverAPI, err := New(Config{Version: 1, DataDir: dataDir, ResourceLimits: true, Catalogs: []CatalogConfig{
 		{ID: "payments", Mount: "/payments", Title: "Payments", DefaultDocumentKey: "payments-v1", ProfileID: domain.CompatibilityProfileStrict},
 	}})
 	if err != nil {
@@ -286,7 +286,7 @@ func TestActivateRejectsPressureObservedAfterStagingWithoutChangingRoutes(t *tes
 
 func TestActivateReservesInFlightCacheCapacityBeforePublishing(t *testing.T) {
 	const processLimit = 64 << 20
-	serverAPI, err := New(Config{Version: 1, DataDir: t.TempDir(), StartupProcessBytes: processLimit, Catalogs: []CatalogConfig{
+	serverAPI, err := New(Config{Version: 1, DataDir: t.TempDir(), StartupProcessBytes: processLimit, ResourceLimits: true, Catalogs: []CatalogConfig{
 		{ID: "payments", Mount: "/payments", Title: "Payments", DefaultDocumentKey: "payments-v1", ProfileID: domain.CompatibilityProfileStrict},
 	}})
 	if err != nil {
@@ -533,6 +533,29 @@ func TestActivateCompilesAndPublishesConfiguredCandidate(t *testing.T) {
 	candidate.Documents[0].Bytes = nil
 	if _, err := server.Activate(context.Background(), candidate); err == nil {
 		t.Fatalf("invalid candidate error = %v, want domain validation error", err)
+	}
+}
+
+func TestActivateResourceLimitsAreOptIn(t *testing.T) {
+	candidate := rendererTestCandidate("payments")
+	candidate.Documents[0].Bytes = []byte(`{"openapi":"3.0.3","info":{"title":"Payments","version":"v1"},"paths":{},"x-padding":"` + strings.Repeat("a", 8<<20) + `"}`)
+
+	for name, resourceLimits := range map[string]bool{"default off": false, "opted in": true} {
+		t.Run(name, func(t *testing.T) {
+			server, err := New(Config{Version: 1, DataDir: t.TempDir(), ResourceLimits: resourceLimits, Catalogs: []CatalogConfig{{
+				ID: "payments", Mount: "/", Title: "Payments", DefaultDocumentKey: "payments-v1", ProfileID: domain.CompatibilityProfileStrict,
+			}}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			_, err = server.Activate(context.Background(), candidate)
+			if resourceLimits && err == nil {
+				t.Fatal("bounded activation accepted an oversized source document")
+			}
+			if !resourceLimits && err != nil {
+				t.Fatalf("default activation rejected an oversized source document: %v", err)
+			}
+		})
 	}
 }
 

@@ -126,6 +126,24 @@ func TestValidateCatalogCandidateBoundsDocumentCount(t *testing.T) {
 	}
 }
 
+func TestCatalogDocumentCountLimitIsOptIn(t *testing.T) {
+	candidate := validCatalogCandidate()
+	candidate.Documents = make([]CatalogDocument, maxCatalogDocuments+1)
+	for index := range candidate.Documents {
+		candidate.Documents[index] = CatalogDocument{
+			Key: "doc-" + base36(index), SourcePath: "specs/doc-" + base36(index) + ".json",
+			Format: CatalogFormatJSON, Bytes: []byte("{}"),
+		}
+	}
+	candidate.DefaultDocumentKey = candidate.Documents[0].Key
+	if err := ValidateCatalogCandidateWithOptions(candidate, ValidationOptions{}); err != nil {
+		t.Fatalf("unbounded validation rejected experimental document count: %v", err)
+	}
+	if err := ValidateCatalogCandidate(candidate); err == nil {
+		t.Fatal("bounded validation accepted document count above the budget")
+	}
+}
+
 func TestValidateCatalogCandidateRejectsInvalidSupportFiles(t *testing.T) {
 	t.Parallel()
 

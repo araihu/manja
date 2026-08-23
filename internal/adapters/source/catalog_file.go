@@ -58,7 +58,8 @@ func (source FileCatalogSource) Load(ctx context.Context) (domain.CatalogCandida
 }
 
 func (source FileCatalogSource) loadPass(ctx context.Context, root string) (domain.CatalogCandidate, error) {
-	inventory, err := fileCatalogInventory(ctx, root)
+	resourceLimits := !source.Manifest.DisableResourceLimits
+	inventory, err := fileCatalogInventory(ctx, root, resourceLimits)
 	if err != nil {
 		return domain.CatalogCandidate{}, err
 	}
@@ -66,7 +67,7 @@ func (source FileCatalogSource) loadPass(ctx context.Context, root string) (doma
 		if err := ctx.Err(); err != nil {
 			return capturedCatalogFile{}, err
 		}
-		return readCatalogFile(root, entry, source.beforeFileRead)
+		return readCatalogFile(root, entry, source.beforeFileRead, resourceLimits)
 	}
 	sizer := func(ctx context.Context, entry catalogInventoryEntry) (int64, error) {
 		if err := ctx.Err(); err != nil {
@@ -99,7 +100,7 @@ func canonicalCatalogRoot(root string) (string, error) {
 	return canonical, nil
 }
 
-func fileCatalogInventory(ctx context.Context, root string) ([]catalogInventoryEntry, error) {
+func fileCatalogInventory(ctx context.Context, root string, resourceLimits bool) ([]catalogInventoryEntry, error) {
 	var result []catalogInventoryEntry
 	var pathBytes int
 	var sourceBytes int64
@@ -136,7 +137,7 @@ func fileCatalogInventory(ctx context.Context, root string) ([]catalogInventoryE
 			if !info.Mode().IsRegular() {
 				return fmt.Errorf("catalog path %q is not a regular file", sourcePath)
 			}
-			return appendFileCatalogInventoryEntry(&result, &pathBytes, &sourceBytes, sourcePath, info)
+			return appendFileCatalogInventoryEntry(&result, &pathBytes, &sourceBytes, sourcePath, info, resourceLimits)
 		}
 		if entry.IsDir() {
 			return nil
@@ -148,7 +149,7 @@ func fileCatalogInventory(ctx context.Context, root string) ([]catalogInventoryE
 		if !info.Mode().IsRegular() {
 			return fmt.Errorf("catalog path %q is not a regular file", sourcePath)
 		}
-		return appendFileCatalogInventoryEntry(&result, &pathBytes, &sourceBytes, sourcePath, info)
+		return appendFileCatalogInventoryEntry(&result, &pathBytes, &sourceBytes, sourcePath, info, resourceLimits)
 	})
 	if err != nil {
 		return nil, fmt.Errorf("walk file catalog: %w", err)
@@ -157,26 +158,26 @@ func fileCatalogInventory(ctx context.Context, root string) ([]catalogInventoryE
 	return result, nil
 }
 
-func appendFileCatalogInventoryEntry(result *[]catalogInventoryEntry, pathBytes *int, sourceBytes *int64, sourcePath string, info os.FileInfo) error {
-	if len(*result) >= maxCatalogInventoryEntries {
+func appendFileCatalogInventoryEntry(result *[]catalogInventoryEntry, pathBytes *int, sourceBytes *int64, sourcePath string, info os.FileInfo, resourceLimits bool) error {
+	if resourceLimits && len(*result) >= maxCatalogInventoryEntries {
 		return fmt.Errorf("catalog inventory exceeds %d entries", maxCatalogInventoryEntries)
 	}
 	*pathBytes += len(sourcePath)
-	if *pathBytes > maxCatalogInventoryBytes {
+	if resourceLimits && *pathBytes > maxCatalogInventoryBytes {
 		return fmt.Errorf("catalog inventory paths exceed %d bytes", maxCatalogInventoryBytes)
 	}
-	if info.Size() < 0 || info.Size() > maxCatalogSourceFileBytes {
+	if info.Size() < 0 || resourceLimits && info.Size() > maxCatalogSourceFileBytes {
 		return fmt.Errorf("catalog inventory file %q exceeds %d bytes", sourcePath, maxCatalogSourceFileBytes)
 	}
 	*sourceBytes += info.Size()
-	if *sourceBytes > maxCatalogSourceBytes {
+	if resourceLimits && *sourceBytes > maxCatalogSourceBytes {
 		return fmt.Errorf("catalog inventory source bytes exceed %d", maxCatalogSourceBytes)
 	}
 	*result = append(*result, catalogInventoryEntry{path: sourcePath, mode: fileModeIdentity(info.Mode()), size: info.Size()})
 	return nil
 }
 
-func readCatalogFile(root string, entry catalogInventoryEntry, beforeRead func(string)) (capturedCatalogFile, error) {
+func readCatalogFile(root string, entry catalogInventoryEntry, beforeRead func(string), resourceLimits bool) (capturedCatalogFile, error) {
 	sourcePath := entry.path
 	filename := filepath.Join(root, filepath.FromSlash(sourcePath))
 	canonical, err := filepath.EvalSymlinks(filename)
@@ -205,13 +206,17 @@ func readCatalogFile(root string, entry catalogInventoryEntry, beforeRead func(s
 	if !os.SameFile(pathInfo, info) || info.Size() != entry.size || fileModeIdentity(info.Mode()) != entry.mode {
 		return capturedCatalogFile{}, fmt.Errorf("catalog file %q changed before reading", sourcePath)
 	}
-	if info.Size() < 0 || info.Size() > maxCatalogSourceFileBytes {
+	if info.Size() < 0 || resourceLimits && info.Size() > maxCatalogSourceFileBytes {
 		return capturedCatalogFile{}, fmt.Errorf("captured file %q exceeds %d bytes", sourcePath, maxCatalogSourceFileBytes)
 	}
 	if beforeRead != nil {
 		beforeRead(sourcePath)
 	}
-	data, err := io.ReadAll(io.LimitReader(file, maxCatalogSourceFileBytes+1))
+	var reader io.Reader = file
+	if resourceLimits {
+		reader = io.LimitReader(file, maxCatalogSourceFileBytes+1)
+	}
+	data, err := io.ReadAll(reader)
 	if err != nil {
 		return capturedCatalogFile{}, err
 	}
@@ -219,7 +224,7 @@ func readCatalogFile(root string, entry catalogInventoryEntry, beforeRead func(s
 	if err != nil {
 		return capturedCatalogFile{}, err
 	}
-	if len(data) > maxCatalogSourceFileBytes {
+	if resourceLimits && len(data) > maxCatalogSourceFileBytes {
 		return capturedCatalogFile{}, fmt.Errorf("captured file %q exceeds %d bytes", sourcePath, maxCatalogSourceFileBytes)
 	}
 	if int64(len(data)) != info.Size() || after.Size() != info.Size() || after.ModTime() != info.ModTime() {

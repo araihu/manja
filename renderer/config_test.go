@@ -33,6 +33,17 @@ func TestNewAcceptsCanonicalRootAndNestedCatalogConfigurations(t *testing.T) {
 	}
 }
 
+func TestCatalogCountLimitIsOptIn(t *testing.T) {
+	config := Config{Version: 1, Catalogs: repeatedCatalogConfigs(maxConfiguredCatalogs + 1)}
+	if err := ValidateConfig(config); err != nil {
+		t.Fatalf("default configuration rejected experimental catalog count: %v", err)
+	}
+	config.ResourceLimits = true
+	if err := ValidateConfig(config); err == nil {
+		t.Fatal("resource-limited configuration accepted catalog count above the budget")
+	}
+}
+
 func TestNewRejectsInvalidCatalogConfiguration(t *testing.T) {
 	t.Parallel()
 
@@ -42,7 +53,7 @@ func TestNewRejectsInvalidCatalogConfiguration(t *testing.T) {
 	}{
 		{name: "version", config: Config{Version: 2, Catalogs: []CatalogConfig{validCatalogConfig("payments", "/")}}},
 		{name: "catalog required", config: Config{Version: 1}},
-		{name: "catalog maximum", config: Config{Version: 1, Catalogs: repeatedCatalogConfigs(9)}},
+		{name: "catalog maximum", config: Config{Version: 1, ResourceLimits: true, Catalogs: repeatedCatalogConfigs(9)}},
 		{name: "duplicate id", config: Config{Version: 1, Catalogs: []CatalogConfig{validCatalogConfig("payments", "/payments"), validCatalogConfig("payments", "/other")}}},
 		{name: "uppercase id", config: Config{Version: 1, Catalogs: []CatalogConfig{validCatalogConfig("Payments", "/payments")}}},
 		{name: "empty title", config: Config{Version: 1, Catalogs: []CatalogConfig{{ID: "payments", Mount: "/payments", ProfileID: domain.CompatibilityProfileStrict}}}},

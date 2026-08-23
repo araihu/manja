@@ -46,6 +46,7 @@ type Options struct {
 	PublicOrigin         string
 	Branding             domain.DocsBranding
 	EndpointSidebarLabel EndpointSidebarLabelMode
+	ResourceLimits       bool
 }
 
 const (

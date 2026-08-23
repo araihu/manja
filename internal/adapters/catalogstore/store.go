@@ -24,7 +24,8 @@ var (
 )
 
 type Store struct {
-	root string
+	root           string
+	resourceLimits bool
 }
 
 type Materialization struct {
@@ -34,7 +35,11 @@ type Materialization struct {
 }
 
 func New(root string) *Store {
-	return &Store{root: filepath.Clean(root)}
+	return NewWithResourceLimits(root, true)
+}
+
+func NewWithResourceLimits(root string, resourceLimits bool) *Store {
+	return &Store{root: filepath.Clean(root), resourceLimits: resourceLimits}
 }
 
 func (store *Store) Root() string {
