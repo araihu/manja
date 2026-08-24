@@ -1,6 +1,6 @@
 # Static Local-Docs Export Design
 
-**Status:** Approved in chat; awaiting written-spec review
+**Status:** Reviewed and approved for implementation planning
 
 **Date:** 2026-08-24
 
@@ -70,9 +70,11 @@ manja export \
   --base-path /
 ```
 
-All four flags are required. `--base-path` must be `/` or a canonical absolute
-path ending in `/`; it rejects backslashes, dot segments, duplicate slashes,
-percent escapes, queries, fragments, whitespace, and control characters.
+Creation mode requires all four flags. `--base-path` must be `/` or a canonical
+absolute path ending in `/`; it rejects backslashes, dot segments, duplicate
+slashes, percent escapes, queries, fragments, whitespace, and control
+characters. Verification mode is dispatched separately as
+`manja export verify --output <directory>` and requires only `--output`.
 
 The exporter writes into a sibling staging directory, verifies that tree, then
 renames it into place. A non-empty output directory is rejected rather than
@@ -133,6 +135,7 @@ public/
   assets/...
   <catalog-mount>/
     index.html
+    llms.txt
     search/index.html
     documents/<document-key>/index.html
     _manja/offline-shell/index.html
@@ -155,6 +158,12 @@ scope over the complete `--base-path` without requiring a
 `Service-Worker-Allowed` response header. Other local-docs files remain exact
 embedded product assets under `manja-assets/local-docs/`.
 
+All static HTML routes end in `/` and map to directory `index.html` files. The
+export descriptor therefore uses `<publication-base>_manja/offline-shell/`,
+including the trailing slash. Static descriptor validation admits that form;
+hybrid descriptors retain the existing extensionless offline-shell route. This
+avoids a redirect during the worker's exact, redirect-rejecting shell fetch.
+
 HTML route files are shell entry points, not pre-rendered copies of every detail
 state. Existing canonical query URLs remain valid:
 
@@ -165,6 +174,13 @@ state. Existing canonical query URLs remain valid:
 A static host ignores the query when selecting `index.html`; the local renderer
 reads it and materializes the selected operation or schema. Reload therefore
 works without one generated file per anchor.
+
+The exporter writes each catalog's `llms.txt`. It rewrites stable
+`catalog.json` and OpenAPI download links to their immutable exported snapshot
+files, avoiding redirects and duplicate bytes. Static pages omit the
+server-generated Page Markdown action because `?format=markdown` cannot return a
+different representation from a generic static host. Server and hybrid pages
+keep that action unchanged.
 
 ## Base-Path Model
 
@@ -197,10 +213,12 @@ contract.
 
 ### Activation
 
-Static shell HTML contains an export descriptor bound to the catalog ID,
-snapshot, export manifest, and deployment base. The browser validates it before
-enabling static routing. Server local-docs visibility flags are not part of this
-descriptor.
+Static shell HTML contains an export descriptor with the export-manifest path,
+catalog ID, snapshot identity, and deployment base. The descriptor contains no
+export-manifest digest: the manifest hashes the HTML file, so putting its digest
+back into that HTML would create a cycle. The browser checks that the manifest's
+catalog and snapshot identities equal the descriptor before enabling static
+routing. Server local-docs visibility flags are not part of this descriptor.
 
 Local-docs activation remains fail closed:
 
@@ -261,7 +279,6 @@ After offline readiness:
 `_manja/export.json` is canonical compact JSON containing:
 
 - schema version and base path;
-- Manja/runtime version identity;
 - exported catalog, publication, revision, and snapshot identities;
 - every relative output path, byte length, media type, and SHA-256 digest;
 - shell routes and descriptor identities.
