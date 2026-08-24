@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
 
-FROM golang:1.26.6-alpine AS build
+FROM golang:1.27.0-alpine AS build
 
 ARG MANJA_VERSION=dev
 
