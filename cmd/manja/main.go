@@ -60,6 +60,9 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 	if len(args) > 0 && args[0] == "build" {
 		return runBuild(ctx, args[1:], stdout, stderr, environmentConfig.ResourceLimits)
 	}
+	if len(args) > 0 && args[0] == "export" {
+		return runExport(ctx, args[1:], stdout, stderr, environmentConfig.ResourceLimits)
+	}
 	if err := runServer(ctx, args, environmentConfig.ResourceLimits); err != nil {
 		fmt.Fprintf(stderr, "manja: %v\n", err)
 		return 1

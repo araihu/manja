@@ -1,6 +1,8 @@
 package localdocs
 
 import (
+	"strings"
+
 	"github.com/araihu/manja/application/catalog"
 	"github.com/araihu/manja/domain"
 )
@@ -8,20 +10,29 @@ import (
 // DescriptorV1 carries the immutable, non-secret inputs required to admit a
 // public documentation projection for local enhancement.
 type DescriptorV1 struct {
-	SchemaVersion         uint32 `json:"schemaVersion"`
-	CatalogID             string `json:"catalogId"`
-	PublicationKey        string `json:"publicationKey"`
-	Public                bool   `json:"public"`
-	Anonymous             bool   `json:"anonymous"`
-	PublicationBase       string `json:"publicationBase"`
-	SnapshotID            string `json:"snapshotId"`
-	RevisionID            string `json:"revisionId"`
-	ProjectionFormat      string `json:"projectionFormat"`
-	ProjectionDigest      string `json:"projectionDigest"`
-	ProjectionManifestURL string `json:"projectionManifestUrl"`
-	CatalogURL            string `json:"catalogUrl"`
-	SearchDataBase        string `json:"searchDataBase"`
-	ProjectionDataBase    string `json:"projectionDataBase"`
+	SchemaVersion         uint32              `json:"schemaVersion"`
+	CatalogID             string              `json:"catalogId"`
+	PublicationKey        string              `json:"publicationKey"`
+	Public                bool                `json:"public"`
+	Anonymous             bool                `json:"anonymous"`
+	PublicationBase       string              `json:"publicationBase"`
+	SnapshotID            string              `json:"snapshotId"`
+	RevisionID            string              `json:"revisionId"`
+	ProjectionFormat      string              `json:"projectionFormat"`
+	ProjectionDigest      string              `json:"projectionDigest"`
+	ProjectionManifestURL string              `json:"projectionManifestUrl"`
+	CatalogURL            string              `json:"catalogUrl"`
+	SearchDataBase        string              `json:"searchDataBase"`
+	ProjectionDataBase    string              `json:"projectionDataBase"`
+	Static                *StaticDescriptorV1 `json:"static,omitempty"`
+}
+
+type StaticDescriptorV1 struct {
+	DeploymentBase    string `json:"deploymentBase"`
+	WorkerURL         string `json:"workerUrl"`
+	WorkerScope       string `json:"workerScope"`
+	OfflineShellURL   string `json:"offlineShellUrl"`
+	ExportManifestURL string `json:"exportManifestUrl"`
 }
 
 // PublicEligibility is composition-owned authority. A snapshot cannot make
@@ -69,4 +80,22 @@ func PrepareDescriptor(eligibility PublicEligibility, snapshot catalog.RuntimeSn
 		ProjectionDigest: projectionDigest, ProjectionManifestURL: manifestURL, CatalogURL: catalogURL,
 		SearchDataBase: searchDataBase, ProjectionDataBase: projectionDataBase,
 	}, true
+}
+
+// PrepareStaticDescriptor treats export invocation as disclosure authority.
+// Catalog visibility is intentionally not an input.
+func PrepareStaticDescriptor(catalogID string, snapshot catalog.RuntimeSnapshot, publicationBase, deploymentBase string) (DescriptorV1, bool) {
+	descriptor, ok := PrepareDescriptor(PublicEligibility{CatalogID: catalogID, PublicationKey: catalogID, Public: true, Anonymous: true}, snapshot, publicationBase)
+	deployment, deploymentOK := descriptorPublicationBase(deploymentBase)
+	if !ok || !deploymentOK || !strings.HasPrefix(descriptor.PublicationBase, deployment) {
+		return DescriptorV1{}, false
+	}
+	descriptor.Static = &StaticDescriptorV1{
+		DeploymentBase:    deployment,
+		WorkerURL:         descriptorURL(deployment, "sw.js"),
+		WorkerScope:       deployment,
+		OfflineShellURL:   descriptorURL(descriptor.PublicationBase, "_manja", "offline-shell") + "/",
+		ExportManifestURL: descriptorURL(deployment, "_manja", "export.json"),
+	}
+	return descriptor, true
 }
