@@ -22,17 +22,20 @@ Open <http://localhost:8080>.
 ### Resource limits
 
 Manja does not enforce its conservative catalog source, compilation, startup,
-snapshot, storage, or catalog-count budgets by default. This lets operators
-compile unusually large catalog sets on hosts sized for that work.
+snapshot, storage, catalog-count, or HTML rendering budgets by default. This
+lets operators compile and render unusually large catalog sets on hosts sized
+for that work.
 
 Set `MANJA_RESOURCE_LIMITS=true` on both `manja` and `manja-runtime` to restore
 the bounded policy. Structural and trust-boundary checks remain enabled in both
 modes: OpenAPI validity, canonical identities, safe paths, artifact integrity,
-and request/browser response protections are not resource-sizing policy.
+request-input limits, and local-doc browser download protections are not
+resource-sizing policy.
 
-An unbounded build can exhaust the host's memory or disk and may be terminated
-by the operating system. See [the generated environment reference](docs/environment.md)
-for all environment variables.
+An unbounded build or render can exhaust the host's memory or disk and may be
+terminated by the operating system. See the
+[generated environment reference](docs/environment.md) for all environment
+variables.
 
 ### Portable CI with Dagger
 

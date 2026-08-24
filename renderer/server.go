@@ -300,7 +300,7 @@ func (server *server) ensureRuntime(ctx context.Context) error {
 			Name: source.Name, Kind: source.Kind, Location: source.Location, URL: source.URL,
 		}
 	}
-	server.handler.install(runtime, web.NewCatalogHandlerWithOrganizationAndEnhancement(runtime, coordinator.Store(), presentation, organization, enhancement))
+	server.handler.install(runtime, web.NewCatalogHandlerWithResourceLimits(runtime, coordinator.Store(), presentation, organization, enhancement, server.config.ResourceLimits))
 	return nil
 }
 

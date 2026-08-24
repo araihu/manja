@@ -10,7 +10,7 @@ import (
 //go:generate go tool envdoc -output ../../docs/environment.md -format markdown -types Config
 //go:generate go run ./cmd/trimdoc ../../docs/environment.md
 type Config struct {
-	// Enforce Manja's conservative catalog source, compilation, startup, and storage budgets.
+	// Enforce Manja's conservative catalog source, compilation, startup, storage, and HTML rendering budgets.
 	ResourceLimits bool `env:"MANJA_RESOURCE_LIMITS" envDefault:"false"`
 	// Enable or disable local docs in the recovery-only runtime. Accepted values are on and off.
 	LocalDocs string `env:"MANJA_LOCAL_DOCS" envDefault:"on"`

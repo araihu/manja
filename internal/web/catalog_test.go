@@ -1333,21 +1333,35 @@ func TestCatalogSocialImageMIMETypeUsesPresentationValue(t *testing.T) {
 	}
 }
 
-func TestCatalogRenderRejectsResponsesOverHardByteLimit(t *testing.T) {
+func TestCatalogRenderByteLimitIsOptIn(t *testing.T) {
 	t.Parallel()
 
 	data := templates.CatalogPageData{
 		Mount:      "/",
 		SnapshotID: catalog.SnapshotID("snapshot-sha256-" + strings.Repeat("a", 64)),
-		Directory:  catalog.CatalogArtifactV1{Title: strings.Repeat("oversized", maxCatalogPageBytes)},
+		Directory:  catalog.CatalogArtifactV1{Title: strings.Repeat("x", maxCatalogPageBytes)},
 	}
-	response := httptest.NewRecorder()
-	(&CatalogHandler{}).renderCatalogPage(response, httptest.NewRequest(http.MethodGet, "/", nil), data)
-	if response.Code != http.StatusInternalServerError {
-		t.Fatalf("oversized render status = %d, want 500", response.Code)
-	}
-	if response.Body.Len() > 1024 {
-		t.Fatalf("oversized render error body = %d bytes, want bounded", response.Body.Len())
+	for name, test := range map[string]struct {
+		resourceLimits bool
+		status         int
+	}{
+		"default off": {resourceLimits: false, status: http.StatusOK},
+		"opted in":    {resourceLimits: true, status: http.StatusInternalServerError},
+	} {
+		t.Run(name, func(t *testing.T) {
+			handler := NewCatalogHandlerWithResourceLimits(nil, nil, nil, OrganizationPresentation{}, CatalogEnhancementPolicy{}, test.resourceLimits).(*CatalogHandler)
+			response := httptest.NewRecorder()
+			handler.renderCatalogPage(response, httptest.NewRequest(http.MethodGet, "/", nil), data)
+			if response.Code != test.status {
+				t.Fatalf("oversized render status = %d, want %d", response.Code, test.status)
+			}
+			if test.resourceLimits && response.Body.Len() > 1024 {
+				t.Fatalf("oversized render error body = %d bytes, want bounded", response.Body.Len())
+			}
+			if !test.resourceLimits && response.Body.Len() <= maxCatalogPageBytes {
+				t.Fatalf("unbounded render body = %d bytes, want over former %d-byte limit", response.Body.Len(), maxCatalogPageBytes)
+			}
+		})
 	}
 }
 
@@ -1388,7 +1402,10 @@ func TestCatalogMaxOperationGroupRejectsSelectedPageBeyondByteBound(t *testing.T
 			{Path: "details/max.json", Kind: "detail", Length: uint64(len(detailBytes)), SHA256: hex.EncodeToString(detailDigest[:])},
 		}},
 	}
-	handler := &CatalogHandler{children: memoryCatalogChildren{"details/max.json": detailBytes}, details: catalog.NewDetailCache()}
+	handler := NewCatalogHandlerWithResourceLimits(
+		nil, memoryCatalogChildren{"details/max.json": detailBytes}, nil,
+		OrganizationPresentation{}, CatalogEnhancementPolicy{}, true,
+	).(*CatalogHandler)
 	data, err := handler.catalogPageData(context.Background(), snapshot, "/", "max", string(selected.DetailID), "", "", "")
 	if err != nil {
 		t.Fatal(err)
