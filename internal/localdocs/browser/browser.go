@@ -118,9 +118,10 @@ func (browser *Browser) Render(ctx context.Context, route Route) (Page, error) {
 	}
 	documentHref := browser.descriptor.PublicationBase + "documents/" + document.Key + "/"
 	sidebar := browser.renderSidebar(document, route)
+	sidebar = browser.deploymentHTML(sidebar)
 	if route.Selected == "" {
 		main, err := browser.renderDocument(ctx, document, documentHref)
-		return Page{MainHTML: main, SidebarHTML: sidebar, Title: document.Key, Canonical: documentHref}, err
+		return Page{MainHTML: browser.deploymentHTML(main), SidebarHTML: sidebar, Title: document.Key, Canonical: documentHref}, err
 	}
 	detail, err := browser.detail(document, domain.DetailID(route.Selected))
 	if err != nil {
@@ -129,16 +130,25 @@ func (browser *Browser) Render(ctx context.Context, route Route) (Page, error) {
 	canonical := documentHref + "?selected=" + url.QueryEscape(route.Selected) + "#" + url.PathEscape(route.Selected)
 	if detail.Operation != nil {
 		main, title, err := browser.renderOperation(ctx, document, detail, documentHref, route.Groups)
-		return Page{MainHTML: main, SidebarHTML: sidebar, Title: title, Canonical: canonical}, err
+		return Page{MainHTML: browser.deploymentHTML(main), SidebarHTML: sidebar, Title: title, Canonical: canonical}, err
 	}
 	if detail.Schema != nil {
 		main, title, err := browser.renderSchema(ctx, document, detail, documentHref, route.Node)
 		if route.Node != nil {
 			canonical = documentHref + "?node=" + strconv.FormatUint(uint64(*route.Node), 10) + "&selected=" + url.QueryEscape(route.Selected) + "#schema-node-panel"
 		}
-		return Page{MainHTML: main, SidebarHTML: sidebar, Title: title, Canonical: canonical}, err
+		return Page{MainHTML: browser.deploymentHTML(main), SidebarHTML: sidebar, Title: title, Canonical: canonical}, err
 	}
 	return Page{}, errors.New("local docs detail kind is invalid")
+}
+
+func (browser *Browser) deploymentHTML(value string) string {
+	base := browser.descriptor.Static.DeploymentBase
+	if base == "/" {
+		return value
+	}
+	value = strings.ReplaceAll(value, `="/assets/`, `="`+base+`assets/`)
+	return strings.ReplaceAll(value, `="/manja-assets/`, `="`+base+`manja-assets/`)
 }
 
 func (browser *Browser) Search(ctx context.Context, query string) ([]catalog.SearchRecordV1, error) {

@@ -130,6 +130,9 @@ func VerifyExport(ctx context.Context, output string) (ExportReceipt, error) {
 	if _, ok := actual[exportManifestPath]; !ok {
 		return ExportReceipt{}, errors.New("export manifest is missing")
 	}
+	if err := verifyExportStructure(root, manifest, declared); err != nil {
+		return ExportReceipt{}, err
+	}
 	return exportReceipt(manifest), nil
 }
 

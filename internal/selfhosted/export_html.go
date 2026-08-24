@@ -55,6 +55,12 @@ func rewriteHTMLChildren(parent *html.Node, basePath string, catalogContext *exp
 				switch attribute.Key {
 				case "hx-get", "data-search-fallback-url":
 					continue
+				case "data-goshtoso-dependencies":
+					rewritten, err := rewriteDependencyURLs(attribute.Val, basePath)
+					if err != nil {
+						return err
+					}
+					attribute.Val = rewritten
 				case "href", "src", "action", "data-search-child-base":
 					rewritten, err := rewriteHTMLURL(node, attribute.Key, attribute.Val, basePath, catalogContext)
 					if err != nil {
@@ -72,6 +78,38 @@ func rewriteHTMLChildren(parent *html.Node, basePath string, catalogContext *exp
 		node = next
 	}
 	return nil
+}
+
+func rewriteDependencyURLs(value, basePath string) (string, error) {
+	var config map[string]any
+	if err := json.Unmarshal([]byte(value), &config); err != nil {
+		return "", errors.New("export dependency manifest is invalid")
+	}
+	dependencies, ok := config["dependencies"].([]any)
+	if !ok {
+		return "", errors.New("export dependency manifest has no dependencies")
+	}
+	for _, candidate := range dependencies {
+		dependency, ok := candidate.(map[string]any)
+		if !ok {
+			return "", errors.New("export dependency entry is invalid")
+		}
+		local, _ := dependency["fallback_url"].(string)
+		if !strings.HasPrefix(local, "/") {
+			local, _ = dependency["primary_url"].(string)
+		}
+		if !strings.HasPrefix(local, "/") {
+			return "", errors.New("export dependency has no local asset")
+		}
+		local = prefixExportBase(basePath, local)
+		dependency["primary_url"] = local
+		dependency["fallback_url"] = local
+	}
+	data, err := json.Marshal(config)
+	if err != nil {
+		return "", errors.New("export dependency manifest cannot be encoded")
+	}
+	return string(data), nil
 }
 
 func removeStaticHTMLNode(node *html.Node) bool {

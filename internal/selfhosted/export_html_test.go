@@ -43,3 +43,15 @@ func TestRewriteExportHTMLRejectsExternalResources(t *testing.T) {
 		}
 	}
 }
+
+func TestRewriteExportHTMLPinsRuntimeDependenciesToLocalSubpath(t *testing.T) {
+	input := `<html><head><script src="/assets/js/dependency-loader.js" data-goshtoso-dependencies='{"dependencies":[{"primary_url":"https://cdn.example/runtime.js","fallback_url":"/assets/js/runtime.js"},{"primary_url":"/assets/js/goshtoso.min.js","fallback_url":"/assets/js/goshtoso.min.js"}]}'></script></head></html>`
+	output, err := rewriteExportHTML([]byte(input), "/group/project/", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := string(output)
+	if strings.Contains(body, "cdn.example") || !strings.Contains(body, `/group/project/assets/js/runtime.js`) || !strings.Contains(body, `/group/project/assets/js/goshtoso.min.js`) {
+		t.Fatalf("runtime dependencies were not pinned locally: %s", body)
+	}
+}

@@ -800,7 +800,7 @@ if (typeof importScripts === "function" && typeof globalThis !== "undefined" && 
     const cache = await scope.caches.open("manja-static-export-shells-v1::" + encodeURIComponent(DEPLOYMENT_BASE))
     const url = new URL(request.url)
     const cached = await cache.match(url.origin + url.pathname)
-    if (cached) return cached
+    if (cached) return new Response(await cached.arrayBuffer(), { status: cached.status, statusText: cached.statusText, headers: cached.headers })
     return fetchImplementation(request)
   }
 
