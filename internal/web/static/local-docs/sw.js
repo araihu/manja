@@ -1,5 +1,10 @@
 if (typeof importScripts === "function" && typeof globalThis !== "undefined" && !globalThis.ManjaLocalDocsAssetManifest) {
-  try { importScripts("/manja-assets/local-docs/runtime-assets.js") } catch (_) {}
+  try {
+    const pathname = globalThis.location && globalThis.location.pathname || ""
+    const suffix = "/manja-assets/local-docs/sw.js"
+    const base = pathname.endsWith(suffix) ? pathname.slice(0, -suffix.length) + "/" : pathname.endsWith("/sw.js") ? pathname.slice(0, -"sw.js".length) : "/"
+    importScripts(base + "manja-assets/local-docs/runtime-assets.js")
+  } catch (_) {}
 }
 
 (function (root, factory) {
@@ -10,7 +15,12 @@ if (typeof importScripts === "function" && typeof globalThis !== "undefined" && 
   if (typeof ServiceWorkerGlobalScope !== "undefined" && root instanceof ServiceWorkerGlobalScope) {
     let storageAPI = root.ManjaLocalDocsStorage
     if (!storageAPI && typeof root.importScripts === "function") {
-      try { root.importScripts("/manja-assets/local-docs/storage.js"); storageAPI = root.ManjaLocalDocsStorage } catch (_) {}
+      try {
+        const pathname = root.location && root.location.pathname || ""
+        const suffix = "/manja-assets/local-docs/sw.js"
+        const base = pathname.endsWith(suffix) ? pathname.slice(0, -suffix.length) + "/" : pathname.endsWith("/sw.js") ? pathname.slice(0, -"sw.js".length) : "/"
+        root.importScripts(base + "manja-assets/local-docs/storage.js"); storageAPI = root.ManjaLocalDocsStorage
+      } catch (_) {}
     }
     if (storageAPI) api.register(root, { storageAPI })
   }
@@ -23,14 +33,18 @@ if (typeof importScripts === "function" && typeof globalThis !== "undefined" && 
   const MAX_SPEC_BYTES = 64 * 1024 * 1024
   const MAX_CHILD_BYTES = 2 * 1024 * 1024
   const DIGEST_PATTERN = /^[0-9a-f]{64}$/
-  const ROOT_SCOPE = "/"
-  const STATIC_PREFIX = "/manja-assets/local-docs/"
+  const WORKER_PATH = global && global.location && global.location.pathname || ""
+  const EMBEDDED_WORKER_SUFFIX = "/manja-assets/local-docs/sw.js"
+  const STATIC_EXPORT = Boolean(WORKER_PATH) && !WORKER_PATH.endsWith(EMBEDDED_WORKER_SUFFIX)
+  const DEPLOYMENT_BASE = !WORKER_PATH ? "/" : WORKER_PATH.endsWith(EMBEDDED_WORKER_SUFFIX) ? WORKER_PATH.slice(0, -EMBEDDED_WORKER_SUFFIX.length) + "/" : WORKER_PATH.endsWith("/sw.js") ? WORKER_PATH.slice(0, -"sw.js".length) : "/"
+  const ROOT_SCOPE = DEPLOYMENT_BASE
+  const STATIC_PREFIX = DEPLOYMENT_BASE + "manja-assets/local-docs/"
   const WITHDRAWAL_STATUS = new Set([401, 403, 404, 410])
   const PUBLIC_STATES = new Set(["private", "revoked", "deleted", "disabled"])
   const DEFAULT_STATIC_ASSETS = [
     STATIC_PREFIX + "sw.js",
     STATIC_PREFIX + "storage.js",
-    "/manja-assets/local-docs.js",
+    DEPLOYMENT_BASE + "manja-assets/local-docs.js",
     STATIC_PREFIX + "wasm_exec.js",
     STATIC_PREFIX + "manja.wasm",
     STATIC_PREFIX + "manja.wasm.br",
@@ -44,7 +58,8 @@ if (typeof importScripts === "function" && typeof globalThis !== "undefined" && 
     try { assetManifest = require("./runtime-assets.js") } catch (_) {}
   }
   const DEFAULT_STATIC_ASSET_EXPECTATIONS = Object.freeze(DEFAULT_STATIC_ASSETS.reduce((result, path) => {
-    const expected = assetManifest && assetManifest.schemaVersion === 1 && assetManifest.assets && assetManifest.assets[path]
+    const manifestPath = DEPLOYMENT_BASE === "/" ? path : "/" + path.slice(DEPLOYMENT_BASE.length)
+    const expected = assetManifest && assetManifest.schemaVersion === 1 && assetManifest.assets && assetManifest.assets[manifestPath]
     if (expected && Number.isSafeInteger(expected.length) && expected.length > 0 && expected.length <= MAX_ASSET_BYTES && typeof expected.sha256 === "string" && DIGEST_PATTERN.test(expected.sha256)) {
       result[path] = Object.freeze({ length: expected.length, sha256: expected.sha256 })
     }
@@ -94,13 +109,13 @@ if (typeof importScripts === "function" && typeof globalThis !== "undefined" && 
       catalogUrl: base + "catalog.json",
       searchDataBase: base + "search-data/",
       projectionDataBase: base + "projection-data/",
-      offlineShellUrl: descriptor.offlineShellUrl || descriptor.publicationBase + "_manja/offline-shell",
+      offlineShellUrl: descriptor.static && descriptor.static.offlineShellUrl || descriptor.offlineShellUrl || descriptor.publicationBase + "_manja/offline-shell",
     }
   }
 
   function isPublicShellURL(value, descriptor, origin) {
     if (!descriptor || typeof descriptor.publicationBase !== "string") return false
-    const expected = descriptor.publicationBase + "_manja/offline-shell"
+    const expected = descriptor.static && descriptor.static.offlineShellUrl || descriptor.publicationBase + "_manja/offline-shell"
     const parsed = sameOriginURL(value, origin)
     return Boolean(parsed) && value === expected && !isManagementPath(parsed.pathname)
   }
@@ -117,6 +132,7 @@ if (typeof importScripts === "function" && typeof globalThis !== "undefined" && 
     if (!input || typeof input !== "object" || input.schemaVersion !== 1 || !validCatalogKey(input.catalogId) || !validPublicationKey(input.publicationKey) || !validIdentity(input.revisionId) || input.projectionFormat !== "projection-v2" || !validDigest(input.projectionDigest) || input.snapshotId !== "snapshot-sha256-" + input.projectionDigest) fail("descriptor identity is invalid")
     if (!validBase(input.publicationBase, origin)) fail("descriptor publication base is invalid")
     if (input.public !== true || input.anonymous !== true || input.private === true || input.disabled === true || (input.eligibility && (input.eligibility.public !== true || input.eligibility.anonymous !== true))) fail("descriptor public eligibility is invalid")
+    if (input.static !== undefined && (!input.static || !validBase(input.static.deploymentBase, origin) || input.publicationBase.indexOf(input.static.deploymentBase) !== 0 || input.static.workerUrl !== input.static.deploymentBase + "sw.js" || input.static.workerScope !== input.static.deploymentBase || input.static.offlineShellUrl !== input.publicationBase + "_manja/offline-shell/" || input.static.exportManifestUrl !== input.static.deploymentBase + "_manja/export.json")) fail("descriptor static route is invalid")
     const routes = expectedDescriptorRoutes(input)
     if (!isPublicShellURL(routes.offlineShellUrl, input, origin)) fail("descriptor offline shell route is not public")
     Object.keys(routes).forEach((key) => {
@@ -641,7 +657,7 @@ if (typeof importScripts === "function" && typeof globalThis !== "undefined" && 
   }
 
   function isStaticAssetPath(pathname) {
-    if (pathname === "/manja-assets/local-docs.js") return true
+    if (pathname === DEPLOYMENT_BASE + "manja-assets/local-docs.js") return true
     if (typeof pathname !== "string" || pathname.indexOf(STATIC_PREFIX) !== 0) return false
     const name = pathname.slice(STATIC_PREFIX.length)
     return ["sw.js", "storage.js", "local-docs.js", "wasm_exec.js", "manja.wasm", "manja.wasm.br"].includes(name)
@@ -760,6 +776,34 @@ if (typeof importScripts === "function" && typeof globalThis !== "undefined" && 
     } catch (_) { return false }
   }
 
+  async function cacheStaticExportShells(scope, fetchImplementation) {
+    if (!STATIC_EXPORT || !scope.caches) return true
+    const manifestURL = DEPLOYMENT_BASE + "_manja/export.json"
+    const response = await fetchImplementation(manifestURL, { cache: "no-store", credentials: "same-origin" })
+    if (!response || !response.ok) return false
+    const manifest = await response.json()
+    if (!manifest || manifest.schemaVersion !== 1 || manifest.basePath !== DEPLOYMENT_BASE || !Array.isArray(manifest.files)) return false
+    const cache = await scope.caches.open("manja-static-export-shells-v1::" + encodeURIComponent(DEPLOYMENT_BASE))
+    for (const entry of manifest.files) {
+      if (!entry || typeof entry.path !== "string" || !entry.path.endsWith("index.html") || entry.path.indexOf("..") !== -1 || entry.path.charAt(0) === "/" || !Number.isSafeInteger(entry.length) || entry.length <= 0 || entry.length > MAX_SHELL_BYTES || !validDigest(entry.sha256)) continue
+      const shell = await fetchImplementation(DEPLOYMENT_BASE + entry.path, { cache: "no-store", credentials: "same-origin" })
+      if (!shell || !shell.ok) return false
+      const bytes = await readBoundedResponse(shell.clone(), entry.length)
+      if (bytes.byteLength !== entry.length || await sha256(bytes) !== entry.sha256) return false
+      const route = entry.path === "index.html" ? DEPLOYMENT_BASE : DEPLOYMENT_BASE + entry.path.slice(0, -"index.html".length)
+      await cache.put(route, shell.clone())
+    }
+    return true
+  }
+
+  async function staticExportNavigation(scope, request, fetchImplementation) {
+    const cache = await scope.caches.open("manja-static-export-shells-v1::" + encodeURIComponent(DEPLOYMENT_BASE))
+    const url = new URL(request.url)
+    const cached = await cache.match(url.origin + url.pathname)
+    if (cached) return cached
+    return fetchImplementation(request)
+  }
+
   function findDescriptor(descriptors, requestURL) {
     for (const descriptor of descriptors.values()) {
       if (isAllowedRequest({ method: "GET", url: requestURL.href }, descriptor, requestURL.origin)) return descriptor
@@ -845,6 +889,7 @@ if (typeof importScripts === "function" && typeof globalThis !== "undefined" && 
     scope.addEventListener("install", (event) => {
       event.waitUntil(Promise.resolve().then(async () => {
         if (scope.caches) await cacheStaticAssets(scope, storageAPI && storageAPI.CACHE_NAME || "manja-local-docs-assets-v1", fetchImplementation, [...DEFAULT_STATIC_ASSETS, ...(Array.isArray(options.assets) ? options.assets : [])])
+        if (STATIC_EXPORT) await cacheStaticExportShells(scope, fetchImplementation)
         if (typeof scope.skipWaiting === "function") await scope.skipWaiting()
       }))
     })
@@ -916,6 +961,10 @@ if (typeof importScripts === "function" && typeof globalThis !== "undefined" && 
       let url
       try { url = new URL(request.url) } catch (_) { return }
       if (url.origin !== origin) return
+      if (STATIC_EXPORT && request.mode === "navigate" && url.pathname.indexOf(DEPLOYMENT_BASE) === 0) {
+        event.respondWith(staticExportNavigation(scope, request, fetchImplementation))
+        return
+      }
       if (isStaticAssetPath(url.pathname) && scope.caches) {
         event.respondWith(cachedStaticAsset(scope, request, storageAPI && storageAPI.CACHE_NAME || "manja-local-docs-assets-v1", fetchImplementation))
         return
@@ -953,6 +1002,7 @@ if (typeof importScripts === "function" && typeof globalThis !== "undefined" && 
   return {
     DEFAULT_STATIC_ASSETS,
     DEFAULT_STATIC_ASSET_EXPECTATIONS,
+    DEPLOYMENT_BASE,
     MAX_ASSET_BYTES,
     MAX_CHILD_BYTES,
     MAX_MANIFEST_BYTES,
@@ -962,6 +1012,7 @@ if (typeof importScripts === "function" && typeof globalThis !== "undefined" && 
     cachedOrFetched,
     cachedStaticAsset,
     cacheOfflineShell,
+    cacheStaticExportShells,
     cacheStaticAssets,
     commitCandidate,
     createRevalidator,
@@ -981,6 +1032,7 @@ if (typeof importScripts === "function" && typeof globalThis !== "undefined" && 
     sameOriginURL,
     sha256,
     staticAssetExpectation,
+    staticExportNavigation,
     validateDescriptor,
     validateManifestChild,
     validatePublicShellResponse,

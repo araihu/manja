@@ -51,6 +51,24 @@ test('worker validates public eligibility and intercepts only same-origin reader
   assert.equal(worker.isStaticAssetPath('/manja-assets/local-docs/sw.js'), true)
 })
 
+test('worker admits canonical static trailing shell authority', () => {
+  const value = descriptor({
+    publicationKey: 'public-api',
+    publicationBase: '/group/project/docs/',
+    projectionManifestUrl: `/group/project/docs/snapshots/snapshot-sha256-${'a'.repeat(64)}/manifest.json`,
+    catalogUrl: `/group/project/docs/snapshots/snapshot-sha256-${'a'.repeat(64)}/catalog.json`,
+    searchDataBase: `/group/project/docs/snapshots/snapshot-sha256-${'a'.repeat(64)}/search-data/`,
+    projectionDataBase: `/group/project/docs/snapshots/snapshot-sha256-${'a'.repeat(64)}/projection-data/`,
+    offlineShellUrl: undefined,
+    static: {
+      deploymentBase: '/group/project/', workerUrl: '/group/project/sw.js', workerScope: '/group/project/',
+      offlineShellUrl: '/group/project/docs/_manja/offline-shell/', exportManifestUrl: '/group/project/_manja/export.json',
+    },
+  })
+  assert.equal(worker.validateDescriptor(value, 'https://docs.test').offlineShellUrl, value.static.offlineShellUrl)
+  assert.throws(() => worker.validateDescriptor({ ...value, static: { ...value.static, workerScope: '/' } }, 'https://docs.test'), /static route/)
+})
+
 test('worker runtime assets use an exact same-origin allowlist', () => {
   assert.deepEqual(worker.DEFAULT_STATIC_ASSETS, [
     '/manja-assets/local-docs/sw.js',
