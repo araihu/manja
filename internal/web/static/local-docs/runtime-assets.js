@@ -15,8 +15,8 @@
       "/manja-assets/local-docs/storage.js": Object.freeze({ length: 43160, sha256: "c3a31f9b8baa1138811aabc4b19d9781db085c450507a60cb52d888b0e10a180" }),
       "/manja-assets/local-docs.js": Object.freeze({ length: 23410, sha256: "5d371c71d4db710f721c1cfccc846c5e390fd40da50147a2efb628bb6f8174ac" }),
       "/manja-assets/local-docs/wasm_exec.js": Object.freeze({ length: 16992, sha256: "0c949f4996f9a89698e4b5c586de32249c3b69b7baadb64d220073cc04acba14" }),
-      "/manja-assets/local-docs/manja.wasm": Object.freeze({ length: 2120526, sha256: "ac0f768328de603c27820941f0fb9248e29c55a9baa0d7824e3822b92d352aab" }),
-      "/manja-assets/local-docs/manja.wasm.br": Object.freeze({ length: 475479, sha256: "3ed06ecf74038cc79fd46e56ccec375b6ca803c86829b8537c0be9b67df63324" }),
+      "/manja-assets/local-docs/manja.wasm": Object.freeze({ length: 14504586, sha256: "79ab7594150dd84806f8911843752cb092c0658d73ca515406d8f13e6256eb10" }),
+      "/manja-assets/local-docs/manja.wasm.br": Object.freeze({ length: 2662294, sha256: "23a98614bccd4ec7b2a6c2add3f0e92d642e4b80557eaf44c242aef3376ded97" }),
     }),
   })
 }))
