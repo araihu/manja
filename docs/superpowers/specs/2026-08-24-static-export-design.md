@@ -8,25 +8,24 @@
 
 ## Context
 
-Manja v0.1.2 builds durable catalog snapshots and serves eligible public,
-anonymous catalogs through the server-rendered catalog handler. The same page
-can activate the local-docs Service Worker, storage layer, projection data, and
-Wasm admission boundary. That runtime still depends on Manja for its first
-shell and for HTML or HTMX states the browser has not already cached.
+Manja v0.1.2 builds durable catalog snapshots and conditionally serves the
+local-docs enhancement for public, anonymous catalogs. The same page can
+activate the Service Worker, storage layer, projection data, and Wasm admission
+boundary. That runtime still depends on Manja for its first shell and for HTML
+or HTMX states the browser has not already cached.
 
 Generic static hosts need a complete directory instead. The directory must
-contain every public input needed by the local renderer, work below either `/`
+contain every input needed by the local renderer, work below either `/`
 or a configured project subpath, support direct document URLs and reloads, and
 prove that no link or runtime request depends on a Manja process.
 
 ## Decisions
 
 - Add `manja export`; do not change `manja build` semantics.
-- Export only catalogs explicitly configured with `localDocs.public: true`,
-  `localDocs.anonymous: true`, and a valid publication key.
-- Ignore ineligible catalogs before source loading, parsing, snapshot building,
-  or artifact enumeration. They may appear only as bounded warnings in the
-  export receipt.
+- Export every configured catalog. `localDocs.public`, `localDocs.anonymous`,
+  and `localDocs.publicationKey` do not select or exclude export content.
+- Treat invocation as the explicit disclosure boundary. The operator owns the
+  output and decides where it is published.
 - Reuse the current snapshot compiler, projection model, Goshtoso templates,
   local-docs render package, embedded assets, and validation boundaries.
 - Complete browser-side rendering and search from validated projection data.
@@ -53,7 +52,8 @@ prove that no link or runtime request depends on a Manja process.
 
 ## Non-goals
 
-- No export of private, authenticated, or partially configured catalogs.
+- No visibility filtering, catalog selection flags, or access-control policy.
+  Those can be designed later if a concrete need appears.
 - No browser OpenAPI parser, try-it proxy, management API, or authoring UI.
 - No host-specific redirect, rewrite, or deployment configuration.
 - No new visual design or parallel static-only template system.
@@ -95,42 +95,30 @@ The JSON stdout receipt has this shape:
       "snapshotId": "snapshot-sha256-..."
     }
   ],
-  "warnings": [
-    {
-      "code": "catalog_ineligible",
-      "catalogId": "private-preview"
-    }
-  ],
   "manifest": "_manja/export.json"
 }
 ```
 
-Warnings contain a stable code and catalog ID only. They do not expose source
-locations, credentials, parser errors, or source contents. When no catalogs are
-eligible, export succeeds with no catalog payload, zero catalogs, the export
-manifest, and warnings for skipped catalogs.
+`publicationKey` is the catalog ID in static exports. This creates a unique,
+stable cache namespace without consulting visibility configuration. Renderer
+configuration still passes its existing validation before export.
 
-Malformed local-docs configuration remains a configuration error. A catalog
-that sets only one authority flag or supplies an invalid publication key is not
-silently downgraded to ineligible.
+## Catalog Selection and Disclosure Boundary
 
-## Eligibility Boundary
+Renderer configuration is decoded and validated once. Every configured catalog
+then follows the normal source loading, parsing, snapshot building, and artifact
+capture path. Organization navigation and presentation retain the complete
+configured catalog set.
 
-Renderer configuration is decoded and validated once. The export composition
-boundary partitions catalog configuration before constructing sources:
+The export descriptor derives its cache namespace from the validated catalog ID
+and carries export authority separately from server-side local-docs visibility.
+No provider-neutral `domain`, `application`, or public `renderer` type acquires
+CLI visibility policy.
 
-1. fully eligible public and anonymous catalogs enter an export-only renderer
-   configuration;
-2. wholly unconfigured local-docs catalogs become receipt warnings;
-3. malformed partial local-docs configuration fails normal config validation.
-
-Organization navigation and presentation are filtered to the eligible set.
-Ineligible sources are never opened, so an unreachable private source cannot
-fail or delay a public static export.
-
-This filtering stays in `internal/selfhosted`. Provider-neutral `domain`,
-`application`, and public `renderer` types do not acquire CLI or static-host
-policy.
+**Security boundary:** export deliberately materializes every configured
+catalog, including catalogs otherwise served privately or with no local-docs
+enhancement. Publishing the output makes that data available to the static
+host's audience. The command does not infer or preserve Manja authentication.
 
 ## Artifact Layout
 
@@ -157,7 +145,7 @@ public/
   _manja/export.json
 ```
 
-The exporter obtains public bytes through the active renderer HTTP handler
+The exporter obtains rendered bytes through the active renderer HTTP handler
 instead of decoding private catalog-store layout. Snapshot manifests remain the
 authority for immutable child inventory, lengths, kinds, and SHA-256 digests.
 Every exported child must match that manifest before it is written.
@@ -209,9 +197,10 @@ contract.
 
 ### Activation
 
-Static shell HTML contains the normal public eligibility descriptor plus an
-export descriptor bound to the export manifest and deployment base. The browser
-validates both before enabling static routing.
+Static shell HTML contains an export descriptor bound to the catalog ID,
+snapshot, export manifest, and deployment base. The browser validates it before
+enabling static routing. Server local-docs visibility flags are not part of this
+descriptor.
 
 Local-docs activation remains fail closed:
 
@@ -262,7 +251,7 @@ base only and excludes management/API paths.
 
 After offline readiness:
 
-- navigation receives the cached catalog shell for its eligible publication;
+- navigation receives the cached catalog shell for its exported publication;
 - immutable snapshot and asset requests receive verified cached bytes;
 - the page renderer resolves URL state from the complete local generation;
 - unknown, cross-origin, non-GET, and out-of-base requests pass through.
@@ -273,10 +262,9 @@ After offline readiness:
 
 - schema version and base path;
 - Manja/runtime version identity;
-- eligible catalog, publication, revision, and snapshot identities;
+- exported catalog, publication, revision, and snapshot identities;
 - every relative output path, byte length, media type, and SHA-256 digest;
-- shell routes and descriptor identities;
-- warning codes for skipped catalogs.
+- shell routes and descriptor identities.
 
 The manifest excludes itself from its file entries. Entries are sorted by
 relative path; exact-file verification compares those entries plus the manifest
@@ -294,7 +282,7 @@ The verifier checks:
 - exact file-set equality, rejecting missing and undeclared files;
 - every declared length and SHA-256 digest;
 - required shell, worker, Wasm, runtime, manifest, search, projection, and source
-  files for each eligible catalog;
+  files for each exported catalog;
 - descriptor/snapshot/publication identity agreement;
 - parsed internal HTML links and asset references resolve within the tree after
   removing the declared base-path prefix;
@@ -307,8 +295,10 @@ directory that CI will publish.
 
 ## Failure and Security Boundaries
 
-- Only explicit public and anonymous authority permits export.
-- Export filtering happens before source construction for ineligible catalogs.
+- Invocation authorizes export of every configured catalog; visibility is not a
+  selection input.
+- Static export descriptors use catalog IDs as cache namespaces and cannot
+  inherit server authentication or credentials.
 - Same-origin canonical paths only; no credentials, userinfo, query-bearing
   resources, traversal, symlinks, or device files enter the output.
 - Every snapshot child and product asset is bounded and hashed before staging.
@@ -332,7 +322,7 @@ directory that CI will publish.
 
 TDD proceeds in independently runnable slices:
 
-1. CLI parsing, eligibility filtering, warnings, and empty export;
+1. CLI parsing, all-catalog selection, and catalog-ID cache namespaces;
 2. canonical base-path and safe staging/output publication;
 3. artifact capture, manifest creation, and exact-file verification;
 4. root and subpath HTML/descriptor rewriting;
