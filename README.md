@@ -160,6 +160,25 @@ failure, and `2` means configuration, input, parsing, or execution failed.
 GitHub Actions and connected Manja review are later subprojects; these examples
 work locally and in any CI environment with the repository checked out.
 
+## Static export
+
+Materialize every configured renderer catalog for an ordinary static host:
+
+```bash
+./bin/manja export \
+  --renderer-config ./renderer.yaml \
+  --data-dir ./data \
+  --output ./public \
+  --base-path /
+
+./bin/manja export verify --output ./public
+```
+
+**Export ignores catalog visibility and publishes every configured catalog.**
+Anyone who can read the static host can read every exported catalog. See
+[Static export](docs/static-export.md) for subpath hosting, output semantics,
+and server requirements.
+
 ## Docker Image
 
 Manja images are published to GitHub Container Registry as
