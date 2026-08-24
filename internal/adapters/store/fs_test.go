@@ -152,8 +152,8 @@ func TestFileStoreRejectsInvalidUTF8ProjectDisplayFieldsBeforeWriteAndOnReload(t
 			if err != nil {
 				t.Fatal(err)
 			}
-			raw = bytes.Replace(raw, []byte("\\ufffd"), []byte{0xff}, 1)
-			if bytes.Contains(raw, []byte("\\ufffd")) || !bytes.Contains(raw, []byte{0xff}) {
+			raw = bytes.Replace(raw, []byte("\ufffd"), []byte{0xff}, 1)
+			if bytes.Contains(raw, []byte("\ufffd")) || !bytes.Contains(raw, []byte{0xff}) {
 				t.Fatal("test fixture did not contain one raw invalid UTF-8 byte")
 			}
 			projectPath := filepath.Join(root, "projects", "payments.json")

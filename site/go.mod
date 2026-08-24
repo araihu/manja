@@ -1,6 +1,6 @@
 module github.com/araihu/manja/site
 
-go 1.26.6
+go 1.27.0
 
 require github.com/araihu/manja v0.0.0
 
