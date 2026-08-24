@@ -20,6 +20,7 @@ import (
 
 	"github.com/araihu/manja/application/catalog"
 	"github.com/araihu/manja/internal/adapters/catalogjson"
+	"github.com/araihu/manja/internal/localdocs"
 	"github.com/araihu/manja/internal/web"
 	"github.com/araihu/manja/renderer"
 )
@@ -108,15 +109,25 @@ func exportFromHandler(ctx context.Context, handler http.Handler, receipts []ren
 	}
 
 	catalogReceipts := make([]ExportCatalogReceipt, 0, len(receipts))
+	rootCatalog := false
 	for _, active := range receipts {
-		catalogReceipt, captureErr := captureCatalog(ctx, handler, &writer, active)
+		catalogReceipt, captureErr := captureCatalog(ctx, handler, &writer, active, basePath)
 		if captureErr != nil {
 			return ExportReceipt{}, captureErr
 		}
+		rootCatalog = rootCatalog || active.Mount == "/"
 		catalogReceipts = append(catalogReceipts, catalogReceipt)
 	}
 	if !writer.has("search/index.html") {
 		if err = writer.copy("index.html", "search/index.html"); err != nil {
+			return ExportReceipt{}, err
+		}
+	}
+	if !rootCatalog {
+		if err = writer.rewriteHTML("index.html", basePath, nil); err != nil {
+			return ExportReceipt{}, err
+		}
+		if err = writer.rewriteHTML("search/index.html", basePath, nil); err != nil {
 			return ExportReceipt{}, err
 		}
 	}
@@ -146,7 +157,7 @@ type capturedHTTP struct {
 	mediaType string
 }
 
-func captureCatalog(ctx context.Context, handler http.Handler, writer *exportTreeWriter, active renderer.ActivationReceipt) (ExportCatalogReceipt, error) {
+func captureCatalog(ctx context.Context, handler http.Handler, writer *exportTreeWriter, active renderer.ActivationReceipt, basePath string) (ExportCatalogReceipt, error) {
 	mountPrefix := strings.Trim(active.Mount, "/")
 	shellPath := path.Join(mountPrefix, "index.html")
 	if shellPath == "." {
@@ -216,6 +227,24 @@ func captureCatalog(ctx context.Context, handler http.Handler, writer *exportTre
 		}
 		if err := captureResource(ctx, handler, writer, requestPath, outputPath, child.Length, child.SHA256); err != nil {
 			return ExportCatalogReceipt{}, err
+		}
+	}
+	publicationBase := prefixExportBase(basePath, catalogRoute(active.Mount))
+	if !strings.HasSuffix(publicationBase, "/") {
+		publicationBase += "/"
+	}
+	descriptor, ok := localdocs.PrepareStaticDescriptor(active.CatalogID, catalog.RuntimeSnapshot{ID: manifest.SnapshotID, Directory: directory, Manifest: manifest}, publicationBase, basePath)
+	if !ok {
+		return ExportCatalogReceipt{}, fmt.Errorf("catalog %q static descriptor is invalid", active.CatalogID)
+	}
+	htmlContext := &exportHTMLCatalog{Mount: active.Mount, SnapshotID: active.SnapshotID, Directory: directory, Descriptor: descriptor}
+	htmlPaths := []string{shellPath, path.Join(mountPrefix, "search/index.html"), path.Join(mountPrefix, "_manja/offline-shell/index.html")}
+	for _, document := range directory.Documents {
+		htmlPaths = append(htmlPaths, path.Join(mountPrefix, "documents", document.Key, "index.html"))
+	}
+	for _, htmlPath := range htmlPaths {
+		if err := writer.rewriteHTML(htmlPath, basePath, htmlContext); err != nil {
+			return ExportCatalogReceipt{}, fmt.Errorf("rewrite catalog %q shell %q: %w", active.CatalogID, htmlPath, err)
 		}
 	}
 	return ExportCatalogReceipt{CatalogID: active.CatalogID, Mount: active.Mount, PublicationKey: active.CatalogID, RevisionID: active.RevisionID, SnapshotID: active.SnapshotID}, nil
@@ -367,6 +396,24 @@ func (writer *exportTreeWriter) copy(source, target string) error {
 		return err
 	}
 	return writer.write(target, data, writer.entries[source].MediaType)
+}
+
+func (writer *exportTreeWriter) rewriteHTML(name, basePath string, catalogContext *exportHTMLCatalog) error {
+	filename := filepath.Join(writer.root, filepath.FromSlash(name))
+	data, err := os.ReadFile(filename)
+	if err != nil {
+		return err
+	}
+	rewritten, err := rewriteExportHTML(data, basePath, catalogContext)
+	if err != nil {
+		return err
+	}
+	if err := os.WriteFile(filename, rewritten, 0o644); err != nil {
+		return err
+	}
+	digest := sha256.Sum256(rewritten)
+	writer.entries[name] = exportFileEntry{Path: name, Length: uint64(len(rewritten)), MediaType: "text/html", SHA256: hex.EncodeToString(digest[:])}
+	return nil
 }
 
 func (writer *exportTreeWriter) write(name string, data []byte, mediaType string) error {

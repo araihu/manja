@@ -62,6 +62,50 @@ catalogs:
 	if _, err := VerifyExport(context.Background(), output); err != nil {
 		t.Fatalf("VerifyExport: %v", err)
 	}
+	body, err := os.ReadFile(filepath.Join(output, "private/index.html"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(body), `id="manja-local-docs-descriptor"`) || !strings.Contains(string(body), `"publicationKey":"private"`) || !strings.Contains(string(body), `src="/manja-assets/local-docs.js"`) {
+		t.Fatalf("visibility-disabled static shell lacks export authority: %s", body)
+	}
+}
+
+func TestExportRendererRewritesSubpathDeployment(t *testing.T) {
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "api.json"), []byte(`{"openapi":"3.0.3","info":{"title":"API","version":"v1"},"paths":{}}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	config := `version: 1
+dataDir: data
+catalogs:
+  - id: api
+    mount: /api
+    title: API
+    defaultDocument: api
+    profile: strict-v1
+    source:
+      kind: files
+      root: .
+      include: [api.json]
+`
+	configPath := filepath.Join(root, "renderer.yaml")
+	if err := os.WriteFile(configPath, []byte(config), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	output := filepath.Join(root, "public")
+	if _, err := ExportRenderer(context.Background(), ExportOptions{RendererOptions: RendererOptions{ConfigPath: configPath}, Output: output, BasePath: "/group/project/"}); err != nil {
+		t.Fatal(err)
+	}
+	body, err := os.ReadFile(filepath.Join(output, "api/index.html"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{`src="/group/project/manja-assets/local-docs.js"`, `"deploymentBase":"/group/project/"`, `"publicationBase":"/group/project/api/"`, `href="/group/project/"`} {
+		if !strings.Contains(string(body), want) {
+			t.Errorf("subpath shell missing %q", want)
+		}
+	}
 }
 
 func TestExportRejectsNonEmptyOutputWithoutMutation(t *testing.T) {
