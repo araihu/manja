@@ -175,7 +175,7 @@ jobs:
         fromJSON('["self-hosted","Linux","X64","hostinger-vps-trusted"]') ||
         'ubuntu-latest'
       }}
-    concurrency: deploy-group
+    concurrency: deploy-group-${{ github.event.pull_request.number || github.ref }}
     env:
       MANJA_METADATA: ${{ github.workspace }}/.dagger-inputs/manja-deploy.json
     steps:
