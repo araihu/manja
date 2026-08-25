@@ -2,6 +2,9 @@ package selfhosted
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -9,7 +12,10 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/araihu/manja/application/catalog"
+	"github.com/araihu/manja/internal/adapters/catalogjson"
 	"github.com/araihu/manja/internal/web"
+	"github.com/araihu/manja/renderer"
 )
 
 func TestExportBasePathValidation(t *testing.T) {
@@ -108,6 +114,78 @@ catalogs:
 			t.Errorf("subpath shell missing %q", want)
 		}
 	}
+}
+
+func TestStaticExportCapturesAndVerifiesCatalogAboveRuntimeByteLimit(t *testing.T) {
+	searchBytes, err := catalogjson.EncodeSearchDirectory(catalog.SearchDirectoryV1{SchemaVersion: 1, SearchVersion: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	directory := catalog.CatalogArtifactV1{
+		SchemaVersion: 1, CatalogID: "large", Title: strings.Repeat("x", 4<<20), SearchChild: "search/directory.json",
+	}
+	catalogBytes, err := json.Marshal(directory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(catalogBytes) <= 4<<20 {
+		t.Fatalf("large catalog fixture = %d bytes, want more than 4 MiB", len(catalogBytes))
+	}
+	children := []catalog.ChildIdentityV1{
+		exportTestChild("catalog.json", "catalog", catalogBytes),
+		exportTestChild("search/directory.json", "search-directory", searchBytes),
+	}
+	identity := catalog.SnapshotIdentityV1{
+		SchemaVersion: 1, CatalogID: "large", RevisionID: "files-sha256-large", SourceManifestSHA256: strings.Repeat("a", 64),
+		Versions: catalog.CompilerVersions{ProjectionFormat: "projection-v2"}, Children: children,
+	}
+	identityBytes, err := json.Marshal(identity)
+	if err != nil {
+		t.Fatal(err)
+	}
+	digest := sha256.Sum256(identityBytes)
+	snapshotID := catalog.SnapshotID("snapshot-sha256-" + hex.EncodeToString(digest[:]))
+	manifestBytes, err := catalogjson.EncodeManifest(catalog.ManifestV1{SchemaVersion: 1, SnapshotID: snapshotID, Identity: identity, Children: children})
+	if err != nil {
+		t.Fatal(err)
+	}
+	active := renderer.ActivationReceipt{CatalogID: "large", Mount: "/large", RevisionID: identity.RevisionID, SnapshotID: string(snapshotID)}
+	handler := http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		switch request.URL.Path {
+		case "/large/", "/large/search":
+			response.Header().Set("Content-Type", "text/html")
+			_, _ = response.Write([]byte("<!doctype html><html><body></body></html>"))
+		case "/large/llms.txt":
+			_, _ = response.Write([]byte("Large"))
+		case "/large/snapshots/" + string(snapshotID) + "/manifest.json":
+			response.Header().Set("Content-Type", "application/json")
+			_, _ = response.Write(manifestBytes)
+		case "/large/snapshots/" + string(snapshotID) + "/catalog.json":
+			response.Header().Set("Content-Type", "application/json")
+			_, _ = response.Write(catalogBytes)
+		case "/large/snapshots/" + string(snapshotID) + "/search-data/search/directory.json":
+			response.Header().Set("Content-Type", "application/json")
+			_, _ = response.Write(searchBytes)
+		default:
+			http.NotFound(response, request)
+		}
+	})
+	root := t.TempDir()
+	writer := exportTreeWriter{root: root, entries: make(map[string]exportFileEntry)}
+	writeMinimalExport(t, &writer, []byte("<!doctype html><html><body></body></html>"))
+	receipt, err := captureCatalog(context.Background(), handler, &writer, active, "/")
+	if err != nil {
+		t.Fatalf("captureCatalog rejected catalog above runtime byte limit: %v", err)
+	}
+	manifest := exportManifest{SchemaVersion: 1, BasePath: "/", Catalogs: []ExportCatalogReceipt{receipt}, Files: writer.sortedEntries()}
+	if err := verifyExportStructure(root, manifest, writer.entries); err != nil {
+		t.Fatalf("verifyExportStructure rejected catalog above runtime byte limit: %v", err)
+	}
+}
+
+func exportTestChild(pathValue, kind string, data []byte) catalog.ChildIdentityV1 {
+	digest := sha256.Sum256(data)
+	return catalog.ChildIdentityV1{Path: pathValue, Kind: kind, Length: uint64(len(data)), SHA256: hex.EncodeToString(digest[:])}
 }
 
 func TestExportWorkerChangesWithShellsAndRemainsDeterministic(t *testing.T) {

@@ -57,7 +57,7 @@ func Prepare(descriptor localdocs.DescriptorV1, manifestBytes, catalogBytes []by
 	if err != nil {
 		return nil, errors.New("local docs browser manifest is invalid")
 	}
-	directory, err := catalogjson.DecodeCatalog(catalogBytes)
+	directory, err := catalogjson.DecodeCatalogWithResourceLimits(catalogBytes, false)
 	if err != nil || directory.CatalogID != descriptor.CatalogID {
 		return nil, errors.New("local docs browser catalog is invalid")
 	}

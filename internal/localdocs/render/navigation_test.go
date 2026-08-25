@@ -104,6 +104,16 @@ func TestPrepareOperationNavigationFailsClosedOnInconsistentInputs(t *testing.T)
 	}
 }
 
+func TestPrepareOperationNavigationAcceptsTerminalWhitespaceInDirectoryTitle(t *testing.T) {
+	t.Parallel()
+
+	detail, operation, document, documentHref := operationNavigationFixture()
+	document.Operations[1].Title += "\n"
+	if _, err := PrepareOperationNavigation(detail, operation, document, documentHref, nil); err != nil {
+		t.Fatalf("PrepareOperationNavigation rejected normalized directory title: %v", err)
+	}
+}
+
 func TestPreparedOperationNavigationCopiesRenderInputs(t *testing.T) {
 	t.Parallel()
 
