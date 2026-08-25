@@ -22,7 +22,7 @@ const FORGEJO_IMAGE =
   "codeberg.org/forgejo/forgejo:11@sha256:946243edbab116d5bb78b73ea68af6f3d69229ba1b1ed958dd82c3481167f3e0"
 const ALPINE_IMAGE =
   "alpine:3.24@sha256:28bd5fe8b56d1bd048e5babf5b10710ebe0bae67db86916198a6eec434943f8b"
-const PLAYWRIGHT_VERSION = "v0.6100.0"
+const PLAYWRIGHT_VERSION = "v0.6201.1"
 const OCI_DESCRIPTION = "Hosted OpenAPI renderer and publisher built with Goshtoso"
 const OCI_LICENSES = ""
 // OC-01 is still blocked: no first-party authority, redistribution, or
