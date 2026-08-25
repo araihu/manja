@@ -10,6 +10,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/araihu/manja/internal/environment"
 	app "github.com/araihu/manja/internal/selfhosted"
 )
 
@@ -18,10 +19,11 @@ type runtimeConfig struct {
 	RendererConfig    string
 	DataDir           string
 	LocalDocsDisabled bool
+	ResourceLimits    bool
 }
 
 var serveRecovered = func(ctx context.Context, cfg runtimeConfig) error {
-	handler, receipts, err := app.NewRecoveredRenderer(ctx, app.RendererOptions{ConfigPath: cfg.RendererConfig, DataDir: cfg.DataDir, LocalDocsDisabled: cfg.LocalDocsDisabled})
+	handler, receipts, err := app.NewRecoveredRenderer(ctx, app.RendererOptions{ConfigPath: cfg.RendererConfig, DataDir: cfg.DataDir, LocalDocsDisabled: cfg.LocalDocsDisabled, ResourceLimits: cfg.ResourceLimits})
 	if err != nil {
 		return err
 	}
@@ -35,11 +37,18 @@ func main() {
 }
 
 func run(ctx context.Context, args []string, stderr io.Writer) int {
+	environmentConfig, err := environment.Load()
+	if err != nil {
+		fmt.Fprintf(stderr, "manja-runtime: %v\n", err)
+		return 2
+	}
 	cfg, err := configFromArgs(args)
 	if err != nil {
 		fmt.Fprintf(stderr, "manja-runtime: %v\n", err)
 		return 2
 	}
+	cfg.LocalDocsDisabled = environmentConfig.LocalDocsDisabled()
+	cfg.ResourceLimits = environmentConfig.ResourceLimits
 	if err := serveRecovered(ctx, cfg); err != nil {
 		fmt.Fprintf(stderr, "manja-runtime: %v\n", err)
 		return 1
@@ -62,24 +71,5 @@ func configFromArgs(args []string) (runtimeConfig, error) {
 	if strings.TrimSpace(*rendererConfig) == "" || strings.TrimSpace(*dataDir) == "" {
 		return runtimeConfig{}, fmt.Errorf("--renderer-config and --data-dir are required")
 	}
-	disabled, err := localDocsDisabledFromEnvironment()
-	if err != nil {
-		return runtimeConfig{}, err
-	}
-	return runtimeConfig{Addr: *addr, RendererConfig: *rendererConfig, DataDir: *dataDir, LocalDocsDisabled: disabled}, nil
-}
-
-func localDocsDisabledFromEnvironment() (bool, error) {
-	value, exists := os.LookupEnv("MANJA_LOCAL_DOCS")
-	if !exists {
-		return false, nil
-	}
-	switch value {
-	case "on":
-		return false, nil
-	case "off":
-		return true, nil
-	default:
-		return false, fmt.Errorf("MANJA_LOCAL_DOCS must be on or off")
-	}
+	return runtimeConfig{Addr: *addr, RendererConfig: *rendererConfig, DataDir: *dataDir}, nil
 }

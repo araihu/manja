@@ -72,7 +72,7 @@ func NewRecoveryOnly(config Config) (Server, error) {
 }
 
 func newServer(config Config) (*server, error) {
-	if config.StartupProcessBytes == 0 {
+	if config.ResourceLimits && config.StartupProcessBytes == 0 {
 		config.StartupProcessBytes = DefaultStartupProcessBytes
 	}
 	if err := validateConfig(config); err != nil {
@@ -116,6 +116,9 @@ func (server *server) checkStartupProcessWithReservation(reserved uint64) (uint6
 	if err != nil {
 		return 0, fmt.Errorf("measure renderer startup process: %w", err)
 	}
+	if !server.config.ResourceLimits {
+		return peak, nil
+	}
 	limit := server.config.StartupProcessBytes
 	if peak > limit || reserved > limit-peak {
 		return peak, fmt.Errorf("%w: peak=%d reserved=%d limit=%d", ErrStartupProcessBudget, peak, reserved, limit)
@@ -147,7 +150,7 @@ func (server *server) Activate(ctx context.Context, candidate domain.CatalogCand
 	if len(server.parsers) == 0 || len(server.compilers) == 0 {
 		return ActivationReceipt{}, ErrActivationUnavailable
 	}
-	if err := domain.ValidateCatalogCandidate(candidate); err != nil {
+	if err := domain.ValidateCatalogCandidateWithOptions(candidate, domain.ValidationOptions{ResourceLimits: server.config.ResourceLimits}); err != nil {
 		return ActivationReceipt{}, err
 	}
 	configured, exists := server.configByID[candidate.ID]
@@ -253,7 +256,7 @@ func (server *server) ensureRuntime(ctx context.Context) error {
 		server.generatedDir = generated
 	}
 	runtime := catalog.NewRuntime(1)
-	coordinator, err := catalogstore.OpenActivationCoordinator(ctx, dataDir, runtime)
+	coordinator, err := catalogstore.OpenActivationCoordinatorWithResourceLimits(ctx, dataDir, runtime, server.config.ResourceLimits)
 	if err != nil {
 		if server.generatedDir != "" {
 			_ = os.RemoveAll(server.generatedDir)
@@ -297,7 +300,7 @@ func (server *server) ensureRuntime(ctx context.Context) error {
 			Name: source.Name, Kind: source.Kind, Location: source.Location, URL: source.URL,
 		}
 	}
-	server.handler.install(runtime, web.NewCatalogHandlerWithOrganizationAndEnhancement(runtime, coordinator.Store(), presentation, organization, enhancement))
+	server.handler.install(runtime, web.NewCatalogHandlerWithResourceLimits(runtime, coordinator.Store(), presentation, organization, enhancement, server.config.ResourceLimits))
 	return nil
 }
 

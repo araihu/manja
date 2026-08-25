@@ -41,9 +41,9 @@ func TestDaggerModulePreservesPipelineBoundaries(t *testing.T) {
 		}
 	}
 	for _, want := range []string{
-		`"golang:1.26.6-bookworm@sha256:`,
+		`"golang:1.27.0-bookworm@sha256:`,
 		`"node:22-bookworm@sha256:`,
-		`"golang:1.26.6-alpine@sha256:`,
+		`"golang:1.27.0-alpine@sha256:`,
 		`"codeberg.org/forgejo/forgejo:11@sha256:`,
 		`dag.cacheVolume(`,
 		`manja-${partition}-go-mod-v1`,

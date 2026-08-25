@@ -38,7 +38,7 @@ func (store *Store) Publish(ctx context.Context, snapshot catalog.CompiledSnapsh
 			return Materialization{}, fmt.Errorf("%w: child %q bytes differ from identity", ErrCorruptSnapshot, child.Path)
 		}
 		total += child.Length
-		if total > MaxSnapshotBytes {
+		if store.resourceLimits && total > MaxSnapshotBytes {
 			return Materialization{}, fmt.Errorf("%w: snapshot is %d bytes", ErrStorageBudget, total)
 		}
 	}
@@ -64,7 +64,7 @@ func (store *Store) Publish(ctx context.Context, snapshot catalog.CompiledSnapsh
 	if err != nil {
 		return Materialization{}, fmt.Errorf("%w: inspect snapshots: %v", ErrTransientSnapshot, err)
 	}
-	if stagingBytes+total > MaxStagingBytes || storedBytes+total > MaxStoredBytes {
+	if store.resourceLimits && (stagingBytes+total > MaxStagingBytes || storedBytes+total > MaxStoredBytes) {
 		return Materialization{}, fmt.Errorf("%w: staging=%d stored=%d candidate=%d", ErrStorageBudget, stagingBytes, storedBytes, total)
 	}
 	if err := os.MkdirAll(stagingRoot, 0o755); err != nil {

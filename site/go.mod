@@ -1,6 +1,6 @@
 module github.com/araihu/manja/site
 
-go 1.26.6
+go 1.27.0
 
 require github.com/araihu/manja v0.0.0
 
@@ -16,6 +16,7 @@ require (
 	github.com/oasdiff/yaml3 v0.0.14 // indirect
 	github.com/santhosh-tekuri/jsonschema/v6 v6.0.2 // indirect
 	github.com/yuin/goldmark v1.8.5 // indirect
+	golang.org/x/net v0.57.0 // indirect
 	golang.org/x/sys v0.47.0 // indirect
 	golang.org/x/text v0.40.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect

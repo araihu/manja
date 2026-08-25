@@ -22,13 +22,14 @@ type catalogChildReader interface {
 }
 
 type CatalogHandler struct {
-	runtime      *catalog.Runtime
-	children     catalogChildReader
-	details      *catalog.ByteCache
-	search       *catalog.ByteCache
-	presentation map[string]CatalogPresentation
-	organization OrganizationPresentation
-	enhancement  CatalogEnhancementPolicy
+	runtime        *catalog.Runtime
+	children       catalogChildReader
+	details        *catalog.ByteCache
+	search         *catalog.ByteCache
+	presentation   map[string]CatalogPresentation
+	organization   OrganizationPresentation
+	enhancement    CatalogEnhancementPolicy
+	resourceLimits bool
 }
 
 type CatalogPresentation struct {
@@ -66,18 +67,22 @@ type OrganizationSourcePresentation struct {
 	URL      string
 }
 
-// Keep full catalog documents bounded while accommodating deeply described
-// public API operations such as GitHub's.
+// Keep resource-limited catalog documents bounded while accommodating deeply
+// described public API operations such as GitHub's.
 const maxCatalogPageBytes = 1 << 20
 
 var errCatalogPageTooLarge = errors.New("catalog representation exceeds byte limit")
 
 type catalogPageBuffer struct {
 	bytes.Buffer
+	bounded  bool
 	exceeded bool
 }
 
 func (buffer *catalogPageBuffer) Write(data []byte) (int, error) {
+	if !buffer.bounded {
+		return buffer.Buffer.Write(data)
+	}
 	remaining := maxCatalogPageBytes - buffer.Len()
 	if remaining <= 0 {
 		buffer.exceeded = true
@@ -104,6 +109,10 @@ func NewCatalogHandlerWithOrganization(runtime *catalog.Runtime, children catalo
 }
 
 func NewCatalogHandlerWithOrganizationAndEnhancement(runtime *catalog.Runtime, children catalogChildReader, presentation map[string]CatalogPresentation, organization OrganizationPresentation, enhancement CatalogEnhancementPolicy) http.Handler {
+	return NewCatalogHandlerWithResourceLimits(runtime, children, presentation, organization, enhancement, true)
+}
+
+func NewCatalogHandlerWithResourceLimits(runtime *catalog.Runtime, children catalogChildReader, presentation map[string]CatalogPresentation, organization OrganizationPresentation, enhancement CatalogEnhancementPolicy, resourceLimits bool) http.Handler {
 	copyPresentation := make(map[string]CatalogPresentation, len(presentation))
 	for mount, value := range presentation {
 		copyPresentation[mount] = value
@@ -117,7 +126,7 @@ func NewCatalogHandlerWithOrganizationAndEnhancement(runtime *catalog.Runtime, c
 		enhancement.Disabled = true
 	}
 	organization.Sources = append([]OrganizationSourcePresentation(nil), organization.Sources...)
-	return &CatalogHandler{runtime: runtime, children: children, details: catalog.NewDetailCache(), search: catalog.NewSearchCache(), presentation: copyPresentation, organization: organization, enhancement: enhancement}
+	return &CatalogHandler{runtime: runtime, children: children, details: catalog.NewDetailCache(), search: catalog.NewSearchCache(), presentation: copyPresentation, organization: organization, enhancement: enhancement, resourceLimits: resourceLimits}
 }
 
 // CatalogFlightReservationBytes reports the maximum encoded-plus-decoded
@@ -488,7 +497,7 @@ func sortCatalogDocuments(documents []templates.CatalogDocumentOption, orderBy, 
 }
 
 func (handler *CatalogHandler) renderCatalogDocumentTable(response http.ResponseWriter, request *http.Request, data templates.CatalogPageData) {
-	var body catalogPageBuffer
+	body := catalogPageBuffer{bounded: handler.resourceLimits}
 	err := templates.CatalogDocumentTableFragment(data).Render(request.Context(), &body)
 	if body.exceeded || errors.Is(err, errCatalogPageTooLarge) {
 		http.Error(response, "catalog representation exceeds byte limit", http.StatusInternalServerError)
@@ -532,7 +541,7 @@ func (handler *CatalogHandler) serveDocument(response http.ResponseWriter, reque
 func (handler *CatalogHandler) renderCatalogPage(response http.ResponseWriter, request *http.Request, data templates.CatalogPageData) {
 	data.CapabilityFooter = handler.catalogCapabilityFooter(data)
 	data.Metadata = handler.catalogPageMetadata(request, data)
-	var body catalogPageBuffer
+	body := catalogPageBuffer{bounded: handler.resourceLimits}
 	var err error
 	switch catalogFragmentTarget(request) {
 	case "catalog-main-content":

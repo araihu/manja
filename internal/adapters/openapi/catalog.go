@@ -20,6 +20,7 @@ import (
 type CatalogParser struct {
 	kubernetesAllowlist defaultAllowlist
 	hasAllowlist        bool
+	resourceLimits      bool
 }
 
 type defaultAllowlist struct {
@@ -37,7 +38,11 @@ type defaultDiagnostic struct {
 }
 
 func NewCatalogParser(kubernetesAllowlist []byte) (*CatalogParser, error) {
-	parser := &CatalogParser{}
+	return NewCatalogParserWithResourceLimits(kubernetesAllowlist, true)
+}
+
+func NewCatalogParserWithResourceLimits(kubernetesAllowlist []byte, resourceLimits bool) (*CatalogParser, error) {
+	parser := &CatalogParser{resourceLimits: resourceLimits}
 	if len(kubernetesAllowlist) == 0 {
 		return parser, nil
 	}
@@ -63,7 +68,8 @@ func (parser *CatalogParser) Parse(ctx context.Context, candidate domain.Catalog
 	if err := ctx.Err(); err != nil {
 		return domain.CatalogIndex{}, err
 	}
-	if err := domain.ValidateCatalogCandidate(candidate); err != nil {
+	validation := domain.ValidationOptions{ResourceLimits: parser.resourceLimits}
+	if err := domain.ValidateCatalogCandidateWithOptions(candidate, validation); err != nil {
 		return domain.CatalogIndex{}, err
 	}
 	if candidate.ProfileID == domain.CompatibilityProfileKubernetes && !parser.hasAllowlist {
@@ -141,7 +147,7 @@ func (parser *CatalogParser) Parse(ctx context.Context, candidate domain.Catalog
 			return domain.CatalogIndex{}, fmt.Errorf("Kubernetes default diagnostics differ from exact allowlist: observed %s", encoded)
 		}
 	}
-	if err := domain.ValidateCatalogIndex(index); err != nil {
+	if err := domain.ValidateCatalogIndexWithOptions(index, validation); err != nil {
 		return domain.CatalogIndex{}, err
 	}
 	return index, nil

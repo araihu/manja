@@ -13,10 +13,10 @@ import (
 )
 
 func (Builder) Build(ctx context.Context, index domain.SpecIndex) (Document, error) {
-	return buildWithSchemaHasher(ctx, index, sha256.Sum256)
+	return buildWithSchemaHasher(ctx, index, sha256.Sum256, domain.ResourceLimitsEnabled(ctx))
 }
 
-func buildWithSchemaHasher(ctx context.Context, index domain.SpecIndex, hasher schemaHashFunc) (Document, error) {
+func buildWithSchemaHasher(ctx context.Context, index domain.SpecIndex, hasher schemaHashFunc, resourceLimits bool) (Document, error) {
 	if err := ctx.Err(); err != nil {
 		return Document{}, err
 	}
@@ -29,15 +29,16 @@ func buildWithSchemaHasher(ctx context.Context, index domain.SpecIndex, hasher s
 	if err := domain.ValidateCanonicalIdentity("projection revision ID", validationCopy.RevisionID, false); err != nil {
 		return Document{}, projectionFailure("revisionId", "invalid_identity")
 	}
-	if err := domain.ValidateSpecIndex(validationCopy); err != nil {
+	if err := domain.ValidateSpecIndexWithOptions(validationCopy, domain.ValidationOptions{ResourceLimits: resourceLimits}); err != nil {
 		return Document{}, projectionFailure("source", "invalid_source")
 	}
 	if err := ctx.Err(); err != nil {
 		return Document{}, err
 	}
 	state := buildState{
-		ctx:         ctx,
-		schemaGraph: newSchemaGraphBuilder(hasher),
+		ctx:            ctx,
+		resourceLimits: resourceLimits,
+		schemaGraph:    newSchemaGraphBuilder(hasher, resourceLimits),
 		targets: map[string]string{
 			"main-content":       "fixed",
 			"overview":           "overview",
@@ -59,10 +60,11 @@ func buildWithSchemaHasher(ctx context.Context, index domain.SpecIndex, hasher s
 }
 
 type buildState struct {
-	ctx         context.Context
-	targets     map[string]string
-	aliases     map[string]string
-	schemaGraph *schemaGraphBuilder
+	ctx            context.Context
+	resourceLimits bool
+	targets        map[string]string
+	aliases        map[string]string
+	schemaGraph    *schemaGraphBuilder
 }
 
 type indexedOperation struct {
@@ -436,7 +438,7 @@ func (s *buildState) buildSchemas(source []indexedSchema) ([]SchemaDirectory, []
 		}
 		exampleSchemaJSON := ""
 		if indexed.source.Example.JSON != "" {
-			exampleSchemaJSON, err = canonicalEmbeddedJSON(indexed.source.Example.JSON)
+			exampleSchemaJSON, err = canonicalEmbeddedJSONWithResourceLimits(indexed.source.Example.JSON, s.resourceLimits)
 			if err != nil {
 				return nil, nil, nil, err
 			}

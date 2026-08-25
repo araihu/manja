@@ -37,6 +37,7 @@ func (source GitCatalogSource) Load(ctx context.Context) (domain.CatalogCandidat
 	if strings.TrimSpace(source.Repository) == "" {
 		return domain.CatalogCandidate{}, fmt.Errorf("Git catalog repository is required")
 	}
+	resourceLimits := !source.Manifest.DisableResourceLimits
 	root := source.Root
 	if root == "" {
 		root = "."
@@ -52,7 +53,7 @@ func (source GitCatalogSource) Load(ctx context.Context) (domain.CatalogCandidat
 	}
 	var integrity *gitCatalogIntegrity
 	if source.IntegrityReceiptRoot != "" || source.IntegrityReceiptPath != "" {
-		receipt, err := loadGitSourceProvenanceReceipt(source.IntegrityReceiptRoot, source.IntegrityReceiptPath)
+		receipt, err := loadGitSourceProvenanceReceipt(source.IntegrityReceiptRoot, source.IntegrityReceiptPath, resourceLimits)
 		if err != nil {
 			return domain.CatalogCandidate{}, err
 		}
@@ -72,7 +73,7 @@ func (source GitCatalogSource) Load(ctx context.Context) (domain.CatalogCandidat
 	if integrity != nil {
 		objectFormat = integrity.receipt.ObjectFormat
 	}
-	repository, resolvedRef, cleanup, err := gitCatalogRepositoryWithObjectFormat(ctx, gitSource.cloneURL(), reference, source.SSHPrivateKey, objectFormat)
+	repository, resolvedRef, cleanup, err := gitCatalogRepositoryWithResourceLimits(ctx, gitSource.cloneURL(), reference, source.SSHPrivateKey, objectFormat, resourceLimits)
 	if err != nil {
 		return domain.CatalogCandidate{}, err
 	}
@@ -108,13 +109,13 @@ func (source GitCatalogSource) Load(ctx context.Context) (domain.CatalogCandidat
 	if source.afterResolve != nil {
 		source.afterResolve(commit)
 	}
-	inventory, err := gitCatalogInventory(ctx, repository, commit, root)
+	inventory, err := gitCatalogInventory(ctx, repository, commit, root, resourceLimits)
 	if err != nil {
 		return domain.CatalogCandidate{}, err
 	}
 	missingObjects := map[string]struct{}{}
 	if remoteCatalog {
-		missingObjects, err = gitCatalogMissingObjects(ctx, repository, commit, root)
+		missingObjects, err = gitCatalogMissingObjects(ctx, repository, commit, root, resourceLimits)
 		if err != nil {
 			return domain.CatalogCandidate{}, err
 		}
@@ -135,7 +136,7 @@ func (source GitCatalogSource) Load(ctx context.Context) (domain.CatalogCandidat
 				return 0, err
 			}
 		}
-		if _, missing := missingObjects[entry.objectID]; missing {
+		if _, missing := missingObjects[entry.objectID]; resourceLimits && missing {
 			return 0, fmt.Errorf("captured file %q exceeds %d bytes", entry.path, maxCatalogSourceFileBytes)
 		}
 		sizeBytes, err := gitOutputBytesEnvLimit(ctx, repository, []string{"GIT_NO_LAZY_FETCH=1"}, 32, "cat-file", "-s", entry.objectID)
@@ -147,7 +148,7 @@ func (source GitCatalogSource) Load(ctx context.Context) (domain.CatalogCandidat
 		if err != nil || size < 0 {
 			return 0, fmt.Errorf("read Git catalog object size for %q", objectPath)
 		}
-		if size > maxCatalogSourceFileBytes {
+		if resourceLimits && size > maxCatalogSourceFileBytes {
 			return 0, fmt.Errorf("captured file %q exceeds %d bytes", entry.path, maxCatalogSourceFileBytes)
 		}
 		if integrity != nil {
@@ -187,12 +188,16 @@ func (source GitCatalogSource) Load(ctx context.Context) (domain.CatalogCandidat
 	return candidate, nil
 }
 
-func gitCatalogMissingObjects(ctx context.Context, repository, commit, root string) (map[string]struct{}, error) {
+func gitCatalogMissingObjects(ctx context.Context, repository, commit, root string, resourceLimits bool) (map[string]struct{}, error) {
 	args := []string{"rev-list", "--objects", "--missing=print", commit}
 	if root != "." {
 		args = append(args, "--", root)
 	}
-	output, err := gitOutputBytesEnvLimit(ctx, repository, []string{"GIT_NO_LAZY_FETCH=1"}, maxCatalogInventoryBytes, args...)
+	limit := uint64(0)
+	if resourceLimits {
+		limit = maxCatalogInventoryBytes
+	}
+	output, err := gitOutputBytesEnvLimit(ctx, repository, []string{"GIT_NO_LAZY_FETCH=1"}, limit, args...)
 	if err != nil {
 		return nil, fmt.Errorf("inspect missing Git catalog objects at %s: %w", commit, err)
 	}
@@ -210,12 +215,16 @@ func gitCatalogMissingObjects(ctx context.Context, repository, commit, root stri
 	return missing, nil
 }
 
-func gitCatalogInventory(ctx context.Context, repository, commit, root string) ([]catalogInventoryEntry, error) {
+func gitCatalogInventory(ctx context.Context, repository, commit, root string, resourceLimits bool) ([]catalogInventoryEntry, error) {
 	args := []string{"ls-tree", "-rz", "--full-tree", commit}
 	if root != "." {
 		args = append(args, "--", root)
 	}
-	output, err := gitOutputBytesLimit(ctx, repository, maxCatalogInventoryBytes, args...)
+	limit := uint64(0)
+	if resourceLimits {
+		limit = maxCatalogInventoryBytes
+	}
+	output, err := gitOutputBytesLimit(ctx, repository, limit, args...)
 	if err != nil {
 		return nil, fmt.Errorf("list Git catalog tree at %s: %w", commit, err)
 	}
@@ -248,7 +257,7 @@ func gitCatalogInventory(ctx context.Context, repository, commit, root string) (
 		if err := validateSourcePath("Git catalog tree path", sourcePath); err != nil {
 			return nil, err
 		}
-		if len(result) >= maxCatalogInventoryEntries {
+		if resourceLimits && len(result) >= maxCatalogInventoryEntries {
 			return nil, fmt.Errorf("Git catalog inventory exceeds %d entries", maxCatalogInventoryEntries)
 		}
 		result = append(result, catalogInventoryEntry{path: sourcePath, mode: fields[0], objectID: fields[2]})

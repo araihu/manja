@@ -20,12 +20,16 @@ type embeddedValue struct {
 }
 
 func canonicalEmbeddedJSON(input string) (string, error) {
-	if !utf8.ValidString(input) || len(input) > maxEmbeddedJSONBytes {
+	return canonicalEmbeddedJSONWithResourceLimits(input, true)
+}
+
+func canonicalEmbeddedJSONWithResourceLimits(input string, resourceLimits bool) (string, error) {
+	if !utf8.ValidString(input) || resourceLimits && len(input) > maxEmbeddedJSONBytes {
 		return "", projectionFailure("embeddedJSON", "invalid_utf8")
 	}
 	decoder := json.NewDecoder(strings.NewReader(input))
 	decoder.UseNumber()
-	value, err := decodeEmbeddedValue(decoder, 0)
+	value, err := decodeEmbeddedValue(decoder, 0, resourceLimits)
 	if err != nil {
 		return "", projectionFailure("embeddedJSON", "invalid_source")
 	}
@@ -33,13 +37,13 @@ func canonicalEmbeddedJSON(input string) (string, error) {
 		return "", projectionFailure("embeddedJSON", "invalid_source")
 	}
 	var output bytes.Buffer
-	if err := emitEmbeddedValue(&output, value); err != nil || output.Len() > maxEmbeddedJSONBytes {
+	if err := emitEmbeddedValue(&output, value, resourceLimits); err != nil || resourceLimits && output.Len() > maxEmbeddedJSONBytes {
 		return "", projectionFailure("embeddedJSON", "invalid_source")
 	}
 	return output.String(), nil
 }
 
-func decodeEmbeddedValue(decoder *json.Decoder, depth int) (embeddedValue, error) {
+func decodeEmbeddedValue(decoder *json.Decoder, depth int, resourceLimits bool) (embeddedValue, error) {
 	token, err := decoder.Token()
 	if err != nil {
 		return embeddedValue{}, err
@@ -64,7 +68,7 @@ func decodeEmbeddedValue(decoder *json.Decoder, depth int) (embeddedValue, error
 				if _, exists := result.object[key]; exists {
 					return embeddedValue{}, io.ErrUnexpectedEOF
 				}
-				value, err := decodeEmbeddedValue(decoder, depth+1)
+				value, err := decodeEmbeddedValue(decoder, depth+1, resourceLimits)
 				if err != nil {
 					return embeddedValue{}, err
 				}
@@ -78,7 +82,7 @@ func decodeEmbeddedValue(decoder *json.Decoder, depth int) (embeddedValue, error
 		case '[':
 			result := embeddedValue{kind: 'a', array: []embeddedValue{}}
 			for decoder.More() {
-				value, err := decodeEmbeddedValue(decoder, depth+1)
+				value, err := decodeEmbeddedValue(decoder, depth+1, resourceLimits)
 				if err != nil {
 					return embeddedValue{}, err
 				}
@@ -95,7 +99,7 @@ func decodeEmbeddedValue(decoder *json.Decoder, depth int) (embeddedValue, error
 	case string:
 		return embeddedValue{kind: 's', text: token}, nil
 	case json.Number:
-		number, err := normalizeJSONNumber(string(token))
+		number, err := normalizeJSONNumber(string(token), resourceLimits)
 		if err != nil {
 			return embeddedValue{}, err
 		}
@@ -112,7 +116,7 @@ func decodeEmbeddedValue(decoder *json.Decoder, depth int) (embeddedValue, error
 	}
 }
 
-func emitEmbeddedValue(output *bytes.Buffer, value embeddedValue) error {
+func emitEmbeddedValue(output *bytes.Buffer, value embeddedValue, resourceLimits bool) error {
 	switch value.kind {
 	case 's':
 		encoded, err := json.Marshal(value.text)
@@ -128,7 +132,7 @@ func emitEmbeddedValue(output *bytes.Buffer, value embeddedValue) error {
 			if index != 0 {
 				output.WriteByte(',')
 			}
-			if err := emitEmbeddedValue(output, item); err != nil {
+			if err := emitEmbeddedValue(output, item, resourceLimits); err != nil {
 				return err
 			}
 		}
@@ -150,7 +154,7 @@ func emitEmbeddedValue(output *bytes.Buffer, value embeddedValue) error {
 			}
 			output.Write(encoded)
 			output.WriteByte(':')
-			if err := emitEmbeddedValue(output, value.object[key]); err != nil {
+			if err := emitEmbeddedValue(output, value.object[key], resourceLimits); err != nil {
 				return err
 			}
 		}
@@ -158,13 +162,13 @@ func emitEmbeddedValue(output *bytes.Buffer, value embeddedValue) error {
 	default:
 		return io.ErrUnexpectedEOF
 	}
-	if output.Len() > maxEmbeddedJSONBytes {
+	if resourceLimits && output.Len() > maxEmbeddedJSONBytes {
 		return io.ErrShortBuffer
 	}
 	return nil
 }
 
-func normalizeJSONNumber(input string) (string, error) {
+func normalizeJSONNumber(input string, resourceLimits bool) (string, error) {
 	index := 0
 	negative := false
 	if strings.HasPrefix(input, "-") {
@@ -210,7 +214,7 @@ func normalizeJSONNumber(input string) (string, error) {
 	} else {
 		predicted++
 	}
-	if predicted > maxEmbeddedJSONBytes || predicted < 0 {
+	if resourceLimits && predicted > maxEmbeddedJSONBytes || predicted < 0 {
 		return "", io.ErrShortBuffer
 	}
 	var output strings.Builder
