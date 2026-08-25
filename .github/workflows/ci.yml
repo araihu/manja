@@ -86,9 +86,22 @@ jobs:
 
   image:
     name: Build and publish image
-    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
     needs: [test, integration]
-    runs-on: ${{ fromJSON('["self-hosted","Linux","X64","hostinger-vps-trusted"]') }}
+    runs-on: >-
+      ${{
+        github.event_name == 'pull_request' &&
+        contains(fromJSON('["opened","synchronize","reopened","ready_for_review"]'), github.event.action) &&
+        github.event.pull_request.draft == false &&
+        github.event.pull_request.user.login == github.actor &&
+        github.event.pull_request.base.repo.full_name == github.repository &&
+        github.event.pull_request.head.repo.full_name == github.repository &&
+        github.event.pull_request.head.repo.fork == false &&
+        contains(fromJSON(vars.HOSTINGER_PR_ACTORS_JSON || '[]'), github.actor) &&
+        fromJSON('["self-hosted","Linux","X64","hostinger-vps-pr"]') ||
+        github.event_name == 'push' &&
+        fromJSON('["self-hosted","Linux","X64","hostinger-vps-trusted"]') ||
+        'ubuntu-latest'
+      }}
     permissions:
       contents: read
       packages: write
@@ -99,10 +112,12 @@ jobs:
         with:
           persist-credentials: false
       - name: Install or verify exact Dagger CLI
+        if: github.event_name != 'pull_request'
         env:
           RUNNER_ENVIRONMENT: ${{ runner.environment }}
         run: bash .github/scripts/setup-dagger.sh
       - name: Materialize trusted publish identity
+        if: github.event_name != 'pull_request'
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         env:
           REF_NAME: ${{ github.ref_name }}
@@ -131,6 +146,7 @@ jobs:
             fs.mkdirSync(path.dirname(output), {recursive: true})
             fs.writeFileSync(output, JSON.stringify(payload), {encoding: "utf8", flag: "wx", mode: 0o600})
       - name: Build and publish exact image set with Dagger
+        if: github.event_name != 'pull_request'
         env:
           REGISTRY_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -143,9 +159,22 @@ jobs:
 
   deploy:
     name: Trigger Fly deploy
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     needs: [test, integration]
-    runs-on: ${{ fromJSON('["self-hosted","Linux","X64","hostinger-vps-trusted"]') }}
+    runs-on: >-
+      ${{
+        github.event_name == 'pull_request' &&
+        contains(fromJSON('["opened","synchronize","reopened","ready_for_review"]'), github.event.action) &&
+        github.event.pull_request.draft == false &&
+        github.event.pull_request.user.login == github.actor &&
+        github.event.pull_request.base.repo.full_name == github.repository &&
+        github.event.pull_request.head.repo.full_name == github.repository &&
+        github.event.pull_request.head.repo.fork == false &&
+        contains(fromJSON(vars.HOSTINGER_PR_ACTORS_JSON || '[]'), github.actor) &&
+        fromJSON('["self-hosted","Linux","X64","hostinger-vps-pr"]') ||
+        github.event_name == 'push' &&
+        fromJSON('["self-hosted","Linux","X64","hostinger-vps-trusted"]') ||
+        'ubuntu-latest'
+      }}
     concurrency: deploy-group
     env:
       MANJA_METADATA: ${{ github.workspace }}/.dagger-inputs/manja-deploy.json
@@ -154,10 +183,12 @@ jobs:
         with:
           persist-credentials: false
       - name: Install or verify exact Dagger CLI
+        if: github.event_name != 'pull_request'
         env:
           RUNNER_ENVIRONMENT: ${{ runner.environment }}
         run: bash .github/scripts/setup-dagger.sh
       - name: Materialize trusted deployment identity
+        if: github.event_name != 'pull_request'
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         env:
           SOURCE_REPOSITORY: ${{ github.repository }}
@@ -177,6 +208,7 @@ jobs:
             fs.mkdirSync(path.dirname(output), {recursive: true})
             fs.writeFileSync(output, JSON.stringify(payload), {encoding: "utf8", flag: "wx", mode: 0o600})
       - name: Dispatch central deployment with Dagger
+        if: github.event_name != 'pull_request'
         env:
           FLY_DEPLOY_DISPATCH_TOKEN: ${{ secrets.FLY_DEPLOY_DISPATCH_TOKEN }}
         run: |
