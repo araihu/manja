@@ -436,7 +436,7 @@ if (typeof importScripts === "function" && typeof globalThis !== "undefined" && 
     if (pathname === routes.catalogUrl) return "catalog.json"
     const openapiBase = descriptor.publicationBase + "snapshots/" + descriptor.snapshotId + "/openapi/"
     if (pathname.indexOf(openapiBase) === 0) return "sources/" + pathname.slice(openapiBase.length)
-    if (pathname.indexOf(routes.searchDataBase) === 0) return "search/" + pathname.slice(routes.searchDataBase.length)
+    if (pathname.indexOf(routes.searchDataBase) === 0) return pathname.slice(routes.searchDataBase.length)
     if (pathname.indexOf(routes.projectionDataBase) === 0) return pathname.slice(routes.projectionDataBase.length)
     return ""
   }

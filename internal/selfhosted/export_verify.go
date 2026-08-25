@@ -147,9 +147,14 @@ func verifyExportHTML(root, name, basePath string, declared map[string]exportFil
 			}
 			descriptor = &value
 		}
+		if node.Data == "script" && hasHTMLAttribute(node, "id", "catalog-search-current-visit") {
+			if err := verifyExportJSONHref(node, publicPath, basePath, declared); err != nil {
+				return fmt.Errorf("export HTML %q: %w", name, err)
+			}
+		}
 		for _, attribute := range node.Attr {
 			switch attribute.Key {
-			case "href", "src", "action", "data-search-child-base":
+			case "href", "src", "action", "data-search-child-base", "data-table-row-link", "data-catalog-search-href":
 				if err := verifyExportReference(node, attribute.Key, attribute.Val, publicPath, basePath, declared); err != nil {
 					return fmt.Errorf("export HTML %q: %w", name, err)
 				}
@@ -166,6 +171,26 @@ func verifyExportHTML(root, name, basePath string, declared map[string]exportFil
 		return nil, err
 	}
 	return descriptor, nil
+}
+
+func verifyExportJSONHref(node *html.Node, publicPath, basePath string, declared map[string]exportFileEntry) error {
+	if node.FirstChild == nil || node.FirstChild != node.LastChild || node.FirstChild.Type != html.TextNode {
+		return errors.New("current visit payload is invalid")
+	}
+	decoder := json.NewDecoder(strings.NewReader(node.FirstChild.Data))
+	decoder.DisallowUnknownFields()
+	var payload map[string]json.RawMessage
+	if err := decoder.Decode(&payload); err != nil || requireJSONEOF(decoder) != nil {
+		return errors.New("current visit payload is invalid")
+	}
+	if payload == nil {
+		return nil
+	}
+	var href string
+	if raw, ok := payload["href"]; !ok || json.Unmarshal(raw, &href) != nil || href == "" {
+		return errors.New("current visit href is invalid")
+	}
+	return verifyExportReference(node, "href", href, publicPath, basePath, declared)
 }
 
 func verifyExportDependencyURLs(node *html.Node, value, publicPath, basePath string, declared map[string]exportFileEntry) error {

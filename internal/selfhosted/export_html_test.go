@@ -4,13 +4,14 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/araihu/manja/application/catalog"
 	"github.com/araihu/manja/internal/localdocs"
 )
 
 func TestRewriteExportHTMLPrefixesSubpathInjectsDescriptorAndRemovesRuntimeRoutes(t *testing.T) {
 	descriptor := localdocs.DescriptorV1{SchemaVersion: 1, CatalogID: "payments", PublicationKey: "payments", Public: true, Anonymous: true, PublicationBase: "/group/project/payments/", Static: &localdocs.StaticDescriptorV1{DeploymentBase: "/group/project/"}}
-	input := `<!doctype html><html><head><link rel="stylesheet" href="/assets/app.css"><script src="/manja-assets/catalog-search.js"></script></head><body><a href="/">Catalogs</a><a href="/payments/catalog.json">Catalog</a><a href="/payments/openapi/core.json">Source</a><a href="https://example.test/repo">Repo</a><div data-manja-copy-page><a href="/payments/documents/core/page.md?selected=x">Markdown</a></div><div hx-get="/payments/documents/core/?selected=x" data-search-fallback-url="/payments/search.json" data-search-child-base="/payments/snapshots/s/search-data/"></div></body></html>`
-	output, err := rewriteExportHTML([]byte(input), "/group/project/", &exportHTMLCatalog{Mount: "/payments", SnapshotID: "snapshot", Descriptor: descriptor})
+	input := `<!doctype html><html><head><link rel="stylesheet" href="/assets/app.css"><script src="/manja-assets/catalog-search.js"></script></head><body><a href="/">Catalogs</a><a href="/payments/catalog.json">Catalog</a><a href="/payments/openapi/core.json">Source</a><a href="https://example.test/repo">Repo</a><div data-manja-copy-page><a href="/payments/documents/core/page.md?selected=x">Markdown</a></div><div data-table-row-link="/payments/documents/core/" data-catalog-search-href="/payments/search" data-search-global="true" data-search-mount="/" data-search-scope-label="All catalogs" hx-get="/payments/documents/core/?selected=x" data-search-fallback-url="/payments/search.json" data-search-child-base="/payments/snapshots/s/search-data/"></div><script id="catalog-search-current-visit" type="application/json">{"href":"/payments/documents/core/?selected=detail#detail","title":"Core"}</script></body></html>`
+	output, err := rewriteExportHTML([]byte(input), "/group/project/", &exportHTMLCatalog{Mount: "/payments", SnapshotID: "snapshot", Directory: catalog.CatalogArtifactV1{Title: "Payments"}, Descriptor: descriptor})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -19,6 +20,9 @@ func TestRewriteExportHTMLPrefixesSubpathInjectsDescriptorAndRemovesRuntimeRoute
 		`href="/group/project/assets/app.css"`, `src="/group/project/manja-assets/catalog-search.js"`, `href="/group/project/"`,
 		`href="/group/project/payments/snapshots/snapshot/catalog.json"`, `href="/group/project/payments/snapshots/snapshot/openapi/core.json"`,
 		`href="https://example.test/repo"`, `data-search-child-base="/group/project/payments/snapshots/s/search-data/"`,
+		`data-table-row-link="/group/project/payments/documents/core/"`, `data-catalog-search-href="/group/project/payments/search"`,
+		`data-search-global="false"`, `data-search-mount="/group/project/payments"`, `data-search-scope-label="Payments"`,
+		`"href":"/group/project/payments/documents/core/?selected=detail#detail"`,
 		`id="manja-local-docs-descriptor"`, `src="/group/project/manja-assets/local-docs.js"`, `"deploymentBase":"/group/project/"`,
 	} {
 		if !strings.Contains(body, want) {

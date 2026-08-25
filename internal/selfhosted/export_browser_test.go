@@ -82,17 +82,95 @@ catalogs:
 				t.Fatal(err)
 			}
 			t.Cleanup(func() { _ = page.Close() })
-			documentURL := server.URL + strings.TrimSuffix(basePath, "/") + "/private/documents/private/"
-			if _, err := page.Goto(documentURL); err != nil {
+			deployment := strings.TrimSuffix(basePath, "/")
+			documentURL := server.URL + deployment + "/private/documents/private/"
+			if _, err := page.Goto(server.URL + deployment + "/private/"); err != nil {
 				t.Fatal(err)
 			}
 			waitStaticExportReady(t, page)
-			if _, err := page.Reload(); err != nil {
-				state, _ := page.Evaluate(`async () => ({controller: Boolean(navigator.serviceWorker.controller), caches: await caches.keys()})`)
+			if err := page.Locator(`[data-table-row-link]`).First().Click(); err != nil {
+				t.Fatal(err)
+			}
+			if err := page.WaitForURL("**/private/documents/private/**"); err != nil {
+				t.Fatalf("desktop document row: %v", err)
+			}
+			waitStaticExportReady(t, page)
+			operation := page.GetByRole("link", playwright.PageGetByRoleOptions{Name: "List charges"}).First()
+			schema := page.Locator("#catalog-sidebar-groups").GetByRole("link", playwright.LocatorGetByRoleOptions{Name: "Charge", Exact: playwright.Bool(true)}).First()
+			operationHref, err := operation.GetAttribute("href")
+			if err != nil {
+				t.Fatal(err)
+			}
+			schemaHref, err := schema.GetAttribute("href")
+			if err != nil {
+				t.Fatal(err)
+			}
+			requestMu.Lock()
+			initialRequests := append([]string(nil), requests...)
+			requestMu.Unlock()
+			for _, requestPath := range initialRequests {
+				if strings.Contains(requestPath, "/projection-data/") || strings.Contains(requestPath, "/search-data/") {
+					t.Fatalf("static activation eagerly loaded child %q", requestPath)
+				}
+			}
+			searchField := page.Locator(`[data-search-id="catalog-search"] button`)
+			if err := searchField.Click(); err != nil {
+				t.Fatal(err)
+			}
+			searchInput := page.Locator("#catalog-search-input")
+			if err := searchInput.Fill("List charges"); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := searchInput.Evaluate(`element => element.dispatchEvent(new Event('input', { bubbles: true }))`, nil); err != nil {
+				t.Fatal(err)
+			}
+			if err := page.Locator("#catalog-search-dialog").GetByText("List charges", playwright.LocatorGetByTextOptions{Exact: playwright.Bool(true)}).WaitFor(playwright.LocatorWaitForOptions{Timeout: playwright.Float(5_000)}); err != nil {
+				debug, debugErr := page.Evaluate(`async () => {
+					const dialog = document.querySelector('#catalog-search-dialog');
+					const base = dialog.dataset.searchChildBase || '';
+					const path = dialog.dataset.searchDirectoryPath || '';
+					const url = base + path.split('/').map(encodeURIComponent).join('/');
+					const response = await fetch(url, {headers: {Accept: 'application/json'}});
+					const bytes = await response.arrayBuffer();
+					const digest = [...new Uint8Array(await crypto.subtle.digest('SHA-256', bytes))].map(value => value.toString(16).padStart(2, '0')).join('');
+					return {base, path, expectedLength: dialog.dataset.searchDirectoryLength, expectedDigest: dialog.dataset.searchDirectorySha256, url, status: response.status, length: bytes.byteLength, digest, prefix: new TextDecoder().decode(new Uint8Array(bytes).slice(0, 80)), dialog: dialog.textContent || ''};
+				}`)
 				requestMu.Lock()
 				snapshot := append([]string(nil), requests...)
 				requestMu.Unlock()
-				t.Fatalf("reload: %v; state=%#v requests=%#v", err, state, snapshot)
+				t.Fatalf("static subpath search: %v; debug=%#v debugErr=%v requests=%#v", err, debug, debugErr, snapshot)
+			}
+			if err := page.Keyboard().Press("Escape"); err != nil {
+				t.Fatal(err)
+			}
+
+			if _, err := page.Goto(server.URL + operationHref); err != nil {
+				t.Fatal(err)
+			}
+			waitStaticExportReady(t, page)
+			if _, err := page.WaitForFunction(`() => document.querySelector('[data-catalog-main-content]').textContent.includes('/charges')`, nil); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := page.Reload(); err != nil {
+				t.Fatal(err)
+			}
+			waitStaticExportReady(t, page)
+
+			if _, err := page.Goto(server.URL + schemaHref); err != nil {
+				t.Fatal(err)
+			}
+			waitStaticExportReady(t, page)
+			if _, err := page.WaitForFunction(`() => document.title === 'Charge' && document.querySelector('[data-catalog-main-content]').textContent.includes('Charge')`, nil, playwright.PageWaitForFunctionOptions{Timeout: playwright.Float(5_000)}); err != nil {
+				debug, _ := page.Evaluate(`() => ({title: document.title, href: location.href, main: document.querySelector('[data-catalog-main-content]').textContent, links: [...document.querySelectorAll('#catalog-sidebar-groups a')].map((value) => ({text: value.textContent, href: value.href}))})`)
+				t.Fatalf("direct schema navigation: %v; debug=%#v", err, debug)
+			}
+			if _, err := page.Reload(); err != nil {
+				t.Fatal(err)
+			}
+			waitStaticExportReady(t, page)
+
+			if _, err := page.Goto(documentURL); err != nil {
+				t.Fatal(err)
 			}
 			waitStaticExportReady(t, page)
 			if err := page.Context().SetOffline(true); err != nil {
@@ -100,20 +178,20 @@ catalogs:
 			}
 			t.Cleanup(func() { _ = page.Context().SetOffline(false) })
 
-			operation := page.GetByRole("link", playwright.PageGetByRoleOptions{Name: "List charges"}).First()
+			operation = page.GetByRole("link", playwright.PageGetByRoleOptions{Name: "List charges"}).First()
 			if err := operation.Click(); err != nil {
 				t.Fatal(err)
 			}
 			if _, err := page.WaitForFunction(`() => document.querySelector('[data-catalog-main-content]').textContent.includes('/charges')`, nil); err != nil {
 				t.Fatal(err)
 			}
-			schema := page.Locator("#catalog-sidebar-groups").GetByRole("link", playwright.LocatorGetByRoleOptions{Name: "Charge", Exact: playwright.Bool(true)}).First()
+			schema = page.Locator("#catalog-sidebar-groups").GetByRole("link", playwright.LocatorGetByRoleOptions{Name: "Charge", Exact: playwright.Bool(true)}).First()
 			if err := schema.Click(); err != nil {
 				t.Fatal(err)
 			}
 			if _, err := page.WaitForFunction(`() => document.title === 'Charge' && document.querySelector('[data-catalog-main-content]').textContent.includes('Charge')`, nil, playwright.PageWaitForFunctionOptions{Timeout: playwright.Float(5_000)}); err != nil {
 				debug, _ := page.Evaluate(`() => ({title: document.title, href: location.href, main: document.querySelector('[data-catalog-main-content]').textContent, links: [...document.querySelectorAll('#catalog-sidebar-groups a')].map((value) => ({text: value.textContent, href: value.href}))})`)
-				t.Fatalf("schema navigation: %v; debug=%#v", err, debug)
+				t.Fatalf("offline schema navigation: %v; debug=%#v", err, debug)
 			}
 			requestMu.Lock()
 			defer requestMu.Unlock()
@@ -121,7 +199,7 @@ catalogs:
 				if !strings.HasPrefix(requestPath, basePath) {
 					t.Fatalf("static browser requested outside deployment base %q", requestPath)
 				}
-				if strings.Contains(requestPath, "/manage/") || strings.Contains(requestPath, "/api/") || strings.HasSuffix(requestPath, "/search.json") {
+				if strings.Contains(requestPath, "/manage/") || strings.Contains(requestPath, "/api/") || strings.HasSuffix(requestPath, "/search") || strings.HasSuffix(requestPath, "/search.json") {
 					t.Fatalf("static browser requested runtime-only route %q", requestPath)
 				}
 			}

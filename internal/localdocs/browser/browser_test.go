@@ -38,15 +38,48 @@ func TestBrowserRendersDocumentUnseenOperationAndSchema(t *testing.T) {
 	}
 }
 
-func TestBrowserRequiresCompleteVerifiedChildren(t *testing.T) {
+func TestBrowserPreparesOnlyVerifiedChildrenNeededByRoute(t *testing.T) {
+	descriptor, manifest, catalogBytes, children, operationID, schemaID := browserFixture(t)
+	browser, err := Prepare(descriptor, manifest, catalogBytes, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := browser.Render(context.Background(), Route{DocumentKey: "doc"}); err != nil {
+		t.Fatalf("document route needs no projection children: %v", err)
+	}
+	if _, err := browser.Render(context.Background(), Route{DocumentKey: "doc", Selected: string(operationID)}); err == nil {
+		t.Fatal("operation route rendered without its detail child")
+	}
+
+	detailOnly := map[string][]byte{"details/doc.json": children["details/doc.json"]}
+	browser, err = Prepare(descriptor, manifest, catalogBytes, detailOnly)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := browser.Render(context.Background(), Route{DocumentKey: "doc", Selected: string(operationID)}); err != nil {
+		t.Fatalf("operation route with detail child: %v", err)
+	}
+	if _, err := browser.Render(context.Background(), Route{DocumentKey: "doc", Selected: string(schemaID)}); err == nil {
+		t.Fatal("schema route rendered without its schema-node child")
+	}
+
+	for path, data := range children {
+		if strings.HasPrefix(path, "schema-nodes/") {
+			detailOnly[path] = data
+		}
+	}
+	browser, err = Prepare(descriptor, manifest, catalogBytes, detailOnly)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := browser.Render(context.Background(), Route{DocumentKey: "doc", Selected: string(schemaID)}); err != nil {
+		t.Fatalf("schema route with selected shard: %v", err)
+	}
+}
+
+func TestBrowserRejectsUnknownOrChangedChildren(t *testing.T) {
 	descriptor, manifest, catalogBytes, children, _, _ := browserFixture(t)
 	for name, mutate := range map[string]func(map[string][]byte){
-		"missing": func(values map[string][]byte) {
-			for childPath := range values {
-				delete(values, childPath)
-				break
-			}
-		},
 		"changed": func(values map[string][]byte) {
 			for childPath := range values {
 				values[childPath] = append(values[childPath], 'x')
