@@ -102,11 +102,11 @@ var approvedExternalSourceProvenance = externalSourceProvenance{
 	},
 	Goshtoso: goshtosoProvenance{
 		Repository:   "https://github.com/araihu/goshtoso",
-		OriginMain:   sourceRevision{Ref: "refs/remotes/origin/main", CommitSHA: "78921015c2f3b46379ac30d3d9f80755bb860307", TreeSHA: "87d6cac8b9aa732b27976c32851d28fd430475af"},
+		OriginMain:   sourceRevision{Ref: "refs/remotes/origin/main", CommitSHA: "d3eaf0d19be3dcae3fe0fab688c6fe915bc3abd6", TreeSHA: "fa6b7ed44ab6be7ec02c36783f80a08b72dd1769"},
 		Module:       "github.com/araihu/goshtoso",
-		Version:      "v0.1.13",
-		TagCommitSHA: "19c86f1dbbcf5a85c55f2d9b3bfaac4fd5febea6",
-		TagTreeSHA:   "49c9f5557ae5bb74a8f333af8958bbf495377af0",
+		Version:      "v0.2.6",
+		TagCommitSHA: "ed9750d2443ab5e961aec50b546dca4f3b033d62",
+		TagTreeSHA:   "7b5a8fc3a03196f08db0b1209dcdd43b521d942c",
 		License:      legalFileEvidence{Path: "LICENSE", Kind: "license", SPDX: "MIT", Size: 1078, GitBlobSHA: "0a7743398ecbeacc05ed822e1f74023ee9b36842", SHA256: "cacf68ff9920c026f5de2ebf992333c1a243e45d81aaa5b4577e05b52c5a9584"},
 	},
 }
@@ -198,7 +198,7 @@ func TestExternalSourceProvenanceMatchesPinnedModuleLicenseBytes(t *testing.T) {
 	}{
 		{module: "github.com/araihu/assets", version: "v0.2.1", file: approvedExternalSourceProvenance.Assets.Legal[0]},
 		{module: "github.com/araihu/assets", version: "v0.2.1", file: approvedExternalSourceProvenance.Assets.Legal[1]},
-		{module: "github.com/araihu/goshtoso", version: "v0.1.13", file: approvedExternalSourceProvenance.Goshtoso.License},
+		{module: "github.com/araihu/goshtoso", version: "v0.2.6", file: approvedExternalSourceProvenance.Goshtoso.License},
 	} {
 		moduleRoot := goModuleRoot(t, root, evidence.module)
 		if got := goModuleVersion(t, root, evidence.module); got != evidence.version {
