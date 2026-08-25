@@ -458,6 +458,74 @@
 	return "";
   }
 
+  function loadStaticChild(descriptor, manifest, cache, children, childPath) {
+	if (Object.prototype.hasOwnProperty.call(children, childPath)) return Promise.resolve(children[childPath]);
+	var identity = manifestChild(manifest, childPath);
+	var url = identity && childURL(descriptor, identity);
+	if (!url) return Promise.reject(new Error('static child "' + childPath + '" is not declared'));
+	return readVerifiedJSON(url, identity, cache).then(function (value) {
+	  children[childPath] = value;
+	  return value;
+	}).catch(function (error) {
+	  throw new Error('static child "' + childPath + '" failed: ' + (error && error.message ? error.message : "request failed"));
+	});
+  }
+
+  function staticCatalogDocument(catalog, key) {
+	if (!catalog || !Array.isArray(catalog.documents)) fail("static catalog document inventory is invalid");
+	for (var index = 0; index < catalog.documents.length; index += 1) if (catalog.documents[index].key === key) return catalog.documents[index];
+	fail("static catalog document is missing");
+  }
+
+  function staticRouteSelection(documentValue, selected) {
+	var groups = [documentValue.operations, documentValue.schemas];
+	for (var groupIndex = 0; groupIndex < groups.length; groupIndex += 1) {
+	  var group = groups[groupIndex];
+	  if (!Array.isArray(group)) continue;
+	  for (var index = 0; index < group.length; index += 1) if (group[index].detailId === selected) return { directory: group[index], schema: groupIndex === 1 };
+	}
+	fail("static route detail is missing");
+  }
+
+  function staticSchemaShard(documentValue, ordinal) {
+	if (!Array.isArray(documentValue.schemaNodeShards)) fail("static schema-node inventory is invalid");
+	for (var index = 0; index < documentValue.schemaNodeShards.length; index += 1) {
+	  var shard = documentValue.schemaNodeShards[index];
+	  if (Number.isSafeInteger(shard.firstOrdinal) && Number.isSafeInteger(shard.lastOrdinal) && shard.firstOrdinal <= ordinal && ordinal <= shard.lastOrdinal) return shard;
+	}
+	fail("static schema-node shard is missing");
+  }
+
+  function hydrateStaticRoute(descriptor, manifest, catalog, cache, children, route) {
+	if (!route.selected) return Promise.resolve(children);
+	var documentValue = staticCatalogDocument(catalog, route.documentKey);
+	var selected = staticRouteSelection(documentValue, route.selected);
+	return loadStaticChild(descriptor, manifest, cache, children, selected.directory.detailChild).then(function (detailShard) {
+	  if (!selected.schema) return children;
+	  if (!detailShard || !Array.isArray(detailShard.records)) fail("static detail shard is invalid");
+	  var detail = null;
+	  for (var index = 0; index < detailShard.records.length; index += 1) if (detailShard.records[index].id === route.selected) detail = detailShard.records[index];
+	  var ordinal = route.node !== undefined ? route.node : detail && detail.schema && detail.schema.schemaRef;
+	  if (!Number.isSafeInteger(ordinal) || ordinal < 0) fail("static schema-node route is invalid");
+	  var selectedShard = staticSchemaShard(documentValue, ordinal);
+	  return loadStaticChild(descriptor, manifest, cache, children, selectedShard.path).then(function (shard) {
+		if (!shard || !Array.isArray(shard.nodes)) fail("static schema-node shard is invalid");
+		var node = null;
+		for (var nodeIndex = 0; nodeIndex < shard.nodes.length; nodeIndex += 1) if (shard.nodes[nodeIndex].ordinal === ordinal) node = shard.nodes[nodeIndex];
+		if (!node) fail("static schema node is missing");
+		var references = [];
+		;(Array.isArray(node.properties) ? node.properties : []).concat(Array.isArray(node.items) ? node.items : []).forEach(function (reference) {
+		  if (!Number.isSafeInteger(reference.schemaRef) || reference.schemaRef < 0) fail("static schema-node reference is invalid");
+		  var path = staticSchemaShard(documentValue, reference.schemaRef).path;
+		  if (references.indexOf(path) < 0) references.push(path);
+		});
+		return references.reduce(function (pending, childPath) {
+		  return pending.then(function () { return loadStaticChild(descriptor, manifest, cache, children, childPath); });
+		}, Promise.resolve()).then(function () { return children; });
+	  });
+	});
+  }
+
   function readVerifiedJSON(url, identity, cache) {
 	var parsed = sameOriginPath(url);
 	if (!parsed || !identity || !Number.isSafeInteger(identity.length) || identity.length <= 0 || !sha256(identity.sha256)) return Promise.reject(new Error("static child identity is invalid"));
@@ -506,12 +574,18 @@
 	};
   }
 
-  function installStaticRouter(descriptor, abi, documentValue) {
+  function installStaticRouter(descriptor, manifest, catalog, cache, abi, documentValue) {
 	var main = documentValue.querySelector("[data-catalog-main-content]");
 	var sidebar = documentValue.getElementById("catalog-sidebar-groups");
+	var children = Object.create(null);
 	if (!main) fail("static catalog main target is missing");
 	function swap(route, historyMode) {
-	  return Promise.resolve(abi.render(route)).then(function (result) {
+	  return hydrateStaticRoute(descriptor, manifest, catalog, cache, children, route).then(function () {
+		var cleanManifest = Object.assign({}, manifest); delete cleanManifest.identityDigest;
+		var prepared = abi.prepare(descriptor, cleanManifest, catalog, children);
+		if (!prepared || prepared.ok !== true) fail(prepared && prepared.error || "static Wasm preparation failed");
+		return abi.render(route);
+	  }).then(function (result) {
 		if (!result || result.ok !== true) fail(result && result.error || "static render failed");
 		main.innerHTML = result.mainHtml;
 		if (sidebar) sidebar.innerHTML = result.sidebarHtml;
@@ -557,18 +631,10 @@
 		  var activated = validateActivation(abi.activate(descriptor, manifest), descriptor);
 		  var catalogIdentity = manifestChild(manifest, "catalog.json");
 		  return readVerifiedJSON(descriptor.catalogUrl, catalogIdentity, cache).then(function (catalog) {
-			var selected = manifest.children.filter(function (child) { return child.path.indexOf("search/") === 0 || child.path.indexOf("details/") === 0 || child.path.indexOf("schema-nodes/") === 0; });
-			return Promise.all(selected.map(function (child) { return readVerifiedJSON(childURL(descriptor, child), child, cache); })).then(function (objects) {
-			  var children = Object.create(null);
-			  selected.forEach(function (child, index) { children[child.path] = objects[index]; });
-			  var cleanManifest = Object.assign({}, manifest); delete cleanManifest.identityDigest;
-			  var prepared = abi.prepare(descriptor, cleanManifest, catalog, children);
-			  if (!prepared || prepared.ok !== true) fail(prepared && prepared.error || "static Wasm preparation failed");
-			  var router = installStaticRouter(descriptor, abi, documentValue);
-			  return (router.initial ? router.swap(router.initial, "none") : Promise.resolve()).then(function () {
-				mark(root, "ready");
-				return { ok: true, result: activated };
-			  });
+			var router = installStaticRouter(descriptor, manifest, catalog, cache, abi, documentValue);
+			return (router.initial ? router.swap(router.initial, "none") : Promise.resolve()).then(function () {
+			  mark(root, "ready");
+			  return { ok: true, result: activated };
 			});
 		  });
 		});

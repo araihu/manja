@@ -239,6 +239,32 @@ test('worker rejects duplicate manifest keys and binds child bytes to declared d
   await assert.rejects(() => worker.validateManifestChild(storage, value, request, response), /manifest child digest differs|manifest children differ/)
 })
 
+test('worker validates exported search child under its declared manifest path', async () => {
+  const identity = { schemaVersion: 1, catalogId: 'public-api', revisionId: 'revision-1', projectionFormat: 'projection-v2' }
+  const projectionDigest = digest(JSON.stringify(identity))
+  const value = descriptor({
+    projectionDigest,
+    snapshotId: `snapshot-sha256-${projectionDigest}`,
+    projectionManifestUrl: `/docs/snapshots/snapshot-sha256-${projectionDigest}/manifest.json`,
+    catalogUrl: `/docs/snapshots/snapshot-sha256-${projectionDigest}/catalog.json`,
+    searchDataBase: `/docs/snapshots/snapshot-sha256-${projectionDigest}/search-data/`,
+    projectionDataBase: `/docs/snapshots/snapshot-sha256-${projectionDigest}/projection-data/`,
+  })
+  const child = bytes('{"schemaVersion":1,"searchVersion":1}')
+  const manifest = JSON.stringify({
+    schemaVersion: 1,
+    snapshotId: value.snapshotId,
+    identity,
+    children: [{ path: 'search/directory.json', kind: 'search-directory', length: child.byteLength, sha256: digest(child) }],
+  })
+  const storage = storageModule.createMemoryStorage()
+  await storage.commitGeneration(value, { ...generationFor(value), projectionBytes: bytes('projection'), manifestBytes: bytes(manifest) })
+  await storage.activate(value.publicationKey, value.revisionId)
+  const request = new Request(`https://docs.test${value.searchDataBase}search/directory.json`)
+  const response = await worker.validateManifestChild(storage, value, request, new Response(child, { status: 200 }))
+  assert.equal(response.status, 200)
+})
+
 test('revalidation is single-flight and network failure serves validated offline shell', async () => {
   const storage = storageModule.createMemoryStorage()
   const identity = { schemaVersion: 1, catalogId: 'public-api', revisionId: 'revision-1', projectionFormat: 'projection-v2' }

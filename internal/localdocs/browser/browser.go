@@ -74,9 +74,6 @@ func Prepare(descriptor localdocs.DescriptorV1, manifestBytes, catalogBytes []by
 			want[child.Path] = child
 		}
 	}
-	if len(children) != len(want) {
-		return nil, errors.New("local docs browser child inventory differs")
-	}
 	owned := make(map[string][]byte, len(children))
 	for childPath, data := range children {
 		identity, ok := want[childPath]
@@ -85,31 +82,30 @@ func Prepare(descriptor localdocs.DescriptorV1, manifestBytes, catalogBytes []by
 		}
 		owned[childPath] = append([]byte(nil), data...)
 	}
-	searchBytes, ok := owned[directory.SearchChild]
-	if !ok {
-		return nil, errors.New("local docs browser search directory is missing")
-	}
-	searchDirectory, err := catalogjson.DecodeSearchDirectory(searchBytes)
-	if err != nil || catalogjson.ValidateSearchManifest(searchDirectory, manifest) != nil {
-		return nil, errors.New("local docs browser search directory is invalid")
-	}
-	runtimeSnapshot := catalog.RuntimeSnapshot{ID: manifest.SnapshotID, Directory: directory, Search: searchDirectory, Manifest: manifest}
-	search, err := catalog.NewRuntimeSearchService(runtimeSnapshot, catalog.NewSearchCache(), func(_ context.Context, childPath string) ([]byte, catalog.ChildIdentityV1, error) {
-		data, ok := owned[childPath]
-		identity, declared := browserChildIdentity(manifest, childPath)
-		if !ok || !declared {
-			return nil, catalog.ChildIdentityV1{}, errors.New("local docs browser search child is missing")
+	var search *catalog.SearchService
+	if searchBytes, ok := owned[directory.SearchChild]; ok {
+		searchDirectory, err := catalogjson.DecodeSearchDirectory(searchBytes)
+		if err != nil || catalogjson.ValidateSearchManifest(searchDirectory, manifest) != nil {
+			return nil, errors.New("local docs browser search directory is invalid")
 		}
-		return append([]byte(nil), data...), identity, nil
-	})
-	if err != nil {
-		return nil, err
+		runtimeSnapshot := catalog.RuntimeSnapshot{ID: manifest.SnapshotID, Directory: directory, Search: searchDirectory, Manifest: manifest}
+		search, err = catalog.NewRuntimeSearchService(runtimeSnapshot, catalog.NewSearchCache(), func(_ context.Context, childPath string) ([]byte, catalog.ChildIdentityV1, error) {
+			data, ok := owned[childPath]
+			identity, declared := browserChildIdentity(manifest, childPath)
+			if !ok || !declared {
+				return nil, catalog.ChildIdentityV1{}, errors.New("local docs browser search child is missing")
+			}
+			return append([]byte(nil), data...), identity, nil
+		})
+		if err != nil {
+			return nil, err
+		}
 	}
 	return &Browser{descriptor: descriptor, activation: activation, manifest: manifest, directory: directory, children: owned, search: search}, nil
 }
 
 func (browser *Browser) Render(ctx context.Context, route Route) (Page, error) {
-	if browser == nil || browser.search == nil {
+	if browser == nil {
 		return Page{}, errors.New("local docs browser is not prepared")
 	}
 	document, ok := browser.document(route.DocumentKey)
@@ -152,6 +148,9 @@ func (browser *Browser) deploymentHTML(value string) string {
 }
 
 func (browser *Browser) Search(ctx context.Context, query string) ([]catalog.SearchRecordV1, error) {
+	if browser == nil || browser.search == nil {
+		return nil, errors.New("local docs browser search is not prepared")
+	}
 	result, err := browser.search.Search(ctx, catalog.SnapshotID(browser.descriptor.SnapshotID), query)
 	if err != nil {
 		return nil, err

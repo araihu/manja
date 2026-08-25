@@ -57,13 +57,28 @@ func rewriteHTMLChildren(parent *html.Node, basePath string, catalogContext *exp
 				switch attribute.Key {
 				case "hx-get", "data-search-fallback-url":
 					continue
+				case "data-search-global":
+					if catalogContext != nil {
+						attribute.Val = "false"
+					}
+				case "data-search-mount":
+					if catalogContext != nil {
+						attribute.Val = strings.TrimSuffix(prefixExportBase(basePath, catalogContext.Mount), "/")
+						if attribute.Val == "" {
+							attribute.Val = "/"
+						}
+					}
+				case "data-search-scope-label":
+					if catalogContext != nil && catalogContext.Directory.Title != "" {
+						attribute.Val = catalogContext.Directory.Title
+					}
 				case "data-goshtoso-dependencies":
 					rewritten, err := rewriteDependencyURLs(attribute.Val, basePath)
 					if err != nil {
 						return err
 					}
 					attribute.Val = rewritten
-				case "href", "src", "action", "data-search-child-base":
+				case "href", "src", "action", "data-search-child-base", "data-table-row-link", "data-catalog-search-href":
 					rewritten, err := rewriteHTMLURL(node, attribute.Key, attribute.Val, basePath, catalogContext)
 					if err != nil {
 						return err
@@ -73,12 +88,47 @@ func rewriteHTMLChildren(parent *html.Node, basePath string, catalogContext *exp
 				attributes = append(attributes, attribute)
 			}
 			node.Attr = attributes
+			if hasHTMLAttribute(node, "id", "catalog-search-current-visit") {
+				if err := rewriteExportJSONHref(node, basePath, catalogContext); err != nil {
+					return err
+				}
+			}
 		}
 		if err := rewriteHTMLChildren(node, basePath, catalogContext); err != nil {
 			return err
 		}
 		node = next
 	}
+	return nil
+}
+
+func rewriteExportJSONHref(node *html.Node, basePath string, catalogContext *exportHTMLCatalog) error {
+	if node.Data != "script" || node.FirstChild == nil || node.FirstChild != node.LastChild || node.FirstChild.Type != html.TextNode {
+		return errors.New("export current visit payload is invalid")
+	}
+	decoder := json.NewDecoder(strings.NewReader(node.FirstChild.Data))
+	decoder.DisallowUnknownFields()
+	var payload map[string]json.RawMessage
+	if err := decoder.Decode(&payload); err != nil || requireJSONEOF(decoder) != nil {
+		return errors.New("export current visit payload is invalid")
+	}
+	if payload == nil {
+		return nil
+	}
+	var href string
+	if raw, ok := payload["href"]; !ok || json.Unmarshal(raw, &href) != nil || href == "" {
+		return errors.New("export current visit href is invalid")
+	}
+	rewritten, err := rewriteHTMLURL(node, "href", href, basePath, catalogContext)
+	if err != nil {
+		return err
+	}
+	payload["href"], _ = json.Marshal(rewritten)
+	data, err := json.Marshal(payload)
+	if err != nil {
+		return errors.New("export current visit payload cannot be encoded")
+	}
+	node.FirstChild.Data = string(data)
 	return nil
 }
 

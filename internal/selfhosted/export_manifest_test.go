@@ -72,6 +72,9 @@ func TestExportVerifierRejectsBrokenAndRuntimeOnlyHTMLReferences(t *testing.T) {
 	}{
 		{name: "root missing", base: "/", body: `<a href="/missing/">missing</a>`},
 		{name: "subpath escape", base: "/group/project/", body: `<script src="/manja-assets/local-docs.js"></script>`},
+		{name: "table row subpath escape", base: "/group/project/", body: `<div data-table-row-link="/documents/openapi/"></div>`},
+		{name: "search subpath escape", base: "/group/project/", body: `<div data-catalog-search-href="/search"></div>`},
+		{name: "embedded visit subpath escape", base: "/group/project/", body: `<script id="catalog-search-current-visit" type="application/json">{"href":"/documents/openapi/"}</script>`},
 		{name: "runtime route", base: "/", body: `<div hx-get="/api/private"></div>`},
 	} {
 		t.Run(test.name, func(t *testing.T) {

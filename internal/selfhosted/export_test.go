@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/araihu/manja/internal/web"
 )
 
 func TestExportBasePathValidation(t *testing.T) {
@@ -105,6 +107,40 @@ catalogs:
 		if !strings.Contains(string(body), want) {
 			t.Errorf("subpath shell missing %q", want)
 		}
+	}
+}
+
+func TestExportWorkerChangesWithShellsAndRemainsDeterministic(t *testing.T) {
+	exportWorker := func(shell string) []byte {
+		t.Helper()
+		assets := web.NewCatalogAssetsHandler()
+		handler := http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+			if request.URL.Path == "/" {
+				response.Header().Set("Content-Type", "text/html; charset=utf-8")
+				_, _ = response.Write([]byte(shell))
+				return
+			}
+			assets.ServeHTTP(response, request)
+		})
+		output := filepath.Join(t.TempDir(), "public")
+		if _, err := exportFromHandler(context.Background(), handler, nil, output, "/"); err != nil {
+			t.Fatal(err)
+		}
+		worker, err := os.ReadFile(filepath.Join(output, "sw.js"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return worker
+	}
+
+	first := exportWorker(`<!doctype html><title>First</title>`)
+	changed := exportWorker(`<!doctype html><title>Changed</title>`)
+	repeated := exportWorker(`<!doctype html><title>First</title>`)
+	if string(first) == string(changed) {
+		t.Fatal("exported Service Worker did not change with cacheable HTML")
+	}
+	if string(first) != string(repeated) {
+		t.Fatal("identical export shells produced different Service Worker bytes")
 	}
 }
 

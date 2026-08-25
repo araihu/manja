@@ -134,6 +134,9 @@ func exportFromHandler(ctx context.Context, handler http.Handler, receipts []ren
 		}
 	}
 	sort.Slice(catalogReceipts, func(i, j int) bool { return catalogReceipts[i].CatalogID < catalogReceipts[j].CatalogID })
+	if err = writer.bindWorkerToShells(); err != nil {
+		return ExportReceipt{}, err
+	}
 	manifest := exportManifest{SchemaVersion: 1, BasePath: basePath, Catalogs: catalogReceipts, Files: writer.sortedEntries()}
 	manifestBytes, err := encodeExportManifest(manifest)
 	if err != nil {
@@ -415,6 +418,28 @@ func (writer *exportTreeWriter) rewriteHTML(name, basePath string, catalogContex
 	}
 	digest := sha256.Sum256(rewritten)
 	writer.entries[name] = exportFileEntry{Path: name, Length: uint64(len(rewritten)), MediaType: "text/html", SHA256: hex.EncodeToString(digest[:])}
+	return nil
+}
+
+func (writer *exportTreeWriter) bindWorkerToShells() error {
+	shells := sha256.New()
+	for _, entry := range writer.sortedEntries() {
+		if entry.MediaType == "text/html" {
+			_, _ = fmt.Fprintf(shells, "%s\x00%d\x00%s\n", entry.Path, entry.Length, entry.SHA256)
+		}
+	}
+	filename := filepath.Join(writer.root, "sw.js")
+	worker, err := os.ReadFile(filename)
+	if err != nil {
+		return err
+	}
+	generation := hex.EncodeToString(shells.Sum(nil))
+	worker = append(worker, []byte("\n// manja-static-shells-sha256="+generation+"\n")...)
+	if err := os.WriteFile(filename, worker, 0o644); err != nil {
+		return err
+	}
+	digest := sha256.Sum256(worker)
+	writer.entries["sw.js"] = exportFileEntry{Path: "sw.js", Length: uint64(len(worker)), MediaType: "text/javascript", SHA256: hex.EncodeToString(digest[:])}
 	return nil
 }
 
