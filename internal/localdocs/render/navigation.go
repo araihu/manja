@@ -118,7 +118,7 @@ func PrepareOperationNavigation(
 	}
 	selected := document.Operations[selectedIndex]
 	if selected.OperationID != operation.ID || selected.Method != operation.Method || selected.Path != operation.Path ||
-		selected.Title != operationNavigationTitle(operation.Title, operation.Summary, operation.ID, operation.Method, operation.Path) ||
+		strings.TrimSpace(selected.Title) != operationNavigationTitle(operation.Title, operation.Summary, operation.ID, operation.Method, operation.Path) ||
 		!equalNavigationStrings(selected.Tags, operation.Tags) || (selected.Href != projected.Href && selected.Href != strings.TrimPrefix(projected.Href, "documents/")) {
 		return OperationNavigationFragment{}, invalidOperationNavigationField("selected directory operation")
 	}

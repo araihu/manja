@@ -203,7 +203,7 @@ func captureCatalog(ctx context.Context, handler http.Handler, writer *exportTre
 	if err != nil {
 		return ExportCatalogReceipt{}, err
 	}
-	directory, err := catalogjson.DecodeCatalog(catalogCapture.body)
+	directory, err := catalogjson.DecodeCatalogWithResourceLimits(catalogCapture.body, false)
 	if err != nil || directory.CatalogID != active.CatalogID {
 		return ExportCatalogReceipt{}, fmt.Errorf("catalog %q directory is invalid", active.CatalogID)
 	}

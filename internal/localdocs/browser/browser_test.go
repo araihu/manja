@@ -77,6 +77,50 @@ func TestBrowserPreparesOnlyVerifiedChildrenNeededByRoute(t *testing.T) {
 	}
 }
 
+func TestBrowserPreparesVerifiedCatalogAboveRuntimeByteLimit(t *testing.T) {
+	descriptor, manifestBytes, catalogBytes, children, _, _ := browserFixture(t)
+	directory, err := catalogjson.DecodeCatalog(catalogBytes)
+	if err != nil {
+		t.Fatal(err)
+	}
+	directory.Title = strings.Repeat("x", 4<<20)
+	catalogBytes, err = json.Marshal(directory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(catalogBytes) <= 4<<20 {
+		t.Fatalf("large catalog fixture = %d bytes, want more than 4 MiB", len(catalogBytes))
+	}
+	manifest, err := catalogjson.DecodeManifest(manifestBytes)
+	if err != nil {
+		t.Fatal(err)
+	}
+	identity := browserIdentity("catalog.json", "catalog", catalogBytes)
+	for index := range manifest.Children {
+		if manifest.Children[index].Path == identity.Path {
+			manifest.Children[index] = identity
+			manifest.Identity.Children[index] = identity
+		}
+	}
+	identityBytes, err := json.Marshal(manifest.Identity)
+	if err != nil {
+		t.Fatal(err)
+	}
+	digest := sha256.Sum256(identityBytes)
+	manifest.SnapshotID = catalog.SnapshotID("snapshot-sha256-" + hex.EncodeToString(digest[:]))
+	manifestBytes, err = catalogjson.EncodeManifest(manifest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	descriptor, ok := localdocs.PrepareStaticDescriptor("pets", catalog.RuntimeSnapshot{ID: manifest.SnapshotID, Directory: directory, Manifest: manifest}, "/docs/pets/", "/docs/")
+	if !ok {
+		t.Fatal("PrepareStaticDescriptor failed")
+	}
+	if _, err := Prepare(descriptor, manifestBytes, catalogBytes, children); err != nil {
+		t.Fatalf("Prepare rejected verified static catalog above runtime byte limit: %v", err)
+	}
+}
+
 func TestBrowserRejectsUnknownOrChangedChildren(t *testing.T) {
 	descriptor, manifest, catalogBytes, children, _, _ := browserFixture(t)
 	for name, mutate := range map[string]func(map[string][]byte){

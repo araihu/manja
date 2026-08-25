@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"math"
+	"strings"
 	"syscall/js"
 
 	"github.com/araihu/manja/internal/localdocs"
@@ -14,12 +15,13 @@ import (
 )
 
 var (
-	activateFunc js.Func
-	allowsFunc   js.Func
-	resolveFunc  js.Func
-	prepareFunc  js.Func
-	renderFunc   js.Func
-	searchFunc   js.Func
+	activateFunc         js.Func
+	allowsFunc           js.Func
+	resolveFunc          js.Func
+	prepareFunc          js.Func
+	renderFunc           js.Func
+	searchFunc           js.Func
+	canonicalJSONEscapes = strings.NewReplacer("<", `\u003c`, ">", `\u003e`, "&", `\u0026`, "\u2028", `\u2028`, "\u2029", `\u2029`)
 )
 
 func main() {
@@ -172,7 +174,11 @@ func canonicalJSBytes(value js.Value) ([]byte, error) {
 	if encoded.Type() != js.TypeString {
 		return nil, errors.New("runtime JSON value cannot be encoded")
 	}
-	return []byte(encoded.String()), nil
+	return []byte(canonicalizeJSONString(encoded.String())), nil
+}
+
+func canonicalizeJSONString(value string) string {
+	return canonicalJSONEscapes.Replace(value)
 }
 
 func childBytesFromJS(value js.Value) (map[string][]byte, error) {

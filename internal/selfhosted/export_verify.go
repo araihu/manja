@@ -69,7 +69,7 @@ func verifyExportStructure(root string, manifest exportManifest, declared map[st
 		if err != nil {
 			return err
 		}
-		directory, err := catalogjson.DecodeCatalog(catalogBytes)
+		directory, err := catalogjson.DecodeCatalogWithResourceLimits(catalogBytes, false)
 		if err != nil || directory.CatalogID != receipt.CatalogID || catalogjson.ValidateCatalogManifest(directory, snapshot) != nil {
 			return fmt.Errorf("catalog %q export directory differs", receipt.CatalogID)
 		}
