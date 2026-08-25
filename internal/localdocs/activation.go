@@ -127,7 +127,21 @@ func validateDescriptor(descriptor DescriptorV1) error {
 	if descriptor.ProjectionManifestURL != wantManifest || descriptor.CatalogURL != wantCatalog || descriptor.SearchDataBase != wantSearch || descriptor.ProjectionDataBase != wantDataBase {
 		return errors.New("local docs descriptor URL is invalid")
 	}
+	if descriptor.Static != nil && !validStaticDescriptor(descriptor) {
+		return errors.New("local docs static descriptor is invalid")
+	}
 	return nil
+}
+
+func validStaticDescriptor(descriptor DescriptorV1) bool {
+	static := descriptor.Static
+	if static == nil || !validPublicationBase(static.DeploymentBase) || !strings.HasPrefix(descriptor.PublicationBase, static.DeploymentBase) {
+		return false
+	}
+	return static.WorkerURL == descriptorURL(static.DeploymentBase, "sw.js") &&
+		static.WorkerScope == static.DeploymentBase &&
+		static.OfflineShellURL == descriptorURL(descriptor.PublicationBase, "_manja", "offline-shell")+"/" &&
+		static.ExportManifestURL == descriptorURL(static.DeploymentBase, "_manja", "export.json")
 }
 
 func validPublicationBase(value string) bool {

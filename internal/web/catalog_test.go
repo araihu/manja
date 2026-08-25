@@ -1333,21 +1333,35 @@ func TestCatalogSocialImageMIMETypeUsesPresentationValue(t *testing.T) {
 	}
 }
 
-func TestCatalogRenderRejectsResponsesOverHardByteLimit(t *testing.T) {
+func TestCatalogRenderByteLimitIsOptIn(t *testing.T) {
 	t.Parallel()
 
 	data := templates.CatalogPageData{
 		Mount:      "/",
 		SnapshotID: catalog.SnapshotID("snapshot-sha256-" + strings.Repeat("a", 64)),
-		Directory:  catalog.CatalogArtifactV1{Title: strings.Repeat("oversized", maxCatalogPageBytes)},
+		Directory:  catalog.CatalogArtifactV1{Title: strings.Repeat("x", maxCatalogPageBytes)},
 	}
-	response := httptest.NewRecorder()
-	(&CatalogHandler{}).renderCatalogPage(response, httptest.NewRequest(http.MethodGet, "/", nil), data)
-	if response.Code != http.StatusInternalServerError {
-		t.Fatalf("oversized render status = %d, want 500", response.Code)
-	}
-	if response.Body.Len() > 1024 {
-		t.Fatalf("oversized render error body = %d bytes, want bounded", response.Body.Len())
+	for name, test := range map[string]struct {
+		resourceLimits bool
+		status         int
+	}{
+		"default off": {resourceLimits: false, status: http.StatusOK},
+		"opted in":    {resourceLimits: true, status: http.StatusInternalServerError},
+	} {
+		t.Run(name, func(t *testing.T) {
+			handler := NewCatalogHandlerWithResourceLimits(nil, nil, nil, OrganizationPresentation{}, CatalogEnhancementPolicy{}, test.resourceLimits).(*CatalogHandler)
+			response := httptest.NewRecorder()
+			handler.renderCatalogPage(response, httptest.NewRequest(http.MethodGet, "/", nil), data)
+			if response.Code != test.status {
+				t.Fatalf("oversized render status = %d, want %d", response.Code, test.status)
+			}
+			if test.resourceLimits && response.Body.Len() > 1024 {
+				t.Fatalf("oversized render error body = %d bytes, want bounded", response.Body.Len())
+			}
+			if !test.resourceLimits && response.Body.Len() <= maxCatalogPageBytes {
+				t.Fatalf("unbounded render body = %d bytes, want over former %d-byte limit", response.Body.Len(), maxCatalogPageBytes)
+			}
+		})
 	}
 }
 
@@ -1388,7 +1402,10 @@ func TestCatalogMaxOperationGroupRejectsSelectedPageBeyondByteBound(t *testing.T
 			{Path: "details/max.json", Kind: "detail", Length: uint64(len(detailBytes)), SHA256: hex.EncodeToString(detailDigest[:])},
 		}},
 	}
-	handler := &CatalogHandler{children: memoryCatalogChildren{"details/max.json": detailBytes}, details: catalog.NewDetailCache()}
+	handler := NewCatalogHandlerWithResourceLimits(
+		nil, memoryCatalogChildren{"details/max.json": detailBytes}, nil,
+		OrganizationPresentation{}, CatalogEnhancementPolicy{}, true,
+	).(*CatalogHandler)
 	data, err := handler.catalogPageData(context.Background(), snapshot, "/", "max", string(selected.DetailID), "", "", "")
 	if err != nil {
 		t.Fatal(err)
@@ -1731,7 +1748,7 @@ func TestCatalogProjectionTransportIsNotActivatedByInitialHTML(t *testing.T) {
 		t.Fatalf("initial HTML = %d body=%q", response.Code, response.Body.String())
 	}
 	digest := sha256.Sum256(response.Body.Bytes())
-	if got := hex.EncodeToString(digest[:]); got != "891bf8623eae9f5d342b7aa01d85e7fb6f39ced1ca3319a2a46e8e5999469078" || response.Body.Len() != 53468 {
+	if got := hex.EncodeToString(digest[:]); got != "c3558e06404fd31b5c134f4e8ea934d577011487fa8840e7e7efe4b8a69dcb8c" || response.Body.Len() != 53733 {
 		t.Errorf("initial HTML = sha256 %s, %d bytes; want accepted OC-01M9 bytes", got, response.Body.Len())
 	}
 	for _, forbidden := range []string{"projection-data", "serviceWorker", "manja:local-ready", "MANJA_LOCAL_DOCS"} {
@@ -1764,12 +1781,12 @@ func TestCatalogAssetsServeFailClosedLocalDocsEnhancer(t *testing.T) {
 	if response.Code != http.StatusOK {
 		t.Fatalf("local docs enhancer asset = %d, want 200", response.Code)
 	}
-	for _, contract := range []string{"same-origin", "identityDigest", "manjaLocalDocsFallback", "Wasm asset"} {
+	for _, contract := range []string{"same-origin", "identityDigest", "manjaLocalDocsFallback", "Wasm asset", "descriptor.static", "staticCacheName"} {
 		if !strings.Contains(response.Body.String(), contract) {
 			t.Errorf("local docs enhancer asset missing %q", contract)
 		}
 	}
-	for _, forbidden := range []string{"caches", "indexedDB"} {
+	for _, forbidden := range []string{"indexedDB"} {
 		if strings.Contains(response.Body.String(), forbidden) {
 			t.Errorf("local docs enhancer asset includes forbidden runtime API %q", forbidden)
 		}
@@ -1818,8 +1835,8 @@ func TestCatalogAssetsServeDeterministicLocalDocsWasmRuntime(t *testing.T) {
 			name:        "wasm binary",
 			path:        "/manja-assets/local-docs/manja.wasm",
 			embedded:    "static/local-docs/manja.wasm",
-			length:      2_120_526,
-			digest:      "ac0f768328de603c27820941f0fb9248e29c55a9baa0d7824e3822b92d352aab",
+			length:      14_506_662,
+			digest:      "57066c6b657b319d6abbd38789096e8d393e9f2583c41b782aca3d75c77cb96d",
 			contentType: "application/wasm",
 			prefix:      []byte{0x00, 'a', 's', 'm'},
 		},
@@ -1827,8 +1844,8 @@ func TestCatalogAssetsServeDeterministicLocalDocsWasmRuntime(t *testing.T) {
 			name:     "brotli wasm binary",
 			path:     "/manja-assets/local-docs/manja.wasm.br",
 			embedded: "static/local-docs/manja.wasm.br",
-			length:   475_479,
-			digest:   "3ed06ecf74038cc79fd46e56ccec375b6ca803c86829b8537c0be9b67df63324",
+			length:   2_664_272,
+			digest:   "946672ce1eeccb9ae68d3df1144e32b84ef36f25c56e71fa93f3b2b513cce2cb",
 		},
 	} {
 		t.Run(test.name, func(t *testing.T) {

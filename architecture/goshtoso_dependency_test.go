@@ -13,7 +13,7 @@ import (
 
 const (
 	goshtosoModulePath = "github.com/araihu/goshtoso"
-	goshtosoVersion    = "v0.1.13"
+	goshtosoVersion    = "v0.2.6"
 	minimumGoVersion   = "go1.26.5"
 )
 
@@ -97,7 +97,7 @@ func TestNormalizedConsumerModfileLeavesCommittedMetadataUntouched(t *testing.T)
 	}
 }
 
-func TestGoshtosoConsumerModulesUseV0113(t *testing.T) {
+func TestGoshtosoConsumerModulesUseV026(t *testing.T) {
 	root := repositoryRoot(t)
 	for _, module := range discoverConsumerModules(t, root) {
 		t.Run(module.name, func(t *testing.T) {

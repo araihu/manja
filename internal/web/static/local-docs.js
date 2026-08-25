@@ -90,6 +90,16 @@
     }))) {
       fail("descriptor fallback asset is invalid");
     }
+	if (descriptor.static !== undefined) {
+	  var staticValue = descriptor.static;
+	  if (!staticValue || typeof staticValue !== "object" || !validBase(staticValue.deploymentBase) || descriptor.publicationBase.indexOf(staticValue.deploymentBase) !== 0 || staticValue.workerUrl !== staticValue.deploymentBase + "sw.js" || staticValue.workerScope !== staticValue.deploymentBase || staticValue.offlineShellUrl !== descriptor.publicationBase + "_manja/offline-shell/" || staticValue.exportManifestUrl !== staticValue.deploymentBase + "_manja/export.json") {
+		fail("descriptor static routes are invalid");
+	  }
+	  [staticValue.workerUrl, staticValue.workerScope, staticValue.offlineShellUrl, staticValue.exportManifestUrl].forEach(function (route) {
+		if (!sameOriginPath(route) || !publicPath(route)) fail("descriptor static route is invalid");
+	  });
+	  descriptor.offlineShellUrl = staticValue.offlineShellUrl;
+	}
     return descriptor;
   }
 
@@ -236,8 +246,17 @@
     }).join("");
   }
 
-  function readManifest(url, descriptor) {
-    return global.fetch(url.href, { credentials: "same-origin", cache: "no-store", headers: { Accept: "application/json" } }).then(function (response) {
+  function fetchWithCache(url, init, cache) {
+	return global.fetch(url, init).then(function (response) {
+	  return response;
+	}).catch(function (error) {
+	  if (!cache) throw error;
+	  return cache.match(url).then(function (response) { if (!response) throw error; return response; });
+	});
+  }
+
+  function readManifest(url, descriptor, cache) {
+	return fetchWithCache(url.href, { credentials: "same-origin", cache: "no-store", headers: { Accept: "application/json" } }, cache).then(function (response) {
       if (!response.ok) {
         fail("manifest request failed");
       }
@@ -257,13 +276,13 @@
           fail("manifest JSON is invalid");
         }
         validateManifest(manifest, descriptor);
-        return global.crypto.subtle.digest("SHA-256", identityBytes(manifest.identity)).then(function (digest) {
+		return global.crypto.subtle.digest("SHA-256", identityBytes(manifest.identity)).then(function (digest) {
           var identityDigest = hexDigest(digest);
           if (identityDigest !== descriptor.projectionDigest) {
             fail("manifest identity digest differs");
           }
-          manifest.identityDigest = identityDigest;
-          return manifest;
+		  manifest.identityDigest = identityDigest;
+		  return Promise.resolve(cache ? cache.put(url.href, new Response(bytes, { headers: { "Content-Type": "application/json" } })) : undefined).then(function () { return manifest; });
         });
       });
     });
@@ -398,14 +417,15 @@
     if (!workerURL) {
       return Promise.reject(new Error("Service Worker asset route is invalid"));
     }
-    if (options.scope !== undefined && options.scope !== "/") {
-      return Promise.reject(new Error("Service Worker scope must be root-scoped"));
+	var scope = options.scope || "/";
+	if (!validBase(scope)) {
+	  return Promise.reject(new Error("Service Worker scope is invalid"));
     }
     if (!root.__manjaLocalDocsWorkerListener && typeof serviceWorker.addEventListener === "function") {
       serviceWorker.addEventListener("message", function (event) { announceWorkerMessage(root, event); });
       root.__manjaLocalDocsWorkerListener = true;
     }
-    return Promise.resolve(serviceWorker.register(workerURL.href, { scope: "/" })).then(function (registration) {
+	return Promise.resolve(serviceWorker.register(workerURL.href, { scope: scope })).then(function (registration) {
       return Promise.resolve(serviceWorker.ready || registration).then(function (ready) {
         var target = workerTarget(serviceWorker, ready);
         if (!target || typeof target.postMessage !== "function") {
@@ -423,15 +443,154 @@
     });
   }
 
+  function staticCacheName(descriptor) {
+	return "manja-local-docs-assets-v1::" + encodeURIComponent(descriptor.publicationKey) + "::" + encodeURIComponent(descriptor.revisionId) + "::" + descriptor.projectionDigest;
+  }
+
+  function manifestChild(manifest, path) {
+	for (var index = 0; index < manifest.children.length; index += 1) if (manifest.children[index].path === path) return manifest.children[index];
+	return null;
+  }
+
+  function childURL(descriptor, child) {
+	if (child.path.indexOf("search/") === 0) return descriptor.searchDataBase + child.path;
+	if (child.path.indexOf("details/") === 0 || child.path.indexOf("schema-nodes/") === 0) return descriptor.projectionDataBase + child.path;
+	return "";
+  }
+
+  function readVerifiedJSON(url, identity, cache) {
+	var parsed = sameOriginPath(url);
+	if (!parsed || !identity || !Number.isSafeInteger(identity.length) || identity.length <= 0 || !sha256(identity.sha256)) return Promise.reject(new Error("static child identity is invalid"));
+	return fetchWithCache(parsed.href, { credentials: "same-origin", cache: "no-store", headers: { Accept: "application/json" } }, cache).then(function (response) {
+	  if (!response.ok) fail("static child request failed");
+	  return response.arrayBuffer();
+	}).then(function (bytes) {
+	  if (bytes.byteLength !== identity.length) fail("static child length differs");
+	  return global.crypto.subtle.digest("SHA-256", bytes).then(function (digest) {
+		if (hexDigest(digest) !== identity.sha256) fail("static child digest differs");
+		var object = parseJSONStrict(new TextDecoder("utf-8", { fatal: true }).decode(bytes));
+		return Promise.resolve(cache.put(parsed.href, new Response(bytes, { headers: { "Content-Type": "application/json" } }))).then(function () { return object; });
+	  });
+	});
+  }
+
+  function readExportManifest(descriptor, cache) {
+	var url = sameOriginPath(descriptor.static.exportManifestUrl);
+	return fetchWithCache(url.href, { credentials: "same-origin", cache: "no-store", headers: { Accept: "application/json" } }, cache).then(function (response) {
+	  if (!response.ok) fail("export manifest request failed");
+	  return response.text();
+	}).then(function (text) {
+	  var manifest = parseJSONStrict(text);
+	  if (!manifest || manifest.schemaVersion !== 1 || manifest.basePath !== descriptor.static.deploymentBase || !Array.isArray(manifest.catalogs)) fail("export manifest identity is invalid");
+	  var matched = manifest.catalogs.some(function (catalog) {
+		return catalog && catalog.catalogId === descriptor.catalogId && catalog.publicationKey === descriptor.publicationKey && catalog.revisionId === descriptor.revisionId && catalog.snapshotId === descriptor.snapshotId;
+	  });
+	  if (!matched) fail("export manifest catalog differs");
+	  return Promise.resolve(cache.put(url.href, new Response(text, { headers: { "Content-Type": "application/json" } }))).then(function () { return manifest; });
+	});
+  }
+
+  function staticRoute(descriptor, href) {
+	var value;
+	try { value = new URL(href, global.location.href); } catch (_) { return null; }
+	if (value.origin !== global.location.origin || value.pathname.indexOf(descriptor.publicationBase + "documents/") !== 0) return null;
+	var relative = value.pathname.slice((descriptor.publicationBase + "documents/").length);
+	var pieces = relative.split("/").filter(Boolean);
+	if (pieces.length !== 1) return null;
+	var node = value.searchParams.get("node");
+	return {
+	  documentKey: pieces[0],
+	  selected: value.searchParams.get("selected") || "",
+	  node: node !== null && /^\d+$/.test(node) ? Number(node) : undefined,
+	  groups: value.searchParams.getAll("group").filter(Boolean),
+	};
+  }
+
+  function installStaticRouter(descriptor, abi, documentValue) {
+	var main = documentValue.querySelector("[data-catalog-main-content]");
+	var sidebar = documentValue.getElementById("catalog-sidebar-groups");
+	if (!main) fail("static catalog main target is missing");
+	function swap(route, historyMode) {
+	  return Promise.resolve(abi.render(route)).then(function (result) {
+		if (!result || result.ok !== true) fail(result && result.error || "static render failed");
+		main.innerHTML = result.mainHtml;
+		if (sidebar) sidebar.innerHTML = result.sidebarHtml;
+		documentValue.title = result.title;
+		if (historyMode === "push") global.history.pushState({}, "", result.canonical);
+		if (global.htmx && typeof global.htmx.process === "function") { global.htmx.process(main); if (sidebar) global.htmx.process(sidebar); }
+		return result;
+	  });
+	}
+	documentValue.addEventListener("click", function (event) {
+	  var origin = event.target && event.target.closest && event.target.closest("a[href]");
+	  if (origin) {
+		var route = staticRoute(descriptor, origin.href);
+		if (route) { event.preventDefault(); swap(route, "push").catch(function () {}); }
+		return;
+	  }
+	  var group = event.target && event.target.closest && event.target.closest("[data-manja-static-group]");
+	  if (!group) return;
+	  var route = staticRoute(descriptor, global.location.href);
+	  if (!route) return;
+	  event.preventDefault();
+	  var id = group.getAttribute("data-manja-static-group");
+	  var index = route.groups.indexOf(id);
+	  if (index < 0) route.groups.push(id); else route.groups.splice(index, 1);
+	  swap(route, "push").catch(function () {});
+	});
+	global.addEventListener("popstate", function () { var route = staticRoute(descriptor, global.location.href); if (route) swap(route, "none").catch(function () {}); });
+	return { swap: swap, initial: staticRoute(descriptor, global.location.href) };
+  }
+
+  function startStatic(root, descriptor, options, documentValue) {
+	var deployment = descriptor.static.deploymentBase;
+	var staticOptions = Object.assign({}, options, {
+	  workerURL: descriptor.static.workerUrl,
+	  scope: descriptor.static.workerScope,
+	  runtimeURL: deployment + "manja-assets/local-docs/wasm_exec.js",
+	  wasmURL: deployment + "manja-assets/local-docs/manja.wasm",
+	});
+	return global.caches.open(staticCacheName(descriptor)).then(function (cache) {
+	  return Promise.all([registerWorker(root, descriptor, staticOptions), loadABI(staticOptions), readExportManifest(descriptor, cache)]).then(function (values) {
+		var abi = values[1];
+		return readManifest(sameOriginPath(descriptor.projectionManifestUrl), descriptor, cache).then(function (manifest) {
+		  var activated = validateActivation(abi.activate(descriptor, manifest), descriptor);
+		  var catalogIdentity = manifestChild(manifest, "catalog.json");
+		  return readVerifiedJSON(descriptor.catalogUrl, catalogIdentity, cache).then(function (catalog) {
+			var selected = manifest.children.filter(function (child) { return child.path.indexOf("search/") === 0 || child.path.indexOf("details/") === 0 || child.path.indexOf("schema-nodes/") === 0; });
+			return Promise.all(selected.map(function (child) { return readVerifiedJSON(childURL(descriptor, child), child, cache); })).then(function (objects) {
+			  var children = Object.create(null);
+			  selected.forEach(function (child, index) { children[child.path] = objects[index]; });
+			  var cleanManifest = Object.assign({}, manifest); delete cleanManifest.identityDigest;
+			  var prepared = abi.prepare(descriptor, cleanManifest, catalog, children);
+			  if (!prepared || prepared.ok !== true) fail(prepared && prepared.error || "static Wasm preparation failed");
+			  var router = installStaticRouter(descriptor, abi, documentValue);
+			  return (router.initial ? router.swap(router.initial, "none") : Promise.resolve()).then(function () {
+				mark(root, "ready");
+				return { ok: true, result: activated };
+			  });
+			});
+		  });
+		});
+	  });
+	});
+  }
+
   function start(options) {
     options = options || {};
     var documentValue = options.document || global.document;
     var root = documentValue.documentElement;
     try {
       var descriptor = descriptorFromDocument(documentValue);
-      if (!descriptor) {
-        return Promise.resolve({ skipped: true });
-      }
+	  if (!descriptor) {
+		return Promise.resolve({ skipped: true });
+	  }
+	  if (descriptor.static) {
+		return startStatic(root, descriptor, options, documentValue).catch(function (error) {
+		  mark(root, "fallback", error && error.message ? error.message : "static activation failed");
+		  return { ok: false, reason: error && error.message ? error.message : "static activation failed" };
+		});
+	  }
       var manifestURL = sameOriginPath(descriptor.projectionManifestUrl);
       return registerWorker(root, descriptor, options).then(function () {
         return loadABI(options);
@@ -460,8 +619,9 @@
     start: start,
     autoStart: function () { return start({}); },
     registerWorker: registerWorker,
-    validateDescriptor: validateDescriptor,
-    validateManifest: validateManifest
+	validateDescriptor: validateDescriptor,
+	validateManifest: validateManifest,
+	staticRoute: staticRoute
   };
   global.ManjaLocalDocsEnhancer = api;
   if (global.document && global.document.readyState === "loading") {

@@ -13,11 +13,11 @@ import { assertOCIPublicationGate, resolvePublication } from "./publication.js"
 import { resolveCachePartition } from "./cache.js"
 
 const GO_IMAGE =
-  "golang:1.26.6-bookworm@sha256:116d58cbd88c1297624acc6e967a060012422bacf9930927e23fb719189c6f36"
+  "golang:1.27.0-bookworm@sha256:484ef6066fa69acb059fdfeda7ba2b8f7391f2ef6abc6f9b8411e669ebd56466"
 const NODE_IMAGE =
   "node:22-bookworm@sha256:0557ac14e0d45d02ed563067b82856ca5e7aa3437fa28d98d4350ea9c3d9494a"
 const GO_BUILD_IMAGE =
-  "golang:1.26.6-alpine@sha256:3889b425f035be855a72fb4755265311293b6d414521f0a519d819df32222d83"
+  "golang:1.27.0-alpine@sha256:4c9fe60190a2a3350ddc51de80d0224b8a6698d12bdfc999fee45ea9d6c46dbc"
 const FORGEJO_IMAGE =
   "codeberg.org/forgejo/forgejo:11@sha256:946243edbab116d5bb78b73ea68af6f3d69229ba1b1ed958dd82c3481167f3e0"
 const ALPINE_IMAGE =
@@ -396,7 +396,7 @@ tar --extract --gzip --file /tmp/araihu-assets-release.tar.gz \
 
   private async buildImage(source: Directory, version: string): Promise<Container> {
     const original = await source.file("Dockerfile").contents()
-    const buildFrom = "FROM golang:1.26.6-alpine AS build"
+    const buildFrom = "FROM golang:1.27.0-alpine AS build"
     const runtimeFrom = "FROM alpine:3.24"
     if (
       original.split(buildFrom).length !== 2 ||

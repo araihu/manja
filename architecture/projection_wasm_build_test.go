@@ -413,12 +413,19 @@ func TestLocalDocsBrowserABIWasmBuildAndBoundary(t *testing.T) {
 	if err != nil {
 		t.Fatalf("list local docs browser ABI dependencies for js/wasm: %v\n%s", err, output)
 	}
-	allowed := map[string]bool{
-		modulePath + "/cmd/manja-local-docs":   true,
-		modulePath + "/internal/localdocs/abi": true,
+	allowedPrefixes := []string{
+		modulePath + "/cmd/manja-local-docs",
+		modulePath + "/domain",
+		modulePath + "/application/",
+		modulePath + "/internal/localdocs",
+		modulePath + "/internal/adapters/catalogjson",
 	}
 	for _, dependency := range strings.Fields(string(output)) {
-		if strings.HasPrefix(dependency, modulePath+"/") && !allowed[dependency] {
+		allowed := false
+		for _, prefix := range allowedPrefixes {
+			allowed = allowed || strings.HasPrefix(dependency, prefix)
+		}
+		if strings.HasPrefix(dependency, modulePath+"/") && !allowed {
 			t.Errorf("local docs browser ABI depends on forbidden package %q", dependency)
 		}
 	}

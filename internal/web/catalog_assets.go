@@ -5,6 +5,7 @@ import (
 	"io/fs"
 	"net/http"
 	"path"
+	"sort"
 	"strings"
 	"unicode"
 
@@ -49,6 +50,32 @@ func NewCatalogAssetsHandler() http.Handler {
 		}
 		mux.ServeHTTP(response, request)
 	})
+}
+
+// CatalogAssetPaths returns the exact regular files exposed by the catalog
+// asset handler. Static export uses this instead of widening the asset surface.
+func CatalogAssetPaths() []string {
+	static, err := fs.Sub(catalogStaticFiles, "static")
+	if err != nil {
+		panic(err)
+	}
+	manja, err := embeddedPublicAssetAllowlist(static)
+	if err != nil {
+		panic(err)
+	}
+	goshtoso, err := embeddedPublicAssetAllowlist(assets.FS())
+	if err != nil {
+		panic(err)
+	}
+	paths := make([]string, 0, len(manja)+len(goshtoso))
+	for name := range manja {
+		paths = append(paths, "/manja-assets/"+name)
+	}
+	for name := range goshtoso {
+		paths = append(paths, "/assets/"+name)
+	}
+	sort.Strings(paths)
+	return paths
 }
 
 // embeddedPublicAssetAllowlist contains only regular files embedded in an

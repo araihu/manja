@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/araihu/manja/application/catalog"
+	"github.com/araihu/manja/internal/adapters/catalogjson"
 )
 
 func TestPrepareDescriptorBindsPublicEligibilityAndCanonicalResourceRoutes(t *testing.T) {
@@ -73,6 +74,44 @@ func TestPrepareDescriptorFailsClosedForIneligibleOrMismatchedInputs(t *testing.
 				t.Fatalf("PrepareDescriptor admitted invalid input: ok=%t descriptor=%#v", ok, descriptor)
 			}
 		})
+	}
+}
+
+func TestPrepareStaticDescriptorUsesCatalogIdentityAndDeploymentBase(t *testing.T) {
+	snapshot := descriptorSnapshot(t)
+	descriptor, ok := PrepareStaticDescriptor("kubernetes", snapshot, "/group/project/kubernetes/", "/group/project/")
+	if !ok {
+		t.Fatal("PrepareStaticDescriptor rejected valid export")
+	}
+	if descriptor.PublicationKey != "kubernetes" || !descriptor.Public || !descriptor.Anonymous || descriptor.Static == nil {
+		t.Fatalf("descriptor = %#v", descriptor)
+	}
+	want := StaticDescriptorV1{
+		DeploymentBase: "/group/project/", WorkerURL: "/group/project/sw.js", WorkerScope: "/group/project/",
+		OfflineShellURL: "/group/project/kubernetes/_manja/offline-shell/", ExportManifestURL: "/group/project/_manja/export.json",
+	}
+	if *descriptor.Static != want {
+		t.Fatalf("static descriptor = %#v, want %#v", *descriptor.Static, want)
+	}
+	manifest, err := catalogjson.EncodeManifest(snapshot.Manifest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Admit(descriptor, manifest); err != nil {
+		t.Fatalf("Admit static descriptor: %v", err)
+	}
+}
+
+func TestPrepareStaticDescriptorRejectsEscapingOrInvalidDeploymentBase(t *testing.T) {
+	snapshot := descriptorSnapshot(t)
+	for _, test := range []struct{ publication, deployment string }{
+		{publication: "/kubernetes/", deployment: "/group/project/"},
+		{publication: "/group/project/kubernetes/", deployment: "/group//project/"},
+		{publication: "/group/project/kubernetes/", deployment: "/group/project/%2e%2e/"},
+	} {
+		if descriptor, ok := PrepareStaticDescriptor("kubernetes", snapshot, test.publication, test.deployment); ok || !reflect.DeepEqual(descriptor, DescriptorV1{}) {
+			t.Fatalf("PrepareStaticDescriptor(%q, %q) = %#v, %t", test.publication, test.deployment, descriptor, ok)
+		}
 	}
 }
 
