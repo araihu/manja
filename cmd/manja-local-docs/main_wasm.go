@@ -223,6 +223,18 @@ func browserRouteFromJS(value js.Value) (localbrowser.Route, error) {
 			route.Groups = append(route.Groups, groups.Index(index).String())
 		}
 	}
+	closedGroups := value.Get("closedGroups")
+	if closedGroups.Type() != js.TypeUndefined {
+		if !array(closedGroups) {
+			return localbrowser.Route{}, errors.New("route closed groups must be an array")
+		}
+		for index := 0; index < closedGroups.Length(); index++ {
+			if closedGroups.Index(index).Type() != js.TypeString {
+				return localbrowser.Route{}, errors.New("route closed group must be a string")
+			}
+			route.ClosedGroups = append(route.ClosedGroups, closedGroups.Index(index).String())
+		}
+	}
 	return route, nil
 }
 

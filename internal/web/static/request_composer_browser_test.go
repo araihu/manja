@@ -20,7 +20,7 @@ func TestRequestComposerBundleBuildsCurlAndExposesLanguages(t *testing.T) {
 	if _, err := page.AddScriptTag(playwright.PageAddScriptTagOptions{Path: playwright.String(path)}); err != nil {
 		t.Fatal(err)
 	}
-	value, err := page.Evaluate(`() => window.ManjaRequestComposer.buildCurl({method:'post',urlTemplate:'{protocol}://{hostname}/repos/{owner}',serverVariables:{protocol:'https',hostname:'api.example.test'},parameters:[{name:'owner',in:'path',value:'araihu'},{name:'page',in:'query',value:'2'},{name:'accept',in:'header',value:'application/json'}],body:'{"name":"web"}',bodyContentType:'application/json'})`)
+	value, err := page.Evaluate(`() => window.ManjaRequestComposer.buildCurl({method:'post',urlTemplate:'{protocol}://{hostname}/repos/{owner}',serverVariables:{protocol:'https',hostname:'api.example.test'},parameters:[{name:'owner',in:'path',value:'araihu'},{name:'page',in:'query',value:'2'},{name:'accept',in:'header',value:'application/json'}],security:[{in:'header',parameterName:'Authorization',placeholder:'Bearer YOUR_ACCESS_TOKEN'}],body:'{"name":"web"}',bodyContentType:'application/json'})`)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -28,7 +28,7 @@ func TestRequestComposerBundleBuildsCurlAndExposesLanguages(t *testing.T) {
 	if !ok {
 		t.Fatalf("curl type = %T", value)
 	}
-	for _, want := range []string{"curl --request POST", "https://api.example.test/repos/araihu?page=2", "accept: application/json", "content-type: application/json", `{"name":"web"}`} {
+	for _, want := range []string{"curl --request POST", "https://api.example.test/repos/araihu?page=2", "accept: application/json", "Authorization: Bearer YOUR_ACCESS_TOKEN", "content-type: application/json", `{"name":"web"}`} {
 		if !strings.Contains(curl, want) {
 			t.Fatalf("curl missing %q: %s", want, curl)
 		}
@@ -39,6 +39,51 @@ func TestRequestComposerBundleBuildsCurlAndExposesLanguages(t *testing.T) {
 	}
 	if available != true {
 		t.Fatal("bundle globals unavailable")
+	}
+}
+
+func TestRequestComposerBundleValidatesJSONBodyBeforeCopying(t *testing.T) {
+	page := browserPage(t)
+	if err := page.SetContent(`<section id="composer"><textarea data-manja-request-body-input></textarea><p data-manja-request-body-status></p></section>`); err != nil {
+		t.Fatal(err)
+	}
+	path, err := filepath.Abs("request-composer.js")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := page.AddScriptTag(playwright.PageAddScriptTagOptions{Path: playwright.String(path)}); err != nil {
+		t.Fatal(err)
+	}
+	invalid, err := page.Evaluate(`() => {
+		const root = document.getElementById('composer');
+		const input = root.querySelector('[data-manja-request-body-input]');
+		input.value = '{ invalid';
+		const valid = window.ManjaRequestComposer.updateBodyValidation(root, input, {bodyContentType:'application/json'});
+		return {valid, invalid: input.getAttribute('aria-invalid'), state: input.dataset.manjaRequestBodyValid, status: root.querySelector('[data-manja-request-body-status]').textContent};
+	}`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	state, ok := invalid.(map[string]any)
+	if !ok || state["valid"] != false || state["invalid"] != "true" || state["state"] != "false" || !strings.Contains(state["status"].(string), "valid JSON") {
+		t.Fatalf("invalid JSON state = %#v", invalid)
+	}
+	valid, err := page.Evaluate(`() => {
+		const root = document.getElementById('composer');
+		const input = root.querySelector('[data-manja-request-body-input]');
+		input.value = '{"ok":true}';
+		return window.ManjaRequestComposer.updateBodyValidation(root, input, {bodyContentType:'application/json'});
+	}`)
+	if err != nil || valid != true {
+		t.Fatalf("valid JSON result = %#v, %v", valid, err)
+	}
+	cleared, err := page.Evaluate(`() => ({invalid: document.querySelector('[data-manja-request-body-input]').getAttribute('aria-invalid'), state: document.querySelector('[data-manja-request-body-input]').dataset.manjaRequestBodyValid, status: document.querySelector('[data-manja-request-body-status]').textContent})`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	clearedState, ok := cleared.(map[string]any)
+	if !ok || clearedState["invalid"] != nil || clearedState["state"] != "true" || clearedState["status"] != "" {
+		t.Fatalf("valid JSON did not clear validation state = %#v", cleared)
 	}
 }
 

@@ -64,8 +64,8 @@ test('static route parses direct selection node and expanded groups inside publi
   const api = enhancer()
   const value = api.validateDescriptor(descriptor())
   assert.deepEqual(
-    { ...api.staticRoute(value, 'https://docs.test/group/project/pets/documents/doc/?selected=detail&node=7&group=one&group=two#schema-node-panel') },
-    { documentKey: 'doc', selected: 'detail', node: 7, groups: ['one', 'two'] },
+    { ...api.staticRoute(value, 'https://docs.test/group/project/pets/documents/doc/?selected=detail&node=7&group=one&group=two&closed=three#schema-node-panel') },
+    { documentKey: 'doc', selected: 'detail', node: 7, groups: ['one', 'two'], closedGroups: ['three'] },
   )
   assert.equal(api.staticRoute(value, 'https://docs.test/group/project/other/documents/doc/'), null)
   assert.equal(api.staticRoute(value, 'https://attacker.test/group/project/pets/documents/doc/'), null)

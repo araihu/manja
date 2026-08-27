@@ -220,6 +220,7 @@ punycode/punycode.js:
       const target = selectedSampleTarget(payload, sampleTarget);
       setCode(sampleCode, buildRequestSample(state, target, snippetGenerator, logger), target, syntaxHighlighter, logger);
       updateBodyHighlight(bodyInput, bodyHighlight, syntaxHighlighter, logger);
+      updateBodyValidation(root, bodyInput, payload);
       setRequestSampleTitle(root, target);
     };
 
@@ -339,6 +340,7 @@ punycode/punycode.js:
       parameters,
       body: bodyInput ? bodyInput.value : '',
       bodyContentType: payload.bodyContentType || '',
+      security: Array.isArray(payload.security) ? payload.security : [],
     };
   }
 
@@ -353,6 +355,14 @@ punycode/punycode.js:
     for (const param of state.parameters || []) {
       if (param.in === 'header' && param.value) {
         headers.push([param.name, param.value]);
+      }
+    }
+    for (const auth of securityParameters(state)) {
+      if (auth.in === 'header' && auth.name && auth.value && !headers.some(([name]) => name.toLowerCase() === auth.name.toLowerCase())) {
+        headers.push([auth.name, auth.value]);
+      }
+      if (auth.in === 'cookie' && auth.name && auth.value && !headers.some(([name]) => name.toLowerCase() === 'cookie')) {
+        headers.push(['Cookie', `${auth.name}=${auth.value}`]);
       }
     }
     const body = String(state.body || '').trim();
@@ -418,11 +428,27 @@ punycode/punycode.js:
         headers.push([param.name, param.value]);
       }
     }
+    for (const auth of securityParameters(state)) {
+      if (auth.in === 'header' && auth.name && auth.value && !headers.some(([name]) => name.toLowerCase() === auth.name.toLowerCase())) {
+        headers.push([auth.name, auth.value]);
+      }
+      if (auth.in === 'cookie' && auth.name && auth.value && !headers.some(([name]) => name.toLowerCase() === 'cookie')) {
+        headers.push(['Cookie', `${auth.name}=${auth.value}`]);
+      }
+    }
     const body = String(state.body || '').trim();
     if (body && state.bodyContentType && !headers.some(([name]) => name.toLowerCase() === 'content-type')) {
       headers.push(['content-type', state.bodyContentType]);
     }
     return headers;
+  }
+
+  function securityParameters(state) {
+    return (state.security || []).map((security) => ({
+      in: String(security.in || 'header').toLowerCase(),
+      name: String(security.parameterName || ''),
+      value: String(security.placeholder || ''),
+    })).filter((security) => security.name && security.value);
   }
 
   function selectedSampleTarget(payload, targetControl) {
@@ -522,6 +548,11 @@ punycode/punycode.js:
         query.push([param.name, param.value]);
       }
     }
+    for (const auth of securityParameters(state)) {
+      if (auth.in === 'query') {
+        query.push([auth.name, auth.value]);
+      }
+    }
     return appendQuery(url, query);
   }
 
@@ -600,6 +631,43 @@ punycode/punycode.js:
     }
   }
 
+  function updateBodyValidation(root, bodyInput, payload) {
+    if (!bodyInput) {
+      return true;
+    }
+    const status = root.querySelector('[data-manja-request-body-status]');
+    const contentType = String(payload && payload.bodyContentType || '').toLowerCase();
+    const value = String(bodyInput.value || '').trim();
+    const isJSON = contentType.includes('json') || contentType.endsWith('+json');
+    if (!isJSON || !value) {
+      bodyInput.removeAttribute('aria-invalid');
+      bodyInput.dataset.manjaRequestBodyValid = 'true';
+      if (status && status.dataset.manjaRequestBodyValidation === 'true') {
+        status.textContent = '';
+        delete status.dataset.manjaRequestBodyValidation;
+      }
+      return true;
+    }
+    try {
+      JSON.parse(value);
+      bodyInput.removeAttribute('aria-invalid');
+      bodyInput.dataset.manjaRequestBodyValid = 'true';
+      if (status && status.dataset.manjaRequestBodyValidation === 'true') {
+        status.textContent = '';
+        delete status.dataset.manjaRequestBodyValidation;
+      }
+      return true;
+    } catch (_) {
+      bodyInput.setAttribute('aria-invalid', 'true');
+      bodyInput.dataset.manjaRequestBodyValid = 'false';
+      if (status) {
+        status.textContent = 'Enter valid JSON before copying this request.';
+        status.dataset.manjaRequestBodyValidation = 'true';
+      }
+      return false;
+    }
+  }
+
   function setRequestSampleTitle(root, target) {
     const label = `Request Sample: ${(target && target.label) || 'Shell / cURL'}`;
     const codeblock = root.querySelector('[data-manja-request-sample] .codeblock');
@@ -636,5 +704,6 @@ punycode/punycode.js:
     buildRequestSample,
     buildCurl,
     composeURL,
+    updateBodyValidation,
   };
 });

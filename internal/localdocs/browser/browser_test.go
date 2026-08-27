@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"net/url"
 	"strings"
 	"testing"
 
@@ -47,7 +48,7 @@ func TestBrowserSidebarUsesSharedVisualContractAndPlainTextLabels(t *testing.T) 
 		`data-catalog-sidebar-selected="true"`,
 		`aria-current="page"`,
 		`title="Adds an issue safely."`,
-		`>Adds an issue safely.</a>`,
+		`<span class="min-w-0 flex-1 truncate">Adds an issue safely.</span></a>`,
 	} {
 		if !strings.Contains(operation, want) {
 			t.Errorf("operation sidebar link missing %q: %s", want, operation)
@@ -60,6 +61,32 @@ func TestBrowserSidebarUsesSharedVisualContractAndPlainTextLabels(t *testing.T) 
 	schema := browserSidebarLink("/docs/", "doc", domain.DetailID("schema"), "Pet", "", "")
 	if !strings.Contains(schema, `data-catalog-sidebar-item="true"`) || strings.Contains(schema, "data-catalog-sidebar-operation") || strings.Contains(schema, "data-catalog-method") {
 		t.Fatalf("schema sidebar link contract = %s", schema)
+	}
+}
+
+func TestBrowserSidebarClosedGroupOverridesSelectedAutoOpen(t *testing.T) {
+	descriptor, manifest, catalogBytes, children, operationID, _ := browserFixture(t)
+	browser, err := Prepare(descriptor, manifest, catalogBytes, children)
+	if err != nil {
+		t.Fatal(err)
+	}
+	document, ok := browser.document("doc")
+	if !ok {
+		t.Fatal("browser fixture document missing")
+	}
+	groupID := browserGroupID("operations-Pets")
+	page, err := browser.Render(context.Background(), Route{DocumentKey: document.Key, Selected: string(operationID), ClosedGroups: []string{groupID}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(page.SidebarHTML, `id="`+groupID+`-items"`) {
+		t.Fatalf("explicitly closed selected group should not render children: %s", page.SidebarHTML)
+	}
+	if !strings.Contains(page.SidebarHTML, `data-manja-static-group="`+groupID+`"`) || !strings.Contains(page.SidebarHTML, `aria-expanded="false"`) {
+		t.Fatalf("explicitly closed selected group should remain discoverable and collapsed: %s", page.SidebarHTML)
+	}
+	if !strings.Contains(page.Canonical, "closed="+url.QueryEscape(groupID)) {
+		t.Fatalf("canonical route should preserve closed group state: %q", page.Canonical)
 	}
 }
 

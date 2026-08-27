@@ -46,7 +46,7 @@ func rewriteExportHTML(input []byte, basePath string, catalogContext *exportHTML
 func rewriteHTMLChildren(parent *html.Node, basePath string, catalogContext *exportHTMLCatalog) error {
 	for node := parent.FirstChild; node != nil; {
 		next := node.NextSibling
-		if removeStaticHTMLNode(node) {
+		if removeStaticHTMLNode(node, catalogContext) {
 			parent.RemoveChild(node)
 			node = next
 			continue
@@ -164,9 +164,19 @@ func rewriteDependencyURLs(value, basePath string) (string, error) {
 	return string(data), nil
 }
 
-func removeStaticHTMLNode(node *html.Node) bool {
+func removeStaticHTMLNode(node *html.Node, catalogContext *exportHTMLCatalog) bool {
 	if node.Type != html.ElementNode {
 		return false
+	}
+	if node.Data == "script" && hasHTMLAttribute(node, "id", "manja-local-docs-descriptor") {
+		return true
+	}
+	if catalogContext != nil && node.Data == "script" {
+		for _, attribute := range node.Attr {
+			if attribute.Key == "src" && strings.HasSuffix(strings.TrimSpace(attribute.Val), "/manja-assets/local-docs.js") {
+				return true
+			}
+		}
 	}
 	for _, attribute := range node.Attr {
 		if attribute.Key == "data-manja-copy-page" {

@@ -1748,7 +1748,7 @@ func TestCatalogProjectionTransportIsNotActivatedByInitialHTML(t *testing.T) {
 		t.Fatalf("initial HTML = %d body=%q", response.Code, response.Body.String())
 	}
 	digest := sha256.Sum256(response.Body.Bytes())
-	if got := hex.EncodeToString(digest[:]); got != "c3558e06404fd31b5c134f4e8ea934d577011487fa8840e7e7efe4b8a69dcb8c" || response.Body.Len() != 53733 {
+	if got := hex.EncodeToString(digest[:]); got != "024c746e910fba5fad0fe8c0009bb5e3dda3118064d3d6f30a3e5d1bd3fbf4f0" || response.Body.Len() != 53780 {
 		t.Errorf("initial HTML = sha256 %s, %d bytes; want accepted OC-01M9 bytes", got, response.Body.Len())
 	}
 	for _, forbidden := range []string{"projection-data", "serviceWorker", "manja:local-ready", "MANJA_LOCAL_DOCS"} {
@@ -1835,8 +1835,8 @@ func TestCatalogAssetsServeDeterministicLocalDocsWasmRuntime(t *testing.T) {
 			name:        "wasm binary",
 			path:        "/manja-assets/local-docs/manja.wasm",
 			embedded:    "static/local-docs/manja.wasm",
-			length:      14_525_155,
-			digest:      "8ab812544a800818ed0e3ab304ff21ca86ab5992bc3a19b95f8a7dd3232701fc",
+			length:      14_532_336,
+			digest:      "a9f58b12766a13e4aa192e281886263d513e1199ce795f1ab1b7cd28ccc06134",
 			contentType: "application/wasm",
 			prefix:      []byte{0x00, 'a', 's', 'm'},
 		},
@@ -1844,8 +1844,8 @@ func TestCatalogAssetsServeDeterministicLocalDocsWasmRuntime(t *testing.T) {
 			name:     "brotli wasm binary",
 			path:     "/manja-assets/local-docs/manja.wasm.br",
 			embedded: "static/local-docs/manja.wasm.br",
-			length:   2_676_537,
-			digest:   "c83611ba6ee1a7960104b306afac0974061daaf196eb6e9abe6e58760476fd27",
+			length:   2_674_225,
+			digest:   "dd6ad03a196fd53b6f87691d8b5242fb17b7786f685d13dfb1412b6abde69852",
 		},
 	} {
 		t.Run(test.name, func(t *testing.T) {

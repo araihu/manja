@@ -571,6 +571,7 @@
 	  selected: value.searchParams.get("selected") || "",
 	  node: node !== null && /^\d+$/.test(node) ? Number(node) : undefined,
 	  groups: value.searchParams.getAll("group").filter(Boolean),
+	  closedGroups: value.searchParams.getAll("closed").filter(Boolean),
 	};
   }
 
@@ -592,6 +593,7 @@
 		documentValue.title = result.title;
 		if (historyMode === "push") global.history.pushState({}, "", result.canonical);
 		if (global.htmx && typeof global.htmx.process === "function") { global.htmx.process(main); if (sidebar) global.htmx.process(sidebar); }
+		if (typeof global.manjaCatalogScrollSidebarSelection === "function") global.manjaCatalogScrollSidebarSelection();
 		return result;
 	  });
 	}
@@ -599,7 +601,14 @@
 	  var origin = event.target && event.target.closest && event.target.closest("a[href]");
 	  if (origin) {
 		var route = staticRoute(descriptor, origin.href);
-		if (route) { event.preventDefault(); swap(route, "push").catch(function () {}); }
+		if (route) {
+		  var current = staticRoute(descriptor, global.location.href);
+		  if (current) {
+		    if (route.groups.length === 0) route.groups = current.groups.slice();
+		    if (route.closedGroups.length === 0) route.closedGroups = current.closedGroups.slice();
+		  }
+		  event.preventDefault(); swap(route, "push").catch(function () {});
+		}
 		return;
 	  }
 	  var group = event.target && event.target.closest && event.target.closest("[data-manja-static-group]");
@@ -609,7 +618,20 @@
 	  event.preventDefault();
 	  var id = group.getAttribute("data-manja-static-group");
 	  var index = route.groups.indexOf(id);
-	  if (index < 0) route.groups.push(id); else route.groups.splice(index, 1);
+	  var closedIndex = route.closedGroups.indexOf(id);
+	  var navigation = group.closest && group.closest("nav[data-manja-local-sidebar]");
+	  var defaultOpen = navigation && navigation.getAttribute("data-manja-static-default-open") === "true";
+	  if (closedIndex >= 0) {
+	    route.closedGroups.splice(closedIndex, 1);
+	    if (!defaultOpen && route.groups.indexOf(id) < 0) route.groups.push(id);
+	  } else if (index >= 0) {
+	    route.groups.splice(index, 1);
+	    route.closedGroups.push(id);
+	  } else if (group.getAttribute("aria-expanded") === "true") {
+	    route.closedGroups.push(id);
+	  } else if (!defaultOpen) {
+	    route.groups.push(id);
+	  }
 	  swap(route, "push").catch(function () {});
 	});
 	global.addEventListener("popstate", function () { var route = staticRoute(descriptor, global.location.href); if (route) swap(route, "none").catch(function () {}); });

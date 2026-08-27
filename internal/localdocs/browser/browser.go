@@ -31,10 +31,11 @@ type Browser struct {
 }
 
 type Route struct {
-	DocumentKey string
-	Selected    string
-	Node        *uint32
-	Groups      []string
+	DocumentKey  string
+	Selected     string
+	Node         *uint32
+	Groups       []string
+	ClosedGroups []string
 }
 
 type Page struct {
@@ -116,13 +117,13 @@ func (browser *Browser) Render(ctx context.Context, route Route) (Page, error) {
 	sidebar = browser.deploymentHTML(sidebar)
 	if route.Selected == "" {
 		main, err := browser.renderDocument(ctx, document, documentHref)
-		return Page{MainHTML: browser.deploymentHTML(main), SidebarHTML: sidebar, Title: document.Key, Canonical: documentHref}, err
+		return Page{MainHTML: browser.deploymentHTML(main), SidebarHTML: sidebar, Title: document.Key, Canonical: browserCanonical(documentHref, route, "")}, err
 	}
 	detail, err := browser.detail(document, domain.DetailID(route.Selected))
 	if err != nil {
 		return Page{}, err
 	}
-	canonical := documentHref + "?selected=" + url.QueryEscape(route.Selected) + "#" + url.PathEscape(route.Selected)
+	canonical := browserCanonical(documentHref, route, url.PathEscape(route.Selected))
 	if detail.Operation != nil {
 		main, title, err := browser.renderOperation(ctx, document, detail, documentHref, route.Groups)
 		return Page{MainHTML: browser.deploymentHTML(main), SidebarHTML: sidebar, Title: title, Canonical: canonical}, err
@@ -130,7 +131,7 @@ func (browser *Browser) Render(ctx context.Context, route Route) (Page, error) {
 	if detail.Schema != nil {
 		main, title, err := browser.renderSchema(ctx, document, detail, documentHref, route.Node)
 		if route.Node != nil {
-			canonical = documentHref + "?node=" + strconv.FormatUint(uint64(*route.Node), 10) + "&selected=" + url.QueryEscape(route.Selected) + "#schema-node-panel"
+			canonical = browserCanonical(documentHref, route, "schema-node-panel")
 		}
 		return Page{MainHTML: browser.deploymentHTML(main), SidebarHTML: sidebar, Title: title, Canonical: canonical}, err
 	}
@@ -282,9 +283,13 @@ func (browser *Browser) renderSidebar(document catalog.DocumentDirectoryV1, rout
 	for _, group := range route.Groups {
 		open[group] = struct{}{}
 	}
+	closed := make(map[string]struct{}, len(route.ClosedGroups))
+	for _, group := range route.ClosedGroups {
+		closed[group] = struct{}{}
+	}
 	defaultOpen := len(route.Groups) == 0 && len(document.Operations)+len(document.Schemas) <= 600
 	var output strings.Builder
-	output.WriteString(`<nav data-manja-local-sidebar="true" aria-label="API navigation">`)
+	output.WriteString(`<nav data-manja-local-sidebar="true" data-manja-static-default-open="` + strconv.FormatBool(defaultOpen) + `" aria-label="API navigation">`)
 	type group struct {
 		id, label  string
 		operations []catalog.OperationDirectoryV1
@@ -301,7 +306,8 @@ func (browser *Browser) renderSidebar(document catalog.DocumentDirectoryV1, rout
 	sort.Slice(groups, func(i, j int) bool { return groups[i].label < groups[j].label })
 	for _, item := range groups {
 		_, explicitlyOpen := open[item.id]
-		opened := defaultOpen || explicitlyOpen || browserGroupContains(item.operations, route.Selected)
+		_, explicitlyClosed := closed[item.id]
+		opened := !explicitlyClosed && (defaultOpen || explicitlyOpen || browserGroupContains(item.operations, route.Selected))
 		output.WriteString(`<section data-manja-sidebar-group="` + item.id + `"><button type="button" data-manja-static-group="` + item.id + `" data-catalog-group-control="true" aria-controls="` + item.id + `-items" aria-expanded="` + strconv.FormatBool(opened) + `">` + html.EscapeString(item.label) + `</button>`)
 		if opened {
 			output.WriteString(`<div id="` + item.id + `-items" data-manja-sidebar-items="true">`)
@@ -315,9 +321,13 @@ func (browser *Browser) renderSidebar(document catalog.DocumentDirectoryV1, rout
 	if len(document.Schemas) > 0 {
 		id := browserGroupID("schemas")
 		_, explicitlyOpen := open[id]
-		opened := defaultOpen || explicitlyOpen
-		for _, schema := range document.Schemas {
-			opened = opened || string(schema.DetailID) == route.Selected
+		_, explicitlyClosed := closed[id]
+		opened := false
+		if !explicitlyClosed {
+			opened = defaultOpen || explicitlyOpen
+			for _, schema := range document.Schemas {
+				opened = opened || string(schema.DetailID) == route.Selected
+			}
 		}
 		output.WriteString(`<section data-manja-sidebar-group="` + id + `"><button type="button" data-manja-static-group="` + id + `" data-catalog-group-control="true" aria-controls="` + id + `-items" aria-expanded="` + strconv.FormatBool(opened) + `">Schemas</button>`)
 		if opened {
@@ -453,7 +463,35 @@ func browserSidebarLink(publicationBase, documentKey string, id domain.DetailID,
 		attributes += ` data-catalog-sidebar-selected="true" aria-current="page"`
 	}
 	label = html.EscapeString(browserPlainText(label))
-	return `<a data-manja-static-route="true" href="` + html.EscapeString(href) + `" title="` + label + `"` + attributes + `>` + label + `</a>`
+	return `<a data-manja-static-route="true" href="` + html.EscapeString(href) + `" title="` + label + `"` + attributes + `><span class="min-w-0 flex-1 truncate">` + label + `</span></a>`
+}
+
+func browserCanonical(documentHref string, route Route, fragment string) string {
+	query := url.Values{}
+	if route.Selected != "" {
+		query.Set("selected", route.Selected)
+	}
+	if route.Node != nil {
+		query.Set("node", strconv.FormatUint(uint64(*route.Node), 10))
+	}
+	for _, group := range route.Groups {
+		if strings.TrimSpace(group) != "" {
+			query.Add("group", group)
+		}
+	}
+	for _, group := range route.ClosedGroups {
+		if strings.TrimSpace(group) != "" {
+			query.Add("closed", group)
+		}
+	}
+	canonical := documentHref
+	if encoded := query.Encode(); encoded != "" {
+		canonical += "?" + encoded
+	}
+	if fragment != "" {
+		canonical += "#" + fragment
+	}
+	return canonical
 }
 
 func browserPlainText(value string) string {

@@ -1772,7 +1772,7 @@ func TestPublicDocsRenderEndpointDetails(t *testing.T) {
 					},
 				}},
 			}},
-			Security: []core.OperationSecurity{{Name: "bearerAuth"}},
+			Security: []core.OperationSecurity{{Name: "bearerAuth", Definition: core.SecurityScheme{Type: "http", Scheme: "bearer", BearerFormat: "JWT", ParameterName: "Authorization"}}},
 			Snippets: []core.RequestSnippet{{
 				Label:    "cURL",
 				Language: "shell",
@@ -1809,6 +1809,9 @@ func TestPublicDocsRenderEndpointDetails(t *testing.T) {
 		`Query Parameters`,
 		`Header Parameters`,
 		`Request configuration`,
+		`Authentication`,
+		`data-manja-request-config-authentication`,
+		`Authorization: Bearer YOUR_ACCESS_TOKEN`,
 		`data-manja-request-config-panel`,
 		`allowMultiple: true`,
 		`px-1 text-sm font-semibold text-on-surface-strong dark:text-on-surface-dark-strong`,
@@ -1860,6 +1863,7 @@ func TestPublicDocsRenderEndpointDetails(t *testing.T) {
 		`Python / Requests`,
 		`Go / NewRequest`,
 		`curl --request PUT`,
+		`Bearer YOUR_ACCESS_TOKEN`,
 		`&#34;name&#34;`,
 		`aria-label="Copy Request Sample: Shell / cURL code"`,
 		`class="codeblock overflow-x-auto"`,
@@ -2072,6 +2076,9 @@ func TestPublicDocsEndpointResponsesOnlyUsesSingleDetailColumn(t *testing.T) {
 		`id="controls-operation-root-response-200"`,
 		`bg-success`,
 		`text-on-success`,
+		`data-manja-request-authentication-guidance`,
+		`does not declare an authentication scheme`,
+		`Common bearer example: Authorization: Bearer YOUR_ACCESS_TOKEN`,
 		`Request Sample: cURL`,
 	} {
 		if !strings.Contains(body, want) {

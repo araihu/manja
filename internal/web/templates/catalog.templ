@@ -1262,8 +1262,8 @@ templ catalogSidebarFocusRestoration() {
 			function scrollSidebarSelection() {
 				var selected = document.querySelector("#catalog-sidebar-groups [data-catalog-sidebar-selected]");
 				if (!selected) return;
-				var navigation = selected.closest("nav[aria-label='sidebar navigation']");
-				var panel = navigation && navigation.querySelector(".sidebar-scroll");
+				var navigation = selected.closest("nav[aria-label='sidebar navigation'], nav[data-manja-local-sidebar]");
+				var panel = navigation && (navigation.querySelector(".sidebar-scroll") || navigation);
 				if (!panel || panel.clientHeight === 0) return;
 				var selectedBox = selected.getBoundingClientRect();
 				var panelBox = panel.getBoundingClientRect();

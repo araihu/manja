@@ -1248,6 +1248,8 @@ templ requestConfigCloseIcon() {
 templ endpointExamplesContent(opID string, op core.Operation, servers []core.SpecServer, exampleSpecJSON string, opts PublicDocsOptions) {
 	if requestConfigHasContent(op, servers) {
 		@requestComposer(opID, op, servers, exampleSpecJSON)
+	} else if len(op.Snippets) > 0 {
+		@requestAuthenticationGuidance(op.Security)
 	}
 	for snippetIndex, snippet := range op.Snippets {
 		if !requestComposerOwnsSnippet(op, servers, snippet) {
@@ -1266,6 +1268,13 @@ templ endpointExamplesContent(opID string, op core.Operation, servers []core.Spe
 			}
 		}
 	}
+}
+
+templ requestAuthenticationGuidance(security []core.OperationSecurity) {
+	<section class="grid min-w-0 gap-2" data-manja-request-authentication-guidance aria-label="Authentication">
+		<h3 class="px-1 text-sm font-semibold text-on-surface-strong dark:text-on-surface-dark-strong">Authentication</h3>
+		@requestConfigAuthenticationContent(security)
+	</section>
 }
 
 templ requestComposer(opID string, op core.Operation, servers []core.SpecServer, exampleSpecJSON string) {
@@ -1314,6 +1323,14 @@ templ requestSampleTargetSelect(opID string) {
 
 func requestConfigAccordionItems(opID string, op core.Operation, server core.SpecServer, body requestConfigBody) []accordion.AccordionItem {
 	items := make([]accordion.AccordionItem, 0, 4)
+	if len(op.Security) > 0 || operationHasRail(op, []core.SpecServer{server}) {
+		items = append(items, accordion.AccordionItem{
+			ID:                opID + "-authentication",
+			Title:             "Authentication",
+			Content:           requestConfigAuthenticationContent(op.Security),
+			InitiallyExpanded: len(op.Security) > 0,
+		})
+	}
 	if fields := requestServerVariableFields(server); len(fields) > 0 {
 		items = append(items, accordion.AccordionItem{
 			ID:                opID + "-server-variables",
@@ -1339,6 +1356,34 @@ func requestConfigAccordionItems(opID string, op core.Operation, server core.Spe
 		})
 	}
 	return items
+}
+
+templ requestConfigAuthenticationContent(security []core.OperationSecurity) {
+	<div class="grid gap-3 p-4" data-manja-request-config-authentication>
+		if len(security) == 0 {
+			<p class="text-sm text-on-surface-muted dark:text-on-surface-dark-muted">This OpenAPI document does not declare an authentication scheme. Check the API provider's documentation before sending credentials; Manja cannot infer or validate an undocumented scheme.</p>
+			<code class="block overflow-x-auto rounded-radius bg-surface-alt px-3 py-2 font-mono text-xs text-on-surface-strong dark:bg-surface-dark-alt dark:text-on-surface-dark-strong">Common bearer example: Authorization: Bearer YOUR_ACCESS_TOKEN</code>
+		} else {
+			<p class="text-sm text-on-surface-muted dark:text-on-surface-dark-muted">The sample uses safe placeholders. Replace them with your credential locally; Manja never receives or stores credentials.</p>
+		}
+		for _, item := range security {
+			<div class="grid gap-2" data-manja-request-authentication={ item.Name }>
+				<div class="flex flex-wrap items-center gap-2">
+					<span class="font-semibold text-on-surface-strong dark:text-on-surface-dark-strong">{ item.Name }</span>
+					<span class="rounded-radius bg-surface-alt px-2 py-1 font-mono text-xs text-on-surface-muted dark:bg-surface-dark-alt dark:text-on-surface-dark-muted">{ securityTypeLabel(item) }</span>
+				</div>
+				if securityInstruction(item) != "" {
+					<p class="text-sm text-on-surface dark:text-on-surface-dark">{ securityInstruction(item) }</p>
+				}
+				if securitySample(item) != "" {
+					<code class="block overflow-x-auto rounded-radius bg-surface-alt px-3 py-2 font-mono text-xs text-on-surface-strong dark:bg-surface-dark-alt dark:text-on-surface-dark-strong">{ securitySample(item) }</code>
+				}
+				if len(item.Scopes) > 0 {
+					<p class="text-xs text-on-surface-muted dark:text-on-surface-dark-muted">Scopes: { strings.Join(item.Scopes, ", ") }</p>
+				}
+			</div>
+		}
+	</div>
 }
 
 templ requestConfigFieldsContent(fields []schemaform.Field, namePrefix string) {
@@ -1428,7 +1473,7 @@ templ requestConfigBodyContent(opID string, cfg ExampleConfig) {
 			>{ exampleFallback(cfg) }</textarea>
 		</div>
 		@templpkg.JSONScript(opID+"-request-body-payload", schemaExamplePayload(cfg))
-		<p data-manja-request-body-status class="sr-only" aria-live="polite"></p>
+		<p data-manja-request-body-status class="text-xs text-danger" aria-live="polite"></p>
 	</div>
 }
 
@@ -2928,6 +2973,7 @@ func requestComposerPayload(op core.Operation, server core.SpecServer, body requ
 		"method":        strings.ToUpper(op.Method),
 		"urlTemplate":   requestComposerURLTemplate(server, op),
 		"parameters":    requestComposerParameters(op.Parameters),
+		"security":      requestComposerSecurity(op.Security),
 		"sampleTargets": requestSampleTargetsPayload(),
 	}
 	if body.Has {
@@ -2935,6 +2981,62 @@ func requestComposerPayload(op core.Operation, server core.SpecServer, body requ
 		payload["body"] = schemaExamplePayload(body.Config)
 	}
 	return payload
+}
+
+func requestComposerSecurity(security []core.OperationSecurity) []map[string]string {
+	result := make([]map[string]string, 0, len(security))
+	for _, item := range security {
+		parameter := securityParameterName(item)
+		location := strings.ToLower(strings.TrimSpace(item.Definition.In))
+		if location != "header" && location != "query" && location != "cookie" {
+			if parameter != "" {
+				location = "header"
+			}
+		}
+		if parameter == "" || location == "" {
+			continue
+		}
+		result = append(result, map[string]string{
+			"name":        item.Name,
+			"type":        strings.ToLower(strings.TrimSpace(item.Definition.Type)),
+			"in":          location,
+			"parameterName": parameter,
+			"placeholder": securityPlaceholder(item),
+		})
+	}
+	return result
+}
+
+func securitySample(security core.OperationSecurity) string {
+	parameter := securityParameterName(security)
+	if parameter == "" {
+		return ""
+	}
+	location := strings.ToLower(strings.TrimSpace(security.Definition.In))
+	value := securityPlaceholder(security)
+	switch location {
+	case "query":
+		return parameter + "=" + value
+	case "cookie":
+		return "Cookie: " + parameter + "=" + value
+	default:
+		return parameter + ": " + value
+	}
+}
+
+func securityPlaceholder(security core.OperationSecurity) string {
+	typeName := strings.ToLower(strings.TrimSpace(security.Definition.Type))
+	scheme := strings.ToLower(strings.TrimSpace(security.Definition.Scheme))
+	switch {
+	case typeName == "http" && scheme == "bearer", typeName == "oauth2", typeName == "openidconnect":
+		return "Bearer YOUR_ACCESS_TOKEN"
+	case typeName == "http" && scheme == "basic":
+		return "Basic BASE64_USERNAME_PASSWORD"
+	case typeName == "apikey":
+		return "YOUR_API_KEY"
+	default:
+		return "YOUR_CREDENTIAL"
+	}
 }
 
 func requestSampleTargets() []requestSampleTarget {

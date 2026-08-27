@@ -32,7 +32,7 @@ func TestExportBasePathValidation(t *testing.T) {
 	}
 }
 
-func TestExportRendererIncludesCatalogWithoutLocalDocsVisibility(t *testing.T) {
+func TestExportRendererIncludesConfiguredCatalogWithLocalDocsVisibility(t *testing.T) {
 	root := t.TempDir()
 	if err := os.WriteFile(filepath.Join(root, "private.json"), []byte(`{"openapi":"3.0.3","info":{"title":"Private API","version":"v1"},"paths":{"/charges":{"get":{"operationId":"listCharges","responses":{"200":{"description":"ok"}}}}}}`), 0o600); err != nil {
 		t.Fatal(err)
@@ -43,6 +43,10 @@ catalogs:
   - id: private
     mount: /private
     title: Private
+    localDocs:
+      public: true
+      anonymous: true
+      publicationKey: private
     defaultDocument: private
     profile: strict-v1
     source:
