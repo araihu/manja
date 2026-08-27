@@ -173,17 +173,21 @@ func discoverConsumerModules(t *testing.T, root string) []consumerModule {
 		".manja":       true,
 		"node_modules": true,
 		"tmp":          true,
-		// The developer-tool module is intentionally not a Goshtoso consumer.
-		"tools":  true,
-		"vendor": true,
+		"vendor":       true,
 	}
 	var modules []consumerModule
 	err := filepath.WalkDir(root, func(path string, entry fs.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
-		if entry.IsDir() && path != root && skippedDirectories[entry.Name()] {
-			return filepath.SkipDir
+		if entry.IsDir() && path != root {
+			relative, err := filepath.Rel(root, path)
+			if err != nil {
+				return err
+			}
+			if filepath.ToSlash(relative) == "tools" || skippedDirectories[entry.Name()] {
+				return filepath.SkipDir
+			}
 		}
 		if entry.IsDir() || entry.Name() != "go.mod" {
 			return nil

@@ -94,13 +94,22 @@ func TestDaggerModulePreservesPipelineBoundaries(t *testing.T) {
 
 func TestToolingModuleOwnsDeveloperTools(t *testing.T) {
 	toolsModule := readFile(t, "tools/go.mod")
+	toolStart := strings.Index(toolsModule, "\ntool (\n")
+	if toolStart < 0 {
+		t.Fatal("tools/go.mod has no tool block")
+	}
+	toolEnd := strings.Index(toolsModule[toolStart+1:], "\n)")
+	if toolEnd < 0 {
+		t.Fatal("tools/go.mod tool block is unterminated")
+	}
+	toolBlock := toolsModule[toolStart : toolStart+1+toolEnd]
 	for _, tool := range []string{
 		"github.com/a-h/templ/cmd/templ",
 		"github.com/araihu/muamba/cmd/muamba",
 		"github.com/g4s8/envdoc",
 		"github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen",
 	} {
-		assertContains(t, toolsModule, tool)
+		assertContains(t, toolBlock, tool)
 	}
 	rootModule := readFile(t, "go.mod")
 	assertNotContains(t, rootModule, "\ntool (\n")
