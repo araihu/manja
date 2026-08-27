@@ -12,7 +12,154 @@ import (
 	"time"
 
 	core "github.com/araihu/manja/domain"
+	"github.com/araihu/manja/internal/web/templates"
 )
+
+func TestManagementSpecsUsesPageHeaderToolbarAndTable(t *testing.T) {
+	body := renderManagementRequest(t, managementStructureServer(), "/manage/specs", http.StatusOK)
+
+	for _, want := range []string{
+		`data-management-page-header="specs"`,
+		`role="toolbar"`,
+		`aria-label="Managed spec tools"`,
+		`id="management-specs-table"`,
+		`data-management-results="true"`,
+		`aria-live="polite"`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("management specs list missing %q:\n%s", want, body)
+		}
+	}
+}
+
+func TestManagementSpecsEmptyAndFilteredEmptyDiffer(t *testing.T) {
+	var emptyOutput strings.Builder
+	if err := templates.ManagementSpecsPage(templates.ManagementOverviewModel{}).Render(context.Background(), &emptyOutput); err != nil {
+		t.Fatal(err)
+	}
+	emptyBody := emptyOutput.String()
+	for _, want := range []string{`data-management-empty="true"`, `No managed specs`} {
+		if !strings.Contains(emptyBody, want) {
+			t.Fatalf("zero-data empty state missing %q:\n%s", want, emptyBody)
+		}
+	}
+
+	filteredBody := renderManagementRequest(t, managementStructureServer(), "/manage/specs?q=missing", http.StatusOK)
+	for _, want := range []string{`data-management-filtered-empty="true"`, `No specs match these filters`, `href="/manage/specs"`} {
+		if !strings.Contains(filteredBody, want) {
+			t.Fatalf("filtered empty state missing %q:\n%s", want, filteredBody)
+		}
+	}
+	if strings.Contains(filteredBody, `data-management-empty="true"`) {
+		t.Fatalf("filtered empty state must remain distinct from zero-data state:\n%s", filteredBody)
+	}
+}
+
+func TestManagementTableRowsKeepNativeLinkAndActionsSeparate(t *testing.T) {
+	body := renderManagementRequest(t, managementStructureServer(), "/manage/specs", http.StatusOK)
+
+	nativeLink := regexp.MustCompile(`(?s)<a[^>]*href="/manage/spec/payments-api"[^>]*>.*?Payments API.*?</a>`)
+	if !nativeLink.MatchString(body) {
+		t.Fatalf("management table should expose a native detail link:\n%s", body)
+	}
+	if !strings.Contains(body, `>View published docs</a>`) {
+		t.Fatalf("management table should keep the published-docs action separate:\n%s", body)
+	}
+	if regexp.MustCompile(`<tr[^>]*(hx-get|x-on:click|onclick)=`).MatchString(body) {
+		t.Fatalf("management rows with actions must not be row-click handlers:\n%s", body)
+	}
+}
+
+func TestManagementSpecUsesPageHeaderAndDominantWorkspace(t *testing.T) {
+	body := renderManagementRequest(t, managementStructureServer(), "/manage/spec/payments-api", http.StatusOK)
+
+	for _, want := range []string{
+		`data-management-page-header="detail"`,
+		`data-management-contract-identity="payments-api"`,
+		`data-management-detail-workspace="true"`,
+		`Payments API`,
+		`role="tablist"`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("management detail workspace missing %q:\n%s", want, body)
+		}
+	}
+	if got := strings.Count(body, "<h1"); got != 1 {
+		t.Fatalf("management detail h1 count = %d, want 1:\n%s", got, body)
+	}
+}
+
+func TestManagementUnknownSpecKeepsApplicationShell(t *testing.T) {
+	body := renderManagementRequest(t, managementStructureServer(), "/manage/spec/unknown-api", http.StatusNotFound)
+
+	for _, want := range []string{
+		`id="main-content"`,
+		`id="management-main-content"`,
+		`data-selected-contract="unknown-api"`,
+		`data-management-spec-not-found="true"`,
+		`Spec not found`,
+		`href="/manage/specs"`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("unknown management spec should retain shell marker %q:\n%s", want, body)
+		}
+	}
+}
+
+func TestManagementSelectedIdentityIsServerAuthored(t *testing.T) {
+	body := renderManagementRequest(t, managementStructureServer(), "/manage/spec/payments-api", http.StatusOK)
+
+	for _, want := range []string{
+		`data-selected-contract="payments-api"`,
+		`data-document-title="Payments API · Management"`,
+		`data-management-contract-identity="payments-api"`,
+		`aria-current="page"`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("management selected identity missing %q:\n%s", want, body)
+		}
+	}
+	for _, reject := range []string{`activeItemClasses`, `topIconActive`, `tabClassNames`} {
+		if strings.Contains(body, reject) {
+			t.Fatalf("management selection must not copy Goshtoso private classes %q:\n%s", reject, body)
+		}
+	}
+}
+
+func managementStructureServer() http.Handler {
+	return NewServerWithOptions(core.SpecIndex{}, Options{Management: ManagementOptions{
+		Specs: []ManagedSpec{
+			{
+				ID:          "payments-api",
+				Index:       core.SpecIndex{Title: "Payments API", Version: "v1"},
+				Project:     core.Project{ID: "payments", Name: "Payments"},
+				Source:      core.Source{ID: "payments-source", Kind: "git", SpecPath: "openapi/payments.yaml"},
+				Revision:    core.Revision{ID: "payments-rev", Ref: "main", CommitSHA: "abc123"},
+				Publication: core.Publication{Public: true, Path: "/payments/v1"},
+				SyncRecord:  core.SyncRecord{Result: core.SyncResultSuccess},
+			},
+			{
+				ID:          "billing-api",
+				Index:       core.SpecIndex{Title: "Billing API", Version: "v2"},
+				Project:     core.Project{ID: "billing", Name: "Billing"},
+				Source:      core.Source{ID: "billing-source", Kind: "file", SpecPath: "billing.yaml"},
+				Revision:    core.Revision{ID: "billing-rev", Ref: "main"},
+				Publication: core.Publication{Public: false},
+			},
+		},
+	}})
+}
+
+func renderManagementRequest(t *testing.T, handler http.Handler, path string, wantStatus int) string {
+	t.Helper()
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, path, nil)
+	handler.ServeHTTP(rec, req)
+	if rec.Code != wantStatus {
+		t.Fatalf("%s status = %d, want %d: %s", path, rec.Code, wantStatus, rec.Body.String())
+	}
+	return rec.Body.String()
+}
 
 func TestManagementOverviewShowsProjectSyncAndPublicationState(t *testing.T) {
 	srv := NewServerWithOptions(core.SpecIndex{
@@ -76,6 +223,9 @@ func TestManagementOverviewShowsProjectSyncAndPublicationState(t *testing.T) {
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d", rec.Code)
+	}
+	if got := rec.Header().Get("Cache-Control"); got != "no-store" {
+		t.Fatalf("Cache-Control = %q, want no-store", got)
 	}
 	body := rec.Body.String()
 	for _, want := range []string{
@@ -415,7 +565,7 @@ func TestManagementHomeListsMultipleSpecsAndUpdatesChosenPublication(t *testing.
 		"path":       {"/billing/v2"},
 	}
 	rec = httptest.NewRecorder()
-	req = httptest.NewRequest(http.MethodPost, "/manage/publication", strings.NewReader(form.Encode()))
+	req = httptest.NewRequest(http.MethodPost, "/manage/publication", strings.NewReader(managementMutationForm(form).Encode()))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	srv.ServeHTTP(rec, req)
 
@@ -517,7 +667,7 @@ func TestManagementPublicationPostSavesPublicationAndUpdatesOverview(t *testing.
 		"path":       {"/payments/v1"},
 	}
 	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPost, "/manage/publication", strings.NewReader(form.Encode()))
+	req := httptest.NewRequest(http.MethodPost, "/manage/publication", strings.NewReader(managementMutationForm(form).Encode()))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 
 	srv.ServeHTTP(rec, req)
@@ -564,7 +714,7 @@ func TestManagementPublicationPostPromotesExplicitCandidateRevision(t *testing.T
 		"revision_id": {"rev-candidate"},
 	}
 	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPost, "/manage/publication", strings.NewReader(form.Encode()))
+	req := httptest.NewRequest(http.MethodPost, "/manage/publication", strings.NewReader(managementMutationForm(form).Encode()))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 
 	srv.ServeHTTP(rec, req)
@@ -639,10 +789,6 @@ func TestManagementSyncPostSyncsSelectedGitRefAndCanPublish(t *testing.T) {
 		`hx-post="/manage/sync"`,
 		`id="management-payments-api-sync-ref-trigger"`,
 		`name="ref"`,
-		`release/v2 branch def456`,
-		"branch",
-		"tag",
-		"v1.0.0",
 		`role="switch"`,
 		`name="publish"`,
 		`value="public"`,
@@ -652,6 +798,9 @@ func TestManagementSyncPostSyncsSelectedGitRefAndCanPublish(t *testing.T) {
 			t.Fatalf("body missing %q:\n%s", want, body)
 		}
 	}
+	if !selectConfigContainsValues(body, "main", "release/v2", "v1.0.0") {
+		t.Fatalf("available refs missing from encoded select configuration:\n%s", body)
+	}
 
 	form := url.Values{
 		"spec_id": {"payments-api"},
@@ -660,7 +809,7 @@ func TestManagementSyncPostSyncsSelectedGitRefAndCanPublish(t *testing.T) {
 		"path":    {"/payments/v2"},
 	}
 	rec = httptest.NewRecorder()
-	req = httptest.NewRequest(http.MethodPost, "/manage/sync", strings.NewReader(form.Encode()))
+	req = httptest.NewRequest(http.MethodPost, "/manage/sync", strings.NewReader(managementMutationForm(form).Encode()))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	srv.ServeHTTP(rec, req)
 	if rec.Code != http.StatusSeeOther {
@@ -703,7 +852,7 @@ func TestManagementPublicationPostCanReturnHTMXFragment(t *testing.T) {
 		"path":       {"/payments/v1"},
 	}
 	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPost, "/manage/publication", strings.NewReader(form.Encode()))
+	req := httptest.NewRequest(http.MethodPost, "/manage/publication", strings.NewReader(managementMutationForm(form).Encode()))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.Header.Set("HX-Request", "true")
 
@@ -762,7 +911,7 @@ func TestManagementSyncPostCanReturnHTMXFragment(t *testing.T) {
 		"path":    {"/payments/v2"},
 	}
 	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPost, "/manage/sync", strings.NewReader(form.Encode()))
+	req := httptest.NewRequest(http.MethodPost, "/manage/sync", strings.NewReader(managementMutationForm(form).Encode()))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.Header.Set("HX-Request", "true")
 
@@ -839,11 +988,14 @@ func TestManagementSyncPostKeepsSyncedStateWhenPublicationSaveFails(t *testing.T
 		"path":    {"unsafe"},
 	}
 	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPost, "/manage/sync", strings.NewReader(form.Encode()))
+	req := httptest.NewRequest(http.MethodPost, "/manage/sync", strings.NewReader(managementMutationForm(form).Encode()))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	srv.ServeHTTP(rec, req)
-	if rec.Code != http.StatusBadRequest {
-		t.Fatalf("sync status = %d, want %d", rec.Code, http.StatusBadRequest)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("sync status = %d, want %d", rec.Code, http.StatusOK)
+	}
+	if got := rec.Header().Get("X-Manja-Application-Status"); got != "persistence-error" {
+		t.Fatalf("application status = %q, want persistence-error", got)
 	}
 
 	rec = httptest.NewRecorder()
@@ -888,7 +1040,7 @@ func TestManagementSyncPostPassesDeadlineToSyncAction(t *testing.T) {
 		"ref":     {"main"},
 	}
 	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPost, "/manage/sync", strings.NewReader(form.Encode()))
+	req := httptest.NewRequest(http.MethodPost, "/manage/sync", strings.NewReader(managementMutationForm(form).Encode()))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	srv.ServeHTTP(rec, req)
 	if rec.Code != http.StatusSeeOther {
@@ -938,10 +1090,18 @@ func TestManagementOverviewRendersOneSyncFormForSelectedSpec(t *testing.T) {
 		`Publish this revision`,
 		`Save route settings`,
 		`Sync selected ref`,
+		`hx-disabled-elt="find button[type='submit']"`,
+		`data-goshtoso-loading`,
+		`Publishing revision…`,
+		`Saving route…`,
+		`Syncing ref…`,
 	} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("management Goshtoso control semantics missing %q:\n%s", want, body)
 		}
+	}
+	if count := strings.Count(body, `name="request_id"`); count != 3 {
+		t.Fatalf("management mutation request ID count = %d, want 3", count)
 	}
 	inputTag := func(id string) string {
 		t.Helper()
@@ -1007,18 +1167,308 @@ func TestManagementSyncPostRejectsRefWhenCandidatesUnavailable(t *testing.T) {
 		"ref":     {"release/v2"},
 	}
 	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPost, "/manage/sync", strings.NewReader(form.Encode()))
+	req := httptest.NewRequest(http.MethodPost, "/manage/sync", strings.NewReader(managementMutationForm(form).Encode()))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	srv.ServeHTTP(rec, req)
 
-	if rec.Code != http.StatusBadRequest {
-		t.Fatalf("status = %d, want %d", rec.Code, http.StatusBadRequest)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusOK)
+	}
+	if got := rec.Header().Get("X-Manja-Application-Status"); got != "validation-error" {
+		t.Fatalf("application status = %q, want validation-error", got)
 	}
 	if called {
 		t.Fatal("sync action should not be called for unavailable ref")
 	}
 	if !strings.Contains(rec.Body.String(), "ref is not available for this source") {
 		t.Fatalf("body = %s", rec.Body.String())
+	}
+}
+
+func TestManagementSyncRejectsUnavailableCandidateWithoutEffect(t *testing.T) {
+	var syncCalls int
+	srv := NewServerWithOptions(core.SpecIndex{}, Options{Management: ManagementOptions{
+		SyncAction: func(_ context.Context, spec ManagedSpec, _ string) (ManagedSpec, error) {
+			syncCalls++
+			return spec, nil
+		},
+		Specs: []ManagedSpec{{
+			ID:         "payments-api",
+			Index:      core.SpecIndex{ProjectID: "payments", RevisionID: "rev-main", Title: "Payments API"},
+			Project:    core.Project{ID: "payments"},
+			Source:     core.Source{ID: "payments-source"},
+			Revision:   core.Revision{ID: "rev-main", Ref: "main"},
+			Candidates: []core.RevisionCandidate{{Ref: "main"}},
+		}},
+	}})
+	form := url.Values{"spec_id": {"payments-api"}, "ref": {"forged/ref"}}
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/manage/sync", strings.NewReader(managementMutationForm(form).Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Set("HX-Request", "true")
+	srv.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d: %s", rec.Code, http.StatusOK, rec.Body.String())
+	}
+	if got := rec.Header().Get("X-Manja-Application-Status"); got != "validation-error" {
+		t.Fatalf("application status = %q", got)
+	}
+	for _, want := range []string{`id="management-main-content"`, `data-selected-contract="payments-api"`, `data-management-application-error="true"`, `forged/ref`, `ref is not available for this source`} {
+		if !strings.Contains(rec.Body.String(), want) {
+			t.Fatalf("recovery fragment missing %q:\n%s", want, rec.Body.String())
+		}
+	}
+	if syncCalls != 0 {
+		t.Fatalf("sync effect count = %d, want 0", syncCalls)
+	}
+}
+
+func TestManagementPublicationFailureRetainsSelectedContractAndValues(t *testing.T) {
+	store := &fakeManagementPublicationStore{err: errors.New("persistence unavailable")}
+	srv := NewServerWithOptions(core.SpecIndex{}, Options{Management: ManagementOptions{
+		Store: store,
+		Specs: []ManagedSpec{{
+			ID:          "payments-api",
+			Index:       core.SpecIndex{ProjectID: "payments", RevisionID: "rev-main", Title: "Payments API"},
+			Project:     core.Project{ID: "payments"},
+			Source:      core.Source{ID: "payments-source"},
+			Revision:    core.Revision{ID: "rev-main"},
+			Publication: core.Publication{ProjectID: "payments", RevisionID: "rev-main", Path: "/old"},
+		}},
+	}})
+	form := url.Values{"spec_id": {"payments-api"}, "visibility": {"public"}, "path": {"/entered/path"}}
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/manage/publication", strings.NewReader(managementMutationForm(form).Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Set("HX-Request", "true")
+	srv.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d: %s", rec.Code, http.StatusOK, rec.Body.String())
+	}
+	if got := rec.Header().Get("X-Manja-Application-Status"); got != "persistence-error" {
+		t.Fatalf("application status = %q", got)
+	}
+	for _, want := range []string{`data-selected-contract="payments-api"`, `data-management-application-error="true"`, `persistence unavailable`, `value="/entered/path"`, `Retry publication`} {
+		if !strings.Contains(rec.Body.String(), want) {
+			t.Fatalf("publication recovery missing %q:\n%s", want, rec.Body.String())
+		}
+	}
+	if store.saved != (core.Publication{}) {
+		t.Fatalf("committed publication = %#v, want zero", store.saved)
+	}
+}
+
+func TestManagementUnknownRouteReturnsInShellRecovery(t *testing.T) {
+	body := renderManagementRequest(t, managementStructureServer(), "/manage/not-a-route", http.StatusNotFound)
+	for _, want := range []string{`<!doctype html>`, `id="main-content"`, `id="management-main-content"`, `data-management-route-not-found="true"`, `Management page not found`, `href="/manage"`} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("unknown management route missing %q:\n%s", want, body)
+		}
+	}
+}
+
+func TestManagementRepeatedSubmissionDoesNotDuplicateEffect(t *testing.T) {
+	var syncCalls int
+	srv := NewServerWithOptions(core.SpecIndex{}, Options{Management: ManagementOptions{
+		SyncAction: func(_ context.Context, spec ManagedSpec, ref string) (ManagedSpec, error) {
+			syncCalls++
+			spec.Revision.Ref = ref
+			return spec, nil
+		},
+		Specs: []ManagedSpec{{
+			ID:         "payments-api",
+			Index:      core.SpecIndex{ProjectID: "payments", RevisionID: "rev-main", Title: "Payments API"},
+			Project:    core.Project{ID: "payments"},
+			Source:     core.Source{ID: "payments-source"},
+			Revision:   core.Revision{ID: "rev-main", Ref: "main"},
+			Candidates: []core.RevisionCandidate{{Ref: "main"}, {Ref: "release/v2"}},
+		}},
+	}})
+	form := url.Values{"spec_id": {"payments-api"}, "ref": {"release/v2"}, "request_id": {"sync-repeat-1"}}
+	for i := 0; i < 2; i++ {
+		rec := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodPost, "/manage/sync", strings.NewReader(managementMutationForm(form).Encode()))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		srv.ServeHTTP(rec, req)
+		if rec.Code != http.StatusSeeOther {
+			t.Fatalf("submission %d status = %d, want %d", i+1, rec.Code, http.StatusSeeOther)
+		}
+	}
+	if syncCalls != 1 {
+		t.Fatalf("sync effect count = %d, want 1", syncCalls)
+	}
+}
+
+func TestManagementSameTokenDifferentPayloadIsRejectedWithoutEffect(t *testing.T) {
+	var syncCalls int
+	store := &fakeManagementPublicationStore{}
+	srv := NewServerWithOptions(core.SpecIndex{}, Options{Management: ManagementOptions{
+		Store: store,
+		SyncAction: func(_ context.Context, spec ManagedSpec, ref string) (ManagedSpec, error) {
+			syncCalls++
+			spec.Revision.ID = "rev-" + strings.ReplaceAll(ref, "/", "-")
+			spec.Revision.Ref = ref
+			return spec, nil
+		},
+		Specs: []ManagedSpec{{
+			ID:         "payments-api",
+			Index:      core.SpecIndex{ProjectID: "payments", RevisionID: "rev-main", Title: "Payments API"},
+			Project:    core.Project{ID: "payments"},
+			Source:     core.Source{ID: "payments-source"},
+			Revision:   core.Revision{ID: "rev-main", Ref: "main"},
+			Candidates: []core.RevisionCandidate{{Ref: "main"}, {Ref: "release/v2"}},
+		}},
+	}})
+
+	first := url.Values{"spec_id": {"payments-api"}, "ref": {"release/v2"}, "request_id": {"stale-tab-token"}}
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/manage/sync", strings.NewReader(first.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	srv.ServeHTTP(rec, req)
+	if rec.Code != http.StatusSeeOther {
+		t.Fatalf("first status = %d, want %d", rec.Code, http.StatusSeeOther)
+	}
+
+	second := url.Values{
+		"spec_id":    {"payments-api"},
+		"ref":        {"main"},
+		"publish":    {"public"},
+		"path":       {"/payments/stale"},
+		"request_id": {"stale-tab-token"},
+	}
+	rec = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodPost, "/manage/sync", strings.NewReader(second.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Set("HX-Request", "true")
+	srv.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("conflict status = %d, want %d", rec.Code, http.StatusOK)
+	}
+	if got := rec.Header().Get("X-Manja-Application-Status"); got != "validation-error" {
+		t.Fatalf("application status = %q, want validation-error", got)
+	}
+	if !strings.Contains(rec.Body.String(), "request token does not match the submitted sync values") {
+		t.Fatalf("payload conflict recovery missing: %s", rec.Body.String())
+	}
+	if syncCalls != 1 {
+		t.Fatalf("sync effects = %d, want 1", syncCalls)
+	}
+	if store.saved != (core.Publication{}) {
+		t.Fatalf("conflicting stale tab published %#v, want zero", store.saved)
+	}
+}
+
+func TestManagementInvalidMutationTokensAreRejectedWithoutEffect(t *testing.T) {
+	invalidTokens := []struct {
+		name  string
+		token string
+	}{
+		{name: "missing", token: ""},
+		{name: "oversized", token: strings.Repeat("a", 257)},
+		{name: "malformed", token: "token with spaces!"},
+	}
+	for _, action := range []string{"sync", "publication"} {
+		for _, invalid := range invalidTokens {
+			t.Run(action+"/"+invalid.name, func(t *testing.T) {
+				var syncCalls int
+				store := &fakeManagementPublicationStore{}
+				srv := NewServerWithOptions(core.SpecIndex{}, Options{Management: ManagementOptions{
+					Store: store,
+					SyncAction: func(_ context.Context, spec ManagedSpec, ref string) (ManagedSpec, error) {
+						syncCalls++
+						spec.Revision.Ref = ref
+						return spec, nil
+					},
+					Specs: []ManagedSpec{{
+						ID:         "payments-api",
+						Index:      core.SpecIndex{ProjectID: "payments", RevisionID: "rev-main", Title: "Payments API"},
+						Project:    core.Project{ID: "payments"},
+						Source:     core.Source{ID: "payments-source"},
+						Revision:   core.Revision{ID: "rev-main", Ref: "main"},
+						Candidates: []core.RevisionCandidate{{Ref: "main"}},
+					}},
+				}})
+				form := url.Values{"spec_id": {"payments-api"}, "request_id": {invalid.token}}
+				path := "/manage/publication"
+				if action == "sync" {
+					path = "/manage/sync"
+					form.Set("ref", "main")
+				} else {
+					form.Set("revision_id", "rev-main")
+					form.Set("visibility", "public")
+					form.Set("path", "/payments")
+				}
+				rec := httptest.NewRecorder()
+				req := httptest.NewRequest(http.MethodPost, path, strings.NewReader(managementMutationForm(form).Encode()))
+				req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+				req.Header.Set("HX-Request", "true")
+				srv.ServeHTTP(rec, req)
+				if rec.Code != http.StatusOK {
+					t.Fatalf("status = %d, want %d: %s", rec.Code, http.StatusOK, rec.Body.String())
+				}
+				if got := rec.Header().Get("X-Manja-Application-Status"); got != "validation-error" {
+					t.Fatalf("application status = %q, want validation-error", got)
+				}
+				if !strings.Contains(rec.Body.String(), "valid request token is required") {
+					t.Fatalf("token recovery missing: %s", rec.Body.String())
+				}
+				if syncCalls != 0 {
+					t.Fatalf("sync effects = %d, want 0", syncCalls)
+				}
+				if store.saved != (core.Publication{}) {
+					t.Fatalf("publication effect = %#v, want zero", store.saved)
+				}
+			})
+		}
+	}
+}
+
+func TestManagementHTMXNotFoundReturnsSwappableRecovery(t *testing.T) {
+	for _, path := range []string{"/manage/spec/unknown-api", "/manage/not-a-route"} {
+		t.Run(path, func(t *testing.T) {
+			srv := managementStructureServer()
+			rec := httptest.NewRecorder()
+			req := httptest.NewRequest(http.MethodGet, path, nil)
+			req.Header.Set("HX-Request", "true")
+			req.Header.Set("HX-Target", "management-main-content")
+			srv.ServeHTTP(rec, req)
+			if rec.Code != http.StatusOK {
+				t.Fatalf("status = %d, want %d: %s", rec.Code, http.StatusOK, rec.Body.String())
+			}
+			if got := rec.Header().Get("X-Manja-Application-Status"); got != "not-found" {
+				t.Fatalf("application status = %q, want not-found", got)
+			}
+			if !strings.Contains(rec.Body.String(), `id="management-main-content"`) {
+				t.Fatalf("recovery fragment missing: %s", rec.Body.String())
+			}
+		})
+	}
+}
+
+func TestManagementSameURLMutationUsesReplaceURLAndDisablesHistorySnapshots(t *testing.T) {
+	srv := managementStructureServer()
+	form := url.Values{"spec_id": {"payments-api"}, "visibility": {"private"}, "path": {"/payments/v1"}}
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/manage/publication", strings.NewReader(managementMutationForm(form).Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Set("HX-Request", "true")
+	req.Header.Set("HX-Current-URL", "http://example.test/manage/spec/payments-api")
+	srv.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusOK)
+	}
+	if got := rec.Header().Get("HX-Replace-Url"); got != "/manage/spec/payments-api" {
+		t.Fatalf("HX-Replace-Url = %q", got)
+	}
+	if got := rec.Header().Get("HX-Push-Url"); got != "" {
+		t.Fatalf("HX-Push-Url = %q, want empty", got)
+	}
+
+	body := renderManagementRequest(t, srv, "/manage/spec/payments-api", http.StatusOK)
+	if !strings.Contains(body, `hx-history="false"`) {
+		t.Fatalf("management shell must disable HTMX history snapshots: %s", body)
 	}
 }
 
@@ -1037,7 +1487,7 @@ func TestManagementPublicationPostCanMakeRevisionPrivate(t *testing.T) {
 		"path":       {"/payments/v1"},
 	}
 	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPost, "/manage/publication", strings.NewReader(form.Encode()))
+	req := httptest.NewRequest(http.MethodPost, "/manage/publication", strings.NewReader(managementMutationForm(form).Encode()))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 
 	srv.ServeHTTP(rec, req)
@@ -1067,13 +1517,16 @@ func TestManagementPublicationPostRejectsInvalidRequests(t *testing.T) {
 		"path":       {"payments/v1"},
 	}
 	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPost, "/manage/publication", strings.NewReader(form.Encode()))
+	req := httptest.NewRequest(http.MethodPost, "/manage/publication", strings.NewReader(managementMutationForm(form).Encode()))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 
 	srv.ServeHTTP(rec, req)
 
-	if rec.Code != http.StatusBadRequest {
-		t.Fatalf("status = %d, want %d", rec.Code, http.StatusBadRequest)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusOK)
+	}
+	if got := rec.Header().Get("X-Manja-Application-Status"); got != "persistence-error" {
+		t.Fatalf("application status = %q, want persistence-error", got)
 	}
 
 	rec = httptest.NewRecorder()
@@ -1090,6 +1543,17 @@ func TestManagementPublicationPostRejectsInvalidRequests(t *testing.T) {
 type fakeManagementPublicationStore struct {
 	saved core.Publication
 	err   error
+}
+
+func managementMutationForm(form url.Values) url.Values {
+	withToken := make(url.Values, len(form)+1)
+	for key, values := range form {
+		withToken[key] = append([]string(nil), values...)
+	}
+	if _, present := withToken["request_id"]; !present {
+		withToken.Set("request_id", "test-request-token")
+	}
+	return withToken
 }
 
 func (s *fakeManagementPublicationStore) SavePublication(_ context.Context, pub core.Publication) error {

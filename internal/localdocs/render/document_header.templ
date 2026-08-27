@@ -1,0 +1,36 @@
+package render
+
+import (
+	templpkg "github.com/a-h/templ"
+	"github.com/araihu/goshtoso/components/badge"
+	"github.com/araihu/goshtoso/components/icon"
+	"github.com/araihu/goshtoso/components/icon/heroicons"
+)
+
+templ catalogDocumentHeader(data catalogDocumentHeaderData, provenance templpkg.Component) {
+	<header data-catalog-document-header class="mb-8 grid min-w-0 gap-4 border-b border-outline pb-8 dark:border-outline-dark">
+		<div class="flex min-w-0 flex-wrap items-start justify-between gap-4">
+			<div class="min-w-0">
+				<p class="mb-2 text-sm font-semibold uppercase tracking-wide text-primary dark:text-primary-dark">OpenAPI document</p>
+				<div class="flex min-w-0 flex-wrap items-center gap-3">
+					<h1 tabindex="-1" data-manja-settled-focus="true" class="manja-schema-title min-w-0 break-words font-title text-3xl font-bold text-on-surface-strong sm:text-4xl dark:text-on-surface-dark-strong" title={ data.Title }>{ data.Title }</h1>
+					if data.Version != "" {
+						@badge.Badge(badge.Config{Label: data.Version, Tone: badge.ToneSecondary, Appearance: badge.AppearanceSoft, Size: badge.SizeSM, RootClass: "shrink-0"})
+					}
+				</div>
+			</div>
+			<nav aria-label="Specification actions" class="flex flex-wrap items-center gap-2">
+				<a href={ templpkg.URL(data.DownloadHref) } download class="inline-flex min-h-9 items-center justify-center gap-2 rounded-radius border border-outline px-3 text-sm font-semibold text-on-surface-strong transition hover:bg-surface-alt focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary dark:border-outline-dark dark:text-on-surface-dark-strong dark:hover:bg-surface-dark-alt dark:focus-visible:outline-primary-dark">
+					@icon.Icon(icon.Config{SpriteURL: heroicons.SpriteURL, Symbol: heroicons.Icon16SolidArrowDownTray, Size: icon.SizeSM, Decorative: true})
+					<span>Download source</span>
+				</a>
+			</nav>
+		</div>
+		if data.Description != "" {
+			<p class="max-w-[70ch] whitespace-pre-wrap text-base leading-7 text-on-surface-muted dark:text-on-surface-dark-muted">{ data.Description }</p>
+		}
+		if provenance != nil {
+			@provenance
+		}
+	</header>
+}

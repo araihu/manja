@@ -1,0 +1,22 @@
+package render
+
+import "github.com/araihu/goshtoso/components/table"
+
+templ catalogDocumentTable(data catalogDocumentTableData) {
+	@table.Table(catalogDocumentTableConfig(data))
+}
+
+templ catalogDocumentTableRows(data catalogDocumentTableData) {
+	{{ config := catalogDocumentTableConfig(data) }}
+	@table.TableRows(config)
+	<template>
+		<thead
+			id={ config.TheadID() }
+			hx-swap-oob="innerHTML"
+			data-table-sort-by={ config.SortBy }
+			data-table-sort-dir={ string(config.SortDir) }
+		>
+			@table.TableHeadContent(config)
+		</thead>
+	</template>
+}

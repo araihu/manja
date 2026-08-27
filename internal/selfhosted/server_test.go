@@ -2,14 +2,17 @@ package selfhosted
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"html"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -18,6 +21,20 @@ import (
 	storeadapter "github.com/araihu/manja/internal/adapters/store"
 	"github.com/araihu/manja/internal/web"
 )
+
+func TestNewServerRejectsInvalidPublicOriginBeforeSourceAccess(t *testing.T) {
+	t.Parallel()
+
+	options := Options{
+		SpecPath:     filepath.Join(t.TempDir(), "missing.yaml"),
+		PublicOrigin: "http://docs.example.test",
+	}
+
+	_, err := NewServer(context.Background(), options)
+	if err == nil || !strings.Contains(err.Error(), "public origin") || strings.Contains(err.Error(), "missing.yaml") {
+		t.Fatalf("NewServer invalid public origin error = %v, want pre-source validation", err)
+	}
+}
 
 func TestNewWithOptionsSyncsSpecBeforeServingPublicDocs(t *testing.T) {
 	ctx := context.Background()
@@ -60,6 +77,7 @@ func TestNewWithOptionsSyncsSpecBeforeServingPublicDocs(t *testing.T) {
 	form := url.Values{
 		"visibility": {"public"},
 		"path":       {"/synced/v1"},
+		"request_id": {"selfhosted-publication-token"},
 	}
 	rec = httptest.NewRecorder()
 	req = httptest.NewRequest(http.MethodPost, "/manage/publication", strings.NewReader(form.Encode()))
@@ -244,14 +262,15 @@ components:
 	if rec.Code != http.StatusOK {
 		t.Fatalf("management status = %d", rec.Code)
 	}
-	if body := rec.Body.String(); !containsAll(body, "Main API", "Available refs", "release/v2", "v1.0.0") {
+	if body := rec.Body.String(); !containsAll(body, "Main API", "Available refs") || !selectConfigContainsValues(body, "release/v2", "v1.0.0") {
 		t.Fatalf("management body = %s", body)
 	}
 
 	form := url.Values{
-		"ref":     {"release/v2"},
-		"publish": {"public"},
-		"path":    {"/release/v2"},
+		"ref":        {"release/v2"},
+		"publish":    {"public"},
+		"path":       {"/release/v2"},
+		"request_id": {"selfhosted-release-sync-token"},
 	}
 	rec = httptest.NewRecorder()
 	req = httptest.NewRequest(http.MethodPost, "/manage/sync", strings.NewReader(form.Encode()))
@@ -272,7 +291,8 @@ components:
 	}
 
 	form = url.Values{
-		"ref": {"main"},
+		"ref":        {"main"},
+		"request_id": {"selfhosted-main-sync-token"},
 	}
 	rec = httptest.NewRecorder()
 	req = httptest.NewRequest(http.MethodPost, "/manage/sync", strings.NewReader(form.Encode()))
@@ -308,6 +328,35 @@ components:
 	}
 }
 
+func selectConfigContainsValues(body string, values ...string) bool {
+	type option struct {
+		Value string `json:"value"`
+	}
+	type config struct {
+		Options []option `json:"options"`
+	}
+	found := make(map[string]bool, len(values))
+	for _, match := range regexp.MustCompile(`data-select-config="([^"]+)"`).FindAllStringSubmatch(body, -1) {
+		decoded, err := base64.StdEncoding.DecodeString(html.UnescapeString(match[1]))
+		if err != nil {
+			continue
+		}
+		var current config
+		if err := json.Unmarshal(decoded, &current); err != nil {
+			continue
+		}
+		for _, item := range current.Options {
+			found[item.Value] = true
+		}
+	}
+	for _, value := range values {
+		if !found[value] {
+			return false
+		}
+	}
+	return true
+}
+
 func TestNewWithOptionsRefreshesGitCandidatesAfterManualSync(t *testing.T) {
 	ctx := context.Background()
 	dataDir := t.TempDir()
@@ -331,7 +380,8 @@ func TestNewWithOptionsRefreshesGitCandidatesAfterManualSync(t *testing.T) {
 	appGit(t, repo, "checkout", "main")
 
 	form := url.Values{
-		"ref": {"main"},
+		"ref":        {"main"},
+		"request_id": {"selfhosted-refresh-sync-token"},
 	}
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodPost, "/manage/sync", strings.NewReader(form.Encode()))
@@ -344,7 +394,7 @@ func TestNewWithOptionsRefreshesGitCandidatesAfterManualSync(t *testing.T) {
 	rec = httptest.NewRecorder()
 	req = httptest.NewRequest(http.MethodGet, "/manage", nil)
 	handler.ServeHTTP(rec, req)
-	if body := rec.Body.String(); !strings.Contains(body, "release/v2") {
+	if body := rec.Body.String(); !selectConfigContainsValues(body, "release/v2") {
 		t.Fatalf("management body missing refreshed ref:\n%s", body)
 	}
 }
@@ -584,13 +634,23 @@ if [ "${1:-}" = "-C" ]; then
 	shift 2
 fi
 case "${1:-}" in
-	clone)
-		mkdir -p "$5"
+	init)
+		mkdir -p "$3"
+		;;
+	fetch)
+		:
 		;;
 	rev-parse)
-		printf '%s\n' "abc123abc123abc123abc123abc123abc123abcd"
+		case "$*" in
+			*:*) printf '%s\n' "def456def456def456def456def456def456def4" ;;
+			*) printf '%s\n' "abc123abc123abc123abc123abc123abc123abcd" ;;
+		esac
 		;;
-	show)
+	cat-file)
+		if [ "${2:-}" = "-s" ]; then
+			printf '%s\n' "77"
+			exit 0
+		fi
 		cat <<'EOF'
 openapi: 3.1.0
 info:
@@ -598,6 +658,9 @@ info:
   version: v1
 paths: {}
 EOF
+		;;
+	show)
+		printf 'Manja Test\000manja@example.test\000fixture\n'
 		;;
 	for-each-ref)
 		printf '%s\n' "discover refs failed" >&2

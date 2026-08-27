@@ -1,14 +1,20 @@
 package templates
 
 import (
+	"crypto/sha256"
 	"fmt"
 	"net/url"
 	"strings"
 	"time"
 
 	templpkg "github.com/a-h/templ"
+	"github.com/araihu/goshtoso/components/alert"
+	"github.com/araihu/goshtoso/components/appshell"
 	"github.com/araihu/goshtoso/components/badge"
 	"github.com/araihu/goshtoso/components/button"
+	"github.com/araihu/goshtoso/components/emptystate"
+	"github.com/araihu/goshtoso/components/pageheader"
+	"github.com/araihu/goshtoso/components/panel"
 	"github.com/araihu/goshtoso/components/radio"
 	selectfield "github.com/araihu/goshtoso/components/select"
 	"github.com/araihu/goshtoso/components/sidebar"
@@ -16,17 +22,25 @@ import (
 	"github.com/araihu/goshtoso/components/tabs"
 	"github.com/araihu/goshtoso/components/textinput"
 	"github.com/araihu/goshtoso/components/toggle"
+	"github.com/araihu/goshtoso/components/toolbar"
 	core "github.com/araihu/manja/domain"
 )
 
 type ManagementOverviewModel struct {
 	Specs          []ManagedSpecModel
+	FilteredSpecs  []ManagedSpecModel
+	SpecFilter     string
+	SpecStatus     string
 	SelectedSpecID string
 	Project        core.Project
 	Source         core.Source
 	Revision       core.Revision
 	Publication    core.Publication
 	SyncRecord     core.SyncRecord
+	ApplicationStatus string
+	ApplicationError  string
+	EnteredRef         string
+	RetryAction        string
 }
 
 type ManagedSpecModel struct {
@@ -65,145 +79,324 @@ templ ManagementSpecPage(model ManagementOverviewModel) {
 	}
 }
 
+templ ManagementUnknownPage(model ManagementOverviewModel, requestedPath string) {
+	@managementShell(model, "unknown") {
+		@ManagementUnknownContent(requestedPath)
+	}
+}
+
 templ managementShell(model ManagementOverviewModel, active string) {
-	@LayoutWithBranding("Management", core.DocsBranding{}) {
-		<div class="fixed inset-0 flex flex-col overflow-clip bg-surface text-on-surface dark:bg-surface-dark dark:text-on-surface-dark">
-			<header data-boot-anim="header" class="manja-docs-header relative z-50 shrink-0 border-b border-outline bg-surface dark:border-outline-dark dark:bg-surface-dark">
-				<div class="flex h-16 items-center justify-between gap-3 px-4 lg:px-8">
-					<div class="flex min-w-0 items-center gap-2">
-						@sidebar.Overlay(sidebar.OverlayConfig{
-							ID:                    "management-sidebar",
-							TriggerLabel:          "Open management sections",
-							RootClass:             "lg:hidden",
-							PanelPositionClass:    "fixed top-16 bottom-0 left-0",
-							PanelWidthClass:       "w-72 max-w-[85vw]",
-							BackdropPositionClass: "fixed inset-0",
-							Sidebar:               managementSidebarConfig(model, active, managementSidebarSearch("mobile"), "mobile"),
-						})
-						<a href="/manage" class="flex min-w-0 items-center gap-2 text-2xl font-bold font-title text-on-surface-strong dark:text-on-surface-dark-strong">
-							@managementLogoIcon()
-							<span class="truncate">Management</span>
-						</a>
-					</div>
-					<div class="flex min-w-0 items-center gap-3 text-sm text-on-surface-muted dark:text-on-surface-dark-muted">
-						<span class="hidden md:inline">Specs and sources</span>
-						<span class="rounded-radius border border-outline px-2 py-1 font-mono text-xs text-on-surface-strong dark:border-outline-dark dark:text-on-surface-dark-strong">{ managementSpecCount(len(model.Specs)) }</span>
-					</div>
+	@LayoutWithBranding(managementDocumentTitle(model, active), core.DocsBranding{}, false, false) {
+		<div class="fixed inset-0 overflow-clip bg-surface text-on-surface dark:bg-surface-dark dark:text-on-surface-dark">
+			@appshell.AppShell(appshell.Config{
+				Header:       managementApplicationHeader(model, active),
+				Sidebar:      managementSidebar(model, active, ""),
+				MainID:       "main-content",
+				RootClass:    "h-full",
+				RootAttrs:    templpkg.Attributes{"data-manja-app-shell": "true", "hx-history": "false"},
+				HeaderClass:  "manja-docs-header relative z-50 shrink-0 border-b border-outline bg-surface dark:border-outline-dark dark:bg-surface-dark",
+				HeaderAttrs:  templpkg.Attributes{"data-boot-anim": "header"},
+				SidebarClass: "hidden h-full w-72 shrink-0 lg:block",
+				SidebarAttrs: templpkg.Attributes{"aria-label": "Management sections", "data-boot-anim": "sidebar"},
+				MainClass:    "min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden p-5 sm:p-6 lg:px-8 lg:py-8",
+				MainAttrs: templpkg.Attributes{
+					"data-boot-anim":            "main",
+					"data-manja-primary-scroll": "true",
+					"data-selected-contract":    managementShellSelectedContract(model, active),
+				},
+			}) {
+				<div class="mx-auto max-w-7xl">
+					@managementTransportRecovery()
+					{ children... }
 				</div>
-			</header>
-			<div class="flex min-h-0 flex-1 overflow-clip">
-				<aside data-boot-anim="sidebar" class="hidden h-full w-72 shrink-0 lg:block" aria-label="Management sections">
-					<div id="management-sidebar-content" class="h-full">
-						@managementSidebar(model, active, "")
-					</div>
-				</aside>
-				<main id="page-scroll" data-boot-anim="main" class="min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden p-5 sm:p-6 lg:px-8 lg:py-8">
-					<div id="main-content" class="mx-auto max-w-7xl">
-						{ children... }
-					</div>
-				</main>
-				@managementSidebarScript()
-			</div>
+			}
+			@managementSidebarScript()
 		</div>
 	}
 }
 
+templ managementTransportRecovery() {
+	<div id="management-transport-recovery" data-management-transport-recovery="true" role="alert" aria-live="assertive" hidden class="mb-5 rounded-radius border border-danger bg-danger/10 px-4 py-3 text-on-surface dark:border-danger dark:bg-danger/15 dark:text-on-surface-dark">
+		<p class="font-semibold">The request did not reach a settled server response.</p>
+		<p class="mt-1 text-sm">Your selected contract and entered values remain in this workspace. Check the connection, then retry.</p>
+		<button type="button" data-management-retry="true" class="mt-3 inline-flex min-h-11 min-w-11 items-center justify-center rounded-radius border border-danger px-4 py-2 text-sm font-semibold focus-visible:outline-2 focus-visible:outline-offset-2 dark:border-danger">Retry request</button>
+	</div>
+}
+
+templ managementApplicationHeader(model ManagementOverviewModel, active string) {
+	<div class="flex h-16 items-center justify-between gap-3 px-4 lg:px-8">
+		<div class="flex min-w-0 items-center gap-2">
+			@sidebar.Overlay(sidebar.OverlayConfig{
+				ID:                    "management-sidebar",
+				TriggerLabel:          "Open management sections",
+				TriggerClass:          "min-h-11 min-w-11",
+				RootClass:             "lg:hidden",
+				PanelPositionClass:    "fixed top-16 bottom-0 left-0",
+				PanelWidthClass:       "w-72 max-w-[85vw]",
+				BackdropPositionClass: "fixed top-16 bottom-0 left-0 right-0",
+				Sidebar:               managementSidebarConfig(model, active, managementSidebarSearch("mobile"), "mobile"),
+			})
+			<a href="/manage" class="flex min-w-0 items-center gap-2 text-2xl font-bold font-title text-on-surface-strong dark:text-on-surface-dark-strong">
+				@managementLogoIcon()
+				<span class="truncate">Management</span>
+			</a>
+		</div>
+		<div class="flex min-w-0 items-center gap-3 text-sm text-on-surface-muted dark:text-on-surface-dark-muted">
+			<span class="hidden md:inline">Specs and sources</span>
+			<span class="rounded-radius border border-outline px-2 py-1 font-mono text-xs text-on-surface-strong dark:border-outline-dark dark:text-on-surface-dark-strong">{ managementSpecCount(len(model.Specs)) }</span>
+		</div>
+	</div>
+}
+
 templ ManagementOverviewContent(model ManagementOverviewModel) {
 	{{ spec, hasSpec := managementSelectedSpec(model) }}
-	<div id="management-main-content" class="grid gap-7">
-		<section class="grid gap-5" aria-labelledby="management-home-heading">
-			<div class="max-w-3xl">
-				<p class="text-xs font-semibold uppercase tracking-normal text-on-surface-muted dark:text-on-surface-dark-muted">Management workbench</p>
-				<h1 id="management-home-heading" class="mt-2 font-title text-3xl font-bold leading-tight text-on-surface-strong dark:text-on-surface-dark-strong sm:text-4xl">Specs and publishing</h1>
-				<p class="mt-3 text-sm leading-6 text-on-surface-muted dark:text-on-surface-dark-muted">Select a spec, inspect its source freshness, and publish the docs route that belongs to that spec.</p>
-			</div>
-			<dl class="flex flex-wrap gap-2">
-				@managementPillMetric("Managed", fmt.Sprintf("%d", len(model.Specs)))
-				@managementPillMetric("Published", fmt.Sprintf("%d", managementPublishedSpecCount(model.Specs)))
-				@managementPillMetric("Selected", managementSpecTitle(model))
-			</dl>
-		</section>
+	<div id="management-main-content" data-selected-contract={ managementSelectedSpecID(model) } data-document-title={ managementDocumentTitle(model, "overview") } class="grid gap-7">
+		@pageheader.PageHeader(pageheader.Config{
+			Title:       "Specs and publishing",
+			Description: "Select a spec, inspect its source freshness, and publish the docs route that belongs to that spec.",
+			Actions:     managementOverviewMetrics(model),
+			RootAttrs:   templpkg.Attributes{"data-management-page-header": "overview"},
+			TitleAttrs:  templpkg.Attributes{"id": "management-home-heading", "tabindex": "-1", "data-manja-settled-focus": "true"},
+		})
 		if hasSpec {
-			@ManagementSpecPanel(spec)
+			@managementOverviewSpecWorkspace(spec)
 		}
-		<section class="overflow-clip rounded-radius border border-outline bg-surface-alt dark:border-outline-dark dark:bg-surface-dark-alt" aria-labelledby="management-overview-specs-heading">
-			<div class="flex flex-wrap items-end justify-between gap-3 border-b border-outline px-4 py-3 dark:border-outline-dark">
-				<div class="min-w-0">
-					<p class="text-xs font-semibold uppercase tracking-normal text-on-surface-muted dark:text-on-surface-dark-muted">Spec roster</p>
-					<h2 id="management-overview-specs-heading" class="mt-1 text-lg font-semibold text-on-surface-strong dark:text-on-surface-dark-strong">Choose what to manage</h2>
-					<p class="text-sm text-on-surface-muted dark:text-on-surface-dark-muted">Rows open the per-spec publication and sync workbench.</p>
-				</div>
-				<a href="/manage/specs" hx-get="/manage/specs" hx-target="#management-main-content" hx-swap="outerHTML" hx-push-url="true" class="inline-flex h-10 shrink-0 items-center justify-center rounded-radius border border-outline bg-surface-alt px-3 text-sm font-semibold text-on-surface-strong transition hover:bg-surface focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary dark:border-outline-dark dark:bg-surface-dark-alt dark:text-on-surface-dark-strong dark:hover:bg-surface-dark dark:focus-visible:outline-primary-dark">All specs</a>
-			</div>
-			@managementSpecsTable(model)
-		</section>
+		@panel.Panel(panel.Config{
+			Header:  managementPanelHeading("Spec roster", "Choose what to manage", "Rows open the per-spec publication and sync workbench."),
+			Actions: managementAllSpecsLink(),
+			Body:    managementSpecsTable(model),
+			RootAttrs: templpkg.Attributes{"aria-labelledby": "management-overview-specs-heading"},
+		})
 	</div>
 }
 
 templ ManagementSpecsContent(model ManagementOverviewModel) {
-	<div id="management-main-content" class="grid gap-6">
-		<section class="overflow-clip rounded-radius border border-outline bg-surface-alt dark:border-outline-dark dark:bg-surface-dark-alt" aria-labelledby="management-specs-heading">
-			<div class="border-b border-outline px-4 py-4 dark:border-outline-dark">
-				<p class="text-xs font-semibold uppercase tracking-normal text-on-surface-muted dark:text-on-surface-dark-muted">Managed specs</p>
-				<h1 id="management-specs-heading" class="mt-2 font-title text-3xl font-bold leading-tight text-on-surface-strong dark:text-on-surface-dark-strong sm:text-4xl">Spec roster</h1>
-				<p class="mt-2 text-sm leading-6 text-on-surface-muted dark:text-on-surface-dark-muted">{ managementSpecCount(len(model.Specs)) } across repositories and spec files.</p>
-			</div>
+	<div id="management-main-content" data-selected-contract="" data-document-title="Managed specs · Management" class="grid gap-6">
+		@pageheader.PageHeader(pageheader.Config{
+			Title:       "Managed specs",
+			Description: "Compare source, revision, publication, and sync state before opening a contract workspace.",
+			RootAttrs:   templpkg.Attributes{"data-management-page-header": "specs"},
+			TitleAttrs:  templpkg.Attributes{"id": "management-specs-heading", "tabindex": "-1", "data-manja-settled-focus": "true"},
+		})
+		@toolbar.Toolbar(toolbar.Config{
+			Label:     "Managed spec tools",
+			Search:    managementSpecsFilterForm(model),
+			RootAttrs: templpkg.Attributes{"data-management-specs-toolbar": "true"},
+		})
+		<p data-management-results="true" aria-live="polite" class="text-sm text-on-surface-muted dark:text-on-surface-dark-muted">{ managementFilteredSpecCount(model) }</p>
+		if len(model.Specs) == 0 {
+			@managementSpecsEmpty()
+		} else if len(managementVisibleSpecs(model)) == 0 {
+			@managementSpecsFilteredEmpty()
+		} else {
 			@managementSpecsTable(model)
-		</section>
+		}
 	</div>
 }
 
 templ ManagementSpecContent(model ManagementOverviewModel) {
 	{{ spec, ok := managementSelectedSpec(model) }}
-	<div id="management-main-content" class="grid gap-6">
+	<div id="management-main-content" data-selected-contract={ model.SelectedSpecID } data-document-title={ managementDocumentTitle(model, "spec:" + model.SelectedSpecID) } class="grid gap-6">
+		if model.ApplicationStatus != "" {
+			@managementApplicationError(model)
+		}
 		if ok {
 			@ManagementSpecPanel(spec)
 		} else {
-			<section class="rounded-radius border border-outline bg-surface-alt p-6 dark:border-outline-dark dark:bg-surface-dark-alt">
-				<h1 class="font-title text-2xl font-bold text-on-surface-strong dark:text-on-surface-dark-strong">Spec not found</h1>
-				<p class="mt-2 text-sm text-on-surface-muted dark:text-on-surface-dark-muted">Select a managed spec from the sidebar.</p>
-			</section>
+			@managementSpecNotFound(model.SelectedSpecID)
+		}
+	</div>
+}
+
+templ ManagementUnknownContent(requestedPath string) {
+	<div id="management-main-content" data-selected-contract="" data-document-title="Management page not found · Management" data-management-route-not-found="true" class="grid gap-6">
+		@pageheader.PageHeader(pageheader.Config{
+			Title:       "Management page not found",
+			Description: "The requested management route is unavailable.",
+			RootAttrs:   templpkg.Attributes{"data-management-page-header": "route-not-found"},
+			TitleAttrs:  templpkg.Attributes{"id": "management-route-not-found-heading", "tabindex": "-1", "data-manja-settled-focus": "true", "data-autofocus": "true"},
+		})
+		@emptystate.EmptyState(emptystate.Config{
+			Title:       "Return to the management workbench",
+			Description: "Use the overview to choose an available managed contract.",
+			Action:      managementOverviewRecoveryLink("Open management overview"),
+			RootAttrs:   templpkg.Attributes{"data-requested-management-route": requestedPath},
+		})
+	</div>
+}
+
+templ managementApplicationError(model ManagementOverviewModel) {
+	<div data-management-application-error="true" data-application-status={ model.ApplicationStatus } data-autofocus="true" tabindex="-1" class="focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-danger dark:focus-visible:outline-danger-dark">
+		@alert.Alert(alert.Config{
+			Title:       managementApplicationErrorTitle(model),
+			Description: model.ApplicationError,
+			Tone:        alert.ToneDanger,
+		})
+		if model.EnteredRef != "" {
+			<p class="mt-2 text-sm text-on-surface-muted dark:text-on-surface-dark-muted">Entered ref: <code class="font-mono text-on-surface-strong dark:text-on-surface-dark-strong">{ model.EnteredRef }</code></p>
+		}
+		if model.RetryAction != "" {
+			<p class="mt-2 text-sm font-medium text-on-surface-strong dark:text-on-surface-dark-strong">{ model.RetryAction } using the retained form below.</p>
 		}
 	</div>
 }
 
 templ ManagementSpecPanel(spec ManagedSpecModel) {
-	<section class="grid gap-5" aria-labelledby={ "management-spec-heading-" + spec.ID }>
-		@managementProductionHeader(spec)
-		@managementSpecTabs(spec)
+	<section class="grid min-w-0 gap-5" aria-labelledby={ "management-spec-heading-" + spec.ID }>
+		@managementSpecHeader(spec)
+		@panel.Panel(panel.Config{
+			Body:      managementSpecTabs(spec),
+			RootClass: "min-w-0 max-w-full",
+			BodyClass: "min-w-0 max-w-full",
+			RootAttrs: managementDetailWorkspaceAttrs(spec),
+		})
 	</section>
 }
 
-templ managementProductionHeader(spec ManagedSpecModel) {
-	<section class="overflow-clip rounded-radius border border-outline bg-surface-alt dark:border-outline-dark dark:bg-surface-dark-alt" aria-labelledby={ "management-spec-heading-" + spec.ID }>
-		<div class="manja-management-production-layout p-5">
+func managementDetailWorkspaceAttrs(spec ManagedSpecModel) templpkg.Attributes {
+	attrs := templpkg.Attributes{"data-management-detail-workspace": "true"}
+	if spec.SyncRecord.Result == core.SyncResultFailure && spec.Publication.Public {
+		attrs["data-management-partial"] = "true"
+	}
+	return attrs
+}
+
+templ managementOverviewSpecWorkspace(spec ManagedSpecModel) {
+	<section class="grid min-w-0 gap-5" aria-labelledby={ "management-overview-spec-heading-" + spec.ID }>
+		<div class="flex flex-wrap items-start justify-between gap-4">
 			<div class="min-w-0">
-				<p class="text-xs font-semibold uppercase tracking-normal text-on-surface-muted dark:text-on-surface-dark-muted">Production docs</p>
-				<h1 id={ "management-spec-heading-" + spec.ID } class="mt-2 break-words font-title text-3xl font-bold leading-tight text-on-surface-strong dark:text-on-surface-dark-strong sm:text-4xl">{ spec.Title }</h1>
-				<p class="mt-2 text-sm leading-6 text-on-surface-muted dark:text-on-surface-dark-muted">Live route <code class="font-mono text-on-surface-strong dark:text-on-surface-dark-strong">{ managementProductionRoute(spec.Publication) }</code>.</p>
+				<p class="text-xs font-semibold uppercase tracking-normal text-on-surface-muted dark:text-on-surface-dark-muted">Selected contract</p>
+				<h2 id={ "management-overview-spec-heading-" + spec.ID } class="mt-1 break-words font-title text-2xl font-bold text-on-surface-strong dark:text-on-surface-dark-strong">{ spec.Title }</h2>
+				<p class="mt-1 text-sm text-on-surface-muted dark:text-on-surface-dark-muted">Live route { managementProductionRoute(spec.Publication) }.</p>
 			</div>
-			<div class="flex flex-wrap items-center gap-2 lg:justify-end">
-				@badge.Badge(badge.Config{
-					Label:      managementPublicationLabel(spec.Publication),
-					Tone:       managementPublicationBadgeTone(spec.Publication),
-					Appearance: badge.AppearanceSoft,
-				})
-				@managementStatusBadge(managementValue(string(spec.SyncRecord.Result)), managementSyncTone(spec.SyncRecord))
-				if managementPublishedDocsHref(spec.Publication) != "" {
-					<a href={ templpkg.URL(managementPublishedDocsHref(spec.Publication)) } class="inline-flex h-10 shrink-0 items-center justify-center rounded-radius border border-outline bg-surface px-3 text-sm font-semibold text-on-surface-strong transition hover:bg-surface-alt focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary dark:border-outline-dark dark:bg-surface-dark dark:text-on-surface-dark-strong dark:hover:bg-surface-dark-alt dark:focus-visible:outline-primary-dark">View docs</a>
-				} else {
-					<span class="inline-flex min-h-10 shrink-0 items-center rounded-radius border border-dashed border-outline px-3 text-sm font-medium text-on-surface-muted dark:border-outline-dark dark:text-on-surface-dark-muted">Not public yet</span>
-				}
-			</div>
+			@managementSpecHeaderActions(spec)
 		</div>
+		@panel.Panel(panel.Config{
+			Body:      managementSpecTabs(spec),
+			RootAttrs: templpkg.Attributes{"data-management-overview-workspace": "true"},
+		})
 	</section>
+}
+
+templ managementSpecHeader(spec ManagedSpecModel) {
+	@pageheader.PageHeader(pageheader.Config{
+		Title:       spec.Title,
+		Description: "Live route " + managementProductionRoute(spec.Publication) + ".",
+		Actions:     managementSpecHeaderActions(spec),
+		RootClass:   "min-w-0 max-w-full",
+		RootAttrs:   templpkg.Attributes{"data-management-page-header": "detail"},
+		TitleAttrs: templpkg.Attributes{
+			"id":                                "management-spec-heading-" + spec.ID,
+			"tabindex":                          "-1",
+			"data-autofocus":                    "true",
+			"data-management-contract-identity": spec.ID,
+			"data-manja-settled-focus":          "true",
+		},
+	})
+}
+
+templ managementSpecHeaderActions(spec ManagedSpecModel) {
+	<div class="flex flex-wrap items-center gap-2">
+		@badge.Badge(badge.Config{
+			Label:      managementPublicationLabel(spec.Publication),
+			Tone:       managementPublicationBadgeTone(spec.Publication),
+			Appearance: badge.AppearanceSoft,
+		})
+		@managementStatusBadge(managementValue(string(spec.SyncRecord.Result)), managementSyncTone(spec.SyncRecord))
+		if managementPublishedDocsHref(spec.Publication) != "" {
+			<a href={ templpkg.URL(managementPublishedDocsHref(spec.Publication)) } class="inline-flex min-h-11 shrink-0 items-center justify-center rounded-radius border border-outline bg-surface px-3 text-sm font-semibold text-on-surface-strong transition hover:bg-surface-alt focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary dark:border-outline-dark dark:bg-surface-dark dark:text-on-surface-dark-strong dark:hover:bg-surface-dark-alt dark:focus-visible:outline-primary-dark">View docs</a>
+		} else {
+			<span class="inline-flex min-h-11 shrink-0 items-center rounded-radius border border-dashed border-outline px-3 text-sm font-medium text-on-surface-muted dark:border-outline-dark dark:text-on-surface-dark-muted">Not public yet</span>
+		}
+	</div>
+}
+
+templ managementOverviewMetrics(model ManagementOverviewModel) {
+	<dl class="flex flex-wrap gap-2">
+		@managementPillMetric("Managed", fmt.Sprintf("%d", len(model.Specs)))
+		@managementPillMetric("Published", fmt.Sprintf("%d", managementPublishedSpecCount(model.Specs)))
+		@managementPillMetric("Selected", managementSpecTitle(model))
+	</dl>
+}
+
+templ managementPanelHeading(eyebrow string, title string, description string) {
+	<div class="min-w-0">
+		<p class="text-xs font-semibold uppercase tracking-normal text-on-surface-muted dark:text-on-surface-dark-muted">{ eyebrow }</p>
+		<h2 id="management-overview-specs-heading" class="mt-1 text-lg font-semibold text-on-surface-strong dark:text-on-surface-dark-strong">{ title }</h2>
+		<p class="text-sm text-on-surface-muted dark:text-on-surface-dark-muted">{ description }</p>
+	</div>
+}
+
+templ managementAllSpecsLink() {
+	<a href="/manage/specs" hx-get="/manage/specs" hx-target="#management-main-content" hx-swap="outerHTML" hx-push-url="true" class="inline-flex min-h-11 shrink-0 items-center justify-center rounded-radius border border-outline bg-surface-alt px-3 text-sm font-semibold text-on-surface-strong transition hover:bg-surface focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary dark:border-outline-dark dark:bg-surface-dark-alt dark:text-on-surface-dark-strong dark:hover:bg-surface-dark dark:focus-visible:outline-primary-dark">All specs</a>
+}
+
+templ managementSpecsFilterForm(model ManagementOverviewModel) {
+	<form method="get" action="/manage/specs" hx-get="/manage/specs" hx-target="#management-main-content" hx-swap="outerHTML" hx-push-url="true" class="flex min-w-0 flex-1 flex-wrap items-end gap-3">
+		<label class="grid min-w-56 flex-1 gap-1 text-sm font-medium text-on-surface-strong dark:text-on-surface-dark-strong">
+			<span>Search specs</span>
+			<input type="search" name="q" value={ model.SpecFilter } class="min-h-11 rounded-radius border border-outline bg-surface px-3 text-on-surface-strong focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary dark:border-outline-dark dark:bg-surface-dark dark:text-on-surface-dark-strong dark:focus-visible:outline-primary-dark" placeholder="Title, source, or revision"/>
+		</label>
+		<label class="grid min-w-40 gap-1 text-sm font-medium text-on-surface-strong dark:text-on-surface-dark-strong">
+			<span>Publication</span>
+			<select name="status" class="min-h-11 rounded-radius border border-outline bg-surface px-3 text-on-surface-strong focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary dark:border-outline-dark dark:bg-surface-dark dark:text-on-surface-dark-strong dark:focus-visible:outline-primary-dark">
+				<option value="" selected?={ model.SpecStatus == "" }>All statuses</option>
+				<option value="public" selected?={ model.SpecStatus == "public" }>Public</option>
+				<option value="private" selected?={ model.SpecStatus == "private" }>Private</option>
+			</select>
+		</label>
+		@button.Button(button.WithType("submit"), button.WithTone(button.TonePrimary), button.WithRootClass("min-h-11")) {
+			Apply filters
+		}
+	</form>
+}
+
+templ managementSpecsEmpty() {
+	@emptystate.EmptyState(emptystate.Config{
+		Title:       "No managed specs",
+		Description: "No OpenAPI contracts are currently available in this management workspace.",
+		Action:      managementOverviewRecoveryLink("Return to management overview"),
+		RootAttrs:   templpkg.Attributes{"data-management-empty": "true"},
+	})
+}
+
+templ managementSpecsFilteredEmpty() {
+	@emptystate.EmptyState(emptystate.Config{
+		Title:       "No specs match these filters",
+		Description: "Adjust the search or publication status to see more managed specs.",
+		Action:      managementResetFiltersLink(),
+		RootAttrs:   templpkg.Attributes{"data-management-filtered-empty": "true"},
+	})
+}
+
+templ managementSpecNotFound(specID string) {
+	@pageheader.PageHeader(pageheader.Config{
+		Title:       "Spec not found",
+		Description: "The requested managed spec is unavailable or no longer exists.",
+		RootAttrs:   templpkg.Attributes{"data-management-page-header": "not-found"},
+		TitleAttrs:  templpkg.Attributes{"id": "management-spec-not-found-heading", "tabindex": "-1", "data-manja-settled-focus": "true", "data-autofocus": "true"},
+	})
+	@emptystate.EmptyState(emptystate.Config{
+		Title:       "Choose another managed spec",
+		Description: "Return to the managed spec list and select an available contract.",
+		Action:      managementResetFiltersLink(),
+		RootAttrs:   templpkg.Attributes{"data-management-spec-not-found": "true", "data-requested-contract": specID},
+	})
+}
+
+templ managementOverviewRecoveryLink(label string) {
+	<a href="/manage" class="inline-flex min-h-11 items-center justify-center rounded-radius bg-primary px-4 py-2 text-sm font-semibold text-on-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary dark:bg-primary-dark dark:text-on-primary-dark dark:focus-visible:outline-primary-dark">{ label }</a>
+}
+
+templ managementResetFiltersLink() {
+	<a href="/manage/specs" class="inline-flex min-h-11 items-center justify-center rounded-radius bg-primary px-4 py-2 text-sm font-semibold text-on-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary dark:bg-primary-dark dark:text-on-primary-dark dark:focus-visible:outline-primary-dark">Clear filters</a>
 }
 
 templ managementSpecTabs(spec ManagedSpecModel) {
 	@tabs.Tabs(tabs.Config{
 		ID:         "management-spec-tabs-" + spec.ID,
 		DefaultTab: "publish",
-		RootClass: "rounded-radius border border-outline bg-surface-alt dark:border-outline-dark dark:bg-surface-dark-alt",
+		RootClass: "min-w-0 max-w-full rounded-radius border border-outline bg-surface-alt dark:border-outline-dark dark:bg-surface-dark-alt",
 		Tabs: []tabs.Tab{
 			{
 				ID:      "publish",
@@ -278,9 +471,11 @@ templ managementPublishCandidatePanel(spec ManagedSpecModel) {
 				hx-post="/manage/publication"
 				hx-target="#management-main-content"
 				hx-swap="outerHTML"
+				hx-disabled-elt="find button[type='submit']"
 				class="grid gap-4 border-t border-outline pt-4 dark:border-outline-dark"
 			>
 				<input type="hidden" name="spec_id" value={ spec.ID }/>
+				<input type="hidden" name="request_id" value={ managementMutationID("publish", spec) }/>
 				<input type="hidden" name="visibility" value="public"/>
 				<input type="hidden" name="path" value={ managementPublicationPathValue(spec.Publication, spec.Project) }/>
 				<input type="hidden" name="revision_id" value={ spec.Revision.ID }/>
@@ -291,6 +486,7 @@ templ managementPublishCandidatePanel(spec ManagedSpecModel) {
 				@button.Button(
 					button.WithTone(button.TonePrimary),
 					button.WithType("submit"),
+					button.WithLoadingText("Publishing revision…"),
 					button.WithRootClass("w-fit"),
 				) {
 					Publish this revision
@@ -380,9 +576,11 @@ templ managementRouteSettingsPanel(spec ManagedSpecModel) {
 			hx-post="/manage/publication"
 			hx-target="#management-main-content"
 			hx-swap="outerHTML"
+			hx-disabled-elt="find button[type='submit']"
 			class="grid gap-4 border-t border-outline pt-4 dark:border-outline-dark"
 		>
 			<input type="hidden" name="spec_id" value={ spec.ID }/>
+			<input type="hidden" name="request_id" value={ managementMutationID("route", spec) }/>
 			<fieldset class="grid gap-2">
 				<legend class="text-xs font-semibold uppercase tracking-normal text-on-surface-muted dark:text-on-surface-dark-muted">Visibility</legend>
 				@radio.RadioBar() {
@@ -401,6 +599,7 @@ templ managementRouteSettingsPanel(spec ManagedSpecModel) {
 			@button.Button(
 				button.WithTone(button.ToneAlternate),
 				button.WithType("submit"),
+				button.WithLoadingText("Saving route…"),
 				button.WithRootClass("w-fit"),
 			) {
 				Save route settings
@@ -517,9 +716,11 @@ templ managementSyncForm(spec ManagedSpecModel, idPrefix string) {
 		hx-post="/manage/sync"
 		hx-target="#management-main-content"
 		hx-swap="outerHTML"
+		hx-disabled-elt="find button[type='submit']"
 		class="grid gap-4 border-t border-outline pt-4 dark:border-outline-dark"
 	>
 		<input type="hidden" name="spec_id" value={ spec.ID }/>
+		<input type="hidden" name="request_id" value={ managementMutationID("sync", spec) }/>
 		@selectfield.Select(selectfield.Config{
 			ID:        idPrefix + "-sync-ref",
 			Name:      "ref",
@@ -547,6 +748,7 @@ templ managementSyncForm(spec ManagedSpecModel, idPrefix string) {
 		@button.Button(
 			button.WithTone(button.TonePrimary),
 			button.WithType("submit"),
+			button.WithLoadingText("Syncing ref…"),
 			button.WithRootClass("w-fit"),
 		) {
 			Sync selected ref
@@ -583,7 +785,9 @@ templ managementTerm(label string, value string) {
 }
 
 templ managementSidebar(model ManagementOverviewModel, active string, idPrefix string) {
-	@sidebar.Sidebar(managementSidebarConfig(model, active, managementSidebarSearch(idPrefix), idPrefix))
+	<div id="management-sidebar-content" class="h-full">
+		@sidebar.Sidebar(managementSidebarConfig(model, active, managementSidebarSearch(idPrefix), idPrefix))
+	</div>
 }
 
 templ managementSidebarSearch(idPrefix string) {
@@ -619,33 +823,28 @@ templ managementSpecsIcon() {
 }
 
 templ managementSidebarScript() {
-	<style>
-		#management-main-content [role="tablist"] + div > [role="tabpanel"] {
-			display: none;
-		}
-		#management-main-content [role="tablist"] + div > [role="tabpanel"]:first-child {
-			display: block;
-		}
-		#management-main-content [role="tablist"]:has([role="tab"][aria-selected="true"]) + div > [role="tabpanel"]:first-child {
-			display: none;
-		}
-		#management-main-content [role="tablist"]:has([role="tab"]:nth-child(1)[aria-selected="true"]) + div > [role="tabpanel"]:nth-child(1),
-		#management-main-content [role="tablist"]:has([role="tab"]:nth-child(2)[aria-selected="true"]) + div > [role="tabpanel"]:nth-child(2),
-		#management-main-content [role="tablist"]:has([role="tab"]:nth-child(3)[aria-selected="true"]) + div > [role="tabpanel"]:nth-child(3),
-		#management-main-content [role="tablist"]:has([role="tab"]:nth-child(4)[aria-selected="true"]) + div > [role="tabpanel"]:nth-child(4),
-		#management-main-content [role="tablist"]:has([role="tab"]:nth-child(5)[aria-selected="true"]) + div > [role="tabpanel"]:nth-child(5),
-		#management-main-content [role="tablist"]:has([role="tab"]:nth-child(6)[aria-selected="true"]) + div > [role="tabpanel"]:nth-child(6) {
-			display: block;
-		}
-	</style>
 	<script>
 		(function () {
-			var activeItemClasses = "pointer-events-none flex items-center gap-2 border-l-2 border-primary py-2.5 pl-4 text-sm font-bold text-primary dark:border-primary-dark dark:text-primary-dark".split(" ");
-			var inactiveItemClasses = "flex items-center gap-2 border-l border-outline py-2.5 pl-4 text-sm font-medium text-on-surface transition duration-200 hover:border-l-2 hover:border-outline-strong hover:text-on-surface-strong dark:border-outline-dark dark:text-on-surface-dark dark:hover:border-outline-dark-strong dark:hover:text-on-surface-dark-strong".split(" ");
-			var activeTopClasses = "flex items-center gap-2 py-2 text-base font-medium text-primary dark:text-primary-dark".split(" ");
-			var inactiveTopClasses = "flex items-center gap-2 py-2 text-base text-on-surface transition-colors hover:text-on-surface-strong dark:text-on-surface-dark dark:hover:text-on-surface-dark-strong".split(" ");
-			var topIconActive = "shrink-0 size-8 rounded-sm p-1.5 bg-primary/10 text-primary dark:bg-primary-dark/10 dark:text-primary-dark".split(" ");
-			var topIconInactive = "shrink-0 size-8 rounded-sm p-1.5 bg-surface-alt text-on-surface dark:bg-surface-dark-alt dark:text-on-surface-dark".split(" ");
+			var focusAfterSettle = false;
+			var lastMutationForm = null;
+
+			function transportRecovery() {
+				return document.querySelector("[data-management-transport-recovery='true']");
+			}
+
+			function hideTransportRecovery() {
+				var recovery = transportRecovery();
+				if (recovery) recovery.hidden = true;
+			}
+
+			function showTransportRecovery() {
+				if (!lastMutationForm || !lastMutationForm.isConnected) return;
+				var recovery = transportRecovery();
+				if (!recovery) return;
+				recovery.hidden = false;
+				var retry = recovery.querySelector("[data-management-retry='true']");
+				if (retry) retry.focus({ preventScroll: true });
+			}
 
 			function cleanPath(href) {
 				try {
@@ -665,11 +864,7 @@ templ managementSidebarScript() {
 				return null;
 			}
 
-			function setClasses(node, active, top) {
-				var activeClasses = top ? activeTopClasses : activeItemClasses;
-				var inactiveClasses = top ? inactiveTopClasses : inactiveItemClasses;
-				node.classList.remove.apply(node.classList, activeClasses.concat(inactiveClasses));
-				node.classList.add.apply(node.classList, active ? activeClasses : inactiveClasses);
+			function setActive(node, active) {
 				if (active) {
 					node.setAttribute("aria-current", "page");
 					if (!activeMarker(node)) {
@@ -683,11 +878,6 @@ templ managementSidebarScript() {
 					var marker = activeMarker(node);
 					if (marker) marker.remove();
 				}
-				if (!top) return;
-				var icon = node.querySelector(".size-8");
-				if (!icon) return;
-				icon.classList.remove.apply(icon.classList, topIconActive.concat(topIconInactive));
-				icon.classList.add.apply(icon.classList, active ? topIconActive : topIconInactive);
 			}
 
 			function refreshActive() {
@@ -695,7 +885,7 @@ templ managementSidebarScript() {
 				var links = document.querySelectorAll("[data-management-nav][href]");
 				for (var i = 0; i < links.length; i++) {
 					var link = links[i];
-					setClasses(link, cleanPath(link.getAttribute("href")) === current, link.getAttribute("data-management-nav") === "top");
+					setActive(link, cleanPath(link.getAttribute("href")) === current);
 				}
 			}
 
@@ -707,26 +897,6 @@ templ managementSidebarScript() {
 					var haystack = (links[i].getAttribute("data-management-search") || links[i].textContent || "").toLowerCase();
 					links[i].hidden = term !== "" && haystack.indexOf(term) === -1;
 				}
-			}
-
-			var tabClassNames = {
-				active: "font-bold text-primary border-b-2 border-primary dark:border-primary-dark dark:text-primary-dark".split(" "),
-				inactive: "text-on-surface font-medium dark:text-on-surface-dark dark:hover:border-b-outline-dark-strong dark:hover:text-on-surface-dark-strong hover:border-b-2 hover:border-b-outline-strong hover:text-on-surface-strong".split(" "),
-				badgeActive: "border-primary bg-primary/10 dark:bg-primary-dark dark:border-primary-dark dark:text-on-primary-dark".split(" "),
-				badgeInactive: "border-outline dark:border-outline-dark bg-surface-alt dark:bg-surface-dark-alt".split(" ")
-			};
-
-			function setManagementTabClasses(tab, active) {
-				try {
-					tab.classList.remove.apply(tab.classList, tabClassNames.active.concat(tabClassNames.inactive));
-					tab.classList.add.apply(tab.classList, active ? tabClassNames.active : tabClassNames.inactive);
-				} catch (error) {}
-				var badge = tab.querySelector("span.text-xs.font-medium");
-				if (!badge) return;
-				try {
-					badge.classList.remove.apply(badge.classList, tabClassNames.badgeActive.concat(tabClassNames.badgeInactive));
-					badge.classList.add.apply(badge.classList, active ? tabClassNames.badgeActive : tabClassNames.badgeInactive);
-				} catch (error) {}
 			}
 
 			function bindManagementTabs(scope) {
@@ -746,7 +916,6 @@ templ managementSidebarScript() {
 								var panel = document.getElementById(tab.getAttribute("aria-controls") || "");
 								tab.setAttribute("aria-selected", active ? "true" : "false");
 								tab.setAttribute("tabindex", active ? "0" : "-1");
-								setManagementTabClasses(tab, active);
 								if (panel) {
 									updatedPanels++;
 									panel.style.display = active ? "block" : "none";
@@ -798,6 +967,29 @@ templ managementSidebarScript() {
 			document.addEventListener("input", function (event) {
 				if (event.target && event.target.matches("[data-management-sidebar-search]")) filterSidebar(event.target);
 			});
+			document.addEventListener("click", function (event) {
+				var retry = event.target && event.target.closest && event.target.closest("[data-management-retry='true']");
+				if (!retry || !lastMutationForm || !lastMutationForm.isConnected) return;
+				hideTransportRecovery();
+				if (window.htmx) window.htmx.trigger(lastMutationForm, "submit");
+				else lastMutationForm.requestSubmit();
+			});
+			document.addEventListener("htmx:beforeRequest", function (event) {
+				var detail = event && event.detail;
+				var element = detail && (detail.elt || (detail.requestConfig && detail.requestConfig.elt));
+				var mutationForm = element && element.closest && element.closest("form[hx-post^='/manage/']");
+				if (mutationForm) {
+					lastMutationForm = mutationForm;
+					hideTransportRecovery();
+				}
+				focusAfterSettle = !!(mutationForm || (element && element.closest && element.closest("[data-management-nav], #management-specs-table a")));
+			});
+			document.addEventListener("htmx:sendError", showTransportRecovery);
+			document.addEventListener("htmx:timeout", showTransportRecovery);
+			document.addEventListener("htmx:responseError", showTransportRecovery);
+			document.addEventListener("htmx:afterRequest", function (event) {
+				if (event && event.detail && event.detail.successful) hideTransportRecovery();
+			});
 			document.addEventListener("htmx:beforeCleanupElement", function (event) {
 				var target = event && event.detail && event.detail.elt;
 				if (!target || target.id !== "management-main-content") return;
@@ -808,9 +1000,23 @@ templ managementSidebarScript() {
 				if (!content) return;
 				initializeSwappedControls(content);
 				bindManagementTabsSoon(content);
+			});
+			document.addEventListener("htmx:afterSettle", function () {
+				var content = document.getElementById("management-main-content");
+				if (!content) return;
+				var main = document.getElementById("main-content");
+				if (main) {
+					main.dataset.selectedContract = content.dataset.selectedContract || "";
+					main.scrollTo({ top: 0 });
+				}
+				if (content.dataset.documentTitle) document.title = content.dataset.documentTitle;
 				refreshActive();
-				var scroll = document.getElementById("page-scroll");
-				if (scroll) scroll.scrollTo({ top: 0 });
+				var focusTarget = content.querySelector('[data-autofocus="true"]');
+				if (focusTarget || focusAfterSettle) {
+					focusTarget = focusTarget || content.querySelector('[data-manja-settled-focus="true"]');
+					if (focusTarget) focusTarget.focus({ preventScroll: true });
+				}
+				focusAfterSettle = false;
 			});
 			document.addEventListener("htmx:pushedIntoHistory", refreshActive);
 			window.addEventListener("popstate", refreshActive);
@@ -858,7 +1064,8 @@ func managementSidebarConfig(model ManagementOverviewModel, active string, searc
 			Items:       specItems,
 			IndentItems: true,
 		}},
-		SearchSlot: searchSlot,
+		SearchSlot:      searchSlot,
+		DisableSkipLink: true,
 	}
 }
 
@@ -874,8 +1081,9 @@ func managementSidebarLinkAttrs(kind string, search string, href string) templpk
 }
 
 func managementSpecsTableConfig(model ManagementOverviewModel) table.Config {
-	rows := make([]table.Row, 0, len(model.Specs))
-	for _, spec := range model.Specs {
+	visibleSpecs := managementVisibleSpecs(model)
+	rows := make([]table.Row, 0, len(visibleSpecs))
+	for _, spec := range visibleSpecs {
 		rows = append(rows, table.Row{
 			ID: spec.ID,
 			Cells: map[string]table.Cell{
@@ -907,12 +1115,9 @@ func managementSpecsTableConfig(model ManagementOverviewModel) table.Config {
 					),
 				},
 			},
-			HTMX: &table.RowHTMXConfig{
-				Get:     managementSpecDetailHref(spec.ID),
-				Target:  "#management-main-content",
-				Swap:    "outerHTML",
-				PushURL: true,
-			},
+			Link:     managementSpecDetailHref(spec.ID),
+			LinkMode: table.LinkFull,
+			Actions:  managementTableActions(spec),
 		})
 	}
 	return table.Config{
@@ -926,6 +1131,12 @@ func managementSpecsTableConfig(model ManagementOverviewModel) table.Config {
 			{Key: "sync", Label: "Sync", Width: "min-w-[10rem]"},
 		},
 		Rows: rows,
+	}
+}
+
+templ managementTableActions(spec ManagedSpecModel) {
+	if managementPublishedDocsHref(spec.Publication) != "" {
+		<a href={ templpkg.URL(managementPublishedDocsHref(spec.Publication)) } class="inline-flex min-h-11 items-center justify-center rounded-radius border border-outline px-3 text-sm font-semibold text-on-surface-strong focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary dark:border-outline-dark dark:text-on-surface-dark-strong dark:focus-visible:outline-primary-dark">View published docs</a>
 	}
 }
 
@@ -950,8 +1161,25 @@ func managementSelectedSpec(model ManagementOverviewModel) (ManagedSpecModel, bo
 				return spec, true
 			}
 		}
+		return ManagedSpecModel{}, false
 	}
 	return model.Specs[0], true
+}
+
+func managementVisibleSpecs(model ManagementOverviewModel) []ManagedSpecModel {
+	if model.FilteredSpecs != nil {
+		return model.FilteredSpecs
+	}
+	return model.Specs
+}
+
+func managementFilteredSpecCount(model ManagementOverviewModel) string {
+	visible := len(managementVisibleSpecs(model))
+	total := len(model.Specs)
+	if strings.TrimSpace(model.SpecFilter) == "" && strings.TrimSpace(model.SpecStatus) == "" {
+		return managementSpecCount(total)
+	}
+	return fmt.Sprintf("%d of %d specs", visible, total)
 }
 
 func managementSpecTitle(model ManagementOverviewModel) string {
@@ -978,7 +1206,56 @@ func managementSelectedSpecID(model ManagementOverviewModel) string {
 	if spec, ok := managementSelectedSpec(model); ok {
 		return spec.ID
 	}
+	if strings.TrimSpace(model.SelectedSpecID) != "" {
+		return model.SelectedSpecID
+	}
 	return "current"
+}
+
+func managementShellSelectedContract(model ManagementOverviewModel, active string) string {
+	if strings.HasPrefix(active, "spec:") || active == "overview" {
+		return managementSelectedSpecID(model)
+	}
+	return ""
+}
+
+func managementDocumentTitle(model ManagementOverviewModel, active string) string {
+	if strings.HasPrefix(active, "spec:") {
+		if spec, ok := managementSelectedSpec(model); ok {
+			return firstNonEmpty(spec.Title, spec.ID) + " · Management"
+		}
+		return "Spec not found · Management"
+	}
+	if active == "specs" {
+		return "Managed specs · Management"
+	}
+	return "Management"
+}
+
+func managementApplicationErrorTitle(model ManagementOverviewModel) string {
+	switch model.ApplicationStatus {
+	case "persistence-error":
+		return "Publication was not saved"
+	case "sync-error":
+		return "Sync did not complete"
+	default:
+		return "Check the submitted values"
+	}
+}
+
+func managementMutationID(action string, spec ManagedSpecModel) string {
+	state := strings.Join([]string{
+		action,
+		spec.ID,
+		spec.Revision.ID,
+		spec.Revision.Ref,
+		spec.Revision.CommitSHA,
+		spec.Publication.RevisionID,
+		spec.Publication.Path,
+		fmt.Sprintf("%t", spec.Publication.Public),
+	}, "\x00")
+	sum := sha256.Sum256([]byte(state))
+	return fmt.Sprintf("%x", sum)
 }
 
 func managementSpecCount(count int) string {

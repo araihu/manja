@@ -2,20 +2,61 @@ package manja_test
 
 import (
 	"os"
+	"os/exec"
 	"strings"
 	"testing"
 )
 
 func TestContainerImageContract(t *testing.T) {
 	dockerfile := readFile(t, "Dockerfile")
-	assertContains(t, dockerfile, "FROM golang:1.26.1-alpine AS build")
+	assertContains(t, dockerfile, "FROM golang:"+moduleGoVersion(t)+"-alpine AS build")
 	assertContains(t, dockerfile, "FROM alpine:")
 	assertContains(t, dockerfile, "ARG MANJA_VERSION=dev")
-	assertContains(t, dockerfile, "CGO_ENABLED=0 GOOS=linux go build")
+	assertContains(t, dockerfile, "./cmd/manja-runtime")
+	assertContains(t, dockerfile, "-tags=manja_runtime")
 	assertContains(t, dockerfile, `-X main.version=${MANJA_VERSION}`)
-	assertContains(t, dockerfile, "apk add --no-cache ca-certificates git")
+	assertContains(t, dockerfile, "manja build")
+	assertContains(t, dockerfile, "-renderer-config /src/internal/renderer/testdata/kubernetes/renderer.yaml")
+	assertContains(t, dockerfile, "-data-dir /out/renderer-data")
+	assertContains(t, dockerfile, "COPY --from=build /out/renderer-data /app/renderer-data")
+	assertContains(t, dockerfile, "internal/renderer/testdata/kubernetes/renderer.yaml")
+	assertContains(t, dockerfile, "internal/renderer/testdata/kubernetes/default-allowlist.json")
 	assertContains(t, dockerfile, "internal/web/static")
-	assertContains(t, dockerfile, "internal/adapters/openapi/testdata/github-v3-rest.json")
+	assertContains(t, dockerfile, `CMD ["-addr", ":8080", "-renderer-config", "/app/renderer/renderer.yaml", "-data-dir", "/app/renderer-data"]`)
+	assertNotContains(t, dockerfile, "internal/adapters/openapi/testdata/github-v3-rest.json")
+	assertNotContains(t, dockerfile, `CMD ["-addr", ":8080", "-spec"`)
+	finalStage := dockerfile[strings.LastIndex(dockerfile, "FROM alpine:"):]
+	assertNotContains(t, finalStage, " git")
+	assertNotContains(t, finalStage, "/out/manja ")
+}
+
+func TestRuntimeOnlyBuildExcludesSourceAndOpenAPICompilerPackages(t *testing.T) {
+	command := exec.Command("go", "list", "-deps", "-tags=manja_runtime", "./cmd/manja-runtime")
+	command.Env = append(os.Environ(), "GOWORK=off")
+	output, err := command.CombinedOutput()
+	if err != nil {
+		t.Fatalf("list runtime-only dependencies: %v: %s", err, output)
+	}
+	dependencies := string(output)
+	for _, forbidden := range []string{
+		"github.com/araihu/manja/internal/adapters/openapi",
+		"github.com/araihu/manja/internal/adapters/source",
+		"github.com/getkin/kin-openapi",
+	} {
+		assertNotContains(t, dependencies, forbidden)
+	}
+}
+
+func moduleGoVersion(t *testing.T) string {
+	t.Helper()
+	for _, line := range strings.Split(readFile(t, "go.mod"), "\n") {
+		fields := strings.Fields(line)
+		if len(fields) == 2 && fields[0] == "go" {
+			return fields[1]
+		}
+	}
+	t.Fatal("go.mod has no go directive")
+	return ""
 }
 
 func TestContainerPublishWorkflowContract(t *testing.T) {
@@ -24,16 +65,53 @@ func TestContainerPublishWorkflowContract(t *testing.T) {
 	assertContains(t, workflow, "'v*.*.*'")
 	assertContains(t, workflow, "permissions:")
 	assertContains(t, workflow, "packages: write")
-	assertContains(t, workflow, "registry: ghcr.io")
-	assertContains(t, workflow, "images: ghcr.io/${{ github.repository }}")
-	assertContains(t, workflow, "latest=auto")
-	assertContains(t, workflow, "type=raw,value=main,enable=${{ github.ref == 'refs/heads/main' }}")
-	assertContains(t, workflow, "type=sha,format=long,prefix=,enable=${{ github.ref == 'refs/heads/main' }}")
-	assertContains(t, workflow, "type=semver,pattern={{version}}")
-	assertContains(t, workflow, "type=semver,pattern={{major}}.{{minor}}")
-	assertContains(t, workflow, "type=semver,pattern={{major}}")
-	assertContains(t, workflow, "build-args: |")
-	assertContains(t, workflow, "MANJA_VERSION=${{ github.ref_type == 'tag' && github.ref_name || github.sha }}")
+	assertContains(t, workflow, "REGISTRY_TOKEN: ${{ secrets.GITHUB_TOKEN }}")
+	assertContains(t, workflow, "dagger call publish-image")
+	assertContains(t, workflow, "--metadata=\"$MANJA_METADATA\"")
+	assertContains(t, workflow, "--registry-token=env://REGISTRY_TOKEN")
+	assertContains(t, workflow, "--run-nonce='${{ github.run_id }}-${{ github.run_attempt }}'")
+	module := readFile(t, ".dagger/src/index.ts")
+	for label, value := range map[string]string{
+		"created":     "input.created",
+		"description": "OCI_DESCRIPTION",
+		"licenses":    "OCI_LICENSES",
+		"revision":    "input.source_sha",
+		"source":      "OCI_SOURCE",
+		"title":       "OCI_TITLE",
+		"url":         "OCI_URL",
+		"version":     "ociVersion",
+	} {
+		assertContains(t, module, `.withLabel("org.opencontainers.image.`+label+`", `+value+`)`)
+	}
+	for _, exact := range []string{
+		`const OCI_DESCRIPTION = "Hosted OpenAPI renderer and publisher built with Goshtoso"`,
+		`const OCI_LICENSES = ""`,
+		`const OCI_SOURCE = "https://github.com/araihu/manja"`,
+		`const OCI_TITLE = "manja"`,
+		`const OCI_URL = "https://github.com/araihu/manja"`,
+	} {
+		assertContains(t, module, exact)
+	}
+}
+
+func TestContainerPublishBranchAndTagVersionParity(t *testing.T) {
+	module := readFile(t, ".dagger/src/index.ts")
+	publication := readFile(t, ".dagger/src/publication.ts")
+	for _, exact := range []string{
+		`if (refType === "branch" && refName === "main") {`,
+		`buildVersion: sourceSHA`,
+		`ociVersion: "main"`,
+		`tags: ["main", sourceSHA]`,
+		`buildVersion: refName`,
+		`ociVersion: refName.slice(1)`,
+		`tags: [` + "`${major}.${minor}.${patch}`, `${major}.${minor}`, major, \"latest\"" + `]`,
+	} {
+		assertContains(t, publication, exact)
+	}
+	assertContains(t, module, `const { buildVersion, ociVersion, tags } = resolvePublication(`)
+	assertContains(t, module, `this.buildImage(source, buildVersion)`)
+	assertContains(t, module, `.withLabel("org.opencontainers.image.version", ociVersion)`)
+	assertNotContains(t, module, `.withLabel("org.opencontainers.image.version", buildVersion)`)
 }
 
 func readFile(t *testing.T, path string) string {
@@ -49,5 +127,12 @@ func assertContains(t *testing.T, haystack, needle string) {
 	t.Helper()
 	if !strings.Contains(haystack, needle) {
 		t.Fatalf("missing %q", needle)
+	}
+}
+
+func assertNotContains(t *testing.T, haystack, needle string) {
+	t.Helper()
+	if strings.Contains(haystack, needle) {
+		t.Fatalf("unexpected %q", needle)
 	}
 }

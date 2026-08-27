@@ -1,0 +1,18 @@
+package render
+
+import "fmt"
+
+templ catalogOverviewMetrics(data catalogOverviewMetricsData) {
+	<div class="grid gap-4 sm:grid-cols-3">
+		@catalogOverviewMetric("Documents", fmt.Sprintf("%d", data.Documents))
+		@catalogOverviewMetric("Operations", fmt.Sprintf("%d", data.Operations))
+		@catalogOverviewMetric("Schemas", fmt.Sprintf("%d", data.Schemas))
+	</div>
+}
+
+templ catalogOverviewMetric(label string, value string) {
+	<div class="rounded-radius border border-outline bg-surface p-5 dark:border-outline-dark dark:bg-surface-dark">
+		<p class="text-sm font-medium text-on-surface-muted dark:text-on-surface-dark-muted">{ label }</p>
+		<p class="mt-2 break-words font-title text-2xl font-bold text-on-surface-strong dark:text-on-surface-dark-strong">{ value }</p>
+	</div>
+}

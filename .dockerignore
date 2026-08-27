@@ -1,10 +1,12 @@
 .git
 .github
+.dagger
+dagger.json
+.dagger-inputs
 .manja
 .superpowers
 api/dist
 bin
-node_modules
 tmp
 vendor
 *.test

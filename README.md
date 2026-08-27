@@ -10,23 +10,78 @@ provides Ctrl+K search across indexed operations and schemas.
 
 ```bash
 go test ./...
-npm ci
-npm run api:bundle
-npm run api:lint
+go tool muamba verify --strict
+go run ./cmd/webassets check
+scripts/redocly bundle api/openapi.yaml -o api/dist/openapi.yaml
+scripts/redocly lint api/openapi.yaml
 go run ./cmd/manja -data-dir .manja/data
 ```
 
 Open <http://localhost:8080>.
 
+### Resource limits
+
+Manja does not enforce its conservative catalog source, compilation, startup,
+snapshot, storage, catalog-count, or HTML rendering budgets by default. This
+lets operators compile and render unusually large catalog sets on hosts sized
+for that work.
+
+Set `MANJA_RESOURCE_LIMITS=true` on both `manja` and `manja-runtime` to restore
+the bounded policy. Structural and trust-boundary checks remain enabled in both
+modes: OpenAPI validity, canonical identities, safe paths, artifact integrity,
+request-input limits, and local-doc browser download protections are not
+resource-sizing policy.
+
+An unbounded build or render can exhaust the host's memory or disk and may be
+terminated by the operating system. See the
+[generated environment reference](docs/environment.md) for all environment
+variables.
+
+### Portable CI with Dagger
+
+CI toolchains and the same gates are available locally through Dagger v0.21.8.
+The host needs only the exact Dagger CLI and a compatible container runtime:
+
+```bash
+dagger call verify --source=. --trust-domain=local
+dagger call integration --source=. --trust-domain=local
+dagger call image --source=. --version=dev
+```
+
+`verify` covers generated drift, Muamba, Redocly, oapi-codegen, templ, root
+tests, Playwright, and the standalone `site/` module with `GOWORK=off`.
+`integration` provisions a pinned Forgejo service with native Dagger service
+bindings. It needs no Docker daemon, privileged service, or host runtime socket.
+Mutable Go, npm, Muamba, and browser caches are partitioned by the runner trust
+boundary. Admitted pull requests run on `hostinger-vps-pr`; protected main,
+tag, publication, deployment, and Assets jobs run on
+`hostinger-vps-trusted`. Host configuration isolates the two labels' Dagger
+Engines, sockets, data roots, and ACLs.
+
+Fork and same-repository PR domains both resolve to the stable `pr` cache
+namespace inside PR Engines. They cannot read or populate `main`, `release`,
+or `assets` volumes. GitHub-hosted fallback PRs use the same logical namespace
+on an ephemeral Engine. Persistent volumes contain only Go module/build data,
+npm downloads, Muamba's verified download cache, and Playwright browser tools;
+source, generated outputs, publication artifacts, application state, metadata
+files, and secrets remain outside them.
+
+`publish-image`, `dispatch-fly`, and `update-araihu-assets` are uncached
+effect/freshness functions. They require strict JSON `File` inputs, typed
+secrets, and a unique nonce. Local callers can use
+`local-$(uuidgen | tr '[:upper:]' '[:lower:]')` and
+should invoke these functions only when intending the documented GHCR,
+GitHub, or repository update effect.
+
 For live development, run:
 
 ```bash
-npm run dev
+go run ./cmd/dev
 ```
 
 Air watches Go, templ, API description, and static asset sources. On rebuild it
-regenerates templ output, rebuilds schema example assets, runs `css:build` when
-that npm script exists, and restarts Manja.
+regenerates templ output, rebuilds the browser assets with the pinned Go
+toolchain, and restarts Manja.
 
 Generated templ Go files, static CSS bundles, and the schema example JS bundle
 are excluded from the watcher so build outputs do not trigger rebuild loops.
@@ -38,14 +93,14 @@ not the app URL, when you want the standalone renderer with reload. To pin ports
 explicitly, run:
 
 ```bash
-npm run dev -- --app-port 8080 --proxy-port 7331 --site-port 8180
+go run ./cmd/dev --app-port 8080 --proxy-port 7331 --site-port 8180
 ```
 
-Use `npm run dev -- --print-ports` to inspect the selected ports without
+Use `go run ./cmd/dev --print-ports` to inspect the selected ports without
 starting the servers. Extra flags are passed through to Manja:
 
 ```bash
-npm run dev -- -spec internal/adapters/openapi/testdata/petstore.yaml
+go run ./cmd/dev -- -spec internal/adapters/openapi/testdata/petstore.yaml
 ```
 
 ## Contract review
@@ -104,6 +159,25 @@ Exit code `0` means policy passed, `1` means analysis completed with a policy
 failure, and `2` means configuration, input, parsing, or execution failed.
 GitHub Actions and connected Manja review are later subprojects; these examples
 work locally and in any CI environment with the repository checked out.
+
+## Static export
+
+Materialize every configured renderer catalog for an ordinary static host:
+
+```bash
+./bin/manja export \
+  --renderer-config ./renderer.yaml \
+  --data-dir ./data \
+  --output ./public \
+  --base-path /
+
+./bin/manja export verify --output ./public
+```
+
+**Export ignores catalog visibility and publishes every configured catalog.**
+Anyone who can read the static host can read every exported catalog. See
+[Static export](docs/static-export.md) for subpath hosting, output semantics,
+and server requirements.
 
 ## Docker Image
 

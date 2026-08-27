@@ -1,3 +1,5 @@
+//go:build !manja_runtime
+
 package selfhosted
 
 import (
@@ -41,8 +43,10 @@ type Options struct {
 	GitSSHPrivateKey     string
 	DataDir              string
 	StaticDir            string
+	PublicOrigin         string
 	Branding             domain.DocsBranding
 	EndpointSidebarLabel EndpointSidebarLabelMode
+	ResourceLimits       bool
 }
 
 const (
@@ -60,6 +64,11 @@ func NewWithOptions(ctx context.Context, options Options) (http.Handler, error) 
 
 func NewServer(ctx context.Context, options Options) (http.Handler, error) {
 	options = options.withDefaults()
+	publicOrigin, err := web.NormalizePublicOrigin(options.PublicOrigin)
+	if err != nil {
+		return nil, fmt.Errorf("public origin: %w", err)
+	}
+	options.PublicOrigin = publicOrigin
 	sourceFetcher, source, err := options.source()
 	if err != nil {
 		return nil, err
@@ -84,6 +93,7 @@ func NewServer(ctx context.Context, options Options) (http.Handler, error) {
 		Public: web.PublicOptions{
 			EndpointSidebarLabel: web.EndpointSidebarLabelMode(options.EndpointSidebarLabel),
 			MarkdownRenderer:     markdownadapter.NewRenderer(),
+			PublicOrigin:         options.PublicOrigin,
 			StaticDir:            options.StaticDir,
 			Branding:             options.Branding,
 		},

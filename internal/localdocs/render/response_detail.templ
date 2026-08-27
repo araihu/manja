@@ -1,0 +1,241 @@
+package render
+
+import (
+	"context"
+	"io"
+	"strings"
+
+	templpkg "github.com/a-h/templ"
+	"github.com/araihu/goshtoso/components/tooltip"
+	"github.com/araihu/manja/domain"
+)
+
+templ operationResponseDetails(response operationResponseDetailData, scope string, schemaLinks map[string]string) {
+	@operationResponseDetailDescription(response.Description)
+	if response.Description != "" && len(response.Headers) > 0 {
+		{ " " }
+	}
+	@operationResponseDetailHeaders(response.Headers, scope, schemaLinks)
+}
+
+templ operationResponseDetailDescription(description string) {
+	if description != "" {
+		<div data-manja-response-section="description">
+			<p class="max-w-[70ch] text-base font-medium text-on-surface dark:text-on-surface-dark">{ description }</p>
+		</div>
+	}
+}
+
+templ operationResponseDetailHeaders(headers []operationResponseHeaderData, scope string, schemaLinks map[string]string) {
+	if len(headers) > 0 {
+		<section data-manja-response-section="headers" aria-label="Response headers" class="grid gap-3">
+			<h6 class="font-title text-sm font-semibold text-on-surface-strong dark:text-on-surface-dark-strong">Headers</h6>
+			<div class="manja-schema-tree">
+				<div class="manja-schema-root">
+					for _, header := range headers {
+						@operationResponseDetailSchemaTreeNode(header.Name, "", operationResponseDetailHeaderSummary(header), scope, false, schemaLinks)
+					}
+				</div>
+			</div>
+		</section>
+	}
+}
+
+func operationResponseDetailHeaderSummary(header operationResponseHeaderData) domain.SchemaSummary {
+	summary := header.Schema
+	if strings.TrimSpace(summary.Description) == "" {
+		summary.Description = header.Description
+	}
+	if strings.TrimSpace(summary.Example) == "" {
+		summary.Example = header.Example
+	}
+	return summary
+}
+
+templ operationResponseDetailSchemaTreeNode(name string, propertyState string, schema domain.SchemaSummary, scope string, root bool, schemaLinks map[string]string) {
+	{{ displayName := operationResponseDetailSchemaTreeDisplayName(name, schema) }}
+	{{ rowScope := scope + "-" + anchorFragment(displayName) }}
+	if operationResponseDetailSchemaTreeExpandable(schema) {
+		if root {
+			<details open data-schema-tree-node={ displayName } class="manja-schema-node manja-schema-node-root">
+				@operationResponseDetailSchemaTreeSummary(displayName, propertyState, schema, rowScope, schemaLinks)
+				@operationResponseDetailSchemaTreeChildren(schema, rowScope, schemaLinks)
+			</details>
+		} else {
+			<details open data-schema-tree-row={ displayName } class="manja-schema-node">
+				@operationResponseDetailSchemaTreeSummary(displayName, propertyState, schema, rowScope, schemaLinks)
+				@operationResponseDetailSchemaTreeChildren(schema, rowScope, schemaLinks)
+			</details>
+		}
+	} else {
+		if root {
+			<div data-schema-tree-node={ displayName } class="manja-schema-node manja-schema-node-root">
+				<div class="manja-schema-row">
+					<span class="manja-schema-branch" aria-hidden="true"></span>
+					@operationResponseDetailSchemaTreeLabel(displayName, propertyState, schema, rowScope, schemaLinks)
+				</div>
+			</div>
+		} else {
+			<div data-schema-tree-row={ displayName } class="manja-schema-node">
+				<div class="manja-schema-row">
+					<span class="manja-schema-branch" aria-hidden="true"></span>
+					@operationResponseDetailSchemaTreeLabel(displayName, propertyState, schema, rowScope, schemaLinks)
+				</div>
+			</div>
+		}
+	}
+}
+
+templ operationResponseDetailSchemaTreeSummary(name string, propertyState string, schema domain.SchemaSummary, scope string, schemaLinks map[string]string) {
+	<summary class="manja-schema-row">
+		<span class="manja-schema-branch" aria-hidden="true"></span>
+		<span class="manja-schema-caret" aria-hidden="true"></span>
+		@operationResponseDetailSchemaTreeLabel(name, propertyState, schema, scope, schemaLinks)
+	</summary>
+}
+
+templ operationResponseDetailSchemaTreeLabel(name string, propertyState string, schema domain.SchemaSummary, scope string, schemaLinks map[string]string) {
+	<div class="manja-schema-label">
+		<div class="manja-schema-heading">
+			@operationResponseDetailSchemaTreePropertyIdentity(name, schema, scope, schemaLinks)
+			@schemaPropertyStates(propertyState, schema.Nullable, schema.Deprecated)
+		</div>
+		if schema.Description != "" {
+			<p class="manja-schema-description">{ schema.Description }</p>
+		}
+		if schema.Default != "" {
+			<p class="manja-schema-metadata"><span>Default:</span><code>{ schema.Default }</code></p>
+		}
+		if schema.Example != "" {
+			if operationResponseDetailSchemaTreeExampleBlock(schema.Example) {
+				<div class="manja-schema-example manja-schema-example-block">
+					<span>Example:</span>
+					<pre><code>{ schema.Example }</code></pre>
+				</div>
+			} else {
+				<p class="manja-schema-example manja-schema-example-inline">
+					<span>Example:</span>
+					<code>{ schema.Example }</code>
+				</p>
+			}
+		}
+		if len(schema.Enum) > 0 {
+			<p class="manja-schema-metadata">
+				<span>Allowed:</span>
+				for _, value := range schema.Enum {
+					<code>{ value }</code>
+				}
+			</p>
+		}
+		for _, constraint := range schema.Constraints {
+			<p class="manja-schema-metadata"><span>{ constraint.Name }:</span><code>{ constraint.Value }</code></p>
+		}
+	</div>
+}
+
+templ operationResponseDetailSchemaTreePropertyIdentity(name string, schema domain.SchemaSummary, scope string, schemaLinks map[string]string) {
+	<div class="manja-schema-identity">
+		<span class="manja-schema-name">{ name }</span>
+		if responseDetailSchemaIsNamedPrimitiveEnumAlias(schema) {
+			@operationResponseDetailSchemaEnumAliasType(name, schema, scope, schemaLinks)
+		} else if typeLabel := parameterSchemaInline(schema); typeLabel != "" {
+			<span class="manja-schema-type">{ typeLabel }</span>
+		}
+	</div>
+}
+
+templ operationResponseDetailSchemaEnumAliasType(name string, schema domain.SchemaSummary, scope string, schemaLinks map[string]string) {
+	{{ tooltipID := "schema-enum-alias-" + anchorFragment(scope) + "-" + anchorFragment(name) + "-" + anchorFragment(schema.Name) }}
+	@tooltip.Tooltip(tooltipID, schema.Name, tooltip.WithDescription(operationResponseDetailSchemaEnumAliasPreview(schema.Enum)), tooltip.WithPosition(tooltip.PositionBottom), tooltip.WithTrigger(operationResponseDetailSchemaEnumAliasTrigger(schema, schemaLinks, tooltipID)))
+}
+
+templ operationResponseDetailSchemaEnumAliasTrigger(schema domain.SchemaSummary, schemaLinks map[string]string, tooltipID string) {
+	{{ href := strings.TrimSpace(schemaLinks[strings.TrimSpace(schema.Name)]) }}
+	<span class="manja-schema-type">{ operationResponseDetailSchemaInlineTypeLabel(schema) }&lt;</span>
+	if href != "" {
+		<a data-manja-schema-enum-reference="true" href={ templpkg.URL(href) } hx-get={ href } hx-target="#catalog-main-content" hx-select="#catalog-main-content" hx-swap="outerHTML show:#main-content:top" hx-push-url="true" aria-describedby={ tooltipID } aria-label={ "Open schema " + schema.Name } title={ "Open schema " + schema.Name } class="manja-schema-reference rounded-radius underline-offset-4 transition hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary dark:focus-visible:outline-primary-dark">{ schema.Name }</a>
+	} else {
+		<span class="manja-schema-type">{ schema.Name }</span>
+	}
+	<span class="manja-schema-type">&gt;</span>
+}
+
+func operationResponseDetailSchemaTreeDisplayName(name string, schema domain.SchemaSummary) string {
+	if strings.TrimSpace(name) != "" {
+		return name
+	}
+	if strings.TrimSpace(schema.Name) != "" {
+		return schema.Name
+	}
+	return "schema"
+}
+
+func operationResponseDetailSchemaTreeExpandable(schema domain.SchemaSummary) bool {
+	if len(schema.Properties) > 0 {
+		return true
+	}
+	return schema.Items != nil && operationResponseDetailSchemaTreeExpandable(*schema.Items)
+}
+
+func operationResponseDetailSchemaTreeChildren(schema domain.SchemaSummary, scope string, schemaLinks map[string]string) templpkg.Component {
+	return templpkg.ComponentFunc(func(ctx context.Context, writer io.Writer) error {
+		return operationResponseDetailSchemaTreeChildrenTemplate(schema, scope, schemaLinks).Render(ctx, writer)
+	})
+}
+
+templ operationResponseDetailSchemaTreeChildrenTemplate(schema domain.SchemaSummary, scope string, schemaLinks map[string]string) {
+	<div class="manja-schema-children">
+		if schema.Items != nil && operationResponseDetailSchemaTreeExpandable(*schema.Items) {
+			@operationResponseDetailSchemaTreeNode("items", "", *schema.Items, scope, false, schemaLinks)
+		}
+		for _, property := range schema.Properties {
+			@operationResponseDetailSchemaTreeNode(property.Name, schemaPropertyStateLabel(property.Required), property.Schema, scope, false, schemaLinks)
+		}
+	</div>
+}
+
+func operationResponseDetailSchemaTreeExampleBlock(example string) bool {
+	trimmed := strings.TrimSpace(example)
+	return len(trimmed) > 96 || strings.Contains(trimmed, "\n")
+}
+
+func operationResponseDetailSchemaInlineTypeLabel(schema domain.SchemaSummary) string {
+	typeLabel := schema.Type
+	if strings.Contains(schema.Type, "array") {
+		typeLabel = "array"
+		if schema.Items != nil {
+			if item := parameterSchemaInline(*schema.Items); item != "" {
+				typeLabel += "[" + item + "]"
+			}
+		}
+	} else if schema.Format != "" {
+		if typeLabel != "" {
+			typeLabel += "<" + schema.Format + ">"
+		} else {
+			typeLabel = schema.Format
+		}
+	}
+	return typeLabel
+}
+
+func operationResponseDetailSchemaEnumAliasPreview(values []string) string {
+	const previewLimit = 5
+	preview := make([]string, 0, min(len(values), previewLimit))
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value == "" {
+			continue
+		}
+		preview = append(preview, value)
+		if len(preview) == previewLimit {
+			break
+		}
+	}
+	if len(preview) == 0 {
+		return "Named primitive enum."
+	}
+	if len(values) > len(preview) {
+		return "Allowed: " + strings.Join(preview, ", ") + ", and more."
+	}
+	return "Allowed: " + strings.Join(preview, ", ")
+}

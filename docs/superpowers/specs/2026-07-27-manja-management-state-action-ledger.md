@@ -25,3 +25,28 @@ effect counts exposed by fake stores/actions.
 
 Release-track promotion, preview, review, and policy actions are absent by
 design. Their implementing slice must append rows before exposing controls.
+
+## Executable response policy
+
+- Expected validation, sync, persistence, and HTMX not-found outcomes render
+  the authoritative workspace with HTTP 200 plus
+  `X-Manja-Application-Status`; this is the explicit swap contract, not a
+  successful domain effect. Direct missing-resource loads remain HTTP 404.
+- Malformed requests, missing server configuration, and unexpected server
+  failures remain non-2xx transport/server responses. The persistent
+  management transport region owns retry for those failures without replacing
+  the selected workspace.
+- Management responses send `Cache-Control: no-store`. Successful native POSTs
+  use 303 PRG; HTMX POSTs return the authoritative fragment and canonical
+  history instruction. A different canonical destination uses `HX-Push-Url`;
+  a mutation that stays on the current canonical URL uses `HX-Replace-Url`.
+  Management shells set `hx-history="false"` so Back and Forward reload
+  server-authoritative state instead of restoring a stale HTMX snapshot.
+- Mutation forms carry a deterministic request ID, Goshtoso loading text, and
+  `hx-disabled-elt`. The handler stores one bounded request token plus a
+  canonical submitted-payload fingerprint per contract and action slot. An
+  immediate replay is idempotent only when both match; reusing a token with
+  different ref, publish, revision, visibility, or path values fails closed
+  before any effect. Missing, oversized, or non-ASCII/unsupported-character
+  request tokens are validation errors and are rejected before sync or
+  publication effects.

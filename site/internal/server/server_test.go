@@ -1,6 +1,8 @@
 package server_test
 
 import (
+	"crypto/sha256"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -24,11 +26,14 @@ func TestRoutesRender(t *testing.T) {
 		{
 			path: "/",
 			want: []string{
-				"Point Manja at your spec.",
-				"Source-connected OpenAPI publishing",
+				`<html lang="en" data-theme="araihu" data-theme-source="default">`,
+				`href="/static/araihu.css"`,
+				`src="/static/manja-logo.svg" alt="Manja" width="160" height="40"`,
+				"Publish OpenAPI docs from the source you already maintain.",
+				"OpenAPI publishing from source",
 				"Versions stay close to source",
 				`href="/demo" target="_blank" rel="noopener"`,
-				`href="/demo" target="_blank" rel="noopener">View live demo</a>`,
+				`href="/demo" target="_blank" rel="noopener">Open the live demo</a>`,
 			},
 		},
 		{
@@ -76,7 +81,7 @@ func TestRoutesRender(t *testing.T) {
 		{
 			path: "/docs",
 			want: []string{
-				"Setup docs",
+				"Run and publish Manja",
 				"go run ./cmd/manja",
 				"ghcr.io/araihu/manja:main",
 				`href="#run-with-docker"`,
@@ -100,13 +105,64 @@ func TestRoutesRender(t *testing.T) {
 	}
 }
 
+func TestSeasonalAssetsContractAndFallbacks(t *testing.T) {
+	t.Parallel()
+
+	srv := httptest.NewServer(newTestServer(t))
+	t.Cleanup(srv.Close)
+	body := get(t, srv.URL+"/", http.StatusOK)
+	for _, want := range []string{
+		`data-theme-source="default"`,
+		`src="https://araihu.com/assets/campaign/v1.js"`,
+		`data-channel="https://araihu.com/assets/releases/current"`,
+		`integrity="sha384-oPH7l1vK9vKP1Dn+18sO3yEXlz4ts6KzPEQl0SW4Y/+im05gOaamNNaQAf6bGH/n"`,
+		`data-asset-brand="logo"`,
+		`data-asset-brand="icon"`,
+		`data-campaign-toggle`,
+		`data-campaign-toggle-icon`,
+		`aria-label="Use seasonal appearance"`,
+		`localStorage.getItem("theme")`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("product site seasonal contract missing %q", want)
+		}
+	}
+	if bootstrap, runtime := strings.Index(body, `localStorage.getItem("theme")`), strings.Index(body, `src="https://araihu.com/assets/campaign/v1.js"`); bootstrap < 0 || runtime < 0 || bootstrap > runtime {
+		t.Fatal("product-site preference bootstrap must precede campaign runtime")
+	}
+	if stylesheet, runtime := strings.Index(body, `href="/static/site.css"`), strings.Index(body, `src="https://araihu.com/assets/campaign/v1.js"`); stylesheet < 0 || runtime < 0 || stylesheet > runtime {
+		t.Fatal("product-site fallback stylesheet must precede campaign runtime")
+	}
+	themeJS := get(t, srv.URL+"/static/theme.js", http.StatusOK)
+	for _, want := range []string{"araihu:campaign:applied", "araihu:campaign:restored", "useBaselineLabel", "useCampaignLabel"} {
+		if !strings.Contains(themeJS, want) {
+			t.Fatalf("product-site toggle label sync missing %q", want)
+		}
+	}
+	siteCSS := get(t, srv.URL+"/static/site.css", http.StatusOK)
+	if !strings.Contains(siteCSS, ".campaign-toggle-icon > *") {
+		t.Fatal("product-site campaign icon is not bounded")
+	}
+
+	for path, want := range map[string]string{
+		"/static/favicon.svg":    "d622096910fa1d2a4d5f64b8d75ade1b3b521f28915e91e70627c52649e9dc1e",
+		"/static/manja-mark.svg": "d622096910fa1d2a4d5f64b8d75ade1b3b521f28915e91e70627c52649e9dc1e",
+		"/static/manja-logo.svg": "309ff1be58cc19126a0e70e317c864a53c71ee664767e0f1b8e8a1995a780391",
+	} {
+		asset := []byte(get(t, srv.URL+path, http.StatusOK))
+		if got := fmt.Sprintf("%x", sha256.Sum256(asset)); got != want {
+			t.Fatalf("%s SHA-256 = %s, want Assets v0.1.1 %s", path, got, want)
+		}
+	}
+}
+
 func TestDemoManagementRedirectsStayMounted(t *testing.T) {
 	t.Parallel()
 
 	srv := httptest.NewServer(newTestServer(t))
 	t.Cleanup(srv.Close)
 
-	form := strings.NewReader("visibility=public&path=%2Fpayments%2Fv1")
+	form := strings.NewReader("visibility=public&path=%2Fpayments%2Fv1&request_id=site-demo-request-token")
 	req, err := http.NewRequest(http.MethodPost, srv.URL+"/demo/manage/publication", form)
 	if err != nil {
 		t.Fatal(err)
@@ -141,7 +197,7 @@ func TestDemoManagementHTMXMutationStaysMounted(t *testing.T) {
 	srv := httptest.NewServer(newTestServer(t))
 	t.Cleanup(srv.Close)
 
-	form := strings.NewReader("visibility=public&path=%2Fpayments%2Fv1")
+	form := strings.NewReader("visibility=public&path=%2Fpayments%2Fv1&request_id=site-demo-request-token")
 	req, err := http.NewRequest(http.MethodPost, srv.URL+"/demo/manage/publication", form)
 	if err != nil {
 		t.Fatal(err)
@@ -192,8 +248,27 @@ func TestStaticAssetsRender(t *testing.T) {
 	t.Cleanup(srv.Close)
 
 	css := get(t, srv.URL+"/static/site.css", http.StatusOK)
-	if !strings.Contains(css, "--accent: #18d6a7") {
-		t.Fatalf("site.css did not include Manja accent token")
+	if !strings.Contains(css, "--accent: var(--color-primary)") {
+		t.Fatalf("site.css did not map its accent to the canonical theme token")
+	}
+	theme := get(t, srv.URL+"/static/araihu.css", http.StatusOK)
+	for _, want := range []string{
+		`[data-theme="araihu"]`,
+		`Modern geometry with the Arai Hû organization palette`,
+		`--font-body: "Lato", ui-sans-serif, system-ui, sans-serif;`,
+		`--font-title: "Lato", ui-sans-serif, system-ui, sans-serif;`,
+		`--color-primary: #173b72`,
+		`--color-primary-dark: #c7ff4a`,
+		`--radius-radius: var(--radius-sm);`,
+	} {
+		if !strings.Contains(theme, want) {
+			t.Fatalf("araihu.css missing canonical token %q", want)
+		}
+	}
+	for _, stale := range []string{`"Instrument Sans"`, `--radius-radius: var(--radius-lg);`} {
+		if strings.Contains(theme, stale) {
+			t.Fatalf("araihu.css retained pre-Modern token %q", stale)
+		}
 	}
 	for _, want := range []string{
 		".docs-content section {\n  min-width: 0;",
@@ -206,9 +281,11 @@ func TestStaticAssetsRender(t *testing.T) {
 		}
 	}
 
-	favicon := get(t, srv.URL+"/static/favicon.svg", http.StatusOK)
-	if !strings.Contains(favicon, "<svg") {
-		t.Fatalf("favicon.svg did not render as svg")
+	for _, path := range []string{"/static/favicon.svg", "/static/manja-mark.svg", "/static/manja-logo.svg"} {
+		asset := get(t, srv.URL+path, http.StatusOK)
+		if !strings.Contains(asset, `<svg xmlns="http://www.w3.org/2000/svg"`) {
+			t.Fatalf("%s did not serve an SVG", path)
+		}
 	}
 
 	demoCSS := get(t, srv.URL+"/demo/payments/v1/manja-assets/manja.css", http.StatusOK)

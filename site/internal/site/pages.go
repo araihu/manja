@@ -10,13 +10,20 @@ type PageKey string
 const (
 	Home PageKey = "home"
 	Docs PageKey = "docs"
+
+	productionSiteOrigin = "https://manja.araihu.com"
+	socialPreviewURL     = productionSiteOrigin + "/manja-assets/manja-social.png"
+	socialPreviewAlt     = "Manja OpenAPI documentation preview"
 )
 
 type page struct {
-	Title       string
-	Description string
-	Path        string
-	Body        template.HTML
+	Title            string
+	Description      string
+	Path             string
+	CanonicalURL     string
+	SocialPreviewURL string
+	SocialPreviewAlt string
+	Body             template.HTML
 }
 
 // Render writes one of the public product-site pages.
@@ -28,47 +35,72 @@ func pageFor(key PageKey) page {
 	switch key {
 	case Docs:
 		return page{
-			Title:       "Manja Docs",
-			Description: "Setup notes for pointing Manja at an OpenAPI specification source and publishing a stable version.",
-			Path:        "/docs",
-			Body:        docsBody,
+			Title:            "Run and publish Manja | OpenAPI docs",
+			Description:      "Run Manja locally or with Docker, connect an OpenAPI source, choose a revision, and publish read-only documentation from a known-good version.",
+			Path:             "/docs",
+			CanonicalURL:     productionSiteOrigin + "/docs",
+			SocialPreviewURL: socialPreviewURL,
+			SocialPreviewAlt: socialPreviewAlt,
+			Body:             docsBody,
 		}
 	default:
 		return page{
-			Title:       "Manja",
-			Description: "Source-connected OpenAPI publishing that renders stable public API documentation from the specs teams already keep in source control.",
-			Path:        "/",
-			Body:        homeBody,
+			Title:            "Publish OpenAPI docs from source | Manja",
+			Description:      "Connect Manja to an OpenAPI file or Git source, choose a revision, and publish read-only API documentation from a stable known-good version.",
+			Path:             "/",
+			CanonicalURL:     productionSiteOrigin + "/",
+			SocialPreviewURL: socialPreviewURL,
+			SocialPreviewAlt: socialPreviewAlt,
+			Body:             homeBody,
 		}
 	}
 }
 
 var pageTemplate = template.Must(template.New("page").Parse(`<!doctype html>
-<html lang="en">
+<html lang="en" data-theme="araihu" data-theme-source="default">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{{.Title}}</title>
   <meta name="description" content="{{.Description}}">
-  <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+  <link rel="canonical" href="{{.CanonicalURL}}">
+  <meta property="og:url" content="{{.CanonicalURL}}">
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="{{.Title}}">
+  <meta property="og:description" content="{{.Description}}">
+  <meta property="og:site_name" content="Manja">
+  <meta property="og:image" content="{{.SocialPreviewURL}}">
+  <meta property="og:image:type" content="image/png">
+  <meta property="og:image:width" content="1280">
+  <meta property="og:image:height" content="640">
+  <meta property="og:image:alt" content="{{.SocialPreviewAlt}}">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="{{.Title}}">
+  <meta name="twitter:description" content="{{.Description}}">
+  <meta name="twitter:image" content="{{.SocialPreviewURL}}">
+  <meta name="twitter:image:alt" content="{{.SocialPreviewAlt}}">
+  <link rel="icon" href="/static/favicon.svg" type="image/svg+xml" crossorigin="anonymous" data-asset-brand="icon">
+  <link rel="stylesheet" href="/static/araihu.css">
   <link rel="stylesheet" href="/static/site.css">
   <script>
     (function () {
       try {
+        var storedTheme = localStorage.getItem("theme");
+        document.documentElement.dataset.themeSource = storedTheme ? "preference" : "default";
         var stored = localStorage.getItem("darkMode");
         var on = stored !== null ? stored === "true" : window.matchMedia("(prefers-color-scheme: dark)").matches;
         document.documentElement.classList.toggle("dark", on);
       } catch (error) {}
     })();
   </script>
+  <script defer src="https://araihu.com/assets/campaign/v1.js" data-channel="https://araihu.com/assets/releases/current" integrity="sha384-oPH7l1vK9vKP1Dn+18sO3yEXlz4ts6KzPEQl0SW4Y/+im05gOaamNNaQAf6bGH/n" crossorigin="anonymous"></script>
 </head>
 <body>
   <a class="skip-link" href="#main">Skip to content</a>
   <header class="site-header">
     <nav class="site-nav" aria-label="Main">
       <a class="brand" href="/" aria-label="Manja home">
-        <img class="brand-mark" src="/static/manja-mark.svg" alt="" width="40" height="40">
-        <span>Manja</span>
+        <img class="brand-logo" src="/static/manja-logo.svg" alt="Manja" width="160" height="40" crossorigin="anonymous" data-asset-brand="logo">
       </a>
       <div class="nav-actions">
         <a href="/demo" target="_blank" rel="noopener"{{if eq .Path "/demo"}} aria-current="page"{{end}}>Demo</a>
@@ -83,6 +115,9 @@ var pageTemplate = template.Must(template.New("page").Parse(`<!doctype html>
             <path stroke-linecap="round" stroke-linejoin="round" d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79Z"></path>
           </svg>
         </button>
+        <button class="theme-toggle" hidden type="button" aria-label="Use seasonal appearance" aria-pressed="false" data-campaign-toggle data-use-campaign-label="Use seasonal appearance" data-use-baseline-label="Use standard appearance">
+          <span class="campaign-toggle-icon" data-campaign-toggle-icon aria-hidden="true"></span>
+        </button>
       </div>
     </nav>
   </header>
@@ -96,12 +131,12 @@ var pageTemplate = template.Must(template.New("page").Parse(`<!doctype html>
 var homeBody = template.HTML(`
 <section class="hero shell">
   <div class="hero-copy">
-    <p class="eyebrow">Source-connected OpenAPI publishing</p>
-    <h1>Point Manja at your spec.</h1>
-    <p class="lead">Manja tracks the source, understands revisions, renders the OpenAPI reference, and keeps the public version stable. Say where the spec lives; the rest should fall into place without asking developers to change their workflow.</p>
+    <p class="eyebrow">OpenAPI publishing from source</p>
+    <h1>Publish OpenAPI docs from the source you already maintain.</h1>
+    <p class="lead">Connect an OpenAPI file or Git source, choose a revision, and publish a read-only reference. Manja keeps readers on the selected known-good version when a later sync or parse fails.</p>
     <div class="actions">
-      <a class="button button-primary" href="/demo" target="_blank" rel="noopener">View live demo</a>
-      <a class="button button-secondary" href="/docs">Read setup docs</a>
+      <a class="button button-primary" href="/demo" target="_blank" rel="noopener">Open the live demo</a>
+      <a class="button button-secondary" href="/docs">Run Manja</a>
     </div>
   </div>
 </section>
@@ -142,8 +177,8 @@ var homeBody = template.HTML(`
 var docsBody = template.HTML(`
 <section class="page-hero shell">
   <p class="eyebrow">Docs</p>
-  <h1>Setup docs</h1>
-  <p class="lead">Manja starts from the spec file and source revision developers already maintain. Connect the source, choose the revision to publish, and keep the public docs pinned to a stable known-good version.</p>
+  <h1>Run and publish Manja</h1>
+  <p class="lead">Start with a local spec or container, then connect the source and choose the revision readers should see. Manja keeps public docs pinned to that known-good version until a healthy publication replaces it.</p>
 </section>
 
 <section class="docs-layout shell">

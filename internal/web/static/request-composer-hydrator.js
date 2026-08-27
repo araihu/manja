@@ -15,12 +15,19 @@
         syntaxHighlighter: api.createSyntaxHighlighter(root.ManjaHighlight, root.console),
         logger: root.console,
       });
-      if (root.document.readyState === 'loading') {
-        root.document.addEventListener('DOMContentLoaded', run, { once: true });
-      } else {
+      const hydrateDescriptions = () => api.hydrateCollapsibleRequestDescriptions(root.document);
+      const hydrateFieldDescriptions = () => api.hydrateRequestConfigFieldDescriptions(root.document);
+      const hydrate = () => {
         run();
+        hydrateDescriptions();
+        hydrateFieldDescriptions();
+      };
+      if (root.document.readyState === 'loading') {
+        root.document.addEventListener('DOMContentLoaded', hydrate, { once: true });
+      } else {
+        hydrate();
       }
-      root.document.addEventListener('htmx:afterSwap', () => run());
+      root.document.addEventListener('htmx:afterSwap', hydrate);
     }
   }
 })(typeof globalThis !== 'undefined' ? globalThis : this, function (snippetLib, highlightLib) {
@@ -31,6 +38,79 @@
     const generator = snippetGenerator || createHTTPSnippetGenerator(snippetLib, logger);
     const highlighter = syntaxHighlighter || createSyntaxHighlighter(highlightLib, logger);
     Array.from(roots).forEach((root) => hydrateRequestComposer(root, sampler, generator, highlighter, logger));
+  }
+
+  function hydrateCollapsibleRequestDescriptions(root, { threshold = 220 } = {}) {
+    const documentRoot = root && root.ownerDocument ? root.ownerDocument : root;
+    if (!documentRoot || typeof documentRoot.querySelectorAll !== 'function') {
+      return;
+    }
+    const descriptions = documentRoot.querySelectorAll(
+      '[data-manja-request-config-fields] p.text-xs:not([data-manja-request-body-status])',
+    );
+    Array.from(descriptions).forEach((description, index) => {
+      if (description.dataset.manjaCollapsibleDescription === 'true') {
+        return;
+      }
+      const text = String(description.textContent || '').trim();
+      if (text.length <= threshold) {
+        return;
+      }
+      const owner = description.closest('[data-manja-request-config-fields]');
+      const ownerID = owner && owner.id ? owner.id : 'request-config-fields';
+      let descriptionID = description.id || `${ownerID}-description-${index + 1}`;
+      let suffix = index + 1;
+      while (documentRoot.getElementById(descriptionID) && documentRoot.getElementById(descriptionID) !== description) {
+        suffix += 1;
+        descriptionID = `${ownerID}-description-${suffix}`;
+      }
+      description.id = descriptionID;
+      description.dataset.manjaCollapsibleDescription = 'true';
+      description.dataset.expanded = 'false';
+      const toggle = documentRoot.createElement('button');
+      toggle.type = 'button';
+      toggle.className = 'manja-description-toggle mt-1 text-xs font-medium text-primary underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary dark:text-primary-dark dark:focus-visible:outline-primary-dark';
+      toggle.dataset.manjaDescriptionToggle = 'true';
+      toggle.setAttribute('aria-controls', descriptionID);
+      toggle.setAttribute('aria-expanded', 'false');
+      toggle.textContent = 'Show more';
+      toggle.addEventListener('click', () => {
+        const expanded = description.dataset.expanded === 'true';
+        description.dataset.expanded = String(!expanded);
+        toggle.setAttribute('aria-expanded', String(!expanded));
+        toggle.textContent = expanded ? 'Show more' : 'Show less';
+      });
+      description.insertAdjacentElement('afterend', toggle);
+    });
+  }
+
+  function hydrateRequestConfigFieldDescriptions(root) {
+    const documentRoot = root && root.ownerDocument ? root.ownerDocument : root;
+    if (!documentRoot || typeof documentRoot.querySelectorAll !== 'function') {
+      return;
+    }
+    const fieldsRoots = documentRoot.querySelectorAll('[data-manja-request-config-fields]');
+    Array.from(fieldsRoots).forEach((fieldsRoot) => {
+      const fields = fieldsRoot.querySelectorAll('[data-field-path]');
+      Array.from(fields).forEach((field) => {
+        const control = field.querySelector('input[id], select[id], textarea[id]');
+        const description = field.querySelector('p.text-xs:not([data-manja-request-body-status])');
+        if (!control || !description || !control.id) {
+          return;
+        }
+        const baseID = description.id || `${control.id}-description`;
+        let descriptionID = baseID;
+        let suffix = 2;
+        while (documentRoot.getElementById(descriptionID) && documentRoot.getElementById(descriptionID) !== description) {
+          descriptionID = `${baseID}-${suffix}`;
+          suffix += 1;
+        }
+        description.id = descriptionID;
+        const describedBy = new Set(String(control.getAttribute('aria-describedby') || '').split(/\s+/).filter(Boolean));
+        describedBy.add(descriptionID);
+        control.setAttribute('aria-describedby', Array.from(describedBy).join(' '));
+      });
+    });
   }
 
   function hydrateRequestComposer(root, sampler, snippetGenerator, syntaxHighlighter, logger) {
@@ -70,6 +150,7 @@
       const target = selectedSampleTarget(payload, sampleTarget);
       setCode(sampleCode, buildRequestSample(state, target, snippetGenerator, logger), target, syntaxHighlighter, logger);
       updateBodyHighlight(bodyInput, bodyHighlight, syntaxHighlighter, logger);
+      updateBodyValidation(root, bodyInput, payload);
       setRequestSampleTitle(root, target);
     };
 
@@ -98,6 +179,27 @@
       });
     }
     render();
+    enhanceRequestConfigWhenReady(root);
+  }
+
+  function enhanceRequestConfigWhenReady(composerRoot) {
+    const requestConfigRoot = composerRoot.closest && composerRoot.closest('[data-manja-request-config-root]');
+    if (!requestConfigRoot || !requestConfigRoot.dataset) {
+      return;
+    }
+    const enhance = () => {
+      if (
+        composerRoot.dataset.manjaRequestComposerHydrated === 'true' &&
+        requestConfigRoot.dataset.manjaRequestConfigControlsReady === 'true'
+      ) {
+        requestConfigRoot.dataset.manjaRequestConfigEnhanced = 'true';
+      }
+    };
+    if (requestConfigRoot.dataset.manjaRequestConfigControlsReady === 'true') {
+      enhance();
+      return;
+    }
+    requestConfigRoot.addEventListener('manja:request-config-controls-ready', enhance);
   }
 
   function updateBodyHighlight(bodyInput, bodyHighlight, syntaxHighlighter, logger) {
@@ -168,6 +270,7 @@
       parameters,
       body: bodyInput ? bodyInput.value : '',
       bodyContentType: payload.bodyContentType || '',
+      security: Array.isArray(payload.security) ? payload.security : [],
     };
   }
 
@@ -182,6 +285,14 @@
     for (const param of state.parameters || []) {
       if (param.in === 'header' && param.value) {
         headers.push([param.name, param.value]);
+      }
+    }
+    for (const auth of securityParameters(state)) {
+      if (auth.in === 'header' && auth.name && auth.value && !headers.some(([name]) => name.toLowerCase() === auth.name.toLowerCase())) {
+        headers.push([auth.name, auth.value]);
+      }
+      if (auth.in === 'cookie' && auth.name && auth.value && !headers.some(([name]) => name.toLowerCase() === 'cookie')) {
+        headers.push(['Cookie', `${auth.name}=${auth.value}`]);
       }
     }
     const body = String(state.body || '').trim();
@@ -247,11 +358,27 @@
         headers.push([param.name, param.value]);
       }
     }
+    for (const auth of securityParameters(state)) {
+      if (auth.in === 'header' && auth.name && auth.value && !headers.some(([name]) => name.toLowerCase() === auth.name.toLowerCase())) {
+        headers.push([auth.name, auth.value]);
+      }
+      if (auth.in === 'cookie' && auth.name && auth.value && !headers.some(([name]) => name.toLowerCase() === 'cookie')) {
+        headers.push(['Cookie', `${auth.name}=${auth.value}`]);
+      }
+    }
     const body = String(state.body || '').trim();
     if (body && state.bodyContentType && !headers.some(([name]) => name.toLowerCase() === 'content-type')) {
       headers.push(['content-type', state.bodyContentType]);
     }
     return headers;
+  }
+
+  function securityParameters(state) {
+    return (state.security || []).map((security) => ({
+      in: String(security.in || 'header').toLowerCase(),
+      name: String(security.parameterName || ''),
+      value: String(security.placeholder || ''),
+    })).filter((security) => security.name && security.value);
   }
 
   function selectedSampleTarget(payload, targetControl) {
@@ -351,6 +478,11 @@
         query.push([param.name, param.value]);
       }
     }
+    for (const auth of securityParameters(state)) {
+      if (auth.in === 'query') {
+        query.push([auth.name, auth.value]);
+      }
+    }
     return appendQuery(url, query);
   }
 
@@ -429,6 +561,43 @@
     }
   }
 
+  function updateBodyValidation(root, bodyInput, payload) {
+    if (!bodyInput) {
+      return true;
+    }
+    const status = root.querySelector('[data-manja-request-body-status]');
+    const contentType = String(payload && payload.bodyContentType || '').toLowerCase();
+    const value = String(bodyInput.value || '').trim();
+    const isJSON = contentType.includes('json') || contentType.endsWith('+json');
+    if (!isJSON || !value) {
+      bodyInput.removeAttribute('aria-invalid');
+      bodyInput.dataset.manjaRequestBodyValid = 'true';
+      if (status && status.dataset.manjaRequestBodyValidation === 'true') {
+        status.textContent = '';
+        delete status.dataset.manjaRequestBodyValidation;
+      }
+      return true;
+    }
+    try {
+      JSON.parse(value);
+      bodyInput.removeAttribute('aria-invalid');
+      bodyInput.dataset.manjaRequestBodyValid = 'true';
+      if (status && status.dataset.manjaRequestBodyValidation === 'true') {
+        status.textContent = '';
+        delete status.dataset.manjaRequestBodyValidation;
+      }
+      return true;
+    } catch (_) {
+      bodyInput.setAttribute('aria-invalid', 'true');
+      bodyInput.dataset.manjaRequestBodyValid = 'false';
+      if (status) {
+        status.textContent = 'Enter valid JSON before copying this request.';
+        status.dataset.manjaRequestBodyValidation = 'true';
+      }
+      return false;
+    }
+  }
+
   function setRequestSampleTitle(root, target) {
     const label = `Request Sample: ${(target && target.label) || 'Shell / cURL'}`;
     const codeblock = root.querySelector('[data-manja-request-sample] .codeblock');
@@ -456,6 +625,8 @@
 
   return {
     hydrateRequestComposers,
+    hydrateCollapsibleRequestDescriptions,
+    hydrateRequestConfigFieldDescriptions,
     createHTTPSnippetGenerator,
     createSyntaxHighlighter,
     highlightCode,
@@ -463,5 +634,6 @@
     buildRequestSample,
     buildCurl,
     composeURL,
+    updateBodyValidation,
   };
 });

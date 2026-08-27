@@ -55,9 +55,21 @@ type SpecIndex struct {
 	SpecDownload    SpecDownload
 	Operations      []Operation
 	Schemas         []Schema
+	SecuritySchemes []SecurityScheme
 	Search          []SearchDocument
 	PublicRoutes    []PublicRoute
 	ExampleSpecJSON string
+}
+
+type SecurityScheme struct {
+	Name             string
+	Type             string
+	Description      string
+	ParameterName    string
+	In               string
+	Scheme           string
+	BearerFormat     string
+	OpenIDConnectURL string
 }
 
 type DocsBranding struct {
@@ -113,11 +125,13 @@ type SpecServerVariable struct {
 type Operation struct {
 	ID          string
 	Anchor      string
+	Title       string
 	Method      string
 	Path        string
 	Summary     string
 	Description string
 	Tags        []string
+	Facets      []Facet
 	Deprecated  bool
 	Parameters  []OperationParameter
 	RequestBody *OperationRequestBody
@@ -144,7 +158,15 @@ type OperationRequestBody struct {
 type OperationResponse struct {
 	Status      string
 	Description string
+	Headers     []OperationResponseHeader
 	MediaTypes  []OperationMediaType
+}
+
+type OperationResponseHeader struct {
+	Name        string
+	Description string
+	Schema      SchemaSummary
+	Example     string
 }
 
 type OperationMediaType struct {
@@ -155,8 +177,9 @@ type OperationMediaType struct {
 }
 
 type OperationSecurity struct {
-	Name   string
-	Scopes []string
+	Name       string
+	Scopes     []string
+	Definition SecurityScheme
 }
 
 type RequestSnippet struct {
@@ -172,9 +195,18 @@ type SchemaSummary struct {
 	Description string
 	Default     string
 	Example     string
+	Enum        []string
+	Constraints []SchemaConstraint
+	Nullable    bool
+	Deprecated  bool
 	Properties  []SchemaProperty
 	Items       *SchemaSummary
 	JSON        string
+}
+
+type SchemaConstraint struct {
+	Name  string
+	Value string
 }
 
 type SchemaProperty struct {

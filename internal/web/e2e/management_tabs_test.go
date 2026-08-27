@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/playwright-community/playwright-go"
+	"github.com/mxschmitt/playwright-go"
 
 	core "github.com/araihu/manja/domain"
 	"github.com/araihu/manja/internal/web"
@@ -96,6 +96,7 @@ func TestManagementTabActionsInitializeSwappedContent(t *testing.T) {
 	}, playwright.PageExpectResponseOptions{Timeout: playwright.Float(5000)}); err != nil {
 		t.Fatal(err)
 	}
+	waitForManagementSettleFocus(t, page)
 	assertVisibleManagementTabPanels(t, page, []string{"Publish"})
 
 	if err := page.Locator(`[role="tab"]:has-text("Route")`).Click(); err != nil {
@@ -110,6 +111,7 @@ func TestManagementTabActionsInitializeSwappedContent(t *testing.T) {
 	}, playwright.PageExpectResponseOptions{Timeout: playwright.Float(5000)}); err != nil {
 		t.Fatal(err)
 	}
+	waitForManagementSettleFocus(t, page)
 	assertVisibleManagementTabPanels(t, page, []string{"Publish"})
 
 	if err := page.Locator(`[role="tab"]:has-text("Route")`).Click(); err != nil {
@@ -133,6 +135,147 @@ func TestManagementTabActionsInitializeSwappedContent(t *testing.T) {
 	}`)
 }
 
+func waitForManagementSettleFocus(t *testing.T, page playwright.Page) {
+	t.Helper()
+	if _, err := page.WaitForFunction(`() => document.activeElement?.matches('[data-manja-settled-focus="true"]') === true`, nil, playwright.PageWaitForFunctionOptions{Timeout: playwright.Float(5000)}); err != nil {
+		t.Fatalf("management swap did not reach settled focus: %v", err)
+	}
+}
+
+func TestManagementListFiltersAndSelectedIdentity(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping e2e test in short mode")
+	}
+	chdirRepoRoot(t)
+
+	server := httptestServer(t, web.NewServerWithOptions(core.SpecIndex{}, web.Options{
+		Management: web.ManagementOptions{Specs: []web.ManagedSpec{
+			{
+				ID:          "payments-api",
+				Index:       core.SpecIndex{Title: "Payments API", Version: "v1"},
+				Project:     core.Project{ID: "payments", Name: "Payments"},
+				Source:      core.Source{ID: "payments-source", Kind: "git", SpecPath: "openapi/payments.yaml"},
+				Revision:    core.Revision{ID: "payments-rev", Ref: "main"},
+				Publication: core.Publication{Public: true, Path: "/payments/v1"},
+			},
+			{
+				ID:          "billing-api",
+				Index:       core.SpecIndex{Title: "Billing API", Version: "v2"},
+				Project:     core.Project{ID: "billing", Name: "Billing"},
+				Source:      core.Source{ID: "billing-source", Kind: "file", SpecPath: "billing.yaml"},
+				Revision:    core.Revision{ID: "billing-rev", Ref: "main"},
+				Publication: core.Publication{Public: false},
+			},
+		}},
+	}))
+
+	pw, err := playwright.Run()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pw.Stop()
+	browser, err := pw.Chromium.Launch()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer browser.Close()
+	page, err := browser.NewPage(playwright.BrowserNewPageOptions{Viewport: &playwright.Size{Width: 1024, Height: 768}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := page.Goto(server + "/manage/specs"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := page.Evaluate(`async () => await window.goshtosoDependencies.ready`, nil); err != nil {
+		t.Fatalf("await Goshtoso dependency readiness: %v", err)
+	}
+	if err := page.Locator(`#management-specs-table`).WaitFor(); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := page.Locator(`input[name="q"]`).Fill("missing"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := page.ExpectResponse("**/manage/specs?q=missing&status=", func() error {
+		return page.Locator(`button:has-text("Apply filters")`).Click()
+	}, playwright.PageExpectResponseOptions{Timeout: playwright.Float(5000)}); err != nil {
+		t.Fatal(err)
+	}
+	if err := page.Locator(`[data-management-filtered-empty="true"]`).WaitFor(); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := page.Locator(`[data-management-results="true"]`).TextContent(); err != nil || got != "0 of 2 specs" {
+		t.Fatalf("filtered result count = %q, err=%v", got, err)
+	}
+
+	if err := page.Locator(`a:has-text("Clear filters")`).Click(); err != nil {
+		t.Fatal(err)
+	}
+	if err := page.Locator(`#management-specs-table`).WaitFor(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := page.Evaluate(`() => { window.__managementNavigationSentinel = 'kept'; }`); err != nil {
+		t.Fatal(err)
+	}
+	if err := page.Locator(`aside[aria-label="Management sections"] a[href="/manage/spec/payments-api"]`).Click(); err != nil {
+		t.Fatal(err)
+	}
+	if err := page.Locator(`[data-management-contract-identity="payments-api"]`).WaitFor(playwright.LocatorWaitForOptions{Timeout: playwright.Float(5000)}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := page.WaitForFunction(`() =>
+		document.querySelector('main')?.dataset.selectedContract === 'payments-api' &&
+		document.activeElement?.dataset.managementContractIdentity === 'payments-api' &&
+		document.title === 'Payments API · Management'`, nil, playwright.PageWaitForFunctionOptions{Timeout: playwright.Float(5000)}); err != nil {
+		t.Fatalf("management selected identity did not settle: %v", err)
+	}
+	identity, err := page.Evaluate(`() => ({
+		url: location.pathname,
+		main: document.querySelector('main')?.dataset.selectedContract,
+		content: document.querySelector('#management-main-content')?.dataset.selectedContract,
+		heading: document.querySelector('[data-management-contract-identity]')?.dataset.managementContractIdentity,
+		focus: document.activeElement?.dataset.managementContractIdentity,
+		current: document.querySelector('aside[aria-label="Management sections"] [aria-current="page"]')?.getAttribute('href'),
+		title: document.title,
+		sentinel: window.__managementNavigationSentinel
+	})`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	metrics, ok := identity.(map[string]any)
+	if !ok {
+		t.Fatalf("management identity should be a map, got %#v", identity)
+	}
+	for key, want := range map[string]string{
+		"url":      "/manage/spec/payments-api",
+		"main":     "payments-api",
+		"content":  "payments-api",
+		"heading":  "payments-api",
+		"focus":    "payments-api",
+		"current":  "/manage/spec/payments-api",
+		"title":    "Payments API · Management",
+		"sentinel": "kept",
+	} {
+		if metrics[key] != want {
+			t.Fatalf("management identity %s = %#v, want %q; metrics=%#v", key, metrics[key], want, metrics)
+		}
+	}
+
+	if _, err := page.GoBack(); err != nil {
+		t.Fatal(err)
+	}
+	if err := page.Locator(`[data-management-page-header="specs"]`).WaitFor(); err != nil {
+		t.Fatal(err)
+	}
+	back, err := page.Evaluate(`() => document.querySelector('main')?.dataset.selectedContract + '|' + document.querySelector('aside[aria-label="Management sections"] [aria-current="page"]')?.getAttribute('href')`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if back != "|/manage/specs" {
+		t.Fatalf("management Back identity = %#v", back)
+	}
+}
+
 type recordingPublicationStore struct {
 	publication core.Publication
 }
@@ -153,7 +296,12 @@ func assertKeyboardControlWithoutScroll(t *testing.T, page playwright.Page, key 
 		t.Fatal(err)
 	}
 	if _, err := page.WaitForFunction(settled, nil, playwright.PageWaitForFunctionOptions{Timeout: playwright.Float(5000)}); err != nil {
-		t.Fatalf("control did not settle after %s: %v", key, err)
+		state, stateErr := page.Evaluate(`() => ({
+			activeID: document.activeElement && document.activeElement.id,
+			publicChecked: document.querySelector('#management-visibility-public-payments-api')?.checked,
+			privateChecked: document.querySelector('#management-visibility-private-payments-api')?.checked,
+		})`)
+		t.Fatalf("control did not settle after %s: %v; state=%#v stateErr=%v", key, err, state, stateErr)
 	}
 	unchanged, err := page.Evaluate(`(before) => window.scrollX === before[0] && window.scrollY === before[1]`, before)
 	if err != nil {

@@ -1,0 +1,34 @@
+package render
+
+import (
+	templpkg "github.com/a-h/templ"
+	"github.com/araihu/goshtoso/components/badge"
+)
+
+templ schemaDetailHeader(data schemaDetailHeaderData, actions, provenance templpkg.Component) {
+	<header class="grid min-w-0 gap-4">
+		<div class="flex flex-wrap items-center justify-between gap-3">
+			<div class="flex min-w-0 flex-wrap items-center gap-2">
+				@badge.Badge(badge.Config{Label: "Schema", Tone: badge.ToneSecondary, Appearance: badge.AppearanceSoft, Size: badge.SizeMD})
+				if data.Version != "" {
+					@badge.Badge(badge.Config{Label: data.Version, Tone: badge.ToneDefault, Appearance: badge.AppearanceSoft, Size: badge.SizeSM})
+				}
+				if data.TypeLabel != "" {
+					<code class="rounded-radius bg-surface-alt px-3 py-1.5 text-sm text-on-surface-strong dark:bg-surface-dark-alt dark:text-on-surface-dark-strong">{ data.TypeLabel }</code>
+				}
+			</div>
+			if actions != nil {
+				<nav aria-label="Schema actions" class="flex flex-wrap items-center gap-2">
+					@actions
+				</nav>
+			}
+		</div>
+		<h1 tabindex="-1" data-manja-settled-focus="true" class="manja-schema-title font-title text-2xl font-bold text-on-surface-strong sm:text-3xl dark:text-on-surface-dark-strong">{ data.Title }</h1>
+		if data.Description != "" {
+			<p class="max-w-[70ch] whitespace-pre-wrap break-words text-on-surface-muted dark:text-on-surface-dark-muted">{ data.Description }</p>
+		}
+		if provenance != nil {
+			@provenance
+		}
+	</header>
+}

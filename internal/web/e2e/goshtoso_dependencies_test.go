@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/playwright-community/playwright-go"
+	"github.com/mxschmitt/playwright-go"
 
 	core "github.com/araihu/manja/domain"
 	"github.com/araihu/manja/internal/web"
@@ -298,7 +298,7 @@ func goshtosoRenderedPrimaryURLs(t *testing.T, server string) []string {
 		t.Fatalf("decode rendered Goshtoso dependency configuration: %v", err)
 	}
 
-	wantOrder := []string{"alpine-collapse", "alpine-focus", "alpine-mask", "alpine", "htmx", "combobox"}
+	wantOrder := []string{"alpine-collapse", "alpine-focus", "alpine-mask", "first-party", "alpine", "htmx"}
 	if len(config.Dependencies) != len(wantOrder) {
 		t.Fatalf("rendered dependency count = %d, want %d: %#v", len(config.Dependencies), len(wantOrder), config.Dependencies)
 	}
@@ -309,9 +309,9 @@ func goshtosoRenderedPrimaryURLs(t *testing.T, server string) []string {
 		if dependency.Name != wantName {
 			t.Fatalf("rendered dependency %d name = %q, want %q", i, dependency.Name, wantName)
 		}
-		if i == len(wantOrder)-1 {
-			if dependency.PrimaryURL != "/assets/js/combobox.js" {
-				t.Fatalf("rendered combobox primary URL = %q, want first-party /assets/js/combobox.js", dependency.PrimaryURL)
+		if dependency.Name == "first-party" {
+			if dependency.PrimaryURL != "/assets/js/goshtoso.min.js" {
+				t.Fatalf("rendered first-party primary URL = %q, want /assets/js/goshtoso.min.js", dependency.PrimaryURL)
 			}
 			continue
 		}
@@ -621,8 +621,8 @@ func testPublicDocsGoshtosoDependencyJourney(t *testing.T, forceFallback bool) {
 			t.Errorf("%s source = %q, want %s", name, evidence.Sources[name], wantSource)
 		}
 	}
-	if evidence.Sources["combobox"] != "primary" {
-		t.Errorf("combobox source = %q, want primary", evidence.Sources["combobox"])
+	if evidence.Sources["first-party"] != "primary" {
+		t.Errorf("first-party source = %q, want primary", evidence.Sources["first-party"])
 	}
 
 	setStage("disclosure")

@@ -6,15 +6,32 @@ import (
 	core "github.com/araihu/manja/domain"
 )
 
-templ Layout(title string) {
-	@LayoutWithBranding(title, core.DocsBranding{})
+type PageMetadata struct {
+	Title string
+	Description string
+	CanonicalURL string
+	SocialImageURL string
+	SocialImageMIMEType string
+	SocialImageAlt string
+	Robots string
 }
 
-templ LayoutWithBranding(title string, branding core.DocsBranding) {
+templ Layout(title string) {
+	@LayoutWithBranding(title, core.DocsBranding{}, false, false)
+}
+
+templ LayoutWithBranding(title string, branding core.DocsBranding, seasonalCampaign bool, manageFavicon bool) {
+	@LayoutWithBrandingMetadata(PageMetadata{Title: title}, branding, seasonalCampaign, manageFavicon) {
+		{ children... }
+	}
+}
+
+templ LayoutWithBrandingMetadata(metadata PageMetadata, branding core.DocsBranding, seasonalCampaign bool, manageFavicon bool) {
 	<!DOCTYPE html>
 	<html
 		lang="en"
 		data-theme="araihu"
+		data-theme-source="default"
 		x-data="{
 			theme: localStorage.getItem('theme') || 'araihu',
 			darkMode: (function() {
@@ -22,7 +39,7 @@ templ LayoutWithBranding(title string, branding core.DocsBranding) {
 				if (stored !== null) return stored === 'true';
 				return window.matchMedia('(prefers-color-scheme: dark)').matches;
 			})(),
-			setTheme(name) { this.theme = name; document.documentElement.setAttribute('data-theme', name); },
+			setTheme(name) { this.theme = name; document.documentElement.setAttribute('data-theme', name); document.documentElement.dataset.themeSource = 'preference'; },
 			applyDarkMode(on) { document.documentElement.classList.toggle('dark', on); },
 			toggleDarkMode() { this.darkMode = !this.darkMode; }
 		}"
@@ -32,6 +49,7 @@ templ LayoutWithBranding(title string, branding core.DocsBranding) {
 			$watch('theme', value => {
 				localStorage.setItem('theme', value);
 				document.documentElement.setAttribute('data-theme', value);
+				document.documentElement.dataset.themeSource = 'preference';
 			});
 			$watch('darkMode', value => {
 				localStorage.setItem('darkMode', value ? 'true' : 'false');
@@ -42,14 +60,54 @@ templ LayoutWithBranding(title string, branding core.DocsBranding) {
 		<head>
 			<meta charset="UTF-8"/>
 			<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-			<title>{ title }</title>
+			<title>{ metadata.Title }</title>
+			if metadata.Description != "" {
+				<meta name="description" content={ metadata.Description }/>
+			}
+			if metadata.CanonicalURL != "" {
+				<link rel="canonical" href={ metadata.CanonicalURL }/>
+				<meta property="og:url" content={ metadata.CanonicalURL }/>
+			}
+			if metadata.Description != "" || metadata.CanonicalURL != "" || metadata.SocialImageURL != "" {
+				<meta property="og:type" content="website"/>
+				<meta property="og:site_name" content="Manja"/>
+				if metadata.Title != "" {
+					<meta property="og:title" content={ metadata.Title }/>
+					<meta name="twitter:title" content={ metadata.Title }/>
+				}
+				if metadata.Description != "" {
+					<meta property="og:description" content={ metadata.Description }/>
+					<meta name="twitter:description" content={ metadata.Description }/>
+				}
+			}
+			if metadata.SocialImageURL != "" {
+				<meta property="og:image" content={ metadata.SocialImageURL }/>
+				if metadata.SocialImageMIMEType != "" {
+					<meta property="og:image:type" content={ metadata.SocialImageMIMEType }/>
+				}
+				<meta property="og:image:width" content="1280"/>
+				<meta property="og:image:height" content="640"/>
+				<meta property="og:image:alt" content={ metadata.SocialImageAlt }/>
+				<meta name="twitter:card" content="summary_large_image"/>
+				<meta name="twitter:image" content={ metadata.SocialImageURL }/>
+				<meta name="twitter:image:alt" content={ metadata.SocialImageAlt }/>
+			}
+			if metadata.Robots != "" {
+				<meta name="robots" content={ metadata.Robots }/>
+			}
 			if branding.Favicon != "" {
-				<link rel="icon" href={ templpkg.URL(branding.Favicon) }/>
+				if manageFavicon {
+					<link rel="icon" href={ templpkg.URL(branding.Favicon) } crossorigin="anonymous" data-asset-brand="icon"/>
+				} else {
+					<link rel="icon" href={ templpkg.URL(branding.Favicon) }/>
+				}
 			}
 			<script>
 				(function() {
 					try {
-					document.documentElement.setAttribute('data-theme', localStorage.getItem('theme') || 'araihu');
+						var savedTheme = localStorage.getItem('theme');
+						document.documentElement.setAttribute('data-theme', savedTheme || 'araihu');
+						document.documentElement.dataset.themeSource = savedTheme ? 'preference' : 'default';
 					var d = localStorage.getItem('darkMode');
 					var on = d !== null ? d === 'true' : window.matchMedia('(prefers-color-scheme: dark)').matches;
 					document.documentElement.classList.toggle('dark', on);
@@ -67,18 +125,44 @@ templ LayoutWithBranding(title string, branding core.DocsBranding) {
 			<script>
 				(function () {
 					var pendingSidebarHref = "";
-					var sidebarLinkClasses = {
-						item: {
-							active: "flex items-center gap-2 py-2 text-base font-medium text-primary dark:text-primary-dark".split(" "),
-							inactive: "flex items-center gap-2 py-2 text-base text-on-surface transition-colors hover:text-on-surface-strong dark:text-on-surface-dark dark:hover:text-on-surface-dark-strong".split(" "),
-							iconActive: "shrink-0 size-8 rounded-sm p-1.5 bg-primary/10 text-primary dark:bg-primary-dark/10 dark:text-primary-dark".split(" "),
-							iconInactive: "shrink-0 size-8 rounded-sm p-1.5 bg-surface-alt text-on-surface dark:bg-surface-dark-alt dark:text-on-surface-dark".split(" ")
-						},
-						section: {
-							active: "pointer-events-none flex items-center gap-2 border-l-2 border-primary py-2.5 pl-4 text-sm font-bold text-primary dark:border-primary-dark dark:text-primary-dark".split(" "),
-							inactive: "flex items-center gap-2 border-l border-outline py-2.5 pl-4 text-sm font-medium text-on-surface transition duration-200 hover:border-l-2 hover:border-outline-strong hover:text-on-surface-strong dark:border-outline-dark dark:text-on-surface-dark dark:hover:border-outline-dark-strong dark:hover:text-on-surface-dark-strong".split(" ")
+					var catalogPathsStates = Object.create(null);
+
+					function catalogPathsStateKey(toggle) {
+						return toggle && toggle.getAttribute('data-manja-catalog-paths-state-key') || 'manja.catalog.paths.catalog';
+					}
+
+					function restoreCatalogPathsDisclosure(root) {
+						var scope = root && root.querySelector ? root : document;
+						var toggle = scope.querySelector('[data-manja-catalog-paths-toggle="true"]');
+						if (!toggle) return;
+						var children = toggle.nextElementSibling;
+						if (children) children.id = 'catalog-paths-children';
+						var key = catalogPathsStateKey(toggle);
+						var saved = Object.prototype.hasOwnProperty.call(catalogPathsStates, key)
+							? catalogPathsStates[key]
+							: null;
+						if (saved === null) {
+							try { saved = sessionStorage.getItem(key); } catch (e) {}
 						}
+						if (saved === 'true' || saved === 'false') toggle.setAttribute('aria-expanded', saved);
+					}
+
+					window.manjaToggleCatalogPaths = function (toggle) {
+						if (!toggle) return;
+						var expanded = toggle.getAttribute('aria-expanded') !== 'true';
+						toggle.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+						var key = catalogPathsStateKey(toggle);
+						catalogPathsStates[key] = expanded ? 'true' : 'false';
+						try { sessionStorage.setItem(key, catalogPathsStates[key]); } catch (e) {}
 					};
+
+					document.addEventListener('DOMContentLoaded', function () {
+						restoreCatalogPathsDisclosure(document);
+					});
+
+					document.addEventListener('htmx:afterSwap', function (event) {
+						restoreCatalogPathsDisclosure(event.target);
+					});
 
 					function sidebarLinkFromEvent(event) {
 						var detail = event && event.detail;
@@ -106,25 +190,11 @@ templ LayoutWithBranding(title string, branding core.DocsBranding) {
 						return null;
 					}
 
-					function directIcon(link) {
-						for (var i = 0; i < link.children.length; i++) {
-							var child = link.children[i];
-							if (child.classList && child.classList.contains('size-8')) {
-								return child;
-							}
-						}
-						return null;
-					}
-
-					function classProfile(link) {
-						if (link.closest('[data-sidebar-section]')) return sidebarLinkClasses.section;
-						return sidebarLinkClasses.item;
-					}
-
 					function setSidebarLinkActive(link, active) {
-						var profile = classProfile(link);
-						link.classList.remove.apply(link.classList, profile.active.concat(profile.inactive));
-						link.classList.add.apply(link.classList, active ? profile.active : profile.inactive);
+						if (link.hasAttribute('data-catalog-sidebar-item')) {
+							if (active) link.setAttribute('data-catalog-sidebar-selected', 'true');
+							else link.removeAttribute('data-catalog-sidebar-selected');
+						}
 						if (active) {
 							link.setAttribute('aria-current', 'page');
 							if (!activeMarker(link)) {
@@ -138,11 +208,6 @@ templ LayoutWithBranding(title string, branding core.DocsBranding) {
 							var marker = activeMarker(link);
 							if (marker) marker.remove();
 						}
-
-						var icon = directIcon(link);
-						if (!icon || !profile.iconActive || !profile.iconInactive) return;
-						icon.classList.remove.apply(icon.classList, profile.iconActive.concat(profile.iconInactive));
-						icon.classList.add.apply(icon.classList, active ? profile.iconActive : profile.iconInactive);
 					}
 
 					function updateSidebarActiveLink(href) {
@@ -161,21 +226,78 @@ templ LayoutWithBranding(title string, branding core.DocsBranding) {
 						}
 					}
 
+					function mainContentTarget(event) {
+						var target = event && event.detail && event.detail.target;
+						if (!target || (target.id !== "main-content" && target.id !== "catalog-main-content")) return null;
+						if (target.isConnected) return target;
+						return document.getElementById(target.id);
+					}
+
 					document.addEventListener('htmx:beforeRequest', function (e) {
 						var link = sidebarLinkFromEvent(e);
 						if (link) pendingSidebarHref = link.getAttribute('href') || "";
 					});
 
 					document.addEventListener('htmx:afterSwap', function (e) {
-						var target = e && e.detail && e.detail.target;
-						if (!target || target.id !== 'main-content') return;
+						var target = mainContentTarget(e);
+						if (!target) return;
+						var contentSelector = '[data-public-docs-content="true"], [data-catalog-main-content="true"]';
+						var content = target.matches && target.matches(contentSelector) ? target : target.querySelector(contentSelector);
+						if (content && content.dataset.selectedDoc) {
+							target.dataset.selectedDoc = content.dataset.selectedDoc;
+						}
+						if (content && content.dataset.documentTitle) {
+							document.title = content.dataset.documentTitle;
+						}
+						var shouldFocus = pendingSidebarHref !== "";
 						updateSidebarActiveLink(pendingSidebarHref || (window.location.pathname + window.location.search + window.location.hash));
 						pendingSidebarHref = "";
-						window.scrollTo({ top: 0 });
+						target.dataset.manjaFocusAfterSettle = shouldFocus ? "true" : "";
+					});
+
+					document.addEventListener('htmx:afterSettle', function (e) {
+						var target = mainContentTarget(e);
+						if (!target) return;
+						var scrollTarget = target.querySelector('[data-manja-scroll-sentinel="true"]');
+						if (scrollTarget) {
+							scrollTarget.scrollIntoView({ block: "start", inline: "nearest" });
+						}
+						if (target.dataset.manjaFocusAfterSettle === "true") {
+							var focusTarget = target.querySelector('[data-manja-settled-focus="true"]');
+							if (focusTarget) focusTarget.focus({ preventScroll: true });
+						}
+						delete target.dataset.manjaFocusAfterSettle;
 					});
 				})();
 			</script>
 			<link rel="stylesheet" href="/manja-assets/manja.css"/>
+			if seasonalCampaign {
+				<script
+					defer
+					src="https://araihu.com/assets/campaign/v1.js"
+					data-channel="https://araihu.com/assets/releases/current"
+					integrity="sha384-oPH7l1vK9vKP1Dn+18sO3yEXlz4ts6KzPEQl0SW4Y/+im05gOaamNNaQAf6bGH/n"
+					crossorigin="anonymous"
+				></script>
+				<script>
+					(function () {
+						function syncCampaignToggleLabels() {
+							document.querySelectorAll('[data-campaign-toggle]').forEach(function (button) {
+								var label = button.getAttribute('aria-pressed') === 'true'
+									? button.dataset.useBaselineLabel
+									: button.dataset.useCampaignLabel;
+								if (!label) return;
+								button.setAttribute('aria-label', label);
+								var text = button.querySelector('[data-campaign-toggle-label]');
+								if (text) text.textContent = label;
+							});
+						}
+						document.addEventListener('DOMContentLoaded', syncCampaignToggleLabels);
+						document.addEventListener('araihu:campaign:applied', syncCampaignToggleLabels);
+						document.addEventListener('araihu:campaign:restored', syncCampaignToggleLabels);
+					})();
+				</script>
+			}
 			<script defer src="/manja-assets/schema-example.js"></script>
 			<script defer src="/manja-assets/request-composer.js"></script>
 			<style>[x-cloak] { display: none !important; }</style>

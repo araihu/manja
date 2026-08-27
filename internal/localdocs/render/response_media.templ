@@ -1,0 +1,31 @@
+package render
+
+import (
+	templpkg "github.com/a-h/templ"
+	"github.com/araihu/goshtoso/components/icon"
+	"github.com/araihu/goshtoso/components/icon/heroicons"
+)
+
+templ operationResponseMedia(media operationResponseMediaData) {
+	<span class="font-mono text-xs font-semibold text-on-surface-strong dark:text-on-surface-dark-strong">{ media.ContentType }</span>
+	if media.SchemaLabel != "" {
+		if media.SchemaHref == "" {
+			<span class="font-mono text-xs text-on-surface-muted dark:text-on-surface-dark-muted">{ media.SchemaLabel }</span>
+		} else {
+			<a
+				href={ templpkg.URL(media.SchemaHref) }
+				hx-get={ media.SchemaHref }
+				hx-target="#catalog-main-content"
+				hx-select="#catalog-main-content"
+				hx-swap="outerHTML show:#main-content:top"
+				hx-push-url="true"
+				aria-label={ "Open schema " + media.SchemaLabel }
+				title={ "Open schema " + media.SchemaLabel }
+				class="inline-flex max-w-full items-center gap-1 py-1 font-mono text-xs text-on-surface-muted transition-colors hover:text-primary focus-visible:rounded-radius focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary dark:text-on-surface-dark-muted dark:hover:text-primary-dark dark:focus-visible:outline-primary-dark"
+			>
+				<span class="min-w-0 break-all">{ media.SchemaLabel }</span>
+				@icon.Icon(icon.Config{SpriteURL: heroicons.SpriteURL, Symbol: heroicons.Icon16SolidLink, Size: icon.SizeSM, RootClass: "shrink-0", Decorative: true})
+			</a>
+		}
+	}
+}

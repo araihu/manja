@@ -82,6 +82,37 @@ paths: {}
 	}
 }
 
+func TestOpenAPIParserExtractsSecuritySchemes(t *testing.T) {
+	spec := []byte(`
+openapi: 3.1.0
+info:
+  title: Secured API
+  version: 1.0.0
+paths: {}
+components:
+  securitySchemes:
+    BearerToken:
+      type: apiKey
+      in: header
+      name: authorization
+      description: Bearer Token authentication
+`)
+	parser := openapiadapter.Parser{}
+	idx, err := parser.Parse(context.Background(), core.SpecFile{
+		SourceID: "src1", Path: "secured.yaml", Format: "yaml", Bytes: spec,
+	}, core.Revision{ID: "rev1", SourceID: "src1", Ref: "main"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(idx.SecuritySchemes) != 1 {
+		t.Fatalf("security schemes = %#v", idx.SecuritySchemes)
+	}
+	got := idx.SecuritySchemes[0]
+	if got.Name != "BearerToken" || got.Type != "apiKey" || got.In != "header" || got.ParameterName != "authorization" || got.Description != "Bearer Token authentication" {
+		t.Fatalf("security scheme = %#v", got)
+	}
+}
+
 func TestOpenAPIParserBuildsStableAnchorsWithoutOperationID(t *testing.T) {
 	spec := []byte(`
 openapi: 3.1.0

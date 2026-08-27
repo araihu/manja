@@ -1,0 +1,164 @@
+name: Update Arai Hu fallback assets
+
+on:
+  repository_dispatch:
+    types: [araihu-assets-released]
+  workflow_dispatch:
+    inputs:
+      assets_repository:
+        description: Release repository
+        required: true
+        default: araihu/assets
+        type: string
+      assets_revision:
+        description: Full release commit SHA
+        required: true
+        type: string
+      release:
+        description: Stable release tag (vX.Y.Z)
+        required: true
+        type: string
+      release_url:
+        description: Immutable tar.gz release URL
+        required: true
+        type: string
+      release_sha256:
+        description: Release archive SHA-256
+        required: true
+        type: string
+      release_json_sha256:
+        description: release.json SHA-256
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: araihu-assets-${{ github.event.client_payload.release || inputs.release }}
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: ${{ fromJSON('["self-hosted","Linux","X64","hostinger-vps-trusted"]') }}
+    env:
+      MANJA_ASSETS_METADATA: ${{ github.workspace }}/.dagger-inputs/manja-assets.json
+    steps:
+      - name: Check out Manja
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install or verify exact Dagger CLI
+        env:
+          RUNNER_ENVIRONMENT: ${{ runner.environment }}
+        run: bash .github/scripts/setup-dagger.sh
+
+      - name: Materialize provider payload as JSON
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          CLIENT_PAYLOAD: ${{ toJSON(github.event.client_payload) }}
+          EVENT_NAME: ${{ github.event_name }}
+          INPUTS: ${{ toJSON(inputs) }}
+        with:
+          github-token: unused
+          script: |
+            const fs = require("fs")
+            const path = require("path")
+            const source = process.env.EVENT_NAME === "repository_dispatch"
+              ? process.env.CLIENT_PAYLOAD
+              : process.env.INPUTS
+            const payload = JSON.parse(source)
+            const output = process.env.MANJA_ASSETS_METADATA
+            fs.mkdirSync(path.dirname(output), {recursive: true})
+            fs.writeFileSync(output, JSON.stringify(payload), {encoding: "utf8", flag: "wx", mode: 0o600})
+
+      - name: Verify immutable release and update allowlisted assets with Dagger
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          dagger call update-araihu-assets \
+            --source=. \
+            --metadata="$MANJA_ASSETS_METADATA" \
+            --github-token=env://GITHUB_TOKEN \
+            --trust-domain=assets \
+            --run-nonce='${{ github.run_id }}-${{ github.run_attempt }}' \
+            export --path=.
+
+      - name: Read Dagger-validated provenance for PR adapter
+        id: event
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        with:
+          github-token: unused
+          script: |
+            const fs = require("fs")
+            const expected = [
+              "assets_repository", "assets_revision", "release",
+              "release_json_sha256", "release_sha256", "release_url",
+            ]
+            const payload = JSON.parse(fs.readFileSync(process.env.MANJA_ASSETS_METADATA, "utf8"))
+            const actual = Object.keys(payload).sort()
+            if (actual.length !== expected.length || actual.some((key, index) => key !== expected[index])) {
+              throw new Error("Dagger-validated metadata fields changed before PR adaptation")
+            }
+            for (const key of expected) {
+              if (typeof payload[key] !== "string") {
+                throw new Error(`Dagger-validated metadata field ${key} is not a string`)
+              }
+              core.setOutput(key, payload[key])
+            }
+
+      - name: Create selected-repository App token
+        id: app-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          app-id: ${{ secrets.ARAIHU_ASSETS_APP_ID }}
+          private-key: ${{ secrets.ARAIHU_ASSETS_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: manja
+          permission-contents: write
+          permission-pull-requests: write
+          permission-issues: read
+
+      - name: Select existing labels only
+        id: labels
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        with:
+          github-token: ${{ steps.app-token.outputs.token }}
+          script: |
+            const labels = await github.paginate(github.rest.issues.listLabelsForRepo, {
+              ...context.repo,
+              per_page: 100,
+            })
+            const available = new Set(labels.map(({name}) => name))
+            const selected = ["assets", "dependencies", "enhancement"]
+              .filter((label) => available.has(label))
+            core.setOutput("labels", selected.join("\n"))
+
+      - name: Create or update fallback asset PR
+        uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1 # v8
+        with:
+          token: ${{ steps.app-token.outputs.token }}
+          branch: automation/araihu-assets-${{ steps.event.outputs.release }}
+          base: main
+          delete-branch: false
+          commit-message: 'build(assets): update Arai Hu fallbacks to ${{ steps.event.outputs.release }}'
+          title: 'build(assets): update Arai Hu fallbacks to ${{ steps.event.outputs.release }}'
+          body: |
+            Automated fallback refresh from immutable `araihu/assets` release `${{ steps.event.outputs.release }}`.
+
+            - Revision: `${{ steps.event.outputs.assets_revision }}`
+            - Archive SHA-256: `${{ steps.event.outputs.release_sha256 }}`
+            - `release.json` SHA-256: `${{ steps.event.outputs.release_json_sha256 }}`
+
+            This workflow never auto-merges.
+          labels: ${{ steps.labels.outputs.labels }}
+          add-paths: |
+            araihu-assets.json
+            internal/web/static/araihu.css
+            internal/web/static/favicon.svg
+            internal/web/static/manja-mark.svg
+            site/internal/site/static/araihu.css
+            site/internal/site/static/favicon.svg
+            site/internal/site/static/manja-logo.svg
+            site/internal/site/static/manja-mark.svg

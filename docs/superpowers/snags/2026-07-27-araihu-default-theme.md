@@ -9,10 +9,10 @@ its existing app-specific `/manja-assets/manja.css`. No Goshtoso base theme or
 dependency-module file is modified.
 
 Provenance: [araihu/assets `themes/araihu.css` at commit
-`f841fe90b967b16ab2ad9efaee5aa636468e1afd`](https://github.com/araihu/assets/blob/f841fe90b967b16ab2ad9efaee5aa636468e1afd/themes/araihu.css).
-The canonical Git blob is `f511bd11c0f70733784d09335b9d1b986c9806f4`; exact
+`a8a9647a6e803586c556859eb20f95ef9fcb20a1`](https://github.com/araihu/assets/blob/a8a9647a6e803586c556859eb20f95ef9fcb20a1/themes/araihu.css).
+The canonical Git blob is `15d7d2df1fc13199b518abb7fdc1379931bf6858`; exact
 decoded bytes have SHA-256
-`c0bf105f332bca41af1dbd6ccb867ec9fda9c6c688beb609723c7186842044a4`.
+`9e7756cea751aa95bcf2f0b6545dc32ab9037a47a08a91287502dae52829d265`.
 
 Source-dive note: the public Goshtoso head contract documents `Dependencies()`
 as the owner of the compiled theme-token stylesheet and requires consumers to

@@ -5,6 +5,10 @@
 .superpowers/
 /node_modules/
 .DS_Store
+/.cache/muamba/
+.dagger/node_modules/
+.dagger/sdk/
+.dagger-inputs/
 *.test
 go.work
 go.work.sum

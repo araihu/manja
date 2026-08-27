@@ -1,6 +1,6 @@
 #:schema https://json.schemastore.org/any.json
 
-# `npm run dev` wraps this config with scripts/dev-server.mjs. The wrapper
+# `go run ./cmd/dev` wraps this config. The launcher
 # chooses per-worktree ports and passes them to Air as CLI overrides.
 
 root = "."
@@ -10,17 +10,17 @@ tmp_dir = "tmp"
 [build]
   args_bin = []
   bin = "./tmp/manja-dev"
-  cmd = "npm run dev:build"
+  cmd = "go run ./cmd/webassets generate && go run github.com/a-h/templ/cmd/templ generate && go build -o ./tmp/manja-dev ./cmd/manja"
   delay = 300
   entrypoint = ["./tmp/manja-dev", "-addr", "127.0.0.1:8080", "-data-dir", ".manja/data"]
-  exclude_dir = ["node_modules", "tmp", "vendor", ".git", ".manja", "api/dist"]
+  exclude_dir = ["tmp", "vendor", ".cache", ".git", ".manja", "api/dist", "internal/webassets/vendor"]
   exclude_file = []
   exclude_regex = ["_test\\.go", "_templ\\.go", "internal/web/static/schema-example\\.js", "internal/web/static/request-composer\\.js", "internal/web/static/.*\\.css"]
   exclude_unchanged = false
   follow_symlink = false
   include_dir = []
-  include_ext = ["go", "templ", "css", "js", "mjs", "json", "yaml", "yml"]
-  include_file = ["package.json", "package-lock.json"]
+  include_ext = ["go", "templ", "css", "js", "json", "yaml", "yml"]
+  include_file = ["muamba.yaml", "internal/webassets/vendor.overlay.yaml"]
   kill_delay = "500ms"
   log = "build-errors.log"
   poll = false

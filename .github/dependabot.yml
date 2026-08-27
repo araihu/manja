@@ -1,0 +1,57 @@
+version: 2
+updates:
+  - package-ecosystem: "gomod"
+    directories:
+      - "/"
+      - "/site"
+    schedule:
+      interval: "weekly"
+    groups:
+      go-minor-patch:
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
+        exclude-patterns:
+          - "github.com/araihu/goshtoso"
+          - "github.com/mxschmitt/playwright-go"
+      go-goshtoso:
+        patterns:
+          - "github.com/araihu/goshtoso"
+        update-types: ["major", "minor", "patch"]
+      go-playwright:
+        patterns:
+          - "github.com/mxschmitt/playwright-go"
+        update-types: ["major", "minor", "patch"]
+      go-major:
+        patterns: ["*"]
+        exclude-patterns:
+          - "github.com/araihu/goshtoso"
+          - "github.com/mxschmitt/playwright-go"
+        update-types: ["major"]
+
+  - package-ecosystem: "docker"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    groups:
+      container-minor-patch:
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
+        exclude-patterns:
+          - "golang"
+      container-golang:
+        patterns:
+          - "golang"
+        update-types: ["major", "minor", "patch"]
+      container-major:
+        patterns: ["*"]
+        exclude-patterns:
+          - "golang"
+        update-types: ["major"]
+
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    groups:
+      github-actions:
+        patterns: ["*"]

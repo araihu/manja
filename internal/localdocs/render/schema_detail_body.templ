@@ -1,0 +1,16 @@
+package render
+
+templ schemaDetailBody(data schemaDetailBodyData) {
+	if data.Example != nil {
+		<div class="manja-schema-detail-layout">
+			<div class="manja-schema-tree-panel">
+				@SchemaNode(*data.Node)
+			</div>
+			<aside class="manja-schema-example-panel" aria-label="Root JSON Schema">
+				@SchemaDetailExample(*data.Example)
+			</aside>
+		</div>
+	} else {
+		@schemaDetailBodyNode(*data.Node)
+	}
+}

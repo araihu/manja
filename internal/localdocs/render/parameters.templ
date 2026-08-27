@@ -1,0 +1,88 @@
+package render
+
+import (
+	"strings"
+	"unicode/utf8"
+)
+
+templ operationParameterGroup(group operationParameterGroupData) {
+	<section class="grid min-w-0 gap-4" aria-labelledby={ group.ID + "-heading" }>
+		<h5 id={ group.ID + "-heading" } class="font-title text-lg font-bold text-on-surface-strong dark:text-on-surface-dark-strong">{ group.Title }</h5>
+		<dl id={ group.ID } data-manja-parameter-list class="divide-y divide-outline border-y border-outline dark:divide-outline-dark dark:border-outline-dark">
+			for _, parameter := range group.Parameters {
+				@operationParameterRow(parameter)
+			}
+		</dl>
+	</section>
+}
+
+templ operationParameterRow(parameter operationParameterData) {
+	<div id={ parameter.ID } data-manja-parameter-row class="min-w-0 py-4 first:pt-3 last:pb-3">
+		<dt class="flex min-w-0 items-start justify-between gap-4">
+			<div class="manja-schema-identity">
+				<span class="manja-schema-name">{ parameter.Name }</span>
+				if parameter.TypeLabel != "" {
+					<span class="manja-schema-type">{ parameter.TypeLabel }</span>
+				}
+			</div>
+			if parameter.Required {
+				<span class="manja-schema-property-state" data-required="true">required</span>
+			} else {
+				<span class="manja-schema-property-state" data-required="false">optional</span>
+			}
+		</dt>
+		if strings.TrimSpace(parameter.Description) != "" || strings.TrimSpace(parameter.Example) != "" {
+			<dd class="mt-2 min-w-0 text-sm leading-6 text-on-surface-muted dark:text-on-surface-dark-muted">
+				@operationParameterDescription(parameter)
+			</dd>
+		}
+	</div>
+}
+
+templ operationParameterDescription(parameter operationParameterData) {
+	if operationParameterDescriptionNeedsCollapse(parameter.Description, parameter.Example) {
+		<div x-data="{ expanded: false }" class="manja-parameter-description">
+			<div id={ parameter.ID + "-description" } class="manja-parameter-description-content" data-expanded="true" x-bind:data-expanded="expanded.toString()">
+				@operationParameterDescriptionBody(parameter.Description, parameter.Example)
+			</div>
+			<button
+				type="button"
+				x-cloak
+				class="manja-description-toggle mt-1 text-xs font-medium text-primary underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary dark:text-primary-dark dark:focus-visible:outline-primary-dark"
+				x-bind:aria-expanded="expanded.toString()"
+				aria-controls={ parameter.ID + "-description" }
+				x-on:click="expanded = !expanded"
+				x-text="expanded ? 'Show less' : 'Show more'"
+			>
+				Show more
+			</button>
+		</div>
+	} else {
+		<div class="manja-parameter-description">
+			@operationParameterDescriptionBody(parameter.Description, parameter.Example)
+		</div>
+	}
+}
+
+templ operationParameterDescriptionBody(description string, example string) {
+	if strings.TrimSpace(description) != "" {
+		<p>{ description }</p>
+	}
+	if strings.TrimSpace(example) != "" {
+		<p class="mt-2 text-xs text-on-surface-muted dark:text-on-surface-dark-muted">
+			Example:
+			<code class="ml-1 rounded-radius bg-surface-alt px-1.5 py-0.5 font-mono text-xs text-on-surface-strong dark:bg-surface-dark-alt dark:text-on-surface-dark-strong">{ example }</code>
+		</p>
+	}
+}
+
+func operationParameterDescriptionNeedsCollapse(description string, example string) bool {
+	text := strings.TrimSpace(description)
+	if example != "" {
+		if text != "" {
+			text += " "
+		}
+		text += "Example: " + example
+	}
+	return utf8.RuneCountInString(text) > 220 || strings.Count(text, "\n") >= 4
+}

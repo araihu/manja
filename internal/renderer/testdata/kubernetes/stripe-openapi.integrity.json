@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 2,
+  "catalogId": "stripe",
+  "cloneRepository": "https://github.com/stripe/openapi.git",
+  "provenanceUrl": "https://github.com/stripe/openapi/tree/d70de345383dd818a0ce831f4e20d375c5a90cec",
+  "objectFormat": "sha1",
+  "sourceRoot": ".",
+  "commitObjectId": "d70de345383dd818a0ce831f4e20d375c5a90cec",
+  "treeObjectId": "a7e155600c10dcfab91a94070b0e954419255862",
+  "artifacts": [
+    {
+      "path": "openapi/spec3.json",
+      "mode": "100644",
+      "size": 3840021,
+      "gitObjectId": "058edc82a247c71f05b94dfa6b9cef0a794a1358",
+      "sha256": "8b608cba7129d121f12358a7092574e176833fe8cb4c9fcead178c71c545f870"
+    }
+  ]
+}

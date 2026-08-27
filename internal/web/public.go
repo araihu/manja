@@ -4,11 +4,14 @@ import (
 	"context"
 	"encoding/json"
 	"encoding/xml"
+	"fmt"
+	"html"
 	"log/slog"
 	"mime"
 	"net"
 	"net/http"
 	"net/url"
+	"regexp"
 	"strings"
 
 	"github.com/araihu/goshtoso/assets"
@@ -28,8 +31,10 @@ const (
 type PublicOptions struct {
 	EndpointSidebarLabel EndpointSidebarLabelMode
 	MarkdownRenderer     port.MarkdownRenderer
+	PublicOrigin         string
 	StaticDir            string
 	Branding             core.DocsBranding
+	publicOriginInvalid  bool
 }
 
 const openAPIJSONDownloadPath = "/openapi.json"
@@ -48,6 +53,12 @@ type searchJSONItem struct {
 }
 
 func (opts PublicOptions) withDefaults() PublicOptions {
+	if origin, err := NormalizePublicOrigin(opts.PublicOrigin); err == nil {
+		opts.PublicOrigin = origin
+	} else {
+		opts.PublicOrigin = ""
+		opts.publicOriginInvalid = true
+	}
 	if opts.StaticDir == "" {
 		opts.StaticDir = "internal/web/static"
 	}
@@ -60,6 +71,68 @@ func (opts PublicOptions) withDefaults() PublicOptions {
 	}
 }
 
+// NormalizePublicOrigin validates and canonicalizes operator-trusted public authority.
+func NormalizePublicOrigin(raw string) (string, error) {
+	if raw == "" {
+		return "", nil
+	}
+	if strings.TrimSpace(raw) != raw {
+		return "", fmt.Errorf("public origin must not contain surrounding whitespace")
+	}
+	parsed, err := url.Parse(raw)
+	if err != nil {
+		return "", fmt.Errorf("parse public origin: %w", err)
+	}
+	if parsed.Opaque != "" || parsed.User != nil || parsed.Host == "" || parsed.Hostname() == "" {
+		return "", fmt.Errorf("public origin must contain only an absolute scheme and host")
+	}
+	if parsed.Path != "" && parsed.Path != "/" {
+		return "", fmt.Errorf("public origin must not contain a path")
+	}
+	if parsed.RawQuery != "" || parsed.ForceQuery || parsed.Fragment != "" {
+		return "", fmt.Errorf("public origin must not contain a query or fragment")
+	}
+	scheme := strings.ToLower(parsed.Scheme)
+	switch scheme {
+	case "https":
+	case "http":
+		if !loopbackHostname(parsed.Hostname()) {
+			return "", fmt.Errorf("public origin must use HTTPS unless it is loopback development")
+		}
+	default:
+		return "", fmt.Errorf("public origin scheme must be HTTPS")
+	}
+	return scheme + "://" + parsed.Host, nil
+}
+
+func loopbackHostname(hostname string) bool {
+	if strings.EqualFold(hostname, "localhost") {
+		return true
+	}
+	ip := net.ParseIP(hostname)
+	return ip != nil && ip.IsLoopback()
+}
+
+func publicRequestOrigin(request *http.Request, configured string, allowLoopback bool) (string, bool) {
+	if configured != "" {
+		return configured, true
+	}
+	if !allowLoopback {
+		return "", false
+	}
+	if request == nil || strings.TrimSpace(request.Host) != request.Host || request.Host == "" {
+		return "", false
+	}
+	parsed, err := url.Parse("http://" + request.Host)
+	if err != nil || parsed.Opaque != "" || parsed.User != nil || parsed.Host == "" || parsed.Path != "" || parsed.RawQuery != "" || parsed.Fragment != "" {
+		return "", false
+	}
+	if !loopbackHostname(parsed.Hostname()) {
+		return "", false
+	}
+	return "http://" + parsed.Host, true
+}
+
 type sitemapURLSet struct {
 	XMLName xml.Name     `xml:"urlset"`
 	Xmlns   string       `xml:"xmlns,attr"`
@@ -70,33 +143,11 @@ type sitemapURL struct {
 	Loc string `xml:"loc"`
 }
 
-func sitemapScheme(r *http.Request) string {
-	if r.TLS != nil {
-		return "https"
-	}
-	host := r.Host
-	if host == "" {
-		host = r.URL.Host
-	}
-	hostOnly, _, err := net.SplitHostPort(host)
-	if err != nil {
-		hostOnly = host
-	}
-	if hostOnly == "localhost" || hostOnly == "127.0.0.1" {
-		return "http"
-	}
-	return "https"
-}
-
-func sitemapLoc(r *http.Request, path string) (string, bool) {
+func sitemapLoc(origin, path string) (string, bool) {
 	if path == "" || strings.HasPrefix(path, "#") || !strings.HasPrefix(path, "/") {
 		return "", false
 	}
-	host := r.Host
-	if host == "" {
-		host = r.URL.Host
-	}
-	return sitemapScheme(r) + "://" + host + path, true
+	return origin + path, true
 }
 
 func selectedDocsSearchHref(href string) string {
@@ -173,12 +224,31 @@ func markdownPlainText(ctx context.Context, renderer port.MarkdownRenderer, valu
 	return result.Plain, nil
 }
 
+var renderedHTMLTag = regexp.MustCompile(`<[^>]*>`)
+
+func metadataMarkdownPlainText(ctx context.Context, renderer port.MarkdownRenderer, value string) (string, error) {
+	if renderer == nil || strings.TrimSpace(value) == "" {
+		return strings.Join(strings.Fields(value), " "), nil
+	}
+	result, err := renderer.Render(ctx, value)
+	if err != nil {
+		return "", err
+	}
+	plain := result.Plain
+	if strings.TrimSpace(result.HTML) != "" {
+		plain = html.UnescapeString(renderedHTMLTag.ReplaceAllString(result.HTML, " "))
+	}
+	return strings.Join(strings.Fields(plain), " "), nil
+}
+
 func NewPublicServer(idx core.SpecIndex) http.Handler {
 	return NewPublicServerWithOptions(idx, PublicOptions{})
 }
 
 func NewPublicServerWithOptions(idx core.SpecIndex, opts PublicOptions) http.Handler {
 	opts = opts.withDefaults()
+	manageDefaultLogo := strings.TrimSpace(idx.Branding.Logo.Src) == "" && strings.TrimSpace(opts.Branding.Logo.Src) == ""
+	manageDefaultFavicon := strings.TrimSpace(idx.Branding.Favicon) == "" && strings.TrimSpace(opts.Branding.Favicon) == ""
 	idx.Branding = docsBranding(idx.Branding, opts.Branding)
 	mux := http.NewServeMux()
 	mux.Handle("/assets/", assets.Handler())
@@ -232,14 +302,31 @@ func NewPublicServerWithOptions(idx core.SpecIndex, opts PublicOptions) http.Han
 		}
 		_, _ = w.Write(idx.SpecDownload.JSON)
 	})
+	mux.HandleFunc("/llms.txt", func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/llms.txt" {
+			http.NotFound(w, r)
+			return
+		}
+		if r.Method != http.MethodGet && r.Method != http.MethodHead {
+			w.Header().Set("Allow", strings.Join([]string{http.MethodGet, http.MethodHead}, ", "))
+			http.Error(w, http.StatusText(http.StatusMethodNotAllowed), http.StatusMethodNotAllowed)
+			return
+		}
+		writePageMarkdown(w, r, publicLLMsText(idx))
+	})
 	mux.HandleFunc("/sitemap.xml", func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/sitemap.xml" {
 			http.NotFound(w, r)
 			return
 		}
+		origin, ok := publicRequestOrigin(r, opts.PublicOrigin, !opts.publicOriginInvalid)
+		if !ok {
+			http.Error(w, http.StatusText(http.StatusServiceUnavailable), http.StatusServiceUnavailable)
+			return
+		}
 		urls := make([]sitemapURL, 0, len(idx.PublicRoutes))
 		for _, route := range idx.PublicRoutes {
-			loc, ok := sitemapLoc(r, route.Path)
+			loc, ok := sitemapLoc(origin, route.Path)
 			if !ok {
 				continue
 			}
@@ -257,17 +344,44 @@ func NewPublicServerWithOptions(idx core.SpecIndex, opts PublicOptions) http.Han
 			http.NotFound(w, r)
 			return
 		}
+		selectedID := r.URL.Query().Get("selected")
+		if r.URL.Query().Get("format") == "markdown" {
+			if r.Method != http.MethodGet && r.Method != http.MethodHead {
+				w.Header().Set("Allow", strings.Join([]string{http.MethodGet, http.MethodHead}, ", "))
+				http.Error(w, http.StatusText(http.StatusMethodNotAllowed), http.StatusMethodNotAllowed)
+				return
+			}
+			document, ok := publicPageMarkdown(idx, selectedID)
+			if !ok {
+				http.NotFound(w, r)
+				return
+			}
+			writePageMarkdown(w, r, document)
+			return
+		}
+		selected := templates.ResolvePublicDocsSelection(idx, selectedID)
+		metadata := publicDocsRequestMetadata(r, opts.PublicOrigin, !opts.publicOriginInvalid, selected)
+		description, err := metadataMarkdownPlainText(r.Context(), opts.MarkdownRenderer, templates.PublicDocsMetadataDescription(idx, selected))
+		if err != nil {
+			slog.ErrorContext(r.Context(), "render public docs metadata markdown", "error", err)
+			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+			return
+		}
+		metadata.Description = strings.TrimSpace(description)
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		selected := r.URL.Query().Get("selected")
 		renderOpts := templates.PublicDocsOptions{
 			EndpointSidebarLabel: opts.EndpointSidebarLabel,
 			MarkdownRenderer:     opts.MarkdownRenderer,
+			ManageDefaultLogo:    manageDefaultLogo,
+			ManageDefaultFavicon: manageDefaultFavicon,
+			Metadata:             metadata,
+			Selection:            &selected,
 		}
-		component := templates.PublicDocsWithOptions(idx, selected, renderOpts)
+		component := templates.PublicDocsWithOptions(idx, selectedID, renderOpts)
 		if r.Header.Get("HX-Request") == "true" &&
 			r.Header.Get("HX-Boosted") != "true" &&
 			r.Header.Get("HX-History-Restore-Request") != "true" {
-			component = templates.PublicDocsFragmentWithOptions(idx, selected, renderOpts)
+			component = templates.PublicDocsFragmentWithOptions(idx, selectedID, renderOpts)
 		}
 		if err := component.Render(r.Context(), w); err != nil {
 			slog.ErrorContext(r.Context(), "render public docs", "error", err)
@@ -275,6 +389,27 @@ func NewPublicServerWithOptions(idx core.SpecIndex, opts PublicOptions) http.Han
 		}
 	})
 	return mux
+}
+
+func publicDocsRequestMetadata(request *http.Request, configuredOrigin string, allowLoopback bool, selected templates.PublicDocsSelection) templates.PageMetadata {
+	origin, ok := publicRequestOrigin(request, configuredOrigin, allowLoopback)
+	if !ok {
+		return templates.PageMetadata{}
+	}
+	path := publicDocsExternalPath(request)
+	canonical := origin + path
+	if selectedID := selected.CanonicalSelectedID(); selectedID != "" {
+		query := url.Values{}
+		query.Set("selected", selectedID)
+		canonical += "?" + query.Encode()
+	}
+	return templates.PageMetadata{
+		CanonicalURL:        canonical,
+		SocialImageURL:      origin + "/manja-assets/manja-social.png",
+		SocialImageMIMEType: "image/png",
+		SocialImageAlt:      "Manja OpenAPI documentation preview",
+		Robots:              "index,follow",
+	}
 }
 
 func docsBranding(specBranding core.DocsBranding, optionBranding core.DocsBranding) core.DocsBranding {

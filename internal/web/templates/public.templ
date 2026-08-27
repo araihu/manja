@@ -4,24 +4,34 @@ import (
 	"context"
 	"encoding/json"
 	"io"
+	"net/http"
 	"net/url"
 	"strconv"
 	"strings"
+	"unicode/utf8"
 
 	templpkg "github.com/a-h/templ"
 	"github.com/araihu/goshtoso/components/accordion"
+	"github.com/araihu/goshtoso/components/appshell"
 	"github.com/araihu/goshtoso/components/badge"
 	"github.com/araihu/goshtoso/components/breadcrumbs"
 	"github.com/araihu/goshtoso/components/codeblock"
+	"github.com/araihu/goshtoso/components/dropdown"
+	"github.com/araihu/goshtoso/components/emptystate"
+	"github.com/araihu/goshtoso/components/icon"
+	"github.com/araihu/goshtoso/components/icon/heroicons"
+	"github.com/araihu/goshtoso/components/pageheader"
+	"github.com/araihu/goshtoso/components/panel"
 	"github.com/araihu/goshtoso/components/schemaform"
 	searchfield "github.com/araihu/goshtoso/components/search"
 	selectfield "github.com/araihu/goshtoso/components/select"
 	"github.com/araihu/goshtoso/components/sidebar"
-	"github.com/araihu/goshtoso/components/table"
-	"github.com/araihu/goshtoso/components/tabs"
+	"github.com/araihu/goshtoso/components/skeleton"
+	"github.com/araihu/goshtoso/components/tooltip"
 
 	"github.com/araihu/manja/application/port"
 	core "github.com/araihu/manja/domain"
+	localrender "github.com/araihu/manja/internal/localdocs/render"
 )
 
 type selectedDocsItem struct {
@@ -29,6 +39,34 @@ type selectedDocsItem struct {
 	Kind      string
 	Operation core.Operation
 	Schema    core.Schema
+}
+
+// PublicDocsSelection binds one normalized route selection across metadata and rendering.
+type PublicDocsSelection struct {
+	item selectedDocsItem
+}
+
+// CanonicalSelectedID returns the only selection value admitted to canonical URLs.
+func (selected PublicDocsSelection) CanonicalSelectedID() string {
+	switch selected.item.Kind {
+	case "operation", "schema":
+		return selected.item.Anchor
+	default:
+		return ""
+	}
+}
+
+type OperationNavigationItem struct {
+	Title  string
+	Method string
+	Href   string
+}
+
+type OperationNavigationData struct {
+	Group    string
+	Previous *OperationNavigationItem
+	Next     *OperationNavigationItem
+	Catalog  bool
 }
 
 type EndpointSidebarLabelMode string
@@ -39,8 +77,42 @@ const (
 )
 
 type PublicDocsOptions struct {
-	EndpointSidebarLabel EndpointSidebarLabelMode
-	MarkdownRenderer     port.MarkdownRenderer
+	EndpointSidebarLabel      EndpointSidebarLabelMode
+	MarkdownRenderer          port.MarkdownRenderer
+	ManageDefaultLogo         bool
+	ManageDefaultFavicon      bool
+	Metadata                  PageMetadata
+	OperationIdentityInHeader bool
+	OperationDetailSections   *localrender.OperationDetailSectionsFragment
+	OperationRequestSection   *localrender.OperationRequestSectionFragment
+	OperationAuthorization    *localrender.OperationAuthorizationFragment
+	OperationParameters       *localrender.OperationParametersFragment
+	OperationRequestBody      *localrender.OperationRequestBodyFragment
+	OperationRequestBodyMedia *localrender.OperationRequestBodyMediaFragment
+	OperationResponseMedia    *localrender.OperationResponseMediaFragment
+	OperationResponseDetails  *localrender.OperationResponseDetailsFragment
+	OperationExamples         *localrender.OperationExamplesFragment
+	OperationSchemaTrees      *localrender.OperationSchemaTreesFragment
+	OperationResponses        *localrender.OperationResponsesFragment
+	OperationNavigation       *localrender.OperationNavigationFragment
+	Selection                 *PublicDocsSelection
+	SchemaLinks               map[string]string
+	SchemaLinkTarget          string
+	SchemaLinkSelect          string
+	SchemaLinkSwap            string
+}
+
+type CapabilityFooterLink struct {
+	Label    string
+	Href     string
+	Title    string
+	Download bool
+}
+
+type CapabilityFooterData struct {
+	LLMsHref string
+	Clone    *CapabilityFooterLink
+	Exports  []CapabilityFooterLink
 }
 
 const (
@@ -48,6 +120,12 @@ const (
 )
 
 func (opts PublicDocsOptions) withDefaults() PublicDocsOptions {
+	if strings.TrimSpace(opts.SchemaLinkTarget) == "" {
+		opts.SchemaLinkTarget = "#main-content"
+	}
+	if strings.TrimSpace(opts.SchemaLinkSwap) == "" {
+		opts.SchemaLinkSwap = "innerHTML swap:120ms settle:240ms"
+	}
 	switch opts.EndpointSidebarLabel {
 	case EndpointSidebarLabelPath:
 		return opts
@@ -55,6 +133,13 @@ func (opts PublicDocsOptions) withDefaults() PublicDocsOptions {
 		opts.EndpointSidebarLabel = EndpointSidebarLabelAuto
 		return opts
 	}
+}
+
+func (opts PublicDocsOptions) selectedFor(idx core.SpecIndex, selectedID string) selectedDocsItem {
+	if opts.Selection != nil {
+		return opts.Selection.item
+	}
+	return selectedDocsItemFor(idx, selectedID)
 }
 
 type ExampleOptions struct {
@@ -94,62 +179,93 @@ templ PublicDocs(idx core.SpecIndex, selectedID string) {
 
 templ PublicDocsWithOptions(idx core.SpecIndex, selectedID string, opts PublicDocsOptions) {
 	{{ opts = opts.withDefaults() }}
-	{{ selected := selectedDocsItemFor(idx, selectedID) }}
-	@LayoutWithBranding(idx.Title, idx.Branding) {
-		<div hx-history="false" class="fixed inset-0 flex flex-col overflow-clip bg-surface text-on-surface dark:bg-surface-dark dark:text-on-surface-dark">
-			<header data-boot-anim="header" class="manja-docs-header relative z-50 shrink-0 border-b border-outline bg-surface dark:border-outline-dark dark:bg-surface-dark">
-				<div class="flex h-16 items-center justify-between gap-3 px-4 lg:px-8">
-					<div class="flex min-w-0 items-center gap-2">
-						@sidebar.Overlay(sidebar.OverlayConfig{
-							ID:                    "public-docs-sidebar",
-							TriggerLabel:          "Open API sections",
-							RootClass:             "lg:hidden",
-							PanelPositionClass:    "fixed top-16 bottom-0 left-0",
-							PanelWidthClass:       "w-72 max-w-[85vw]",
-							BackdropPositionClass: "fixed inset-0",
-							Sidebar:               publicDocsSidebarConfig(idx, selected, opts, docsSearchOpenSlot(), "mobile"),
-						})
-						<a href={ templpkg.URL(docsBrandingHomeURL(idx.Branding)) } class="flex min-w-0 items-center gap-2 text-2xl font-bold font-title text-on-surface-strong dark:text-on-surface-dark-strong">
-							if idx.Branding.Logo.Src != "" {
-								<img src={ templpkg.URL(idx.Branding.Logo.Src) } alt={ idx.Branding.Logo.Alt } width="32" height="32" class="size-8 shrink-0 rounded-radius"/>
-							}
-							<span>{ docsBrandingDisplayName(idx.Branding) }</span>
-						</a>
-					</div>
-					<div class="flex min-w-0 items-center gap-3 text-sm text-on-surface-muted dark:text-on-surface-dark-muted">
-						<div class="manja-theme-select shrink-0">
-							@selectfield.Select(selectfield.Config{
-								ID:             "manja-theme",
-								Name:           "theme",
-								Alpine:         &selectfield.AlpineConfig{Model: "theme"},
-								TriggerLeading: themeSelectIcon(),
-								Options:        themeOptions(),
-							})
-						</div>
-						@themeToggle()
-						<span class="hidden md:inline">OpenAPI docs</span>
-						if idx.Version != "" {
-							<span class="hidden rounded-radius border border-outline px-2 py-1 font-mono text-xs text-on-surface-strong dark:border-outline-dark dark:text-on-surface-dark-strong sm:inline">v{ idx.Version }</span>
-						}
-					</div>
+	{{ opts.SchemaLinks = schemaLinksForIndex(idx, opts.SchemaLinks) }}
+	{{ selected := opts.selectedFor(idx, selectedID) }}
+	@LayoutWithBrandingMetadata(publicDocsPageMetadata(idx, selected, opts.Metadata), idx.Branding, true, opts.ManageDefaultFavicon) {
+		<div hx-history="false" class="fixed inset-0 overflow-clip bg-surface text-on-surface dark:bg-surface-dark dark:text-on-surface-dark">
+			@appshell.AppShell(appshell.Config{
+				Header:       publicApplicationHeader(idx, selected, opts),
+				Sidebar:      publicDocsSidebar(idx, selected, opts),
+				MainID:       "main-content",
+				RootClass:    "h-full",
+				RootAttrs:    templpkg.Attributes{"data-manja-app-shell": "true"},
+				HeaderClass:  "manja-docs-header relative z-50 shrink-0 border-b border-outline bg-surface dark:border-outline-dark dark:bg-surface-dark",
+				HeaderAttrs:  templpkg.Attributes{"data-boot-anim": "header"},
+				SidebarClass: "hidden h-full w-72 shrink-0 lg:block",
+				SidebarAttrs: templpkg.Attributes{"aria-label": "API sections", "data-boot-anim": "sidebar"},
+				MainClass:    "min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden p-6 lg:px-10 lg:py-8",
+				MainAttrs: templpkg.Attributes{
+					"data-boot-anim":            "main",
+					"data-manja-primary-scroll": "true",
+					"data-selected-doc":         selected.Anchor,
+				},
+			}) {
+				<div class="mx-auto max-w-[100rem]">
+					@PublicDocsFragmentContent(idx, selectedID, opts)
 				</div>
-			</header>
-			<div class="flex min-h-0 flex-1 overflow-clip">
-				<aside data-boot-anim="sidebar" class="hidden h-full w-72 shrink-0 lg:block" aria-label="API sections">
-					<div id="sidebar-nav-content" class="h-full">
-						@publicDocsSidebar(idx, selected, opts)
-					</div>
-				</aside>
-				<main data-boot-anim="main" class="min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden p-6 lg:px-10 lg:py-8">
-					<div id="main-content" class="mx-auto max-w-[100rem]">
-						@PublicDocsFragmentContent(idx, selectedID, opts)
-					</div>
-				</main>
-				@searchfield.SearchModal(docsSearchConfig(idx.Search))
-				@manjaFuzzySearchScript()
-			</div>
+			}
+			@searchfield.SearchModal(docsSearchConfig(idx.Search))
+			@manjaFuzzySearchScript()
+			@copyPageScript()
 		</div>
 	}
+}
+
+templ publicApplicationHeader(idx core.SpecIndex, selected selectedDocsItem, opts PublicDocsOptions) {
+	<div class="flex h-16 items-center justify-between gap-3 px-4 lg:px-8">
+		<div class="flex min-w-0 items-center gap-2">
+			@sidebar.Overlay(sidebar.OverlayConfig{
+				ID:                    "public-docs-sidebar",
+				TriggerLabel:          "Open API sections",
+				TriggerClass:          "min-h-11 min-w-11",
+				RootClass:             "lg:hidden",
+				PanelPositionClass:    "fixed top-16 bottom-0 left-0",
+				PanelWidthClass:       "w-72 max-w-[85vw]",
+				BackdropPositionClass: "fixed top-16 bottom-0 left-0 right-0",
+				Sidebar:               publicDocsSidebarConfig(idx, selected, opts, docsSearchOpenSlot(), "mobile"),
+			})
+			<a href={ templpkg.URL(docsBrandingHomeURL(idx.Branding)) } class="flex min-w-0 items-center gap-2 text-2xl font-bold font-title text-on-surface-strong dark:text-on-surface-dark-strong">
+				if idx.Branding.Logo.Src != "" {
+					if opts.ManageDefaultLogo {
+						<img src={ templpkg.URL(idx.Branding.Logo.Src) } alt={ idx.Branding.Logo.Alt } width="32" height="32" crossorigin="anonymous" data-asset-brand="logo" class="size-8 shrink-0 rounded-radius"/>
+					} else {
+						<img src={ templpkg.URL(idx.Branding.Logo.Src) } alt={ idx.Branding.Logo.Alt } width="32" height="32" class="size-8 shrink-0 rounded-radius"/>
+					}
+				}
+				<span>{ docsBrandingDisplayName(idx.Branding) }</span>
+			</a>
+		</div>
+		<div class="flex min-w-0 items-center gap-3 text-sm text-on-surface-muted dark:text-on-surface-dark-muted">
+			<div class="manja-theme-select shrink-0">
+				@selectfield.Select(selectfield.Config{
+					ID:             "manja-theme",
+					Name:           "theme",
+					Alpine:         &selectfield.AlpineConfig{Model: "theme"},
+					TriggerLeading: themeSelectIcon(),
+					TriggerAttrs:   templpkg.Attributes{"aria-label": "Theme"},
+					Options:        themeOptions(),
+				})
+			</div>
+			@themeToggle()
+			<button
+				hidden
+				type="button"
+				aria-label="Use seasonal appearance"
+				aria-pressed="false"
+				data-campaign-toggle
+				data-use-campaign-label="Use seasonal appearance"
+				data-use-baseline-label="Use standard appearance"
+				class="inline-flex min-h-11 min-w-11 items-center justify-center rounded-radius border border-outline text-on-surface-strong dark:border-outline-dark dark:text-on-surface-dark-strong"
+			>
+				<span class="manja-campaign-toggle-icon" data-campaign-toggle-icon aria-hidden="true"></span>
+				<span class="sr-only" data-campaign-toggle-label>Use seasonal appearance</span>
+			</button>
+			<span class="hidden md:inline">OpenAPI docs</span>
+			if idx.Version != "" {
+				<span class="hidden rounded-radius border border-outline px-2 py-1 font-mono text-xs text-on-surface-strong dark:border-outline-dark dark:text-on-surface-dark-strong sm:inline">v{ idx.Version }</span>
+			}
+		</div>
+	</div>
 }
 
 templ manjaFuzzySearchScript() {
@@ -244,27 +360,177 @@ templ manjaFuzzySearchScript() {
 
 templ PublicDocsFragmentWithOptions(idx core.SpecIndex, selectedID string, opts PublicDocsOptions) {
 	{{ opts = opts.withDefaults() }}
+	{{ opts.SchemaLinks = schemaLinksForIndex(idx, opts.SchemaLinks) }}
 	@PublicDocsFragmentContent(idx, selectedID, opts)
 }
 
 templ PublicDocsFragmentContent(idx core.SpecIndex, selectedID string, opts PublicDocsOptions) {
-	{{ selected := selectedDocsItemFor(idx, selectedID) }}
-	<h1 class="sr-only">{ idx.Title } OpenAPI docs</h1>
-	@selectedDocsBreadcrumbs(idx, selected)
-	@selectedDocsContent(idx, selected, opts)
-	@publicDocsFooter()
+	{{ selected := opts.selectedFor(idx, selectedID) }}
+	@publicDocsLoading(selected)
+	<div data-public-docs-content="true" data-selected-doc={ selected.Anchor } data-document-title={ publicDocsDocumentTitle(idx, selected) }>
+		@publicDocsPageHeader(idx, selected)
+		@selectedDocsContent(idx, selected, opts)
+	</div>
+	@capabilityFooter(publicDocsCapabilityFooter(idx, selected))
+}
+
+templ publicDocsPageHeader(idx core.SpecIndex, selected selectedDocsItem) {
+	@pageheader.PageHeader(pageheader.Config{
+		Title:       publicDocsPageTitle(idx, selected),
+		Description: publicDocsPageDescription(idx, selected),
+		Breadcrumbs: selectedDocsBreadcrumbs(idx, selected),
+		Actions:     publicDocsPageActions(idx, selected),
+		RootClass:   "mb-8",
+		RootAttrs: templpkg.Attributes{
+			"data-public-page-header": "true",
+		},
+		TitleClass: "manja-doc-title",
+		TitleAttrs: templpkg.Attributes{
+			"id":                       selected.Anchor + "-heading",
+			"tabindex":                 "-1",
+			"data-public-doc-identity": selected.Anchor,
+			"data-manja-settled-focus": "true",
+			"data-manja-scroll-sentinel": "true",
+		},
+	})
+}
+
+templ publicDocsPageActions(idx core.SpecIndex, selected selectedDocsItem) {
+	<div class="flex flex-wrap items-center gap-2">
+		if selected.Kind == "operation" || selected.Kind == "schema" {
+			@copyPageAction(selected.Anchor, publicPageMarkdownHref(selected))
+		}
+		if selected.Kind == "overview" && idx.Version != "" {
+			@badge.Badge(badge.Config{Label: "v" + idx.Version, Appearance: badge.AppearanceSoft, Size: badge.SizeSM})
+		}
+		if selected.Kind == "overview" && overviewHasSpecDownload(idx) {
+			<a href="/openapi.json" download={ overviewSpecFilename(idx.SpecDownload) } aria-label="Download OpenAPI JSON spec" class="inline-flex min-h-11 shrink-0 items-center justify-center gap-2 rounded-radius border border-outline bg-surface-alt px-3 text-sm font-semibold text-on-surface-strong transition hover:bg-surface focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary dark:border-outline-dark dark:bg-surface-dark-alt dark:text-on-surface-dark-strong dark:hover:bg-surface-dark dark:focus-visible:outline-primary-dark">
+				@downloadIcon()
+				<span>Download JSON</span>
+			</a>
+		}
+	</div>
+}
+
+templ copyPageAction(id string, markdownHref string) {
+	<div data-manja-copy-page class="manja-copy-page-actions inline-flex items-stretch" role="group" aria-label="Copy page as Markdown">
+		<button
+			type="button"
+			data-manja-copy-page-trigger
+			data-markdown-source={ markdownHref }
+			class="inline-flex min-h-9 items-center justify-center gap-2 rounded-radius border border-outline bg-surface-alt px-3 text-sm font-semibold text-on-surface-strong transition hover:bg-surface focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary dark:border-outline-dark dark:bg-surface-dark-alt dark:text-on-surface-dark-strong dark:hover:bg-surface-dark dark:focus-visible:outline-primary-dark"
+		>
+			<span class="relative inline-flex size-4 items-center justify-center" aria-hidden="true">
+				<span data-manja-copy-page-icon="copy" class="opacity-100 transition-opacity duration-150">
+					@icon.Icon(icon.Config{SpriteURL: heroicons.SpriteURL, Symbol: heroicons.Icon16SolidClipboard, Size: icon.SizeSM, Decorative: true})
+				</span>
+				<span data-manja-copy-page-icon="check" class="absolute opacity-0 transition-opacity duration-150">
+					@icon.Icon(icon.Config{SpriteURL: heroicons.SpriteURL, Symbol: heroicons.Icon16SolidCheck, Size: icon.SizeSM, Decorative: true})
+				</span>
+			</span>
+			<span data-manja-copy-page-label>Copy Page</span>
+		</button>
+		@dropdown.Dropdown(dropdown.Config{
+			ID:              id + "-copy-page-menu",
+			Label:           "More Copy Page actions",
+			TriggerIcon:     icon.Icon(icon.Config{SpriteURL: heroicons.SpriteURL, Symbol: heroicons.Icon16SolidChevronDown, Size: icon.SizeSM, Decorative: true}),
+			TriggerIconOnly: true,
+			MenuAlign:       dropdown.AlignEnd,
+			Sections: []dropdown.Section{{Items: []dropdown.Item{{
+				Label: "View as Markdown",
+				Href: markdownHref,
+				Icon: icon.Icon(icon.Config{SpriteURL: heroicons.SpriteURL, Symbol: heroicons.Icon16SolidDocumentText, Size: icon.SizeSM, Decorative: true}),
+			}}}},
+		})
+		<span class="sr-only" aria-live="polite" data-manja-copy-page-status></span>
+	</div>
+}
+
+templ copyPageScript() {
+	<script data-manja-copy-page-script="true">
+		(function () {
+			if (window.__manjaCopyPageReady) return;
+			window.__manjaCopyPageReady = true;
+
+			async function copyText(value) {
+				if (navigator.clipboard && window.isSecureContext) {
+					await navigator.clipboard.writeText(value);
+					return;
+				}
+				var input = document.createElement('textarea');
+				input.value = value;
+				input.setAttribute('readonly', '');
+				input.style.position = 'fixed';
+				input.style.opacity = '0';
+				document.body.appendChild(input);
+				input.select();
+				var copied = document.execCommand('copy');
+				input.remove();
+				if (!copied) throw new Error('copy failed');
+			}
+
+			function setState(root, copied, failed) {
+				var trigger = root.querySelector('[data-manja-copy-page-trigger]');
+				var label = root.querySelector('[data-manja-copy-page-label]');
+				var status = root.querySelector('[data-manja-copy-page-status]');
+				var copyIcon = root.querySelector('[data-manja-copy-page-icon="copy"]');
+				var checkIcon = root.querySelector('[data-manja-copy-page-icon="check"]');
+				if (trigger) trigger.disabled = copied && !failed;
+				if (label) label.textContent = failed ? 'Copy failed' : copied ? 'Copied!' : 'Copy Page';
+				if (status) status.textContent = failed ? 'Unable to copy page Markdown' : copied ? 'Page Markdown copied' : '';
+				if (copyIcon) copyIcon.classList.toggle('opacity-0', copied && !failed);
+				if (copyIcon) copyIcon.classList.toggle('opacity-100', !copied || failed);
+				if (checkIcon) checkIcon.classList.toggle('opacity-0', !copied || failed);
+				if (checkIcon) checkIcon.classList.toggle('opacity-100', copied && !failed);
+			}
+
+			document.addEventListener('click', async function (event) {
+				var origin = event.target;
+				if (!(origin instanceof Element)) return;
+				var trigger = origin.closest('[data-manja-copy-page-trigger]');
+				if (!trigger) return;
+				var root = trigger.closest('[data-manja-copy-page]');
+				if (!root || trigger.disabled) return;
+				var source = trigger.dataset.markdownSource || '';
+				try {
+					var response = await fetch(source, { headers: { Accept: 'text/markdown' } });
+					if (!response.ok) throw new Error('markdown request failed');
+					await copyText(await response.text());
+					setState(root, true, false);
+				} catch (_) {
+					setState(root, false, true);
+				}
+				window.setTimeout(function () { setState(root, false, false); }, 1800);
+			});
+		})();
+	</script>
+}
+
+templ publicDocsLoading(selected selectedDocsItem) {
+	<div id="public-docs-loading" data-public-docs-loading="true" data-loading-doc={ selected.Anchor } class="htmx-indicator mb-8" aria-busy="true">
+		@skeleton.Skeleton(skeleton.Config{
+			Shape:     skeleton.ShapeRectangle,
+			Count:     3,
+			Label:     "Loading public documentation",
+			RootClass: "grid gap-4",
+			ItemClass: "min-h-16",
+		})
+	</div>
 }
 
 templ publicDocsSidebar(idx core.SpecIndex, selected selectedDocsItem, opts PublicDocsOptions) {
-	@sidebar.Sidebar(publicDocsSidebarConfig(idx, selected, opts, docsSearchField(idx.Search), ""))
+	<div id="sidebar-nav-content" class="h-full">
+		@sidebar.Sidebar(publicDocsSidebarConfig(idx, selected, opts, docsSearchField(idx.Search), ""))
+	</div>
 }
 
 func publicDocsSidebarConfig(idx core.SpecIndex, selected selectedDocsItem, opts PublicDocsOptions, searchSlot templpkg.Component, idPrefix string) sidebar.Config {
 	return sidebar.Config{
-		Items: overviewSidebarItems(selected.Anchor),
+		Items:         overviewSidebarItems(selected.Anchor),
 		SectionsTitle: "API Reference",
-		Sections: sidebarSections(idx, selected.Anchor, opts.EndpointSidebarLabel, idPrefix),
-		SearchSlot: searchSlot,
+		Sections:      sidebarSections(idx, selected.Anchor, opts.EndpointSidebarLabel, idPrefix),
+		SearchSlot:    searchSlot,
+		DisableSkipLink: true,
 	}
 }
 
@@ -274,33 +540,96 @@ templ selectedDocsContent(idx core.SpecIndex, selected selectedDocsItem, opts Pu
 	} else if selected.Kind == "operation" {
 		<section aria-labelledby="operations-heading" class="grid gap-16">
 			<h2 id="operations-heading" data-toc-heading class="sr-only">Operations</h2>
-			@endpointSection(selected.Operation, idx.Overview.Servers, idx.ExampleSpecJSON, opts)
+			@endpointSection(selected.Operation, idx.Overview.Servers, idx.ExampleSpecJSON, opts, publicOperationNavigation(idx, selected.Operation))
 		</section>
 	} else if selected.Kind == "schema" {
 		<section aria-labelledby="schemas-heading">
 			<h2 id="schemas-heading" data-toc-heading class="sr-only">Schemas</h2>
 			@schemaSection(selected.Schema, idx.ExampleSpecJSON, opts)
 		</section>
+	} else if selected.Kind == "missing" {
+		@publicDocsNotFound(idx, selected.Anchor)
 	} else {
-		<section class="rounded-radius border border-outline bg-surface-alt p-6 dark:border-outline-dark dark:bg-surface-dark-alt">
-			<h2 class="font-title text-2xl font-bold text-on-surface-strong dark:text-on-surface-dark-strong">No public documentation</h2>
-			<p class="mt-2 text-sm text-on-surface-muted dark:text-on-surface-dark-muted">Publish a spec with operations or schemas to populate this view.</p>
-		</section>
+		@publicDocsEmpty(idx)
 	}
 }
 
-templ publicDocsFooter() {
-	<footer aria-label="Powered by Manja" class="mt-16 border-t border-outline pt-6 pb-2 text-sm text-on-surface-muted dark:border-outline-dark dark:text-on-surface-dark-muted">
-		<p class="inline-flex items-center gap-2">
-			<svg xmlns="http://www.w3.org/2000/svg" class="size-4 shrink-0 text-primary dark:text-primary-dark" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-				<path d="M13 2 4 14h7l-1 8 9-12h-7l1-8Z"></path>
-			</svg>
-			<span>
-				Powered by
-				<a href="https://manja.araihu.com" target="_blank" rel="noopener" class="font-semibold text-on-surface-strong underline-offset-4 transition-colors hover:text-primary hover:underline dark:text-on-surface-dark-strong dark:hover:text-primary-dark">Manja</a>
-			</span>
-		</p>
+templ publicDocsEmpty(idx core.SpecIndex) {
+	@emptystate.EmptyState(emptystate.Config{
+		Title:       "No public documentation",
+		Description: "Publish a spec with operations or schemas to populate this view.",
+		Action:      publicDocsOverviewLink("Open contract overview"),
+		RootAttrs: templpkg.Attributes{
+			"data-public-docs-empty": "true",
+		},
+	})
+}
+
+templ publicDocsNotFound(idx core.SpecIndex, requested string) {
+	@emptystate.EmptyState(emptystate.Config{
+		Title:       "Documentation not found",
+		Description: "The requested operation or schema is not part of the current contract.",
+		Action:      publicDocsOverviewLink("Return to contract overview"),
+		RootAttrs: templpkg.Attributes{
+			"data-public-docs-not-found": "true",
+			"data-requested-doc":         requested,
+		},
+	})
+}
+
+templ publicDocsOverviewLink(label string) {
+	<a href={ templpkg.URL(selectedDocsHref("overview")) } class="inline-flex min-h-11 items-center justify-center rounded-radius bg-primary px-4 py-2 text-sm font-semibold text-on-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary dark:bg-primary-dark dark:text-on-primary-dark dark:focus-visible:outline-primary-dark">{ label }</a>
+}
+
+templ capabilityFooter(data CapabilityFooterData) {
+	<footer aria-label="Documentation capabilities" data-manja-capability-footer class="manja-capability-footer mt-16 border-t border-outline pt-5 text-sm text-on-surface-muted dark:border-outline-dark dark:text-on-surface-dark-muted">
+		<div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+			<nav aria-label="Documentation utilities" class="flex flex-wrap items-center gap-x-5 gap-y-3">
+				if data.LLMsHref != "" {
+					<a data-manja-capability="llms" href={ templpkg.URL(data.LLMsHref) } class="font-medium underline-offset-4 transition-colors hover:text-primary hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary dark:hover:text-primary-dark dark:focus-visible:outline-primary-dark">LLMs.txt</a>
+				}
+				if data.Clone != nil && data.Clone.Href != "" {
+					<a data-manja-capability="clone" href={ templpkg.URL(data.Clone.Href) } title={ data.Clone.Title } target="_blank" rel="noreferrer" class="font-medium underline-offset-4 transition-colors hover:text-primary hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary dark:hover:text-primary-dark dark:focus-visible:outline-primary-dark">{ data.Clone.Label }</a>
+				}
+				if len(data.Exports) > 0 {
+					<div data-manja-capability="export" class="flex min-w-0 flex-wrap items-center gap-2">
+						<span class="font-medium text-on-surface-strong dark:text-on-surface-dark-strong">Export</span>
+						for _, export := range data.Exports {
+							<a
+								href={ templpkg.URL(export.Href) }
+								title={ export.Title }
+								if export.Download {
+									download
+								}
+								class="rounded-radius bg-surface-alt px-2 py-1 font-mono text-xs text-on-surface-strong transition-colors hover:bg-primary hover:text-on-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary dark:bg-surface-dark-alt dark:text-on-surface-dark-strong dark:hover:bg-primary-dark dark:hover:text-on-primary-dark dark:focus-visible:outline-primary-dark"
+							>{ export.Label }</a>
+						}
+					</div>
+				}
+			</nav>
+			<a data-manja-capability="built-with" href="https://manja.araihu.com" target="_blank" rel="noopener" class="inline-flex shrink-0 items-center gap-2 self-start font-medium underline-offset-4 transition-colors hover:text-primary hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary sm:self-auto dark:hover:text-primary-dark dark:focus-visible:outline-primary-dark">
+				<svg xmlns="http://www.w3.org/2000/svg" class="size-4 shrink-0 text-primary dark:text-primary-dark" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+					<path d="M13 2 4 14h7l-1 8 9-12h-7l1-8Z"></path>
+				</svg>
+				<span>Built with <strong class="text-on-surface-strong dark:text-on-surface-dark-strong">Manja</strong></span>
+			</a>
+		</div>
 	</footer>
+}
+
+func publicDocsCapabilityFooter(idx core.SpecIndex, selected selectedDocsItem) CapabilityFooterData {
+	data := CapabilityFooterData{LLMsHref: "/llms.txt"}
+	if overviewHasSpecDownload(idx) {
+		data.Exports = append(data.Exports, CapabilityFooterLink{
+			Label: "OpenAPI JSON", Href: "/openapi.json", Title: "Download the OpenAPI document as JSON", Download: true,
+		})
+	}
+	if selected.Kind == "operation" || selected.Kind == "schema" {
+		data.Exports = append(data.Exports, CapabilityFooterLink{
+			Label: "Page Markdown", Href: publicPageMarkdownHref(selected), Title: "View this page as Markdown",
+		})
+	}
+	return data
 }
 
 templ selectedDocsBreadcrumbs(idx core.SpecIndex, selected selectedDocsItem) {
@@ -316,32 +645,11 @@ templ selectedDocsBreadcrumbs(idx core.SpecIndex, selected selectedDocsItem) {
 templ overviewSection(idx core.SpecIndex, opts PublicDocsOptions) {
 	<section id="overview" aria-labelledby="overview-heading" class="scroll-mt-24">
 		<div class="max-w-[88rem]">
-			<div class="flex flex-wrap items-start justify-between gap-6 border-b border-outline pb-8 dark:border-outline-dark">
-				<div class="min-w-0">
-					<h2 id="overview-heading" data-toc-heading class="font-title text-4xl font-bold leading-tight text-on-surface-strong dark:text-on-surface-dark-strong lg:text-5xl">{ idx.Title }</h2>
-					if idx.Version != "" {
-						<div class="mt-4">
-							<span class="rounded-radius border border-outline bg-surface-alt px-2 py-1 font-mono text-xs font-semibold text-on-surface-strong dark:border-outline-dark dark:bg-surface-dark-alt dark:text-on-surface-dark-strong">v{ idx.Version }</span>
-						</div>
-					}
-				</div>
-				if overviewHasSpecDownload(idx) {
-					<a href="/openapi.json" download={ overviewSpecFilename(idx.SpecDownload) } aria-label="Download OpenAPI JSON spec" class="inline-flex h-10 shrink-0 items-center justify-center gap-2 rounded-radius border border-outline bg-surface-alt px-3 text-sm font-semibold text-on-surface-strong transition hover:bg-surface focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary dark:border-outline-dark dark:bg-surface-dark-alt dark:text-on-surface-dark-strong dark:hover:bg-surface-dark dark:focus-visible:outline-primary-dark">
-						@downloadIcon()
-						<span>Download JSON</span>
-					</a>
-				}
-			</div>
-			<dl class="mt-6 grid max-w-3xl gap-3 sm:grid-cols-2">
-				<div class="rounded-radius border border-outline bg-surface-alt px-4 py-3 dark:border-outline-dark dark:bg-surface-dark-alt">
-					<dt class="text-sm font-medium text-on-surface-muted dark:text-on-surface-dark-muted">Endpoints</dt>
-					<dd class="mt-1 font-title text-lg font-bold text-on-surface-strong dark:text-on-surface-dark-strong">{ pluralizedCount(len(idx.Operations), "endpoint") }</dd>
-				</div>
-				<div class="rounded-radius border border-outline bg-surface-alt px-4 py-3 dark:border-outline-dark dark:bg-surface-dark-alt">
-					<dt class="text-sm font-medium text-on-surface-muted dark:text-on-surface-dark-muted">Schemas</dt>
-					<dd class="mt-1 font-title text-lg font-bold text-on-surface-strong dark:text-on-surface-dark-strong">{ pluralizedCount(len(idx.Schemas), "schema") }</dd>
-				</div>
-			</dl>
+			@panel.Panel(panel.Config{
+				Body:      overviewSummary(idx),
+				RootClass: "max-w-3xl",
+				RootAttrs: templpkg.Attributes{"data-public-overview-summary": "true"},
+			})
 			if len(idx.Overview.Servers) > 0 {
 				<section class="mt-10 overflow-hidden rounded-radius border border-outline bg-surface-dark text-on-surface-dark dark:border-outline-dark" aria-labelledby="overview-base-url-heading">
 					<div class="border-b border-outline-dark bg-surface-dark px-4 py-3">
@@ -372,25 +680,25 @@ templ overviewSection(idx core.SpecIndex, opts PublicDocsOptions) {
 									<dl class="grid gap-5 border-t border-outline-dark px-8 py-6">
 										for _, variable := range server.Variables {
 											<div class="grid gap-2">
-												<div class="flex flex-wrap items-baseline gap-2">
-													<dt class="font-mono text-sm font-bold text-on-surface-dark-strong">{ variable.Name }</dt>
-													<dd class="text-sm text-on-surface-dark-muted">string</dd>
-												</div>
-												if variable.Description != "" {
-													if hasMarkdown(opts.MarkdownRenderer, variable.Description) {
-														<div class="max-w-[70ch] text-sm">
-															@renderedMarkdown(opts.MarkdownRenderer, variable.Description)
-														</div>
-													} else {
-														<p class="text-sm leading-6 text-on-surface-dark">{ variable.Description }</p>
+												<dt class="font-mono text-sm font-bold text-on-surface-dark-strong">{ variable.Name }</dt>
+												<dd class="grid gap-2 text-sm text-on-surface-dark-muted">
+													<span>string</span>
+													if variable.Description != "" {
+														if hasMarkdown(opts.MarkdownRenderer, variable.Description) {
+															<div class="max-w-[70ch] text-sm">
+																@renderedMarkdown(opts.MarkdownRenderer, variable.Description)
+															</div>
+														} else {
+															<p class="text-sm leading-6 text-on-surface-dark">{ variable.Description }</p>
+														}
 													}
-												}
-												if variable.Default != "" {
-													<p class="text-xs text-on-surface-dark-muted">
-														Default:
-														<code class="ml-1 rounded-radius bg-surface-dark-alt px-1.5 py-0.5 font-mono text-xs text-on-surface-dark">{ variable.Default }</code>
-													</p>
-												}
+													if variable.Default != "" {
+														<p class="text-xs text-on-surface-dark-muted">
+															Default:
+															<code class="ml-1 rounded-radius bg-surface-dark-alt px-1.5 py-0.5 font-mono text-xs text-on-surface-dark">{ variable.Default }</code>
+														</p>
+													}
+												</dd>
 											</div>
 										}
 									</dl>
@@ -400,6 +708,7 @@ templ overviewSection(idx core.SpecIndex, opts PublicDocsOptions) {
 					</div>
 				</section>
 			}
+			@securitySchemesOverview(idx.SecuritySchemes)
 			if overviewHasAdditionalInfo(idx.Overview) {
 				<section class="mt-10 overflow-hidden rounded-radius border border-outline bg-surface-alt dark:border-outline-dark dark:bg-surface-dark-alt" aria-labelledby="overview-additional-info-heading">
 					<div class="border-b border-outline bg-surface-alt px-4 py-3 dark:border-outline-dark dark:bg-surface-dark-alt">
@@ -433,6 +742,63 @@ templ overviewSection(idx core.SpecIndex, opts PublicDocsOptions) {
 			}
 		</div>
 	</section>
+}
+
+templ securitySchemesOverview(schemes []core.SecurityScheme) {
+	if len(schemes) > 0 {
+		<section data-manja-security-schemes class="mt-10 grid gap-4" aria-labelledby="overview-security-schemes-heading">
+			<div class="grid gap-1">
+				<h3 id="overview-security-schemes-heading" class="font-title text-xl font-bold text-on-surface-strong dark:text-on-surface-dark-strong">Security schemes</h3>
+				<p class="text-sm text-on-surface-muted dark:text-on-surface-dark-muted">Read-only reference. Credentials are never accepted or stored on this documentation page.</p>
+			</div>
+			<div class="grid gap-4 lg:grid-cols-2">
+				for _, scheme := range schemes {
+					{{ item := core.OperationSecurity{Name: scheme.Name, Definition: scheme} }}
+					<article data-manja-security-scheme={ scheme.Name } class="grid gap-3 rounded-radius border border-outline p-4 dark:border-outline-dark">
+						@schemaPropertyIdentity(scheme.Name, securityTypeLabel(item))
+						if securityInstruction(item) != "" {
+							<p class="max-w-[70ch] text-sm text-on-surface dark:text-on-surface-dark">{ securityInstruction(item) }</p>
+						}
+						if scheme.Description != "" {
+							<p class="max-w-[70ch] whitespace-pre-wrap text-sm leading-6 text-on-surface-muted dark:text-on-surface-dark-muted">{ scheme.Description }</p>
+						}
+						if securityHasMetadata(item) {
+							<dl class="grid gap-3 text-sm sm:grid-cols-2">
+								if securityParameterName(item) != "" {
+									@authorizationField(securityParameterLocation(item), securityParameterName(item))
+								}
+								if scheme.Scheme != "" {
+									@authorizationField("Scheme", scheme.Scheme)
+								}
+								if scheme.BearerFormat != "" {
+									@authorizationField("Bearer format", scheme.BearerFormat)
+								}
+								if scheme.OpenIDConnectURL != "" {
+									<div class="min-w-0 sm:col-span-2">
+										<dt class="text-xs font-semibold uppercase tracking-wide text-on-surface-muted dark:text-on-surface-dark-muted">OpenID Connect URL</dt>
+										<dd class="mt-1 min-w-0 break-all font-mono text-on-surface-strong dark:text-on-surface-dark-strong">{ scheme.OpenIDConnectURL }</dd>
+									</div>
+								}
+							</dl>
+						}
+					</article>
+				}
+			</div>
+		</section>
+	}
+}
+
+templ overviewSummary(idx core.SpecIndex) {
+	<dl class="grid gap-4 sm:grid-cols-2">
+		<div>
+			<dt class="text-sm font-medium text-on-surface-muted dark:text-on-surface-dark-muted">Endpoints</dt>
+			<dd class="mt-1 font-title text-lg font-bold text-on-surface-strong dark:text-on-surface-dark-strong">{ pluralizedCount(len(idx.Operations), "endpoint") }</dd>
+		</div>
+		<div>
+			<dt class="text-sm font-medium text-on-surface-muted dark:text-on-surface-dark-muted">Schemas</dt>
+			<dd class="mt-1 font-title text-lg font-bold text-on-surface-strong dark:text-on-surface-dark-strong">{ pluralizedCount(len(idx.Schemas), "schema") }</dd>
+		</div>
+	</dl>
 }
 
 templ overviewIcon() {
@@ -515,45 +881,184 @@ func renderedMarkdown(renderer port.MarkdownRenderer, input string) templpkg.Com
 	})
 }
 
-templ endpointSection(op core.Operation, servers []core.SpecServer, exampleSpecJSON string, opts PublicDocsOptions) {
+// The request rail keeps one server-rendered body visible until its composer
+// hydrates, then changes presentation at the mobile breakpoint. Goshtoso's
+// edge-complete drawer is intentionally not mounted as a second copy here: its
+// fixed panel has no static-desktop mode, and duplicating a large request/example
+// tree would make every operation pay twice in the browser. This small adapter
+// keeps the mobile sheet gesture local to the rendered endpoint.
+// reuses Goshtoso semantic tokens and its Alpine focus-trap contract while
+// preserving one body and a static rail.
+templ endpointSection(op core.Operation, servers []core.SpecServer, exampleSpecJSON string, opts PublicDocsOptions, navigation OperationNavigationData) {
 	{{ opID := operationAnchor(op) }}
-	<section id={ opID } class="scroll-mt-24">
+	{{ requestConfigID := opID + "-request-config" }}
+	{{ requestConfigTitleID := requestConfigID + "-title" }}
+	{{ requestConfigContentID := requestConfigID + "-content" }}
+	{{ requestConfigLabel := requestConfigPanelLabel(op, servers) }}
+	{{ sectionClass := "scroll-mt-24" }}
+	if operationHasRail(op, servers) {
+		{{ sectionClass += " manja-endpoint-section-with-request-config" }}
+	}
+	<section
+		id={ opID }
+		class={ sectionClass }
+		data-manja-request-config-root
+		x-data="{
+			requestConfigOpen: false,
+			requestConfigDesktop: window.matchMedia('(min-width: 1280px)').matches,
+			requestConfigDesktopVisible: false,
+			requestConfigMedia: null,
+			requestConfigMediaHandler: null,
+			requestConfigEscapeHandler: null,
+			requestConfigFocusTimer: null,
+			requestConfigTouchStartY: null,
+			requestConfigTouchStartX: null,
+			init() {
+				this.requestConfigMedia = window.matchMedia('(min-width: 1280px)');
+				this.requestConfigDesktop = this.requestConfigMedia.matches;
+				this.requestConfigMediaHandler = (event) => {
+					this.requestConfigDesktop = event.matches;
+					if (event.matches && this.requestConfigOpen) this.closeRequestConfig();
+				};
+				this.requestConfigMedia.addEventListener('change', this.requestConfigMediaHandler);
+				this.requestConfigEscapeHandler = (event) => {
+					if (event.key === 'Escape' && this.requestConfigOpen && !this.requestConfigDesktop) {
+						event.preventDefault();
+						event.stopPropagation();
+						this.closeRequestConfig();
+					}
+				};
+				document.addEventListener('keydown', this.requestConfigEscapeHandler, true);
+				this.$nextTick(() => {
+					const root = this.$root;
+					if (!root || !root.dataset) return;
+					root.dataset.manjaRequestConfigControlsReady = 'true';
+					root.dispatchEvent(new CustomEvent('manja:request-config-controls-ready'));
+				});
+			},
+			destroy() {
+				if (this.requestConfigMedia && this.requestConfigMediaHandler) this.requestConfigMedia.removeEventListener('change', this.requestConfigMediaHandler);
+				if (this.requestConfigEscapeHandler) document.removeEventListener('keydown', this.requestConfigEscapeHandler, true);
+				if (this.requestConfigFocusTimer) clearTimeout(this.requestConfigFocusTimer);
+				const root = this.$root;
+				if (root && root.dataset) {
+					delete root.dataset.manjaRequestConfigControlsReady;
+					delete root.dataset.manjaRequestConfigEnhanced;
+				}
+			},
+			openRequestConfig() {
+				if (this.requestConfigDesktop) {
+					this.requestConfigDesktopVisible = true;
+					this.$nextTick(() => {
+						if (this.$refs.requestConfigDesktopToggle) this.$refs.requestConfigDesktopToggle.focus({ preventScroll: true });
+					});
+					return;
+				}
+				this.requestConfigOpen = true;
+				this.$nextTick(() => {
+					requestAnimationFrame(() => requestAnimationFrame(() => {
+						if (this.$refs.requestConfigClose) this.$refs.requestConfigClose.focus({ preventScroll: true });
+					}));
+				});
+			},
+			focusRequestConfigTrigger() {
+				const trigger = this.$refs.requestConfigTrigger;
+				if (trigger && trigger.getClientRects().length > 0 && !trigger.disabled) trigger.focus({ preventScroll: true });
+			},
+			closeRequestConfig() {
+				this.requestConfigOpen = false;
+				this.requestConfigTouchStartY = null;
+				this.requestConfigTouchStartX = null;
+				this.$nextTick(() => {
+					if (this.requestConfigFocusTimer) clearTimeout(this.requestConfigFocusTimer);
+					this.requestConfigFocusTimer = setTimeout(() => {
+						this.requestConfigFocusTimer = null;
+						requestAnimationFrame(() => requestAnimationFrame(() => {
+							const trigger = this.$refs.requestConfigTrigger;
+							if (trigger && trigger.getClientRects().length > 0 && !trigger.disabled) {
+								trigger.focus({ preventScroll: true });
+							} else if (this.$refs.requestConfigSheet) {
+								this.$refs.requestConfigSheet.focus({ preventScroll: true });
+							}
+						}));
+					}, 0);
+				});
+			},
+			requestConfigTouchStart(event) {
+				if (this.requestConfigDesktop || !this.requestConfigOpen) return;
+				const touch = event.touches && event.touches[0];
+				if (!touch) return;
+				this.requestConfigTouchStartY = touch.clientY;
+				this.requestConfigTouchStartX = touch.clientX;
+			},
+			requestConfigTouchEnd(event) {
+				if (this.requestConfigDesktop || !this.requestConfigOpen || this.requestConfigTouchStartY === null) return;
+				const touch = event.changedTouches && event.changedTouches[0];
+				const startY = this.requestConfigTouchStartY;
+				const startX = this.requestConfigTouchStartX;
+				this.requestConfigTouchStartY = null;
+				this.requestConfigTouchStartX = null;
+				if (!touch || startX === null) return;
+				const deltaY = touch.clientY - startY;
+				const deltaX = Math.abs(touch.clientX - startX);
+				if (deltaY > 64 && deltaY > deltaX * 1.25) this.closeRequestConfig();
+			}
+		}"
+		x-on:keydown.escape.window="if (requestConfigOpen && !requestConfigDesktop) closeRequestConfig()"
+		x-on:manja:request-config-open.window="openRequestConfig()"
+		x-bind:data-request-config-desktop-open="(requestConfigDesktop && requestConfigDesktopVisible).toString()"
+	>
 		<div class="manja-endpoint-shell-layout">
 			<div class="manja-endpoint-main min-w-0">
-				<div class="border-b border-outline pb-6 dark:border-outline-dark">
-					if op.Deprecated {
-						<div class="mb-3 flex flex-wrap items-center gap-2">
-							@badge.Badge(badge.Config{Label: "Deprecated", Tone: badge.ToneWarning, Appearance: badge.AppearanceSoft, Size: badge.SizeSM})
+				if !opts.OperationIdentityInHeader {
+					<div class="border-b border-outline pb-6 dark:border-outline-dark">
+						if op.Deprecated {
+							<div class="mb-3 flex flex-wrap items-center gap-2">
+								@badge.Badge(badge.Config{Label: "Deprecated", Tone: badge.ToneWarning, Appearance: badge.AppearanceSoft, Size: badge.SizeSM})
+							</div>
+						}
+						<div aria-label="Endpoint route" class="mt-4 inline-flex max-w-full items-center gap-3 rounded-radius border border-outline bg-surface-alt px-3 py-2 dark:border-outline-dark dark:bg-surface-dark-alt">
+							@methodBadge(op.Method)
+							<p class="min-w-0 break-words font-mono text-sm font-semibold text-on-surface-strong dark:text-on-surface-dark-strong">{ op.Path }</p>
 						</div>
-					}
-					<h3 class="manja-doc-title font-title text-3xl font-bold leading-tight text-on-surface-strong dark:text-on-surface-dark-strong lg:text-4xl">{ operationTitle(op) }</h3>
-					<div aria-label="Endpoint route" class="mt-4 inline-flex max-w-full items-center gap-3 rounded-radius border border-outline bg-surface-alt px-3 py-2 dark:border-outline-dark dark:bg-surface-dark-alt">
-						@methodBadge(op.Method)
-						<p class="min-w-0 break-words font-mono text-sm font-semibold text-on-surface-strong dark:text-on-surface-dark-strong">{ op.Path }</p>
+						if hasMarkdown(opts.MarkdownRenderer, op.Description) {
+							<div class="mt-4 max-w-[70ch]">
+								@renderedMarkdown(opts.MarkdownRenderer, op.Description)
+							</div>
+						} else if op.Description != "" {
+							<p class="mt-4 max-w-[70ch] text-base leading-6 text-on-surface dark:text-on-surface-dark">{ op.Description }</p>
+						}
 					</div>
-					if hasMarkdown(opts.MarkdownRenderer, op.Description) {
-						<div class="mt-4 max-w-[70ch]">
-							@renderedMarkdown(opts.MarkdownRenderer, op.Description)
-						</div>
-					} else if op.Description != "" {
-						<p class="mt-4 max-w-[70ch] text-base leading-6 text-on-surface dark:text-on-surface-dark">{ op.Description }</p>
-					}
-				</div>
-				if operationHasRequest(op) || len(op.Responses) > 0 {
+				}
+				if opts.OperationDetailSections != nil {
+					@localrender.OperationDetailSections(*opts.OperationDetailSections)
+				} else if operationHasRequest(op) || len(op.Responses) > 0 {
 					<div class={ endpointDetailLayoutClass(op) }>
 						if operationHasRequest(op) {
+							if opts.OperationRequestSection != nil {
+								@localrender.OperationRequestSection(*opts.OperationRequestSection)
+							} else {
 							<section class="grid gap-8" aria-label="Request">
 								<h4 class="font-title text-2xl font-bold text-on-surface-strong dark:text-on-surface-dark-strong">Request</h4>
-								@paramGroup(opID, "Path Parameters", parametersIn(op.Parameters, "path"), opts)
-								@paramGroup(opID, "Query Parameters", parametersIn(op.Parameters, "query"), opts)
-								@paramGroup(opID, "Header Parameters", parametersIn(op.Parameters, "header"), opts)
-								if op.RequestBody != nil {
-									<section class="grid gap-4" aria-label="Request body">
-										<div class="flex flex-wrap items-center gap-2">
-											<h5 class="font-title text-lg font-bold text-on-surface-strong dark:text-on-surface-dark-strong">Request body</h5>
-											if op.RequestBody.Required {
-												<span class="text-xs font-semibold text-danger dark:text-danger-dark">required</span>
-											}
+								if opts.OperationAuthorization != nil {
+									@localrender.OperationAuthorization(*opts.OperationAuthorization)
+								} else {
+									@authorizationDocumentation(op.Security)
+								}
+								if opts.OperationParameters != nil {
+									@localrender.OperationParameters(*opts.OperationParameters)
+								} else {
+									@paramGroup(opID, "Path Parameters", parametersIn(op.Parameters, "path"), opts)
+									@paramGroup(opID, "Query Parameters", parametersIn(op.Parameters, "query"), opts)
+									@paramGroup(opID, "Header Parameters", parametersIn(op.Parameters, "header"), opts)
+								}
+								if op.RequestBody != nil && opts.OperationRequestBody != nil {
+									@localrender.OperationRequestBody(*opts.OperationRequestBody)
+								} else if op.RequestBody != nil {
+									<section data-manja-request-body class="grid min-w-0 gap-4 rounded-radius border border-outline p-4 dark:border-outline-dark" aria-label="Request body">
+										<div class="flex flex-wrap items-center justify-between gap-3">
+											<h5 class="font-title text-lg font-bold text-on-surface-strong dark:text-on-surface-dark-strong">Body Params</h5>
+											@schemaPropertyState(schemaPropertyStateLabel(op.RequestBody.Required))
 										</div>
 										if op.RequestBody.Description != "" {
 											if hasMarkdown(opts.MarkdownRenderer, op.RequestBody.Description) {
@@ -568,41 +1073,207 @@ templ endpointSection(op core.Operation, servers []core.SpecServer, exampleSpecJ
 									</section>
 								}
 							</section>
-						}
-						if len(op.Responses) > 0 {
-							<section class="manja-endpoint-responses-section grid gap-5" aria-label="Responses">
-								<h4 class="font-title text-2xl font-bold text-on-surface-strong dark:text-on-surface-dark-strong">Responses</h4>
-								<div id={ opID + "-responses" }>
-								@tabs.Tabs(responseTabsConfig(opID, op.Responses, exampleSpecJSON, opts))
-								</div>
-							</section>
-						}
-					</div>
-				}
-			</div>
-			if operationHasRail(op, servers) {
-				<aside class="manja-endpoint-examples-rail" aria-label="Endpoint examples">
-					<div class="manja-endpoint-examples-rail-content">
-						if requestConfigHasContent(op, servers) {
-							@requestComposer(opID, op, servers, exampleSpecJSON)
-						}
-						for _, snippet := range op.Snippets {
-							if !requestComposerOwnsSnippet(op, servers, snippet) {
-								@codeExample("Request Sample: "+snippet.Label, snippet.Language, snippet.Code)
-							}
-						}
-						if op.RequestBody != nil && !requestConfigHasBody(op, exampleSpecJSON) {
-							for _, media := range op.RequestBody.MediaTypes {
-								{{ cfg := mediaSchemaExampleConfig(opID+"-request-body-"+anchorFragment(media.ContentType)+"-example", "Request Example: "+media.ContentType, media, exampleSpecJSON) }}
-								if hasSchemaExample(cfg) {
-									@schemaExample(cfg)
 								}
 							}
-						}
+							if len(op.Responses) > 0 {
+								if opts.OperationResponses != nil {
+									@localrender.OperationResponses(*opts.OperationResponses)
+								} else {
+								<section class="manja-endpoint-responses-section grid gap-5" aria-label="Responses">
+									<h4 class="font-title text-2xl font-bold text-on-surface-strong dark:text-on-surface-dark-strong">Responses</h4>
+									@accordion.Accordion(responseAccordionConfig(opID, op.Responses, exampleSpecJSON, opts))
+								</section>
+								}
+								}
+						</div>
+				}
+		if opts.OperationNavigation != nil {
+			@localrender.OperationNavigation(*opts.OperationNavigation)
+		} else {
+			@operationNavigation(navigation)
+		}
+			</div>
+			if operationHasRail(op, servers) {
+				<aside
+					id={ requestConfigID }
+					class="manja-endpoint-examples-rail manja-request-config-sheet"
+					data-manja-request-config-sheet
+					x-ref="requestConfigSheet"
+					tabindex="-1"
+					data-open="false"
+					x-bind:data-open="(requestConfigDesktop ? requestConfigDesktopVisible : requestConfigOpen).toString()"
+					x-bind:role="requestConfigDesktop ? null : 'dialog'"
+					x-bind:aria-modal="requestConfigDesktop ? null : 'true'"
+					x-bind:aria-hidden="requestConfigDesktop ? null : (!requestConfigOpen).toString()"
+					aria-labelledby={ requestConfigTitleID }
+					x-trap.inert.noscroll="requestConfigOpen && !requestConfigDesktop"
+					x-on:keydown.esc.prevent="if (requestConfigOpen && !requestConfigDesktop) closeRequestConfig()"
+					aria-label="Request configuration panel"
+				>
+					<header
+						class="manja-request-config-sheet-header flex items-center justify-between gap-3 border-b border-outline bg-surface-alt px-4 py-3 dark:border-outline-dark dark:bg-surface-dark-alt"
+						x-on:touchstart.passive="requestConfigTouchStart($event)"
+						x-on:touchend.passive="requestConfigTouchEnd($event)"
+						x-on:touchcancel.passive="requestConfigTouchEnd($event)"
+					>
+						<div class="flex min-w-0 items-center gap-3">
+							<span class="manja-request-config-sheet-handle" aria-hidden="true"></span>
+							<h2 id={ requestConfigTitleID } class="manja-request-config-title truncate font-semibold text-on-surface-strong dark:text-on-surface-dark-strong">{ requestConfigLabel }</h2>
+						</div>
+						<button
+							type="button"
+							x-ref="requestConfigDesktopToggle"
+							x-on:click="requestConfigDesktopVisible = false; $nextTick(() => requestAnimationFrame(() => requestAnimationFrame(() => focusRequestConfigTrigger())))"
+							x-bind:aria-expanded="requestConfigDesktopVisible.toString()"
+							aria-controls={ requestConfigID }
+							aria-label="Collapse request configuration"
+							class="manja-request-config-desktop-toggle inline-flex size-9 shrink-0 items-center justify-center rounded-radius border border-outline text-on-surface-strong transition hover:border-primary hover:text-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary dark:border-outline-dark dark:text-on-surface-dark-strong dark:hover:border-primary-dark dark:hover:text-primary-dark dark:focus-visible:outline-primary-dark"
+						>
+							@icon.Icon(icon.Config{SpriteURL: heroicons.SpriteURL, Symbol: heroicons.Icon16SolidChevronRight, Size: icon.SizeSM, Decorative: true})
+						</button>
+						<button
+							type="button"
+							x-ref="requestConfigClose"
+							x-on:click="closeRequestConfig()"
+							aria-label="Close request configuration"
+							class="manja-request-config-mobile-close inline-flex size-9 shrink-0 items-center justify-center rounded-radius text-on-surface-muted hover:bg-surface-alt hover:text-on-surface-strong focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary dark:text-on-surface-dark-muted dark:hover:bg-surface-dark-alt dark:hover:text-on-surface-dark-strong dark:focus-visible:outline-primary-dark"
+						>
+							@requestConfigCloseIcon()
+						</button>
+					</header>
+					<div id={ requestConfigContentID } class="manja-endpoint-examples-rail-content" x-bind:aria-hidden="(requestConfigDesktop ? !requestConfigDesktopVisible : !requestConfigOpen).toString()">
+						@endpointExamplesContent(opID, op, servers, exampleSpecJSON, opts)
 					</div>
 				</aside>
 			}
 		</div>
+		if operationHasRail(op, servers) {
+			<div
+				class="manja-request-config-backdrop"
+				data-manja-request-config-backdrop
+				data-open="false"
+				x-bind:data-open="(requestConfigOpen && !requestConfigDesktop).toString()"
+				x-on:click="closeRequestConfig()"
+				aria-hidden="true"
+			></div>
+			<button
+				type="button"
+				x-ref="requestConfigTrigger"
+				x-bind:aria-haspopup="requestConfigDesktop ? null : 'dialog'"
+				aria-controls={ requestConfigID }
+				aria-label={ "Expand " + requestConfigLabel }
+				x-bind:aria-expanded="(requestConfigDesktop ? requestConfigDesktopVisible : requestConfigOpen).toString()"
+				x-on:click="openRequestConfig()"
+				class="manja-request-config-trigger-bar"
+				data-manja-request-config-trigger
+				data-request-config-trigger-variant="bar"
+				data-open="false"
+				x-bind:data-open="(requestConfigDesktop ? requestConfigDesktopVisible : requestConfigOpen).toString()"
+			>
+				<span class="manja-request-config-trigger-label">{ requestConfigLabel }</span>
+				@icon.Icon(icon.Config{SpriteURL: heroicons.SpriteURL, Symbol: heroicons.Icon16SolidChevronLeft, Size: icon.SizeSM, Decorative: true})
+			</button>
+		}
+	</section>
+}
+
+templ operationNavigation(navigation OperationNavigationData) {
+	if navigation.Previous != nil || navigation.Next != nil {
+		<nav data-manja-operation-navigation data-manja-operation-group={ navigation.Group } aria-label={ operationNavigationLabel(navigation.Group) } class="mt-10 border-t border-outline pt-6 dark:border-outline-dark">
+			<div class="grid gap-3 lg:grid-cols-2">
+				if navigation.Previous != nil {
+					@operationNavigationLink(*navigation.Previous, "previous", navigation)
+				}
+				if navigation.Next != nil {
+					@operationNavigationLink(*navigation.Next, "next", navigation)
+				}
+			</div>
+		</nav>
+	}
+}
+
+templ operationNavigationLink(item OperationNavigationItem, direction string, navigation OperationNavigationData) {
+	if navigation.Catalog {
+		<a
+			data-manja-operation-neighbor={ direction }
+			href={ templpkg.URL(item.Href) }
+			hx-get={ item.Href }
+			hx-target="#main-content"
+			hx-select="#main-content"
+			hx-select-oob="#catalog-navigation"
+			hx-swap="outerHTML show:#main-content:top"
+			hx-push-url="true"
+			class={ operationNavigationLinkClass(direction) }
+		>
+			@operationNavigationLinkContent(item, direction)
+		</a>
+	} else {
+		<a
+			data-manja-operation-neighbor={ direction }
+			href={ templpkg.URL(item.Href) }
+			hx-get={ item.Href }
+			hx-target="#main-content"
+			hx-swap="innerHTML swap:120ms settle:240ms"
+			hx-push-url="true"
+			hx-indicator="#public-docs-loading"
+			class={ operationNavigationLinkClass(direction) }
+		>
+			@operationNavigationLinkContent(item, direction)
+		</a>
+	}
+}
+
+templ operationNavigationLinkContent(item OperationNavigationItem, direction string) {
+	if direction == "previous" {
+		@icon.Icon(icon.Config{SpriteURL: heroicons.SpriteURL, Symbol: heroicons.Icon16SolidChevronLeft, Size: icon.SizeSM, Decorative: true, RootClass: "mt-1 shrink-0"})
+	}
+	<span class={ operationNavigationContentClass(direction) }>
+		<span class="text-xs font-semibold uppercase tracking-wide text-on-surface-muted dark:text-on-surface-dark-muted">{ operationNavigationDirectionLabel(direction) }</span>
+		<span class={ operationNavigationIdentityClass(direction) }>
+			@methodBadge(item.Method)
+			<span class="min-w-0 break-words font-semibold text-on-surface-strong dark:text-on-surface-dark-strong">{ item.Title }</span>
+		</span>
+	</span>
+	if direction == "next" {
+		@icon.Icon(icon.Config{SpriteURL: heroicons.SpriteURL, Symbol: heroicons.Icon16SolidChevronRight, Size: icon.SizeSM, Decorative: true, RootClass: "mt-1 shrink-0"})
+	}
+}
+
+templ requestConfigCloseIcon() {
+	<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" aria-hidden="true" stroke="currentColor" fill="none" stroke-width="1.8" class="size-5">
+		<path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"></path>
+	</svg>
+}
+
+templ endpointExamplesContent(opID string, op core.Operation, servers []core.SpecServer, exampleSpecJSON string, opts PublicDocsOptions) {
+	if requestConfigHasContent(op, servers) {
+		@requestComposer(opID, op, servers, exampleSpecJSON)
+	} else if len(op.Snippets) > 0 {
+		@requestAuthenticationGuidance(op.Security)
+	}
+	for snippetIndex, snippet := range op.Snippets {
+		if !requestComposerOwnsSnippet(op, servers, snippet) {
+			if opts.OperationExamples != nil {
+				@localrender.OperationCodeSample(*opts.OperationExamples, snippetIndex)
+			} else {
+				@codeExample("Request Sample: "+snippet.Label, snippet.Language, snippet.Code)
+			}
+		}
+	}
+	if op.RequestBody != nil && !requestConfigHasBody(op, exampleSpecJSON) {
+		for _, media := range op.RequestBody.MediaTypes {
+			{{ cfg := mediaSchemaExampleConfig(opID+"-request-body-"+anchorFragment(media.ContentType)+"-example", "Request Example: "+media.ContentType, media, exampleSpecJSON) }}
+			if hasSchemaExample(cfg) {
+				@schemaExample(cfg)
+			}
+		}
+	}
+}
+
+templ requestAuthenticationGuidance(security []core.OperationSecurity) {
+	<section class="grid min-w-0 gap-2" data-manja-request-authentication-guidance aria-label="Authentication">
+		<h3 class="px-1 text-sm font-semibold text-on-surface-strong dark:text-on-surface-dark-strong">Authentication</h3>
+		@requestConfigAuthenticationContent(security)
 	</section>
 }
 
@@ -624,12 +1295,10 @@ templ requestComposer(opID string, op core.Operation, servers []core.SpecServer,
 				})
 			</section>
 		}
-		if snippet.Label != "" || snippet.Code != "" {
-			<div data-manja-request-sample class="min-w-0">
-				@requestSampleTargetSelect(opID)
-				@codeExample("Request Sample: "+requestSampleTargets()[0].Label, snippet.Language, snippet.Code)
-			</div>
-		}
+		<div data-manja-request-sample class="min-w-0">
+			@requestSampleTargetSelect(opID)
+			@codeExample("Request Sample: "+requestSampleTargets()[0].Label, requestSampleTargets()[0].Language, snippet.Code)
+		</div>
 		@templpkg.JSONScript(opID+"-request-composer-payload", requestComposerPayload(op, server, body))
 	</div>
 }
@@ -654,6 +1323,14 @@ templ requestSampleTargetSelect(opID string) {
 
 func requestConfigAccordionItems(opID string, op core.Operation, server core.SpecServer, body requestConfigBody) []accordion.AccordionItem {
 	items := make([]accordion.AccordionItem, 0, 4)
+	if len(op.Security) > 0 || operationHasRail(op, []core.SpecServer{server}) {
+		items = append(items, accordion.AccordionItem{
+			ID:                opID + "-authentication",
+			Title:             "Authentication",
+			Content:           requestConfigAuthenticationContent(op.Security),
+			InitiallyExpanded: len(op.Security) > 0,
+		})
+	}
 	if fields := requestServerVariableFields(server); len(fields) > 0 {
 		items = append(items, accordion.AccordionItem{
 			ID:                opID + "-server-variables",
@@ -670,14 +1347,6 @@ func requestConfigAccordionItems(opID string, op core.Operation, server core.Spe
 			InitiallyExpanded: true,
 		})
 	}
-	if len(op.Security) > 0 {
-		items = append(items, accordion.AccordionItem{
-			ID:                opID + "-security",
-			Title:             "Security",
-			Content:           requestSecurityContent(op.Security),
-			InitiallyExpanded: true,
-		})
-	}
 	if body.Has {
 		items = append(items, accordion.AccordionItem{
 			ID:                opID + "-body",
@@ -689,8 +1358,36 @@ func requestConfigAccordionItems(opID string, op core.Operation, server core.Spe
 	return items
 }
 
+templ requestConfigAuthenticationContent(security []core.OperationSecurity) {
+	<div class="grid gap-3 p-4" data-manja-request-config-authentication>
+		if len(security) == 0 {
+			<p class="text-sm text-on-surface-muted dark:text-on-surface-dark-muted">This OpenAPI document does not declare an authentication scheme. Check the API provider's documentation before sending credentials; Manja cannot infer or validate an undocumented scheme.</p>
+			<code class="block overflow-x-auto rounded-radius bg-surface-alt px-3 py-2 font-mono text-xs text-on-surface-strong dark:bg-surface-dark-alt dark:text-on-surface-dark-strong">Common bearer example: Authorization: Bearer YOUR_ACCESS_TOKEN</code>
+		} else {
+			<p class="text-sm text-on-surface-muted dark:text-on-surface-dark-muted">The sample uses safe placeholders. Replace them with your credential locally; Manja never receives or stores credentials.</p>
+		}
+		for _, item := range security {
+			<div class="grid gap-2" data-manja-request-authentication={ item.Name }>
+				<div class="flex flex-wrap items-center gap-2">
+					<span class="font-semibold text-on-surface-strong dark:text-on-surface-dark-strong">{ item.Name }</span>
+					<span class="rounded-radius bg-surface-alt px-2 py-1 font-mono text-xs text-on-surface-muted dark:bg-surface-dark-alt dark:text-on-surface-dark-muted">{ securityTypeLabel(item) }</span>
+				</div>
+				if securityInstruction(item) != "" {
+					<p class="text-sm text-on-surface dark:text-on-surface-dark">{ securityInstruction(item) }</p>
+				}
+				if securitySample(item) != "" {
+					<code class="block overflow-x-auto rounded-radius bg-surface-alt px-3 py-2 font-mono text-xs text-on-surface-strong dark:bg-surface-dark-alt dark:text-on-surface-dark-strong">{ securitySample(item) }</code>
+				}
+				if len(item.Scopes) > 0 {
+					<p class="text-xs text-on-surface-muted dark:text-on-surface-dark-muted">Scopes: { strings.Join(item.Scopes, ", ") }</p>
+				}
+			</div>
+		}
+	</div>
+}
+
 templ requestConfigFieldsContent(fields []schemaform.Field, namePrefix string) {
-	<div class="manja-request-config-fields">
+	<div class="manja-request-config-fields" data-manja-request-config-fields>
 		@schemaform.Fields(schemaform.FieldsConfig{
 			Fields:     fields,
 			NamePrefix: namePrefix,
@@ -698,15 +1395,67 @@ templ requestConfigFieldsContent(fields []schemaform.Field, namePrefix string) {
 	</div>
 }
 
-templ requestSecurityContent(security []core.OperationSecurity) {
-	<div class="grid gap-3 text-sm">
-		for _, item := range security {
-			<div class="grid grid-cols-[6rem_1rem_minmax(0,1fr)] gap-2">
-				<span class="truncate font-mono text-on-surface-strong dark:text-on-surface-dark-strong">security</span>
-				<span class="text-on-surface-muted dark:text-on-surface-dark-muted">:</span>
-				<span class="truncate text-on-surface-muted dark:text-on-surface-dark-muted">{ securityLabel(item) }</span>
+templ authorizationDocumentation(security []core.OperationSecurity) {
+	if len(security) > 0 {
+		<section data-manja-authorization aria-label="Authorization requirements" class="grid min-w-0 gap-4 rounded-radius border border-outline p-4 dark:border-outline-dark">
+			<div class="flex flex-wrap items-center justify-between gap-3">
+				<h5 class="font-title text-lg font-bold text-on-surface-strong dark:text-on-surface-dark-strong">Authorization</h5>
+				@badge.Badge(badge.Config{Label: "Read-only", Tone: badge.ToneSecondary, Appearance: badge.AppearanceSoft, Size: badge.SizeSM})
 			</div>
-		}
+			<p class="max-w-[70ch] text-sm text-on-surface-muted dark:text-on-surface-dark-muted">Credentials are never accepted or stored on this documentation page.</p>
+			<div class="divide-y divide-outline dark:divide-outline-dark">
+				for _, item := range security {
+					<article data-manja-security-requirement={ item.Name } class="grid gap-3 py-4 first:pt-0 last:pb-0">
+						<div class="manja-schema-heading">
+							@schemaPropertyIdentity(item.Name, securityTypeLabel(item))
+							@schemaPropertyState("required")
+						</div>
+						if securityInstruction(item) != "" {
+							<p class="max-w-[70ch] text-sm text-on-surface dark:text-on-surface-dark">{ securityInstruction(item) }</p>
+						}
+						if item.Definition.Description != "" {
+							<p class="max-w-[70ch] whitespace-pre-wrap text-sm leading-6 text-on-surface-muted dark:text-on-surface-dark-muted">{ item.Definition.Description }</p>
+						}
+						if securityHasMetadata(item) {
+							<dl class="grid gap-3 text-sm sm:grid-cols-2">
+								if securityParameterName(item) != "" {
+									@authorizationField(securityParameterLocation(item), securityParameterName(item))
+								}
+								if item.Definition.Scheme != "" {
+									@authorizationField("Scheme", item.Definition.Scheme)
+								}
+								if item.Definition.BearerFormat != "" {
+									@authorizationField("Bearer format", item.Definition.BearerFormat)
+								}
+								if item.Definition.OpenIDConnectURL != "" {
+									<div class="min-w-0 sm:col-span-2">
+										<dt class="text-xs font-semibold uppercase tracking-wide text-on-surface-muted dark:text-on-surface-dark-muted">OpenID Connect URL</dt>
+										<dd class="mt-1 min-w-0 break-all font-mono text-on-surface-strong dark:text-on-surface-dark-strong">{ item.Definition.OpenIDConnectURL }</dd>
+									</div>
+								}
+							</dl>
+						}
+						if len(item.Scopes) > 0 {
+							<div class="grid gap-2">
+								<p class="text-xs font-semibold uppercase tracking-wide text-on-surface-muted dark:text-on-surface-dark-muted">Scopes</p>
+								<div class="flex flex-wrap gap-2">
+									for _, scope := range item.Scopes {
+										<code class="rounded-radius bg-surface-alt px-2 py-1 text-xs text-on-surface-strong dark:bg-surface-dark-alt dark:text-on-surface-dark-strong">{ scope }</code>
+									}
+								</div>
+							</div>
+						}
+					</article>
+				}
+			</div>
+		</section>
+	}
+}
+
+templ authorizationField(label string, value string) {
+	<div class="min-w-0">
+		<dt class="text-xs font-semibold uppercase tracking-wide text-on-surface-muted dark:text-on-surface-dark-muted">{ label }</dt>
+		<dd class="mt-1 break-words font-mono text-on-surface-strong dark:text-on-surface-dark-strong">{ value }</dd>
 	</div>
 }
 
@@ -724,7 +1473,7 @@ templ requestConfigBodyContent(opID string, cfg ExampleConfig) {
 			>{ exampleFallback(cfg) }</textarea>
 		</div>
 		@templpkg.JSONScript(opID+"-request-body-payload", schemaExamplePayload(cfg))
-		<p data-manja-request-body-status class="sr-only" aria-live="polite"></p>
+		<p data-manja-request-body-status class="text-xs text-danger" aria-live="polite"></p>
 	</div>
 }
 
@@ -739,7 +1488,6 @@ templ schemaSection(schema core.Schema, exampleSpecJSON string, opts PublicDocsO
 	<section id={ schemaAnchor(schema) } class="scroll-mt-24">
 		<div class="max-w-3xl border-b border-outline pb-8 dark:border-outline-dark">
 			<p class="font-mono text-sm font-semibold uppercase text-on-surface-muted dark:text-on-surface-dark-muted">Schema</p>
-			<h3 class="manja-doc-title mt-4 font-title text-4xl font-bold leading-tight text-on-surface-strong dark:text-on-surface-dark-strong lg:text-5xl">{ schema.Name }</h3>
 			if summary.Description != "" {
 				if hasMarkdown(opts.MarkdownRenderer, summary.Description) {
 					<div class="mt-6 max-w-[70ch]">
@@ -766,77 +1514,191 @@ templ schemaSection(schema core.Schema, exampleSpecJSON string, opts PublicDocsO
 	</section>
 }
 
-templ responsePanel(opID string, response core.OperationResponse, exampleSpecJSON string, opts PublicDocsOptions) {
+templ responsePanel(opID string, responseIndex int, response core.OperationResponse, exampleSpecJSON string, opts PublicDocsOptions) {
 	<section class="grid gap-4">
-		if response.Description != "" {
-			if hasMarkdown(opts.MarkdownRenderer, response.Description) {
+	if len(response.MediaTypes) == 0 {
+		if opts.OperationResponseDetails != nil {
+			@localrender.OperationResponseDetails(*opts.OperationResponseDetails, responseIndex, opID+"-"+anchorFragment(response.Status)+"-headers")
+		} else {
+			@responseDescription(response.Description, opts)
+			@responseHeaders(response.Headers, opID+"-"+anchorFragment(response.Status)+"-headers", opts)
+		}
+		}
+		@responseMediaTypeList(opID, responseIndex, response, exampleSpecJSON, opts)
+	</section>
+}
+
+templ responseDescription(description string, opts PublicDocsOptions) {
+	if description != "" {
+		<div data-manja-response-section="description">
+			if hasMarkdown(opts.MarkdownRenderer, description) {
 				<div class="max-w-[70ch]">
-					@renderedMarkdown(opts.MarkdownRenderer, response.Description)
+					@renderedMarkdown(opts.MarkdownRenderer, description)
 				</div>
 			} else {
-				<p class="text-base font-medium text-on-surface dark:text-on-surface-dark">{ response.Description }</p>
+				<p class="max-w-[70ch] text-base font-medium text-on-surface dark:text-on-surface-dark">{ description }</p>
 			}
-		}
-		@responseMediaTypeList(opID, response, exampleSpecJSON, opts)
-	</section>
+		</div>
+	}
+}
+
+templ responseHeaders(headers []core.OperationResponseHeader, scope string, opts PublicDocsOptions) {
+	if len(headers) > 0 {
+		<section data-manja-response-section="headers" aria-label="Response headers" class="grid gap-3">
+			<h6 class="font-title text-sm font-semibold text-on-surface-strong dark:text-on-surface-dark-strong">Headers</h6>
+			<div class="manja-schema-tree">
+				<div class="manja-schema-root">
+					for _, header := range headers {
+						@schemaTreeNode(header.Name, "", responseHeaderSummary(header), scope, false, opts)
+					}
+				</div>
+			</div>
+		</section>
+	}
+}
+
+func responseHeaderSummary(header core.OperationResponseHeader) core.SchemaSummary {
+	summary := header.Schema
+	if strings.TrimSpace(summary.Description) == "" {
+		summary.Description = header.Description
+	}
+	if strings.TrimSpace(summary.Example) == "" {
+		summary.Example = header.Example
+	}
+	return summary
 }
 
 templ mediaTypeList(idPrefix string, label string, mediaTypes []core.OperationMediaType, opts PublicDocsOptions) {
 	if len(mediaTypes) > 0 {
-		<div class="grid gap-4">
-			for _, media := range mediaTypes {
-				<div class="border-t border-outline pt-6 pb-5 dark:border-outline-dark">
-					<div class="flex flex-wrap items-center gap-3">
-						<span class="font-mono text-xs font-semibold text-on-surface-strong dark:text-on-surface-dark-strong">{ media.ContentType }</span>
-						if schemaInline(media.Schema) != "" {
-							<span class="font-mono text-xs text-on-surface-muted dark:text-on-surface-dark-muted">{ schemaInline(media.Schema) }</span>
-						}
-					</div>
-					@schemaProperties(mediaTypeTableID(idPrefix, media), label+" schema for "+media.ContentType, media.Schema, opts)
+		<div class="grid gap-3">
+			for index, media := range mediaTypes {
+				<div data-manja-request-body-media={ media.ContentType } class="min-w-0 border-t border-outline pt-4 dark:border-outline-dark">
+					if opts.OperationRequestBodyMedia != nil {
+						@localrender.OperationRequestBodyMedia(*opts.OperationRequestBodyMedia, index)
+					} else {
+						<div class="flex flex-wrap items-center gap-3">
+							@badge.Badge(badge.Config{Label: media.ContentType, Tone: badge.ToneDefault, Appearance: badge.AppearanceSoft, Size: badge.SizeSM, RootClass: "shrink-0 font-mono"})
+							if schemaInline(media.Schema) != "" {
+								@schemaTypeLink(media.Schema, opts)
+							}
+						</div>
+					}
+					if opts.OperationSchemaTrees != nil {
+						@localrender.OperationRequestBodySchemaTree(*opts.OperationSchemaTrees, index)
+					} else {
+						@schemaProperties(mediaTypeTableID(idPrefix, media), label+" schema for "+media.ContentType, media.Schema, opts)
+					}
 				</div>
 			}
 		</div>
 	}
 }
 
-templ responseMediaTypeList(opID string, response core.OperationResponse, exampleSpecJSON string, opts PublicDocsOptions) {
+templ responseMediaTypeList(opID string, responseIndex int, response core.OperationResponse, exampleSpecJSON string, opts PublicDocsOptions) {
 	if len(response.MediaTypes) > 0 {
-		<div class="grid gap-4">
-			for _, media := range response.MediaTypes {
-				{{ idPrefix := opID+"-response-"+anchorFragment(response.Status) }}
-				{{ cfg := mediaSchemaExampleConfig(idPrefix+"-"+anchorFragment(media.ContentType)+"-example", "Response Example: "+response.Status+" "+media.ContentType, media, exampleSpecJSON) }}
-				<div class="manja-response-media-block border-t border-outline pt-6 pb-5 dark:border-outline-dark">
-					<div class="manja-response-panel-layout">
-						<div class="manja-response-panel-main grid gap-4">
-							<div class="flex flex-wrap items-center gap-3">
-								<span class="font-mono text-xs font-semibold text-on-surface-strong dark:text-on-surface-dark-strong">{ media.ContentType }</span>
-							if schemaInline(media.Schema) != "" {
-								<span class="font-mono text-xs text-on-surface-muted dark:text-on-surface-dark-muted">{ schemaInline(media.Schema) }</span>
-							}
-						</div>
-						@schemaProperties(mediaTypeTableID(idPrefix, media), "Response "+response.Status+" schema for "+media.ContentType, media.Schema, opts)
-					</div>
-						if hasSchemaExample(cfg) {
-							<aside class="manja-response-panel-example" aria-label={ "Response " + response.Status + " " + media.ContentType + " example" }>
-								@schemaExample(cfg)
-							</aside>
+		if len(response.MediaTypes) > 1 {
+			{{ items := responseMediaAccordionItems(opID, responseIndex, response, exampleSpecJSON, opts) }}
+			@accordion.Accordion(accordion.AccordionConfig{
+				ID:            opID + "-response-" + anchorFragment(response.Status) + "-media-types",
+				Items:         items,
+				Appearance:    accordion.AppearancePlain,
+				RootClass:     "manja-response-media-accordion",
+			})
+		} else {
+			<div class="grid gap-4">
+				@responseMediaTypeBlock(opID, responseIndex, response, 0, response.MediaTypes[0], exampleSpecJSON, opts, false)
+			</div>
+		}
+	}
+}
+
+func responseMediaAccordionItems(opID string, responseIndex int, response core.OperationResponse, exampleSpecJSON string, opts PublicDocsOptions) []accordion.AccordionItem {
+	items := make([]accordion.AccordionItem, 0, len(response.MediaTypes))
+	for i, media := range response.MediaTypes {
+		items = append(items, accordion.AccordionItem{
+			ID:                opID + "-response-" + anchorFragment(response.Status) + "-" + anchorFragment(media.ContentType),
+			Title:             media.ContentType,
+			Content:           responseMediaTypeBlock(opID, responseIndex, response, i, media, exampleSpecJSON, opts, true),
+			InitiallyExpanded: i == 0,
+		})
+	}
+	return items
+}
+
+templ responseMediaTypeBlock(opID string, responseIndex int, response core.OperationResponse, mediaIndex int, media core.OperationMediaType, exampleSpecJSON string, opts PublicDocsOptions, inAccordion bool) {
+	{{ idPrefix := opID+"-response-"+anchorFragment(response.Status) }}
+	{{ cfg := mediaSchemaExampleConfig(idPrefix+"-"+anchorFragment(media.ContentType)+"-example", "Response Example: "+response.Status+" "+media.ContentType, media, exampleSpecJSON) }}
+	{{ blockClass := "manja-response-media-block" }}
+	if inAccordion {
+		{{ blockClass += " grid gap-4" }}
+	} else {
+		{{ blockClass += " border-t border-outline pt-6 pb-5 dark:border-outline-dark" }}
+	}
+	<div class={ blockClass }>
+		<div class="manja-response-panel-layout">
+			<div class="manja-response-panel-main grid gap-4">
+				<div data-manja-response-section="media-type" class="flex flex-wrap items-center gap-3">
+					if opts.OperationResponseMedia != nil {
+						@localrender.OperationResponseMedia(*opts.OperationResponseMedia, responseIndex, mediaIndex)
+					} else {
+						<span class="font-mono text-xs font-semibold text-on-surface-strong dark:text-on-surface-dark-strong">{ media.ContentType }</span>
+						if schemaInline(media.Schema) != "" {
+							@schemaTypeLink(media.Schema, opts)
 						}
-					</div>
+					}
 				</div>
+				if opts.OperationResponseDetails != nil {
+					@localrender.OperationResponseDetails(*opts.OperationResponseDetails, responseIndex, idPrefix+"-"+anchorFragment(media.ContentType)+"-headers")
+				} else {
+					@responseDescription(response.Description, opts)
+					@responseHeaders(response.Headers, idPrefix+"-"+anchorFragment(media.ContentType)+"-headers", opts)
+				}
+				if opts.OperationSchemaTrees != nil {
+					@localrender.OperationResponseSchemaTree(*opts.OperationSchemaTrees, responseIndex, mediaIndex)
+				} else {
+					@schemaProperties(mediaTypeTableID(idPrefix, media), "Response body", media.Schema, opts)
+				}
+			</div>
+			if opts.OperationExamples != nil && opts.OperationExamples.HasResponseExample(responseIndex, mediaIndex) {
+				<aside class="manja-response-panel-example" aria-label={ "Response " + response.Status + " " + media.ContentType + " example" }>
+					@localrender.OperationResponseExample(*opts.OperationExamples, responseIndex, mediaIndex)
+				</aside>
+			} else if opts.OperationExamples == nil && hasResponseExample(media) {
+				<aside class="manja-response-panel-example" aria-label={ "Response " + response.Status + " " + media.ContentType + " example" }>
+					@schemaExample(cfg)
+				</aside>
 			}
 		</div>
-	}
+	</div>
 }
 
 templ paramGroup(idPrefix string, title string, parameters []core.OperationParameter, opts PublicDocsOptions) {
 	if len(parameters) > 0 {
-		<section class="grid gap-4">
-			<h5 class="font-title text-lg font-bold text-on-surface-strong dark:text-on-surface-dark-strong">{ title }</h5>
-			<div>
-				@table.Table(parameterTableConfig(idPrefix, title, parameters, opts.MarkdownRenderer))
-			</div>
+		{{ groupID := idPrefix + "-" + anchorFragment(title) }}
+		<section class="grid min-w-0 gap-4" aria-labelledby={ groupID + "-heading" }>
+			<h5 id={ groupID + "-heading" } class="font-title text-lg font-bold text-on-surface-strong dark:text-on-surface-dark-strong">{ title }</h5>
+			<dl id={ groupID } data-manja-parameter-list class="divide-y divide-outline border-y border-outline dark:divide-outline-dark dark:border-outline-dark">
+				for _, parameter := range parameters {
+					@parameterRow(groupID, parameter, opts.MarkdownRenderer)
+				}
+			</dl>
 		</section>
 	}
+}
+
+templ parameterRow(groupID string, parameter core.OperationParameter, renderer port.MarkdownRenderer) {
+	{{ rowID := groupID + "-" + anchorFragment(parameter.In+"-"+parameter.Name) }}
+	<div id={ rowID } data-manja-parameter-row class="min-w-0 py-4 first:pt-3 last:pb-3">
+		<dt class="flex min-w-0 items-start justify-between gap-4">
+			@schemaPropertyIdentity(parameter.Name, firstNonEmpty(schemaInline(parameter.Schema), parameter.In))
+			@schemaPropertyState(schemaPropertyStateLabel(parameter.Required))
+		</dt>
+		if strings.TrimSpace(parameter.Description) != "" || strings.TrimSpace(parameter.Example) != "" {
+			<dd class="mt-2 min-w-0 text-sm leading-6 text-on-surface-muted dark:text-on-surface-dark-muted">
+				@parameterDescriptionCell(rowID, renderer, parameter.Description, parameter.Example)
+			</dd>
+		}
+	</div>
 }
 
 templ schemaProperties(id string, caption string, schema core.SchemaSummary, opts PublicDocsOptions) {
@@ -851,26 +1713,27 @@ templ schemaTree(id string, caption string, schema core.SchemaSummary, opts Publ
 	<section id={ id } aria-label={ caption + " schema tree" } class="manja-schema-tree">
 		if schemaTreeExpandable(schema) {
 			<div class="manja-schema-root">
-				@schemaTreeChildNodes(schema, opts)
+				@schemaTreeChildNodes(schema, opts, id)
 			</div>
 		} else {
-			@schemaTreeNode(schemaTreeRootName(caption, schema), false, schema, true, opts)
+			@schemaTreeNode(schemaTreeRootName(caption, schema), "", schema, id, true, opts)
 		}
 	</section>
 }
 
-templ schemaTreeNode(name string, required bool, schema core.SchemaSummary, root bool, opts PublicDocsOptions) {
+templ schemaTreeNode(name string, propertyState string, schema core.SchemaSummary, scope string, root bool, opts PublicDocsOptions) {
 	{{ displayName := schemaTreeDisplayName(name, schema) }}
+	{{ rowScope := scope + "-" + anchorFragment(displayName) }}
 	if schemaTreeExpandable(schema) {
 		if root {
 			<details open data-schema-tree-node={ displayName } class="manja-schema-node manja-schema-node-root">
-				@schemaTreeSummary(displayName, required, schema, opts)
-				@schemaTreeChildren(schema, opts)
+				@schemaTreeSummary(displayName, propertyState, schema, rowScope, opts)
+				@schemaTreeChildren(schema, opts, rowScope)
 			</details>
 		} else {
 			<details open data-schema-tree-row={ displayName } class="manja-schema-node">
-				@schemaTreeSummary(displayName, required, schema, opts)
-				@schemaTreeChildren(schema, opts)
+				@schemaTreeSummary(displayName, propertyState, schema, rowScope, opts)
+				@schemaTreeChildren(schema, opts, rowScope)
 			</details>
 		}
 	} else {
@@ -878,38 +1741,33 @@ templ schemaTreeNode(name string, required bool, schema core.SchemaSummary, root
 			<div data-schema-tree-node={ displayName } class="manja-schema-node manja-schema-node-root">
 				<div class="manja-schema-row">
 					<span class="manja-schema-branch" aria-hidden="true"></span>
-					@schemaTreeLabel(displayName, schema, opts)
-					@schemaTreeRequired(required)
+					@schemaTreeLabel(displayName, propertyState, schema, rowScope, opts)
 				</div>
 			</div>
 		} else {
 			<div data-schema-tree-row={ displayName } class="manja-schema-node">
 				<div class="manja-schema-row">
 					<span class="manja-schema-branch" aria-hidden="true"></span>
-					@schemaTreeLabel(displayName, schema, opts)
-					@schemaTreeRequired(required)
+					@schemaTreeLabel(displayName, propertyState, schema, rowScope, opts)
 				</div>
 			</div>
 		}
 	}
 }
 
-templ schemaTreeSummary(name string, required bool, schema core.SchemaSummary, opts PublicDocsOptions) {
+templ schemaTreeSummary(name string, propertyState string, schema core.SchemaSummary, scope string, opts PublicDocsOptions) {
 	<summary class="manja-schema-row">
 		<span class="manja-schema-branch" aria-hidden="true"></span>
 		<span class="manja-schema-caret" aria-hidden="true"></span>
-		@schemaTreeLabel(name, schema, opts)
-		@schemaTreeRequired(required)
+		@schemaTreeLabel(name, propertyState, schema, scope, opts)
 	</summary>
 }
 
-templ schemaTreeLabel(name string, schema core.SchemaSummary, opts PublicDocsOptions) {
+templ schemaTreeLabel(name string, propertyState string, schema core.SchemaSummary, scope string, opts PublicDocsOptions) {
 	<div class="manja-schema-label">
 		<div class="manja-schema-heading">
-			<span class="manja-schema-name">{ name }</span>
-			if schemaInline(schema) != "" {
-				<span class="manja-schema-type">{ schemaInline(schema) }</span>
-			}
+			@schemaTreePropertyIdentity(name, schema, scope, opts)
+			@schemaPropertyStates(propertyState, schema.Nullable, schema.Deprecated)
 		</div>
 		if schema.Description != "" {
 			if hasMarkdown(opts.MarkdownRenderer, schema.Description) {
@@ -919,6 +1777,12 @@ templ schemaTreeLabel(name string, schema core.SchemaSummary, opts PublicDocsOpt
 			} else {
 				<p class="manja-schema-description">{ schema.Description }</p>
 			}
+		}
+		if schema.Default != "" {
+			<p class="manja-schema-metadata">
+				<span>Default:</span>
+				<code>{ schema.Default }</code>
+			</p>
 		}
 		if schema.Example != "" {
 			if schemaTreeExampleBlock(schema.Example) {
@@ -933,27 +1797,108 @@ templ schemaTreeLabel(name string, schema core.SchemaSummary, opts PublicDocsOpt
 				</p>
 			}
 		}
+		if len(schema.Enum) > 0 {
+			<p class="manja-schema-metadata">
+				<span>Allowed:</span>
+				for _, value := range schema.Enum {
+					<code>{ value }</code>
+				}
+			</p>
+		}
+		for _, constraint := range schema.Constraints {
+			<p class="manja-schema-metadata"><span>{ constraint.Name }:</span><code>{ constraint.Value }</code></p>
+		}
 	</div>
 }
 
-templ schemaTreeRequired(required bool) {
-	if required {
-		<span class="manja-schema-required">required</span>
+templ schemaPropertyIdentity(name string, typeLabel string) {
+	<div class="manja-schema-identity">
+		<span class="manja-schema-name">{ name }</span>
+		if typeLabel != "" {
+			<span class="manja-schema-type">{ typeLabel }</span>
+		}
+	</div>
+}
+
+templ schemaPropertyState(state string) {
+	if state == "required" {
+		<span class="manja-schema-property-state" data-required="true">required</span>
+	} else if state == "optional" {
+		<span class="manja-schema-property-state" data-required="false">optional</span>
 	}
 }
 
-templ schemaTreeChildren(schema core.SchemaSummary, opts PublicDocsOptions) {
-	<div class="manja-schema-children">
-		@schemaTreeChildNodes(schema, opts)
+templ schemaTreePropertyIdentity(name string, schema core.SchemaSummary, scope string, opts PublicDocsOptions) {
+	<div class="manja-schema-identity">
+		<span class="manja-schema-name">{ name }</span>
+		if schemaIsNamedPrimitiveEnumAlias(schema) {
+			@schemaEnumAliasType(name, schema, scope, opts)
+		} else if typeLabel := schemaInline(schema); typeLabel != "" {
+			<span class="manja-schema-type">{ typeLabel }</span>
+		}
 	</div>
 }
 
-templ schemaTreeChildNodes(schema core.SchemaSummary, opts PublicDocsOptions) {
+templ schemaEnumAliasType(name string, schema core.SchemaSummary, scope string, opts PublicDocsOptions) {
+	{{ tooltipID := schemaEnumAliasTooltipID(scope, name, schema) }}
+	@tooltip.Tooltip(
+		tooltipID,
+		schema.Name,
+		tooltip.WithDescription(schemaEnumAliasPreview(schema.Enum)),
+		tooltip.WithPosition(tooltip.PositionBottom),
+		tooltip.WithTrigger(schemaEnumAliasTrigger(schema, opts, tooltipID)),
+	)
+}
+
+templ schemaEnumAliasTrigger(schema core.SchemaSummary, opts PublicDocsOptions, tooltipID string) {
+	{{ href := schemaTypeHref(schema, opts) }}
+	<span class="manja-schema-type">{ schemaInlineTypeLabel(schema) }&lt;</span>
+	if href != "" {
+		<a
+			data-manja-schema-enum-reference="true"
+			href={ templpkg.URL(href) }
+			hx-get={ href }
+			hx-target={ opts.SchemaLinkTarget }
+			if opts.SchemaLinkSelect != "" {
+				hx-select={ opts.SchemaLinkSelect }
+			}
+			hx-swap={ opts.SchemaLinkSwap }
+			hx-push-url="true"
+			aria-describedby={ tooltipID }
+			aria-label={ "Open schema " + schema.Name }
+			title={ "Open schema " + schema.Name }
+			class="manja-schema-reference rounded-radius underline-offset-4 transition hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary dark:focus-visible:outline-primary-dark"
+		>{ schema.Name }</a>
+	} else {
+		<span class="manja-schema-type">{ schema.Name }</span>
+	}
+	<span class="manja-schema-type">&gt;</span>
+}
+
+templ schemaPropertyStates(state string, nullable bool, deprecated bool) {
+	<span class="flex flex-wrap items-center justify-end gap-2">
+		@schemaPropertyState(state)
+		if nullable {
+			<span class="manja-schema-property-state">nullable</span>
+		}
+		if deprecated {
+			<span class="manja-schema-property-state" data-deprecated="true">deprecated</span>
+		}
+	</span>
+}
+
+templ schemaTreeChildren(schema core.SchemaSummary, opts PublicDocsOptions, scope string) {
+	<div class="manja-schema-children">
+		@schemaTreeChildNodes(schema, opts, scope)
+	</div>
+}
+
+templ schemaTreeChildNodes(schema core.SchemaSummary, opts PublicDocsOptions, scope string) {
 	if schema.Items != nil && schemaTreeExpandable(*schema.Items) {
-		@schemaTreeNode("items", false, *schema.Items, false, opts)
+		@schemaTreeNode("items", "", *schema.Items, scope, false, opts)
 	}
 	for _, property := range schema.Properties {
-		@schemaTreeNode(property.Name, property.Required, property.Schema, false, opts)
+		@schemaTreeNode(property.Name, schemaPropertyStateLabel(property.Required), property.Schema, scope, false, opts)
 	}
 }
 
@@ -1010,30 +1955,28 @@ func docsSearchConfig(docs []core.SearchDocument) searchfield.Config {
 		Placeholder:    "Search operations and schemas",
 		GlobalShortcut: true,
 		ItemsURL:       "/search.json",
+		MatchMode:      searchfield.MatchModeFuzzy,
 		MaxResults:     8,
 		EmptyText:      "No operations or schemas found.",
 	}
 }
 
-func responseTabsConfig(opID string, responses []core.OperationResponse, exampleSpecJSON string, opts PublicDocsOptions) tabs.Config {
-	tabItems := make([]tabs.Tab, 0, len(responses))
-	for _, response := range responses {
-		tabItems = append(tabItems, tabs.Tab{
-			ID:        responseTabID(response),
-			Label:     response.Status,
-			LabelSlot: responseStatusBadge(response.Status),
-			Content:   responsePanel(opID, response, exampleSpecJSON, opts),
+func responseAccordionConfig(opID string, responses []core.OperationResponse, exampleSpecJSON string, opts PublicDocsOptions) accordion.AccordionConfig {
+	items := make([]accordion.AccordionItem, 0, len(responses))
+	for responseIndex, response := range responses {
+		items = append(items, accordion.AccordionItem{
+			ID:      opID + "-" + responseTabID(response),
+			Title:   responseAccordionTitle(response),
+			Icon:    responseStatusBadge(response.Status),
+			Content: responsePanel(opID, responseIndex, response, exampleSpecJSON, opts),
 		})
 	}
-	cfg := tabs.Config{
-		ID:        opID + "-responses",
-		Tabs:      tabItems,
-		RootClass: "manja-response-tabs",
+	return accordion.AccordionConfig{
+		ID:            opID + "-responses",
+		Items:         items,
+		Appearance:    accordion.AppearancePlain,
+		RootClass:     "manja-response-accordion",
 	}
-	if len(responses) > 0 {
-		cfg.DefaultTab = responseTabID(responses[0])
-	}
-	return cfg
 }
 
 func responseTabID(response core.OperationResponse) string {
@@ -1044,7 +1987,45 @@ func responseTabID(response core.OperationResponse) string {
 	return "response-" + id
 }
 
-templ parameterDescriptionCell(renderer port.MarkdownRenderer, description string, example string) {
+func responseAccordionTitle(response core.OperationResponse) string {
+	status := strings.TrimSpace(response.Status)
+	if code, err := strconv.Atoi(status); err == nil {
+		if title := http.StatusText(code); title != "" {
+			return title
+		}
+	}
+	if strings.EqualFold(status, "default") {
+		return "Default response"
+	}
+	return "Response"
+}
+
+templ parameterDescriptionCell(id string, renderer port.MarkdownRenderer, description string, example string) {
+	if parameterDescriptionNeedsCollapse(description, example) {
+		<div x-data="{ expanded: false }" class="manja-parameter-description">
+			<div id={ id + "-description" } class="manja-parameter-description-content" data-expanded="true" x-bind:data-expanded="expanded.toString()">
+				@parameterDescriptionBody(renderer, description, example)
+			</div>
+			<button
+				type="button"
+				x-cloak
+				class="manja-description-toggle mt-1 text-xs font-medium text-primary underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary dark:text-primary-dark dark:focus-visible:outline-primary-dark"
+				x-bind:aria-expanded="expanded.toString()"
+				aria-controls={ id + "-description" }
+				x-on:click="expanded = !expanded"
+				x-text="expanded ? 'Show less' : 'Show more'"
+			>
+				Show more
+			</button>
+		</div>
+	} else {
+		<div class="manja-parameter-description">
+			@parameterDescriptionBody(renderer, description, example)
+		</div>
+	}
+}
+
+templ parameterDescriptionBody(renderer port.MarkdownRenderer, description string, example string) {
 	if strings.TrimSpace(description) != "" {
 		if hasMarkdown(renderer, description) {
 			@renderedMarkdown(renderer, description)
@@ -1060,50 +2041,15 @@ templ parameterDescriptionCell(renderer port.MarkdownRenderer, description strin
 	}
 }
 
-func parameterTableConfig(idPrefix string, title string, parameters []core.OperationParameter, renderer port.MarkdownRenderer) table.Config {
-	rows := make([]table.Row, 0, len(parameters))
-	for _, param := range parameters {
-		required := "optional"
-		requiredColor := "neutral"
-		if param.Required {
-			required = "required"
-			requiredColor = "danger"
+func parameterDescriptionNeedsCollapse(description string, example string) bool {
+	text := strings.TrimSpace(description)
+	if example != "" {
+		if text != "" {
+			text += " "
 		}
-		description := param.Description
-		if param.Example != "" {
-			if description != "" {
-				description += " "
-			}
-			description += "Example: " + param.Example
-		}
-		descriptionCell := table.Cell{Text: description}
-		if renderer != nil && (strings.TrimSpace(param.Description) != "" || strings.TrimSpace(param.Example) != "") {
-			descriptionCell = table.Cell{Component: parameterDescriptionCell(renderer, param.Description, param.Example)}
-		}
-		rows = append(rows, table.Row{
-			ID: idPrefix + "-" + anchorFragment(title) + "-" + anchorFragment(param.In+"-"+param.Name),
-			Cells: map[string]table.Cell{
-				"name":        {Text: param.Name, Code: true},
-				"in":          {Text: param.In, Code: true},
-				"type":        {Text: firstNonEmpty(schemaInline(param.Schema), param.In), Code: true},
-				"requirement": {Text: required, BadgeColor: requiredColor},
-				"description": descriptionCell,
-			},
-		})
+		text += "Example: " + example
 	}
-	return table.Config{
-		ID:      idPrefix + "-" + anchorFragment(title),
-		Caption: title,
-		Columns: []table.Column{
-			{Key: "name", Label: "Name", Width: "min-w-[8rem]"},
-			{Key: "in", Label: "In", Width: "w-24"},
-			{Key: "type", Label: "Type", Width: "min-w-[8rem]"},
-			{Key: "requirement", Label: "Required", Width: "w-28"},
-			{Key: "description", Label: "Description"},
-		},
-		Rows:      rows,
-		RootClass: "text-sm",
-	}
+	return utf8.RuneCountInString(text) > 220 || strings.Count(text, "\n") >= 4
 }
 
 func mediaTypeTableID(idPrefix string, media core.OperationMediaType) string {
@@ -1154,6 +2100,10 @@ func defaultExampleOptions() ExampleOptions {
 
 func hasSchemaExample(cfg ExampleConfig) bool {
 	return strings.TrimSpace(cfg.SchemaJSON) != "" || strings.TrimSpace(cfg.ExampleJSON) != ""
+}
+
+func hasResponseExample(media core.OperationMediaType) bool {
+	return strings.TrimSpace(media.Example) != ""
 }
 
 func exampleLanguage(cfg ExampleConfig) string {
@@ -1219,14 +2169,14 @@ func sidebarSections(idx core.SpecIndex, selectedAnchor string, labelMode Endpoi
 				}
 				label := operationSidebarLabel(op, labelMode)
 				href := selectedDocsHref(anchor)
-				tagItems[tag] = append(tagItems[tag], sidebar.Item{
-					ID:         sidebarItemID(idPrefix, anchor),
-					Label:      label,
-					Href:       href,
-					Active:     active,
-					Badge:      op.Method,
-					LinkAttrs:  sidebarNavigationAttrs(label, href),
-				})
+					tagItems[tag] = append(tagItems[tag], sidebar.Item{
+						ID:         sidebarItemID(idPrefix, anchor),
+						Label:      label,
+						Href:       href,
+						Active:     active,
+						Badge:      op.Method,
+						LinkAttrs:  sidebarOperationNavigationAttrs(label, href, op.Method),
+					})
 			}
 		}
 		items := make([]sidebar.Item, 0, len(tagOrder))
@@ -1286,15 +2236,96 @@ func selectedDocsItemFor(idx core.SpecIndex, selectedID string) selectedDocsItem
 			return selectedDocsItem{Anchor: anchor, Kind: "schema", Schema: schema}
 		}
 	}
-	if len(idx.Operations) > 0 {
-		anchor := operationAnchor(idx.Operations[0])
-		return selectedDocsItem{Anchor: anchor, Kind: "operation", Operation: idx.Operations[0]}
+	return selectedDocsItem{Anchor: selectedID, Kind: "missing"}
+}
+
+func publicDocsPageTitle(idx core.SpecIndex, selected selectedDocsItem) string {
+	switch selected.Kind {
+	case "operation":
+		return operationTitle(selected.Operation)
+	case "schema":
+		return selected.Schema.Name
+	case "missing":
+		return "Documentation not found"
+	default:
+		return firstNonEmpty(idx.Title, "OpenAPI documentation")
 	}
-	if len(idx.Schemas) > 0 {
-		anchor := schemaAnchor(idx.Schemas[0])
-		return selectedDocsItem{Anchor: anchor, Kind: "schema", Schema: idx.Schemas[0]}
+}
+
+func publicPageMarkdownHref(selected selectedDocsItem) string {
+	query := url.Values{}
+	query.Set("format", "markdown")
+	query.Set("selected", selected.Anchor)
+	return "/?" + query.Encode()
+}
+
+func publicDocsPageDescription(idx core.SpecIndex, selected selectedDocsItem) string {
+	switch selected.Kind {
+	case "operation":
+		return strings.TrimSpace(strings.ToUpper(selected.Operation.Method) + " " + selected.Operation.Path)
+	case "schema":
+		return "Schema reference"
+	case "missing":
+		return "The requested documentation is not part of this contract."
+	default:
+		if idx.Version != "" {
+			return "OpenAPI " + idx.Version
+		}
+		return "OpenAPI contract overview"
 	}
-	return selectedDocsItem{Anchor: "overview", Kind: "overview"}
+}
+
+func publicDocsDocumentTitle(idx core.SpecIndex, selected selectedDocsItem) string {
+	pageTitle := publicDocsPageTitle(idx, selected)
+	if strings.HasSuffix(pageTitle, " · Manja") {
+		return pageTitle
+	}
+	return pageTitle + " · Manja"
+}
+
+// ResolvePublicDocsSelection normalizes and resolves a request selection once.
+func ResolvePublicDocsSelection(idx core.SpecIndex, selectedID string) PublicDocsSelection {
+	return PublicDocsSelection{item: selectedDocsItemFor(idx, selectedID)}
+}
+
+// PublicDocsMetadataDescription returns the resolved route's source description.
+func PublicDocsMetadataDescription(idx core.SpecIndex, selected PublicDocsSelection) string {
+	return publicDocsMetadataDescription(idx, selected.item)
+}
+
+func publicDocsMetadataDescription(idx core.SpecIndex, selected selectedDocsItem) string {
+	switch selected.Kind {
+	case "operation":
+		return firstNonEmpty(
+			selected.Operation.Description,
+			selected.Operation.Summary,
+			strings.TrimSpace(strings.ToUpper(selected.Operation.Method)+" "+selected.Operation.Path),
+		)
+	case "schema":
+		return firstNonEmpty(
+			selected.Schema.Description,
+			selected.Schema.Summary.Description,
+			"Schema reference for "+selected.Schema.Name+".",
+		)
+	case "missing":
+		return "The requested documentation is not part of this contract."
+	default:
+		return firstNonEmpty(
+			idx.Overview.Description,
+			"Browse OpenAPI operations and schemas for "+firstNonEmpty(idx.Title, "this contract")+".",
+		)
+	}
+}
+
+func publicDocsPageMetadata(idx core.SpecIndex, selected selectedDocsItem, metadata PageMetadata) PageMetadata {
+	metadata.Title = publicDocsDocumentTitle(idx, selected)
+	if strings.TrimSpace(metadata.Description) == "" {
+		metadata.Description = publicDocsMetadataDescription(idx, selected)
+	}
+	if selected.Kind == "missing" {
+		metadata.Robots = "noindex,follow"
+	}
+	return metadata
 }
 
 func operationBreadcrumbItems(idx core.SpecIndex, op core.Operation, fallbackAnchor string) []breadcrumbs.Item {
@@ -1319,6 +2350,76 @@ func operationBreadcrumbTag(op core.Operation) string {
 		}
 	}
 	return "Untagged"
+}
+
+func publicOperationNavigation(idx core.SpecIndex, selected core.Operation) OperationNavigationData {
+	group := operationBreadcrumbTag(selected)
+	navigation := OperationNavigationData{Group: group}
+	selectedAnchor := operationAnchor(selected)
+	groupOperations := make([]core.Operation, 0, len(idx.Operations))
+	for _, operation := range idx.Operations {
+		if strings.EqualFold(operationBreadcrumbTag(operation), group) {
+			groupOperations = append(groupOperations, operation)
+		}
+	}
+	for index, operation := range groupOperations {
+		if operationAnchor(operation) != selectedAnchor {
+			continue
+		}
+		if index > 0 {
+			previous := groupOperations[index-1]
+			navigation.Previous = &OperationNavigationItem{
+				Title: operationTitle(previous),
+				Method: previous.Method,
+				Href: selectedDocsHref(operationAnchor(previous)),
+			}
+		}
+		if index+1 < len(groupOperations) {
+			next := groupOperations[index+1]
+			navigation.Next = &OperationNavigationItem{
+				Title: operationTitle(next),
+				Method: next.Method,
+				Href: selectedDocsHref(operationAnchor(next)),
+			}
+		}
+		break
+	}
+	return navigation
+}
+
+func operationNavigationLabel(group string) string {
+	return "More operations in " + firstNonEmpty(strings.TrimSpace(group), "Untagged")
+}
+
+func operationNavigationLinkClass(direction string) string {
+	className := "group flex min-w-0 items-start gap-3 rounded-radius border border-outline bg-surface p-4 transition-colors hover:border-primary hover:bg-surface-alt focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary dark:border-outline-dark dark:bg-surface-dark dark:hover:border-primary-dark dark:hover:bg-surface-dark-alt dark:focus-visible:outline-primary-dark"
+	if direction == "next" {
+		className += " text-right sm:col-start-2"
+	}
+	return className
+}
+
+func operationNavigationContentClass(direction string) string {
+	className := "flex min-w-0 flex-1 flex-col gap-2"
+	if direction == "next" {
+		className += " text-right"
+	}
+	return className
+}
+
+func operationNavigationIdentityClass(direction string) string {
+	className := "flex w-full min-w-0 items-start gap-2"
+	if direction == "next" {
+		className += " justify-end"
+	}
+	return className
+}
+
+func operationNavigationDirectionLabel(direction string) string {
+	if direction == "previous" {
+		return "Previous operation"
+	}
+	return "Next operation"
 }
 
 func operationTagBreadcrumbHref(idx core.SpecIndex, tag string, fallbackAnchor string) string {
@@ -1383,7 +2484,17 @@ func sidebarNavigationAttrs(label string, href string) templpkg.Attributes {
 	attrs["hx-target"] = "#main-content"
 	attrs["hx-swap"] = "innerHTML swap:120ms settle:240ms"
 	attrs["hx-push-url"] = "true"
+	attrs["hx-indicator"] = "#public-docs-loading"
 	attrs["data-manja-sidebar-nav"] = "true"
+	return attrs
+}
+
+func sidebarOperationNavigationAttrs(label string, href string, method string) templpkg.Attributes {
+	attrs := sidebarNavigationAttrs(label, href)
+	if attrs == nil {
+		attrs = templpkg.Attributes{}
+	}
+	attrs["data-manja-method"] = strings.ToUpper(strings.TrimSpace(method))
 	return attrs
 }
 
@@ -1400,17 +2511,18 @@ templ methodBadge(method string) {
 	@badge.Badge(badge.Config{
 		Label:     strings.ToUpper(strings.TrimSpace(method)),
 		Tone:      methodBadgeTone(method),
+		Appearance: badge.AppearanceSoft,
 		Size:      badge.SizeSM,
-		RootClass: "font-mono font-bold",
+		RootClass: "shrink-0 font-mono font-bold",
 	})
 }
 
 func methodBadgeTone(method string) badge.Tone {
 	switch strings.ToUpper(strings.TrimSpace(method)) {
 	case "GET":
-		return badge.TonePrimary
-	case "POST":
 		return badge.ToneSuccess
+	case "POST":
+		return badge.TonePrimary
 	case "PUT":
 		return badge.ToneWarning
 	case "PATCH":
@@ -1488,6 +2600,9 @@ func schemaAnchor(schema core.Schema) string {
 }
 
 func operationTitle(op core.Operation) string {
+	if strings.TrimSpace(op.Title) != "" {
+		return op.Title
+	}
 	if strings.TrimSpace(op.Summary) != "" {
 		return op.Summary
 	}
@@ -1516,7 +2631,7 @@ func pluralizedCount(count int, singular string) string {
 	return strconv.Itoa(count) + " " + label
 }
 
-func schemaInline(schema core.SchemaSummary) string {
+func schemaInlineTypeLabel(schema core.SchemaSummary) string {
 	typeLabel := schema.Type
 	if strings.Contains(schema.Type, "array") {
 		typeLabel = "array"
@@ -1532,6 +2647,14 @@ func schemaInline(schema core.SchemaSummary) string {
 			typeLabel = schema.Format
 		}
 	}
+	return typeLabel
+}
+
+func schemaInline(schema core.SchemaSummary) string {
+	typeLabel := schemaInlineTypeLabel(schema)
+	if schemaIsNamedPrimitiveEnumAlias(schema) {
+		return typeLabel + "<" + strings.TrimSpace(schema.Name) + ">"
+	}
 
 	parts := make([]string, 0, 2)
 	if schema.Name != "" {
@@ -1541,6 +2664,94 @@ func schemaInline(schema core.SchemaSummary) string {
 		parts = append(parts, typeLabel)
 	}
 	return strings.Join(parts, " ")
+}
+
+func schemaIsPrimitiveType(schema core.SchemaSummary) bool {
+	switch strings.ToLower(strings.TrimSpace(schema.Type)) {
+	case "string", "number", "integer", "boolean", "null":
+		return true
+	}
+	return false
+}
+
+func schemaIsNamedPrimitiveEnumAlias(schema core.SchemaSummary) bool {
+	return strings.TrimSpace(schema.Name) != "" && schemaIsPrimitiveType(schema) && len(schema.Enum) > 0
+}
+
+func schemaEnumAliasPreview(values []string) string {
+	const previewLimit = 5
+	preview := make([]string, 0, min(len(values), previewLimit))
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value == "" {
+			continue
+		}
+		preview = append(preview, value)
+		if len(preview) == previewLimit {
+			break
+		}
+	}
+	if len(preview) == 0 {
+		return "Named primitive enum."
+	}
+	if len(values) > len(preview) {
+		return "Allowed: " + strings.Join(preview, ", ") + ", and more."
+	}
+	return "Allowed: " + strings.Join(preview, ", ")
+}
+
+func schemaEnumAliasTooltipID(scope string, name string, schema core.SchemaSummary) string {
+	return "schema-enum-alias-" + anchorFragment(scope) + "-" + anchorFragment(name) + "-" + anchorFragment(schema.Name)
+}
+
+func schemaLinksForIndex(idx core.SpecIndex, existing map[string]string) map[string]string {
+	links := make(map[string]string, len(existing)+len(idx.Schemas))
+	for name, href := range existing {
+		links[name] = href
+	}
+	for _, schema := range idx.Schemas {
+		name := strings.TrimSpace(schema.Name)
+		if name == "" {
+			continue
+		}
+		if _, exists := links[name]; !exists {
+			links[name] = selectedDocsHref(schemaAnchor(schema))
+		}
+	}
+	return links
+}
+
+func schemaTypeHref(schema core.SchemaSummary, opts PublicDocsOptions) string {
+	name := strings.TrimSpace(schema.Name)
+	if name == "" || opts.SchemaLinks == nil || (schemaIsPrimitiveType(schema) && !schemaIsNamedPrimitiveEnumAlias(schema)) {
+		return ""
+	}
+	return strings.TrimSpace(opts.SchemaLinks[name])
+}
+
+templ schemaTypeLink(schema core.SchemaSummary, opts PublicDocsOptions) {
+	{{ label := schemaInline(schema) }}
+	{{ href := schemaTypeHref(schema, opts) }}
+	if href == "" {
+		<span class="font-mono text-xs text-on-surface-muted dark:text-on-surface-dark-muted">{ label }</span>
+	} else {
+		<a
+			href={ templpkg.URL(href) }
+			hx-get={ href }
+			hx-target={ opts.SchemaLinkTarget }
+			if opts.SchemaLinkSelect != "" {
+				hx-select={ opts.SchemaLinkSelect }
+			}
+			hx-swap={ opts.SchemaLinkSwap }
+			hx-push-url="true"
+			aria-label={ "Open schema " + label }
+			title={ "Open schema " + label }
+			class="inline-flex max-w-full items-center gap-1 py-1 font-mono text-xs text-on-surface-muted transition-colors hover:text-primary focus-visible:rounded-radius focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary dark:text-on-surface-dark-muted dark:hover:text-primary-dark dark:focus-visible:outline-primary-dark"
+		>
+			<span class="min-w-0 break-all">{ label }</span>
+			@icon.Icon(icon.Config{SpriteURL: heroicons.SpriteURL, Symbol: heroicons.Icon16SolidLink, Size: icon.SizeSM, RootClass: "shrink-0", Decorative: true})
+		</a>
+	}
 }
 
 func schemaTreeRootName(caption string, schema core.SchemaSummary) string {
@@ -1563,6 +2774,13 @@ func schemaTreeDisplayName(name string, schema core.SchemaSummary) string {
 	return "schema"
 }
 
+func schemaPropertyStateLabel(required bool) string {
+	if required {
+		return "required"
+	}
+	return "optional"
+}
+
 func schemaTreeHasContent(schema core.SchemaSummary) bool {
 	return schemaInline(schema) != "" ||
 		strings.TrimSpace(schema.Description) != "" ||
@@ -1583,11 +2801,61 @@ func schemaTreeExampleBlock(example string) bool {
 	return len(trimmed) > 96 || strings.Contains(trimmed, "\n")
 }
 
-func securityLabel(security core.OperationSecurity) string {
-	if len(security.Scopes) == 0 {
-		return security.Name
+func securityTypeLabel(security core.OperationSecurity) string {
+	return firstNonEmpty(security.Definition.Type, "security scheme")
+}
+
+func securityParameterName(security core.OperationSecurity) string {
+	if strings.TrimSpace(security.Definition.ParameterName) != "" {
+		return security.Definition.ParameterName
 	}
-	return security.Name + " (" + strings.Join(security.Scopes, ", ") + ")"
+	typeName := strings.ToLower(strings.TrimSpace(security.Definition.Type))
+	if typeName == "http" || typeName == "oauth2" || typeName == "openidconnect" {
+		return "Authorization"
+	}
+	return ""
+}
+
+func securityParameterLocation(security core.OperationSecurity) string {
+	location := strings.ToLower(strings.TrimSpace(security.Definition.In))
+	switch location {
+	case "header":
+		return "Request header"
+	case "query":
+		return "Query parameter"
+	case "cookie":
+		return "Cookie"
+	}
+	if securityParameterName(security) != "" {
+		return "Request header"
+	}
+	return "Parameter"
+}
+
+func securityInstruction(security core.OperationSecurity) string {
+	typeName := strings.ToLower(strings.TrimSpace(security.Definition.Type))
+	scheme := strings.ToLower(strings.TrimSpace(security.Definition.Scheme))
+	parameter := securityParameterName(security)
+	switch {
+	case typeName == "http" && scheme == "bearer":
+		return "Send the token in the Authorization request header using the Bearer scheme."
+	case typeName == "http" && scheme == "basic":
+		return "Send credentials in the Authorization request header using the Basic scheme."
+	case typeName == "oauth2" || typeName == "openidconnect":
+		return "Send the access token in the Authorization request header using the Bearer scheme."
+	case typeName == "apikey" && strings.EqualFold(security.Definition.In, "header"):
+		return "Send the API key in the " + parameter + " request header."
+	case typeName == "apikey" && parameter != "":
+		return "Send the API key through the documented " + strings.ToLower(securityParameterLocation(security)) + "."
+	}
+	return ""
+}
+
+func securityHasMetadata(security core.OperationSecurity) bool {
+	return securityParameterName(security) != "" ||
+		strings.TrimSpace(security.Definition.Scheme) != "" ||
+		strings.TrimSpace(security.Definition.BearerFormat) != "" ||
+		strings.TrimSpace(security.Definition.OpenIDConnectURL) != ""
 }
 
 func operationHasRail(op core.Operation, servers []core.SpecServer) bool {
@@ -1607,10 +2875,16 @@ func operationHasRail(op core.Operation, servers []core.SpecServer) bool {
 	return false
 }
 
+func requestConfigPanelLabel(op core.Operation, servers []core.SpecServer) string {
+	if requestConfigHasContent(op, servers) {
+		return "Request configuration"
+	}
+	return "Request examples"
+}
+
 func requestConfigHasContent(op core.Operation, servers []core.SpecServer) bool {
 	return len(requestServerVariableFields(primarySpecServer(servers))) > 0 ||
 		len(op.Parameters) > 0 ||
-		len(op.Security) > 0 ||
 		requestConfigHasBody(op, "")
 }
 
@@ -1699,6 +2973,7 @@ func requestComposerPayload(op core.Operation, server core.SpecServer, body requ
 		"method":        strings.ToUpper(op.Method),
 		"urlTemplate":   requestComposerURLTemplate(server, op),
 		"parameters":    requestComposerParameters(op.Parameters),
+		"security":      requestComposerSecurity(op.Security),
 		"sampleTargets": requestSampleTargetsPayload(),
 	}
 	if body.Has {
@@ -1706,6 +2981,62 @@ func requestComposerPayload(op core.Operation, server core.SpecServer, body requ
 		payload["body"] = schemaExamplePayload(body.Config)
 	}
 	return payload
+}
+
+func requestComposerSecurity(security []core.OperationSecurity) []map[string]string {
+	result := make([]map[string]string, 0, len(security))
+	for _, item := range security {
+		parameter := securityParameterName(item)
+		location := strings.ToLower(strings.TrimSpace(item.Definition.In))
+		if location != "header" && location != "query" && location != "cookie" {
+			if parameter != "" {
+				location = "header"
+			}
+		}
+		if parameter == "" || location == "" {
+			continue
+		}
+		result = append(result, map[string]string{
+			"name":        item.Name,
+			"type":        strings.ToLower(strings.TrimSpace(item.Definition.Type)),
+			"in":          location,
+			"parameterName": parameter,
+			"placeholder": securityPlaceholder(item),
+		})
+	}
+	return result
+}
+
+func securitySample(security core.OperationSecurity) string {
+	parameter := securityParameterName(security)
+	if parameter == "" {
+		return ""
+	}
+	location := strings.ToLower(strings.TrimSpace(security.Definition.In))
+	value := securityPlaceholder(security)
+	switch location {
+	case "query":
+		return parameter + "=" + value
+	case "cookie":
+		return "Cookie: " + parameter + "=" + value
+	default:
+		return parameter + ": " + value
+	}
+}
+
+func securityPlaceholder(security core.OperationSecurity) string {
+	typeName := strings.ToLower(strings.TrimSpace(security.Definition.Type))
+	scheme := strings.ToLower(strings.TrimSpace(security.Definition.Scheme))
+	switch {
+	case typeName == "http" && scheme == "bearer", typeName == "oauth2", typeName == "openidconnect":
+		return "Bearer YOUR_ACCESS_TOKEN"
+	case typeName == "http" && scheme == "basic":
+		return "Basic BASE64_USERNAME_PASSWORD"
+	case typeName == "apikey":
+		return "YOUR_API_KEY"
+	default:
+		return "YOUR_CREDENTIAL"
+	}
 }
 
 func requestSampleTargets() []requestSampleTarget {
@@ -1801,7 +3132,7 @@ func requestComposerOwnsSnippet(op core.Operation, servers []core.SpecServer, sn
 }
 
 func operationHasRequest(op core.Operation) bool {
-	return len(op.Parameters) > 0 || op.RequestBody != nil
+	return len(op.Security) > 0 || len(op.Parameters) > 0 || op.RequestBody != nil
 }
 
 func endpointDetailLayoutClass(op core.Operation) string {

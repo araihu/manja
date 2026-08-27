@@ -1,0 +1,239 @@
+package render
+
+import (
+	"strings"
+
+	templpkg "github.com/a-h/templ"
+	"github.com/araihu/goshtoso/components/tooltip"
+)
+
+templ operationSchemaProperties(tree operationSchemaTreeData) {
+	if tree.HasContent {
+		<div class="mt-4">
+			@operationSchemaTree(tree)
+		</div>
+	}
+}
+
+templ operationSchemaTree(tree operationSchemaTreeData) {
+	<section id={ tree.ID } aria-label={ tree.Caption + " schema tree" } class="manja-schema-tree">
+		if tree.Root.Expandable {
+			<div class="manja-schema-root">
+				@operationSchemaTreeChildNodes(tree.Root, tree, tree.ID)
+			</div>
+		} else {
+			{{ root := tree.Root }}
+			{{ root.Name = operationSchemaTreeRootName(tree.Caption, root.SchemaName) }}
+			@operationSchemaTreeNode(root, tree.ID, true, "", tree)
+		}
+	</section>
+}
+
+templ operationSchemaTreeNode(node operationSchemaTreeNodeData, scope string, root bool, propertyState string, tree operationSchemaTreeData) {
+	{{ rowScope := scope + "-" + anchorFragment(node.Name) }}
+	if node.Expandable {
+		if root {
+			<details open data-schema-tree-node={ node.Name } class="manja-schema-node manja-schema-node-root">
+				@operationSchemaTreeSummary(node, rowScope, propertyState, tree)
+				@operationSchemaTreeChildren(node, tree, rowScope)
+			</details>
+		} else {
+			<details open data-schema-tree-row={ node.Name } class="manja-schema-node">
+				@operationSchemaTreeSummary(node, rowScope, propertyState, tree)
+				@operationSchemaTreeChildren(node, tree, rowScope)
+			</details>
+		}
+	} else {
+		if root {
+			<div data-schema-tree-node={ node.Name } class="manja-schema-node manja-schema-node-root">
+				<div class="manja-schema-row">
+					<span class="manja-schema-branch" aria-hidden="true"></span>
+					@operationSchemaTreeLabel(node, rowScope, propertyState, tree)
+				</div>
+			</div>
+		} else {
+			<div data-schema-tree-row={ node.Name } class="manja-schema-node">
+				<div class="manja-schema-row">
+					<span class="manja-schema-branch" aria-hidden="true"></span>
+					@operationSchemaTreeLabel(node, rowScope, propertyState, tree)
+				</div>
+			</div>
+		}
+	}
+}
+
+templ operationSchemaTreeSummary(node operationSchemaTreeNodeData, scope string, propertyState string, tree operationSchemaTreeData) {
+	<summary class="manja-schema-row">
+		<span class="manja-schema-branch" aria-hidden="true"></span>
+		<span class="manja-schema-caret" aria-hidden="true"></span>
+		@operationSchemaTreeLabel(node, scope, propertyState, tree)
+	</summary>
+}
+
+templ operationSchemaTreeLabel(node operationSchemaTreeNodeData, scope string, propertyState string, tree operationSchemaTreeData) {
+	<div class="manja-schema-label">
+		<div class="manja-schema-heading">
+			@operationSchemaTreePropertyIdentity(node, scope, tree)
+			@operationSchemaTreePropertyStates(propertyState, node.Nullable, node.Deprecated)
+		</div>
+		if node.Description != "" {
+			<p class="manja-schema-description">{ node.Description }</p>
+		}
+		if node.DefaultValue != "" {
+			<p class="manja-schema-metadata">
+				<span>Default:</span>
+				<code>{ node.DefaultValue }</code>
+			</p>
+		}
+		if node.ExampleText != "" {
+			if operationSchemaTreeExampleBlock(node.ExampleText) {
+				<div class="manja-schema-example manja-schema-example-block">
+					<span>Example:</span>
+					<pre><code>{ node.ExampleText }</code></pre>
+				</div>
+			} else {
+				<p class="manja-schema-example manja-schema-example-inline">
+					<span>Example:</span>
+					<code>{ node.ExampleText }</code>
+				</p>
+			}
+		}
+		if len(node.EnumValues) > 0 {
+			<p class="manja-schema-metadata">
+				<span>Allowed:</span>
+				for _, value := range node.EnumValues {
+					<code>{ value }</code>
+				}
+			</p>
+		}
+		for _, constraint := range node.Constraints {
+			<p class="manja-schema-metadata"><span>{ constraint.Name }:</span><code>{ constraint.Value }</code></p>
+		}
+	</div>
+}
+
+templ operationSchemaTreePropertyIdentity(node operationSchemaTreeNodeData, scope string, tree operationSchemaTreeData) {
+	<div class="manja-schema-identity">
+		<span class="manja-schema-name">{ node.Name }</span>
+		if node.EnumAlias {
+			@operationSchemaTreeEnumAliasType(node, scope, tree)
+		} else if node.Inline != "" {
+			<span class="manja-schema-type">{ node.Inline }</span>
+		}
+	</div>
+}
+
+templ operationSchemaTreeEnumAliasType(node operationSchemaTreeNodeData, scope string, tree operationSchemaTreeData) {
+	{{ tooltipID := operationSchemaTreeEnumAliasTooltipID(scope, node) }}
+	@tooltip.Tooltip(
+		tooltipID,
+		node.SchemaName,
+		tooltip.WithDescription(operationSchemaTreeEnumAliasPreview(node.EnumValues)),
+		tooltip.WithPosition(tooltip.PositionBottom),
+		tooltip.WithTrigger(operationSchemaTreeEnumAliasTrigger(node, tooltipID, tree)),
+	)
+}
+
+templ operationSchemaTreeEnumAliasTrigger(node operationSchemaTreeNodeData, tooltipID string, tree operationSchemaTreeData) {
+	<span class="manja-schema-type">{ node.InlineType }&lt;</span>
+	if node.ReferenceHref != "" {
+		<a
+			data-manja-schema-enum-reference="true"
+			href={ templpkg.URL(node.ReferenceHref) }
+			hx-get={ node.ReferenceHref }
+			hx-target={ tree.LinkTarget }
+			if tree.LinkSelect != "" {
+				hx-select={ tree.LinkSelect }
+			}
+			hx-swap={ tree.LinkSwap }
+			hx-push-url="true"
+			aria-describedby={ tooltipID }
+			aria-label={ "Open schema " + node.SchemaName }
+			title={ "Open schema " + node.SchemaName }
+			class="manja-schema-reference rounded-radius underline-offset-4 transition hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary dark:focus-visible:outline-primary-dark"
+		>{ node.SchemaName }</a>
+	} else {
+		<span class="manja-schema-type">{ node.SchemaName }</span>
+	}
+	<span class="manja-schema-type">&gt;</span>
+}
+
+templ operationSchemaTreePropertyStates(state string, nullable bool, deprecated bool) {
+	<span class="flex flex-wrap items-center justify-end gap-2">
+		@operationSchemaTreePropertyState(state)
+		if nullable {
+			<span class="manja-schema-property-state">nullable</span>
+		}
+		if deprecated {
+			<span class="manja-schema-property-state" data-deprecated="true">deprecated</span>
+		}
+	</span>
+}
+
+templ operationSchemaTreePropertyState(state string) {
+	if state == "required" {
+		<span class="manja-schema-property-state" data-required="true">required</span>
+	} else if state == "optional" {
+		<span class="manja-schema-property-state" data-required="false">optional</span>
+	}
+}
+
+templ operationSchemaTreeChildren(node operationSchemaTreeNodeData, tree operationSchemaTreeData, scope string) {
+	<div class="manja-schema-children">
+		@operationSchemaTreeChildNodes(node, tree, scope)
+	</div>
+}
+
+templ operationSchemaTreeChildNodes(node operationSchemaTreeNodeData, tree operationSchemaTreeData, scope string) {
+	if node.Items != nil && node.Items.Expandable {
+		@operationSchemaTreeNode(*node.Items, scope, false, "", tree)
+	}
+	for _, property := range node.Properties {
+		if property.Required {
+			@operationSchemaTreeNode(property.Schema, scope, false, "required", tree)
+		} else {
+			@operationSchemaTreeNode(property.Schema, scope, false, "optional", tree)
+		}
+	}
+}
+
+func operationSchemaTreeRootName(caption, schemaName string) string {
+	if strings.TrimSpace(schemaName) != "" {
+		return schemaName
+	}
+	if strings.TrimSpace(caption) != "" {
+		return caption
+	}
+	return "schema"
+}
+
+func operationSchemaTreeExampleBlock(example string) bool {
+	trimmed := strings.TrimSpace(example)
+	return len(trimmed) > 96 || strings.Contains(trimmed, "\n")
+}
+
+func operationSchemaTreeEnumAliasTooltipID(scope string, node operationSchemaTreeNodeData) string {
+	return "schema-enum-alias-" + anchorFragment(scope) + "-" + anchorFragment(node.Name) + "-" + anchorFragment(node.SchemaName)
+}
+
+func operationSchemaTreeEnumAliasPreview(values []string) string {
+	const previewLimit = 5
+	preview := make([]string, 0, min(len(values), previewLimit))
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value == "" {
+			continue
+		}
+		preview = append(preview, value)
+		if len(preview) == previewLimit {
+			break
+		}
+	}
+	if len(preview) == 0 {
+		return "Named primitive enum."
+	}
+	if len(values) > len(preview) {
+		return "Allowed: " + strings.Join(preview, ", ") + ", and more."
+	}
+	return "Allowed: " + strings.Join(preview, ", ")
+}

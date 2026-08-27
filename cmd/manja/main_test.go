@@ -10,7 +10,35 @@ import (
 
 	core "github.com/araihu/manja/domain"
 	app "github.com/araihu/manja/internal/selfhosted"
+	"github.com/araihu/manja/renderer"
 )
+
+func TestBuildCommandWritesDeterministicSnapshotReceipt(t *testing.T) {
+	originalBuild := buildRenderer
+	t.Cleanup(func() { buildRenderer = originalBuild })
+	buildRenderer = func(context.Context, app.RendererOptions) ([]renderer.ActivationReceipt, error) {
+		return []renderer.ActivationReceipt{{CatalogID: "kubernetes", Mount: "/", RevisionID: "files-sha256-a", SnapshotID: "snapshot-sha256-b"}}, nil
+	}
+
+	var stdout, stderr bytes.Buffer
+	code := run(context.Background(), []string{"build", "-renderer-config", "renderer.yaml", "-data-dir", "/out/catalog"}, &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("build code = %d stderr=%q", code, stderr.String())
+	}
+	want := "{\"schemaVersion\":1,\"catalogs\":[{\"catalogId\":\"kubernetes\",\"mount\":\"/\",\"revisionId\":\"files-sha256-a\",\"snapshotId\":\"snapshot-sha256-b\"}]}\n"
+	if stdout.String() != want || stderr.Len() != 0 {
+		t.Fatalf("stdout=%q stderr=%q, want %q and empty", stdout.String(), stderr.String(), want)
+	}
+}
+
+func TestBuildCommandRequiresExplicitRendererInputs(t *testing.T) {
+	for _, args := range [][]string{{"build"}, {"build", "-renderer-config", "renderer.yaml"}, {"build", "-data-dir", "/out/catalog"}} {
+		var stdout, stderr bytes.Buffer
+		if code := run(context.Background(), args, &stdout, &stderr); code != 2 {
+			t.Errorf("run(%v) code = %d, want 2; stderr=%q", args, code, stderr.String())
+		}
+	}
+}
 
 func TestRunServerPreservesExistingFlagsAndStartsServer(t *testing.T) {
 	originalServe := serve
@@ -28,6 +56,7 @@ func TestRunServerPreservesExistingFlagsAndStartsServer(t *testing.T) {
 		"-git-repo", "https://example.test/acme/payments.git",
 		"-git-ref", "release/v2",
 		"-data-dir", "/tmp/manja-data",
+		"-public-origin", "https://docs.example.test",
 		"-endpoint-sidebar-label", string(app.EndpointSidebarLabelPath),
 		"-brand-name", "Acme",
 		"-brand-logo", "https://example.test/logo.svg",
@@ -47,6 +76,7 @@ func TestRunServerPreservesExistingFlagsAndStartsServer(t *testing.T) {
 			GitRepo:              "https://example.test/acme/payments.git",
 			GitRef:               "release/v2",
 			DataDir:              "/tmp/manja-data",
+			PublicOrigin:         "https://docs.example.test",
 			EndpointSidebarLabel: app.EndpointSidebarLabelPath,
 			Branding: core.DocsBranding{
 				DisplayName: "Acme",
@@ -107,5 +137,18 @@ func TestOptionsFromArgsBuildsGitSourceOptions(t *testing.T) {
 	}
 	if opts.SpecPath != "docs/openapi.yaml" || opts.DataDir != "/tmp/manja-data" {
 		t.Fatalf("path opts = %#v", opts)
+	}
+}
+
+func TestConfigFromArgsSelectsRendererOnlyConfig(t *testing.T) {
+	cfg, err := configFromArgs([]string{
+		"-renderer-config", "configs/renderer.yaml",
+		"-data-dir", "/tmp/manja-renderer",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.RendererConfig != "configs/renderer.yaml" || cfg.Options.DataDir != "/tmp/manja-renderer" {
+		t.Fatalf("renderer config = %#v", cfg)
 	}
 }

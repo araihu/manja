@@ -16,6 +16,10 @@ const (
 	maxSpecSchemaSummaryNodes = 100_000
 )
 
+type ValidationOptions struct {
+	ResourceLimits bool
+}
+
 // ValidateContractRevision verifies all provider-neutral immutable revision
 // evidence before an adapter may clone or persist it. Display metadata is
 // required only to be valid UTF-8; whitespace and newlines remain unchanged.
@@ -91,7 +95,11 @@ func ValidateSyncRecord(record SyncRecord) error {
 // as UTF-8, while compatibility and navigation surface identities are
 // canonical.
 func ValidateSpecIndex(index SpecIndex) error {
-	if err := validateSpecIndexSchemaSummaries(index); err != nil {
+	return ValidateSpecIndexWithOptions(index, ValidationOptions{ResourceLimits: true})
+}
+
+func ValidateSpecIndexWithOptions(index SpecIndex, options ValidationOptions) error {
+	if err := validateSpecIndexSchemaSummaries(index, options.ResourceLimits); err != nil {
 		return err
 	}
 	if err := validateUTF8Strings("spec index", index); err != nil {
@@ -148,6 +156,9 @@ func ValidateSpecIndex(index SpecIndex) error {
 			if err := ValidateCanonicalIdentity(parameterPrefix+" location", parameter.In, false); err != nil {
 				return err
 			}
+		}
+		if err := validateOperationFacets(prefix, operation.Facets); err != nil {
+			return err
 		}
 		if operation.RequestBody != nil {
 			for mediaIndex, media := range operation.RequestBody.MediaTypes {
@@ -238,20 +249,41 @@ func ValidateSpecIndex(index SpecIndex) error {
 	return nil
 }
 
+func validateOperationFacets(prefix string, facets []Facet) error {
+	for index, facet := range facets {
+		if err := ValidateCanonicalIdentity(fmt.Sprintf("%s facet %d name", prefix, index), facet.Name, false); err != nil {
+			return err
+		}
+		if err := ValidateCanonicalIdentity(fmt.Sprintf("%s facet %d value", prefix, index), facet.Value, false); err != nil {
+			return err
+		}
+		if index == 0 {
+			continue
+		}
+		previous := facets[index-1]
+		if previous.Name > facet.Name || previous.Name == facet.Name && previous.Value >= facet.Value {
+			return fmt.Errorf("%s facets must be sorted and unique", prefix)
+		}
+	}
+	return nil
+}
+
 func validateOperationMediaTypeIdentities(prefix string, media OperationMediaType) error {
 	return ValidateCanonicalIdentity(prefix+" content type", media.ContentType, false)
 }
 
 type specSchemaSummaryValidator struct {
-	active     map[*SchemaSummary]struct{}
-	memoHeight map[*SchemaSummary]int
-	nodes      int
+	active         map[*SchemaSummary]struct{}
+	memoHeight     map[*SchemaSummary]int
+	nodes          int
+	resourceLimits bool
 }
 
-func validateSpecIndexSchemaSummaries(index SpecIndex) error {
+func validateSpecIndexSchemaSummaries(index SpecIndex, resourceLimits bool) error {
 	validator := specSchemaSummaryValidator{
-		active:     make(map[*SchemaSummary]struct{}),
-		memoHeight: make(map[*SchemaSummary]int),
+		active:         make(map[*SchemaSummary]struct{}),
+		memoHeight:     make(map[*SchemaSummary]int),
+		resourceLimits: resourceLimits,
 	}
 	for operationIndex, operation := range index.Operations {
 		prefix := fmt.Sprintf("spec operation %d", operationIndex)
@@ -313,7 +345,7 @@ func (v *specSchemaSummaryValidator) validateValue(
 		)
 	}
 	v.nodes++
-	if v.nodes > maxSpecSchemaSummaryNodes {
+	if v.resourceLimits && v.nodes > maxSpecSchemaSummaryNodes {
 		return 0, fmt.Errorf(
 			"%s exceeds maximum schema summary nodes %d",
 			prefix,

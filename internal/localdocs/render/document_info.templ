@@ -1,0 +1,55 @@
+package render
+
+import templpkg "github.com/a-h/templ"
+
+templ catalogDocumentInfo(data catalogDocumentInfoData) {
+	if data.HasInfo {
+		<dl class="mb-8 grid gap-4 rounded-radius border border-outline bg-surface p-5 sm:grid-cols-2 xl:grid-cols-3 dark:border-outline-dark dark:bg-surface-dark" aria-label="OpenAPI information">
+			if data.HasContact {
+				<div class="min-w-0">
+					<dt class="text-xs font-semibold uppercase tracking-wide text-on-surface-muted dark:text-on-surface-dark-muted">Contact</dt>
+					<dd class="mt-2 grid min-w-0 gap-1 text-sm">
+						if data.ContactName != "" {
+							<span class="font-semibold text-on-surface-strong dark:text-on-surface-dark-strong">{ data.ContactName }</span>
+						}
+						if data.ContactURL != "" {
+							<a href={ templpkg.URL(data.ContactURL) } rel="noreferrer" class="min-w-0 truncate text-primary hover:underline dark:text-primary-dark" title={ data.ContactURL }>{ data.ContactURL }</a>
+						}
+						if data.ContactEmail != "" {
+							<a href={ templpkg.URL("mailto:" + data.ContactEmail) } class="min-w-0 truncate text-primary hover:underline dark:text-primary-dark" title={ data.ContactEmail }>{ data.ContactEmail }</a>
+						}
+					</dd>
+				</div>
+			}
+			if data.HasLicense {
+				<div class="min-w-0">
+					<dt class="text-xs font-semibold uppercase tracking-wide text-on-surface-muted dark:text-on-surface-dark-muted">License</dt>
+					<dd class="mt-2 grid min-w-0 gap-1 text-sm">
+						if data.LicenseURL != "" {
+							<a href={ templpkg.URL(data.LicenseURL) } rel="noreferrer" class="min-w-0 truncate font-semibold text-primary hover:underline dark:text-primary-dark" title={ data.LicenseURL }>
+								if data.LicenseName != "" {
+									{ data.LicenseName }
+								} else {
+									View license
+								}
+							</a>
+						} else if data.LicenseName != "" {
+							<span class="font-semibold text-on-surface-strong dark:text-on-surface-dark-strong">{ data.LicenseName }</span>
+						}
+						if data.LicenseIdentifier != "" {
+							<code class="text-xs text-on-surface-muted dark:text-on-surface-dark-muted">{ data.LicenseIdentifier }</code>
+						}
+					</dd>
+				</div>
+			}
+			if data.HasTerms {
+				<div class="min-w-0">
+					<dt class="text-xs font-semibold uppercase tracking-wide text-on-surface-muted dark:text-on-surface-dark-muted">Terms of service</dt>
+					<dd class="mt-2 min-w-0 text-sm">
+						<a href={ templpkg.URL(data.TermsOfService) } rel="noreferrer" class="block min-w-0 truncate font-semibold text-primary hover:underline dark:text-primary-dark" title={ data.TermsOfService }>View terms</a>
+					</dd>
+				</div>
+			}
+		</dl>
+	}
+}

@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/getkin/kin-openapi/openapi3"
@@ -20,14 +21,35 @@ import (
 type Parser struct{}
 
 func (Parser) Parse(ctx context.Context, file core.SpecFile, rev core.Revision) (core.SpecIndex, error) {
-	loader := openapi3.NewLoader()
-	doc, err := loader.LoadFromDataWithPath(file.Bytes, &url.URL{Path: file.Path})
+	return parseSpec(ctx, file, rev, openapi3.DisableExamplesValidation())
+}
+
+func parseSpec(
+	ctx context.Context,
+	file core.SpecFile,
+	rev core.Revision,
+	validationOptions ...openapi3.ValidationOption,
+) (core.SpecIndex, error) {
+	doc, err := loadSpec(file)
 	if err != nil {
 		return core.SpecIndex{}, err
 	}
-	if err := doc.Validate(ctx, openapi3.DisableExamplesValidation()); err != nil {
+	if err := doc.Validate(ctx, validationOptions...); err != nil {
 		return core.SpecIndex{}, err
 	}
+	return projectSpec(doc, file, rev)
+}
+
+func loadSpec(file core.SpecFile) (*openapi3.T, error) {
+	loader := openapi3.NewLoader()
+	doc, err := loader.LoadFromDataWithPath(file.Bytes, &url.URL{Path: file.Path})
+	if err != nil {
+		return nil, err
+	}
+	return doc, nil
+}
+
+func projectSpec(doc *openapi3.T, file core.SpecFile, rev core.Revision) (core.SpecIndex, error) {
 	download, err := specDownload(doc, file.Path)
 	if err != nil {
 		return core.SpecIndex{}, err
@@ -45,6 +67,10 @@ func (Parser) Parse(ctx context.Context, file core.SpecFile, rev core.Revision) 
 
 	serverURL := firstServerURL(doc.Servers)
 	inferFragments := operationCount(doc) <= 100
+	var securitySchemes openapi3.SecuritySchemes
+	if doc.Components != nil {
+		securitySchemes = doc.Components.SecuritySchemes
+	}
 	for path, item := range doc.Paths.Map() {
 		for method, op := range item.Operations() {
 			operation := core.Operation{
@@ -54,6 +80,7 @@ func (Parser) Parse(ctx context.Context, file core.SpecFile, rev core.Revision) 
 				Summary:     op.Summary,
 				Description: op.Description,
 				Tags:        append([]string(nil), op.Tags...),
+				Facets:      operationFacets(op),
 				Deprecated:  op.Deprecated,
 			}
 			operation.Anchor = operationAnchor(operation)
@@ -68,7 +95,7 @@ func (Parser) Parse(ctx context.Context, file core.SpecFile, rev core.Revision) 
 			}
 			operation.RequestBody = operationRequestBody(op.RequestBody, inferFragments)
 			operation.Responses = operationResponses(op.Responses, inferFragments)
-			operation.Security = operationSecurity(doc.Security, op.Security)
+			operation.Security = operationSecurity(doc.Security, op.Security, securitySchemes)
 			operation.Snippets = operationSnippets(operation, firstNonEmpty(firstOperationServerURL(op.Servers), serverURL), inferFragments)
 			idx.Operations = append(idx.Operations, operation)
 		}
@@ -93,12 +120,59 @@ func (Parser) Parse(ctx context.Context, file core.SpecFile, rev core.Revision) 
 				Example:     schemaExample(schema),
 			})
 		}
+		for name, schemeRef := range doc.Components.SecuritySchemes {
+			if schemeRef == nil || schemeRef.Value == nil {
+				continue
+			}
+			idx.SecuritySchemes = append(idx.SecuritySchemes, securityScheme(name, schemeRef.Value))
+		}
 	}
 	sort.Slice(idx.Schemas, func(i, j int) bool { return idx.Schemas[i].Name < idx.Schemas[j].Name })
+	sort.Slice(idx.SecuritySchemes, func(i, j int) bool { return idx.SecuritySchemes[i].Name < idx.SecuritySchemes[j].Name })
 
 	idx.Search = buildSearch(idx)
 	idx.PublicRoutes = buildPublicRoutes(idx)
 	return idx, nil
+}
+
+func operationFacets(operation *openapi3.Operation) []core.Facet {
+	if operation == nil {
+		return nil
+	}
+	var facets []core.Facet
+	if action, ok := operation.Extensions["x-kubernetes-action"].(string); ok && action != "" {
+		facets = append(facets, core.Facet{Name: "action", Value: action})
+	}
+	appendGVK := func(value map[string]any) {
+		for _, name := range []string{"group", "kind", "version"} {
+			if text, ok := value[name].(string); ok && text != "" {
+				facets = append(facets, core.Facet{Name: name, Value: text})
+			}
+		}
+	}
+	switch value := operation.Extensions["x-kubernetes-group-version-kind"].(type) {
+	case map[string]any:
+		appendGVK(value)
+	case []any:
+		for _, item := range value {
+			if object, ok := item.(map[string]any); ok {
+				appendGVK(object)
+			}
+		}
+	}
+	sort.Slice(facets, func(i, j int) bool {
+		if facets[i].Name == facets[j].Name {
+			return facets[i].Value < facets[j].Value
+		}
+		return facets[i].Name < facets[j].Name
+	})
+	result := facets[:0]
+	for _, facet := range facets {
+		if len(result) == 0 || result[len(result)-1] != facet {
+			result = append(result, facet)
+		}
+	}
+	return result
 }
 
 func operationCount(doc *openapi3.T) int {
@@ -341,10 +415,44 @@ func operationResponses(responses *openapi3.Responses, inferExamples bool) []cor
 		indexed = append(indexed, core.OperationResponse{
 			Status:      status,
 			Description: description,
+			Headers:     operationResponseHeaders(response.Headers),
 			MediaTypes:  operationMediaTypes(response.Content, inferExamples),
 		})
 	}
 	return indexed
+}
+
+func operationResponseHeaders(headers openapi3.Headers) []core.OperationResponseHeader {
+	if len(headers) == 0 {
+		return nil
+	}
+	names := make([]string, 0, len(headers))
+	for name := range headers {
+		names = append(names, name)
+	}
+	sort.Slice(names, func(i, j int) bool {
+		left := strings.ToLower(names[i])
+		right := strings.ToLower(names[j])
+		if left == right {
+			return names[i] < names[j]
+		}
+		return left < right
+	})
+	result := make([]core.OperationResponseHeader, 0, len(names))
+	for _, name := range names {
+		ref := headers[name]
+		if ref == nil || ref.Value == nil {
+			continue
+		}
+		header := ref.Value
+		result = append(result, core.OperationResponseHeader{
+			Name:        name,
+			Description: header.Description,
+			Schema:      schemaSummary(header.Schema),
+			Example:     exampleString(header.Example),
+		})
+	}
+	return result
 }
 
 func responseStatusLess(left, right string) bool {
@@ -423,7 +531,7 @@ func sortedExampleKeys(examples openapi3.Examples) []string {
 	return keys
 }
 
-func operationSecurity(root openapi3.SecurityRequirements, operation *openapi3.SecurityRequirements) []core.OperationSecurity {
+func operationSecurity(root openapi3.SecurityRequirements, operation *openapi3.SecurityRequirements, schemes openapi3.SecuritySchemes) []core.OperationSecurity {
 	requirements := root
 	if operation != nil {
 		requirements = *operation
@@ -444,13 +552,30 @@ func operationSecurity(root openapi3.SecurityRequirements, operation *openapi3.S
 				continue
 			}
 			seen[name] = true
-			security = append(security, core.OperationSecurity{
-				Name:   name,
-				Scopes: append([]string(nil), requirement[name]...),
-			})
+			item := core.OperationSecurity{Name: name, Scopes: append([]string(nil), requirement[name]...)}
+			if ref := schemes[name]; ref != nil && ref.Value != nil {
+				item.Definition = securityScheme(name, ref.Value)
+			}
+			security = append(security, item)
 		}
 	}
 	return security
+}
+
+func securityScheme(name string, scheme *openapi3.SecurityScheme) core.SecurityScheme {
+	if scheme == nil {
+		return core.SecurityScheme{Name: name}
+	}
+	return core.SecurityScheme{
+		Name:             name,
+		Type:             scheme.Type,
+		Description:      scheme.Description,
+		ParameterName:    scheme.Name,
+		In:               scheme.In,
+		Scheme:           scheme.Scheme,
+		BearerFormat:     scheme.BearerFormat,
+		OpenIDConnectURL: scheme.OpenIdConnectUrl,
+	}
 }
 
 func operationSnippets(operation core.Operation, serverURL string, inferFragments bool) []core.RequestSnippet {
@@ -506,6 +631,10 @@ func schemaSummaryDepth(ref *openapi3.SchemaRef, depth int) core.SchemaSummary {
 	summary.Description = schema.Description
 	summary.Default = exampleString(schema.Default)
 	summary.Example = exampleString(schema.Example)
+	summary.Enum = schemaEnumValues(schema.Enum)
+	summary.Constraints = schemaConstraints(schema)
+	summary.Nullable = schema.Nullable || schema.Type.Includes(openapi3.TypeNull)
+	summary.Deprecated = schema.Deprecated
 	if depth == 0 {
 		summary.JSON = schemaJSON(schema)
 	}
@@ -529,6 +658,68 @@ func schemaSummaryDepth(ref *openapi3.SchemaRef, depth int) core.SchemaSummary {
 		})
 	}
 	return summary
+}
+
+func schemaEnumValues(values []any) []string {
+	result := make([]string, 0, len(values))
+	for _, value := range values {
+		data, err := json.Marshal(value)
+		if err != nil {
+			result = append(result, fmt.Sprint(value))
+			continue
+		}
+		result = append(result, string(data))
+	}
+	return result
+}
+
+func schemaConstraints(schema *openapi3.Schema) []core.SchemaConstraint {
+	result := []core.SchemaConstraint{}
+	appendValue := func(name, value string) {
+		result = append(result, core.SchemaConstraint{Name: name, Value: value})
+	}
+	appendFloat := func(name string, value *float64) {
+		if value != nil {
+			appendValue(name, strconv.FormatFloat(*value, 'g', -1, 64))
+		}
+	}
+	appendUint := func(name string, value uint64) {
+		if value > 0 {
+			appendValue(name, strconv.FormatUint(value, 10))
+		}
+	}
+	appendUintPointer := func(name string, value *uint64) {
+		if value != nil {
+			appendValue(name, strconv.FormatUint(*value, 10))
+		}
+	}
+
+	appendFloat("minimum", schema.Min)
+	if schema.ExclusiveMin.Value != nil {
+		appendFloat("exclusiveMinimum", schema.ExclusiveMin.Value)
+	} else if schema.ExclusiveMin.IsTrue() && schema.Min != nil {
+		appendFloat("exclusiveMinimum", schema.Min)
+	}
+	appendFloat("maximum", schema.Max)
+	if schema.ExclusiveMax.Value != nil {
+		appendFloat("exclusiveMaximum", schema.ExclusiveMax.Value)
+	} else if schema.ExclusiveMax.IsTrue() && schema.Max != nil {
+		appendFloat("exclusiveMaximum", schema.Max)
+	}
+	appendFloat("multipleOf", schema.MultipleOf)
+	appendUint("minLength", schema.MinLength)
+	appendUintPointer("maxLength", schema.MaxLength)
+	if schema.Pattern != "" {
+		appendValue("pattern", schema.Pattern)
+	}
+	appendUint("minItems", schema.MinItems)
+	appendUintPointer("maxItems", schema.MaxItems)
+	if schema.UniqueItems {
+		appendValue("uniqueItems", "true")
+	}
+	appendUint("minProperties", schema.MinProps)
+	appendUintPointer("maxProperties", schema.MaxProps)
+	return result
 }
 
 func refName(ref string) string {
