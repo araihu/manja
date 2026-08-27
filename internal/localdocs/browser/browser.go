@@ -7,19 +7,18 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"html"
-	"net/url"
-	"path"
-	"sort"
-	"strconv"
-	"strings"
-
 	"github.com/araihu/manja/application/catalog"
 	"github.com/araihu/manja/application/projection"
 	"github.com/araihu/manja/domain"
 	"github.com/araihu/manja/internal/adapters/catalogjson"
 	"github.com/araihu/manja/internal/localdocs"
 	localrender "github.com/araihu/manja/internal/localdocs/render"
+	"html"
+	"net/url"
+	"path"
+	"sort"
+	"strconv"
+	"strings"
 )
 
 type Browser struct {
@@ -303,11 +302,13 @@ func (browser *Browser) renderSidebar(document catalog.DocumentDirectoryV1, rout
 	for _, item := range groups {
 		_, explicitlyOpen := open[item.id]
 		opened := defaultOpen || explicitlyOpen || browserGroupContains(item.operations, route.Selected)
-		output.WriteString(`<section data-manja-sidebar-group="` + item.id + `"><button type="button" data-manja-static-group="` + item.id + `" aria-expanded="` + strconv.FormatBool(opened) + `">` + html.EscapeString(item.label) + `</button>`)
+		output.WriteString(`<section data-manja-sidebar-group="` + item.id + `"><button type="button" data-manja-static-group="` + item.id + `" data-catalog-group-control="true" aria-controls="` + item.id + `-items" aria-expanded="` + strconv.FormatBool(opened) + `">` + html.EscapeString(item.label) + `</button>`)
 		if opened {
+			output.WriteString(`<div id="` + item.id + `-items" data-manja-sidebar-items="true">`)
 			for _, operation := range item.operations {
-				output.WriteString(browserSidebarLink(browser.descriptor.PublicationBase, document.Key, operation.DetailID, operation.Title, route.Selected))
+				output.WriteString(browserSidebarLink(browser.descriptor.PublicationBase, document.Key, operation.DetailID, operation.Title, operation.Method, route.Selected))
 			}
+			output.WriteString(`</div>`)
 		}
 		output.WriteString(`</section>`)
 	}
@@ -318,11 +319,13 @@ func (browser *Browser) renderSidebar(document catalog.DocumentDirectoryV1, rout
 		for _, schema := range document.Schemas {
 			opened = opened || string(schema.DetailID) == route.Selected
 		}
-		output.WriteString(`<section data-manja-sidebar-group="` + id + `"><button type="button" data-manja-static-group="` + id + `" aria-expanded="` + strconv.FormatBool(opened) + `">Schemas</button>`)
+		output.WriteString(`<section data-manja-sidebar-group="` + id + `"><button type="button" data-manja-static-group="` + id + `" data-catalog-group-control="true" aria-controls="` + id + `-items" aria-expanded="` + strconv.FormatBool(opened) + `">Schemas</button>`)
 		if opened {
+			output.WriteString(`<div id="` + id + `-items" data-manja-sidebar-items="true">`)
 			for _, schema := range document.Schemas {
-				output.WriteString(browserSidebarLink(browser.descriptor.PublicationBase, document.Key, schema.DetailID, schema.Name, route.Selected))
+				output.WriteString(browserSidebarLink(browser.descriptor.PublicationBase, document.Key, schema.DetailID, schema.Name, "", route.Selected))
 			}
+			output.WriteString(`</div>`)
 		}
 		output.WriteString(`</section>`)
 	}
@@ -439,11 +442,38 @@ func browserGroupContains(operations []catalog.OperationDirectoryV1, selected st
 	return false
 }
 
-func browserSidebarLink(publicationBase, documentKey string, id domain.DetailID, label, selected string) string {
+func browserSidebarLink(publicationBase, documentKey string, id domain.DetailID, label, method, selected string) string {
 	href := publicationBase + "documents/" + url.PathEscape(documentKey) + "/?selected=" + url.QueryEscape(string(id)) + "#" + url.PathEscape(string(id))
-	active := ""
-	if string(id) == selected {
-		active = ` aria-current="page"`
+	attributes := ` data-catalog-sidebar-item="true"`
+	method = strings.ToUpper(strings.TrimSpace(method))
+	if method != "" {
+		attributes += ` data-catalog-sidebar-operation="true" data-catalog-method="` + html.EscapeString(method) + `"`
 	}
-	return `<a data-manja-static-route="true" href="` + html.EscapeString(href) + `"` + active + `>` + html.EscapeString(label) + `</a>`
+	if string(id) == selected {
+		attributes += ` data-catalog-sidebar-selected="true" aria-current="page"`
+	}
+	label = html.EscapeString(browserPlainText(label))
+	return `<a data-manja-static-route="true" href="` + html.EscapeString(href) + `" title="` + label + `"` + attributes + `>` + label + `</a>`
+}
+
+func browserPlainText(value string) string {
+	var output strings.Builder
+	insideTag := false
+	for _, character := range value {
+		switch character {
+		case '<':
+			insideTag = true
+		case '>':
+			if insideTag {
+				insideTag = false
+				continue
+			}
+			output.WriteRune(character)
+		default:
+			if !insideTag {
+				output.WriteRune(character)
+			}
+		}
+	}
+	return strings.TrimSpace(html.UnescapeString(output.String()))
 }

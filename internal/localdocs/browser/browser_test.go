@@ -38,6 +38,31 @@ func TestBrowserRendersDocumentUnseenOperationAndSchema(t *testing.T) {
 	}
 }
 
+func TestBrowserSidebarUsesSharedVisualContractAndPlainTextLabels(t *testing.T) {
+	operation := browserSidebarLink("/docs/", "doc", domain.DetailID("operation"), "Adds an <code>issue</code> safely.", "get", "operation")
+	for _, want := range []string{
+		`data-catalog-sidebar-item="true"`,
+		`data-catalog-sidebar-operation="true"`,
+		`data-catalog-method="GET"`,
+		`data-catalog-sidebar-selected="true"`,
+		`aria-current="page"`,
+		`title="Adds an issue safely."`,
+		`>Adds an issue safely.</a>`,
+	} {
+		if !strings.Contains(operation, want) {
+			t.Errorf("operation sidebar link missing %q: %s", want, operation)
+		}
+	}
+	if strings.Contains(operation, "&lt;code&gt;") {
+		t.Fatalf("operation sidebar link exposed literal markup: %s", operation)
+	}
+
+	schema := browserSidebarLink("/docs/", "doc", domain.DetailID("schema"), "Pet", "", "")
+	if !strings.Contains(schema, `data-catalog-sidebar-item="true"`) || strings.Contains(schema, "data-catalog-sidebar-operation") || strings.Contains(schema, "data-catalog-method") {
+		t.Fatalf("schema sidebar link contract = %s", schema)
+	}
+}
+
 func TestBrowserPreparesOnlyVerifiedChildrenNeededByRoute(t *testing.T) {
 	descriptor, manifest, catalogBytes, children, operationID, schemaID := browserFixture(t)
 	browser, err := Prepare(descriptor, manifest, catalogBytes, nil)

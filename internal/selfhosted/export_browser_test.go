@@ -113,6 +113,7 @@ catalogs:
 					t.Fatalf("static activation eagerly loaded child %q", requestPath)
 				}
 			}
+			assertStaticSidebarLayout(t, page, operation, schema)
 			searchField := page.Locator(`[data-search-id="catalog-search"] button`)
 			if err := searchField.Click(); err != nil {
 				t.Fatal(err)
@@ -204,6 +205,57 @@ catalogs:
 				}
 			}
 		})
+	}
+}
+
+func assertStaticSidebarLayout(t *testing.T, page playwright.Page, operation, schema playwright.Locator) {
+	t.Helper()
+	values, err := page.Evaluate(`() => {
+		const nav = document.querySelector('[data-manja-local-sidebar]');
+		const group = document.querySelector('[data-manja-static-group]');
+		const operation = document.querySelector('[data-catalog-sidebar-operation]');
+		const schema = [...document.querySelectorAll('[data-catalog-sidebar-item]')].find((item) => !item.hasAttribute('data-catalog-sidebar-operation'));
+		const groupStyle = getComputedStyle(group);
+		const operationStyle = getComputedStyle(operation);
+		const operationBox = operation.getBoundingClientRect();
+		const schemaBox = schema.getBoundingClientRect();
+		return {
+			navClientWidth: nav.clientWidth,
+			navScrollWidth: nav.scrollWidth,
+			groupWidth: group.getBoundingClientRect().width,
+			cursor: groupStyle.cursor,
+			operationDisplay: operationStyle.display,
+			operationMethod: operation.dataset.catalogMethod,
+			noHorizontalOverflow: nav.scrollWidth <= nav.clientWidth,
+			groupFillsWidth: group.getBoundingClientRect().width >= nav.clientWidth - 32,
+			separateRows: operationBox.bottom <= schemaBox.top || schemaBox.bottom <= operationBox.top,
+		};
+	}`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, ok := values.(map[string]any)
+	if !ok {
+		t.Fatalf("static sidebar layout result = %#v", values)
+	}
+	if result["noHorizontalOverflow"] != true || result["groupFillsWidth"] != true || result["cursor"] != "pointer" || result["operationDisplay"] != "flex" || result["operationMethod"] != "GET" || result["separateRows"] != true {
+		t.Fatalf("static sidebar is not visually usable: %#v", result)
+	}
+	if err := operation.Focus(); err != nil {
+		t.Fatal(err)
+	}
+	focusOutline, err := operation.Evaluate(`element => getComputedStyle(element).outlineStyle`, nil)
+	if err != nil || focusOutline == "none" {
+		t.Fatalf("operation focus indicator = %#v, %v", focusOutline, err)
+	}
+	if err := operation.Click(); err != nil {
+		t.Fatal(err)
+	}
+	if err := page.Locator(`[data-catalog-sidebar-operation][aria-current="page"][data-catalog-sidebar-selected="true"]`).WaitFor(); err != nil {
+		t.Fatalf("selected operation state: %v", err)
+	}
+	if err := schema.WaitFor(); err != nil {
+		t.Fatalf("schema remained discoverable: %v", err)
 	}
 }
 
