@@ -10,7 +10,7 @@ tmp_dir = "tmp"
 [build]
   args_bin = []
   bin = "./tmp/manja-dev"
-  cmd = "go run ./cmd/webassets generate && go run github.com/a-h/templ/cmd/templ generate && go build -o ./tmp/manja-dev ./cmd/manja"
+  cmd = "go run ./cmd/webassets generate && go run -modfile=tools/go.mod github.com/a-h/templ/cmd/templ generate && go build -o ./tmp/manja-dev ./cmd/manja"
   delay = 300
   entrypoint = ["./tmp/manja-dev", "-addr", "127.0.0.1:8080", "-data-dir", ".manja/data"]
   exclude_dir = ["tmp", "vendor", ".cache", ".git", ".manja", "api/dist", "internal/webassets/vendor"]

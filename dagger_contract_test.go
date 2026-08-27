@@ -64,7 +64,7 @@ func TestDaggerModulePreservesPipelineBoundaries(t *testing.T) {
 		`"go", "test", "./...", "-count=1"`,
 		`"go", "test", "-tags=integration", "./internal/integration", "-v", "-count=1"`,
 		`"scripts/redocly", "bundle", "api/openapi.yaml", "-o", "api/dist/openapi.yaml"`,
-		`"go", "tool", "muamba", "verify", "--strict"`,
+		`"go", "tool", "-modfile=tools/go.mod", "muamba", "verify", "--strict"`,
 		`"node", "--test", "--experimental-strip-types",`,
 		`"test/publication.test.ts", "test/cache.test.ts"`,
 		`"npm", "audit", "--package-lock-only", "--omit=dev", "--audit-level=high"`,
@@ -90,6 +90,20 @@ func TestDaggerModulePreservesPipelineBoundaries(t *testing.T) {
 	for _, forbidden := range []string{"-dind@sha256:", "DOCKER_HOST", "DOCKER_TLS_CERTDIR", "insecureRootCapabilities"} {
 		assertNotContains(t, module, forbidden)
 	}
+}
+
+func TestToolingModuleOwnsDeveloperTools(t *testing.T) {
+	toolsModule := readFile(t, "tools/go.mod")
+	for _, tool := range []string{
+		"github.com/a-h/templ/cmd/templ",
+		"github.com/araihu/muamba/cmd/muamba",
+		"github.com/g4s8/envdoc",
+		"github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen",
+	} {
+		assertContains(t, toolsModule, tool)
+	}
+	rootModule := readFile(t, "go.mod")
+	assertNotContains(t, rootModule, "\ntool (\n")
 }
 
 func TestPublishImageCarriesStandardOCIMetadata(t *testing.T) {
