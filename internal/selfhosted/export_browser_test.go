@@ -214,7 +214,10 @@ func assertStaticSidebarLayout(t *testing.T, page playwright.Page, operation, sc
 		const nav = document.querySelector('[data-manja-local-sidebar]');
 		const group = document.querySelector('[data-manja-static-group]');
 		const operation = document.querySelector('[data-catalog-sidebar-operation]');
-		const schema = [...document.querySelectorAll('[data-catalog-sidebar-item]')].find((item) => !item.hasAttribute('data-catalog-sidebar-operation'));
+		const schema = [...document.querySelectorAll('[data-catalog-sidebar-item]')].find((item) => !item.hasAttribute('data-catalog-sidebar-operation') && item.textContent.trim() === 'Charge');
+		const topLinks = [...document.querySelectorAll('[data-manja-static-sidebar-top-link]')];
+		const backLink = topLinks.find((item) => item.textContent.trim() === 'Back to organization');
+		const overviewLink = topLinks.find((item) => item.textContent.trim() === 'Spec overview');
 		const groupStyle = getComputedStyle(group);
 		const operationStyle = getComputedStyle(operation);
 		const operationBox = operation.getBoundingClientRect();
@@ -226,6 +229,10 @@ func assertStaticSidebarLayout(t *testing.T, page playwright.Page, operation, sc
 			cursor: groupStyle.cursor,
 			operationDisplay: operationStyle.display,
 			operationMethod: operation.dataset.catalogMethod,
+			topLinksPresent: topLinks.length === 2,
+			hasBackLink: !!backLink,
+			hasOverviewLink: !!overviewLink,
+			overviewActive: overviewLink && overviewLink.getAttribute('aria-current') === 'page',
 			noHorizontalOverflow: nav.scrollWidth <= nav.clientWidth,
 			groupFillsWidth: group.getBoundingClientRect().width >= nav.clientWidth - 32,
 			separateRows: operationBox.bottom <= schemaBox.top || schemaBox.bottom <= operationBox.top,
@@ -238,7 +245,7 @@ func assertStaticSidebarLayout(t *testing.T, page playwright.Page, operation, sc
 	if !ok {
 		t.Fatalf("static sidebar layout result = %#v", values)
 	}
-	if result["noHorizontalOverflow"] != true || result["groupFillsWidth"] != true || result["cursor"] != "pointer" || result["operationDisplay"] != "flex" || result["operationMethod"] != "GET" || result["separateRows"] != true {
+	if result["noHorizontalOverflow"] != true || result["groupFillsWidth"] != true || result["cursor"] != "pointer" || result["operationDisplay"] != "flex" || result["operationMethod"] != "GET" || result["topLinksPresent"] != true || result["hasBackLink"] != true || result["hasOverviewLink"] != true || result["overviewActive"] != true || result["separateRows"] != true {
 		t.Fatalf("static sidebar is not visually usable: %#v", result)
 	}
 	if err := operation.Focus(); err != nil {

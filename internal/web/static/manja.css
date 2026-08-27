@@ -158,6 +158,34 @@
   padding: 0.75rem;
 }
 
+#catalog-sidebar-groups [data-manja-static-sidebar-section] {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 0.125rem;
+  margin-top: 0.75rem;
+}
+
+#catalog-sidebar-groups [data-manja-static-sidebar-top] {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 0.125rem;
+}
+
+#catalog-sidebar-groups [data-manja-static-sidebar-heading] {
+  color: var(--color-on-surface-muted);
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  padding: 0.625rem 0.5rem 0.25rem;
+  text-transform: uppercase;
+}
+
+.dark #catalog-sidebar-groups [data-manja-static-sidebar-heading] {
+  color: var(--color-on-surface-dark-muted);
+}
+
 #catalog-sidebar-groups [data-manja-sidebar-group] {
   display: flex;
   min-width: 0;

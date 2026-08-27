@@ -39,6 +39,45 @@ func TestBrowserRendersDocumentUnseenOperationAndSchema(t *testing.T) {
 	}
 }
 
+func TestBrowserSidebarRetainsDocumentNavigationChrome(t *testing.T) {
+	descriptor, manifest, catalogBytes, children, operationID, _ := browserFixture(t)
+	browser, err := Prepare(descriptor, manifest, catalogBytes, children)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	overview, err := browser.Render(context.Background(), Route{DocumentKey: "doc"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{
+		`data-manja-static-sidebar-top="true"`,
+		`data-manja-static-sidebar-top-link="true"`,
+		`href="/docs/"`,
+		`Back to organization`,
+		`href="/docs/pets/documents/doc/"`,
+		`Spec overview`,
+		`data-manja-static-sidebar-section="paths"`,
+		`data-manja-static-sidebar-heading="paths"`,
+		`data-catalog-sidebar-selected="true" aria-current="page"`,
+	} {
+		if !strings.Contains(overview.SidebarHTML, want) {
+			t.Errorf("overview sidebar missing %q: %s", want, overview.SidebarHTML)
+		}
+	}
+
+	operation, err := browser.Render(context.Background(), Route{DocumentKey: "doc", Selected: string(operationID)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(operation.SidebarHTML, `Back to organization`) || !strings.Contains(operation.SidebarHTML, `Spec overview`) {
+		t.Fatalf("operation sidebar lost document navigation chrome: %s", operation.SidebarHTML)
+	}
+	if strings.Contains(operation.SidebarHTML, `id="catalog-sidebar-spec-overview" data-manja-static-route="true" data-catalog-sidebar-selected="true"`) {
+		t.Fatalf("operation sidebar marked spec overview active: %s", operation.SidebarHTML)
+	}
+}
+
 func TestBrowserSidebarUsesSharedVisualContractAndPlainTextLabels(t *testing.T) {
 	operation := browserSidebarLink("/docs/", "doc", domain.DetailID("operation"), "Adds an <code>issue</code> safely.", "get", "operation")
 	for _, want := range []string{

@@ -290,6 +290,17 @@ func (browser *Browser) renderSidebar(document catalog.DocumentDirectoryV1, rout
 	defaultOpen := len(route.Groups) == 0 && len(document.Operations)+len(document.Schemas) <= 600
 	var output strings.Builder
 	output.WriteString(`<nav data-manja-local-sidebar="true" data-manja-static-default-open="` + strconv.FormatBool(defaultOpen) + `" aria-label="API navigation">`)
+	backHref := browser.descriptor.PublicationBase
+	backLabel := "Back to catalog"
+	if len(browser.directory.Documents) == 1 {
+		backHref = browser.descriptor.Static.DeploymentBase
+		backLabel = "Back to organization"
+	}
+	documentHref := browser.descriptor.PublicationBase + "documents/" + url.PathEscape(document.Key) + "/"
+	output.WriteString(`<div data-manja-static-sidebar-top="true">`)
+	output.WriteString(browserSidebarTopLink(backHref, backLabel, "back-to-catalog", false))
+	output.WriteString(browserSidebarTopLink(documentHref, "Spec overview", "spec-overview", route.Selected == ""))
+	output.WriteString(`</div>`)
 	type group struct {
 		id, label  string
 		operations []catalog.OperationDirectoryV1
@@ -304,6 +315,9 @@ func (browser *Browser) renderSidebar(document catalog.DocumentDirectoryV1, rout
 		groups = append(groups, group{id: browserGroupID("operations-" + label), label: label, operations: operations})
 	}
 	sort.Slice(groups, func(i, j int) bool { return groups[i].label < groups[j].label })
+	if len(groups) > 0 {
+		output.WriteString(`<div data-manja-static-sidebar-section="paths"><div data-manja-static-sidebar-heading="paths">Paths</div>`)
+	}
 	for _, item := range groups {
 		_, explicitlyOpen := open[item.id]
 		_, explicitlyClosed := closed[item.id]
@@ -338,6 +352,9 @@ func (browser *Browser) renderSidebar(document catalog.DocumentDirectoryV1, rout
 			output.WriteString(`</div>`)
 		}
 		output.WriteString(`</section>`)
+	}
+	if len(groups) > 0 {
+		output.WriteString(`</div>`)
 	}
 	output.WriteString(`</nav>`)
 	return output.String()
@@ -464,6 +481,21 @@ func browserSidebarLink(publicationBase, documentKey string, id domain.DetailID,
 	}
 	label = html.EscapeString(browserPlainText(label))
 	return `<a data-manja-static-route="true" href="` + html.EscapeString(href) + `" title="` + label + `"` + attributes + `><span class="min-w-0 flex-1 truncate">` + label + `</span></a>`
+}
+
+func browserSidebarTopLink(href, label, id string, active bool) string {
+	attributes := ` data-manja-static-sidebar-top-link="true" data-catalog-sidebar-item="true"`
+	if id != "" {
+		attributes += ` id="catalog-sidebar-` + html.EscapeString(id) + `"`
+	}
+	if id == "spec-overview" {
+		attributes += ` data-manja-static-route="true"`
+	}
+	if active {
+		attributes += ` data-catalog-sidebar-selected="true" aria-current="page"`
+	}
+	label = html.EscapeString(browserPlainText(label))
+	return `<a href="` + html.EscapeString(href) + `" title="` + label + `"` + attributes + `><span class="min-w-0 flex-1 truncate">` + label + `</span></a>`
 }
 
 func browserCanonical(documentHref string, route Route, fragment string) string {
