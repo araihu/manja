@@ -502,7 +502,7 @@ func TestActivateCompilesAndPublishesConfiguredCandidate(t *testing.T) {
 	}
 	combo := httptest.NewRecorder()
 	server.Handler().ServeHTTP(combo, httptest.NewRequest(http.MethodGet, "/_manja/catalog/document-combobox/options?catalog-mount=%2F&q=payments", nil))
-	if combo.Code != http.StatusOK || !strings.Contains(combo.Body.String(), ">payments-v1</span>") {
+	if combo.Code != http.StatusOK || !strings.Contains(combo.Body.String(), ">Payments</span>") || !strings.Contains(combo.Body.String(), `data-value="/documents/payments-v1/"`) {
 		t.Fatalf("catalog combobox = %d %q", combo.Code, combo.Body.String())
 	}
 	canceled, cancel := context.WithCancel(context.Background())

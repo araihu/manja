@@ -312,14 +312,11 @@ type searchLoadReceipt struct {
 
 func (service *SearchService) loadExactMatches(ctx context.Context, key string, receipt *searchLoadReceipt) ([]SearchExactMatchV1, error) {
 	digest := sha256.Sum256([]byte(key))
-	prefix := hex.EncodeToString(digest[:1])[:1]
-	index := sort.Search(len(service.directory.ExactBuckets), func(index int) bool {
-		return service.directory.ExactBuckets[index].Prefix >= prefix
-	})
-	if index == len(service.directory.ExactBuckets) || service.directory.ExactBuckets[index].Prefix != prefix {
+	digestHex := hex.EncodeToString(digest[:])
+	reference, exists := exactSearchBucket(service.directory.ExactBuckets, digestHex)
+	if !exists {
 		return nil, nil
 	}
-	reference := service.directory.ExactBuckets[index]
 	if err := reserveSearchReference(receipt, reference.SearchSegmentReferenceV1, maxSearchSegments); err != nil {
 		return nil, err
 	}
@@ -342,6 +339,24 @@ func (service *SearchService) loadExactMatches(ctx context.Context, key string, 
 		return nil, nil
 	}
 	return append([]SearchExactMatchV1(nil), segment.Entries[entryIndex].Matches...), nil
+}
+
+// exactSearchBucket resolves the most-specific digest prefix. Older catalogs
+// use one-nibble buckets; catalogs with a hot bucket may contain deeper
+// prefixes (for example, "0a") only for the overloaded branch. Trying from
+// longest to shortest keeps both directory shapes compatible and loads at most
+// one exact segment for a query.
+func exactSearchBucket(buckets []SearchExactBucketReferenceV1, digestHex string) (SearchExactBucketReferenceV1, bool) {
+	for length := len(digestHex); length > 0; length-- {
+		prefix := digestHex[:length]
+		index := sort.Search(len(buckets), func(index int) bool {
+			return buckets[index].Prefix >= prefix
+		})
+		if index < len(buckets) && buckets[index].Prefix == prefix {
+			return buckets[index], true
+		}
+	}
+	return SearchExactBucketReferenceV1{}, false
 }
 
 func (service *SearchService) loadRankedCandidateIDs(ctx context.Context, tokens []string, receipt *searchLoadReceipt) ([]uint32, bool, bool, error) {
@@ -692,7 +707,7 @@ func countPostingRecords(entries []SearchPostingEntryV1) uint32 {
 
 func validateSearchDirectory(value SearchDirectoryV1) error {
 	for index, bucket := range value.ExactBuckets {
-		if len(bucket.Prefix) != 1 || !strings.Contains("0123456789abcdef", bucket.Prefix) || (index > 0 && value.ExactBuckets[index-1].Prefix >= bucket.Prefix) {
+		if len(bucket.Prefix) == 0 || len(bucket.Prefix) > sha256.Size*2 || !isLowerHex(bucket.Prefix) || (index > 0 && value.ExactBuckets[index-1].Prefix >= bucket.Prefix) {
 			return fmt.Errorf("search exact buckets are invalid")
 		}
 	}
@@ -728,6 +743,15 @@ func validateSearchDirectory(value SearchDirectoryV1) error {
 		}
 	}
 	return nil
+}
+
+func isLowerHex(value string) bool {
+	for index := 0; index < len(value); index++ {
+		if !strings.ContainsRune("0123456789abcdef", rune(value[index])) {
+			return false
+		}
+	}
+	return true
 }
 
 func decodeCanonicalSearchChild(data []byte, target any) error {

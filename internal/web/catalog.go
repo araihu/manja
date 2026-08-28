@@ -288,7 +288,7 @@ func (handler *CatalogHandler) serveOrganizationRoot(response http.ResponseWrite
 			data.Documents = append(data.Documents, templates.CatalogDocumentOption{
 				Key: document.Key, Label: catalogDocumentLabel(document), Version: document.APIVersion,
 				Operations: len(document.Operations), Schemas: len(document.Schemas), Href: href + "/",
-				SearchText: strings.ToLower(document.Key + " " + document.APIVersion),
+				SearchText: localrender.CatalogDocumentTableSearchText(document.Key, catalogDocumentLabel(document), document.APIVersion),
 				AvatarSrc:  document.Branding.LogoSrc, AvatarAlt: document.Branding.LogoAlt,
 			})
 		}
@@ -410,7 +410,7 @@ func (handler *CatalogHandler) populateGlobalSearchData(ctx context.Context, dat
 	data.Search.BytesDecoded = result.BytesDecoded
 	data.Search.Results = data.Search.Results[:0]
 	for _, candidate := range result.Results {
-		data.Search.Results = append(data.Search.Results, templates.CatalogSearchResultData{Record: candidate.record, Href: candidate.record.Href})
+		data.Search.Results = append(data.Search.Results, templates.CatalogSearchResultData{Record: candidate.record, Href: candidate.record.Href, Section: candidate.section})
 	}
 	return nil
 }
@@ -446,7 +446,7 @@ func prepareCatalogDocumentTable(data *templates.CatalogPageData) error {
 	for _, option := range data.Documents {
 		searchText := option.SearchText
 		if searchText == "" {
-			searchText = strings.ToLower(option.Key + " " + option.Version)
+			searchText = localrender.CatalogDocumentTableSearchText(option.Key, option.Label, option.Version)
 		}
 		entries = append(entries, localrender.CatalogDocumentTableEntry{
 			Key: option.Key, Label: option.Label, Version: option.Version,

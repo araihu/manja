@@ -418,7 +418,7 @@ func TestCatalogRootRendersStandaloneSpecsAndRootBreadcrumb(t *testing.T) {
 	if !strings.Contains(body, `href="/"`) || !strings.Contains(body, ">Catalogs</a>") {
 		t.Fatal("nested catalog breadcrumb does not return to organization root")
 	}
-	for _, want := range []string{`href="/kubernetes/documents/core-v1/"`, `aria-current="page"`, `>core-v1</span>`} {
+	for _, want := range []string{`href="/kubernetes/documents/core-v1/"`, `aria-current="page"`, `>Kubernetes Core v1</span>`} {
 		if !strings.Contains(body, want) {
 			t.Errorf("nested document breadcrumb missing %q", want)
 		}
@@ -437,7 +437,7 @@ func TestCatalogDocumentOverviewKeepsIdentityVersionAndDownloadInHeader(t *testi
 	body := renderCatalogTemplate(t, data)
 	for _, want := range []string{
 		`>OpenAPI document</p>`,
-		`>core-v1</h1>`,
+		`>Kubernetes Core v1</h1>`,
 		`>v1</span>`,
 		`href="/kubernetes/documents/core-v1/source.json"`,
 		`>Download source</span>`,

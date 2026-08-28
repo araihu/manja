@@ -154,6 +154,7 @@ type CatalogPageData struct {
 	SearchDirectoryPath string
 	SearchDirectoryLength uint64
 	SearchDirectorySHA256 string
+	SearchDocumentLabels string
 	CurrentVisit *CatalogSearchItemData
 	DocumentSortBy string
 	DocumentSortDir string
@@ -172,14 +173,51 @@ func catalogDocumentFilterExpression(searchText string) string {
 }
 
 func catalogDocumentLabel(document catalog.DocumentDirectoryV1) string {
-	return document.Key
+	if title := strings.TrimSpace(document.Title); title != "" {
+		return title
+	}
+	return strings.TrimSpace(document.Key)
 }
 
 func catalogDocumentTitle(document catalog.DocumentDirectoryV1) string {
+	if title := strings.TrimSpace(document.Title); title != "" {
+		return title
+	}
 	if key := strings.TrimSpace(document.Key); key != "" {
 		return key
 	}
-	return strings.TrimSpace(document.Title)
+	return "Untitled document"
+}
+
+func catalogSearchDocumentLabel(data CatalogPageData, documentKey string) string {
+	for _, document := range data.Directory.Documents {
+		if document.Key == documentKey {
+			return catalogDocumentTitle(document)
+		}
+	}
+	// The synthetic organization root keeps its admitted catalog documents in
+	// the lightweight options slice rather than duplicating every directory in
+	// Directory.Documents. Resolve those options before falling back to the
+	// internal key so SSR search results still expose a human document title.
+	for _, option := range data.Documents {
+		if option.Key == documentKey {
+			if label := strings.TrimSpace(option.Label); label != "" {
+				return label
+			}
+			break
+		}
+	}
+	if key := strings.TrimSpace(documentKey); key != "" {
+		return key
+	}
+	return "Untitled document"
+}
+
+func catalogSearchResultDocumentLabel(data CatalogPageData, result CatalogSearchResultData) string {
+	if section := strings.TrimSpace(result.Section); section != "" {
+		return section
+	}
+	return catalogSearchDocumentLabel(data, result.Record.DocumentKey)
 }
 
 templ catalogSidebarIconFrame(symbol icon.Symbol) {
@@ -214,6 +252,7 @@ type CatalogSearchData struct {
 type CatalogSearchResultData struct {
 	Record catalog.SearchRecordV1
 	Href string
+	Section string
 }
 
 type CatalogEnhancementDescriptorData = localdocs.DescriptorV1
@@ -271,8 +310,9 @@ templ CatalogPage(data CatalogPageData) {
 				MainClass: "min-h-0 overflow-y-auto px-5 py-6 lg:px-10 lg:py-8",
 				MainAttrs: templpkg.Attributes{"data-manja-primary-scroll": "true"},
 			}) {
-				@catalogMainContent(data)
+			@catalogMainContent(data)
 			}
+			@catalogStaticNavigationError()
 			@catalogSearchModal(data)
 			@catalogDocumentSelection()
 			@catalogSidebarFocusRestoration()
@@ -328,6 +368,7 @@ templ catalogSearchModal(data CatalogPageData) {
 		data-search-mount={ data.SearchMount }
 		data-search-scope-label={ data.SearchScopeLabel }
 		data-search-catalog-id={ data.Directory.CatalogID }
+		data-search-document-labels={ data.SearchDocumentLabels }
 			class="manja-catalog-search-dialog fixed inset-0 z-[60] flex items-center justify-center p-4 backdrop-blur-md"
 		role="dialog"
 		aria-modal="true"
@@ -383,6 +424,15 @@ templ catalogSearchModal(data CatalogPageData) {
 	</div>
 }
 
+templ catalogStaticNavigationError() {
+	<div data-manja-static-navigation-error hidden role="alert" aria-live="assertive" class="fixed inset-x-4 bottom-4 z-[70] mx-auto max-w-2xl rounded-radius border border-danger bg-danger/10 px-4 py-3 text-on-surface shadow-lg dark:border-danger dark:bg-danger/15 dark:text-on-surface-dark">
+		<div class="flex flex-wrap items-start justify-between gap-3">
+			<p data-manja-static-navigation-error-message class="font-semibold">Unable to load this documentation section.</p>
+			<button type="button" data-manja-static-navigation-retry class="inline-flex min-h-11 min-w-11 items-center justify-center rounded-radius border border-danger px-4 py-2 text-sm font-semibold focus-visible:outline-2 focus-visible:outline-offset-2 dark:border-danger">Retry</button>
+		</div>
+	</div>
+}
+
 templ catalogSearch(data CatalogPageData) {
 	<main data-catalog-search="true" class="pb-16">
 		<div class="mb-8 border-b border-outline pb-8 dark:border-outline-dark">
@@ -411,7 +461,7 @@ templ catalogSearch(data CatalogPageData) {
 								if result.Record.Method != "" {
 									@badge.Badge(badge.Config{Label: result.Record.Method, Tone: catalogMethodTone(result.Record.Method), Appearance: badge.AppearanceSoft, Size: badge.SizeSM})
 								}
-								<span class="text-xs font-semibold uppercase tracking-wide text-on-surface-muted dark:text-on-surface-dark-muted">{ result.Record.Kind } · { result.Record.DocumentKey }</span>
+								<span class="text-xs font-semibold uppercase tracking-wide text-on-surface-muted dark:text-on-surface-dark-muted">{ result.Record.Kind } · { catalogSearchResultDocumentLabel(data, result) }</span>
 							</div>
 							<h3 class="mt-2 font-title text-xl font-bold text-on-surface-strong dark:text-on-surface-dark-strong">{ result.Record.Title }</h3>
 							if result.Record.Path != "" {
@@ -465,7 +515,7 @@ templ catalogHeader(data CatalogPageData) {
 					<span class="hidden text-on-surface-muted md:inline dark:text-on-surface-dark-muted">/</span>
 					<a
 						href={ templpkg.URL(data.DocumentHref) }
-						title={ data.Document.Key }
+						title={ catalogDocumentTitle(*data.Document) }
 						if data.Selected == nil {
 							aria-current="page"
 						}
@@ -673,7 +723,7 @@ func catalogDocumentTableEntries(data CatalogPageData) []localrender.CatalogDocu
 	for _, option := range data.Documents {
 		searchText := option.SearchText
 		if searchText == "" {
-			searchText = strings.ToLower(option.Key + " " + option.Version)
+			searchText = localrender.CatalogDocumentTableSearchText(option.Key, option.Label, option.Version)
 		}
 		entries = append(entries, localrender.CatalogDocumentTableEntry{
 			Key: option.Key, Label: option.Label, Version: option.Version,
@@ -1064,7 +1114,7 @@ func catalogPageTitle(data CatalogPageData) string {
 	if data.Selected != nil && data.Selected.Operation != nil { return catalogPageTitleWithManja(data.Selected.Operation.Heading) }
 	if data.Selected != nil && data.Selected.Schema != nil { return catalogPageTitleWithManja(data.Selected.Schema.Heading) }
 	if data.Search != nil { return catalogPageTitleWithManja("Search") }
-	if data.Document != nil { return catalogPageTitleWithManja(data.Document.Key) }
+	if data.Document != nil { return catalogPageTitleWithManja(catalogDocumentTitle(*data.Document)) }
 	return catalogPageTitleWithManja(data.Directory.Title)
 }
 

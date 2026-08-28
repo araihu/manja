@@ -23,7 +23,7 @@ func TestBrowserRendersDocumentUnseenOperationAndSchema(t *testing.T) {
 		t.Fatal(err)
 	}
 	page, err := browser.Render(context.Background(), Route{DocumentKey: "doc"})
-	if err != nil || !strings.Contains(page.MainHTML, "doc") || !strings.Contains(page.MainHTML, "Operations") {
+	if err != nil || page.Title != "Pets" || !strings.Contains(page.MainHTML, "title=\"Pets\">Pets</h1>") || !strings.Contains(page.MainHTML, "Operations") {
 		t.Fatalf("document page = %#v, %v", page, err)
 	}
 	page, err = browser.Render(context.Background(), Route{DocumentKey: "doc", Selected: string(operationID)})

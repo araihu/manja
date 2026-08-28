@@ -38,6 +38,11 @@ type searchExactKey struct {
 	priority uint8
 }
 
+type exactSearchEntry struct {
+	entry  SearchExactEntryV1
+	digest string
+}
+
 func BuildSearchArtifacts(directory CatalogArtifactV1, bounds Bounds) (SearchArtifacts, error) {
 	return buildSearchArtifacts(directory, bounds, true)
 }
@@ -209,10 +214,16 @@ func buildSearchArtifacts(directory CatalogArtifactV1, bounds Bounds, resourceLi
 }
 
 func buildExactSearchSegments(matches map[string]map[uint32]uint8, segmentLimit uint64) ([]SearchExactBucketReferenceV1, []ChildArtifact, BudgetUsage, error) {
-	buckets := make(map[string][]SearchExactEntryV1)
+	// Keep the complete digest alongside each entry so that an oversized
+	// first-level bucket can be split without re-hashing or materializing one
+	// monolithic segment. Prefixes are deliberately variable length: ordinary
+	// buckets retain the compact one-nibble route, while only hot buckets are
+	// recursively sharded by subsequent digest nibbles.
+	buckets := make(map[string][]exactSearchEntry)
 	for key, byRecord := range matches {
 		digest := sha256.Sum256([]byte(key))
-		prefix := hex.EncodeToString(digest[:1])[:1]
+		digestHex := hex.EncodeToString(digest[:])
+		prefix := digestHex[:1]
 		entry := SearchExactEntryV1{Key: key, Matches: make([]SearchExactMatchV1, 0, len(byRecord))}
 		for record, priority := range byRecord {
 			entry.Matches = append(entry.Matches, SearchExactMatchV1{Record: record, Priority: priority})
@@ -223,40 +234,113 @@ func buildExactSearchSegments(matches map[string]map[uint32]uint8, segmentLimit 
 			}
 			return entry.Matches[i].Priority < entry.Matches[j].Priority
 		})
-		buckets[prefix] = append(buckets[prefix], entry)
+		buckets[prefix] = append(buckets[prefix], exactSearchEntry{entry: entry, digest: digestHex})
+	}
+	references := make([]SearchExactBucketReferenceV1, 0, len(buckets))
+	children := make([]ChildArtifact, 0, len(buckets))
+	usage := BudgetUsage{}
+	// Emit in digest-prefix order. This is deterministic even when a bucket is
+	// recursively split and keeps the directory binary-searchable.
+	var emit func(string, []exactSearchEntry) error
+	emit = func(prefix string, entries []exactSearchEntry) error {
+		sort.Slice(entries, func(i, j int) bool { return entries[i].entry.Key < entries[j].entry.Key })
+		estimated, err := exactSearchSegmentSize(entries)
+		if err != nil {
+			return err
+		}
+		if estimated <= segmentLimit {
+			plainEntries := make([]SearchExactEntryV1, len(entries))
+			for index, candidate := range entries {
+				plainEntries[index] = candidate.entry
+			}
+			value := SearchExactSegmentV1{SchemaVersion: 1, SearchVersion: searchVersion, Entries: plainEntries}
+			encoded, err := json.Marshal(value)
+			if err != nil {
+				return fmt.Errorf("encode exact search segment: %w", err)
+			}
+			// The size preflight is exact for encoding/json's canonical object
+			// shape, but retain this guard so future model/tag changes fail closed.
+			if uint64(len(encoded)) > segmentLimit {
+				return fmt.Errorf("exact search bucket %q exceeds segment bytes", prefix)
+			}
+			child, err := contentAddressedSearchChild("exact", "search-exact", encoded)
+			if err != nil {
+				return err
+			}
+			postings := uint32(0)
+			for _, entry := range plainEntries {
+				postings += uint32(len(entry.Matches))
+			}
+			references = append(references, SearchExactBucketReferenceV1{Prefix: prefix, SearchSegmentReferenceV1: searchSegmentReference(child, uint32(len(plainEntries)), postings)})
+			children = append(children, child)
+			addSearchChildUsage(&usage, child)
+			return nil
+		}
+
+		if len(prefix) >= sha256.Size*2 {
+			if len(entries) == 1 {
+				return fmt.Errorf("exact search entry %q exceeds segment bytes", entries[0].entry.Key)
+			}
+			return fmt.Errorf("exact search bucket %q exceeds segment bytes", prefix)
+		}
+		childrenByNibble := make([][]exactSearchEntry, 16)
+		for _, candidate := range entries {
+			nibble := strings.IndexByte("0123456789abcdef", candidate.digest[len(prefix)])
+			if nibble < 0 {
+				return fmt.Errorf("exact search digest for %q is invalid", candidate.entry.Key)
+			}
+			childrenByNibble[nibble] = append(childrenByNibble[nibble], candidate)
+		}
+		for nibble, childEntries := range childrenByNibble {
+			if len(childEntries) == 0 {
+				continue
+			}
+			if err := emit(prefix+string("0123456789abcdef"[nibble]), childEntries); err != nil {
+				return err
+			}
+		}
+		return nil
 	}
 	prefixes := make([]string, 0, len(buckets))
 	for prefix := range buckets {
 		prefixes = append(prefixes, prefix)
 	}
 	sort.Strings(prefixes)
-	references := make([]SearchExactBucketReferenceV1, 0, len(prefixes))
-	children := make([]ChildArtifact, 0, len(prefixes))
-	usage := BudgetUsage{}
 	for _, prefix := range prefixes {
-		entries := buckets[prefix]
-		sort.Slice(entries, func(i, j int) bool { return entries[i].Key < entries[j].Key })
-		value := SearchExactSegmentV1{SchemaVersion: 1, SearchVersion: searchVersion, Entries: entries}
-		encoded, err := json.Marshal(value)
-		if err != nil {
-			return nil, nil, BudgetUsage{}, fmt.Errorf("encode exact search segment: %w", err)
-		}
-		if uint64(len(encoded)) > segmentLimit {
-			return nil, nil, BudgetUsage{}, fmt.Errorf("exact search bucket %q exceeds segment bytes", prefix)
-		}
-		child, err := contentAddressedSearchChild("exact", "search-exact", encoded)
-		if err != nil {
+		if err := emit(prefix, buckets[prefix]); err != nil {
 			return nil, nil, BudgetUsage{}, err
 		}
-		postings := uint32(0)
-		for _, entry := range entries {
-			postings += uint32(len(entry.Matches))
-		}
-		references = append(references, SearchExactBucketReferenceV1{Prefix: prefix, SearchSegmentReferenceV1: searchSegmentReference(child, uint32(len(entries)), postings)})
-		children = append(children, child)
-		addSearchChildUsage(&usage, child)
 	}
 	return references, children, usage, nil
+}
+
+// exactSearchSegmentSize computes the encoded size without first allocating a
+// byte slice for the whole bucket. This matters for large catalogs: an
+// overloaded bucket is split by digest prefix before a potentially multi-MiB
+// JSON value is ever materialized.
+func exactSearchSegmentSize(entries []exactSearchEntry) (uint64, error) {
+	empty, err := json.Marshal(SearchExactSegmentV1{SchemaVersion: 1, SearchVersion: searchVersion, Entries: []SearchExactEntryV1{}})
+	if err != nil {
+		return 0, fmt.Errorf("encode exact search segment envelope: %w", err)
+	}
+	if len(empty) < 2 {
+		return 0, fmt.Errorf("exact search segment envelope is invalid")
+	}
+	total := uint64(len(empty) - 2) // replace the empty [] with joined entries.
+	for index, candidate := range entries {
+		encoded, err := json.Marshal(candidate.entry)
+		if err != nil {
+			return 0, fmt.Errorf("encode exact search entry: %w", err)
+		}
+		if index > 0 {
+			total++ // comma between entries.
+		}
+		if uint64(len(encoded)) > ^uint64(0)-total {
+			return 0, fmt.Errorf("exact search segment size overflows")
+		}
+		total += uint64(len(encoded))
+	}
+	return total, nil
 }
 
 func buildPostingSearchSegments(directoryName, kind string, postings map[string][]uint32, segmentLimit uint64) ([]SearchPostingRouteV1, []SearchSegmentReferenceV1, []ChildArtifact, BudgetUsage, error) {

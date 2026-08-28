@@ -230,7 +230,7 @@ func TestCatalogDocumentSearchUsesGlobalModal(t *testing.T) {
 	if err := documentHeader.WaitFor(); err != nil {
 		t.Fatalf("catalog document header: %v", err)
 	}
-	if heading, err := documentHeader.Locator("h1").TextContent(); err != nil || strings.TrimSpace(heading) != "apps-v1" {
+	if heading, err := documentHeader.Locator("h1").TextContent(); err != nil || strings.TrimSpace(heading) != "Kubernetes Apps" {
 		t.Fatalf("catalog document heading = %q, err=%v", heading, err)
 	}
 	if count, err := documentHeader.Locator("a").Count(); err != nil || count != 1 {
@@ -286,7 +286,7 @@ func TestCatalogDocumentSearchUsesGlobalModal(t *testing.T) {
 	if page.URL() != beforeSearch {
 		t.Fatalf("sidebar search navigated from %q to %q", beforeSearch, page.URL())
 	}
-	if err := modal.Locator(`[data-catalog-search-recent-result="true"]`).GetByText("apps-v1", playwright.LocatorGetByTextOptions{Exact: playwright.Bool(true)}).WaitFor(); err != nil {
+	if err := modal.Locator(`[data-catalog-search-recent-result="true"]`).GetByText("Kubernetes Apps", playwright.LocatorGetByTextOptions{Exact: playwright.Bool(true)}).WaitFor(); err != nil {
 		t.Fatalf("recently visited apps document: %v", err)
 	}
 	input := page.Locator("#catalog-search-input")

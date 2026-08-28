@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/url"
@@ -26,6 +27,7 @@ var errCatalogPageNotFound = errors.New("catalog page not found")
 const (
 	catalogSidebarPageSize             = 100
 	catalogSidebarInitialOpenItemLimit = 600
+	catalogSearchDocumentLabelLimit    = 64
 )
 
 type catalogSidebarQuery struct {
@@ -99,6 +101,10 @@ func (handler *CatalogHandler) catalogPageDataWithSidebarQuery(
 	data.SearchDirectorySHA256 = searchIdentity.SHA256
 	data.SearchChildBase, _ = catalogURL(mount, "snapshots", string(snapshot.ID), "search-data")
 	data.SearchChildBase += "/"
+	var documentLabels map[string]string
+	if len(snapshot.Directory.Documents) <= catalogSearchDocumentLabelLimit {
+		documentLabels = make(map[string]string, len(snapshot.Directory.Documents))
+	}
 	for _, document := range snapshot.Directory.Documents {
 		href, err := catalogURL(mount, "documents", document.Key)
 		if err != nil {
@@ -107,10 +113,20 @@ func (handler *CatalogHandler) catalogPageDataWithSidebarQuery(
 		data.Documents = append(data.Documents, templates.CatalogDocumentOption{
 			Key: document.Key, Label: catalogDocumentLabel(document), Version: document.APIVersion,
 			Operations: len(document.Operations), Schemas: len(document.Schemas),
-			SearchText: strings.ToLower(document.Key + " " + document.APIVersion),
+			SearchText: localrender.CatalogDocumentTableSearchText(document.Key, catalogDocumentLabel(document), document.APIVersion),
 			Href:       href + "/", AvatarSrc: document.Branding.LogoSrc, AvatarAlt: document.Branding.LogoAlt,
 			Selected: document.Key == documentKey,
 		})
+		if documentLabels != nil {
+			documentLabels[document.Key] = catalogDocumentLabel(document)
+		}
+	}
+	// Small/standalone catalogs can resolve local search sections without
+	// duplicating a large document-label map into every exported HTML shell.
+	if documentLabels != nil {
+		if encodedLabels, marshalErr := json.Marshal(documentLabels); marshalErr == nil {
+			data.SearchDocumentLabels = string(encodedLabels)
+		}
 	}
 	if documentKey == "" {
 		return data, nil
@@ -158,7 +174,7 @@ func (handler *CatalogHandler) catalogPageDataWithSidebarQuery(
 		}
 	}
 	data.CurrentVisit = &templates.CatalogSearchItemData{
-		ID: "document-" + document.Key, Title: document.Key, Description: document.Title,
+		ID: "document-" + document.Key, Title: catalogDocumentLabel(document), Description: document.Overview.Description,
 		Href: documentHref, Kind: "Document", Section: snapshot.Directory.Title,
 	}
 
@@ -359,7 +375,7 @@ func (handler *CatalogHandler) catalogPageDataWithSidebarQuery(
 			data.CurrentVisit = &templates.CatalogSearchItemData{
 				ID: string(detail.ID), Title: detail.Operation.Heading, Description: detail.Operation.Description,
 				Href: catalogDetailHref(documentHref, detail.ID), Kind: "Operation", Method: detail.Operation.Method,
-				Path: detail.Operation.Path, Section: document.Key,
+				Path: detail.Operation.Path, Section: catalogDocumentLabel(document),
 			}
 		} else if detail.Schema != nil {
 			schema, err := handler.catalogSchemaView(ctx, snapshot, document, *detail.Schema)
@@ -369,7 +385,7 @@ func (handler *CatalogHandler) catalogPageDataWithSidebarQuery(
 			data.SchemaView = schema
 			data.CurrentVisit = &templates.CatalogSearchItemData{
 				ID: string(detail.ID), Title: detail.Schema.Heading, Description: detail.Schema.Description,
-				Href: catalogDetailHref(documentHref, detail.ID), Kind: "Schema", Section: document.Key,
+				Href: catalogDetailHref(documentHref, detail.ID), Kind: "Schema", Section: catalogDocumentLabel(document),
 			}
 		}
 		if detail.Schema != nil {
@@ -631,7 +647,13 @@ func catalogOperationServers(servers []projection.Server) []domain.SpecServer {
 }
 
 func catalogDocumentLabel(document catalog.DocumentDirectoryV1) string {
-	return document.Key
+	if title := strings.TrimSpace(document.Title); title != "" {
+		return title
+	}
+	if key := strings.TrimSpace(document.Key); key != "" {
+		return key
+	}
+	return "Untitled document"
 }
 
 func (handler *CatalogHandler) loadCatalogSchemaNode(

@@ -86,7 +86,7 @@ func PrepareCatalogDocumentTable(mount, sortBy, sortDir string, entries []Catalo
 	seenKeys := make(map[string]struct{}, len(entries))
 	seenHrefs := make(map[string]struct{}, len(entries))
 	for _, entry := range entries {
-		if domain.ValidateCatalogDocumentKey(entry.Key) != nil || entry.Label != entry.Key || !validCatalogDocumentTableText(entry.Version) ||
+		if domain.ValidateCatalogDocumentKey(entry.Key) != nil || !validCatalogDocumentTableText(entry.Label) || strings.TrimSpace(entry.Label) == "" || !validCatalogDocumentTableText(entry.Version) ||
 			!validCatalogDocumentTableText(entry.SearchText) || !validCatalogDocumentTableText(entry.AvatarSrc) ||
 			entry.Operations < 0 || entry.Schemas < 0 {
 			return CatalogDocumentTableFragment{}, invalidCatalogDocumentTableField("row identity")
@@ -97,7 +97,7 @@ func PrepareCatalogDocumentTable(mount, sortBy, sortDir string, entries []Catalo
 		if _, exists := seenHrefs[entry.Href]; exists {
 			return CatalogDocumentTableFragment{}, invalidCatalogDocumentTableField("duplicate row href")
 		}
-		if entry.SearchText != strings.ToLower(entry.Key+" "+entry.Version) {
+		if entry.SearchText != CatalogDocumentTableSearchText(entry.Key, entry.Label, entry.Version) {
 			return CatalogDocumentTableFragment{}, invalidCatalogDocumentTableField("search identity")
 		}
 		expectedHref := strings.TrimSuffix(endpoint, "/") + "/documents/" + entry.Key + "/"
@@ -119,6 +119,16 @@ func PrepareCatalogDocumentTable(mount, sortBy, sortDir string, entries []Catalo
 		return CatalogDocumentTableFragment{}, invalidCatalogDocumentTableField("rendered table")
 	}
 	return fragment, nil
+}
+
+// CatalogDocumentTableSearchText returns the stable, lowercase filter value
+// for a document row. Keep the internal key available for deep-link searches,
+// while including the human title so filtering works on what users see.
+func CatalogDocumentTableSearchText(key, label, version string) string {
+	if strings.TrimSpace(label) == "" || strings.TrimSpace(label) == strings.TrimSpace(key) {
+		return strings.ToLower(strings.TrimSpace(key + " " + version))
+	}
+	return strings.ToLower(strings.TrimSpace(key + " " + label + " " + version))
 }
 
 // CatalogDocumentTable renders the complete table used by catalog SSR.

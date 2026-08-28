@@ -197,6 +197,66 @@ func TestOrganizationRootCatalogCardNavigatesToCatalogOverview(t *testing.T) {
 	}
 }
 
+func TestOrganizationRootSearchUsesHumanDocumentTitle(t *testing.T) {
+	t.Parallel()
+
+	handler, _ := catalogHandlerFixture(t, "/kubernetes")
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/?q=listCoreV1Pod", nil))
+	if response.Code != http.StatusOK {
+		t.Fatalf("organization root search = %d body=%q", response.Code, response.Body.String())
+	}
+	body := response.Body.String()
+	if !strings.Contains(body, "Kubernetes Core v1") {
+		t.Fatalf("organization root search omitted human document title: %q", body)
+	}
+	if strings.Contains(body, "operation · core-v1") || strings.Contains(body, "document · core-v1") {
+		t.Fatalf("organization root search exposed internal document key: %q", body)
+	}
+}
+
+func TestOrganizationRootSearchKeepsHumanTitlesForDuplicateDocumentKeys(t *testing.T) {
+	t.Parallel()
+
+	handler, snapshot := catalogHandlerFixture(t, "/kubernetes")
+	catalogHandler := handler.(*CatalogHandler)
+	other := snapshot
+	other.ID = "snapshot-sha256-" + catalog.SnapshotID(strings.Repeat("d", 64))
+	other.Directory.CatalogID = "other"
+	other.Directory.Title = "Other"
+	other.Directory.Documents = append([]catalog.DocumentDirectoryV1(nil), snapshot.Directory.Documents...)
+	other.Directory.Documents[1].Title = "Other Core v1"
+	if _, err := catalogHandler.runtime.ActivateMount("/other", "", 1, other); err != nil {
+		t.Fatal(err)
+	}
+
+	response := httptest.NewRecorder()
+	catalogHandler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/?q=listCoreV1Pod", nil))
+	if response.Code != http.StatusOK {
+		t.Fatalf("organization root duplicate-key search = %d body=%q", response.Code, response.Body.String())
+	}
+	body := response.Body.String()
+	if !strings.Contains(body, "operation · Kubernetes Core v1") || !strings.Contains(body, "operation · Other Core v1") {
+		t.Fatalf("duplicate-key search lost per-catalog document titles: %q", body)
+	}
+	for _, expected := range []struct {
+		href  string
+		label string
+	}{
+		{href: `/kubernetes/documents/core-v1/`, label: "operation · Kubernetes Core v1"},
+		{href: `/other/documents/core-v1/`, label: "operation · Other Core v1"},
+	} {
+		start := strings.Index(body, `<a href="`+expected.href+`?selected=`)
+		if start < 0 {
+			t.Fatalf("duplicate-key search omitted href %q: %q", expected.href, body)
+		}
+		end := strings.Index(body[start:], `</a>`)
+		if end < 0 || !strings.Contains(body[start:start+end], expected.label) {
+			t.Fatalf("duplicate-key search associated the wrong title with %q: %q", expected.href, body[start:])
+		}
+	}
+}
+
 func TestCatalogOverviewDocumentTableSortsThroughHTMXFragment(t *testing.T) {
 	t.Parallel()
 
@@ -213,8 +273,8 @@ func TestCatalogOverviewDocumentTableSortsThroughHTMXFragment(t *testing.T) {
 	if strings.Contains(body, `data-catalog-overview="true"`) {
 		t.Fatal("sorted table response rendered the full catalog page")
 	}
-	core := strings.Index(body, `data-search-text="core-v1 v1"`)
-	apps := strings.Index(body, `data-search-text="apps-v1 v1"`)
+	core := strings.Index(body, `data-search-text="core-v1 kubernetes core v1 v1"`)
+	apps := strings.Index(body, `data-search-text="apps-v1 kubernetes core v1 v1"`)
 	if core < 0 || apps < 0 || core > apps {
 		t.Fatalf("operations descending order = core %d apps %d", core, apps)
 	}
@@ -546,7 +606,7 @@ func TestCatalogSearchJSONReturnsVersionedGlobalResults(t *testing.T) {
 	if payload.CatalogID != "global" || payload.SnapshotID != "" || payload.Version != 1 || payload.Query != "listcorev1pod" {
 		t.Fatalf("search JSON identity = %+v", payload)
 	}
-	if len(payload.Results) != 1 || payload.Results[0].Title != "List Pods" || payload.Results[0].Section != "Kubernetes" || !strings.HasPrefix(payload.Results[0].Href, "/kubernetes/documents/core-v1/?selected=") {
+	if len(payload.Results) != 1 || payload.Results[0].Title != "List Pods" || payload.Results[0].Section != "Kubernetes Core v1" || !strings.HasPrefix(payload.Results[0].Href, "/kubernetes/documents/core-v1/?selected=") {
 		t.Fatalf("search JSON results = %+v", payload.Results)
 	}
 
@@ -720,8 +780,8 @@ func TestCatalogExactDetailSearchCollectsAndRanksAcrossMounts(t *testing.T) {
 	if len(payload.Results) != 2 || payload.Results[0].DetailID != detailID || payload.Results[1].DetailID != detailID {
 		t.Fatalf("cross-catalog exact results = %#v, want both detail matches", payload.Results)
 	}
-	if payload.Results[0].Section != "Kubernetes" || !strings.HasPrefix(payload.Results[0].Href, "/kubernetes/") || payload.Results[1].Section != "Other" || !strings.HasPrefix(payload.Results[1].Href, "/other/") {
-		t.Fatalf("cross-catalog exact ranking = %#v, want context mount first", payload.Results)
+	if payload.Results[0].Section != "Kubernetes Core v1" || !strings.HasPrefix(payload.Results[0].Href, "/kubernetes/") || payload.Results[1].Section != "Kubernetes Core v1" || !strings.HasPrefix(payload.Results[1].Href, "/other/") {
+		t.Fatalf("cross-catalog exact ranking = %#v, want human document title with context mount first", payload.Results)
 	}
 }
 
@@ -800,8 +860,8 @@ func TestCatalogDocumentComboboxFiltersDistinctKeysAndEmitsCanonicalSelection(t 
 	if options.Code != http.StatusOK || options.Header().Get("Content-Type") != "text/html; charset=utf-8" {
 		t.Fatalf("combobox options = %d headers=%v body=%q", options.Code, options.Header(), options.Body.String())
 	}
-	if !strings.Contains(options.Body.String(), ">core-v1</span>") || strings.Contains(options.Body.String(), ">Kubernetes</span>") {
-		t.Fatalf("combobox options do not expose distinct document keys: %q", options.Body.String())
+	if !strings.Contains(options.Body.String(), ">Kubernetes Core v1</span>") || strings.Contains(options.Body.String(), ">core-v1</span>") {
+		t.Fatalf("combobox options do not expose human document titles: %q", options.Body.String())
 	}
 
 	toggle := httptest.NewRecorder()
@@ -1188,8 +1248,8 @@ func TestCatalogInitialHTMLIncludesCompleteRouteSocialMetadata(t *testing.T) {
 			description: "Browse Kubernetes APIs.", canonical: "https://docs.example.test/kubernetes/",
 		},
 		{
-			name: "document", requestURL: "/kubernetes/documents/core-v1/", title: "core-v1 · Manja",
-			description: "OpenAPI operations and schemas for core-v1.", canonical: "https://docs.example.test/kubernetes/documents/core-v1/",
+			name: "document", requestURL: "/kubernetes/documents/core-v1/", title: "Kubernetes Core v1 · Manja",
+			description: "OpenAPI operations and schemas for Kubernetes Core v1.", canonical: "https://docs.example.test/kubernetes/documents/core-v1/",
 		},
 		{
 			name: "operation", requestURL: "/kubernetes/documents/core-v1/?selected=" + detailID + "&group=ignored#ignored", title: "List Pods · Manja",
@@ -1294,6 +1354,35 @@ func TestLayoutMetadataModeEmitsSiteAndTypeWithoutImageMetadata(t *testing.T) {
 	}
 	if strings.Contains(rendered.String(), `property="og:image:type"`) {
 		t.Error("image MIME metadata emitted without an image")
+	}
+}
+
+func TestCatalogUsesHumanDocumentTitleAcrossOverviewTableAndBreadcrumb(t *testing.T) {
+	t.Parallel()
+
+	handler, _ := catalogHandlerFixture(t, "/kubernetes")
+	overview := httptest.NewRecorder()
+	handler.ServeHTTP(overview, httptest.NewRequest(http.MethodGet, "/kubernetes/", nil))
+	if overview.Code != http.StatusOK {
+		t.Fatalf("catalog overview = %d body=%q", overview.Code, overview.Body.String())
+	}
+	if !strings.Contains(overview.Body.String(), ">Kubernetes Core v1</span>") || strings.Contains(overview.Body.String(), ">core-v1</span>") {
+		t.Fatalf("catalog overview did not keep the human document title: %q", overview.Body.String())
+	}
+
+	document := httptest.NewRecorder()
+	handler.ServeHTTP(document, httptest.NewRequest(http.MethodGet, "/kubernetes/documents/core-v1/", nil))
+	if document.Code != http.StatusOK {
+		t.Fatalf("document overview = %d body=%q", document.Code, document.Body.String())
+	}
+	body := document.Body.String()
+	for _, want := range []string{`title="Kubernetes Core v1">Kubernetes Core v1</h1>`, `title="Kubernetes Core v1"`, `>Kubernetes Core v1</span>`} {
+		if !strings.Contains(body, want) {
+			t.Errorf("document overview missing human title surface %q", want)
+		}
+	}
+	if strings.Contains(body, `>core-v1</h1>`) {
+		t.Fatal("document overview exposed internal key as heading")
 	}
 }
 
@@ -1748,7 +1837,7 @@ func TestCatalogProjectionTransportIsNotActivatedByInitialHTML(t *testing.T) {
 		t.Fatalf("initial HTML = %d body=%q", response.Code, response.Body.String())
 	}
 	digest := sha256.Sum256(response.Body.Bytes())
-	if got := hex.EncodeToString(digest[:]); got != "024c746e910fba5fad0fe8c0009bb5e3dda3118064d3d6f30a3e5d1bd3fbf4f0" || response.Body.Len() != 53780 {
+	if got := hex.EncodeToString(digest[:]); got != "ec76964e6351400f4b7d0841a34f72a3528ad0e4455fe2049959bbe6631b6fef" || response.Body.Len() != 54758 {
 		t.Errorf("initial HTML = sha256 %s, %d bytes; want accepted OC-01M9 bytes", got, response.Body.Len())
 	}
 	for _, forbidden := range []string{"projection-data", "serviceWorker", "manja:local-ready", "MANJA_LOCAL_DOCS"} {
@@ -1835,8 +1924,8 @@ func TestCatalogAssetsServeDeterministicLocalDocsWasmRuntime(t *testing.T) {
 			name:        "wasm binary",
 			path:        "/manja-assets/local-docs/manja.wasm",
 			embedded:    "static/local-docs/manja.wasm",
-			length:      14_559_662,
-			digest:      "5f281215d2d64580be6349dac1657303216a7c805c212a098e3aa7b4dad0b78b",
+			length:      15_772_810,
+			digest:      "9d1f230aa372f81f6762d249de5fff6e69f64de485493abd6b961605de0b3e42",
 			contentType: "application/wasm",
 			prefix:      []byte{0x00, 'a', 's', 'm'},
 		},
@@ -1844,8 +1933,8 @@ func TestCatalogAssetsServeDeterministicLocalDocsWasmRuntime(t *testing.T) {
 			name:     "brotli wasm binary",
 			path:     "/manja-assets/local-docs/manja.wasm.br",
 			embedded: "static/local-docs/manja.wasm.br",
-			length:   2_674_988,
-			digest:   "802aef7fefaa0b910202fa298c9b65e2d4d00fc3107019d4a20b6de38b84ec83",
+			length:   2_813_712,
+			digest:   "4c5f8868182590f6f21a756580d6cfacbc3b41a5e52ba2e08fad8e5056b45271",
 		},
 	} {
 		t.Run(test.name, func(t *testing.T) {

@@ -110,7 +110,7 @@ func catalogLLMsText(directory catalog.CatalogArtifactV1, mount string) pageMark
 		output.WriteString("\n## API documents\n\n")
 		for _, document := range directory.Documents {
 			href, _ := catalogURL(mount, "documents", document.Key)
-			label := document.Key
+			label := catalogDocumentLabel(document)
 			if strings.TrimSpace(document.APIVersion) != "" && !strings.EqualFold(document.APIVersion, "unversioned") {
 				label += " (" + document.APIVersion + ")"
 			}
