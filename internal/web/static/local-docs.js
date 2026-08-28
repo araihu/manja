@@ -580,6 +580,74 @@
 	  var sidebar = documentValue.getElementById("catalog-sidebar-groups");
 	  var children = Object.create(null);
 	  if (!main) fail("static catalog main target is missing");
+	  if (global.history && "scrollRestoration" in global.history) global.history.scrollRestoration = "manual";
+	  function mainScrollContainer() {
+		if (main.closest) return main.closest("[data-manja-primary-scroll]") || main;
+		return main;
+	  }
+	  function sidebarScrollContainer() {
+		if (!sidebar) return null;
+		return sidebar.querySelector && sidebar.querySelector("nav[data-manja-local-sidebar]") || sidebar;
+	  }
+	  function scrollPosition() {
+		var mainPanel = mainScrollContainer();
+		var sidebarPanel = sidebarScrollContainer();
+		return {
+		  main: mainPanel && typeof mainPanel.scrollTop === "number" ? Math.max(0, mainPanel.scrollTop) : 0,
+		  sidebar: sidebarPanel && typeof sidebarPanel.scrollTop === "number" ? Math.max(0, sidebarPanel.scrollTop) : 0,
+		};
+	  }
+	  function restoreScroll(position) {
+		if (!position) return;
+		var mainPanel = mainScrollContainer();
+		var sidebarPanel = sidebarScrollContainer();
+		if (mainPanel && typeof position.main === "number" && isFinite(position.main)) mainPanel.scrollTop = Math.max(0, position.main);
+		if (sidebarPanel && typeof position.sidebar === "number" && isFinite(position.sidebar)) sidebarPanel.scrollTop = Math.max(0, position.sidebar);
+	  }
+	  function historyState(position) {
+		var current = global.history && global.history.state;
+		var state = current && typeof current === "object" && !Array.isArray(current) ? Object.assign({}, current) : {};
+		var value = position || scrollPosition();
+		state.manjaLocalDocs = { main: Math.max(0, Number(value.main) || 0), sidebar: Math.max(0, Number(value.sidebar) || 0) };
+		return state;
+	  }
+	  function currentHistoryScroll() {
+		var state = global.history && global.history.state;
+		var value = state && state.manjaLocalDocs;
+		if (!value || typeof value !== "object") return null;
+		if (!isFinite(Number(value.main)) || !isFinite(Number(value.sidebar))) return null;
+		return { main: Math.max(0, Number(value.main)), sidebar: Math.max(0, Number(value.sidebar)) };
+	  }
+	  function saveHistoryScroll(position) {
+		if (global.history && typeof global.history.replaceState === "function") {
+		  global.history.replaceState(historyState(position), "", global.location.href);
+		}
+	  }
+	  function revealSidebarSelection() {
+		var navigation = sidebarScrollContainer();
+		if (!navigation || !navigation.querySelector || !navigation.getBoundingClientRect) return;
+		var selected = navigation.querySelector("[data-catalog-sidebar-selected]");
+		if (!selected || !selected.getBoundingClientRect) return;
+		var selectedBox = selected.getBoundingClientRect();
+		var panelBox = navigation.getBoundingClientRect();
+		if (selectedBox.top >= panelBox.top && selectedBox.bottom <= panelBox.bottom) return;
+		var maxTop = Math.max(0, navigation.scrollHeight - navigation.clientHeight);
+		var targetTop = navigation.scrollTop + selectedBox.top - panelBox.top - (navigation.clientHeight - selectedBox.height) / 2;
+		navigation.scrollTop = Math.max(0, Math.min(maxTop, targetTop));
+	  }
+	  function focusRenderedDetail() {
+		var focusTarget = main.querySelector('[data-manja-settled-focus="true"]');
+		if (focusTarget && typeof focusTarget.focus === "function") focusTarget.focus({ preventScroll: true });
+	  }
+	  function focusGroup(id) {
+		if (!sidebar || !sidebar.querySelectorAll) return;
+		var controls = sidebar.querySelectorAll("[data-manja-static-group]");
+		for (var index = 0; index < controls.length; index++) {
+		  if (controls[index].getAttribute("data-manja-static-group") !== id) continue;
+		  if (typeof controls[index].focus === "function") controls[index].focus({ preventScroll: true });
+		  return;
+		}
+	  }
 	  function navigate(href) {
 		var route = staticRoute(descriptor, href);
 		if (!route) return null;
@@ -591,28 +659,37 @@
 		return swap(route, "push", { focus: true });
 	  }
 	  function swap(route, historyMode) {
-		var options = arguments.length > 2 && arguments[2] || {};
-		return hydrateStaticRoute(descriptor, manifest, catalog, cache, children, route).then(function () {
+	  var options = arguments.length > 2 && arguments[2] || {};
+	  var beforeScroll = scrollPosition();
+	  if (historyMode === "push") saveHistoryScroll(beforeScroll);
+	  return hydrateStaticRoute(descriptor, manifest, catalog, cache, children, route).then(function () {
 		var cleanManifest = Object.assign({}, manifest); delete cleanManifest.identityDigest;
 		var prepared = abi.prepare(descriptor, cleanManifest, catalog, children);
 		if (!prepared || prepared.ok !== true) fail(prepared && prepared.error || "static Wasm preparation failed");
 		return abi.render(route);
 	  }).then(function (result) {
 		if (!result || result.ok !== true) fail(result && result.error || "static render failed");
-		main.innerHTML = result.mainHtml;
+		if (!options.sidebarOnly) main.innerHTML = result.mainHtml;
 		if (sidebar) sidebar.innerHTML = result.sidebarHtml;
-		documentValue.title = result.title;
-		if (historyMode === "push") global.history.pushState({}, "", result.canonical);
-		if (global.htmx && typeof global.htmx.process === "function") { global.htmx.process(main); if (sidebar) global.htmx.process(sidebar); }
-		if (typeof global.manjaCatalogScrollSidebarSelection === "function") global.manjaCatalogScrollSidebarSelection();
-		if (options.focus) {
-		  var focusTarget = main.querySelector('[data-manja-settled-focus="true"]');
-		  if (focusTarget && typeof focusTarget.focus === "function") focusTarget.focus({ preventScroll: true });
+		if (!options.sidebarOnly) documentValue.title = result.title;
+		if (options.restoreScroll) restoreScroll(options.restoreScroll);
+		else if (options.preserveScroll) restoreScroll(beforeScroll);
+		else if (!options.sidebarOnly) {
+		  var mainPanel = mainScrollContainer();
+		  if (mainPanel) mainPanel.scrollTop = 0;
 		}
+		if (!options.preserveScroll && !options.restoreScroll) revealSidebarSelection();
+		if (historyMode === "push" && global.history && typeof global.history.pushState === "function") global.history.pushState(historyState(scrollPosition()), "", result.canonical);
+		if (historyMode === "replace" && global.history && typeof global.history.replaceState === "function") global.history.replaceState(historyState(scrollPosition()), "", result.canonical);
+		if (options.initial && global.history && typeof global.history.replaceState === "function") global.history.replaceState(historyState(scrollPosition()), "", result.canonical);
+		if (global.htmx && typeof global.htmx.process === "function") { if (!options.sidebarOnly) global.htmx.process(main); if (sidebar) global.htmx.process(sidebar); }
+		if (!options.preserveScroll && typeof global.manjaCatalogScrollSidebarSelection === "function") global.manjaCatalogScrollSidebarSelection();
+		if (options.focus) focusRenderedDetail();
+		if (options.focusGroup) focusGroup(options.focusGroup);
 		return result;
 	  });
-	}
-	documentValue.addEventListener("click", function (event) {
+	  }
+	  documentValue.addEventListener("click", function (event) {
 	  var origin = event.target && event.target.closest && event.target.closest("a[href]");
 	  if (origin) {
 		var route = staticRoute(descriptor, origin.href);
@@ -622,7 +699,7 @@
 		    if (route.groups.length === 0) route.groups = current.groups.slice();
 		    if (route.closedGroups.length === 0) route.closedGroups = current.closedGroups.slice();
 		  }
-		  event.preventDefault(); swap(route, "push").catch(function () {});
+		  event.preventDefault(); swap(route, "push", { focus: true }).catch(function () {});
 		}
 		return;
 	  }
@@ -647,9 +724,12 @@
 	  } else if (!defaultOpen) {
 	    route.groups.push(id);
 	  }
-	  swap(route, "push").catch(function () {});
-	});
-	global.addEventListener("popstate", function () { var route = staticRoute(descriptor, global.location.href); if (route) swap(route, "none").catch(function () {}); });
+	  swap(route, "replace", { sidebarOnly: true, preserveScroll: true, focusGroup: id }).catch(function () {});
+	  });
+	  global.addEventListener("popstate", function () {
+	  var route = staticRoute(descriptor, global.location.href);
+	  if (route) swap(route, "none", { restoreScroll: currentHistoryScroll() }).catch(function () {});
+	  });
 	  return { swap: swap, navigate: navigate, initial: staticRoute(descriptor, global.location.href) };
 	}
 
@@ -669,7 +749,7 @@
 			var catalogIdentity = manifestChild(manifest, "catalog.json");
 			return readVerifiedJSON(descriptor.catalogUrl, catalogIdentity, cache).then(function (catalog) {
 			  var router = installStaticRouter(descriptor, manifest, catalog, cache, abi, documentValue);
-			  return (router.initial ? router.swap(router.initial, "none") : Promise.resolve()).then(function () {
+			  return (router.initial ? router.swap(router.initial, "none", { initial: true }) : Promise.resolve()).then(function () {
 				if (global.ManjaLocalDocsEnhancer) global.ManjaLocalDocsEnhancer.navigate = router.navigate;
 				mark(root, "ready");
 			  return { ok: true, result: activated };
