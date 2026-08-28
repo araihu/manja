@@ -5,7 +5,7 @@ import vm from 'node:vm'
 import { webcrypto } from 'node:crypto'
 
 function enhancer(pathname = '/group/project/pets/documents/doc/', additions = {}) {
-  const location = new URL(`https://docs.test${pathname}`)
+  const location = additions.location || new URL(`https://docs.test${pathname}`)
   const window = {
     URL,
     TextEncoder,
@@ -121,20 +121,79 @@ async function staticActivationFixture(failedPath = '') {
     if (body === undefined) return new Response('', { status: 404 })
     return new Response(body, { status: 200, headers: { 'Content-Length': String(new TextEncoder().encode(body).byteLength) } })
   }
-  const history = { pushes: [], pushState(_state, _title, href) { this.pushes.push(href) } }
+  const location = new URL('https://docs.test/group/project/pets/documents/doc/?selected=wanted#wanted')
+  const history = {
+    pushes: [],
+    pushStates: [],
+    replacements: [],
+    replaceStates: [],
+    state: null,
+    scrollRestoration: 'auto',
+    pushState(state, _title, href) {
+      this.pushes.push(href)
+      this.pushStates.push(state)
+      this.state = state
+      location.href = new URL(href, location.href).href
+    },
+    replaceState(state, _title, href) {
+      this.replacements.push(href)
+      this.replaceStates.push(state)
+      this.state = state
+      location.href = new URL(href, location.href).href
+    },
+  }
   const focusCalls = []
+  const groupFocusCalls = []
   const focusTarget = { focus(options) { focusCalls.push(options) } }
-  const api = enhancer('/group/project/pets/documents/doc/?selected=wanted#wanted', { caches: { open: async () => cache }, fetch, navigator: { serviceWorker }, history })
+  const mainScroll = { scrollTop: 0 }
+  const nav = {
+    scrollTop: 0,
+    clientHeight: 100,
+    scrollHeight: 1000,
+    getBoundingClientRect() { return { top: 0, bottom: 100 } },
+    querySelector() { return null },
+    getAttribute(name) { return name === 'data-manja-static-default-open' ? 'false' : null },
+  }
+  const groupControl = {
+    getAttribute(name) {
+      if (name === 'data-manja-static-group') return 'group'
+      if (name === 'aria-expanded') return 'false'
+      return null
+    },
+    closest(selector) { return selector === 'nav[data-manja-local-sidebar]' ? nav : null },
+    focus(options) { groupFocusCalls.push(options) },
+  }
+  const listeners = {}
+  const windowListeners = {}
+  const api = enhancer('/group/project/pets/documents/doc/?selected=wanted#wanted', {
+    caches: { open: async () => cache },
+    fetch,
+    navigator: { serviceWorker },
+    history,
+    location,
+    addEventListener(type, handler) { windowListeners[type] = handler },
+  })
   const root = { dataset: {}, dispatchEvent() {} }
-  const main = { innerHTML: '', querySelector(selector) { return selector === '[data-manja-settled-focus="true"]' ? focusTarget : null } }
-  const sidebar = { innerHTML: '' }
+  let mainHTML = ''
+  let mainWrites = 0
+  const main = {
+    scrollTop: 0,
+    closest(selector) { return selector === '[data-manja-primary-scroll]' ? mainScroll : null },
+    querySelector(selector) { return selector === '[data-manja-settled-focus="true"]' ? focusTarget : null },
+  }
+  Object.defineProperty(main, 'innerHTML', { get() { return mainHTML }, set(value) { mainWrites += 1; mainHTML = value } })
+  const sidebar = {
+    innerHTML: '',
+    querySelector(selector) { return selector === 'nav[data-manja-local-sidebar]' ? nav : null },
+    querySelectorAll(selector) { return selector === '[data-manja-static-group]' ? [groupControl] : [] },
+  }
   const script = { textContent: JSON.stringify(value) }
   const document = {
     documentElement: root,
     title: '',
     getElementById(id) { return id === 'manja-local-docs-descriptor' ? script : id === 'catalog-sidebar-groups' ? sidebar : null },
     querySelector(selector) { return selector === '[data-catalog-main-content]' ? main : null },
-    addEventListener() {},
+    addEventListener(type, handler) { listeners[type] = handler },
   }
   const prepared = []
   const abi = {
@@ -143,7 +202,7 @@ async function staticActivationFixture(failedPath = '') {
     render: () => ({ ok: true, mainHtml: '<p>Wanted</p>', sidebarHtml: '<nav></nav>', title: 'Wanted', canonical: value.publicationBase + 'documents/doc/?selected=wanted#wanted' }),
   }
   const result = await api.start({ document, loadABI: () => abi })
-  return { result, root, requests, prepared, value, api, history, focusCalls }
+  return { result, root, requests, prepared, value, api, history, focusCalls, groupFocusCalls, mainScroll, nav, groupControl, listeners, windowListeners, location, mainWrites: () => mainWrites }
 }
 
 test('static direct route loads only its required projection child', async () => {
@@ -168,4 +227,73 @@ test('static router exposes same-document navigation for search results', async 
   assert.equal(result.ok, true)
   assert.deepEqual(fixture.history.pushes, [fixture.value.publicationBase + 'documents/doc/?selected=wanted#wanted'])
   assert.equal(fixture.focusCalls.length, 1)
+})
+
+test('static detail navigation resets main scroll and saves the previous entry', async () => {
+  const fixture = await staticActivationFixture()
+  assert.equal(fixture.history.scrollRestoration, 'manual')
+  assert.equal(fixture.mainScroll.scrollTop, 0)
+  assert.equal(fixture.nav.scrollTop, 0)
+
+  fixture.mainScroll.scrollTop = 420
+  fixture.nav.scrollTop = 77
+  await fixture.api.navigate('https://docs.test/group/project/pets/documents/doc/?selected=wanted#wanted')
+
+  assert.equal(fixture.mainScroll.scrollTop, 0)
+  assert.equal(fixture.nav.scrollTop, 77)
+  assert.equal(fixture.history.replaceStates.at(-1).manjaLocalDocs.main, 420)
+  assert.equal(fixture.history.replaceStates.at(-1).manjaLocalDocs.sidebar, 77)
+  assert.equal(fixture.history.pushStates.at(-1).manjaLocalDocs.main, 0)
+  assert.equal(fixture.history.pushStates.at(-1).manjaLocalDocs.sidebar, 77)
+  assert.equal(fixture.focusCalls.length, 1)
+})
+
+test('static group toggles replace history, preserve both scroll containers, and restore control focus', async () => {
+  const fixture = await staticActivationFixture()
+  const writesBefore = fixture.mainWrites()
+  fixture.mainScroll.scrollTop = 321
+  fixture.nav.scrollTop = 88
+
+  let prevented = false
+  fixture.listeners.click({
+    target: {
+      closest(selector) {
+        if (selector === 'a[href]') return null
+        if (selector === '[data-manja-static-group]') return fixture.groupControl
+        return null
+      },
+    },
+    preventDefault() { prevented = true },
+  })
+  await new Promise(resolve => setTimeout(resolve, 0))
+
+  assert.equal(prevented, true)
+  assert.equal(fixture.history.pushes.length, 0)
+  assert.equal(fixture.history.replacements.length, 2)
+  assert.equal(fixture.history.replaceStates.at(-1).manjaLocalDocs.main, 321)
+  assert.equal(fixture.history.replaceStates.at(-1).manjaLocalDocs.sidebar, 88)
+  assert.equal(fixture.mainScroll.scrollTop, 321)
+  assert.equal(fixture.nav.scrollTop, 88)
+  assert.equal(fixture.mainWrites(), writesBefore)
+  assert.equal(fixture.groupFocusCalls.length, 1)
+})
+
+test('static popstate restores saved nested scroll without stealing focus', async () => {
+  const fixture = await staticActivationFixture()
+  fixture.mainScroll.scrollTop = 410
+  fixture.nav.scrollTop = 29
+  await fixture.api.navigate('https://docs.test/group/project/pets/documents/doc/?selected=wanted#wanted')
+  const savedInitialState = fixture.history.replaceStates.at(-1)
+  const detailFocusCount = fixture.focusCalls.length
+
+  fixture.location.href = 'https://docs.test/group/project/pets/documents/doc/?selected=wanted#wanted'
+  fixture.history.state = savedInitialState
+  fixture.mainScroll.scrollTop = 900
+  fixture.nav.scrollTop = 900
+  fixture.windowListeners.popstate()
+  await new Promise(resolve => setTimeout(resolve, 0))
+
+  assert.equal(fixture.mainScroll.scrollTop, 410)
+  assert.equal(fixture.nav.scrollTop, 29)
+  assert.equal(fixture.focusCalls.length, detailFocusCount)
 })
