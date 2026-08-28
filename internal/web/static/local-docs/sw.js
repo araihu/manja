@@ -33,6 +33,8 @@ if (typeof importScripts === "function" && typeof globalThis !== "undefined" && 
   const MAX_SPEC_BYTES = 64 * 1024 * 1024
   const MAX_CHILD_BYTES = 2 * 1024 * 1024
   const DIGEST_PATTERN = /^[0-9a-f]{64}$/
+  const ASSET_DIGEST_HEADER = "X-Manja-Asset-SHA256"
+  const ASSET_LENGTH_HEADER = "X-Manja-Asset-Length"
   const WORKER_PATH = global && global.location && global.location.pathname || ""
   const EMBEDDED_WORKER_SUFFIX = "/manja-assets/local-docs/sw.js"
   const STATIC_EXPORT = Boolean(WORKER_PATH) && !WORKER_PATH.endsWith(EMBEDDED_WORKER_SUFFIX)
@@ -49,6 +51,7 @@ if (typeof importScripts === "function" && typeof globalThis !== "undefined" && 
     STATIC_PREFIX + "manja.wasm",
     STATIC_PREFIX + "manja.wasm.br",
   ]
+  const PRECACHE_STATIC_ASSETS = DEFAULT_STATIC_ASSETS.filter((path) => !path.endsWith("manja.wasm.br"))
 
   // The companion is generated from the embedded production bytes. Keeping
   // sw.js outside its own source avoids a self-referential digest while still
@@ -674,6 +677,28 @@ if (typeof importScripts === "function" && typeof globalThis !== "undefined" && 
     return expected ? { ...expected } : undefined
   }
 
+  function staticAssetMetadataMatches(response, expected) {
+    if (!response || !expected || !response.headers) return false
+    if (expected.length !== undefined) {
+      const value = response.headers.get(ASSET_LENGTH_HEADER)
+      if (!/^\d+$/.test(String(value || "")) || Number(value) !== expected.length) return false
+    }
+    if (expected.sha256 && response.headers.get(ASSET_DIGEST_HEADER) !== expected.sha256) return false
+    return true
+  }
+
+  function validateStaticAssetBytes(bytes, expected, digest) {
+    if (expected && expected.length !== undefined && bytes.byteLength !== expected.length) fail("fallback asset length differs")
+    if (expected && expected.sha256 && digest !== expected.sha256) fail("fallback asset digest differs")
+  }
+
+  function staticAssetResponse(response, bytes, digest) {
+    const headers = new Headers(response.headers)
+    headers.set(ASSET_LENGTH_HEADER, String(bytes.byteLength))
+    if (digest) headers.set(ASSET_DIGEST_HEADER, digest)
+    return new Response(bytes, { status: response.status, statusText: response.statusText, headers })
+  }
+
   async function cachedStaticAsset(scope, request, cacheName, fetchImplementation, expected, routingDisabled) {
     expected = expected || staticAssetExpectation(request)
     let requestPath = ""
@@ -683,30 +708,22 @@ if (typeof importScripts === "function" && typeof globalThis !== "undefined" && 
     const cache = await scope.caches.open(cacheName)
     ensureRoutingEnabled(routingDisabled)
     const network = fetchImplementation || ((value, init) => scope.fetch(value, init))
-    let networkError
-    try {
-      const response = await network(request, { credentials: "same-origin", cache: "no-store" })
-      if (!response || !response.ok) fail("static asset request failed")
-      const maximum = expected && expected.length ? expected.length : MAX_ASSET_BYTES
-      const bytes = await readBoundedResponse(response.clone ? response.clone() : response, maximum)
-      if (expected && expected.length !== undefined && bytes.byteLength !== expected.length) fail("fallback asset length differs")
-      if (expected && expected.sha256 && await sha256(bytes) !== expected.sha256) fail("fallback asset digest differs")
-      // Validate complete network bytes before replacing the stable cache key.
-      ensureRoutingEnabled(routingDisabled)
-      await cache.put(request, response.clone ? response.clone() : response)
-      return response
-    } catch (error) {
-      networkError = error
-    }
     const cached = await cache.match(request)
     if (cached) {
       try {
-        if (!expected) {
-          await readBoundedResponse(cached.clone ? cached.clone() : cached, MAX_ASSET_BYTES)
-        } else {
-          const cachedBytes = await readBoundedResponse(cached.clone ? cached.clone() : cached, expected.length || MAX_ASSET_BYTES)
-          if (expected.length !== undefined && cachedBytes.byteLength !== expected.length) fail("fallback asset length differs")
-          if (expected.sha256 && await sha256(cachedBytes) !== expected.sha256) fail("fallback asset digest differs")
+        if (staticAssetMetadataMatches(cached, expected)) {
+          ensureRoutingEnabled(routingDisabled)
+          return cached
+        }
+        const maximum = expected && expected.length ? expected.length : MAX_ASSET_BYTES
+        const cachedBytes = await readBoundedResponse(cached.clone ? cached.clone() : cached, maximum)
+        const cachedDigest = expected && expected.sha256 ? await sha256(cachedBytes) : undefined
+        validateStaticAssetBytes(cachedBytes, expected, cachedDigest)
+        if (expected) {
+          const upgraded = staticAssetResponse(cached, cachedBytes, cachedDigest)
+          ensureRoutingEnabled(routingDisabled)
+          await cache.put(request, upgraded.clone ? upgraded.clone() : upgraded)
+          return upgraded
         }
         ensureRoutingEnabled(routingDisabled)
         return cached
@@ -714,7 +731,21 @@ if (typeof importScripts === "function" && typeof globalThis !== "undefined" && 
         await cache.delete(request).catch(() => {})
       }
     }
-    throw networkError || new Error("static asset unavailable")
+    try {
+      const response = await network(request, { credentials: "same-origin", cache: "no-store" })
+      if (!response || !response.ok) fail("static asset request failed")
+      const maximum = expected && expected.length ? expected.length : MAX_ASSET_BYTES
+      const bytes = await readBoundedResponse(response.clone ? response.clone() : response, maximum)
+      const responseDigest = expected && expected.sha256 ? await sha256(bytes) : undefined
+      validateStaticAssetBytes(bytes, expected, responseDigest)
+      // Validate complete network bytes before replacing the stable cache key.
+      ensureRoutingEnabled(routingDisabled)
+      const stored = staticAssetResponse(response, bytes, responseDigest)
+      await cache.put(request, stored.clone ? stored.clone() : stored)
+      return response
+    } catch (error) {
+      throw error || new Error("static asset unavailable")
+    }
   }
 
   function findFallbackAsset(descriptors, requestURL) {
@@ -819,9 +850,25 @@ if (typeof importScripts === "function" && typeof globalThis !== "undefined" && 
     const disabled = new Set()
     const revalidators = new Map()
     const configurations = new Map()
+    const staticAssetRuns = new Map()
     const route = options.route
     const fetchImplementation = options.fetch || ((value, init) => scope.fetch(value, init))
     const origin = scope.location && scope.location.origin
+    function cacheStaticAssetsOnce(cacheName, assets, routingDisabled) {
+      const key = cacheName + "\u0000" + JSON.stringify(assets)
+      let pending = staticAssetRuns.get(key)
+      if (!pending) {
+        pending = cacheStaticAssets(scope, cacheName, fetchImplementation, assets, routingDisabled)
+        staticAssetRuns.set(key, pending)
+        pending.finally(() => {
+          if (staticAssetRuns.get(key) === pending) staticAssetRuns.delete(key)
+        }).catch(() => {})
+      }
+      return pending.then((ready) => {
+        ensureRoutingEnabled(routingDisabled)
+        return ready
+      })
+    }
     const disableRouting = (publicationKey) => {
       disabled.add(publicationKey)
     }
@@ -888,7 +935,11 @@ if (typeof importScripts === "function" && typeof globalThis !== "undefined" && 
     }
     scope.addEventListener("install", (event) => {
       event.waitUntil(Promise.resolve().then(async () => {
-        if (scope.caches) await cacheStaticAssets(scope, storageAPI && storageAPI.CACHE_NAME || "manja-local-docs-assets-v1", fetchImplementation, [...DEFAULT_STATIC_ASSETS, ...(Array.isArray(options.assets) ? options.assets : [])])
+        if (scope.caches) {
+          const cacheName = storageAPI && storageAPI.CACHE_NAME || "manja-local-docs-assets-v1"
+          await cacheStaticAssetsOnce(cacheName, PRECACHE_STATIC_ASSETS)
+          if (Array.isArray(options.assets) && options.assets.length) await cacheStaticAssetsOnce(cacheName, options.assets)
+        }
         if (STATIC_EXPORT) await cacheStaticExportShells(scope, fetchImplementation)
         if (typeof scope.skipWaiting === "function") await scope.skipWaiting()
       }))
@@ -912,7 +963,7 @@ if (typeof importScripts === "function" && typeof globalThis !== "undefined" && 
             }
           }
           const routingDisabled = () => disabled.has(result.descriptor.publicationKey)
-          const staticReady = await cacheStaticAssets(scope, cacheName, fetchImplementation, DEFAULT_STATIC_ASSETS, routingDisabled)
+          const staticReady = await cacheStaticAssetsOnce(cacheName, PRECACHE_STATIC_ASSETS, routingDisabled)
           const assetsReady = staticReady && await cacheDescriptorAssets(scope, result.descriptor, descriptorGenerationCacheName(storageAPI, result.descriptor), fetchImplementation, routingDisabled)
           let shellReady = await cacheOfflineShell(storage, result.descriptor, fetchImplementation, routingDisabled, disableRouting)
           if (!shellReady && typeof storage.getShell === "function") {
@@ -1001,6 +1052,7 @@ if (typeof importScripts === "function" && typeof globalThis !== "undefined" && 
 
   return {
     DEFAULT_STATIC_ASSETS,
+    PRECACHE_STATIC_ASSETS,
     DEFAULT_STATIC_ASSET_EXPECTATIONS,
     DEPLOYMENT_BASE,
     MAX_ASSET_BYTES,
