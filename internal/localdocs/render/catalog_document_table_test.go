@@ -40,6 +40,27 @@ func TestPreparedCatalogDocumentTableRendersBoundedRowsAndSortState(t *testing.T
 	}
 }
 
+func TestPreparedCatalogDocumentTableRendersHumanDocumentTitle(t *testing.T) {
+	label := "Virtual Infrastructure JSON API"
+	fragment, err := PrepareCatalogDocumentTable("/vmware", "", "", []CatalogDocumentTableEntry{{
+		Key: "openapi", Label: label, Version: "8.0.3", SearchText: CatalogDocumentTableSearchText("openapi", label, "8.0.3"),
+		Href: "/vmware/documents/openapi/", Operations: 1902, Schemas: 8141,
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, err := fragment.PageBytes(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Contains(body, []byte(">Virtual Infrastructure JSON API</span>")) {
+		t.Fatalf("document table omitted human title: %s", body)
+	}
+	if bytes.Contains(body, []byte(">openapi</span>")) {
+		t.Fatalf("document table exposed internal document key: %s", body)
+	}
+}
+
 func TestPrepareCatalogDocumentTableFailsClosedAndCopiesRows(t *testing.T) {
 	base := []CatalogDocumentTableEntry{{
 		Key: "core-v1", Label: "core-v1", Version: "v1", Operations: 2, Schemas: 1,

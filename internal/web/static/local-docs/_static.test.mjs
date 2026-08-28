@@ -77,7 +77,8 @@ async function sha256(value) {
   return { bytes, hex: Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, '0')).join('') }
 }
 
-async function staticActivationFixture(failedPath = '') {
+async function staticActivationFixture(failedPath = '', options = {}) {
+  let activeFailedPath = failedPath
   const identity = { schemaVersion: 1, catalogId: 'pets', revisionId: 'revision-1', projectionFormat: 'projection-v2' }
   const identityDigest = await sha256(JSON.stringify(identity))
   const value = descriptor({
@@ -117,7 +118,7 @@ async function staticActivationFixture(failedPath = '') {
   const fetch = async input => {
     const path = new URL(input, 'https://docs.test').pathname
     requests.push(path)
-    if (failedPath && path.endsWith(failedPath)) throw new Error('network down')
+    if (activeFailedPath && path.endsWith(activeFailedPath)) throw new Error('network down')
     const body = responses.get(path)
     if (body === undefined) return new Response('', { status: 404 })
     return new Response(body, { status: 200, headers: { 'Content-Length': String(new TextEncoder().encode(body).byteLength) } })
@@ -189,11 +190,31 @@ async function staticActivationFixture(failedPath = '') {
     querySelectorAll(selector) { return selector === '[data-manja-static-group]' ? [groupControl] : [] },
   }
   const script = { textContent: JSON.stringify(value) }
+  const navigationErrorMessage = { textContent: '' }
+  const navigationRetry = {
+    hidden: true,
+    disabled: false,
+    addEventListener(type, handler) { if (type === 'click') this.handler = handler },
+    click() { return this.handler && this.handler() },
+  }
+  const navigationError = {
+    hidden: true,
+    querySelector(selector) {
+      if (selector === '[data-manja-static-navigation-error-message]') return navigationErrorMessage
+      if (selector === '[data-manja-static-navigation-retry]') return navigationRetry
+      return null
+    },
+  }
   const document = {
     documentElement: root,
     title: '',
     getElementById(id) { return id === 'manja-local-docs-descriptor' ? script : id === 'catalog-sidebar-groups' ? sidebar : null },
-    querySelector(selector) { return selector === '[data-catalog-main-content]' ? main : null },
+    querySelector(selector) {
+      if (selector === '[data-catalog-main-content]') return main
+      if (options.navigationError && selector === '[data-manja-static-navigation-error]') return navigationError
+      if (options.navigationError && selector === '[data-manja-static-navigation-retry]') return navigationRetry
+      return null
+    },
     addEventListener(type, handler) { listeners[type] = handler },
   }
   const prepared = []
@@ -207,7 +228,7 @@ async function staticActivationFixture(failedPath = '') {
     renderSidebar: () => { sidebarRenders.push(true); return { ok: true, sidebarHtml: '<nav></nav>', canonical: value.publicationBase + 'documents/doc/?selected=wanted#wanted' } },
   }
   const result = await api.start({ document, loadABI: () => { phases.push('loadABI'); return abi } })
-  return { result, root, requests, phases, prepared, admitted, sidebarRenders, value, api, history, focusCalls, groupFocusCalls, mainScroll, nav, groupControl, listeners, windowListeners, location, mainWrites: () => mainWrites }
+  return { result, root, requests, phases, prepared, admitted, sidebarRenders, value, api, history, focusCalls, groupFocusCalls, mainScroll, nav, groupControl, listeners, windowListeners, location, navigationError, navigationErrorMessage, navigationRetry, setFailedPath: value => { activeFailedPath = value }, mainWrites: () => mainWrites }
 }
 
 test('static direct route loads only its required projection child', async () => {
@@ -229,6 +250,24 @@ test('static child failure reports its manifest path', async () => {
   const fixture = await staticActivationFixture('details/doc.json')
   assert.equal(fixture.result.ok, false)
   assert.match(fixture.root.dataset.manjaLocalDocsReason, /details\/doc\.json/)
+})
+
+test('static navigation exposes a visible retry state after child failure', async () => {
+  const fixture = await staticActivationFixture('details/doc.json', { navigationError: true })
+  assert.equal(fixture.result.ok, false)
+  assert.equal(fixture.navigationError.hidden, false)
+  assert.equal(fixture.navigationRetry.hidden, false)
+  assert.equal(fixture.navigationErrorMessage.textContent, 'Unable to load this documentation section. Please try again.')
+
+  await assert.rejects(fixture.navigationRetry.click(), /network down/)
+  assert.equal(fixture.navigationError.hidden, false)
+  assert.equal(fixture.navigationRetry.hidden, false)
+  assert.equal(fixture.navigationRetry.disabled, false)
+
+  fixture.setFailedPath('')
+  await fixture.navigationRetry.click()
+  assert.equal(fixture.navigationError.hidden, true)
+  assert.equal(fixture.navigationRetry.hidden, true)
 })
 
 test('static router exposes same-document navigation for search results', async () => {

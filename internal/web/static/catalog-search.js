@@ -244,6 +244,15 @@
     this.contextMount = root.dataset.searchContextMount || "";
     this.contextDocument = root.dataset.searchContextDocument || "";
     this.mount = root.dataset.searchMount || "/";
+    this.documentLabels = Object.create(null);
+    try {
+      var labels = JSON.parse(root.dataset.searchDocumentLabels || "{}");
+      if (labels && typeof labels === "object" && !Array.isArray(labels)) {
+        Object.keys(labels).forEach(function (key) {
+          if (typeof labels[key] === "string" && labels[key].trim()) this.documentLabels[key] = labels[key].trim();
+        }.bind(this));
+      }
+    } catch (_) {}
     this.cache = new Map();
     this.directoryPromise = null;
   }
@@ -307,10 +316,17 @@
 
   SearchRouter.prototype.loadExact = function (directory, exact, receipt) {
     return crypto.subtle.digest("SHA-256", new TextEncoder().encode(exact)).then(function (digest) {
-      var prefix = bytesToHex(new Uint8Array(digest)).slice(0, 1);
-      var index = lowerBound(directory.exactBuckets, prefix, function (bucket) { return bucket.prefix; });
-      if (index >= directory.exactBuckets.length || directory.exactBuckets[index].prefix !== prefix) return [];
-      var reference = directory.exactBuckets[index];
+      var digestHex = bytesToHex(new Uint8Array(digest));
+      var reference = null;
+      for (var length = digestHex.length; length > 0; length--) {
+        var prefix = digestHex.slice(0, length);
+        var index = lowerBound(directory.exactBuckets, prefix, function (bucket) { return bucket.prefix; });
+        if (index < directory.exactBuckets.length && directory.exactBuckets[index].prefix === prefix) {
+          reference = directory.exactBuckets[index];
+          break;
+        }
+      }
+      if (!reference) return [];
       this.reserve(receipt, reference, true);
       return this.fetchVerified(reference.path, reference.length, reference.sha256).then(function (segment) {
         if (!segment || segment.schemaVersion !== 1 || segment.searchVersion !== 1 || !Array.isArray(segment.entries)) {
@@ -496,7 +512,7 @@
           kind: asString(record.kind),
           method: asString(record.method).toUpperCase(),
           path: asString(record.path),
-          section: asString(record.documentKey),
+          section: this.documentLabels[asString(record.documentKey)] || "",
         };
       }.bind(this));
     }.bind(this));
@@ -516,10 +532,10 @@
         return {
           id: asString(record.detailId), title: asString(record.title), description: asString(record.description),
           href: asString(record.href), kind: asString(record.kind), method: asString(record.method).toUpperCase(),
-          path: asString(record.path), section: asString(record.section || record.documentKey),
+          path: asString(record.path), section: this.documentLabels[asString(record.documentKey)] || asString(record.section || ""),
         };
-      });
-    });
+      }.bind(this));
+    }.bind(this));
   };
 
   SearchRouter.prototype.search = function (query) {
@@ -560,7 +576,7 @@
       kind: asString(raw.kind).slice(0, 32),
       method: asString(raw.method).toUpperCase().slice(0, 16),
       path: asString(raw.path).slice(0, 512),
-      section: asString(raw.section || raw.documentKey).slice(0, 160),
+      section: asString(raw.section).slice(0, 160),
     };
   }
 

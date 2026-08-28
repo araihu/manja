@@ -169,7 +169,7 @@ func (browser *Browser) Render(ctx context.Context, route Route) (Page, error) {
 	sidebar = browser.deploymentHTML(sidebar)
 	if route.Selected == "" {
 		main, err := browser.renderDocument(ctx, document, documentHref)
-		return Page{MainHTML: browser.deploymentHTML(main), SidebarHTML: sidebar, Title: document.Key, Canonical: browserCanonical(documentHref, route, "")}, err
+		return Page{MainHTML: browser.deploymentHTML(main), SidebarHTML: sidebar, Title: browserDocumentTitle(document), Canonical: browserCanonical(documentHref, route, "")}, err
 	}
 	detail, err := browser.detail(document, domain.DetailID(route.Selected))
 	if err != nil {
@@ -275,30 +275,110 @@ func (browser *Browser) renderOperation(ctx context.Context, document catalog.Do
 	if !ok {
 		return "", "", errors.New("local docs operation directory is missing")
 	}
-	operation := domain.Operation{
-		ID: directory.OperationID, Anchor: projected.Anchor, Title: projected.Heading, Method: projected.Method,
-		Path: projected.Path, Summary: projected.Summary, Description: projected.Description, Deprecated: projected.Deprecated,
-		Tags: browserTextValues(projected.Tags),
-	}
-	if operation.ID == "" {
-		operation.ID = string(detail.ID)
-	}
-	header, err := localrender.PrepareOperationHeader(detail, operation, documentHref)
+	operation, parameterNodes, requestBodyNodes, responseMediaNodes, responseDetailNodes, schemaTreeNodes, err := browser.browserOperationView(document, *projected)
 	if err != nil {
 		return "", "", err
+	}
+	// Keep the directory identity as the source of the operation id when it is
+	// present. This is also what the dynamic catalog path uses for fragment ids.
+	if operation.ID == "" {
+		operation.ID = directory.OperationID
+	}
+	header, err := localrender.PrepareOperationHeader(detail, *operation, documentHref)
+	if err != nil {
+		return "", "", err
+	}
+	authorization, err := localrender.PrepareOperationAuthorization(detail, *operation)
+	if err != nil {
+		return "", "", err
+	}
+	parameters, err := localrender.PrepareOperationParameters(detail, *operation, parameterNodes)
+	if err != nil {
+		return "", "", err
+	}
+	schemaLinks := browser.schemaLinks(document, documentHref)
+	responseMedia, err := localrender.PrepareOperationResponseMedia(detail, *operation, responseMediaNodes, documentHref, schemaLinks)
+	if err != nil {
+		return "", "", err
+	}
+	responseDetails, err := localrender.PrepareOperationResponseDetails(detail, *operation, responseDetailNodes, documentHref, schemaLinks)
+	if err != nil {
+		return "", "", err
+	}
+	examples, err := localrender.PrepareOperationExamples(detail, *operation, responseMediaNodes)
+	if err != nil {
+		return "", "", err
+	}
+	schemaTrees, err := localrender.PrepareOperationSchemaTrees(detail, *operation, schemaTreeNodes, documentHref, schemaLinks)
+	if err != nil {
+		return "", "", err
+	}
+	var requestBody *localrender.OperationRequestBodyFragment
+	var requestBodyMedia localrender.OperationRequestBodyMediaFragment
+	if projected.HasRequestBody {
+		requestBodyMedia, err = localrender.PrepareOperationRequestBodyMedia(detail, *operation, requestBodyNodes, documentHref, schemaLinks)
+		if err != nil {
+			return "", "", err
+		}
+		prepared, prepareErr := localrender.PrepareOperationRequestBody(detail, *operation, requestBodyMedia, schemaTrees)
+		if prepareErr != nil {
+			return "", "", prepareErr
+		}
+		requestBody = &prepared
+	}
+	var responses *localrender.OperationResponsesFragment
+	if len(projected.Responses) > 0 {
+		prepared, prepareErr := localrender.PrepareOperationResponses(detail, *operation, responseMedia, responseDetails, examples, schemaTrees)
+		if prepareErr != nil {
+			return "", "", prepareErr
+		}
+		responses = &prepared
+	}
+	var request *localrender.OperationRequestSectionFragment
+	if len(operation.Security) > 0 || len(operation.Parameters) > 0 || operation.RequestBody != nil {
+		prepared, prepareErr := localrender.PrepareOperationRequestSection(detail, *operation, authorization, parameters, requestBody, documentHref, schemaLinks)
+		if prepareErr != nil {
+			return "", "", prepareErr
+		}
+		request = &prepared
+	}
+	var sections *localrender.OperationDetailSectionsFragment
+	if request != nil || responses != nil {
+		prepared, prepareErr := localrender.PrepareOperationDetailSections(detail, *operation, request, responses)
+		if prepareErr != nil {
+			return "", "", prepareErr
+		}
+		sections = &prepared
 	}
 	open := make(map[string]struct{}, len(groups))
 	for _, group := range groups {
 		open[group] = struct{}{}
 	}
-	navigation, err := localrender.PrepareOperationNavigation(detail, operation, document, documentHref, open)
+	navigation, err := localrender.PrepareOperationNavigation(detail, *operation, document, documentHref, open)
 	if err != nil {
 		return "", "", err
 	}
-	main, err := renderBrowserFragments([]func() ([]byte, error){
-		func() ([]byte, error) { return header.Bytes(ctx, nil, nil) },
-		func() ([]byte, error) { return navigation.Bytes(ctx) },
-	})
+	fragments := []func() ([]byte, error){func() ([]byte, error) { return header.Bytes(ctx, nil, nil) }}
+	if sections != nil {
+		fragments = append(fragments, func() ([]byte, error) { return sections.Bytes(ctx) })
+	}
+	if len(operation.Snippets) > 0 {
+		fragments = append(fragments, func() ([]byte, error) {
+			var output bytes.Buffer
+			output.WriteString(`<section data-manja-request-samples="true" aria-label="Request samples" class="mt-8 grid min-w-0 gap-4"><h4 class="font-title text-2xl font-bold text-on-surface-strong dark:text-on-surface-dark-strong">Request samples</h4>`)
+			for index := range operation.Snippets {
+				data, sampleErr := examples.CodeSampleBytes(ctx, index)
+				if sampleErr != nil {
+					return nil, sampleErr
+				}
+				output.Write(data)
+			}
+			output.WriteString(`</section>`)
+			return output.Bytes(), nil
+		})
+	}
+	fragments = append(fragments, func() ([]byte, error) { return navigation.Bytes(ctx) })
+	main, err := renderBrowserFragments(fragments)
 	return main, projected.Heading, err
 }
 
@@ -401,7 +481,11 @@ func (browser *Browser) renderSidebar(document catalog.DocumentDirectoryV1, rout
 		_, explicitlyOpen := open[item.id]
 		_, explicitlyClosed := closed[item.id]
 		opened := !explicitlyClosed && (defaultOpen || explicitlyOpen || browserGroupContains(item.operations, route.Selected))
-		output.WriteString(`<section data-manja-sidebar-group="` + item.id + `"><button type="button" data-manja-static-group="` + item.id + `" data-catalog-group-control="true" aria-controls="` + item.id + `-items" aria-expanded="` + strconv.FormatBool(opened) + `">` + html.EscapeString(item.label) + `</button>`)
+		controls := ""
+		if opened {
+			controls = ` aria-controls="` + item.id + `-items"`
+		}
+		output.WriteString(`<section data-manja-sidebar-group="` + item.id + `"><button type="button" data-manja-static-group="` + item.id + `" data-catalog-group-control="true"` + controls + ` aria-expanded="` + strconv.FormatBool(opened) + `">` + html.EscapeString(item.label) + `</button>`)
 		if opened {
 			output.WriteString(`<div id="` + item.id + `-items" data-manja-sidebar-items="true">`)
 			for _, operation := range item.operations {
@@ -422,7 +506,11 @@ func (browser *Browser) renderSidebar(document catalog.DocumentDirectoryV1, rout
 				opened = opened || string(schema.DetailID) == route.Selected
 			}
 		}
-		output.WriteString(`<section data-manja-sidebar-group="` + id + `"><button type="button" data-manja-static-group="` + id + `" data-catalog-group-control="true" aria-controls="` + id + `-items" aria-expanded="` + strconv.FormatBool(opened) + `">Schemas</button>`)
+		controls := ""
+		if opened {
+			controls = ` aria-controls="` + id + `-items"`
+		}
+		output.WriteString(`<section data-manja-sidebar-group="` + id + `"><button type="button" data-manja-static-group="` + id + `" data-catalog-group-control="true"` + controls + ` aria-expanded="` + strconv.FormatBool(opened) + `">Schemas</button>`)
 		if opened {
 			output.WriteString(`<div id="` + id + `-items" data-manja-sidebar-items="true">`)
 			for _, schema := range document.Schemas {
@@ -484,6 +572,22 @@ func (browser *Browser) operation(document catalog.DocumentDirectoryV1, id domai
 	return catalog.OperationDirectoryV1{}, false
 }
 
+func (browser *Browser) schemaLinks(document catalog.DocumentDirectoryV1, documentHref string) map[string]string {
+	links := make(map[string]string, len(document.Schemas))
+	for _, schema := range document.Schemas {
+		name := strings.TrimSpace(schema.Name)
+		if name == "" {
+			continue
+		}
+		if _, exists := links[name]; exists {
+			continue
+		}
+		id := string(schema.DetailID)
+		links[name] = documentHref + "?selected=" + url.QueryEscape(id) + "#" + url.PathEscape(id)
+	}
+	return links
+}
+
 func renderBrowserFragments(fragments []func() ([]byte, error)) (string, error) {
 	var output bytes.Buffer
 	output.WriteString(`<div data-manja-local-main="true">`)
@@ -534,6 +638,16 @@ func browserTextValues(records []projection.TextRecord) []string {
 	return result
 }
 
+func browserDocumentTitle(document catalog.DocumentDirectoryV1) string {
+	if title := strings.TrimSpace(document.Title); title != "" {
+		return title
+	}
+	if key := strings.TrimSpace(document.Key); key != "" {
+		return key
+	}
+	return "Untitled document"
+}
+
 func browserGroupID(value string) string {
 	digest := sha256.Sum256([]byte(value))
 	return "group-" + hex.EncodeToString(digest[:6])
@@ -559,7 +673,30 @@ func browserSidebarLink(publicationBase, documentKey string, id domain.DetailID,
 		attributes += ` data-catalog-sidebar-selected="true" aria-current="page"`
 	}
 	label = html.EscapeString(browserPlainText(label))
-	return `<a data-manja-static-route="true" href="` + html.EscapeString(href) + `" title="` + label + `"` + attributes + `><span class="min-w-0 flex-1 truncate">` + label + `</span></a>`
+	methodLabel := ""
+	if method != "" {
+		methodLabel = `<span data-manja-sidebar-method="true" aria-hidden="true" class="catalog-method-` + browserMethodClass(method) + ` mr-2 shrink-0 font-mono text-[0.65rem] font-semibold uppercase">` + html.EscapeString(method) + `</span>`
+	}
+	accessibleLabel := label
+	if method != "" {
+		accessibleLabel = html.EscapeString(method) + " " + label
+	}
+	return `<a data-manja-static-route="true" href="` + html.EscapeString(href) + `" title="` + label + `" aria-label="` + accessibleLabel + `"` + attributes + `>` + methodLabel + `<span class="min-w-0 flex-1 truncate">` + label + `</span></a>`
+}
+
+func browserMethodClass(method string) string {
+	switch strings.ToUpper(strings.TrimSpace(method)) {
+	case "GET":
+		return "get"
+	case "POST":
+		return "post"
+	case "DELETE":
+		return "delete"
+	case "PUT", "PATCH":
+		return "warning"
+	default:
+		return "neutral"
+	}
 }
 
 func browserSidebarTopLink(href, label, id string, active bool) string {

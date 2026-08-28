@@ -107,6 +107,10 @@ func (handler *CatalogHandler) searchGlobal(ctx context.Context, query, contextM
 			continue
 		}
 		snapshot := admission.Snapshot
+		documentLabels := make(map[string]string, len(snapshot.Directory.Documents))
+		for _, document := range snapshot.Directory.Documents {
+			documentLabels[document.Key] = catalogDocumentLabel(document)
+		}
 		local, searchErr := handler.searchCatalog(ctx, snapshot, mount, canonical)
 		if searchErr != nil {
 			admission.Release()
@@ -120,7 +124,7 @@ func (handler *CatalogHandler) searchGlobal(ctx context.Context, query, contextM
 		result.BytesDecoded += local.BytesDecoded
 		for index, record := range local.Results {
 			result.Results = append(result.Results, globalSearchCandidate{
-				record: record, mount: mount, section: snapshot.Directory.Title, localRank: index,
+				record: record, mount: mount, section: catalogSearchSection(documentLabels, snapshot.Directory.Title, record.DocumentKey), localRank: index,
 				exactID: globalSearchRecordMatchesDetailID(record, result.Query),
 			})
 		}
@@ -132,7 +136,7 @@ func (handler *CatalogHandler) searchGlobal(ctx context.Context, query, contextM
 			}
 			if exactFound && !globalSearchResultsContainDetail(local.Results, exactRecord.DetailID) {
 				result.Results = append(result.Results, globalSearchCandidate{
-					record: exactRecord, mount: mount, section: snapshot.Directory.Title, localRank: -1, exactID: true,
+					record: exactRecord, mount: mount, section: catalogSearchSection(documentLabels, snapshot.Directory.Title, exactRecord.DocumentKey), localRank: -1, exactID: true,
 				})
 			}
 		}
@@ -146,7 +150,7 @@ func (handler *CatalogHandler) searchGlobal(ctx context.Context, query, contextM
 				return globalSearchResult{}, recordErr
 			}
 			result.Results = append(result.Results, globalSearchCandidate{
-				record: record, mount: mount, section: snapshot.Directory.Title, localRank: len(local.Results) + index,
+				record: record, mount: mount, section: catalogSearchSection(documentLabels, snapshot.Directory.Title, record.DocumentKey), localRank: len(local.Results) + index,
 				exactID: globalSearchRecordMatchesDetailID(record, result.Query),
 			})
 		}
@@ -196,8 +200,9 @@ func (handler *CatalogHandler) searchGlobalExact(query catalog.CanonicalSearchQu
 			return globalSearchResult{}, false, exactErr
 		}
 		if found {
+			section := catalogDocumentLabelForKey(admission.Snapshot.Directory, record.DocumentKey)
 			result.Results = append(result.Results, globalSearchCandidate{
-				record: record, mount: mount, section: admission.Snapshot.Directory.Title, localRank: -1, exactID: true,
+				record: record, mount: mount, section: section, localRank: -1, exactID: true,
 			})
 		}
 		admission.Release()
@@ -210,6 +215,28 @@ func (handler *CatalogHandler) searchGlobalExact(query catalog.CanonicalSearchQu
 		result.Results = result.Results[:maxGlobalSearchResults]
 	}
 	return result, true, nil
+}
+
+func catalogDocumentLabelForKey(directory catalog.CatalogArtifactV1, key string) string {
+	for _, document := range directory.Documents {
+		if document.Key == key {
+			return catalogDocumentLabel(document)
+		}
+	}
+	if key = strings.TrimSpace(key); key != "" {
+		return key
+	}
+	if title := strings.TrimSpace(directory.Title); title != "" {
+		return title
+	}
+	return "Untitled document"
+}
+
+func catalogSearchSection(labels map[string]string, catalogTitle, documentKey string) string {
+	if label := strings.TrimSpace(labels[documentKey]); label != "" {
+		return label
+	}
+	return catalogDocumentLabelForKey(catalog.CatalogArtifactV1{Title: catalogTitle}, documentKey)
 }
 
 func globalSearchRecordMatchesDetailID(record catalog.SearchRecordV1, query string) bool {
@@ -271,8 +298,8 @@ func globalDocumentSearchRecord(mount string, document catalog.DocumentDirectory
 	}
 	return catalog.SearchRecordV1{
 		DetailID:    domain.DetailID("document-" + slug + "-" + document.Key),
-		DocumentKey: document.Key, Kind: "document", Title: document.Key,
-		Description: document.Title, Href: href + "/", Occurrences: 1,
+		DocumentKey: document.Key, Kind: "document", Title: catalogDocumentLabel(document),
+		Description: document.Overview.Description, Href: href + "/", Occurrences: 1,
 		Documents: []string{document.Key},
 	}, nil
 }

@@ -496,12 +496,75 @@
 	fail("static schema-node shard is missing");
   }
 
+  function operationSchemaReferences(detail) {
+	var references = [];
+	function add(value) {
+	  if (!Number.isSafeInteger(value) || value < 0) fail("static operation schema reference is invalid");
+	  if (references.indexOf(value) < 0) references.push(value);
+	}
+	(Array.isArray(detail.parameters) ? detail.parameters : []).forEach(function (parameter) { add(parameter.schemaRef); });
+	if (detail.hasRequestBody && detail.requestBody && Array.isArray(detail.requestBody.mediaTypes)) {
+	  detail.requestBody.mediaTypes.forEach(function (media) { add(media.schemaRef); });
+	}
+	(Array.isArray(detail.responses) ? detail.responses : []).forEach(function (response) {
+	  (Array.isArray(response.headers) ? response.headers : []).forEach(function (header) { add(header.schemaRef); });
+	  (Array.isArray(response.mediaTypes) ? response.mediaTypes : []).forEach(function (media) { add(media.schemaRef); });
+	});
+	return references;
+  }
+
+  // Keep operation navigation incremental: only schema shards reachable from
+  // the selected operation are admitted, with the same depth/node budget as
+  // the Go renderer instead of eagerly loading a large catalog.
+  function hydrateOperationSchemaGraph(descriptor, manifest, cache, children, documentValue, detail) {
+	var queue = operationSchemaReferences(detail).map(function (ordinal) { return { ordinal: ordinal, depth: 0 }; });
+	var seen = Object.create(null);
+	var loaded = 0;
+	function visit() {
+	  while (queue.length > 0) {
+		var item = queue.shift();
+		var key = String(item.ordinal);
+		if (seen[key]) continue;
+		seen[key] = true;
+		loaded += 1;
+		if (loaded > 256) return Promise.resolve(children);
+		var shard = staticSchemaShard(documentValue, item.ordinal);
+		return loadStaticChild(descriptor, manifest, cache, children, shard.path).then(function (value) {
+		  if (!value || !Array.isArray(value.nodes)) fail("static schema-node shard is invalid");
+		  var node = null;
+		  for (var index = 0; index < value.nodes.length; index += 1) {
+			if (value.nodes[index] && value.nodes[index].ordinal === item.ordinal) { node = value.nodes[index]; break; }
+		  }
+		  if (!node) fail("static operation schema node is missing");
+		  if (item.depth < 4) {
+			(Array.isArray(node.properties) ? node.properties : []).concat(Array.isArray(node.items) ? node.items : []).forEach(function (reference) {
+			  if (!reference || !Number.isSafeInteger(reference.schemaRef) || reference.schemaRef < 0) fail("static operation schema reference is invalid");
+			  var referenceKey = String(reference.schemaRef);
+			  if (!seen[referenceKey]) queue.push({ ordinal: reference.schemaRef, depth: item.depth + 1 });
+			});
+		  }
+		  return visit();
+		});
+	  }
+	  return Promise.resolve(children);
+	}
+	return visit();
+  }
+
   function hydrateStaticRoute(descriptor, manifest, catalog, cache, children, route) {
 	if (!route.selected) return Promise.resolve(children);
 	var documentValue = staticCatalogDocument(catalog, route.documentKey);
 	var selected = staticRouteSelection(documentValue, route.selected);
 	return loadStaticChild(descriptor, manifest, cache, children, selected.directory.detailChild).then(function (detailShard) {
-	  if (!selected.schema) return children;
+	  if (!selected.schema) {
+		if (!detailShard || !Array.isArray(detailShard.records)) fail("static detail shard is invalid");
+		var operation = null;
+		for (var operationIndex = 0; operationIndex < detailShard.records.length; operationIndex += 1) {
+		  if (detailShard.records[operationIndex].id === route.selected) operation = detailShard.records[operationIndex].operation;
+		}
+		if (!operation) fail("static operation detail is missing");
+		return hydrateOperationSchemaGraph(descriptor, manifest, cache, children, documentValue, operation);
+	  }
 	  if (!detailShard || !Array.isArray(detailShard.records)) fail("static detail shard is invalid");
 	  var detail = null;
 	  for (var index = 0; index < detailShard.records.length; index += 1) if (detailShard.records[index].id === route.selected) detail = detailShard.records[index];
@@ -576,6 +639,7 @@
   }
 
 	function installStaticRouter(descriptor, manifest, catalog, cache, abi, documentValue) {
+	  var root = documentValue.documentElement;
 	  var main = documentValue.querySelector("[data-catalog-main-content]");
 	  var sidebar = documentValue.getElementById("catalog-sidebar-groups");
 	  var children = Object.create(null);
@@ -583,6 +647,8 @@
 	  var childAdmissionPromises = Object.create(null);
 	  var browserPrepared = false;
 	  var browserPreparation = null;
+	  var lastRoute = null;
+	  var retryInFlight = false;
 	  var cleanManifest = Object.assign({}, manifest); delete cleanManifest.identityDigest;
 	  if (!main) fail("static catalog main target is missing");
 	  if (global.history && "scrollRestoration" in global.history) global.history.scrollRestoration = "manual";
@@ -644,6 +710,17 @@
 		var focusTarget = main.querySelector('[data-manja-settled-focus="true"]');
 		if (focusTarget && typeof focusTarget.focus === "function") focusTarget.focus({ preventScroll: true });
 	  }
+	  function settleRenderedDetailFocus() {
+		focusRenderedDetail();
+		// Alpine's focus trap restores the search trigger on the next render
+		// frame when a result closes the dialog. Re-assert the destination focus
+		// after that release without delaying the navigation promise or affecting
+		// non-browser test harnesses that do not provide animation frames.
+		if (typeof global.requestAnimationFrame !== "function") return;
+		global.requestAnimationFrame(function () {
+			global.requestAnimationFrame(focusRenderedDetail);
+		});
+	  }
 	  function focusGroup(id) {
 		if (!sidebar || !sidebar.querySelectorAll) return;
 		var controls = sidebar.querySelectorAll("[data-manja-static-group]");
@@ -652,6 +729,56 @@
 		  if (typeof controls[index].focus === "function") controls[index].focus({ preventScroll: true });
 		  return;
 		}
+	  }
+	  function setNavigationState(busy, error) {
+		if (root && root.setAttribute) root.setAttribute("aria-busy", busy ? "true" : "false");
+		if (main && main.setAttribute) main.setAttribute("aria-busy", busy ? "true" : "false");
+		if (root && root.dataset) {
+		  if (busy) root.dataset.manjaLocalDocsNavigation = "loading";
+		  else if (error) {
+			root.dataset.manjaLocalDocsNavigation = "error";
+			root.dataset.manjaLocalDocsNavigationReason = error && error.message ? String(error.message).slice(0, 256) : "navigation failed";
+		  } else {
+			root.dataset.manjaLocalDocsNavigation = "ready";
+			delete root.dataset.manjaLocalDocsNavigationReason;
+		  }
+		}
+		var status = documentValue.querySelector && documentValue.querySelector("[data-manja-static-navigation-status]");
+		if (!status && documentValue.createElement && documentValue.body && documentValue.body.appendChild) {
+		  status = documentValue.createElement("div");
+		  status.setAttribute("data-manja-static-navigation-status", "true");
+		  status.setAttribute("role", "status");
+		  status.setAttribute("aria-live", "polite");
+		  status.className = "sr-only";
+		  documentValue.body.appendChild(status);
+		}
+		var errorPanel = documentValue.querySelector && documentValue.querySelector("[data-manja-static-navigation-error]");
+		if (errorPanel) {
+			errorPanel.hidden = !busy && !error;
+			var errorMessage = errorPanel.querySelector && errorPanel.querySelector("[data-manja-static-navigation-error-message]");
+			if (errorMessage) errorMessage.textContent = busy ? "Loading documentation…" : "Unable to load this documentation section. Please try again.";
+			var retry = errorPanel.querySelector && errorPanel.querySelector("[data-manja-static-navigation-retry]");
+			if (retry) {
+				retry.hidden = !error;
+				retry.disabled = busy || retryInFlight;
+			}
+		}
+		if (status) status.textContent = busy ? "Loading documentation…" : error ? "Unable to load this documentation section. Please try again." : "";
+		if (!busy && error && root) root.dispatchEvent(new CustomEvent("manja:local-navigation-error", { detail: { reason: error && error.message ? error.message : "navigation failed" } }));
+	  }
+	  function retryNavigation() {
+		if (!lastRoute || retryInFlight) return;
+		retryInFlight = true;
+		setNavigationState(true);
+		var pending = swap(lastRoute, "none", { focus: true });
+		pending.then(function () {
+			retryInFlight = false;
+			setNavigationState(false);
+		}).catch(function (error) {
+			retryInFlight = false;
+			setNavigationState(false, error);
+		});
+		return pending;
 	  }
 	  function prepareBrowser() {
 		if (browserPrepared) return Promise.resolve();
@@ -708,8 +835,10 @@
 	  }
 	  function swap(route, historyMode) {
 	  var options = arguments.length > 2 && arguments[2] || {};
+	  lastRoute = route;
 	  var beforeScroll = scrollPosition();
 	  if (historyMode === "push") saveHistoryScroll(beforeScroll);
+	  setNavigationState(true);
 	  return prepareBrowser().then(function () {
 		return hydrateStaticRoute(descriptor, manifest, catalog, cache, children, route);
 	  }).then(function () {
@@ -732,12 +861,18 @@
 		if (historyMode === "replace" && global.history && typeof global.history.replaceState === "function") global.history.replaceState(historyState(scrollPosition()), "", result.canonical);
 		if (options.initial && global.history && typeof global.history.replaceState === "function") global.history.replaceState(historyState(scrollPosition()), "", result.canonical);
 		if (global.htmx && typeof global.htmx.process === "function") { if (!options.sidebarOnly) global.htmx.process(main); if (sidebar) global.htmx.process(sidebar); }
-		if (!options.preserveScroll && typeof global.manjaCatalogScrollSidebarSelection === "function") global.manjaCatalogScrollSidebarSelection();
-		if (options.focus) focusRenderedDetail();
-		if (options.focusGroup) focusGroup(options.focusGroup);
-		return result;
+	  if (!options.preserveScroll && typeof global.manjaCatalogScrollSidebarSelection === "function") global.manjaCatalogScrollSidebarSelection();
+	  if (options.focus) settleRenderedDetailFocus();
+	  if (options.focusGroup) focusGroup(options.focusGroup);
+	  setNavigationState(false);
+	  return result;
+	  }, function (error) {
+	  setNavigationState(false, error);
+	  throw error;
 	  });
 	  }
+	  var retryControl = documentValue.querySelector && documentValue.querySelector("[data-manja-static-navigation-retry]");
+	  if (retryControl && retryControl.addEventListener) retryControl.addEventListener("click", retryNavigation);
 	  documentValue.addEventListener("click", function (event) {
 	  var origin = event.target && event.target.closest && event.target.closest("a[href]");
 	  if (origin) {

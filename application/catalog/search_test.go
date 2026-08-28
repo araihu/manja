@@ -446,6 +446,83 @@ func TestSearchRejectsCorruptChildAndInvalidExactCoordinate(t *testing.T) {
 	}
 }
 
+func TestExactSearchHotBucketIsRecursivelySharded(t *testing.T) {
+	t.Parallel()
+
+	// Concentrate enough synthetic document/detail keys in the same first
+	// digest nibble to reproduce the large-catalog failure while keeping the
+	// fixture small and deterministic. A 1 KiB segment limit makes the
+	// recursive partitioning observable without relying on the production
+	// 256 KiB bound.
+	const segmentLimit = uint64(1 << 10)
+	matches := make(map[string]map[uint32]uint8)
+	for candidate := 0; len(matches) < 320; candidate++ {
+		key := fmt.Sprintf("fortios-release-family-operation-%04d-%s", candidate, strings.Repeat("x", 40))
+		digest := sha256.Sum256([]byte(key))
+		if hex.EncodeToString(digest[:1])[:1] != "0" {
+			continue
+		}
+		record := uint32(len(matches))
+		matches[key] = map[uint32]uint8{record: 1}
+	}
+
+	references, children, usage, err := buildExactSearchSegments(matches, segmentLimit)
+	if err != nil {
+		t.Fatalf("build recursively sharded exact search: %v", err)
+	}
+	if len(references) <= 16 {
+		t.Fatalf("exact references = %d, want shards beyond the first-level buckets", len(references))
+	}
+	if !sort.SliceIsSorted(references, func(i, j int) bool { return references[i].Prefix < references[j].Prefix }) {
+		t.Fatal("exact references are not sorted by digest prefix")
+	}
+	sawDeepPrefix := false
+	childByPath := make(map[string]ChildArtifact, len(children))
+	for index, reference := range references {
+		if len(reference.Prefix) > 1 {
+			sawDeepPrefix = true
+		}
+		if reference.Length > segmentLimit {
+			t.Fatalf("exact reference %q length = %d, limit = %d", reference.Prefix, reference.Length, segmentLimit)
+		}
+		if index >= len(children) || children[index].Path != reference.Path {
+			// The builder emits one child for every reference in the same order;
+			// this also guards against accidentally dropping a shard from the
+			// artifact list.
+			t.Fatalf("exact reference %q has no aligned child", reference.Prefix)
+		}
+		childByPath[children[index].Path] = children[index]
+	}
+	if !sawDeepPrefix {
+		t.Fatal("hot exact bucket was not recursively sharded")
+	}
+	if usage.PostingSegmentBytes > segmentLimit {
+		t.Fatalf("exact posting segment usage = %d, limit = %d", usage.PostingSegmentBytes, segmentLimit)
+	}
+
+	service := &SearchService{
+		snapshotID: "snapshot-sha256-sharded",
+		directory:  SearchDirectoryV1{ExactBuckets: references},
+		children:   childByPath,
+		deadline:   time.Second,
+	}
+	for key, expected := range matches {
+		receipt := searchLoadReceipt{loaded: make(map[string]struct{})}
+		got, err := service.loadExactMatches(context.Background(), key, &receipt)
+		if err != nil {
+			t.Fatalf("load exact key %q: %v", key, err)
+		}
+		wantRecord := uint32(0)
+		wantPriority := uint8(0)
+		for record, priority := range expected {
+			wantRecord, wantPriority = record, priority
+		}
+		if len(got) != 1 || got[0].Record != wantRecord || got[0].Priority != wantPriority {
+			t.Fatalf("exact key %q matches = %#v, want record %d priority %d", key, got, wantRecord, wantPriority)
+		}
+	}
+}
+
 func TestSearchSnippetNormalizesWhitespaceAndStaysWithinScalarCap(t *testing.T) {
 	t.Parallel()
 

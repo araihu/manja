@@ -53,8 +53,9 @@ func PrepareCatalogDocumentHeader(document catalog.DocumentDirectoryV1, document
 	if strings.EqualFold(version, "unversioned") {
 		version = ""
 	}
+	title := catalogDocumentDisplayTitle(document)
 	data := catalogDocumentHeaderData{
-		Title:        document.Key,
+		Title:        title,
 		Version:      version,
 		Description:  document.Overview.Description,
 		DownloadHref: downloadHref,
@@ -65,6 +66,16 @@ func PrepareCatalogDocumentHeader(document catalog.DocumentDirectoryV1, document
 		return CatalogDocumentHeaderFragment{}, invalidCatalogDocumentHeaderField("rendered bytes")
 	}
 	return fragment, nil
+}
+
+func catalogDocumentDisplayTitle(document catalog.DocumentDirectoryV1) string {
+	if title := strings.TrimSpace(document.Title); title != "" {
+		return title
+	}
+	if key := strings.TrimSpace(document.Key); key != "" {
+		return key
+	}
+	return "Untitled document"
 }
 
 // CatalogDocumentHeader renders the admitted document header with an

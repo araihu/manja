@@ -161,7 +161,8 @@ catalogs:
 				t.Fatal(err)
 			}
 			performanceMap, ok := performanceValues.(map[string]any)
-			if !ok || performanceMap["prepare"] != float64(0) || performanceMap["mainNodeSame"] != true || performanceMap["mainScrollPreserved"] != true || performanceMap["sidebarScrollPreserved"] != true {
+			prepareCount, prepareOK := browserMetricInt(performanceMap["prepare"])
+			if !ok || !prepareOK || prepareCount != 0 || performanceMap["mainNodeSame"] != true || performanceMap["mainScrollPreserved"] != true || performanceMap["sidebarScrollPreserved"] != true {
 				t.Fatalf("static incremental navigation metrics = %#v", performanceValues)
 			}
 			searchField := page.Locator(`[data-search-id="catalog-search"] button`)
@@ -289,6 +290,35 @@ catalogs:
 				}
 			}
 		})
+	}
+}
+
+func browserMetricInt(value any) (int, bool) {
+	switch number := value.(type) {
+	case int:
+		return number, true
+	case int8:
+		return int(number), true
+	case int16:
+		return int(number), true
+	case int32:
+		return int(number), true
+	case int64:
+		return int(number), true
+	case uint:
+		return int(number), uint64(number) <= uint64(^uint(0)>>1)
+	case uint8:
+		return int(number), true
+	case uint16:
+		return int(number), true
+	case uint32:
+		return int(number), uint64(number) <= uint64(^uint(0)>>1)
+	case uint64:
+		return int(number), number <= uint64(^uint(0)>>1)
+	case float64:
+		return int(number), number >= 0 && number == float64(int(number))
+	default:
+		return 0, false
 	}
 }
 

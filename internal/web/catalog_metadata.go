@@ -22,7 +22,7 @@ func (handler *CatalogHandler) catalogPageMetadata(request *http.Request, data t
 	} else if data.Selected != nil && data.Selected.Schema != nil {
 		description = firstNonempty(data.Selected.Schema.Description, "OpenAPI schema "+data.Selected.Schema.Heading+" in "+data.Directory.Title+".")
 	} else if data.Document != nil {
-		description = firstNonempty(data.Document.Overview.Description, "OpenAPI operations and schemas for "+data.Document.Key+".")
+		description = firstNonempty(data.Document.Overview.Description, "OpenAPI operations and schemas for "+catalogDocumentLabel(*data.Document)+".")
 	} else if data.Search != nil {
 		description = "Search operations, paths, and schemas across " + data.Directory.Title + "."
 	}
@@ -101,7 +101,7 @@ func catalogPageTitleForMetadata(data templates.CatalogPageData) string {
 		return catalogManjaDocumentTitle("Search")
 	}
 	if data.Document != nil {
-		return catalogManjaDocumentTitle(data.Document.Key)
+		return catalogManjaDocumentTitle(catalogDocumentLabel(*data.Document))
 	}
 	return catalogManjaDocumentTitle(data.Directory.Title)
 }

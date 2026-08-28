@@ -23,7 +23,7 @@ func TestPreparedCatalogDocumentHeaderRendersCopiedIdentity(t *testing.T) {
 	for _, want := range []string{
 		`<header data-catalog-document-header class="mb-8 grid min-w-0 gap-4 border-b border-outline pb-8 dark:border-outline-dark">`,
 		`<p class="mb-2 text-sm font-semibold uppercase tracking-wide text-primary dark:text-primary-dark">OpenAPI document</p>`,
-		`<h1 tabindex="-1" data-manja-settled-focus="true" class="manja-schema-title min-w-0 break-words font-title text-3xl font-bold text-on-surface-strong sm:text-4xl dark:text-on-surface-dark-strong" title="core-v1">core-v1</h1>`,
+		`<h1 tabindex="-1" data-manja-settled-focus="true" class="manja-schema-title min-w-0 break-words font-title text-3xl font-bold text-on-surface-strong sm:text-4xl dark:text-on-surface-dark-strong" title="Kubernetes Core v1">Kubernetes Core v1</h1>`,
 		`href="/kubernetes/openapi/core-v1.json"`,
 		`>Download source</span>`,
 		`This &lt;document&gt; description.`,
@@ -34,6 +34,22 @@ func TestPreparedCatalogDocumentHeaderRendersCopiedIdentity(t *testing.T) {
 	}
 	if bytes.Contains(rendered, []byte(`v1`)) && !bytes.Contains(rendered, []byte(`>v1</span>`)) {
 		t.Fatal("prepared document header rendered version in unexpected form")
+	}
+}
+
+func TestPrepareCatalogDocumentHeaderFallsBackToKeyForBlankTitle(t *testing.T) {
+	document, documentHref, downloadHref := catalogDocumentHeaderFixture()
+	document.Title = "  "
+	fragment, err := PrepareCatalogDocumentHeader(document, documentHref, downloadHref)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rendered, err := fragment.Bytes(context.Background(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Contains(rendered, []byte(`title="core-v1">core-v1</h1>`)) {
+		t.Fatalf("header did not fall back to document key: %s", rendered)
 	}
 }
 
