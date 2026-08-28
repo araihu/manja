@@ -196,19 +196,24 @@ async function staticActivationFixture(failedPath = '') {
     addEventListener(type, handler) { listeners[type] = handler },
   }
   const prepared = []
+  const admitted = []
+  const sidebarRenders = []
   const abi = {
     activate: () => ({ ok: true, catalogId: 'pets', publicationKey: 'pets', snapshotId: value.snapshotId, revisionId: 'revision-1', projectionDigest: value.projectionDigest }),
     prepare: (_descriptor, _manifest, _catalog, loaded) => { prepared.push(Object.keys(loaded).sort()); return { ok: true } },
+    admit: (path) => { admitted.push(path); return { ok: true, path } },
     render: () => ({ ok: true, mainHtml: '<p>Wanted</p>', sidebarHtml: '<nav></nav>', title: 'Wanted', canonical: value.publicationBase + 'documents/doc/?selected=wanted#wanted' }),
+    renderSidebar: () => { sidebarRenders.push(true); return { ok: true, sidebarHtml: '<nav></nav>', canonical: value.publicationBase + 'documents/doc/?selected=wanted#wanted' } },
   }
   const result = await api.start({ document, loadABI: () => abi })
-  return { result, root, requests, prepared, value, api, history, focusCalls, groupFocusCalls, mainScroll, nav, groupControl, listeners, windowListeners, location, mainWrites: () => mainWrites }
+  return { result, root, requests, prepared, admitted, sidebarRenders, value, api, history, focusCalls, groupFocusCalls, mainScroll, nav, groupControl, listeners, windowListeners, location, mainWrites: () => mainWrites }
 }
 
 test('static direct route loads only its required projection child', async () => {
   const fixture = await staticActivationFixture()
   assert.equal(fixture.result.ok, true)
-  assert.deepEqual(fixture.prepared, [['details/doc.json']])
+  assert.deepEqual(fixture.prepared, [[]])
+  assert.deepEqual(fixture.admitted, ['details/doc.json'])
   assert.deepEqual(fixture.requests.filter(path => path.includes('/projection-data/') || path.includes('/search-data/')), [fixture.value.projectionDataBase + 'details/doc.json'])
 })
 
@@ -241,11 +246,27 @@ test('static detail navigation resets main scroll and saves the previous entry',
 
   assert.equal(fixture.mainScroll.scrollTop, 0)
   assert.equal(fixture.nav.scrollTop, 77)
+  assert.deepEqual(fixture.prepared, [[]])
+  assert.deepEqual(fixture.admitted, ['details/doc.json'])
   assert.equal(fixture.history.replaceStates.at(-1).manjaLocalDocs.main, 420)
   assert.equal(fixture.history.replaceStates.at(-1).manjaLocalDocs.sidebar, 77)
   assert.equal(fixture.history.pushStates.at(-1).manjaLocalDocs.main, 0)
   assert.equal(fixture.history.pushStates.at(-1).manjaLocalDocs.sidebar, 77)
   assert.equal(fixture.focusCalls.length, 1)
+})
+
+test('static reopening a loaded detail renders without another prepare or admission', async () => {
+  const fixture = await staticActivationFixture()
+  await fixture.api.navigate('https://docs.test/group/project/pets/documents/doc/?selected=wanted#wanted')
+  const preparedCount = fixture.prepared.length
+  const admittedCount = fixture.admitted.length
+  const projectionRequests = fixture.requests.filter(path => path.includes('/projection-data/'))
+
+  await fixture.api.navigate('https://docs.test/group/project/pets/documents/doc/?selected=wanted#wanted')
+
+  assert.equal(fixture.prepared.length, preparedCount)
+  assert.equal(fixture.admitted.length, admittedCount)
+  assert.deepEqual(fixture.requests.filter(path => path.includes('/projection-data/')), projectionRequests)
 })
 
 test('static group toggles replace history, preserve both scroll containers, and restore control focus', async () => {
@@ -276,6 +297,7 @@ test('static group toggles replace history, preserve both scroll containers, and
   assert.equal(fixture.nav.scrollTop, 88)
   assert.equal(fixture.mainWrites(), writesBefore)
   assert.equal(fixture.groupFocusCalls.length, 1)
+  assert.equal(fixture.sidebarRenders.length, 1)
 })
 
 test('static popstate restores saved nested scroll without stealing focus', async () => {

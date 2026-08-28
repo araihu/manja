@@ -68,40 +68,92 @@ func Prepare(descriptor localdocs.DescriptorV1, manifestBytes, catalogBytes []by
 	if !exists || !verifiedBrowserBytes(catalogIdentity, catalogBytes) {
 		return nil, errors.New("local docs browser catalog bytes differ")
 	}
-	want := make(map[string]catalog.ChildIdentityV1)
-	for _, child := range manifest.Children {
-		if strings.HasPrefix(child.Kind, "search-") || child.Kind == "detail" || child.Kind == "schema-node" {
-			want[child.Path] = child
-		}
+	browser := &Browser{
+		descriptor: descriptor, activation: activation, manifest: manifest, directory: directory,
+		children: make(map[string][]byte, len(children)),
 	}
-	owned := make(map[string][]byte, len(children))
-	for childPath, data := range children {
-		identity, ok := want[childPath]
-		if !ok || !verifiedBrowserBytes(identity, data) {
-			return nil, fmt.Errorf("local docs browser child %q differs", childPath)
-		}
-		owned[childPath] = append([]byte(nil), data...)
+	if err := browser.AdmitChildren(children); err != nil {
+		return nil, err
 	}
-	var search *catalog.SearchService
-	if searchBytes, ok := owned[directory.SearchChild]; ok {
-		searchDirectory, err := catalogjson.DecodeSearchDirectory(searchBytes)
-		if err != nil || catalogjson.ValidateSearchManifest(searchDirectory, manifest) != nil {
-			return nil, errors.New("local docs browser search directory is invalid")
+	return browser, nil
+}
+
+// AdmitChildren verifies and adds projection or search children to a prepared
+// browser. Existing children are accepted only when their bytes are identical,
+// making retries idempotent while rejecting a changed payload.
+func (browser *Browser) AdmitChildren(children map[string][]byte) error {
+	if browser == nil {
+		return errors.New("local docs browser is not prepared")
+	}
+	if browser.children == nil {
+		browser.children = make(map[string][]byte, len(children))
+	}
+	paths := make([]string, 0, len(children))
+	for childPath := range children {
+		paths = append(paths, childPath)
+	}
+	sort.Strings(paths)
+	pending := make(map[string][]byte, len(paths))
+	for _, childPath := range paths {
+		data := children[childPath]
+		identity, ok := browserChildIdentity(browser.manifest, childPath)
+		if !ok || !browserAdmitsChild(identity) || !verifiedBrowserBytes(identity, data) {
+			return fmt.Errorf("local docs browser child %q differs", childPath)
 		}
-		runtimeSnapshot := catalog.RuntimeSnapshot{ID: manifest.SnapshotID, Directory: directory, Search: searchDirectory, Manifest: manifest}
-		search, err = catalog.NewRuntimeSearchService(runtimeSnapshot, catalog.NewSearchCache(), func(_ context.Context, childPath string) ([]byte, catalog.ChildIdentityV1, error) {
-			data, ok := owned[childPath]
-			identity, declared := browserChildIdentity(manifest, childPath)
-			if !ok || !declared {
-				return nil, catalog.ChildIdentityV1{}, errors.New("local docs browser search child is missing")
+		if current, exists := browser.children[childPath]; exists {
+			if !bytes.Equal(current, data) {
+				return fmt.Errorf("local docs browser child %q differs", childPath)
 			}
-			return append([]byte(nil), data...), identity, nil
-		})
-		if err != nil {
-			return nil, err
+			continue
+		}
+		pending[childPath] = append([]byte(nil), data...)
+	}
+	for _, childPath := range paths {
+		if data, ok := pending[childPath]; ok {
+			browser.children[childPath] = data
 		}
 	}
-	return &Browser{descriptor: descriptor, activation: activation, manifest: manifest, directory: directory, children: owned, search: search}, nil
+	if err := browser.prepareSearch(); err != nil {
+		for childPath := range pending {
+			delete(browser.children, childPath)
+		}
+		return err
+	}
+	return nil
+}
+
+// AdmitChild verifies and adds one projection or search child to a prepared
+// browser. It is the small-granularity entry point used by the Wasm bridge.
+func (browser *Browser) AdmitChild(childPath string, data []byte) error {
+	return browser.AdmitChildren(map[string][]byte{childPath: data})
+}
+
+func browserAdmitsChild(identity catalog.ChildIdentityV1) bool {
+	return strings.HasPrefix(identity.Kind, "search-") || identity.Kind == "detail" || identity.Kind == "schema-node"
+}
+
+func (browser *Browser) prepareSearch() error {
+	if browser.search != nil {
+		return nil
+	}
+	searchBytes, ok := browser.children[browser.directory.SearchChild]
+	if !ok {
+		return nil
+	}
+	searchDirectory, err := catalogjson.DecodeSearchDirectory(searchBytes)
+	if err != nil || catalogjson.ValidateSearchManifest(searchDirectory, browser.manifest) != nil {
+		return errors.New("local docs browser search directory is invalid")
+	}
+	runtimeSnapshot := catalog.RuntimeSnapshot{ID: browser.manifest.SnapshotID, Directory: browser.directory, Search: searchDirectory, Manifest: browser.manifest}
+	browser.search, err = catalog.NewRuntimeSearchService(runtimeSnapshot, catalog.NewSearchCache(), func(_ context.Context, childPath string) ([]byte, catalog.ChildIdentityV1, error) {
+		data, ok := browser.children[childPath]
+		identity, declared := browserChildIdentity(browser.manifest, childPath)
+		if !ok || !declared {
+			return nil, catalog.ChildIdentityV1{}, errors.New("local docs browser search child is missing")
+		}
+		return append([]byte(nil), data...), identity, nil
+	})
+	return err
 }
 
 func (browser *Browser) Render(ctx context.Context, route Route) (Page, error) {
@@ -136,6 +188,33 @@ func (browser *Browser) Render(ctx context.Context, route Route) (Page, error) {
 		return Page{MainHTML: browser.deploymentHTML(main), SidebarHTML: sidebar, Title: title, Canonical: canonical}, err
 	}
 	return Page{}, errors.New("local docs detail kind is invalid")
+}
+
+// RenderSidebar renders only the sidebar state for a route. It avoids decoding
+// or rendering the selected detail when a caller changes group visibility.
+func (browser *Browser) RenderSidebar(route Route) (Page, error) {
+	if browser == nil {
+		return Page{}, errors.New("local docs browser is not prepared")
+	}
+	document, ok := browser.document(route.DocumentKey)
+	if !ok {
+		return Page{}, errors.New("local docs document is missing")
+	}
+	documentHref := browser.descriptor.PublicationBase + "documents/" + document.Key + "/"
+	return Page{
+		SidebarHTML: browser.deploymentHTML(browser.renderSidebar(document, route)),
+		Canonical:   browserCanonical(documentHref, route, browserRouteFragment(route)),
+	}, nil
+}
+
+func browserRouteFragment(route Route) string {
+	if route.Selected == "" {
+		return ""
+	}
+	if route.Node != nil {
+		return "schema-node-panel"
+	}
+	return url.PathEscape(route.Selected)
 }
 
 func (browser *Browser) deploymentHTML(value string) string {

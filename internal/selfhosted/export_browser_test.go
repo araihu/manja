@@ -114,6 +114,56 @@ catalogs:
 				}
 			}
 			assertStaticSidebarLayout(t, page, operation, schema)
+			if _, err := page.Evaluate(`() => {
+				const abi = window.ManjaLocalDocs;
+				const metrics = window.__manjaStaticMetrics = {prepare: 0, admit: 0, admittedPaths: [], longTasks: 0};
+				if (!abi || typeof abi.prepare !== 'function') return false;
+				const prepare = abi.prepare;
+				abi.prepare = function (...args) { metrics.prepare += 1; return prepare.apply(this, args); };
+				if (typeof abi.admit === 'function') {
+					const admit = abi.admit;
+					abi.admit = function (path, ...args) { metrics.admit += 1; metrics.admittedPaths.push(path); return admit.call(this, path, ...args); };
+				}
+				window.__manjaStaticMainNode = document.querySelector('[data-catalog-main-content]');
+				const primary = document.querySelector('[data-manja-primary-scroll]');
+				const navigation = document.querySelector('[data-manja-local-sidebar]');
+				window.__manjaStaticScrollBefore = {main: primary ? primary.scrollTop : 0, sidebar: navigation ? navigation.scrollTop : 0};
+				if (window.PerformanceObserver) {
+					try { new PerformanceObserver((list) => { metrics.longTasks += list.getEntries().length; }).observe({type: 'longtask', buffered: true}); } catch (_) {}
+				}
+				return true;
+			}`); err != nil {
+				t.Fatal(err)
+			}
+			group := page.Locator(`[data-manja-static-group]`).First()
+			if err := group.Click(); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := page.WaitForFunction(`() => document.querySelector('[data-manja-static-group]')?.getAttribute('aria-expanded') === 'false'`, nil, playwright.PageWaitForFunctionOptions{Timeout: playwright.Float(5_000)}); err != nil {
+				t.Fatalf("static group collapse: %v", err)
+			}
+			performanceValues, err := page.Evaluate(`() => {
+				const metrics = window.__manjaStaticMetrics || {};
+				const primary = document.querySelector('[data-manja-primary-scroll]');
+				const navigation = document.querySelector('[data-manja-local-sidebar]');
+				const before = window.__manjaStaticScrollBefore || {};
+				return {
+					prepare: metrics.prepare || 0,
+					admit: metrics.admit || 0,
+					admittedPaths: metrics.admittedPaths || [],
+					longTasks: metrics.longTasks || 0,
+					mainNodeSame: window.__manjaStaticMainNode === document.querySelector('[data-catalog-main-content]'),
+					mainScrollPreserved: primary ? primary.scrollTop === before.main : true,
+					sidebarScrollPreserved: navigation ? navigation.scrollTop === before.sidebar : true,
+				};
+			}`)
+			if err != nil {
+				t.Fatal(err)
+			}
+			performanceMap, ok := performanceValues.(map[string]any)
+			if !ok || performanceMap["prepare"] != float64(0) || performanceMap["mainNodeSame"] != true || performanceMap["mainScrollPreserved"] != true || performanceMap["sidebarScrollPreserved"] != true {
+				t.Fatalf("static incremental navigation metrics = %#v", performanceValues)
+			}
 			searchField := page.Locator(`[data-search-id="catalog-search"] button`)
 			if err := searchField.Click(); err != nil {
 				t.Fatal(err)
