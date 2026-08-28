@@ -575,13 +575,24 @@
 	};
   }
 
-  function installStaticRouter(descriptor, manifest, catalog, cache, abi, documentValue) {
-	var main = documentValue.querySelector("[data-catalog-main-content]");
-	var sidebar = documentValue.getElementById("catalog-sidebar-groups");
-	var children = Object.create(null);
-	if (!main) fail("static catalog main target is missing");
-	function swap(route, historyMode) {
-	  return hydrateStaticRoute(descriptor, manifest, catalog, cache, children, route).then(function () {
+	function installStaticRouter(descriptor, manifest, catalog, cache, abi, documentValue) {
+	  var main = documentValue.querySelector("[data-catalog-main-content]");
+	  var sidebar = documentValue.getElementById("catalog-sidebar-groups");
+	  var children = Object.create(null);
+	  if (!main) fail("static catalog main target is missing");
+	  function navigate(href) {
+		var route = staticRoute(descriptor, href);
+		if (!route) return null;
+		var current = staticRoute(descriptor, global.location.href);
+		if (current) {
+		  if (route.groups.length === 0) route.groups = current.groups.slice();
+		  if (route.closedGroups.length === 0) route.closedGroups = current.closedGroups.slice();
+		}
+		return swap(route, "push", { focus: true });
+	  }
+	  function swap(route, historyMode) {
+		var options = arguments.length > 2 && arguments[2] || {};
+		return hydrateStaticRoute(descriptor, manifest, catalog, cache, children, route).then(function () {
 		var cleanManifest = Object.assign({}, manifest); delete cleanManifest.identityDigest;
 		var prepared = abi.prepare(descriptor, cleanManifest, catalog, children);
 		if (!prepared || prepared.ok !== true) fail(prepared && prepared.error || "static Wasm preparation failed");
@@ -594,6 +605,10 @@
 		if (historyMode === "push") global.history.pushState({}, "", result.canonical);
 		if (global.htmx && typeof global.htmx.process === "function") { global.htmx.process(main); if (sidebar) global.htmx.process(sidebar); }
 		if (typeof global.manjaCatalogScrollSidebarSelection === "function") global.manjaCatalogScrollSidebarSelection();
+		if (options.focus) {
+		  var focusTarget = main.querySelector('[data-manja-settled-focus="true"]');
+		  if (focusTarget && typeof focusTarget.focus === "function") focusTarget.focus({ preventScroll: true });
+		}
 		return result;
 	  });
 	}
@@ -635,8 +650,8 @@
 	  swap(route, "push").catch(function () {});
 	});
 	global.addEventListener("popstate", function () { var route = staticRoute(descriptor, global.location.href); if (route) swap(route, "none").catch(function () {}); });
-	return { swap: swap, initial: staticRoute(descriptor, global.location.href) };
-  }
+	  return { swap: swap, navigate: navigate, initial: staticRoute(descriptor, global.location.href) };
+	}
 
   function startStatic(root, descriptor, options, documentValue) {
 	var deployment = descriptor.static.deploymentBase;
@@ -647,15 +662,16 @@
 	  wasmURL: deployment + "manja-assets/local-docs/manja.wasm",
 	});
 	return global.caches.open(staticCacheName(descriptor)).then(function (cache) {
-	  return Promise.all([registerWorker(root, descriptor, staticOptions), loadABI(staticOptions), readExportManifest(descriptor, cache)]).then(function (values) {
-		var abi = values[1];
-		return readManifest(sameOriginPath(descriptor.projectionManifestUrl), descriptor, cache).then(function (manifest) {
-		  var activated = validateActivation(abi.activate(descriptor, manifest), descriptor);
-		  var catalogIdentity = manifestChild(manifest, "catalog.json");
-		  return readVerifiedJSON(descriptor.catalogUrl, catalogIdentity, cache).then(function (catalog) {
-			var router = installStaticRouter(descriptor, manifest, catalog, cache, abi, documentValue);
-			return (router.initial ? router.swap(router.initial, "none") : Promise.resolve()).then(function () {
-			  mark(root, "ready");
+		return Promise.all([registerWorker(root, descriptor, staticOptions), loadABI(staticOptions), readExportManifest(descriptor, cache)]).then(function (values) {
+		  var abi = values[1];
+		  return readManifest(sameOriginPath(descriptor.projectionManifestUrl), descriptor, cache).then(function (manifest) {
+			var activated = validateActivation(abi.activate(descriptor, manifest), descriptor);
+			var catalogIdentity = manifestChild(manifest, "catalog.json");
+			return readVerifiedJSON(descriptor.catalogUrl, catalogIdentity, cache).then(function (catalog) {
+			  var router = installStaticRouter(descriptor, manifest, catalog, cache, abi, documentValue);
+			  return (router.initial ? router.swap(router.initial, "none") : Promise.resolve()).then(function () {
+				if (global.ManjaLocalDocsEnhancer) global.ManjaLocalDocsEnhancer.navigate = router.navigate;
+				mark(root, "ready");
 			  return { ok: true, result: activated };
 			});
 		  });

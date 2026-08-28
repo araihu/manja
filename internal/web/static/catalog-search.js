@@ -660,7 +660,8 @@
         window.dispatchEvent(new CustomEvent("goshtoso-search-open", { detail: { id: "catalog-search" } }));
         this.$nextTick(function () { if (this.$refs.input) this.$refs.input.focus(); }.bind(this));
       },
-      closeSearch: function () {
+      closeSearch: function (restoreFocus) {
+        if (restoreFocus === undefined) restoreFocus = true;
         if (this.timer) clearTimeout(this.timer);
         this.timer = null;
         this.generation++;
@@ -672,7 +673,7 @@
         this.sourceLabel = "";
         window.dispatchEvent(new CustomEvent("goshtoso-search-close", { detail: { id: "catalog-search" } }));
         var focus = this.previousFocus;
-        this.$nextTick(function () { if (focus && focus.focus) focus.focus(); });
+        if (restoreFocus) this.$nextTick(function () { if (focus && focus.focus) focus.focus(); });
       },
       clearQuery: function () {
         if (this.timer) clearTimeout(this.timer);
@@ -775,6 +776,16 @@
         var href = item && safePageHref(item.href, mount);
         if (!href) return;
         this.remember(item);
+        var navigate = window.ManjaLocalDocsEnhancer && window.ManjaLocalDocsEnhancer.navigate;
+        if (typeof navigate === "function") {
+          var pending;
+          try { pending = navigate(href); } catch (error) { pending = null; }
+          if (pending !== null && pending !== undefined) {
+            this.closeSearch(false);
+            Promise.resolve(pending).catch(function () { window.location.assign(href); });
+            return;
+          }
+        }
         window.location.assign(href);
       },
     };

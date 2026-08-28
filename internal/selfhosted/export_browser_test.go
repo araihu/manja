@@ -141,6 +141,40 @@ catalogs:
 				requestMu.Unlock()
 				t.Fatalf("static subpath search: %v; debug=%#v debugErr=%v requests=%#v", err, debug, debugErr, snapshot)
 			}
+			if _, err := page.Evaluate(`() => { window.__staticSearchNavigationMarker = true; }`, nil); err != nil {
+				t.Fatal(err)
+			}
+			requestMu.Lock()
+			beforeSearchNavigation := append([]string(nil), requests...)
+			requestMu.Unlock()
+			searchResult := page.Locator("#catalog-search-dialog [data-catalog-search-result]").First()
+			if err := searchResult.Click(); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := page.WaitForFunction(`() => {
+				const dialog = document.querySelector('#catalog-search-dialog');
+				const focus = document.activeElement;
+				return window.__staticSearchNavigationMarker === true && location.search.includes('selected=') && document.title === 'List charges' && document.querySelector('[data-catalog-main-content]')?.textContent.includes('/charges') && dialog && getComputedStyle(dialog).display === 'none' && focus?.matches('[data-manja-settled-focus="true"]');
+			}`, nil, playwright.PageWaitForFunctionOptions{Timeout: playwright.Float(5_000)}); err != nil {
+				debug, _ := page.Evaluate(`() => ({title: document.title, href: location.href, active: document.activeElement && document.activeElement.outerHTML, dialog: document.querySelector('#catalog-search-dialog') && getComputedStyle(document.querySelector('#catalog-search-dialog')).display})`, nil)
+				t.Fatalf("static search client navigation: %v; debug=%#v", err, debug)
+			}
+			requestMu.Lock()
+			afterSearchNavigation := append([]string(nil), requests...)
+			requestMu.Unlock()
+			documentShellPath := strings.TrimSuffix(basePath, "/") + "/private/documents/private/"
+			countDocumentShellRequests := func(values []string) int {
+				count := 0
+				for _, requestPath := range values {
+					if requestPath == documentShellPath {
+						count++
+					}
+				}
+				return count
+			}
+			if got, want := countDocumentShellRequests(afterSearchNavigation), countDocumentShellRequests(beforeSearchNavigation); got != want {
+				t.Fatalf("search result caused document shell navigation: before=%d after=%d requests=%#v", want, got, afterSearchNavigation)
+			}
 			if err := page.Keyboard().Press("Escape"); err != nil {
 				t.Fatal(err)
 			}
