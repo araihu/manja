@@ -7,7 +7,7 @@ import (
 	"github.com/caarlos0/env/v11"
 )
 
-//go:generate go tool envdoc -output ../../docs/environment.md -format markdown -types Config
+//go:generate go tool -modfile=../../tools/go.mod envdoc -output ../../docs/environment.md -format markdown -types Config
 //go:generate go run ./cmd/trimdoc ../../docs/environment.md
 type Config struct {
 	// Enforce Manja's conservative catalog source, compilation, startup, storage, and HTML rendering budgets.

@@ -180,8 +180,14 @@ func discoverConsumerModules(t *testing.T, root string) []consumerModule {
 		if err != nil {
 			return err
 		}
-		if entry.IsDir() && path != root && skippedDirectories[entry.Name()] {
-			return filepath.SkipDir
+		if entry.IsDir() && path != root {
+			relative, err := filepath.Rel(root, path)
+			if err != nil {
+				return err
+			}
+			if filepath.ToSlash(relative) == "tools" || skippedDirectories[entry.Name()] {
+				return filepath.SkipDir
+			}
 		}
 		if entry.IsDir() || entry.Name() != "go.mod" {
 			return nil

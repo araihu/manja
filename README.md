@@ -10,7 +10,7 @@ provides Ctrl+K search across indexed operations and schemas.
 
 ```bash
 go test ./...
-go tool muamba verify --strict
+go tool -modfile=tools/go.mod muamba verify --strict
 go run ./cmd/webassets check
 scripts/redocly bundle api/openapi.yaml -o api/dist/openapi.yaml
 scripts/redocly lint api/openapi.yaml
@@ -18,6 +18,30 @@ go run ./cmd/manja -data-dir .manja/data
 ```
 
 Open <http://localhost:8080>.
+
+### Go tooling module
+
+Development-only Go tools live in the separate [`tools/`](tools/) module so
+the runtime module does not declare generator, environment-documentation, or
+asset-verification tools directly. Run commands from the repository root and
+point `go` at that module explicitly:
+
+```bash
+# Verify and audit browser assets.
+go tool -modfile=tools/go.mod muamba verify --strict
+
+# Regenerate API and templ output.
+go run -modfile=tools/go.mod github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen \
+  -generate types,strict-server -package web \
+  -o internal/web/api.gen.go api/dist/openapi.yaml
+go run -modfile=tools/go.mod github.com/a-h/templ/cmd/templ generate
+
+# Regenerate the environment reference through its go:generate directive.
+go generate ./internal/environment
+```
+
+The module pins `templ`, `oapi-codegen`, `muamba`, and `envdoc`; its generated
+outputs still belong to the repository root.
 
 ### Resource limits
 

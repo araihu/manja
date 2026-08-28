@@ -22,21 +22,22 @@ requests.
 ```bash
 # Download pinned Go modules and verify vendored browser sources.
 go mod download
-go tool muamba verify --strict
+go mod download -modfile=tools/go.mod
+go tool -modfile=tools/go.mod muamba verify --strict
 
 # Verify the API description and regenerate the untracked bundled spec.
 scripts/redocly bundle api/openapi.yaml -o api/dist/openapi.yaml
 scripts/redocly lint api/openapi.yaml
 
 # Regenerate API Go types after changing api/*.yaml.
-go run github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen \
+go run -modfile=tools/go.mod github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen \
   -generate types,strict-server \
   -package web \
   -o internal/web/api.gen.go \
   api/dist/openapi.yaml
 
 # Regenerate templ output after editing .templ files.
-go run github.com/a-h/templ/cmd/templ generate
+go run -modfile=tools/go.mod github.com/a-h/templ/cmd/templ generate
 
 # Unit and E2E tests.
 go test ./...
@@ -133,7 +134,8 @@ git fetch origin
 git worktree add -b <type>/<short-slug> /tmp/manja-<short-slug> origin/main
 cd /tmp/manja-<short-slug>
 go mod download
-go tool muamba verify --strict
+go mod download -modfile=tools/go.mod
+go tool -modfile=tools/go.mod muamba verify --strict
 ```
 
 Rules:
@@ -156,11 +158,11 @@ that work stays mergeable.
 Never hand-edit generated files:
 
 - `internal/web/templates/*_templ.go` - regenerate with
-  `go run github.com/a-h/templ/cmd/templ generate`
+  `go run -modfile=tools/go.mod github.com/a-h/templ/cmd/templ generate`
 - `internal/web/static/request-composer.js` - regenerate with
   `go run ./cmd/webassets generate`
 - `internal/web/api.gen.go` - regenerate from `api/dist/openapi.yaml` with
-  `oapi-codegen`
+  `go run -modfile=tools/go.mod github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen`
 - `api/dist/openapi.yaml` - regenerate with
   `scripts/redocly bundle api/openapi.yaml -o api/dist/openapi.yaml`; it is ignored
   and should not be committed
@@ -216,12 +218,12 @@ Rules:
 Before opening a PR, run the gates relevant to the change:
 
 ```bash
-go tool muamba verify --strict
-go tool muamba generate-go --strict --check --dir internal/webassets --output muamba_gen.go
+go tool -modfile=tools/go.mod muamba verify --strict
+go tool -modfile=tools/go.mod muamba generate-go --strict --check --dir internal/webassets --output muamba_gen.go
 go run ./cmd/webassets check
 scripts/redocly bundle api/openapi.yaml -o api/dist/openapi.yaml
 scripts/redocly lint api/openapi.yaml
-go run github.com/a-h/templ/cmd/templ generate
+go run -modfile=tools/go.mod github.com/a-h/templ/cmd/templ generate
 go test ./...
 ```
 

@@ -122,21 +122,25 @@ export class Manja {
       .withWorkdir("/work")
       .withExec(["go", "mod", "tidy"])
       .withExec(["git", "diff", "--exit-code", "--", "go.mod", "go.sum"])
-      .withExec(["go", "tool", "muamba", "sync", "--strict"])
-      .withExec(["go", "tool", "muamba", "verify", "--strict"])
+      .withWorkdir("/work/tools")
+      .withExec(["go", "mod", "tidy"])
+      .withExec(["git", "diff", "--exit-code", "--", "go.mod", "go.sum"])
+      .withWorkdir("/work")
+      .withExec(["go", "tool", "-modfile=tools/go.mod", "muamba", "sync", "--strict"])
+      .withExec(["go", "tool", "-modfile=tools/go.mod", "muamba", "verify", "--strict"])
       .withExec([
-        "go", "tool", "muamba", "generate-go", "--strict", "--check",
+        "go", "tool", "-modfile=tools/go.mod", "muamba", "generate-go", "--strict", "--check",
         "--dir", "internal/webassets", "--output", "muamba_gen.go",
       ])
       .withExec(["go", "run", "./cmd/webassets", "check"])
       .withExec(["scripts/redocly", "bundle", "api/openapi.yaml", "-o", "api/dist/openapi.yaml"])
       .withExec(["scripts/redocly", "lint", "api/openapi.yaml"])
       .withExec([
-        "go", "run", "github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen",
+        "go", "run", "-modfile=tools/go.mod", "github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen",
         "-generate", "types,strict-server", "-package", "web",
         "-o", "internal/web/api.gen.go", "api/dist/openapi.yaml",
       ])
-      .withExec(["go", "run", "github.com/a-h/templ/cmd/templ", "generate"])
+      .withExec(["go", "run", "-modfile=tools/go.mod", "github.com/a-h/templ/cmd/templ", "generate"])
       .withExec(["git", "diff", "--exit-code"])
       .withExec([
         "go", "run", `github.com/mxschmitt/playwright-go/cmd/playwright@${PLAYWRIGHT_VERSION}`,

@@ -112,7 +112,8 @@ GOWORK=off go list -deps -tags=manja_runtime \
 ### Build-only or test-only unless final bytes prove otherwise
 
 - `cmd/manja` parser/compiler dependency closure;
-- `oapi-codegen` and templ CLIs;
+- the `tools/go.mod` developer-tool module (`oapi-codegen`, templ, Muamba, and
+  envdoc CLIs);
 - esbuild as generator rather than its generated output;
 - the receipt-only macOS/arm64 `rsvg-convert` 2.62.1 environment and system
   Arial fonts used to reproduce the tracked Manja social PNG exactly; those
