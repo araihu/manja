@@ -254,3 +254,14 @@ func TestExportCaptureRejectsRedirect(t *testing.T) {
 		t.Fatalf("fixture status = %d", response.Code)
 	}
 }
+
+func TestExportCaptureReportsNonOKBody(t *testing.T) {
+	handler := http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		http.Error(response, "catalog temporarily unavailable: overview metrics limit", http.StatusServiceUnavailable)
+	})
+	if _, err := captureHTTP(context.Background(), handler, "/large/", 0, ""); err == nil ||
+		!strings.Contains(err.Error(), "status 503") ||
+		!strings.Contains(err.Error(), "catalog temporarily unavailable: overview metrics limit") {
+		t.Fatalf("captureHTTP error = %v", err)
+	}
+}

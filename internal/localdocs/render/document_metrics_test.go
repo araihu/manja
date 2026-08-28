@@ -114,6 +114,26 @@ func TestPreparedCatalogDocumentMetricsAcceptsMaximumInventory(t *testing.T) {
 	}
 }
 
+func TestPrepareCatalogDocumentMetricsWithoutResourceLimitsAcceptsLargeInventory(t *testing.T) {
+	fragment, err := PrepareCatalogDocumentMetricsWithResourceLimits(catalog.DocumentDirectoryV1{
+		Key:        "fortios-v1",
+		Operations: make([]catalog.OperationDirectoryV1, 38_812),
+		Schemas:    make([]catalog.SchemaDirectoryV1, 1_677),
+	}, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, err := fragment.Bytes(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{">38812</p>", ">1677</p>"} {
+		if !strings.Contains(string(body), want) {
+			t.Fatalf("unbounded catalog document metrics missing %q: %s", want, body)
+		}
+	}
+}
+
 func TestZeroCatalogDocumentMetricsFragmentFailsWithoutBytes(t *testing.T) {
 	body, err := (CatalogDocumentMetricsFragment{}).Bytes(context.Background())
 	if err == nil || body != nil {

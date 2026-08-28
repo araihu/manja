@@ -294,6 +294,9 @@ func captureHTTP(ctx context.Context, handler http.Handler, requestPath string, 
 	response := httptest.NewRecorder()
 	handler.ServeHTTP(response, request)
 	if response.Code != http.StatusOK {
+		if diagnostic := captureHTTPErrorDiagnostic(response); diagnostic != "" {
+			return capturedHTTP{}, fmt.Errorf("capture %q: status %d: %s", requestPath, response.Code, diagnostic)
+		}
 		return capturedHTTP{}, fmt.Errorf("capture %q: status %d", requestPath, response.Code)
 	}
 	if response.Header().Get("Location") != "" {
@@ -320,6 +323,23 @@ func captureHTTP(ctx context.Context, handler http.Handler, requestPath string, 
 		mediaType = mediaTypeForPath(requestPath)
 	}
 	return capturedHTTP{body: body, mediaType: mediaType}, nil
+}
+
+func captureHTTPErrorDiagnostic(response *httptest.ResponseRecorder) string {
+	const (
+		maxDiagnosticBytes = 4 << 10
+		maxDiagnosticRunes = 512
+	)
+	body := response.Body.Bytes()
+	if len(body) > maxDiagnosticBytes {
+		body = body[:maxDiagnosticBytes]
+	}
+	diagnostic := strings.TrimSpace(strings.ToValidUTF8(string(body), "�"))
+	diagnostic = strings.Join(strings.Fields(diagnostic), " ")
+	if runes := []rune(diagnostic); len(runes) > maxDiagnosticRunes {
+		diagnostic = string(runes[:maxDiagnosticRunes]) + "…"
+	}
+	return diagnostic
 }
 
 func catalogRoute(mount string, segments ...string) string {

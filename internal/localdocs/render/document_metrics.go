@@ -32,14 +32,25 @@ type catalogDocumentMetricsData struct {
 
 // PrepareCatalogDocumentMetrics copies the bounded catalog-document counts
 // consumed by the shared overview component. It performs no source parsing.
+//
+// Keep this strict wrapper for callers that render request-sized responses.
+// Static export and other explicitly unbounded renderers should call
+// PrepareCatalogDocumentMetricsWithResourceLimits with resourceLimits=false.
 func PrepareCatalogDocumentMetrics(document catalog.DocumentDirectoryV1) (CatalogDocumentMetricsFragment, error) {
+	return PrepareCatalogDocumentMetricsWithResourceLimits(document, true)
+}
+
+// PrepareCatalogDocumentMetricsWithResourceLimits copies document counts
+// while applying request resource limits only when resourceLimits is true.
+// Document identity and rendered-fragment limits remain enabled in both modes.
+func PrepareCatalogDocumentMetricsWithResourceLimits(document catalog.DocumentDirectoryV1, resourceLimits bool) (CatalogDocumentMetricsFragment, error) {
 	if domain.ValidateCatalogDocumentKey(document.Key) != nil {
 		return CatalogDocumentMetricsFragment{}, invalidCatalogDocumentMetricsField("document key")
 	}
-	if len(document.Operations) > maximumCatalogDocumentMetricsCount {
+	if resourceLimits && len(document.Operations) > maximumCatalogDocumentMetricsCount {
 		return CatalogDocumentMetricsFragment{}, invalidCatalogDocumentMetricsField("operation inventory")
 	}
-	if len(document.Schemas) > maximumCatalogDocumentMetricsCount {
+	if resourceLimits && len(document.Schemas) > maximumCatalogDocumentMetricsCount {
 		return CatalogDocumentMetricsFragment{}, invalidCatalogDocumentMetricsField("schema inventory")
 	}
 	fragment := CatalogDocumentMetricsFragment{

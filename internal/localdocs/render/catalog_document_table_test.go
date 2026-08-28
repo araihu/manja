@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"reflect"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -145,5 +146,30 @@ func TestPrepareCatalogDocumentTableRejectsOversizedRowsAndOutput(t *testing.T) 
 	}}
 	if fragment, err := PrepareCatalogDocumentTable("/", "", "", entries); err == nil || !reflect.DeepEqual(fragment, CatalogDocumentTableFragment{}) {
 		t.Fatalf("oversized catalog document table output accepted: fragment=%#v err=%v", fragment, err)
+	}
+}
+
+func TestPrepareCatalogDocumentTableWithoutResourceLimitsAcceptsLargeInventory(t *testing.T) {
+	const documentCount = 1045
+	entries := make([]CatalogDocumentTableEntry, documentCount)
+	for index := range entries {
+		key := "fortios-" + strconv.Itoa(index) + "-v1"
+		label := "FortiOS " + strconv.Itoa(index)
+		entries[index] = CatalogDocumentTableEntry{
+			Key: key, Label: label, Version: "v1", Operations: index, Schemas: index + 1,
+			SearchText: CatalogDocumentTableSearchText(key, label, "v1"),
+			Href:       "/fortinet/documents/" + key + "/",
+		}
+	}
+	fragment, err := PrepareCatalogDocumentTableWithResourceLimits("/fortinet", "", "", entries, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, err := fragment.PageBytes(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Contains(body, []byte("FortiOS 1044")) {
+		t.Fatalf("unbounded catalog document table omitted final row: %s", body)
 	}
 }

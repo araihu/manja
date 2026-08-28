@@ -66,7 +66,19 @@ type catalogDocumentTableEntry struct {
 // PrepareCatalogDocumentTable validates and copies the bounded document
 // directory used by both the complete catalog overview and its HTMX table
 // update. The renderer remains independent of internal/web and adapters.
+//
+// Keep this strict wrapper for callers that render request-sized responses.
+// Static export and other explicitly unbounded renderers should call
+// PrepareCatalogDocumentTableWithResourceLimits with resourceLimits=false.
 func PrepareCatalogDocumentTable(mount, sortBy, sortDir string, entries []CatalogDocumentTableEntry) (CatalogDocumentTableFragment, error) {
+	return PrepareCatalogDocumentTableWithResourceLimits(mount, sortBy, sortDir, entries, true)
+}
+
+// PrepareCatalogDocumentTableWithResourceLimits validates and copies the
+// document directory while applying the row limit only when resourceLimits is
+// true. Row identity, href, text, and rendered-fragment limits remain enabled
+// in both modes.
+func PrepareCatalogDocumentTableWithResourceLimits(mount, sortBy, sortDir string, entries []CatalogDocumentTableEntry, resourceLimits bool) (CatalogDocumentTableFragment, error) {
 	endpoint, ok := catalogDocumentTableEndpoint(mount)
 	if !ok {
 		return CatalogDocumentTableFragment{}, invalidCatalogDocumentTableField("endpoint")
@@ -74,7 +86,7 @@ func PrepareCatalogDocumentTable(mount, sortBy, sortDir string, entries []Catalo
 	if !validCatalogDocumentTableSort(sortBy, sortDir) {
 		return CatalogDocumentTableFragment{}, invalidCatalogDocumentTableField("sort state")
 	}
-	if len(entries) > maximumCatalogDocumentTableRows {
+	if resourceLimits && len(entries) > maximumCatalogDocumentTableRows {
 		return CatalogDocumentTableFragment{}, invalidCatalogDocumentTableField("row inventory")
 	}
 	data := catalogDocumentTableData{

@@ -166,6 +166,49 @@ func TestCatalogPreparedOverviewMetricsPreservesLegacyAdjacencyThroughHandlers(t
 	}
 }
 
+func TestCatalogOverviewWithoutResourceLimitsSupportsLargeInventory(t *testing.T) {
+	const (
+		documentCount  = 1045
+		operationCount = 38_812
+		schemaCount    = 1_677
+	)
+	documents := make([]catalog.DocumentDirectoryV1, documentCount)
+	for index := range documents {
+		key := "fortios-" + fmt.Sprintf("%04d", index) + "-v1"
+		documents[index] = catalog.DocumentDirectoryV1{
+			Key: key, Title: "FortiOS " + fmt.Sprintf("%04d", index), APIVersion: "v1",
+		}
+	}
+	documents[0].Operations = make([]catalog.OperationDirectoryV1, operationCount)
+	documents[0].Schemas = make([]catalog.SchemaDirectoryV1, schemaCount)
+	directory := catalog.CatalogArtifactV1{
+		SchemaVersion: 1, CatalogID: "fortinet", Title: "Fortinet", SearchChild: "search/directory.json", Documents: documents,
+	}
+	snapshot := catalog.RuntimeSnapshot{
+		ID: "snapshot-sha256-" + catalog.SnapshotID(strings.Repeat("a", 64)), Location: "/memory",
+		Directory: directory, Search: catalog.SearchDirectoryV1{SchemaVersion: 1},
+		Manifest: catalog.ManifestV1{SchemaVersion: 1, Children: []catalog.ChildIdentityV1{{
+			Path: "search/directory.json", Kind: "search-directory", Length: 1, SHA256: strings.Repeat("b", 64),
+		}}},
+	}
+	runtime := catalog.NewRuntime(1)
+	if _, err := runtime.ActivateMount("/", "", 1, snapshot); err != nil {
+		t.Fatal(err)
+	}
+	handler := NewCatalogHandlerWithResourceLimits(runtime, memoryCatalogChildren{}, nil, OrganizationPresentation{}, CatalogEnhancementPolicy{}, false)
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/", nil))
+	if response.Code != http.StatusOK {
+		t.Fatalf("large unbounded catalog overview = %d body=%q", response.Code, response.Body.String())
+	}
+	body := response.Body.String()
+	for _, want := range []string{">1045</p>", ">38812</p>", ">1677</p>", ">FortiOS 0000</span>"} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("large unbounded catalog overview missing %q", want)
+		}
+	}
+}
+
 func TestOrganizationRootCatalogCardNavigatesToCatalogOverview(t *testing.T) {
 	t.Parallel()
 

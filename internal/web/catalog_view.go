@@ -69,7 +69,7 @@ func (handler *CatalogHandler) catalogPageDataWithSidebarQuery(
 		StandaloneSpec: len(snapshot.Directory.Documents) == 1,
 		Documents:      make([]templates.CatalogDocumentOption, 0, len(snapshot.Directory.Documents)),
 	}
-	catalogMetrics, err := localrender.PrepareCatalogOverviewMetrics(snapshot.Directory)
+	catalogMetrics, err := localrender.PrepareCatalogOverviewMetricsWithResourceLimits(snapshot.Directory, handler.resourceLimits)
 	if err != nil {
 		return templates.CatalogPageData{}, err
 	}
@@ -153,7 +153,7 @@ func (handler *CatalogHandler) catalogPageDataWithSidebarQuery(
 		return templates.CatalogPageData{}, err
 	}
 	data.DocumentInfo = &documentInfo
-	documentMetrics, err := localrender.PrepareCatalogDocumentMetrics(document)
+	documentMetrics, err := localrender.PrepareCatalogDocumentMetricsWithResourceLimits(document, handler.resourceLimits)
 	if err != nil {
 		return templates.CatalogPageData{}, err
 	}

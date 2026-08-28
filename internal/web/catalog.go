@@ -427,7 +427,7 @@ func (handler *CatalogHandler) serveOverview(response http.ResponseWriter, reque
 	}
 	data.DocumentSortBy = request.URL.Query().Get("order_by")
 	data.DocumentSortDir = request.URL.Query().Get("order_dir")
-	if err := prepareCatalogDocumentTable(&data); err != nil {
+	if err := prepareCatalogDocumentTableWithResourceLimits(&data, handler.resourceLimits); err != nil {
 		http.Error(response, "catalog temporarily unavailable", http.StatusServiceUnavailable)
 		return
 	}
@@ -439,6 +439,10 @@ func (handler *CatalogHandler) serveOverview(response http.ResponseWriter, reque
 }
 
 func prepareCatalogDocumentTable(data *templates.CatalogPageData) error {
+	return prepareCatalogDocumentTableWithResourceLimits(data, true)
+}
+
+func prepareCatalogDocumentTableWithResourceLimits(data *templates.CatalogPageData, resourceLimits bool) error {
 	if data == nil {
 		return fmt.Errorf("catalog document table data is nil")
 	}
@@ -454,7 +458,7 @@ func prepareCatalogDocumentTable(data *templates.CatalogPageData) error {
 			SearchText: searchText, Href: option.Href, AvatarSrc: option.AvatarSrc,
 		})
 	}
-	fragment, err := localrender.PrepareCatalogDocumentTable(data.Mount, data.DocumentSortBy, data.DocumentSortDir, entries)
+	fragment, err := localrender.PrepareCatalogDocumentTableWithResourceLimits(data.Mount, data.DocumentSortBy, data.DocumentSortDir, entries, resourceLimits)
 	if err != nil {
 		return err
 	}

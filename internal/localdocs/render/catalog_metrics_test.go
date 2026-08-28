@@ -125,6 +125,37 @@ func TestPreparedCatalogOverviewMetricsAcceptsMaximumInventory(t *testing.T) {
 	}
 }
 
+func TestPrepareCatalogOverviewMetricsWithoutResourceLimitsAcceptsLargeInventory(t *testing.T) {
+	const (
+		documentCount  = 1045
+		operationCount = 38812
+		schemaCount    = 1677
+	)
+	directory := catalog.CatalogArtifactV1{
+		CatalogID: "fortinet", Title: "Fortinet",
+		Documents: make([]catalog.DocumentDirectoryV1, documentCount),
+	}
+	for index := range directory.Documents {
+		directory.Documents[index].Key = "fortios-" + strconv.Itoa(index) + "-v1"
+	}
+	directory.Documents[0].Operations = make([]catalog.OperationDirectoryV1, operationCount)
+	directory.Documents[0].Schemas = make([]catalog.SchemaDirectoryV1, schemaCount)
+
+	fragment, err := PrepareCatalogOverviewMetricsWithResourceLimits(directory, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, err := fragment.Bytes(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{">1045</p>", ">38812</p>", ">1677</p>"} {
+		if !strings.Contains(string(body), want) {
+			t.Fatalf("unbounded catalog overview metrics missing %q: %s", want, body)
+		}
+	}
+}
+
 func TestZeroCatalogOverviewMetricsFragmentFailsWithoutBytes(t *testing.T) {
 	body, err := (CatalogOverviewMetricsFragment{}).Bytes(context.Background())
 	if err == nil || body != nil {
