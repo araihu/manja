@@ -579,6 +579,11 @@
 	  var main = documentValue.querySelector("[data-catalog-main-content]");
 	  var sidebar = documentValue.getElementById("catalog-sidebar-groups");
 	  var children = Object.create(null);
+	  var admittedChildren = Object.create(null);
+	  var childAdmissionPromises = Object.create(null);
+	  var browserPrepared = false;
+	  var browserPreparation = null;
+	  var cleanManifest = Object.assign({}, manifest); delete cleanManifest.identityDigest;
 	  if (!main) fail("static catalog main target is missing");
 	  if (global.history && "scrollRestoration" in global.history) global.history.scrollRestoration = "manual";
 	  function mainScrollContainer() {
@@ -648,6 +653,49 @@
 		  return;
 		}
 	  }
+	  function prepareBrowser() {
+		if (browserPrepared) return Promise.resolve();
+		if (browserPreparation) return browserPreparation;
+		browserPreparation = Promise.resolve().then(function () {
+			return abi.prepare(descriptor, cleanManifest, catalog, Object.create(null));
+		}).then(function (prepared) {
+			if (!prepared || prepared.ok !== true) fail(prepared && prepared.error || "static Wasm preparation failed");
+			browserPrepared = true;
+		}).catch(function (error) {
+			browserPreparation = null;
+			throw error;
+		});
+		return browserPreparation;
+	  }
+	  function admitLoadedChildren() {
+		var paths = Object.keys(children).sort();
+		if (typeof abi.admit !== "function") {
+			var pending = paths.some(function (childPath) { return !admittedChildren[childPath]; });
+			if (!pending) return Promise.resolve();
+			var prepared = abi.prepare(descriptor, cleanManifest, catalog, children);
+			return Promise.resolve(prepared).then(function (result) {
+				if (!result || result.ok !== true) fail(result && result.error || "static Wasm preparation failed");
+				paths.forEach(function (childPath) { admittedChildren[childPath] = true; });
+			});
+		}
+		return paths.reduce(function (pending, childPath) {
+			if (admittedChildren[childPath]) return pending;
+			return pending.then(function () {
+				if (admittedChildren[childPath]) return undefined;
+				if (!childAdmissionPromises[childPath]) {
+					childAdmissionPromises[childPath] = Promise.resolve().then(function () { return abi.admit(childPath, children[childPath]); }).then(function (result) {
+						if (!result || result.ok !== true) fail(result && result.error || 'static child "' + childPath + '" admission failed');
+						admittedChildren[childPath] = true;
+						delete childAdmissionPromises[childPath];
+					}, function (error) {
+						delete childAdmissionPromises[childPath];
+						throw error;
+					});
+					return childAdmissionPromises[childPath];
+				}
+			});
+		}, Promise.resolve());
+	  }
 	  function navigate(href) {
 		var route = staticRoute(descriptor, href);
 		if (!route) return null;
@@ -662,11 +710,12 @@
 	  var options = arguments.length > 2 && arguments[2] || {};
 	  var beforeScroll = scrollPosition();
 	  if (historyMode === "push") saveHistoryScroll(beforeScroll);
-	  return hydrateStaticRoute(descriptor, manifest, catalog, cache, children, route).then(function () {
-		var cleanManifest = Object.assign({}, manifest); delete cleanManifest.identityDigest;
-		var prepared = abi.prepare(descriptor, cleanManifest, catalog, children);
-		if (!prepared || prepared.ok !== true) fail(prepared && prepared.error || "static Wasm preparation failed");
-		return abi.render(route);
+	  return prepareBrowser().then(function () {
+		return hydrateStaticRoute(descriptor, manifest, catalog, cache, children, route);
+	  }).then(function () {
+		return admitLoadedChildren();
+	  }).then(function () {
+		return options.sidebarOnly && typeof abi.renderSidebar === "function" ? abi.renderSidebar(route) : abi.render(route);
 	  }).then(function (result) {
 		if (!result || result.ok !== true) fail(result && result.error || "static render failed");
 		if (!options.sidebarOnly) main.innerHTML = result.mainHtml;

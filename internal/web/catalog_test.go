@@ -1781,7 +1781,7 @@ func TestCatalogAssetsServeFailClosedLocalDocsEnhancer(t *testing.T) {
 	if response.Code != http.StatusOK {
 		t.Fatalf("local docs enhancer asset = %d, want 200", response.Code)
 	}
-	for _, contract := range []string{"same-origin", "identityDigest", "manjaLocalDocsFallback", "Wasm asset", "descriptor.static", "staticCacheName"} {
+	for _, contract := range []string{"same-origin", "identityDigest", "manjaLocalDocsFallback", "Wasm asset", "descriptor.static", "staticCacheName", "admitLoadedChildren"} {
 		if !strings.Contains(response.Body.String(), contract) {
 			t.Errorf("local docs enhancer asset missing %q", contract)
 		}
@@ -1835,8 +1835,8 @@ func TestCatalogAssetsServeDeterministicLocalDocsWasmRuntime(t *testing.T) {
 			name:        "wasm binary",
 			path:        "/manja-assets/local-docs/manja.wasm",
 			embedded:    "static/local-docs/manja.wasm",
-			length:      14_539_807,
-			digest:      "128fa2978caf0a36c5913227686b9eb42d6d1dc2e90aa22143f247188f2d556e",
+			length:      14_559_662,
+			digest:      "5f281215d2d64580be6349dac1657303216a7c805c212a098e3aa7b4dad0b78b",
 			contentType: "application/wasm",
 			prefix:      []byte{0x00, 'a', 's', 'm'},
 		},
@@ -1844,8 +1844,8 @@ func TestCatalogAssetsServeDeterministicLocalDocsWasmRuntime(t *testing.T) {
 			name:     "brotli wasm binary",
 			path:     "/manja-assets/local-docs/manja.wasm.br",
 			embedded: "static/local-docs/manja.wasm.br",
-			length:   2_671_922,
-			digest:   "219300b3caaa52a1e4431e6bb89a2d99bdebca9c265089f3007a21ab569c62f9",
+			length:   2_674_988,
+			digest:   "802aef7fefaa0b910202fa298c9b65e2d4d00fc3107019d4a20b6de38b84ec83",
 		},
 	} {
 		t.Run(test.name, func(t *testing.T) {

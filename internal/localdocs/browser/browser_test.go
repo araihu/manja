@@ -129,6 +129,21 @@ func TestBrowserSidebarClosedGroupOverridesSelectedAutoOpen(t *testing.T) {
 	}
 }
 
+func TestBrowserRendersSidebarWithoutDetailChild(t *testing.T) {
+	descriptor, manifest, catalogBytes, _, operationID, _ := browserFixture(t)
+	browser, err := Prepare(descriptor, manifest, catalogBytes, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	page, err := browser.RenderSidebar(Route{DocumentKey: "doc", Selected: string(operationID), Groups: []string{"group"}})
+	if err != nil {
+		t.Fatalf("sidebar render without detail child: %v", err)
+	}
+	if page.MainHTML != "" || !strings.Contains(page.SidebarHTML, `data-manja-static-group`) || !strings.Contains(page.Canonical, "selected=") {
+		t.Fatalf("sidebar-only page = %#v", page)
+	}
+}
+
 func TestBrowserPreparesOnlyVerifiedChildrenNeededByRoute(t *testing.T) {
 	descriptor, manifest, catalogBytes, children, operationID, schemaID := browserFixture(t)
 	browser, err := Prepare(descriptor, manifest, catalogBytes, nil)
@@ -165,6 +180,45 @@ func TestBrowserPreparesOnlyVerifiedChildrenNeededByRoute(t *testing.T) {
 	}
 	if _, err := browser.Render(context.Background(), Route{DocumentKey: "doc", Selected: string(schemaID)}); err != nil {
 		t.Fatalf("schema route with selected shard: %v", err)
+	}
+}
+
+func TestBrowserAdmitsProjectionChildrenIncrementally(t *testing.T) {
+	descriptor, manifest, catalogBytes, children, operationID, schemaID := browserFixture(t)
+	browser, err := Prepare(descriptor, manifest, catalogBytes, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := browser.Render(context.Background(), Route{DocumentKey: "doc"}); err != nil {
+		t.Fatalf("overview render before child admission: %v", err)
+	}
+
+	detail := append([]byte(nil), children["details/doc.json"]...)
+	if err := browser.AdmitChild("details/doc.json", detail); err != nil {
+		t.Fatalf("admit detail child: %v", err)
+	}
+	detail[0] = 'x'
+	if _, err := browser.Render(context.Background(), Route{DocumentKey: "doc", Selected: string(operationID)}); err != nil {
+		t.Fatalf("operation render after detail admission: %v", err)
+	}
+	if err := browser.AdmitChild("details/doc.json", children["details/doc.json"]); err != nil {
+		t.Fatalf("idempotent detail admission: %v", err)
+	}
+
+	if err := browser.AdmitChildren(map[string][]byte{
+		"schema-nodes/doc-000000.json": children["schema-nodes/doc-000000.json"],
+		"details/unknown.json":         []byte(`{}`),
+	}); err == nil {
+		t.Fatal("mixed valid and unknown children were admitted")
+	}
+	if _, err := browser.Render(context.Background(), Route{DocumentKey: "doc", Selected: string(schemaID)}); err == nil {
+		t.Fatal("schema child was partially admitted after a rejected batch")
+	}
+	if err := browser.AdmitChild("schema-nodes/doc-000000.json", children["schema-nodes/doc-000000.json"]); err != nil {
+		t.Fatalf("admit schema child: %v", err)
+	}
+	if _, err := browser.Render(context.Background(), Route{DocumentKey: "doc", Selected: string(schemaID)}); err != nil {
+		t.Fatalf("schema render after shard admission: %v", err)
 	}
 }
 

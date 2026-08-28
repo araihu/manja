@@ -19,7 +19,9 @@ var (
 	allowsFunc           js.Func
 	resolveFunc          js.Func
 	prepareFunc          js.Func
+	admitFunc            js.Func
 	renderFunc           js.Func
+	renderSidebarFunc    js.Func
 	searchFunc           js.Func
 	canonicalJSONEscapes = strings.NewReplacer("<", `\u003c`, ">", `\u003e`, "&", `\u0026`, "\u2028", `\u2028`, "\u2029", `\u2029`)
 )
@@ -51,6 +53,7 @@ func main() {
 		}
 		active = candidate
 		activeReady = true
+		browser = nil
 		children := make([]any, 0, len(active.Inventory()))
 		for _, artifact := range active.Inventory() {
 			children = append(children, map[string]any{"path": artifact.Path, "kind": artifact.Kind, "length": artifact.Length, "sha256": artifact.SHA256})
@@ -104,6 +107,20 @@ func main() {
 		browser = candidate
 		return map[string]any{"ok": true, "catalogId": descriptor.CatalogID, "snapshotId": descriptor.SnapshotID}
 	})
+	admitFunc = js.FuncOf(func(_ js.Value, args []js.Value) any {
+		if browser == nil || len(args) != 2 || args[0].Type() != js.TypeString || !object(args[1]) {
+			return failure("admit expects a child path and child object")
+		}
+		childPath := args[0].String()
+		data, err := canonicalJSBytes(args[1])
+		if err != nil {
+			return failure(err.Error())
+		}
+		if err := browser.AdmitChild(childPath, data); err != nil {
+			return failure(err.Error())
+		}
+		return map[string]any{"ok": true, "path": childPath}
+	})
 	renderFunc = js.FuncOf(func(_ js.Value, args []js.Value) any {
 		if browser == nil || len(args) != 1 || !object(args[0]) {
 			return failure("render expects prepared route state")
@@ -117,6 +134,20 @@ func main() {
 			return failure(err.Error())
 		}
 		return map[string]any{"ok": true, "mainHtml": page.MainHTML, "sidebarHtml": page.SidebarHTML, "title": page.Title, "canonical": page.Canonical}
+	})
+	renderSidebarFunc = js.FuncOf(func(_ js.Value, args []js.Value) any {
+		if browser == nil || len(args) != 1 || !object(args[0]) {
+			return failure("renderSidebar expects prepared route state")
+		}
+		route, err := browserRouteFromJS(args[0])
+		if err != nil {
+			return failure(err.Error())
+		}
+		page, err := browser.RenderSidebar(route)
+		if err != nil {
+			return failure(err.Error())
+		}
+		return map[string]any{"ok": true, "sidebarHtml": page.SidebarHTML, "canonical": page.Canonical}
 	})
 	searchFunc = js.FuncOf(func(_ js.Value, args []js.Value) any {
 		if browser == nil || len(args) != 1 || args[0].Type() != js.TypeString {
@@ -140,7 +171,9 @@ func main() {
 	api.Set("allows", allowsFunc)
 	api.Set("resolve", resolveFunc)
 	api.Set("prepare", prepareFunc)
+	api.Set("admit", admitFunc)
 	api.Set("render", renderFunc)
+	api.Set("renderSidebar", renderSidebarFunc)
 	api.Set("search", searchFunc)
 	js.Global().Set("ManjaLocalDocs", api)
 	select {}
