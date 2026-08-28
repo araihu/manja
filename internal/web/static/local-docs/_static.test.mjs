@@ -121,9 +121,12 @@ async function staticActivationFixture(failedPath = '') {
     if (body === undefined) return new Response('', { status: 404 })
     return new Response(body, { status: 200, headers: { 'Content-Length': String(new TextEncoder().encode(body).byteLength) } })
   }
-  const api = enhancer('/group/project/pets/documents/doc/?selected=wanted#wanted', { caches: { open: async () => cache }, fetch, navigator: { serviceWorker } })
+  const history = { pushes: [], pushState(_state, _title, href) { this.pushes.push(href) } }
+  const focusCalls = []
+  const focusTarget = { focus(options) { focusCalls.push(options) } }
+  const api = enhancer('/group/project/pets/documents/doc/?selected=wanted#wanted', { caches: { open: async () => cache }, fetch, navigator: { serviceWorker }, history })
   const root = { dataset: {}, dispatchEvent() {} }
-  const main = { innerHTML: '' }
+  const main = { innerHTML: '', querySelector(selector) { return selector === '[data-manja-settled-focus="true"]' ? focusTarget : null } }
   const sidebar = { innerHTML: '' }
   const script = { textContent: JSON.stringify(value) }
   const document = {
@@ -140,7 +143,7 @@ async function staticActivationFixture(failedPath = '') {
     render: () => ({ ok: true, mainHtml: '<p>Wanted</p>', sidebarHtml: '<nav></nav>', title: 'Wanted', canonical: value.publicationBase + 'documents/doc/?selected=wanted#wanted' }),
   }
   const result = await api.start({ document, loadABI: () => abi })
-  return { result, root, requests, prepared, value }
+  return { result, root, requests, prepared, value, api, history, focusCalls }
 }
 
 test('static direct route loads only its required projection child', async () => {
@@ -154,4 +157,15 @@ test('static child failure reports its manifest path', async () => {
   const fixture = await staticActivationFixture('details/doc.json')
   assert.equal(fixture.result.ok, false)
   assert.match(fixture.root.dataset.manjaLocalDocsReason, /details\/doc\.json/)
+})
+
+test('static router exposes same-document navigation for search results', async () => {
+  const fixture = await staticActivationFixture()
+  assert.equal(typeof fixture.api.navigate, 'function')
+  const pending = fixture.api.navigate('https://docs.test/group/project/pets/documents/doc/?selected=wanted#wanted')
+  assert.ok(pending && typeof pending.then === 'function')
+  const result = await pending
+  assert.equal(result.ok, true)
+  assert.deepEqual(fixture.history.pushes, [fixture.value.publicationBase + 'documents/doc/?selected=wanted#wanted'])
+  assert.equal(fixture.focusCalls.length, 1)
 })
