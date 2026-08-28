@@ -236,11 +236,16 @@ func buildExactSearchSegments(matches map[string]map[uint32]uint8, segmentLimit 
 		})
 		buckets[prefix] = append(buckets[prefix], exactSearchEntry{entry: entry, digest: digestHex})
 	}
-	references := make([]SearchExactBucketReferenceV1, 0, len(buckets))
-	children := make([]ChildArtifact, 0, len(buckets))
+	type exactSearchArtifact struct {
+		reference SearchExactBucketReferenceV1
+		child     ChildArtifact
+	}
+	artifacts := make([]exactSearchArtifact, 0, len(buckets))
 	usage := BudgetUsage{}
-	// Emit in digest-prefix order. This is deterministic even when a bucket is
-	// recursively split and keeps the directory binary-searchable.
+	// Emit recursively by digest nibble, then sort the complete reference/child
+	// pairs as a final canonicalization step. The explicit sort keeps the wire
+	// directory valid even if the partition walk changes in the future, while
+	// retaining the child alignment used by callers that consume this helper.
 	var emit func(string, []exactSearchEntry) error
 	emit = func(prefix string, entries []exactSearchEntry) error {
 		sort.Slice(entries, func(i, j int) bool { return entries[i].entry.Key < entries[j].entry.Key })
@@ -271,8 +276,10 @@ func buildExactSearchSegments(matches map[string]map[uint32]uint8, segmentLimit 
 			for _, entry := range plainEntries {
 				postings += uint32(len(entry.Matches))
 			}
-			references = append(references, SearchExactBucketReferenceV1{Prefix: prefix, SearchSegmentReferenceV1: searchSegmentReference(child, uint32(len(plainEntries)), postings)})
-			children = append(children, child)
+			artifacts = append(artifacts, exactSearchArtifact{
+				reference: SearchExactBucketReferenceV1{Prefix: prefix, SearchSegmentReferenceV1: searchSegmentReference(child, uint32(len(plainEntries)), postings)},
+				child:     child,
+			})
 			addSearchChildUsage(&usage, child)
 			return nil
 		}
@@ -310,6 +317,18 @@ func buildExactSearchSegments(matches map[string]map[uint32]uint8, segmentLimit 
 		if err := emit(prefix, buckets[prefix]); err != nil {
 			return nil, nil, BudgetUsage{}, err
 		}
+	}
+	sort.Slice(artifacts, func(i, j int) bool {
+		if artifacts[i].reference.Prefix == artifacts[j].reference.Prefix {
+			return artifacts[i].child.Path < artifacts[j].child.Path
+		}
+		return artifacts[i].reference.Prefix < artifacts[j].reference.Prefix
+	})
+	references := make([]SearchExactBucketReferenceV1, len(artifacts))
+	children := make([]ChildArtifact, len(artifacts))
+	for index, artifact := range artifacts {
+		references[index] = artifact.reference
+		children[index] = artifact.child
 	}
 	return references, children, usage, nil
 }
