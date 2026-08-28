@@ -275,7 +275,6 @@ func TestCatalogEnhancementServedOfflineShellPersistsManifestAndTombstonesInBrow
 		"/manja-assets/local-docs/storage.js",
 		"/manja-assets/local-docs/wasm_exec.js",
 		"/manja-assets/local-docs/manja.wasm",
-		"/manja-assets/local-docs/manja.wasm.br",
 		"/kubernetes/_manja/offline-shell",
 		"/kubernetes/snapshots/" + string(snapshot.ID) + "/manifest.json",
 	} {

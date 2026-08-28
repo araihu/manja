@@ -104,6 +104,7 @@ async function staticActivationFixture(failedPath = '') {
   const manifest = JSON.stringify({ schemaVersion: 1, snapshotId: value.snapshotId, identity, children })
   const exported = JSON.stringify({ schemaVersion: 1, basePath: '/group/project/', catalogs: [{ catalogId: 'pets', publicationKey: 'pets', revisionId: 'revision-1', snapshotId: value.snapshotId }] })
   const requests = []
+  const phases = []
   const responses = new Map([
     [value.static.exportManifestUrl, exported],
     [value.projectionManifestUrl, manifest],
@@ -111,8 +112,8 @@ async function staticActivationFixture(failedPath = '') {
     ...children.filter(child => child.path !== 'catalog.json').map(child => [child.path.startsWith('search/') ? value.searchDataBase + child.path : value.projectionDataBase + child.path, payloads[child.path]]),
   ])
   const cache = { match: async () => undefined, put: async () => undefined }
-  const worker = { postMessage() {} }
-  const serviceWorker = { register: async () => ({ active: worker }), ready: Promise.resolve({ active: worker }), addEventListener() {} }
+  const worker = { postMessage() { phases.push('configure') } }
+  const serviceWorker = { register: async () => { phases.push('register'); return { active: worker } }, ready: Promise.resolve({ active: worker }), addEventListener() {} }
   const fetch = async input => {
     const path = new URL(input, 'https://docs.test').pathname
     requests.push(path)
@@ -205,8 +206,8 @@ async function staticActivationFixture(failedPath = '') {
     render: () => ({ ok: true, mainHtml: '<p>Wanted</p>', sidebarHtml: '<nav></nav>', title: 'Wanted', canonical: value.publicationBase + 'documents/doc/?selected=wanted#wanted' }),
     renderSidebar: () => { sidebarRenders.push(true); return { ok: true, sidebarHtml: '<nav></nav>', canonical: value.publicationBase + 'documents/doc/?selected=wanted#wanted' } },
   }
-  const result = await api.start({ document, loadABI: () => abi })
-  return { result, root, requests, prepared, admitted, sidebarRenders, value, api, history, focusCalls, groupFocusCalls, mainScroll, nav, groupControl, listeners, windowListeners, location, mainWrites: () => mainWrites }
+  const result = await api.start({ document, loadABI: () => { phases.push('loadABI'); return abi } })
+  return { result, root, requests, phases, prepared, admitted, sidebarRenders, value, api, history, focusCalls, groupFocusCalls, mainScroll, nav, groupControl, listeners, windowListeners, location, mainWrites: () => mainWrites }
 }
 
 test('static direct route loads only its required projection child', async () => {
@@ -215,6 +216,13 @@ test('static direct route loads only its required projection child', async () =>
   assert.deepEqual(fixture.prepared, [[]])
   assert.deepEqual(fixture.admitted, ['details/doc.json'])
   assert.deepEqual(fixture.requests.filter(path => path.includes('/projection-data/') || path.includes('/search-data/')), [fixture.value.projectionDataBase + 'details/doc.json'])
+})
+
+test('static startup registers the worker before loading the runtime ABI', async () => {
+  const fixture = await staticActivationFixture()
+  assert.ok(fixture.phases.indexOf('register') >= 0)
+  assert.ok(fixture.phases.indexOf('configure') >= 0)
+  assert.ok(fixture.phases.indexOf('loadABI') > fixture.phases.indexOf('configure'))
 })
 
 test('static child failure reports its manifest path', async () => {

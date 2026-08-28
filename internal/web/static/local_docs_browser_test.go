@@ -467,7 +467,6 @@ func TestLocalDocsEnhancerServesRealWasmAndPersistsBrowserState(t *testing.T) {
 		"/manja-assets/local-docs/storage.js",
 		"/manja-assets/local-docs/wasm_exec.js",
 		"/manja-assets/local-docs/manja.wasm",
-		"/manja-assets/local-docs/manja.wasm.br",
 		descriptor.ProjectionManifestURL,
 		"/docs/_manja/offline-shell",
 	} {

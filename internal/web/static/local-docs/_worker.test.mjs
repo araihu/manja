@@ -78,6 +78,7 @@ test('worker runtime assets use an exact same-origin allowlist', () => {
     '/manja-assets/local-docs/manja.wasm',
     '/manja-assets/local-docs/manja.wasm.br',
   ])
+  assert.deepEqual(worker.PRECACHE_STATIC_ASSETS, worker.DEFAULT_STATIC_ASSETS.filter(path => !path.endsWith('manja.wasm.br')))
   for (const path of worker.DEFAULT_STATIC_ASSETS) assert.equal(worker.isStaticAssetPath(path), true)
   assert.equal(worker.isStaticAssetPath('/manja-assets/local-docs/_worker.test.mjs'), false)
 })
@@ -134,6 +135,82 @@ test('static runtime assets refresh validated bytes and retain the newest offlin
     const offline = await worker.cachedStaticAsset(scope, path, 'manja-local-docs-assets-v1', fetchImplementation, expected())
     assert.equal(await offline.text(), 'runtime-v2', path)
   }
+})
+
+test('warm static runtime cache serves validated metadata without refetching', async () => {
+  const entries = new Map()
+  const cache = {
+    async match(request) {
+      const response = entries.get(String(request))
+      return response ? response.clone() : undefined
+    },
+    async put(request, response) {
+      entries.set(String(request), response.clone())
+    },
+    async delete(request) {
+      return entries.delete(String(request))
+    },
+  }
+  const scope = { caches: { open: async () => cache } }
+  const body = bytes('warm-runtime')
+  const expected = { length: body.byteLength, sha256: digest(body) }
+  let requests = 0
+  const fetchImplementation = async () => {
+    requests += 1
+    return new Response(body, { status: 200 })
+  }
+
+  await worker.cachedStaticAsset(scope, '/custom-runtime.js', 'manja-local-docs-assets-v1', fetchImplementation, expected)
+  const warm = await worker.cachedStaticAsset(scope, '/custom-runtime.js', 'manja-local-docs-assets-v1', fetchImplementation, expected)
+  assert.equal(requests, 1)
+  assert.equal(warm.headers.get('X-Manja-Asset-Length'), String(expected.length))
+  assert.equal(warm.headers.get('X-Manja-Asset-SHA256'), expected.sha256)
+})
+
+test('worker installation precaches only the runtime assets consumed by the page', async () => {
+  const files = {
+    '/manja-assets/local-docs/sw.js': new URL('./sw.js', import.meta.url),
+    '/manja-assets/local-docs/storage.js': new URL('./storage.js', import.meta.url),
+    '/manja-assets/local-docs.js': new URL('../local-docs.js', import.meta.url),
+    '/manja-assets/local-docs/wasm_exec.js': new URL('./wasm_exec.js', import.meta.url),
+    '/manja-assets/local-docs/manja.wasm': new URL('./manja.wasm', import.meta.url),
+  }
+  const entries = new Map()
+  const cache = {
+    async match(request) {
+      const response = entries.get(String(request))
+      return response ? response.clone() : undefined
+    },
+    async put(request, response) {
+      entries.set(String(request), response.clone())
+    },
+    async delete(request) {
+      return entries.delete(String(request))
+    },
+  }
+  const listeners = {}
+  const requested = []
+  const scope = {
+    location: { origin: 'https://docs.test', pathname: '/sw.js' },
+    addEventListener(type, listener) { listeners[type] = listener },
+    caches: { open: async () => cache },
+    clients: { claim: async () => {}, matchAll: async () => [] },
+    skipWaiting: async () => {},
+  }
+  worker.register(scope, {
+    storage: storageModule.createMemoryStorage(),
+    fetch: async request => {
+      const path = new URL(String(request), 'https://docs.test').pathname
+      requested.push(path)
+      const file = files[path]
+      return file ? new Response(fs.readFileSync(file), { status: 200 }) : new Response('', { status: 404 })
+    },
+  })
+  const install = { waitUntil(promise) { install.pending = promise } }
+  listeners.install(install)
+  await install.pending
+  assert.deepEqual(requested, worker.PRECACHE_STATIC_ASSETS)
+  assert.equal(entries.has('/manja-assets/local-docs/manja.wasm.br'), false)
 })
 
 test('default runtime asset caching rejects an invalid wasm response before offline fallback', async () => {

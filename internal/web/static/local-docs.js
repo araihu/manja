@@ -791,8 +791,10 @@
 	  wasmURL: deployment + "manja-assets/local-docs/manja.wasm",
 	});
 	return global.caches.open(staticCacheName(descriptor)).then(function (cache) {
-		return Promise.all([registerWorker(root, descriptor, staticOptions), loadABI(staticOptions), readExportManifest(descriptor, cache)]).then(function (values) {
-		  var abi = values[1];
+		return registerWorker(root, descriptor, staticOptions).then(function () {
+			return Promise.all([loadABI(staticOptions), readExportManifest(descriptor, cache)]);
+		}).then(function (values) {
+		  var abi = values[0];
 		  return readManifest(sameOriginPath(descriptor.projectionManifestUrl), descriptor, cache).then(function (manifest) {
 			var activated = validateActivation(abi.activate(descriptor, manifest), descriptor);
 			var catalogIdentity = manifestChild(manifest, "catalog.json");
