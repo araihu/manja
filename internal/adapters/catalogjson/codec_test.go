@@ -2,6 +2,7 @@ package catalogjson
 
 import (
 	"bytes"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -81,6 +82,44 @@ func TestCodecRejectsDuplicateKeysAndOversizedIntegers(t *testing.T) {
 	} {
 		if _, err := DecodeCatalog(data); err == nil {
 			t.Fatalf("%s JSON was accepted", name)
+		}
+	}
+}
+
+func TestCodecAcceptsVariableExactSearchPrefixes(t *testing.T) {
+	t.Parallel()
+
+	// A recursively sharded hot bucket is prefix-free but not fixed-width:
+	// sibling shards can have different depths when their encoded entries have
+	// different sizes. Keep the prefixes in canonical lexical order so the
+	// runtime's binary search can resolve the most-specific digest prefix.
+	prefixes := []string{"0a", "0b", "1", "2a0", "2a1", "f"}
+	base := codecSearchDirectory().ExactBuckets[0].SearchSegmentReferenceV1
+	directory := codecSearchDirectory()
+	directory.ExactBuckets = make([]catalog.SearchExactBucketReferenceV1, 0, len(prefixes))
+	for index, prefix := range prefixes {
+		reference := base
+		reference.Path = fmt.Sprintf("search/exact/%064x.json", index+1)
+		reference.SHA256 = fmt.Sprintf("%064x", index+1)
+		directory.ExactBuckets = append(directory.ExactBuckets, catalog.SearchExactBucketReferenceV1{
+			Prefix: prefix, SearchSegmentReferenceV1: reference,
+		})
+	}
+
+	encoded, err := EncodeSearchDirectory(directory)
+	if err != nil {
+		t.Fatalf("encode variable exact prefixes: %v", err)
+	}
+	decoded, err := DecodeSearchDirectory(encoded)
+	if err != nil {
+		t.Fatalf("decode variable exact prefixes: %v", err)
+	}
+	if len(decoded.ExactBuckets) != len(prefixes) {
+		t.Fatalf("decoded exact bucket count = %d, want %d", len(decoded.ExactBuckets), len(prefixes))
+	}
+	for index, prefix := range prefixes {
+		if decoded.ExactBuckets[index].Prefix != prefix {
+			t.Fatalf("decoded exact bucket[%d] prefix = %q, want %q", index, decoded.ExactBuckets[index].Prefix, prefix)
 		}
 	}
 }

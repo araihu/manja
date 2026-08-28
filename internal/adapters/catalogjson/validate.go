@@ -135,7 +135,11 @@ func validateSearchDirectory(value catalog.SearchDirectoryV1) error {
 		return fmt.Errorf("catalogjson: search directory version is unsupported")
 	}
 	for index, bucket := range value.ExactBuckets {
-		if len(bucket.Prefix) != 1 || !lowerHex(bucket.Prefix, 1) || index > 0 && value.ExactBuckets[index-1].Prefix >= bucket.Prefix {
+		// Exact buckets normally use one digest nibble. Hot buckets may be
+		// recursively sharded, so their prefixes are variable-length (up to the
+		// full SHA-256 digest). The directory remains binary-searchable as long
+		// as prefixes are lowercase hex and emitted in strict lexical order.
+		if len(bucket.Prefix) == 0 || len(bucket.Prefix) > sha256.Size*2 || !lowerHex(bucket.Prefix, len(bucket.Prefix)) || index > 0 && value.ExactBuckets[index-1].Prefix >= bucket.Prefix {
 			return fmt.Errorf("catalogjson: exact search buckets are not strictly sorted")
 		}
 		if err := validateSearchSegmentReference(bucket.SearchSegmentReferenceV1); err != nil {

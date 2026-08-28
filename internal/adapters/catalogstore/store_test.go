@@ -1,13 +1,16 @@
 package catalogstore
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/araihu/manja/application/catalog"
@@ -36,6 +39,123 @@ func TestStorePublishesAndPreflightsImmutableSnapshot(t *testing.T) {
 	if err != nil || second.Location != materialized.Location {
 		t.Fatalf("idempotent publication = %#v, %v", second, err)
 	}
+}
+
+func TestCompiledVariableExactPrefixesSurviveDecodeAndActivation(t *testing.T) {
+	t.Parallel()
+
+	snapshot := compiledVariableExactPrefixFixture(t)
+	var encodedDirectory []byte
+	for _, child := range snapshot.Children {
+		if child.Kind == "search-directory" {
+			encodedDirectory = child.Bytes
+			break
+		}
+	}
+	if len(encodedDirectory) == 0 {
+		t.Fatal("compiled snapshot lacks search directory")
+	}
+	directory, err := catalogjson.DecodeSearchDirectory(encodedDirectory)
+	if err != nil {
+		t.Fatalf("decode compiled variable exact prefixes: %v", err)
+	}
+	if encoded, err := catalogjson.EncodeSearchDirectory(directory); err != nil {
+		t.Fatalf("re-encode compiled variable exact prefixes: %v", err)
+	} else if !bytes.Equal(encoded, encodedDirectory) {
+		t.Fatal("compiled search directory is not canonical after decode")
+	}
+	deepPrefixes := 0
+	depths := make(map[int]struct{})
+	siblingCounts := make(map[string]int)
+	for index, bucket := range directory.ExactBuckets {
+		if index > 0 && directory.ExactBuckets[index-1].Prefix >= bucket.Prefix {
+			t.Fatalf("compiled exact prefixes are not strictly sorted: %q then %q", directory.ExactBuckets[index-1].Prefix, bucket.Prefix)
+		}
+		depths[len(bucket.Prefix)] = struct{}{}
+		if len(bucket.Prefix) > 1 {
+			deepPrefixes++
+			siblingCounts[bucket.Prefix[:len(bucket.Prefix)-1]]++
+		}
+	}
+	if deepPrefixes < 2 {
+		t.Fatalf("compiled exact directory has %d deep prefixes, want sibling shards", deepPrefixes)
+	}
+	sawSiblings := false
+	for _, count := range siblingCounts {
+		if count > 1 {
+			sawSiblings = true
+			break
+		}
+	}
+	if !sawSiblings {
+		t.Fatal("compiled exact directory lacks sibling shards")
+	}
+	if len(depths) < 2 {
+		t.Fatalf("compiled exact directory has %d prefix depths, want variable depths", len(depths))
+	}
+
+	root := t.TempDir()
+	runtime := catalog.NewRuntime(1)
+	coordinator, err := OpenActivationCoordinator(context.Background(), root, runtime)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer coordinator.Close()
+	if _, err := coordinator.Activate(context.Background(), "/catalog", "", 1, snapshot); err != nil {
+		t.Fatalf("activate compiled variable exact prefixes: %v", err)
+	}
+	if active := runtime.Table().Mounts["/catalog"].Active; active.ID != snapshot.ID {
+		t.Fatalf("active snapshot = %q, want %q", active.ID, snapshot.ID)
+	}
+}
+
+func compiledVariableExactPrefixFixture(t *testing.T) catalog.CompiledSnapshot {
+	t.Helper()
+
+	const documentKey = "large-v1"
+	const operationCount = 320
+	source := []byte(`{}`)
+	operations := make([]domain.Operation, 0, operationCount)
+	for candidate := 0; len(operations) < operationCount; candidate++ {
+		literalPath := fmt.Sprintf("/operations/%05d", candidate)
+		detailID, err := domain.NewOperationDetailID("catalog", documentKey, "GET", literalPath)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !strings.HasPrefix(strings.TrimPrefix(string(detailID), "detail-sha256-"), "0") {
+			continue
+		}
+		operations = append(operations, domain.Operation{
+			ID: fmt.Sprintf("operation-%05d", candidate), Method: "GET", Path: literalPath,
+			Summary: "Synthetic operation for a recursively sharded exact bucket",
+		})
+	}
+	revisionDigest := sha256.Sum256(source)
+	candidate := domain.CatalogCandidate{
+		ID: "catalog", Title: "Catalog", DefaultDocumentKey: documentKey, ProfileID: domain.CompatibilityProfileStrict,
+		Revision:  domain.CatalogRevision{Kind: domain.CatalogRevisionFiles, ID: "files-large-exact", ManifestDigest: hex.EncodeToString(revisionDigest[:])},
+		Documents: []domain.CatalogDocument{{Key: documentKey, SourcePath: "large.json", Format: domain.CatalogFormatJSON, Bytes: source}},
+	}
+	index := domain.CatalogIndex{
+		CatalogID: "catalog", RevisionID: "files-large-exact", Title: "Catalog", ProfileID: domain.CompatibilityProfileStrict,
+		Documents: []domain.CatalogDocumentIndex{{
+			Key: documentKey, SourcePath: "large.json",
+			Index: domain.SpecIndex{RevisionID: "files-large-exact", Title: "Large", Version: "v1", SpecDownload: domain.SpecDownload{Filename: "large.json"}, Operations: operations},
+		}},
+	}
+	options := catalog.DefaultCompilerOptions()
+	// Keep the synthetic token/posting entries below the per-entry floor while
+	// still forcing the 320-entry exact hot bucket to recurse by digest nibble.
+	options.Bounds.PostingSegmentBytes = 8 << 10
+	compiler, err := catalog.NewCompiler(options)
+	if err != nil {
+		t.Fatal(err)
+	}
+	snapshot, err := compiler.Compile(context.Background(), candidate, index)
+	if err != nil {
+		t.Fatalf("compile variable exact prefix fixture: %v", err)
+	}
+	return snapshot
 }
 
 func TestStorePublishesFullLockedKubernetesSnapshotWithinBudgets(t *testing.T) {
