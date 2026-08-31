@@ -145,18 +145,21 @@ func projectionPublicAPI() map[string]map[string]projectionField {
 		"OperationDirectory": {
 			"Ordinal": f("uint32", "ordinal"), "ID": f("string", "id"), "Anchor": f("string", "anchor"),
 			"Href": f("string", "href"), "Method": f("string", "method"), "Path": f("string", "path"),
+			"RequestTarget": f("string", "requestTarget,omitempty"), "FixedQuery": f("[]FixedQueryParameter", "fixedQuery,omitempty"),
 			"Title": f("string", "title"), "Deprecated": f("bool", "deprecated"), "Sections": f("[]TextRecord", "sections"),
 		},
 		"OperationDetail": {
 			"Ordinal": f("uint32", "ordinal"), "ID": f("string", "id"), "Anchor": f("string", "anchor"),
 			"Href": f("string", "href"), "HeadingID": f("string", "headingId"), "Heading": f("string", "heading"),
 			"HeadingLevel": f("uint32", "headingLevel"), "Method": f("string", "method"), "Path": f("string", "path"),
+			"RequestTarget": f("string", "requestTarget,omitempty"), "FixedQuery": f("[]FixedQueryParameter", "fixedQuery,omitempty"),
 			"Summary": f("string", "summary"), "Description": f("string", "description"), "Deprecated": f("bool", "deprecated"),
 			"Tags": f("[]TextRecord", "tags"), "Parameters": f("[]Parameter", "parameters"),
 			"HasRequestBody": f("bool", "hasRequestBody"), "RequestBody": f("RequestBody", "requestBody"),
 			"Responses": f("[]Response", "responses"), "Security": f("[]SecurityRequirement", "security"),
 			"CodeSamples": f("[]CodeSample", "codeSamples"),
 		},
+		"FixedQueryParameter": {"Name": f("string", "name"), "Value": f("string", "value")},
 		"Parameter": {
 			"Ordinal": f("uint32", "ordinal"), "ID": f("string", "id"), "Name": f("string", "name"),
 			"In": f("string", "in"), "Required": f("bool", "required"), "Description": f("string", "description"),

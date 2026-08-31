@@ -47,7 +47,7 @@ func (handler *CatalogHandler) catalogOperationView(
 	}
 	operation := &domain.Operation{
 		ID: operationID, Anchor: detail.Anchor, Title: detail.Heading, Method: detail.Method, Path: detail.Path,
-		RequestTarget: detail.RequestTarget, FixedQuery: append([]domain.FixedQueryParameter(nil), detail.FixedQuery...),
+		RequestTarget: detail.RequestTarget, FixedQuery: catalogFixedQuery(detail.FixedQuery),
 		Summary: detail.Summary, Description: detail.Description, Deprecated: detail.Deprecated,
 		Tags: textRecordValues(detail.Tags),
 	}
@@ -140,6 +140,17 @@ func (handler *CatalogHandler) catalogOperationView(
 		}}
 	}
 	return operation, parameterNodes, requestBodyNodes, responseMediaNodes, responseDetailNodes, schemaTreeNodes, nil
+}
+
+func catalogFixedQuery(source []projection.FixedQueryParameter) []domain.FixedQueryParameter {
+	if source == nil {
+		return nil
+	}
+	result := make([]domain.FixedQueryParameter, len(source))
+	for index, item := range source {
+		result[index] = domain.FixedQueryParameter{Name: item.Name, Value: item.Value}
+	}
+	return result
 }
 
 func (handler *CatalogHandler) catalogSchemaView(

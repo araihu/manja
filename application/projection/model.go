@@ -1,7 +1,5 @@
 package projection
 
-import "github.com/araihu/manja/domain"
-
 type Builder struct{}
 
 type Document struct {
@@ -112,41 +110,46 @@ type SidebarItem struct {
 }
 
 type OperationDirectory struct {
-	Ordinal       uint32                       `json:"ordinal"`
-	ID            string                       `json:"id"`
-	Anchor        string                       `json:"anchor"`
-	Href          string                       `json:"href"`
-	Method        string                       `json:"method"`
-	Path          string                       `json:"path"`
-	RequestTarget string                       `json:"requestTarget,omitempty"`
-	FixedQuery    []domain.FixedQueryParameter `json:"fixedQuery,omitempty"`
-	Title         string                       `json:"title"`
-	Deprecated    bool                         `json:"deprecated"`
-	Sections      []TextRecord                 `json:"sections"`
+	Ordinal       uint32                `json:"ordinal"`
+	ID            string                `json:"id"`
+	Anchor        string                `json:"anchor"`
+	Href          string                `json:"href"`
+	Method        string                `json:"method"`
+	Path          string                `json:"path"`
+	RequestTarget string                `json:"requestTarget,omitempty"`
+	FixedQuery    []FixedQueryParameter `json:"fixedQuery,omitempty"`
+	Title         string                `json:"title"`
+	Deprecated    bool                  `json:"deprecated"`
+	Sections      []TextRecord          `json:"sections"`
 }
 
 type OperationDetail struct {
-	Ordinal        uint32                       `json:"ordinal"`
-	ID             string                       `json:"id"`
-	Anchor         string                       `json:"anchor"`
-	Href           string                       `json:"href"`
-	HeadingID      string                       `json:"headingId"`
-	Heading        string                       `json:"heading"`
-	HeadingLevel   uint32                       `json:"headingLevel"`
-	Method         string                       `json:"method"`
-	Path           string                       `json:"path"`
-	RequestTarget  string                       `json:"requestTarget,omitempty"`
-	FixedQuery     []domain.FixedQueryParameter `json:"fixedQuery,omitempty"`
-	Summary        string                       `json:"summary"`
-	Description    string                       `json:"description"`
-	Deprecated     bool                         `json:"deprecated"`
-	Tags           []TextRecord                 `json:"tags"`
-	Parameters     []Parameter                  `json:"parameters"`
-	HasRequestBody bool                         `json:"hasRequestBody"`
-	RequestBody    RequestBody                  `json:"requestBody"`
-	Responses      []Response                   `json:"responses"`
-	Security       []SecurityRequirement        `json:"security"`
-	CodeSamples    []CodeSample                 `json:"codeSamples"`
+	Ordinal        uint32                `json:"ordinal"`
+	ID             string                `json:"id"`
+	Anchor         string                `json:"anchor"`
+	Href           string                `json:"href"`
+	HeadingID      string                `json:"headingId"`
+	Heading        string                `json:"heading"`
+	HeadingLevel   uint32                `json:"headingLevel"`
+	Method         string                `json:"method"`
+	Path           string                `json:"path"`
+	RequestTarget  string                `json:"requestTarget,omitempty"`
+	FixedQuery     []FixedQueryParameter `json:"fixedQuery,omitempty"`
+	Summary        string                `json:"summary"`
+	Description    string                `json:"description"`
+	Deprecated     bool                  `json:"deprecated"`
+	Tags           []TextRecord          `json:"tags"`
+	Parameters     []Parameter           `json:"parameters"`
+	HasRequestBody bool                  `json:"hasRequestBody"`
+	RequestBody    RequestBody           `json:"requestBody"`
+	Responses      []Response            `json:"responses"`
+	Security       []SecurityRequirement `json:"security"`
+	CodeSamples    []CodeSample          `json:"codeSamples"`
+}
+
+type FixedQueryParameter struct {
+	Name  string `json:"name"`
+	Value string `json:"value"`
 }
 
 type Parameter struct {

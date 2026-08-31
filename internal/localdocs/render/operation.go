@@ -11,6 +11,7 @@ import (
 
 	"github.com/a-h/templ"
 	"github.com/araihu/manja/application/catalog"
+	"github.com/araihu/manja/application/projection"
 	"github.com/araihu/manja/domain"
 )
 
@@ -39,7 +40,7 @@ func PrepareOperationHeader(detail catalog.DetailRecordV1, operation domain.Oper
 	}
 	projected := detail.Operation
 	id := string(detail.ID)
-	if projected.ID != id || projected.Anchor != id || projected.HeadingID != id || projected.HeadingLevel == 0 || strings.TrimSpace(projected.Heading) == "" || !validOperationMethod(projected.Method) || !validOperationPath(projected.Path) || domain.ValidateOperationRequestTarget(projected.Path, projected.RequestTarget, projected.FixedQuery) != nil {
+	if projected.ID != id || projected.Anchor != id || projected.HeadingID != id || projected.HeadingLevel == 0 || strings.TrimSpace(projected.Heading) == "" || !validOperationMethod(projected.Method) || !validOperationPath(projected.Path) || !validProjectedOperationTarget(projected.Path, projected.RequestTarget, projected.FixedQuery) {
 		return OperationHeaderFragment{}, invalidOperationField("operation detail identity")
 	}
 	documentIndex := strings.LastIndex(documentHref, "/documents/")
@@ -82,7 +83,19 @@ func validOperationPath(value string) bool {
 	return strings.HasPrefix(value, "/") && path.Clean(cleanInput) == cleanInput && !strings.ContainsAny(value, " ?#")
 }
 
-func equalFixedQuery(left, right []domain.FixedQueryParameter) bool {
+func equalFixedQuery(left []domain.FixedQueryParameter, right []projection.FixedQueryParameter) bool {
+	if len(left) != len(right) {
+		return false
+	}
+	for index := range left {
+		if left[index].Name != right[index].Name || left[index].Value != right[index].Value {
+			return false
+		}
+	}
+	return true
+}
+
+func equalDomainFixedQuery(left, right []domain.FixedQueryParameter) bool {
 	if len(left) != len(right) {
 		return false
 	}
@@ -92,6 +105,14 @@ func equalFixedQuery(left, right []domain.FixedQueryParameter) bool {
 		}
 	}
 	return true
+}
+
+func validProjectedOperationTarget(operationPath, requestTarget string, fixed []projection.FixedQueryParameter) bool {
+	domainFixed := make([]domain.FixedQueryParameter, len(fixed))
+	for index, item := range fixed {
+		domainFixed[index] = domain.FixedQueryParameter{Name: item.Name, Value: item.Value}
+	}
+	return domain.ValidateOperationRequestTarget(operationPath, requestTarget, domainFixed) == nil
 }
 
 func OperationHeader(fragment OperationHeaderFragment, actions, provenance templ.Component) templ.Component {

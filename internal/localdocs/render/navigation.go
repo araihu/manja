@@ -60,7 +60,7 @@ func PrepareOperationNavigation(
 	projected := detail.Operation
 	id := string(detail.ID)
 	if projected.ID != id || projected.Anchor != id || projected.HeadingID != id || projected.HeadingLevel == 0 ||
-		!validOperationMethod(projected.Method) || !validOperationPath(projected.Path) || domain.ValidateOperationRequestTarget(projected.Path, projected.RequestTarget, projected.FixedQuery) != nil ||
+		!validOperationMethod(projected.Method) || !validOperationPath(projected.Path) || !validProjectedOperationTarget(projected.Path, projected.RequestTarget, projected.FixedQuery) ||
 		operation.Anchor != projected.Anchor || operation.Title != projected.Heading || operation.Method != projected.Method ||
 		operation.Path != projected.Path || operation.RequestTarget != projected.RequestTarget || !equalFixedQuery(operation.FixedQuery, projected.FixedQuery) || operation.Summary != projected.Summary || operation.Description != projected.Description ||
 		operation.Deprecated != projected.Deprecated {
@@ -117,7 +117,7 @@ func PrepareOperationNavigation(
 		return OperationNavigationFragment{}, invalidOperationNavigationField("selected operation")
 	}
 	selected := document.Operations[selectedIndex]
-	if selected.OperationID != operation.ID || selected.Method != operation.Method || selected.Path != operation.Path || selected.RequestTarget != operation.RequestTarget || !equalFixedQuery(selected.FixedQuery, operation.FixedQuery) ||
+	if selected.OperationID != operation.ID || selected.Method != operation.Method || selected.Path != operation.Path || selected.RequestTarget != operation.RequestTarget || !equalDomainFixedQuery(selected.FixedQuery, operation.FixedQuery) ||
 		strings.TrimSpace(selected.Title) != operationNavigationTitle(operation.Title, operation.Summary, operation.ID, operation.Method, domain.EffectiveOperationRequestTarget(operation)) ||
 		!equalNavigationStrings(selected.Tags, operation.Tags) || (selected.Href != projected.Href && selected.Href != strings.TrimPrefix(projected.Href, "documents/")) {
 		return OperationNavigationFragment{}, invalidOperationNavigationField("selected directory operation")

@@ -10,7 +10,6 @@ import (
 	"unicode"
 
 	"github.com/araihu/manja/application/projection"
-	"github.com/araihu/manja/domain"
 )
 
 func validateRecordSemantics(document projection.Document) error {
@@ -92,7 +91,7 @@ func validateOperationSemantics(document projection.Document, targets map[string
 			detail.Deprecated != directory.Deprecated || detail.Summary != "" && detail.Heading != detail.Summary {
 			return nil, codecFailure("operations", "non_canonical")
 		}
-		if domain.ValidateOperationRequestTarget(directory.Path, directory.RequestTarget, directory.FixedQuery) != nil || detail.RequestTarget != directory.RequestTarget || !equalFixedQuery(detail.FixedQuery, directory.FixedQuery) {
+		if !validOperationRequestTarget(directory.Path, directory.RequestTarget, directory.FixedQuery) || detail.RequestTarget != directory.RequestTarget || !equalFixedQuery(detail.FixedQuery, directory.FixedQuery) {
 			return nil, codecFailure("operations.requestTarget", "non_canonical")
 		}
 		if _, duplicate := targets[directory.Anchor]; duplicate {
@@ -108,12 +107,48 @@ func validateOperationSemantics(document projection.Document, targets map[string
 	return operations, nil
 }
 
-func equalFixedQuery(left, right []domain.FixedQueryParameter) bool {
+func equalFixedQuery(left, right []projection.FixedQueryParameter) bool {
 	if len(left) != len(right) {
 		return false
 	}
 	for index := range left {
 		if left[index] != right[index] {
+			return false
+		}
+	}
+	return true
+}
+
+func validOperationRequestTarget(operationPath, requestTarget string, fixed []projection.FixedQueryParameter) bool {
+	cleanPath := operationPath
+	if operationPath != "/" && strings.HasSuffix(operationPath, "/") {
+		cleanPath = strings.TrimSuffix(operationPath, "/")
+	}
+	if !validIdentity(operationPath) || !strings.HasPrefix(operationPath, "/") || path.Clean(cleanPath) != cleanPath || strings.ContainsAny(operationPath, " ?#") {
+		return false
+	}
+	if requestTarget == "" {
+		return len(fixed) == 0
+	}
+	prefix := operationPath + "?"
+	if !validIdentity(requestTarget) || !strings.HasPrefix(requestTarget, prefix) || strings.ContainsAny(requestTarget, " #") {
+		return false
+	}
+	parts := strings.Split(strings.TrimPrefix(requestTarget, prefix), "&")
+	if len(parts) != len(fixed) {
+		return false
+	}
+	for index, part := range parts {
+		rawName, rawValue, hasValue := strings.Cut(part, "=")
+		if part == "" {
+			return false
+		}
+		if !hasValue {
+			rawValue = ""
+		}
+		name, nameErr := url.QueryUnescape(rawName)
+		value, valueErr := url.QueryUnescape(rawValue)
+		if nameErr != nil || valueErr != nil || !validIdentity(fixed[index].Name) || !validOptionalIdentity(fixed[index].Value) || fixed[index].Name != name || fixed[index].Value != value {
 			return false
 		}
 	}

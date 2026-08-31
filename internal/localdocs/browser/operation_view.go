@@ -51,7 +51,7 @@ func (browser *Browser) browserOperationView(
 	}
 	operation := &domain.Operation{
 		ID: operationID, Anchor: detail.Anchor, Title: detail.Heading, Method: detail.Method, Path: detail.Path,
-		RequestTarget: detail.RequestTarget, FixedQuery: append([]domain.FixedQueryParameter(nil), detail.FixedQuery...),
+		RequestTarget: detail.RequestTarget, FixedQuery: browserFixedQuery(detail.FixedQuery),
 		Summary: detail.Summary, Description: detail.Description, Deprecated: detail.Deprecated,
 		Tags: browserTextValues(detail.Tags),
 	}
@@ -142,6 +142,17 @@ func (browser *Browser) browserOperationView(
 		}}
 	}
 	return operation, parameterNodes, requestBodyNodes, responseMediaNodes, responseDetailNodes, schemaTreeNodes, nil
+}
+
+func browserFixedQuery(source []projection.FixedQueryParameter) []domain.FixedQueryParameter {
+	if source == nil {
+		return nil
+	}
+	result := make([]domain.FixedQueryParameter, len(source))
+	for index, item := range source {
+		result[index] = domain.FixedQueryParameter{Name: item.Name, Value: item.Value}
+	}
+	return result
 }
 
 func (resolver *browserOperationSchemaResolver) mediaTypes(source []projection.MediaType) ([]domain.OperationMediaType, error) {

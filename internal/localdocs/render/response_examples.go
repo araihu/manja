@@ -181,7 +181,7 @@ func PrepareOperationExamples(detail catalog.DetailRecordV1, operation domain.Op
 }
 
 func operationExamplesFallbackMatchesProjection(projected projection.OperationDetail, operation domain.Operation) bool {
-	if projected.Method != operation.Method || projected.Path != operation.Path || projected.RequestTarget != operation.RequestTarget || !equalFixedQuery(projected.FixedQuery, operation.FixedQuery) || projected.HasRequestBody != (operation.RequestBody != nil) {
+	if projected.Method != operation.Method || projected.Path != operation.Path || projected.RequestTarget != operation.RequestTarget || !equalFixedQuery(operation.FixedQuery, projected.FixedQuery) || projected.HasRequestBody != (operation.RequestBody != nil) {
 		return false
 	}
 	if !projected.HasRequestBody {

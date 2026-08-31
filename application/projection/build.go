@@ -265,7 +265,7 @@ func (s *buildState) buildOperations(source []indexedOperation) ([]OperationDire
 		directory := OperationDirectory{
 			Ordinal: uint32(operationIndex), ID: indexed.anchor, Anchor: indexed.anchor,
 			Href: selectedHref(indexed.anchor), Method: operation.Method, Path: operation.Path,
-			RequestTarget: operation.RequestTarget, FixedQuery: append([]domain.FixedQueryParameter(nil), operation.FixedQuery...),
+			RequestTarget: operation.RequestTarget, FixedQuery: projectionFixedQuery(operation.FixedQuery),
 			Title: operationTitle(operation), Deprecated: operation.Deprecated, Sections: sections,
 		}
 		detail, err := s.buildOperationDetail(uint32(operationIndex), indexed)
@@ -366,12 +366,23 @@ func (s *buildState) buildOperationDetail(ordinal uint32, indexed indexedOperati
 		Ordinal: ordinal, ID: indexed.anchor, Anchor: indexed.anchor, Href: selectedHref(indexed.anchor),
 		HeadingID: indexed.anchor, Heading: operationTitle(operation), HeadingLevel: 3,
 		Method: operation.Method, Path: operation.Path, RequestTarget: operation.RequestTarget,
-		FixedQuery: append([]domain.FixedQueryParameter(nil), operation.FixedQuery...), Summary: operation.Summary,
+		FixedQuery: projectionFixedQuery(operation.FixedQuery), Summary: operation.Summary,
 		Description: operation.Description, Deprecated: operation.Deprecated,
 		Tags: textRecords("tag", operation.Tags, true, true), Parameters: parameters,
 		HasRequestBody: hasRequestBody, RequestBody: requestBody, Responses: responses,
 		Security: security, CodeSamples: codeSamples,
 	}, nil
+}
+
+func projectionFixedQuery(source []domain.FixedQueryParameter) []FixedQueryParameter {
+	if source == nil {
+		return nil
+	}
+	result := make([]FixedQueryParameter, len(source))
+	for index, item := range source {
+		result[index] = FixedQueryParameter{Name: item.Name, Value: item.Value}
+	}
+	return result
 }
 
 func (s *buildState) buildResponseHeaders(source []domain.OperationResponseHeader) ([]ResponseHeader, error) {
