@@ -78,7 +78,7 @@ func (parser *CatalogParser) Parse(ctx context.Context, candidate domain.Catalog
 	if candidate.ProfileID == domain.CompatibilityProfileKubernetes && len(candidate.SupportFiles) != 0 {
 		return domain.CatalogIndex{}, fmt.Errorf("Kubernetes profile v1 does not admit support files outside its exact default audit")
 	}
-	if candidate.ProfileID != domain.CompatibilityProfileStrict && candidate.ProfileID != domain.CompatibilityProfileKubernetes {
+	if candidate.ProfileID != domain.CompatibilityProfileStrict && candidate.ProfileID != domain.CompatibilityProfileKubernetes && candidate.ProfileID != domain.CompatibilityProfileVMware {
 		return domain.CatalogIndex{}, fmt.Errorf("compatibility profile %q is unsupported", candidate.ProfileID)
 	}
 
@@ -130,7 +130,7 @@ func (parser *CatalogParser) Parse(ctx context.Context, candidate domain.Catalog
 		if validateErr := doc.Validate(ctx, validationOptions...); validateErr != nil {
 			return domain.CatalogIndex{}, fmt.Errorf("catalog document %q: %w", document.Key, validateErr)
 		}
-		documentIndex, err := projectSpec(doc, file, revision)
+		documentIndex, err := projectSpecWithProfile(doc, file, revision, candidate.ProfileID)
 		if err != nil {
 			return domain.CatalogIndex{}, fmt.Errorf("catalog document %q: %w", document.Key, err)
 		}

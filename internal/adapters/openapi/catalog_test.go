@@ -75,6 +75,47 @@ func TestCatalogParserAllowsDuplicateOperationIDAcrossDocuments(t *testing.T) {
 	}
 }
 
+func TestCatalogParserNormalizesVMwareFixedQueryPaths(t *testing.T) {
+	t.Parallel()
+
+	document := catalogParserDocument("vcenter", "vcenter.json", `{
+  "openapi":"3.0.3",
+  "info":{"title":"vCenter","version":"9.1"},
+  "paths":{
+    "/appliance/networking?action=change&vmw-task=true":{"post":{"operationId":"changeNetworking","responses":{"200":{"description":"ok"}}}},
+    "/appliance/networking?action=reset":{"post":{"operationId":"resetNetworking","responses":{"200":{"description":"ok"}}}}
+  }
+}`)
+	candidate := catalogParserCandidate(document)
+	candidate.ProfileID = domain.CompatibilityProfileVMware
+	parser, err := NewCatalogParser(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	index, err := parser.Parse(context.Background(), candidate)
+	if err != nil {
+		t.Fatal(err)
+	}
+	operations := index.Documents[0].Index.Operations
+	if len(operations) != 2 {
+		t.Fatalf("operations = %d, want 2", len(operations))
+	}
+	if operations[0].Path != "/appliance/networking" || operations[0].RequestTarget != "/appliance/networking?action=change&vmw-task=true" || !reflect.DeepEqual(operations[0].FixedQuery, []domain.FixedQueryParameter{{Name: "action", Value: "change"}, {Name: "vmw-task", Value: "true"}}) {
+		t.Fatalf("change operation = %#v", operations[0])
+	}
+	if operations[1].Path != "/appliance/networking" || operations[1].RequestTarget != "/appliance/networking?action=reset" || !reflect.DeepEqual(operations[1].FixedQuery, []domain.FixedQueryParameter{{Name: "action", Value: "reset"}}) {
+		t.Fatalf("reset operation = %#v", operations[1])
+	}
+	if operations[0].Anchor == operations[1].Anchor {
+		t.Fatal("fixed-query operations share an anchor")
+	}
+
+	candidate.ProfileID = domain.CompatibilityProfileStrict
+	if _, err := parser.Parse(context.Background(), candidate); err == nil || !strings.Contains(err.Error(), "operation path is invalid") {
+		t.Fatalf("strict profile error = %v", err)
+	}
+}
+
 func TestCatalogParserRejectsDuplicatePathBeforeJSONCollapse(t *testing.T) {
 	t.Parallel()
 

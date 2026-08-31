@@ -69,7 +69,11 @@ func validateValue(value reflect.Value) error {
 		}
 	case reflect.Struct:
 		for index := 0; index < value.NumField(); index++ {
-			if err := validateValue(value.Field(index)); err != nil {
+			field := value.Field(index)
+			if field.Kind() == reflect.Slice && field.IsNil() && strings.Contains(value.Type().Field(index).Tag.Get("json"), ",omitempty") {
+				continue
+			}
+			if err := validateValue(field); err != nil {
 				return err
 			}
 		}

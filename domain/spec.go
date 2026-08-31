@@ -123,21 +123,31 @@ type SpecServerVariable struct {
 }
 
 type Operation struct {
-	ID          string
-	Anchor      string
-	Title       string
-	Method      string
-	Path        string
-	Summary     string
-	Description string
-	Tags        []string
-	Facets      []Facet
-	Deprecated  bool
-	Parameters  []OperationParameter
-	RequestBody *OperationRequestBody
-	Responses   []OperationResponse
-	Security    []OperationSecurity
-	Snippets    []RequestSnippet
+	ID            string
+	Anchor        string
+	Title         string
+	Method        string
+	Path          string
+	RequestTarget string
+	FixedQuery    []FixedQueryParameter
+	Summary       string
+	Description   string
+	Tags          []string
+	Facets        []Facet
+	Deprecated    bool
+	Parameters    []OperationParameter
+	RequestBody   *OperationRequestBody
+	Responses     []OperationResponse
+	Security      []OperationSecurity
+	Snippets      []RequestSnippet
+}
+
+// FixedQueryParameter is a vendor-defined, immutable query discriminator that
+// was encoded in an OpenAPI Paths key. It is distinct from user-editable
+// OperationParameter values.
+type FixedQueryParameter struct {
+	Name  string `json:"name"`
+	Value string `json:"value"`
 }
 
 type OperationParameter struct {

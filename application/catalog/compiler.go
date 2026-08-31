@@ -267,18 +267,22 @@ func buildDocumentDirectory(catalogID string, document domain.CatalogDocument, i
 	operations := append([]domain.Operation(nil), index.Operations...)
 	sort.Slice(operations, func(i, j int) bool {
 		if operations[i].Path == operations[j].Path {
+			if operations[i].Method == operations[j].Method {
+				return domain.EffectiveOperationRequestTarget(operations[i]) < domain.EffectiveOperationRequestTarget(operations[j])
+			}
 			return operations[i].Method < operations[j].Method
 		}
 		return operations[i].Path < operations[j].Path
 	})
 	for _, operation := range operations {
-		detailID, err := domain.NewOperationDetailID(catalogID, document.Key, operation.Method, operation.Path)
+		detailID, err := domain.NewOperationDetailIDWithRequestTarget(catalogID, document.Key, operation.Method, operation.Path, operation.RequestTarget, operation.FixedQuery)
 		if err != nil {
 			return DocumentDirectoryV1{}, err
 		}
-		title := firstCatalogText(operation.Summary, operation.ID, operation.Method+" "+operation.Path)
+		title := firstCatalogText(operation.Summary, operation.ID, operation.Method+" "+domain.EffectiveOperationRequestTarget(operation))
 		result.Operations = append(result.Operations, OperationDirectoryV1{
 			DetailID: detailID, OperationID: operation.ID, Method: operation.Method, Path: operation.Path,
+			RequestTarget: operation.RequestTarget, FixedQuery: append([]domain.FixedQueryParameter(nil), operation.FixedQuery...),
 			Title: title, Description: operation.Description, Href: catalogDetailHref(document.Key, detailID),
 			Deprecated: operation.Deprecated, Tags: append([]string(nil), operation.Tags...), Facets: catalogFacets(operation.Facets),
 		})

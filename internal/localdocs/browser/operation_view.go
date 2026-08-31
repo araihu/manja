@@ -51,6 +51,7 @@ func (browser *Browser) browserOperationView(
 	}
 	operation := &domain.Operation{
 		ID: operationID, Anchor: detail.Anchor, Title: detail.Heading, Method: detail.Method, Path: detail.Path,
+		RequestTarget: detail.RequestTarget, FixedQuery: append([]domain.FixedQueryParameter(nil), detail.FixedQuery...),
 		Summary: detail.Summary, Description: detail.Description, Deprecated: detail.Deprecated,
 		Tags: browserTextValues(detail.Tags),
 	}
@@ -393,7 +394,7 @@ func browserOperationCurl(operation domain.Operation) string {
 			lines = append(lines, "  --data "+browserShellSingleQuote(media.Example)+" \\")
 		}
 	}
-	lines = append(lines, "  --url "+browserShellSingleQuote(operation.Path))
+	lines = append(lines, "  --url "+browserShellSingleQuote(domain.EffectiveOperationRequestTarget(operation)))
 	return strings.Join(lines, "\n")
 }
 

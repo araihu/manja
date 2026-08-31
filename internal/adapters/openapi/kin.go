@@ -50,6 +50,10 @@ func loadSpec(file core.SpecFile) (*openapi3.T, error) {
 }
 
 func projectSpec(doc *openapi3.T, file core.SpecFile, rev core.Revision) (core.SpecIndex, error) {
+	return projectSpecWithProfile(doc, file, rev, core.CompatibilityProfileStrict)
+}
+
+func projectSpecWithProfile(doc *openapi3.T, file core.SpecFile, rev core.Revision, profile core.CompatibilityProfileID) (core.SpecIndex, error) {
 	download, err := specDownload(doc, file.Path)
 	if err != nil {
 		return core.SpecIndex{}, err
@@ -73,15 +77,21 @@ func projectSpec(doc *openapi3.T, file core.SpecFile, rev core.Revision) (core.S
 	}
 	for path, item := range doc.Paths.Map() {
 		for method, op := range item.Operations() {
+			operationPath, requestTarget, fixedQuery, err := normalizeOperationTarget(path, profile)
+			if err != nil {
+				return core.SpecIndex{}, fmt.Errorf("operation %s %s: %w", strings.ToUpper(method), path, err)
+			}
 			operation := core.Operation{
-				ID:          op.OperationID,
-				Method:      strings.ToUpper(method),
-				Path:        path,
-				Summary:     op.Summary,
-				Description: op.Description,
-				Tags:        append([]string(nil), op.Tags...),
-				Facets:      operationFacets(op),
-				Deprecated:  op.Deprecated,
+				ID:            op.OperationID,
+				Method:        strings.ToUpper(method),
+				Path:          operationPath,
+				RequestTarget: requestTarget,
+				FixedQuery:    fixedQuery,
+				Summary:       op.Summary,
+				Description:   op.Description,
+				Tags:          append([]string(nil), op.Tags...),
+				Facets:        operationFacets(op),
+				Deprecated:    op.Deprecated,
 			}
 			operation.Anchor = operationAnchor(operation)
 			operation.Parameters, err = operationParameters(item.Parameters, op.Parameters)
@@ -102,6 +112,9 @@ func projectSpec(doc *openapi3.T, file core.SpecFile, rev core.Revision) (core.S
 	}
 	sort.Slice(idx.Operations, func(i, j int) bool {
 		if idx.Operations[i].Path == idx.Operations[j].Path {
+			if idx.Operations[i].Method == idx.Operations[j].Method {
+				return core.EffectiveOperationRequestTarget(idx.Operations[i]) < core.EffectiveOperationRequestTarget(idx.Operations[j])
+			}
 			return idx.Operations[i].Method < idx.Operations[j].Method
 		}
 		return idx.Operations[i].Path < idx.Operations[j].Path
@@ -133,6 +146,40 @@ func projectSpec(doc *openapi3.T, file core.SpecFile, rev core.Revision) (core.S
 	idx.Search = buildSearch(idx)
 	idx.PublicRoutes = buildPublicRoutes(idx)
 	return idx, nil
+}
+
+func normalizeOperationTarget(literal string, profile core.CompatibilityProfileID) (string, string, []core.FixedQueryParameter, error) {
+	if profile != core.CompatibilityProfileVMware || !strings.Contains(literal, "?") {
+		return literal, "", nil, nil
+	}
+	operationPath, rawQuery, found := strings.Cut(literal, "?")
+	if !found || operationPath == "" || rawQuery == "" || strings.Contains(rawQuery, "?") {
+		return "", "", nil, fmt.Errorf("VMware fixed query path is invalid")
+	}
+	parts := strings.Split(rawQuery, "&")
+	fixed := make([]core.FixedQueryParameter, 0, len(parts))
+	for index, part := range parts {
+		if part == "" {
+			return "", "", nil, fmt.Errorf("VMware fixed query item %d is empty", index)
+		}
+		rawName, rawValue, hasValue := strings.Cut(part, "=")
+		if !hasValue {
+			rawValue = ""
+		}
+		name, err := url.QueryUnescape(rawName)
+		if err != nil || name == "" {
+			return "", "", nil, fmt.Errorf("VMware fixed query name %d is invalid", index)
+		}
+		value, err := url.QueryUnescape(rawValue)
+		if err != nil {
+			return "", "", nil, fmt.Errorf("VMware fixed query value %d is invalid", index)
+		}
+		fixed = append(fixed, core.FixedQueryParameter{Name: name, Value: value})
+	}
+	if err := core.ValidateOperationRequestTarget(operationPath, literal, fixed); err != nil {
+		return "", "", nil, err
+	}
+	return operationPath, literal, fixed, nil
 }
 
 func operationFacets(operation *openapi3.Operation) []core.Facet {
@@ -584,7 +631,7 @@ func operationSnippets(operation core.Operation, serverURL string, inferFragment
 	}
 	request := map[string]any{
 		"method": strings.ToUpper(operation.Method),
-		"url":    strings.TrimRight(serverURL, "/") + operation.Path,
+		"url":    strings.TrimRight(serverURL, "/") + core.EffectiveOperationRequestTarget(operation),
 	}
 	if operation.RequestBody != nil && len(operation.RequestBody.MediaTypes) > 0 {
 		media := operation.RequestBody.MediaTypes[0]
@@ -986,7 +1033,8 @@ func buildSearch(idx core.SpecIndex) []core.SearchDocument {
 	docs := make([]core.SearchDocument, 0, len(idx.Operations)+len(idx.Schemas)+1)
 	for _, op := range idx.Operations {
 		anchor := operationAnchor(op)
-		title := firstNonEmpty(op.Summary, op.Path, fmt.Sprintf("%s %s", op.Method, op.Path))
+		requestTarget := core.EffectiveOperationRequestTarget(op)
+		title := firstNonEmpty(op.Summary, requestTarget, fmt.Sprintf("%s %s", op.Method, requestTarget))
 		docs = append(docs, core.SearchDocument{
 			ID:          anchor,
 			Title:       title,
@@ -994,9 +1042,9 @@ func buildSearch(idx core.SpecIndex) []core.SearchDocument {
 			Href:        "#" + anchor,
 			Kind:        "Operation",
 			Method:      op.Method,
-			Path:        op.Path,
+			Path:        requestTarget,
 			Section:     strings.Join(op.Tags, ", "),
-			Keywords:    []string{op.ID, op.Method, op.Path, strings.Join(op.Tags, " ")},
+			Keywords:    []string{op.ID, op.Method, op.Path, requestTarget, strings.Join(op.Tags, " ")},
 		})
 	}
 	for _, schema := range idx.Schemas {
@@ -1039,7 +1087,7 @@ func buildPublicRoutes(idx core.SpecIndex) []core.PublicRoute {
 		anchor := operationAnchor(op)
 		routes = append(routes, core.PublicRoute{
 			Path:        selectedDocsRoutePath(anchor),
-			Title:       op.Method + " " + op.Path,
+			Title:       op.Method + " " + core.EffectiveOperationRequestTarget(op),
 			Description: firstNonEmpty(op.Summary, op.Description),
 		})
 	}
@@ -1068,7 +1116,7 @@ func operationAnchor(op core.Operation) string {
 	}
 	fragment := anchorFragment(op.ID)
 	if fragment == "" {
-		fragment = anchorFragment(op.Method + " " + op.Path)
+		fragment = anchorFragment(op.Method + " " + core.EffectiveOperationRequestTarget(op))
 	}
 	return "operation-" + fragment
 }

@@ -71,7 +71,7 @@ func PartitionDocument(documentKey string, document projection.Document, directo
 func catalogDetailRecords(document projection.Document, directory DocumentDirectoryV1) ([]DetailRecordV1, error) {
 	operationByKey := make(map[string]OperationDirectoryV1, len(directory.Operations))
 	for _, operation := range directory.Operations {
-		key := operation.Method + "\x00" + operation.Path
+		key := catalogOperationKey(operation.Method, operation.Path, operation.RequestTarget)
 		if _, duplicate := operationByKey[key]; duplicate {
 			return nil, fmt.Errorf("operation directory key %q is duplicated", key)
 		}
@@ -87,7 +87,7 @@ func catalogDetailRecords(document projection.Document, directory DocumentDirect
 	records := make([]DetailRecordV1, 0, len(document.OperationDetails)+len(document.SchemaDetails))
 	seen := make(map[domain.DetailID]struct{}, cap(records))
 	for _, detail := range document.OperationDetails {
-		directoryRecord, exists := operationByKey[detail.Method+"\x00"+detail.Path]
+		directoryRecord, exists := operationByKey[catalogOperationKey(detail.Method, detail.Path, detail.RequestTarget)]
 		if !exists {
 			return nil, fmt.Errorf("projection operation %s %s has no catalog directory record", detail.Method, detail.Path)
 		}
@@ -123,6 +123,10 @@ func catalogDetailRecords(document projection.Document, directory DocumentDirect
 	}
 	sort.Slice(records, func(i, j int) bool { return records[i].ID < records[j].ID })
 	return records, nil
+}
+
+func catalogOperationKey(method, operationPath, requestTarget string) string {
+	return method + "\x00" + operationPath + "\x00" + requestTarget
 }
 
 func partitionDetailRecords(documentKey string, records []DetailRecordV1, limits PartitionLimits) ([]ChildArtifact, map[domain.DetailID]string, BudgetUsage, error) {

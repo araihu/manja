@@ -47,6 +47,7 @@ func (handler *CatalogHandler) catalogOperationView(
 	}
 	operation := &domain.Operation{
 		ID: operationID, Anchor: detail.Anchor, Title: detail.Heading, Method: detail.Method, Path: detail.Path,
+		RequestTarget: detail.RequestTarget, FixedQuery: append([]domain.FixedQueryParameter(nil), detail.FixedQuery...),
 		Summary: detail.Summary, Description: detail.Description, Deprecated: detail.Deprecated,
 		Tags: textRecordValues(detail.Tags),
 	}
@@ -173,7 +174,7 @@ func catalogOperationCurl(operation domain.Operation) string {
 			lines = append(lines, "  --data "+shellSingleQuote(media.Example)+" \\")
 		}
 	}
-	lines = append(lines, "  --url "+shellSingleQuote(operation.Path))
+	lines = append(lines, "  --url "+shellSingleQuote(domain.EffectiveOperationRequestTarget(operation)))
 	return strings.Join(lines, "\n")
 }
 

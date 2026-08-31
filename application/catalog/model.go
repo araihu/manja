@@ -111,17 +111,26 @@ type SecuritySchemeDirectoryV1 struct {
 }
 
 type OperationDirectoryV1 struct {
-	DetailID    domain.DetailID `json:"detailId"`
-	OperationID string          `json:"operationId"`
-	Method      string          `json:"method"`
-	Path        string          `json:"path"`
-	Title       string          `json:"title"`
-	Description string          `json:"description"`
-	Href        string          `json:"href"`
-	DetailChild string          `json:"detailChild"`
-	Deprecated  bool            `json:"deprecated"`
-	Tags        []string        `json:"tags"`
-	Facets      []FacetV1       `json:"facets"`
+	DetailID      domain.DetailID              `json:"detailId"`
+	OperationID   string                       `json:"operationId"`
+	Method        string                       `json:"method"`
+	Path          string                       `json:"path"`
+	RequestTarget string                       `json:"requestTarget,omitempty"`
+	FixedQuery    []domain.FixedQueryParameter `json:"fixedQuery,omitempty"`
+	Title         string                       `json:"title"`
+	Description   string                       `json:"description"`
+	Href          string                       `json:"href"`
+	DetailChild   string                       `json:"detailChild"`
+	Deprecated    bool                         `json:"deprecated"`
+	Tags          []string                     `json:"tags"`
+	Facets        []FacetV1                    `json:"facets"`
+}
+
+func (operation OperationDirectoryV1) EffectiveRequestTarget() string {
+	if operation.RequestTarget != "" {
+		return operation.RequestTarget
+	}
+	return operation.Path
 }
 
 type FacetV1 struct {

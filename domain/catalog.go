@@ -13,6 +13,7 @@ type CompatibilityProfileID string
 const (
 	CompatibilityProfileStrict     CompatibilityProfileID = "strict-v1"
 	CompatibilityProfileKubernetes CompatibilityProfileID = "kubernetes-v3-v1"
+	CompatibilityProfileVMware     CompatibilityProfileID = "vmware-vsphere-v1"
 )
 
 type CatalogRevisionKind string

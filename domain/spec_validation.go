@@ -134,6 +134,9 @@ func ValidateSpecIndexWithOptions(index SpecIndex, options ValidationOptions) er
 	}
 	for operationIndex, operation := range index.Operations {
 		prefix := fmt.Sprintf("spec operation %d", operationIndex)
+		if err := ValidateOperationRequestTarget(operation.Path, operation.RequestTarget, operation.FixedQuery); err != nil {
+			return fmt.Errorf("%s: %w", prefix, err)
+		}
 		for _, identity := range []struct {
 			name       string
 			value      string
@@ -420,21 +423,23 @@ func (v *specSchemaSummaryValidator) validatePointer(
 
 func validateSpecIndexSurfaceUniqueness(index SpecIndex) error {
 	type operationKey struct {
-		method string
-		path   string
+		method        string
+		path          string
+		requestTarget string
 	}
 	operations := make(map[operationKey]struct{}, len(index.Operations))
 	for operationIndex, operation := range index.Operations {
 		key := operationKey{
-			method: canonicalUpperSurfaceText(operation.Method),
-			path:   strings.TrimSpace(operation.Path),
+			method:        canonicalUpperSurfaceText(operation.Method),
+			path:          strings.TrimSpace(operation.Path),
+			requestTarget: strings.TrimSpace(EffectiveOperationRequestTarget(operation)),
 		}
 		if _, ok := operations[key]; ok {
 			return fmt.Errorf(
 				"spec operation %d duplicates canonical operation %s %s",
 				operationIndex,
 				key.method,
-				key.path,
+				key.requestTarget,
 			)
 		}
 		operations[key] = struct{}{}

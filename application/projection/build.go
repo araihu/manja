@@ -191,7 +191,7 @@ func (s *buildState) indexOperations(source []domain.Operation) ([]indexedOperat
 		if err := s.checkpoint(); err != nil {
 			return nil, err
 		}
-		anchor, err := operationAnchor(operation.ID, operation.Anchor, operation.Method, operation.Path)
+		anchor, err := operationAnchor(operation.ID, operation.Anchor, operation.Method, domain.EffectiveOperationRequestTarget(operation))
 		if err != nil {
 			return nil, err
 		}
@@ -265,6 +265,7 @@ func (s *buildState) buildOperations(source []indexedOperation) ([]OperationDire
 		directory := OperationDirectory{
 			Ordinal: uint32(operationIndex), ID: indexed.anchor, Anchor: indexed.anchor,
 			Href: selectedHref(indexed.anchor), Method: operation.Method, Path: operation.Path,
+			RequestTarget: operation.RequestTarget, FixedQuery: append([]domain.FixedQueryParameter(nil), operation.FixedQuery...),
 			Title: operationTitle(operation), Deprecated: operation.Deprecated, Sections: sections,
 		}
 		detail, err := s.buildOperationDetail(uint32(operationIndex), indexed)
@@ -364,7 +365,8 @@ func (s *buildState) buildOperationDetail(ordinal uint32, indexed indexedOperati
 	return OperationDetail{
 		Ordinal: ordinal, ID: indexed.anchor, Anchor: indexed.anchor, Href: selectedHref(indexed.anchor),
 		HeadingID: indexed.anchor, Heading: operationTitle(operation), HeadingLevel: 3,
-		Method: operation.Method, Path: operation.Path, Summary: operation.Summary,
+		Method: operation.Method, Path: operation.Path, RequestTarget: operation.RequestTarget,
+		FixedQuery: append([]domain.FixedQueryParameter(nil), operation.FixedQuery...), Summary: operation.Summary,
 		Description: operation.Description, Deprecated: operation.Deprecated,
 		Tags: textRecords("tag", operation.Tags, true, true), Parameters: parameters,
 		HasRequestBody: hasRequestBody, RequestBody: requestBody, Responses: responses,
@@ -545,7 +547,7 @@ func operationTitle(operation domain.Operation) string {
 	if strings.TrimSpace(operation.ID) != "" {
 		return operation.ID
 	}
-	return strings.TrimSpace(strings.ToUpper(operation.Method) + " " + operation.Path)
+	return strings.TrimSpace(strings.ToUpper(operation.Method) + " " + domain.EffectiveOperationRequestTarget(operation))
 }
 
 func deduplicateStrings(source []string, dropBlank bool) []string {

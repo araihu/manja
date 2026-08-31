@@ -5,7 +5,6 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"fmt"
-	"path"
 	"strings"
 )
 
@@ -16,7 +15,12 @@ type DetailID string
 type detailHasher func([]byte) [32]byte
 
 func NewOperationDetailID(catalogID, documentKey, method, literalPath string) (DetailID, error) {
-	identity, _, err := newOperationDetailIdentity(catalogID, documentKey, method, literalPath, sha256.Sum256)
+	identity, _, err := newOperationDetailIdentity(catalogID, documentKey, method, literalPath, "", nil, sha256.Sum256)
+	return identity, err
+}
+
+func NewOperationDetailIDWithRequestTarget(catalogID, documentKey, method, literalPath, requestTarget string, fixed []FixedQueryParameter) (DetailID, error) {
+	identity, _, err := newOperationDetailIdentity(catalogID, documentKey, method, literalPath, requestTarget, fixed, sha256.Sum256)
 	return identity, err
 }
 
@@ -26,7 +30,8 @@ func NewSchemaDetailID(catalogID, documentKey, literalName string) (DetailID, er
 }
 
 func newOperationDetailIdentity(
-	catalogID, documentKey, method, literalPath string,
+	catalogID, documentKey, method, literalPath, requestTarget string,
+	fixed []FixedQueryParameter,
 	hasher detailHasher,
 ) (DetailID, []byte, error) {
 	if err := validateCatalogKey("catalog id", catalogID); err != nil {
@@ -44,17 +49,14 @@ func newOperationDetailIdentity(
 			return "", nil, fmt.Errorf("operation method is invalid")
 		}
 	}
-	if err := ValidateCanonicalIdentity("operation path", literalPath, false); err != nil {
+	if err := ValidateOperationRequestTarget(literalPath, requestTarget, fixed); err != nil {
 		return "", nil, err
 	}
-	cleanInput := literalPath
-	if literalPath != "/" && strings.HasSuffix(literalPath, "/") {
-		cleanInput = strings.TrimSuffix(literalPath, "/")
+	identityTarget := literalPath
+	if requestTarget != "" {
+		identityTarget = requestTarget
 	}
-	if !strings.HasPrefix(literalPath, "/") || path.Clean(cleanInput) != cleanInput || strings.ContainsAny(literalPath, " ?#") {
-		return "", nil, fmt.Errorf("operation path is invalid")
-	}
-	preimage := detailPreimage(detailIdentityDomain, catalogID, documentKey, "operation", method, literalPath)
+	preimage := detailPreimage(detailIdentityDomain, catalogID, documentKey, "operation", method, identityTarget)
 	return detailIDFromPreimage(preimage, hasher), preimage, nil
 }
 

@@ -10,6 +10,7 @@ import (
 	"unicode"
 
 	"github.com/araihu/manja/application/projection"
+	"github.com/araihu/manja/domain"
 )
 
 func validateRecordSemantics(document projection.Document) error {
@@ -91,6 +92,9 @@ func validateOperationSemantics(document projection.Document, targets map[string
 			detail.Deprecated != directory.Deprecated || detail.Summary != "" && detail.Heading != detail.Summary {
 			return nil, codecFailure("operations", "non_canonical")
 		}
+		if domain.ValidateOperationRequestTarget(directory.Path, directory.RequestTarget, directory.FixedQuery) != nil || detail.RequestTarget != directory.RequestTarget || !equalFixedQuery(detail.FixedQuery, directory.FixedQuery) {
+			return nil, codecFailure("operations.requestTarget", "non_canonical")
+		}
 		if _, duplicate := targets[directory.Anchor]; duplicate {
 			return nil, codecFailure("operations", "duplicate_record")
 		}
@@ -102,6 +106,18 @@ func validateOperationSemantics(document projection.Document, targets map[string
 		}
 	}
 	return operations, nil
+}
+
+func equalFixedQuery(left, right []domain.FixedQueryParameter) bool {
+	if len(left) != len(right) {
+		return false
+	}
+	for index := range left {
+		if left[index] != right[index] {
+			return false
+		}
+	}
+	return true
 }
 
 func validateOperationNestedSemantics(detail projection.OperationDetail) error {

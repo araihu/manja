@@ -6,6 +6,8 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/araihu/manja/application/projection"
+	"github.com/araihu/manja/domain"
 	"github.com/araihu/manja/internal/web/templates"
 )
 
@@ -18,7 +20,7 @@ func (handler *CatalogHandler) catalogPageMetadata(request *http.Request, data t
 	if data.OrganizationRoot {
 		description = firstNonempty(description, "Browse OpenAPI catalogs and standalone specs published by "+data.Organization.Title+".")
 	} else if data.Selected != nil && data.Selected.Operation != nil {
-		description = firstNonempty(data.Selected.Operation.Description, data.Selected.Operation.Summary, strings.TrimSpace(strings.ToUpper(data.Selected.Operation.Method)+" "+data.Selected.Operation.Path))
+		description = firstNonempty(data.Selected.Operation.Description, data.Selected.Operation.Summary, strings.TrimSpace(strings.ToUpper(data.Selected.Operation.Method)+" "+operationDetailRequestTarget(*data.Selected.Operation)))
 	} else if data.Selected != nil && data.Selected.Schema != nil {
 		description = firstNonempty(data.Selected.Schema.Description, "OpenAPI schema "+data.Selected.Schema.Heading+" in "+data.Directory.Title+".")
 	} else if data.Document != nil {
@@ -39,6 +41,10 @@ func (handler *CatalogHandler) catalogPageMetadata(request *http.Request, data t
 	}
 	metadata.CanonicalURL = catalogCanonicalURL(request, data.Mount, presentation.CanonicalBase)
 	return metadata
+}
+
+func operationDetailRequestTarget(operation projection.OperationDetail) string {
+	return domain.EffectiveOperationRequestTarget(domain.Operation{Path: operation.Path, RequestTarget: operation.RequestTarget})
 }
 
 func (handler *CatalogHandler) organizationPresentation(request *http.Request) CatalogPresentation {

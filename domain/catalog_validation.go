@@ -146,7 +146,7 @@ func validateCatalogIndexWithDetailHasher(index CatalogIndex, hasher detailHashe
 		}
 		for _, operation := range document.Index.Operations {
 			identity, preimage, err := newOperationDetailIdentity(
-				index.CatalogID, document.Key, operation.Method, operation.Path, hasher,
+				index.CatalogID, document.Key, operation.Method, operation.Path, operation.RequestTarget, operation.FixedQuery, hasher,
 			)
 			if err != nil {
 				return err

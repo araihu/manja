@@ -60,9 +60,9 @@ func PrepareOperationNavigation(
 	projected := detail.Operation
 	id := string(detail.ID)
 	if projected.ID != id || projected.Anchor != id || projected.HeadingID != id || projected.HeadingLevel == 0 ||
-		!validOperationMethod(projected.Method) || !validOperationPath(projected.Path) ||
+		!validOperationMethod(projected.Method) || !validOperationPath(projected.Path) || domain.ValidateOperationRequestTarget(projected.Path, projected.RequestTarget, projected.FixedQuery) != nil ||
 		operation.Anchor != projected.Anchor || operation.Title != projected.Heading || operation.Method != projected.Method ||
-		operation.Path != projected.Path || operation.Summary != projected.Summary || operation.Description != projected.Description ||
+		operation.Path != projected.Path || operation.RequestTarget != projected.RequestTarget || !equalFixedQuery(operation.FixedQuery, projected.FixedQuery) || operation.Summary != projected.Summary || operation.Description != projected.Description ||
 		operation.Deprecated != projected.Deprecated {
 		return OperationNavigationFragment{}, invalidOperationNavigationField("operation identity")
 	}
@@ -83,7 +83,7 @@ func PrepareOperationNavigation(
 		if !validDetailID(candidate.DetailID) {
 			return OperationNavigationFragment{}, invalidOperationNavigationField("directory detail id")
 		}
-		if !validOperationMethod(candidate.Method) || !validOperationPath(candidate.Path) {
+		if !validOperationMethod(candidate.Method) || !validOperationPath(candidate.Path) || domain.ValidateOperationRequestTarget(candidate.Path, candidate.RequestTarget, candidate.FixedQuery) != nil {
 			return OperationNavigationFragment{}, invalidOperationNavigationField("directory route")
 		}
 		if !validOperationNavigationText(candidate.Title, false) || !validOperationNavigationText(candidate.OperationID, true) ||
@@ -117,8 +117,8 @@ func PrepareOperationNavigation(
 		return OperationNavigationFragment{}, invalidOperationNavigationField("selected operation")
 	}
 	selected := document.Operations[selectedIndex]
-	if selected.OperationID != operation.ID || selected.Method != operation.Method || selected.Path != operation.Path ||
-		strings.TrimSpace(selected.Title) != operationNavigationTitle(operation.Title, operation.Summary, operation.ID, operation.Method, operation.Path) ||
+	if selected.OperationID != operation.ID || selected.Method != operation.Method || selected.Path != operation.Path || selected.RequestTarget != operation.RequestTarget || !equalFixedQuery(selected.FixedQuery, operation.FixedQuery) ||
+		strings.TrimSpace(selected.Title) != operationNavigationTitle(operation.Title, operation.Summary, operation.ID, operation.Method, domain.EffectiveOperationRequestTarget(operation)) ||
 		!equalNavigationStrings(selected.Tags, operation.Tags) || (selected.Href != projected.Href && selected.Href != strings.TrimPrefix(projected.Href, "documents/")) {
 		return OperationNavigationFragment{}, invalidOperationNavigationField("selected directory operation")
 	}
@@ -177,7 +177,7 @@ func OperationGroupLabel(operation catalog.OperationDirectoryV1) string {
 
 func prepareOperationNavigationItem(documentHref string, operation catalog.OperationDirectoryV1, openGroups map[string]struct{}) operationNavigationItemData {
 	return operationNavigationItemData{
-		Title:  operationNavigationTitle(operation.Title, operation.OperationID, operation.Method, operation.Path),
+		Title:  operationNavigationTitle(operation.Title, operation.OperationID, operation.Method, operation.EffectiveRequestTarget()),
 		Method: operation.Method,
 		Href:   operationNavigationHref(documentHref, operation.DetailID, openGroups),
 	}

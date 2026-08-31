@@ -41,6 +41,9 @@ func validateCatalog(value catalog.CatalogArtifactV1) error {
 			return err
 		}
 		for operationIndex, operation := range document.Operations {
+			if err := domain.ValidateOperationRequestTarget(operation.Path, operation.RequestTarget, operation.FixedQuery); err != nil {
+				return fmt.Errorf("catalogjson: %w", err)
+			}
 			if err := validateDetailID(operation.DetailID); err != nil {
 				return err
 			}
@@ -49,7 +52,7 @@ func validateCatalog(value catalog.CatalogArtifactV1) error {
 			}
 			if operationIndex > 0 {
 				previous := document.Operations[operationIndex-1]
-				if previous.Path > operation.Path || previous.Path == operation.Path && previous.Method >= operation.Method {
+				if previous.Path > operation.Path || previous.Path == operation.Path && (previous.Method > operation.Method || previous.Method == operation.Method && previous.EffectiveRequestTarget() >= operation.EffectiveRequestTarget()) {
 					return fmt.Errorf("catalogjson: operations are not strictly sorted")
 				}
 			}

@@ -265,7 +265,7 @@ func globalSearchExactRecord(directory catalog.CatalogArtifactV1, mount, query s
 			return catalog.SearchRecordV1{
 				DetailID: operation.DetailID, DocumentKey: document.Key, Kind: "operation",
 				Title: operation.Title, Description: operation.Description, Href: href,
-				OperationID: operation.OperationID, Method: operation.Method, Path: operation.Path,
+				OperationID: operation.OperationID, Method: operation.Method, Path: operation.EffectiveRequestTarget(),
 				Occurrences: 1, Documents: []string{document.Key},
 			}, true, nil
 		}

@@ -60,7 +60,8 @@ func buildSearchArtifacts(directory CatalogArtifactV1, bounds Bounds, resourceLi
 	schemaGroups := make(map[string][]schemaSearchOccurrence)
 	for _, document := range directory.Documents {
 		for _, operation := range document.Operations {
-			values := []string{operation.Title, operation.OperationID, operation.Method, operation.Path, document.Key, searchSnippet(operation.Description)}
+			requestTarget := operation.EffectiveRequestTarget()
+			values := []string{operation.Title, operation.OperationID, operation.Method, operation.Path, requestTarget, document.Key, searchSnippet(operation.Description)}
 			values = append(values, operation.Tags...)
 			for _, facet := range operation.Facets {
 				values = append(values, facet.Name, facet.Value)
@@ -69,15 +70,15 @@ func buildSearchArtifacts(directory CatalogArtifactV1, bounds Bounds, resourceLi
 				record: SearchRecordV1{
 					DetailID: operation.DetailID, DocumentKey: document.Key, Kind: "operation",
 					Title: operation.Title, Description: searchSnippet(operation.Description), Href: operation.Href,
-					OperationID: operation.OperationID, Method: operation.Method, Path: operation.Path,
+					OperationID: operation.OperationID, Method: operation.Method, Path: requestTarget,
 					Occurrences: 1, Documents: []string{document.Key},
 				},
 				tokens: searchTokenSet(values...),
 				exact: []searchExactKey{
 					{value: string(operation.DetailID), priority: 1},
 					{value: operation.OperationID, priority: 2},
-					{value: operation.Path, priority: 2},
-					{value: operation.Method + " " + operation.Path, priority: 2},
+					{value: requestTarget, priority: 2},
+					{value: operation.Method + " " + requestTarget, priority: 2},
 				},
 			})
 		}

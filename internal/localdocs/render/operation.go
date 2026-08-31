@@ -39,7 +39,7 @@ func PrepareOperationHeader(detail catalog.DetailRecordV1, operation domain.Oper
 	}
 	projected := detail.Operation
 	id := string(detail.ID)
-	if projected.ID != id || projected.Anchor != id || projected.HeadingID != id || projected.HeadingLevel == 0 || strings.TrimSpace(projected.Heading) == "" || !validOperationMethod(projected.Method) || !validOperationPath(projected.Path) {
+	if projected.ID != id || projected.Anchor != id || projected.HeadingID != id || projected.HeadingLevel == 0 || strings.TrimSpace(projected.Heading) == "" || !validOperationMethod(projected.Method) || !validOperationPath(projected.Path) || domain.ValidateOperationRequestTarget(projected.Path, projected.RequestTarget, projected.FixedQuery) != nil {
 		return OperationHeaderFragment{}, invalidOperationField("operation detail identity")
 	}
 	documentIndex := strings.LastIndex(documentHref, "/documents/")
@@ -50,12 +50,12 @@ func PrepareOperationHeader(detail catalog.DetailRecordV1, operation domain.Oper
 	if projected.Href != wantHref {
 		return OperationHeaderFragment{}, invalidOperationField("operation detail href")
 	}
-	if operation.Anchor != projected.Anchor || operation.Title != projected.Heading || operation.Method != projected.Method || operation.Path != projected.Path || operation.Summary != projected.Summary || operation.Description != projected.Description || operation.Deprecated != projected.Deprecated {
+	if operation.Anchor != projected.Anchor || operation.Title != projected.Heading || operation.Method != projected.Method || operation.Path != projected.Path || operation.RequestTarget != projected.RequestTarget || !equalFixedQuery(operation.FixedQuery, projected.FixedQuery) || operation.Summary != projected.Summary || operation.Description != projected.Description || operation.Deprecated != projected.Deprecated {
 		return OperationHeaderFragment{}, invalidOperationField("prepared operation")
 	}
 	return OperationHeaderFragment{data: operationHeaderData{
 		Anchor: operation.Anchor, Title: operationTitle(operation), Method: operation.Method,
-		Path: operation.Path, Description: operation.Description, Deprecated: operation.Deprecated,
+		Path: domain.EffectiveOperationRequestTarget(operation), Description: operation.Description, Deprecated: operation.Deprecated,
 	}, valid: true}, nil
 }
 
@@ -80,6 +80,18 @@ func validOperationPath(value string) bool {
 		cleanInput = strings.TrimSuffix(value, "/")
 	}
 	return strings.HasPrefix(value, "/") && path.Clean(cleanInput) == cleanInput && !strings.ContainsAny(value, " ?#")
+}
+
+func equalFixedQuery(left, right []domain.FixedQueryParameter) bool {
+	if len(left) != len(right) {
+		return false
+	}
+	for index := range left {
+		if left[index] != right[index] {
+			return false
+		}
+	}
+	return true
 }
 
 func OperationHeader(fragment OperationHeaderFragment, actions, provenance templ.Component) templ.Component {
@@ -110,7 +122,7 @@ func operationTitle(operation domain.Operation) string {
 			return value
 		}
 	}
-	return strings.TrimSpace(operation.Method + " " + operation.Path)
+	return strings.TrimSpace(operation.Method + " " + domain.EffectiveOperationRequestTarget(operation))
 }
 
 func invalidOperationField(name string) error {
