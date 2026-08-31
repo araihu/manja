@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -2440,7 +2441,10 @@ func publicationKey(projectID, revisionID string) string {
 }
 
 func durableAtomicWrite(filePath string, data []byte, mode fs.FileMode) error {
-	return durableAtomicWriteWithConfirmation(filePath, data, mode, confirmAtomicReplacement)
+	return durableAtomicWriteFuncWithConfirmation(filePath, mode, func(writer io.Writer) error {
+		_, err := writer.Write(data)
+		return err
+	}, confirmAtomicReplacement)
 }
 
 func durableAtomicWriteWithConfirmation(
@@ -2449,6 +2453,21 @@ func durableAtomicWriteWithConfirmation(
 	mode fs.FileMode,
 	confirmReplacement func(string) error,
 ) error {
+	return durableAtomicWriteFuncWithConfirmation(filePath, mode, func(writer io.Writer) error {
+		_, err := writer.Write(data)
+		return err
+	}, confirmReplacement)
+}
+
+func durableAtomicWriteFuncWithConfirmation(
+	filePath string,
+	mode fs.FileMode,
+	write func(io.Writer) error,
+	confirmReplacement func(string) error,
+) error {
+	if write == nil {
+		return fmt.Errorf("atomic write callback is nil")
+	}
 	if err := os.MkdirAll(filepath.Dir(filePath), 0o755); err != nil {
 		return err
 	}
@@ -2467,7 +2486,7 @@ func durableAtomicWriteWithConfirmation(
 	if err := temporary.Chmod(mode); err != nil {
 		return err
 	}
-	if _, err := temporary.Write(data); err != nil {
+	if err := write(temporary); err != nil {
 		return err
 	}
 	if err := temporary.Sync(); err != nil {

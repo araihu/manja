@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"fmt"
+	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -14,6 +15,13 @@ import (
 // replacement for immutable catalog journals and route pointers.
 func DurableAtomicWrite(filePath string, data []byte, mode fs.FileMode) error {
 	return durableAtomicWrite(filePath, data, mode)
+}
+
+// DurableAtomicWriteFunc exposes the repository's platform-aware atomic file
+// replacement without requiring callers to materialize the complete file in
+// memory. The callback writes only to an unpublished staging file.
+func DurableAtomicWriteFunc(filePath string, mode fs.FileMode, write func(io.Writer) error) error {
+	return durableAtomicWriteFuncWithConfirmation(filePath, mode, write, confirmAtomicReplacement)
 }
 
 // DurableRenameNew publishes an already-synced staging directory at a new,
