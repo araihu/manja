@@ -890,10 +890,33 @@ func runFragmentsScript(payload map[string]any) string {
 	return strings.TrimSpace(string(output))
 }
 
+const (
+	maxSimpleSampleDepth = 12
+	maxSimpleSampleNodes = 128
+)
+
+type simpleSampleState struct {
+	visiting map[*openapi3.Schema]struct{}
+	nodes    int
+}
+
 func simpleSample(schema *openapi3.Schema) any {
-	if schema == nil {
-		return nil
+	state := simpleSampleState{visiting: make(map[*openapi3.Schema]struct{})}
+	value, _ := state.sample(schema, 0)
+	return value
+}
+
+func (state *simpleSampleState) sample(schema *openapi3.Schema, depth int) (any, bool) {
+	if schema == nil || depth > maxSimpleSampleDepth || state.nodes >= maxSimpleSampleNodes {
+		return nil, false
 	}
+	if _, exists := state.visiting[schema]; exists {
+		return nil, false
+	}
+	state.nodes++
+	state.visiting[schema] = struct{}{}
+	defer delete(state.visiting, schema)
+
 	switch {
 	case schema.Type != nil && schema.Type.Includes("object"):
 		object := map[string]any{}
@@ -904,21 +927,25 @@ func simpleSample(schema *openapi3.Schema) any {
 		sort.Strings(names)
 		for _, name := range names {
 			if ref := schema.Properties[name]; ref != nil && ref.Value != nil {
-				object[name] = simpleSample(ref.Value)
+				if value, ok := state.sample(ref.Value, depth+1); ok {
+					object[name] = value
+				}
 			}
 		}
-		return object
+		return object, true
 	case schema.Type != nil && schema.Type.Includes("array"):
 		if schema.Items != nil && schema.Items.Value != nil {
-			return []any{simpleSample(schema.Items.Value)}
+			if value, ok := state.sample(schema.Items.Value, depth+1); ok {
+				return []any{value}, true
+			}
 		}
-		return []any{}
+		return []any{}, true
 	case schema.Type != nil && schema.Type.Includes("boolean"):
-		return true
+		return true, true
 	case schema.Type != nil && (schema.Type.Includes("number") || schema.Type.Includes("integer")):
-		return 1
+		return 1, true
 	default:
-		return "string"
+		return "string", true
 	}
 }
 
