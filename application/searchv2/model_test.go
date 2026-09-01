@@ -1,6 +1,10 @@
 package searchv2
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/araihu/manja/domain"
+)
 
 func TestRecordIDsAreStableAndOccurrenceScoped(t *testing.T) {
 	first := mustRecord(t, RecordInput{
@@ -51,6 +55,29 @@ func TestSemanticRecordIdentityIsCatalogIndependentAndSpecScoped(t *testing.T) {
 	}
 	if first.ID == otherSpec.ID {
 		t.Fatalf("identical schemas in different specs share semantic id %q", first.ID)
+	}
+}
+
+func TestFixedQueryOperationVariantsHaveDistinctSemanticIdentity(t *testing.T) {
+	reset := mustSemanticRecord(t, SemanticRecordInput{
+		Kind: KindOperation, SpecKey: "vcenter", SpecTitle: "vCenter",
+		LogicalKey: "POST /appliance/networking?action=reset", Title: "Reset networking",
+		OperationID: "Appliance.Networking_reset", Method: "POST", Path: "/appliance/networking",
+		RequestTarget: "/appliance/networking?action=reset",
+		FixedQuery:    []domain.FixedQueryParameter{{Name: "action", Value: "reset"}},
+	})
+	change := mustSemanticRecord(t, SemanticRecordInput{
+		Kind: KindOperation, SpecKey: "vcenter", SpecTitle: "vCenter",
+		LogicalKey: "POST /appliance/networking?action=change", Title: "Change networking",
+		OperationID: "Appliance.Networking_change", Method: "POST", Path: "/appliance/networking",
+		RequestTarget: "/appliance/networking?action=change",
+		FixedQuery:    []domain.FixedQueryParameter{{Name: "action", Value: "change"}},
+	})
+	if reset.ID == change.ID {
+		t.Fatalf("fixed-query variants share semantic id %q", reset.ID)
+	}
+	if reset.Path != "/appliance/networking" || reset.RequestTarget != "/appliance/networking?action=reset" || len(reset.FixedQuery) != 1 {
+		t.Fatalf("fixed-query semantic record = %#v", reset)
 	}
 }
 

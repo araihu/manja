@@ -248,6 +248,52 @@
     return routes.slice(start, end);
   }
 
+  function boundedDamerauLevenshtein(leftValue, rightValue, limit) {
+    var left = Array.from(leftValue);
+    var right = Array.from(rightValue);
+    if (Math.abs(left.length - right.length) > limit) return limit + 1;
+    var previousPrevious = new Array(right.length + 1).fill(0);
+    var previous = Array.from({ length: right.length + 1 }, function (_, index) { return index; });
+    for (var leftIndex = 1; leftIndex <= left.length; leftIndex++) {
+      var current = new Array(right.length + 1).fill(0);
+      current[0] = leftIndex;
+      for (var rightIndex = 1; rightIndex <= right.length; rightIndex++) {
+        var cost = left[leftIndex - 1] === right[rightIndex - 1] ? 0 : 1;
+        current[rightIndex] = Math.min(
+          previous[rightIndex] + 1,
+          current[rightIndex - 1] + 1,
+          previous[rightIndex - 1] + cost
+        );
+        if (leftIndex > 1 && rightIndex > 1 && left[leftIndex - 1] === right[rightIndex - 2] && left[leftIndex - 2] === right[rightIndex - 1]) {
+          current[rightIndex] = Math.min(current[rightIndex], previousPrevious[rightIndex - 2] + 1);
+        }
+      }
+      previousPrevious = previous;
+      previous = current;
+    }
+    return previous[right.length];
+  }
+
+  function fuzzyPostingRoutes(routes, token) {
+    var runes = Array.from(token);
+    if (runes.length < 4) return [];
+    var maxDistance = runes.length >= 8 ? 2 : 1;
+    var first = runes[0];
+    var start = lowerBound(routes, first, function (route) { return route.key; });
+    var matches = [];
+    for (var index = start; index < routes.length && routes[index].key.indexOf(first) === 0; index++) {
+      var candidateLength = Array.from(routes[index].key).length;
+      if (Math.abs(candidateLength - runes.length) > maxDistance) continue;
+      var distance = boundedDamerauLevenshtein(token, routes[index].key, maxDistance);
+      if (distance <= maxDistance) matches.push({ route: routes[index], distance: distance });
+    }
+    matches.sort(function (left, right) {
+      if (left.distance !== right.distance) return left.distance - right.distance;
+      return left.route.key.localeCompare(right.route.key);
+    });
+    return matches.slice(0, MAX_RESULTS < 8 ? MAX_RESULTS : 8).map(function (match) { return match.route; });
+  }
+
   function union(left, right) {
     var result = [];
     var i = 0;
@@ -381,6 +427,18 @@
     receipt.postings += postings;
   };
 
+  SearchRouter.prototype.reserveRecord = function (receipt, reference) {
+    if (!validReference(reference)) throw new Error("Invalid search reference");
+    if (receipt.paths.has(reference.path)) return;
+    if (receipt.recordSegments + 1 > MAX_RESULTS || receipt.bytes + reference.length > MAX_DECODED_BYTES) {
+      throw new Error("Search query is too broad");
+    }
+    receipt.paths.add(reference.path);
+    receipt.segments++;
+    receipt.recordSegments++;
+    receipt.bytes += reference.length;
+  };
+
   SearchRouter.prototype.loadExact = function (directory, exact, receipt) {
     return crypto.subtle.digest("SHA-256", new TextEncoder().encode(exact)).then(function (digest) {
       var digestHex = bytesToHex(new Uint8Array(digest));
@@ -434,7 +492,6 @@
   SearchRouter.prototype.loadCandidates = function (directory, tokens, receipt) {
     var groups = [];
     var postingOrdinals = new Set();
-    var trigramOrdinals = new Set();
     for (var tokenIndex = 0; tokenIndex < tokens.length; tokenIndex++) {
       var token = tokens[tokenIndex];
       var routes = postingRoutes(directory.tokenRoutes, token, true);
@@ -442,31 +499,19 @@
         groups.push({ keys: routes.map(function (route) { postingOrdinals.add(route.segment); return route.key; }), fuzzy: false });
         continue;
       }
-      var keys = [];
-      trigrams(token).forEach(function (trigram) {
-        var matched = postingRoutes(directory.trigramRoutes, trigram, false);
-        if (matched.length) {
-          keys.push(matched[0].key);
-          trigramOrdinals.add(matched[0].segment);
-        }
-      });
-      if (!keys.length) return Promise.resolve([]);
-      groups.push({ keys: keys, fuzzy: true });
+      routes = fuzzyPostingRoutes(directory.tokenRoutes, token);
+      if (!routes.length) return Promise.resolve([]);
+      groups.push({ keys: routes.map(function (route) { postingOrdinals.add(route.segment); return route.key; }), fuzzy: true });
     }
-    if (postingOrdinals.size > MAX_TOKEN_SEGMENTS || trigramOrdinals.size > MAX_TRIGRAM_SEGMENTS) {
+    if (postingOrdinals.size > MAX_TOKEN_SEGMENTS) {
       return Promise.reject(new Error("Search query is too broad"));
     }
-    return Promise.all([
-      this.loadPostingEntries(directory.postingSegments, postingOrdinals, receipt),
-      this.loadPostingEntries(directory.trigramSegments, trigramOrdinals, receipt),
-    ]).then(function (loaded) {
+    return this.loadPostingEntries(directory.postingSegments, postingOrdinals, receipt).then(function (loaded) {
       var candidates = [];
       groups.forEach(function (group, groupIndex) {
-        var entries = group.fuzzy ? loaded[1] : loaded[0];
         var groupCandidates = [];
-        group.keys.forEach(function (key, keyIndex) {
-          var records = entries.get(key) || [];
-          groupCandidates = group.fuzzy && keyIndex > 0 ? intersect(groupCandidates, records) : union(groupCandidates, records);
+        group.keys.forEach(function (key) {
+          groupCandidates = union(groupCandidates, loaded.get(key) || []);
         });
         candidates = groupIndex === 0 ? groupCandidates : intersect(candidates, groupCandidates);
       });
@@ -488,7 +533,7 @@
     });
     var selected = Array.from(indexes).sort(function (left, right) { return left - right; }).map(function (index) {
       var reference = directory.recordSegments[index];
-      this.reserve(receipt, reference, false);
+      this.reserveRecord(receipt, reference);
       return reference;
     }.bind(this));
     return Promise.all(selected.map(function (reference) {
@@ -522,7 +567,7 @@
 
   SearchRouter.prototype.searchClient = function (query) {
     var exact = normalizeExact(query);
-    var receipt = { paths: new Set(), segments: 0, bytes: 0, postings: 0 };
+    var receipt = { paths: new Set(), segments: 0, recordSegments: 0, bytes: 0, postings: 0 };
     return this.loadDirectory().then(function (directory) {
       return this.loadExact(directory, exact, receipt).then(function (matches) {
         var priorities = new Map();
@@ -550,9 +595,6 @@
             else throw new Error("Search query is too broad");
           }
           candidateIDs.sort(function (left, right) {
-            var leftKind = searchKindPriority(directory.ranks[left].k);
-            var rightKind = searchKindPriority(directory.ranks[right].k);
-            if (leftKind !== rightKind) return leftKind - rightKind;
             var leftPriority = priorities.get(left) || 0;
             var rightPriority = priorities.get(right) || 0;
             if (leftPriority !== rightPriority) {
@@ -560,6 +602,9 @@
               if (rightPriority === 0) return -1;
               return leftPriority - rightPriority;
             }
+            var leftKind = searchKindPriority(directory.ranks[left].k);
+            var rightKind = searchKindPriority(directory.ranks[right].k);
+            if (leftKind !== rightKind) return leftKind - rightKind;
             var leftTitle = normalizeExact(directory.ranks[left].t);
             var rightTitle = normalizeExact(directory.ranks[right].t);
             if ((leftTitle === exact) !== (rightTitle === exact)) return leftTitle === exact ? -1 : 1;
@@ -577,6 +622,7 @@
           description: asString(record.description),
           href: this.resultHref(record.href),
           kind: asString(record.kind),
+          operationId: asString(record.operationId),
           method: asString(record.method).toUpperCase(),
           path: asString(record.path),
           section: this.documentLabels[asString(record.documentKey)] || "",
@@ -591,7 +637,11 @@
     if (this.globalSearch && this.contextMount) url.searchParams.set("context_mount", this.contextMount);
     if (this.globalSearch && this.contextDocument) url.searchParams.set("context_document", this.contextDocument);
     return fetch(url.toString(), { headers: { Accept: "application/json" } }).then(function (response) {
-      if (!response.ok) throw new Error("Search is temporarily unavailable");
+      if (!response.ok) {
+        if (response.status === 400) throw new Error("Enter a valid search query");
+        if (response.status === 422) throw new Error("Search is too broad. Add another term");
+        throw new Error("Search is temporarily unavailable");
+      }
       return response.json();
     }).then(function (payload) {
       if (!payload || !Array.isArray(payload.results)) throw new Error("Search fallback response is invalid");
@@ -599,7 +649,8 @@
         return {
           id: asString(record.detailId), title: asString(record.title), description: asString(record.description),
           href: asString(record.href), kind: asString(record.kind), method: asString(record.method).toUpperCase(),
-          path: asString(record.path), section: this.documentLabels[asString(record.documentKey)] || asString(record.section || ""),
+          operationId: asString(record.operationId), path: asString(record.path),
+          section: this.documentLabels[asString(record.documentKey)] || asString(record.section || ""),
         };
       }.bind(this));
     }.bind(this));
@@ -641,6 +692,7 @@
       description: asString(raw.description).slice(0, 320),
       href: href.slice(0, 2048),
       kind: asString(raw.kind).slice(0, 32),
+      operationId: asString(raw.operationId).slice(0, 256),
       method: asString(raw.method).toUpperCase().slice(0, 16),
       path: asString(raw.path).slice(0, 512),
       section: asString(raw.section).slice(0, 160),
@@ -651,7 +703,7 @@
     var order = [];
     var groups = new Map();
     items.forEach(function (item) {
-      var labels = { operation: "Operations", schema: "Schemas", document: "Documents" };
+      var labels = { catalog: "Catalogs", document: "Specs", operation: "Operations", schema: "Schemas" };
       var label = labels[item.kind.toLowerCase()] || "Other results";
       if (!groups.has(label)) {
         groups.set(label, []);
@@ -718,7 +770,8 @@
         if (event.defaultPrevented) return;
         if ((event.metaKey || event.ctrlKey) && !event.altKey && !event.shiftKey && asString(event.key).toLowerCase() === "k") {
           event.preventDefault();
-          if (!this.open) this.openSearch();
+          if (!this.open) this.openSearch(true);
+          else this.$nextTick(function () { this.focusInput(true); }.bind(this));
           return;
         }
         if (this.open && event.key === "Escape") {
@@ -726,7 +779,26 @@
           this.closeSearch();
         }
       },
-      openSearch: function () {
+      focusInput: function (focusVisible) {
+        if (!this.$refs.input) return;
+        var input = this.$refs.input;
+        if (focusVisible) {
+          input.dataset.keyboardFocus = "true";
+          var clearKeyboardFocus = function () { delete input.dataset.keyboardFocus; };
+          input.addEventListener("pointerdown", clearKeyboardFocus, { once: true });
+          input.addEventListener("blur", clearKeyboardFocus, { once: true });
+        } else {
+          delete input.dataset.keyboardFocus;
+        }
+        if (focusVisible) {
+          try {
+            input.focus({ focusVisible: true });
+            return;
+          } catch (error) {}
+        }
+        input.focus();
+      },
+      openSearch: function (focusVisible) {
         var focus = document.activeElement;
         if (focus && focus.closest && focus.closest("#catalog-navigation")) {
           focus = document.querySelector('[aria-controls="catalog-navigation"]') || focus;
@@ -741,7 +813,7 @@
         this.readRecent();
         this.resetResultsScroll();
         window.dispatchEvent(new CustomEvent("goshtoso-search-open", { detail: { id: "catalog-search" } }));
-        this.$nextTick(function () { if (this.$refs.input) this.$refs.input.focus(); }.bind(this));
+        this.$nextTick(function () { this.focusInput(Boolean(focusVisible)); }.bind(this));
       },
       closeSearch: function (restoreFocus) {
         if (restoreFocus === undefined) restoreFocus = true;

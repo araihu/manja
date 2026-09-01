@@ -118,3 +118,43 @@ test('client search resolves deep exact shards and keeps document labels human',
   assert.equal(records[0].section, 'Virtual Infrastructure JSON API')
   assert.equal(records[0].href, '/group/project/pets/documents/openapi/?selected=detail#detail')
 })
+
+test('global search reports a broad query instead of a generic outage', async () => {
+  const fixture = searchModel({
+    searchGlobal: 'true',
+    searchFallbackUrl: '/search.json',
+    searchMount: '/',
+  }, {
+    fetch: async () => ({ ok: false, status: 422 }),
+  })
+  const router = fixture.window.ManjaCatalogSearchRouter.create(fixture.root)
+  await assert.rejects(router.search('reset'), /Search is too broad\. Add another term/)
+})
+
+test('Ctrl K refocuses an already-open dialog restored by browser history', () => {
+  const fixture = searchModel()
+  let focused = 0
+  let focusOptions = null
+  let prevented = false
+  fixture.model.$refs = {
+    input: {
+      dataset: {},
+      addEventListener() {},
+      focus: options => { focused++; focusOptions = options },
+    },
+  }
+  fixture.model.open = true
+  fixture.model.handleWindowKey({
+    defaultPrevented: false,
+    ctrlKey: true,
+    metaKey: false,
+    altKey: false,
+    shiftKey: false,
+    key: 'k',
+    preventDefault: () => { prevented = true },
+  })
+  assert.equal(prevented, true)
+  assert.equal(focused, 1)
+  assert.equal(focusOptions?.focusVisible, true)
+  assert.equal(fixture.model.$refs.input.dataset.keyboardFocus, 'true')
+})

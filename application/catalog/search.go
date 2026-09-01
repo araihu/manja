@@ -25,11 +25,25 @@ type SearchResult struct {
 	SearchVersion   uint32
 	Query           string
 	Results         []SearchRecordV1
+	MatchQualities  []SearchMatchQuality
 	PostingsScanned uint64
 	SegmentsDecoded uint64
 	BytesDecoded    uint64
 	Duration        time.Duration
 }
+
+// SearchMatchQuality is the relevance class retained by catalog-local search
+// and consumed by deployment-wide ranking. Context boosts may reorder results
+// within a class, but must never let a weaker class outrank a stronger one.
+type SearchMatchQuality uint8
+
+const (
+	SearchMatchDescription   SearchMatchQuality = 1
+	SearchMatchFuzzy         SearchMatchQuality = 2
+	SearchMatchPrefix        SearchMatchQuality = 3
+	SearchMatchExactToken    SearchMatchQuality = 4
+	SearchMatchExactIdentity SearchMatchQuality = 5
+)
 
 // CanonicalSearchQuery is a validated query normalized with the search
 // service's canonical UTF-8, bounds, control-character, and NFKC rules.
@@ -191,10 +205,12 @@ func (service *SearchService) SearchCanonical(ctx context.Context, snapshot Snap
 
 	candidateIDs := make([]uint32, 0, len(exactMatches))
 	exactPriority := make(map[uint32]uint8)
+	matchQuality := make(map[uint32]SearchMatchQuality)
 	if len(exactMatches) > 0 {
 		for _, match := range exactMatches {
 			candidateIDs = append(candidateIDs, match.Record)
 			exactPriority[match.Record] = match.Priority
+			matchQuality[match.Record] = SearchMatchExactIdentity
 		}
 		sort.Slice(candidateIDs, func(i, j int) bool { return candidateIDs[i] < candidateIDs[j] })
 		candidateIDs = deduplicateRecordIDs(candidateIDs)
@@ -208,12 +224,23 @@ func (service *SearchService) SearchCanonical(ctx context.Context, snapshot Snap
 			return SearchResult{}, normalizeErr
 		}
 	} else {
-		tokenCandidates, _, _, tokenErr := service.loadRankedCandidateIDs(searchContext, normalized.Tokens, &receipt)
+		tokenCandidates, anyPrefix, anyFuzzy, tokenErr := service.loadRankedCandidateIDs(searchContext, normalized.Tokens, &receipt)
 		if tokenErr != nil {
 			if len(exactMatches) == 0 || !errors.Is(tokenErr, ErrQueryTooBroad) {
 				return SearchResult{}, searchError(ctx, searchContext, tokenErr)
 			}
 		} else {
+			quality := SearchMatchExactToken
+			if anyFuzzy {
+				quality = SearchMatchFuzzy
+			} else if anyPrefix {
+				quality = SearchMatchPrefix
+			}
+			for _, recordID := range tokenCandidates {
+				if matchQuality[recordID] < quality {
+					matchQuality[recordID] = quality
+				}
+			}
 			merged := unionRecordIDs(candidateIDs, tokenCandidates)
 			if len(merged) > maxSearchPostings {
 				if len(exactMatches) == 0 {
@@ -232,6 +259,7 @@ func (service *SearchService) SearchCanonical(ctx context.Context, snapshot Snap
 		recordID uint32
 		kind     uint8
 		priority uint8
+		quality  SearchMatchQuality
 		title    bool
 	}
 	ranked := make([]rankedSearchID, 0, len(candidateIDs))
@@ -247,13 +275,14 @@ func (service *SearchService) SearchCanonical(ctx context.Context, snapshot Snap
 			recordID: recordID,
 			kind:     searchKindPriority(service.directory.Ranks[recordID].Kind),
 			priority: exactPriority[recordID],
+			quality:  matchQuality[recordID],
 			title:    title == exact,
 		})
 	}
 	sort.Slice(ranked, func(i, j int) bool {
 		left, right := ranked[i], ranked[j]
-		if left.kind != right.kind {
-			return left.kind < right.kind
+		if left.quality != right.quality {
+			return left.quality > right.quality
 		}
 		if left.priority != right.priority {
 			if left.priority == 0 {
@@ -263,6 +292,9 @@ func (service *SearchService) SearchCanonical(ctx context.Context, snapshot Snap
 				return true
 			}
 			return left.priority < right.priority
+		}
+		if left.kind != right.kind {
+			return left.kind < right.kind
 		}
 		if left.title != right.title {
 			return left.title
@@ -281,13 +313,32 @@ func (service *SearchService) SearchCanonical(ctx context.Context, snapshot Snap
 			break
 		}
 	}
+	recordLoadBase := cloneSearchLoadReceipt(receipt)
 	results, err := service.loadSearchRecords(searchContext, selectedIDs, &receipt)
+	if err != nil && len(exactMatches) > 0 && errors.Is(err, ErrQueryTooBroad) {
+		selectedIDs = selectedIDs[:0]
+		for _, match := range ranked {
+			if match.quality != SearchMatchExactIdentity {
+				continue
+			}
+			selectedIDs = append(selectedIDs, match.recordID)
+			if len(selectedIDs) == maxSearchResults {
+				break
+			}
+		}
+		receipt = recordLoadBase
+		results, err = service.loadSearchRecords(searchContext, selectedIDs, &receipt)
+	}
 	if err != nil {
 		return SearchResult{}, searchError(ctx, searchContext, err)
 	}
+	qualities := make([]SearchMatchQuality, len(selectedIDs))
+	for index, recordID := range selectedIDs {
+		qualities[index] = matchQuality[recordID]
+	}
 	return SearchResult{
 		CatalogID: service.catalogID, SnapshotID: service.snapshotID, SearchVersion: searchVersion,
-		Query: exact, Results: results, PostingsScanned: receipt.postings,
+		Query: exact, Results: results, MatchQualities: qualities, PostingsScanned: receipt.postings,
 		SegmentsDecoded: receipt.segments, BytesDecoded: receipt.bytes, Duration: time.Since(started),
 	}, nil
 }
@@ -304,10 +355,20 @@ func searchKindPriority(kind string) uint8 {
 }
 
 type searchLoadReceipt struct {
-	postings uint64
-	segments uint64
-	bytes    uint64
-	loaded   map[string]struct{}
+	postings       uint64
+	segments       uint64
+	recordSegments uint64
+	bytes          uint64
+	loaded         map[string]struct{}
+}
+
+func cloneSearchLoadReceipt(receipt searchLoadReceipt) searchLoadReceipt {
+	cloned := receipt
+	cloned.loaded = make(map[string]struct{}, len(receipt.loaded))
+	for path := range receipt.loaded {
+		cloned.loaded[path] = struct{}{}
+	}
+	return cloned
 }
 
 func (service *SearchService) loadExactMatches(ctx context.Context, key string, receipt *searchLoadReceipt) ([]SearchExactMatchV1, error) {
@@ -367,7 +428,6 @@ func (service *SearchService) loadRankedCandidateIDs(ctx context.Context, tokens
 	}
 	groups := make([]routeGroup, 0, len(tokens))
 	postingOrdinals := make(map[uint16]struct{})
-	trigramOrdinals := make(map[uint16]struct{})
 	for _, token := range tokens {
 		routes := postingRoutes(service.directory.TokenRoutes, token, true)
 		if len(routes) > 0 {
@@ -379,32 +439,21 @@ func (service *SearchService) loadRankedCandidateIDs(ctx context.Context, tokens
 			groups = append(groups, group)
 			continue
 		}
-		trigrams := searchTrigrams(token)
-		if len(trigrams) == 0 {
+		routes = fuzzyPostingRoutes(service.directory.TokenRoutes, token, maxSearchFuzzyTokenRoutes)
+		if len(routes) == 0 {
 			return nil, false, false, nil
 		}
-		group := routeGroup{fuzzy: true}
-		for _, trigram := range trigrams {
-			route, exists := exactPostingRoute(service.directory.TrigramRoutes, trigram)
-			if !exists {
-				continue
-			}
+		group := routeGroup{keys: make([]string, 0, len(routes)), fuzzy: true}
+		for _, route := range routes {
 			group.keys = append(group.keys, route.Key)
-			trigramOrdinals[route.Segment] = struct{}{}
-		}
-		if len(group.keys) == 0 {
-			return nil, false, false, nil
+			postingOrdinals[route.Segment] = struct{}{}
 		}
 		groups = append(groups, group)
 	}
-	if len(postingOrdinals) > maxSearchTokenSegments || len(trigramOrdinals) > maxSearchTrigramSegments {
+	if len(postingOrdinals) > maxSearchTokenSegments {
 		return nil, false, false, fmt.Errorf("%w: posting segment fanout", ErrQueryTooBroad)
 	}
 	postingEntries, err := service.loadPostingEntries(ctx, service.directory.PostingSegments, postingOrdinals, "search-posting", receipt)
-	if err != nil {
-		return nil, false, false, err
-	}
-	trigramEntries, err := service.loadPostingEntries(ctx, service.directory.TrigramSegments, trigramOrdinals, "search-trigram", receipt)
 	if err != nil {
 		return nil, false, false, err
 	}
@@ -412,17 +461,8 @@ func (service *SearchService) loadRankedCandidateIDs(ctx context.Context, tokens
 	anyPrefix, anyFuzzy := false, false
 	for groupIndex, group := range groups {
 		var groupCandidates []uint32
-		for keyIndex, key := range group.keys {
-			entries := postingEntries
-			if group.fuzzy {
-				entries = trigramEntries
-			}
-			records := entries[key]
-			if group.fuzzy && keyIndex > 0 {
-				groupCandidates = intersectRecordIDs(groupCandidates, records)
-			} else {
-				groupCandidates = unionRecordIDs(groupCandidates, records)
-			}
+		for _, key := range group.keys {
+			groupCandidates = unionRecordIDs(groupCandidates, postingEntries[key])
 		}
 		if groupIndex == 0 {
 			candidates = groupCandidates
@@ -436,6 +476,80 @@ func (service *SearchService) loadRankedCandidateIDs(ctx context.Context, tokens
 		}
 	}
 	return candidates, anyPrefix, anyFuzzy, nil
+}
+
+func fuzzyPostingRoutes(routes []SearchPostingRouteV1, token string, limit int) []SearchPostingRouteV1 {
+	tokenRunes := []rune(token)
+	if len(tokenRunes) < 4 || limit <= 0 {
+		return nil
+	}
+	maxDistance := 1
+	if len(tokenRunes) >= 8 {
+		maxDistance = 2
+	}
+	first := string(tokenRunes[:1])
+	start := sort.Search(len(routes), func(index int) bool { return routes[index].Key >= first })
+	type fuzzyRoute struct {
+		route    SearchPostingRouteV1
+		distance int
+	}
+	matches := make([]fuzzyRoute, 0, limit)
+	for index := start; index < len(routes) && strings.HasPrefix(routes[index].Key, first); index++ {
+		candidate := []rune(routes[index].Key)
+		if difference := len(candidate) - len(tokenRunes); difference > maxDistance || difference < -maxDistance {
+			continue
+		}
+		distance, matched := boundedDamerauLevenshtein(tokenRunes, candidate, maxDistance)
+		if matched {
+			matches = append(matches, fuzzyRoute{route: routes[index], distance: distance})
+		}
+	}
+	sort.Slice(matches, func(left, right int) bool {
+		if matches[left].distance != matches[right].distance {
+			return matches[left].distance < matches[right].distance
+		}
+		return matches[left].route.Key < matches[right].route.Key
+	})
+	if len(matches) > limit {
+		matches = matches[:limit]
+	}
+	result := make([]SearchPostingRouteV1, len(matches))
+	for index, match := range matches {
+		result[index] = match.route
+	}
+	return result
+}
+
+func boundedDamerauLevenshtein(left, right []rune, limit int) (int, bool) {
+	if difference := len(left) - len(right); difference > limit || difference < -limit {
+		return limit + 1, false
+	}
+	previousPrevious := make([]int, len(right)+1)
+	previous := make([]int, len(right)+1)
+	for index := range previous {
+		previous[index] = index
+	}
+	for leftIndex := 1; leftIndex <= len(left); leftIndex++ {
+		current := make([]int, len(right)+1)
+		current[0] = leftIndex
+		for rightIndex := 1; rightIndex <= len(right); rightIndex++ {
+			cost := 1
+			if left[leftIndex-1] == right[rightIndex-1] {
+				cost = 0
+			}
+			current[rightIndex] = min(
+				previous[rightIndex]+1,
+				current[rightIndex-1]+1,
+				previous[rightIndex-1]+cost,
+			)
+			if leftIndex > 1 && rightIndex > 1 && left[leftIndex-1] == right[rightIndex-2] && left[leftIndex-2] == right[rightIndex-1] {
+				current[rightIndex] = min(current[rightIndex], previousPrevious[rightIndex-2]+1)
+			}
+		}
+		previousPrevious, previous = previous, current
+	}
+	distance := previous[len(right)]
+	return distance, distance <= limit
 }
 
 func (service *SearchService) loadPostingEntries(ctx context.Context, references []SearchSegmentReferenceV1, ordinals map[uint16]struct{}, kind string, receipt *searchLoadReceipt) (map[string][]uint32, error) {
@@ -589,7 +703,7 @@ func reserveSearchRecordReference(receipt *searchLoadReceipt, reference SearchRe
 	if _, exists := receipt.loaded[reference.Path]; exists {
 		return nil
 	}
-	if int(receipt.segments)+1 > maxSearchSegments {
+	if int(receipt.recordSegments)+1 > maxSearchRecordSegments {
 		return fmt.Errorf("%w: decoded record segments", ErrQueryTooBroad)
 	}
 	if receipt.bytes+reference.Length > maxSearchDecodedBytes {
@@ -597,6 +711,7 @@ func reserveSearchRecordReference(receipt *searchLoadReceipt, reference SearchRe
 	}
 	receipt.loaded[reference.Path] = struct{}{}
 	receipt.segments++
+	receipt.recordSegments++
 	receipt.bytes += reference.Length
 	return nil
 }

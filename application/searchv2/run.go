@@ -159,6 +159,7 @@ func validateCanonicalSemanticRecord(record SemanticRecord) error {
 		Kind: record.Kind, SpecKey: record.SpecKey, SpecTitle: record.SpecTitle,
 		LogicalKey: record.LogicalKey, Title: record.Title, Description: record.Description,
 		OperationID: record.OperationID, Method: record.Method, Path: record.Path,
+		RequestTarget: record.RequestTarget, FixedQuery: record.FixedQuery,
 	})
 	if err != nil {
 		return err
@@ -179,6 +180,7 @@ func validateCanonicalRecord(record Record) error {
 		SpecKey: record.SpecKey, SpecTitle: record.SpecTitle,
 		LogicalKey: record.LogicalKey, Title: record.Title, Description: record.Description,
 		OperationID: record.OperationID, Method: record.Method, Path: record.Path,
+		RequestTarget: record.RequestTarget, FixedQuery: record.FixedQuery,
 		PageHref: record.PageHref, FragmentHref: record.FragmentHref,
 	})
 	if err != nil {

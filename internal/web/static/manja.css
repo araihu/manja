@@ -74,6 +74,16 @@
   box-shadow: 0 1.5rem 3rem color-mix(in oklch, var(--color-surface-dark) 20%, transparent);
 }
 
+#catalog-search-input[data-keyboard-focus="true"] {
+  border-radius: var(--radius-radius);
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+.dark #catalog-search-input[data-keyboard-focus="true"] {
+  outline-color: var(--color-primary-dark);
+}
+
 [data-catalog-platform-shortcut] kbd {
   display: none;
 }

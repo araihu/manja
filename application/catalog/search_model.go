@@ -15,16 +15,20 @@ import (
 )
 
 const (
-	searchVersion               = 1
-	maxSearchSegments           = 16
-	maxSearchTokenSegments      = 8
-	maxSearchTrigramSegments    = 4
-	maxSearchDecodedBytes       = 2 << 20
-	maxSearchPostings           = 10_000
-	maxSearchPostingsPerSegment = 2_000
-	maxSearchResults            = 20
-	maxSearchSnippetScalars     = 64
-	maxSearchTrigramsPerToken   = 3
+	searchVersion                      = 1
+	maxSearchSegments                  = 16
+	maxSearchRecordSegments            = 20
+	maxSearchTokenSegments             = 8
+	maxSearchTrigramSegments           = 4
+	maxSearchDecodedBytes              = 2 << 20
+	maxSearchPostings                  = 10_000
+	maxSearchPostingsPerSegment        = 2_000
+	maxSearchResults                   = 20
+	maxSearchSnippetScalars            = 320
+	maxSearchIndexedDescriptionScalars = 4_096
+	maxSearchTrigramsPerToken          = 3
+	maxSearchRecordSegmentBytes        = 64 << 10
+	maxSearchFuzzyTokenRoutes          = 8
 )
 
 type searchBuildRecord struct {
@@ -61,7 +65,7 @@ func buildSearchArtifacts(directory CatalogArtifactV1, bounds Bounds, resourceLi
 	for _, document := range directory.Documents {
 		for _, operation := range document.Operations {
 			requestTarget := operation.EffectiveRequestTarget()
-			values := []string{operation.Title, operation.OperationID, operation.Method, operation.Path, requestTarget, document.Key, searchSnippet(operation.Description)}
+			values := []string{operation.Title, operation.OperationID, operation.Method, operation.Path, requestTarget, document.Key, searchIndexedDescription(operation.Description)}
 			values = append(values, operation.Tags...)
 			for _, facet := range operation.Facets {
 				values = append(values, facet.Name, facet.Value)
@@ -109,7 +113,7 @@ func buildSearchArtifacts(directory CatalogArtifactV1, bounds Bounds, resourceLi
 			{value: canonical.schema.Name, priority: 2},
 			{value: shortSchemaName(canonical.schema.Name), priority: 2},
 		}
-		tokenValues := []string{canonical.schema.Name, shortSchemaName(canonical.schema.Name), searchSnippet(canonical.schema.Description)}
+		tokenValues := []string{canonical.schema.Name, shortSchemaName(canonical.schema.Name), searchIndexedDescription(canonical.schema.Description)}
 		for _, occurrence := range occurrences {
 			documents = append(documents, occurrence.documentKey)
 			tokenValues = append(tokenValues, occurrence.documentKey)
@@ -183,7 +187,8 @@ func buildSearchArtifacts(directory CatalogArtifactV1, bounds Bounds, resourceLi
 	children = append(children, trigramChildren...)
 	mergeSearchUsage(&usage, trigramUsage)
 
-	recordReferences, recordChildren, recordUsage, err := buildSearchRecordSegments(records, bounds.PostingSegmentBytes)
+	recordSegmentBytes := min(bounds.PostingSegmentBytes, uint64(maxSearchRecordSegmentBytes))
+	recordReferences, recordChildren, recordUsage, err := buildSearchRecordSegments(records, recordSegmentBytes)
 	if err != nil {
 		return SearchArtifacts{}, err
 	}
@@ -598,6 +603,15 @@ func searchSnippet(value string) string {
 	}
 	runes := []rune(value)
 	return string(runes[:maxSearchSnippetScalars])
+}
+
+func searchIndexedDescription(value string) string {
+	value = sanitizeSearchText(value)
+	runes := []rune(value)
+	if len(runes) <= maxSearchIndexedDescriptionScalars {
+		return value
+	}
+	return string(runes[:maxSearchIndexedDescriptionScalars])
 }
 
 func shortSchemaName(value string) string {

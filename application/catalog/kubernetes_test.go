@@ -199,7 +199,7 @@ func TestCompilerCompilesCompleteLockedKubernetesCatalog(t *testing.T) {
 		if !found {
 			t.Fatalf("global Kubernetes search %q did not find %s target: %#v", searchCase.query, searchCase.document, result.Results)
 		}
-		if result.SegmentsDecoded == 0 || result.SegmentsDecoded > maxSearchSegments || result.PostingsScanned > maxSearchPostings || result.BytesDecoded > maxSearchDecodedBytes {
+		if result.SegmentsDecoded == 0 || result.SegmentsDecoded > maxSearchSegments+maxSearchRecordSegments || result.PostingsScanned > maxSearchPostings || result.BytesDecoded > maxSearchDecodedBytes {
 			t.Fatalf("global Kubernetes search receipt exceeds bounds: %#v", result)
 		}
 		t.Logf("Kubernetes search %q: results=%d postings=%d segments=%d bytes=%d duration=%s", searchCase.query, len(result.Results), result.PostingsScanned, result.SegmentsDecoded, result.BytesDecoded, result.Duration)

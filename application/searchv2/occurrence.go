@@ -50,6 +50,7 @@ func ExpandSemanticRun(catalog EffectiveCatalog, run SemanticRun, locations map[
 			SpecKey: semantic.SpecKey, SpecTitle: semantic.SpecTitle,
 			LogicalKey: semantic.LogicalKey, Title: semantic.Title, Description: semantic.Description,
 			OperationID: semantic.OperationID, Method: semantic.Method, Path: semantic.Path,
+			RequestTarget: semantic.RequestTarget, FixedQuery: semantic.FixedQuery,
 			PageHref: location.PageHref, FragmentHref: location.FragmentHref,
 		})
 		if err != nil {

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"net/url"
 	"sort"
 	"strings"
 
@@ -45,7 +46,7 @@ type globalSearchCandidate struct {
 	mount     string
 	section   string
 	localRank int
-	exactID   bool
+	quality   catalog.SearchMatchQuality
 }
 
 type globalSearchResult struct {
@@ -98,6 +99,8 @@ func (handler *CatalogHandler) searchGlobal(ctx context.Context, query, contextM
 	}
 
 	result := globalSearchResult{SearchVersion: 1, Results: make([]globalSearchCandidate, 0)}
+	successfulCatalogs := 0
+	var recoverableSearchError error
 
 	mounts := handler.runtime.MountNames()
 	sort.Strings(mounts)
@@ -111,11 +114,43 @@ func (handler *CatalogHandler) searchGlobal(ctx context.Context, query, contextM
 		for _, document := range snapshot.Directory.Documents {
 			documentLabels[document.Key] = catalogDocumentLabel(document)
 		}
+		if quality, matched := globalCatalogMatchQuality(canonical.String(), snapshot.Directory); matched {
+			record, recordErr := globalCatalogSearchRecord(mount, snapshot.Directory)
+			if recordErr != nil {
+				admission.Release()
+				return globalSearchResult{}, recordErr
+			}
+			result.Results = append(result.Results, globalSearchCandidate{
+				record: record, mount: mount, section: snapshot.Directory.Title, localRank: 0, quality: quality,
+			})
+		}
+		for index, document := range snapshot.Directory.Documents {
+			quality, matched := globalDocumentMatchQuality(canonical.String(), snapshot.Directory.Title, document)
+			if !matched {
+				continue
+			}
+			record, recordErr := globalDocumentSearchRecord(mount, document)
+			if recordErr != nil {
+				admission.Release()
+				return globalSearchResult{}, recordErr
+			}
+			result.Results = append(result.Results, globalSearchCandidate{
+				record: record, mount: mount, section: catalogSearchSection(documentLabels, snapshot.Directory.Title, record.DocumentKey), localRank: index + 1,
+				quality: quality,
+			})
+		}
 		local, searchErr := handler.searchCatalog(ctx, snapshot, mount, canonical)
 		if searchErr != nil {
 			admission.Release()
+			if errors.Is(searchErr, catalog.ErrQueryTooBroad) || errors.Is(searchErr, catalog.ErrSearchDeadline) {
+				if recoverableSearchError == nil {
+					recoverableSearchError = searchErr
+				}
+				continue
+			}
 			return globalSearchResult{}, searchErr
 		}
+		successfulCatalogs++
 		if result.Query == "" {
 			result.Query = local.Query
 		}
@@ -123,9 +158,13 @@ func (handler *CatalogHandler) searchGlobal(ctx context.Context, query, contextM
 		result.SegmentsDecoded += local.SegmentsDecoded
 		result.BytesDecoded += local.BytesDecoded
 		for index, record := range local.Results {
+			quality := catalog.SearchMatchFuzzy
+			if index < len(local.MatchQualities) {
+				quality = local.MatchQualities[index]
+			}
 			result.Results = append(result.Results, globalSearchCandidate{
 				record: record, mount: mount, section: catalogSearchSection(documentLabels, snapshot.Directory.Title, record.DocumentKey), localRank: index,
-				exactID: globalSearchRecordMatchesDetailID(record, result.Query),
+				quality: quality,
 			})
 		}
 		if exactDetailID {
@@ -136,29 +175,18 @@ func (handler *CatalogHandler) searchGlobal(ctx context.Context, query, contextM
 			}
 			if exactFound && !globalSearchResultsContainDetail(local.Results, exactRecord.DetailID) {
 				result.Results = append(result.Results, globalSearchCandidate{
-					record: exactRecord, mount: mount, section: catalogSearchSection(documentLabels, snapshot.Directory.Title, exactRecord.DocumentKey), localRank: -1, exactID: true,
+					record: exactRecord, mount: mount, section: catalogSearchSection(documentLabels, snapshot.Directory.Title, exactRecord.DocumentKey), localRank: -1, quality: catalog.SearchMatchExactIdentity,
 				})
 			}
-		}
-		for index, document := range snapshot.Directory.Documents {
-			if !globalDocumentMatches(result.Query, snapshot.Directory.Title, document) {
-				continue
-			}
-			record, recordErr := globalDocumentSearchRecord(mount, document)
-			if recordErr != nil {
-				admission.Release()
-				return globalSearchResult{}, recordErr
-			}
-			result.Results = append(result.Results, globalSearchCandidate{
-				record: record, mount: mount, section: catalogSearchSection(documentLabels, snapshot.Directory.Title, record.DocumentKey), localRank: len(local.Results) + index,
-				exactID: globalSearchRecordMatchesDetailID(record, result.Query),
-			})
 		}
 		admission.Release()
 	}
 
 	if result.Query == "" {
 		result.Query = canonical.String()
+	}
+	if successfulCatalogs == 0 && len(result.Results) == 0 && recoverableSearchError != nil {
+		return globalSearchResult{}, recoverableSearchError
 	}
 	rankGlobalSearchCandidates(result.Results, contextMount, contextDocument)
 	if len(result.Results) > maxGlobalSearchResults {
@@ -202,7 +230,7 @@ func (handler *CatalogHandler) searchGlobalExact(query catalog.CanonicalSearchQu
 		if found {
 			section := catalogDocumentLabelForKey(admission.Snapshot.Directory, record.DocumentKey)
 			result.Results = append(result.Results, globalSearchCandidate{
-				record: record, mount: mount, section: section, localRank: -1, exactID: true,
+				record: record, mount: mount, section: section, localRank: -1, quality: catalog.SearchMatchExactIdentity,
 			})
 		}
 		admission.Release()
@@ -237,10 +265,6 @@ func catalogSearchSection(labels map[string]string, catalogTitle, documentKey st
 		return label
 	}
 	return catalogDocumentLabelForKey(catalog.CatalogArtifactV1{Title: catalogTitle}, documentKey)
-}
-
-func globalSearchRecordMatchesDetailID(record catalog.SearchRecordV1, query string) bool {
-	return query == string(record.DetailID)
 }
 
 func globalSearchResultsContainDetail(results []catalog.SearchRecordV1, detailID domain.DetailID) bool {
@@ -304,26 +328,61 @@ func globalDocumentSearchRecord(mount string, document catalog.DocumentDirectory
 	}, nil
 }
 
-func globalDocumentMatches(query, catalogTitle string, document catalog.DocumentDirectoryV1) bool {
+func globalCatalogSearchRecord(mount string, directory catalog.CatalogArtifactV1) (catalog.SearchRecordV1, error) {
+	href := strings.TrimSuffix(mount, "/") + "/"
+	if mount == "/" {
+		href = "/"
+	}
+	slug := strings.NewReplacer("/", "-", "\\", "-").Replace(strings.Trim(mount, "/"))
+	if slug == "" {
+		slug = "root"
+	}
+	title := strings.TrimSpace(directory.Title)
+	if title == "" {
+		title = directory.CatalogID
+	}
+	return catalog.SearchRecordV1{
+		DetailID: domain.DetailID("catalog-" + slug), Kind: "catalog", Title: title,
+		Href: href, Occurrences: 1,
+	}, nil
+}
+
+func globalCatalogMatchQuality(query string, directory catalog.CatalogArtifactV1) (catalog.SearchMatchQuality, bool) {
+	return globalNavigationMatchQuality(query, directory.CatalogID, directory.Title)
+}
+
+func globalDocumentMatchQuality(query, catalogTitle string, document catalog.DocumentDirectoryV1) (catalog.SearchMatchQuality, bool) {
+	values := []string{document.Key, document.APIVersion}
+	if title := strings.TrimSpace(document.Title); title != "" && !strings.EqualFold(title, strings.TrimSpace(catalogTitle)) {
+		values = append(values, title)
+	}
+	return globalNavigationMatchQuality(query, values...)
+}
+
+func globalNavigationMatchQuality(query string, values ...string) (catalog.SearchMatchQuality, bool) {
 	needle := strings.ToLower(strings.TrimSpace(query))
 	if needle == "" {
-		return false
+		return 0, false
 	}
-	haystack := strings.ToLower(strings.Join([]string{catalogTitle, document.Key, document.Title, document.APIVersion}, " "))
-	if strings.Contains(haystack, needle) {
-		return true
-	}
-	for _, token := range strings.Fields(needle) {
-		if !strings.Contains(haystack, token) {
-			return false
+	for _, value := range values {
+		if strings.ToLower(strings.TrimSpace(value)) == needle {
+			return catalog.SearchMatchExactIdentity, true
 		}
 	}
-	return true
+	haystack := strings.ToLower(strings.Join(values, " "))
+	for _, token := range strings.Fields(needle) {
+		if !strings.Contains(haystack, token) {
+			return 0, false
+		}
+	}
+	return catalog.SearchMatchExactToken, true
 }
 
 func globalSearchKindWeight(kind string) int64 {
 	switch strings.ToLower(kind) {
 	case "operation":
+		return 4
+	case "catalog":
 		return 3
 	case "document":
 		return 2
@@ -338,10 +397,12 @@ func globalSearchKindOrder(kind string) int {
 	switch strings.ToLower(kind) {
 	case "operation":
 		return 0
-	case "document":
+	case "catalog":
 		return 1
-	case "schema":
+	case "document":
 		return 2
+	case "schema":
+		return 3
 	default:
 		return 3
 	}
@@ -360,10 +421,8 @@ func globalSearchCandidateBelongsToDocument(candidate globalSearchCandidate, doc
 }
 
 func globalSearchScore(candidate globalSearchCandidate, contextMount, contextDocument string) int64 {
-	score := globalSearchKindWeight(candidate.record.Kind) * 1_000_000
-	if candidate.exactID {
-		score += 10_000_000
-	}
+	score := int64(candidate.quality) * 1_000_000
+	score += globalSearchKindWeight(candidate.record.Kind) * 1_000
 	if contextMount != "" && candidate.mount == contextMount {
 		score += 100_000
 	}
@@ -412,8 +471,15 @@ func (handler *CatalogHandler) serveSearchJSON(response http.ResponseWriter, req
 }
 
 func (handler *CatalogHandler) serveGlobalSearchJSON(response http.ResponseWriter, request *http.Request, contextMount, contextDocument string) {
+	queryValues, err := url.ParseQuery(request.URL.RawQuery)
+	if err != nil {
+		http.Error(response, "invalid search query", http.StatusBadRequest)
+		return
+	}
+	contextMount = queryValues.Get("context_mount")
+	contextDocument = queryValues.Get("context_document")
 	payload := catalogSearchResponse{
-		CatalogID: "global", Version: 1, Query: request.URL.Query().Get("q"), Results: make([]catalogSearchResult, 0),
+		CatalogID: "global", Version: 1, Query: queryValues.Get("q"), Results: make([]catalogSearchResult, 0),
 	}
 	if payload.Query != "" {
 		result, err := handler.searchGlobal(request.Context(), payload.Query, contextMount, contextDocument)

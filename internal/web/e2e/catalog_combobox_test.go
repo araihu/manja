@@ -437,8 +437,12 @@ func TestCatalogDocumentSearchUsesGlobalModal(t *testing.T) {
 		const surfaceDark = resolveColor('--color-surface-dark-alt');
 		probe.remove();
 		const style = getComputedStyle(element);
+		const nativeFocusVisible = element.matches(':focus-visible');
+		const keyboardFocus = element.dataset.keyboardFocus === 'true';
 		return {
-			focusVisible: element.matches(':focus-visible'),
+			focusVisible: nativeFocusVisible || keyboardFocus,
+			nativeFocusVisible,
+			keyboardFocus,
 			outlineStyle: style.outlineStyle,
 			outlineWidth: style.outlineWidth,
 			outlineOffset: style.outlineOffset,

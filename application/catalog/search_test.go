@@ -276,7 +276,7 @@ func TestSearchRejectsOverLimitHumanKeyButCanonicalDetailIDSucceeds(t *testing.T
 	}
 }
 
-func TestSearchUsesBoundedTrigramFallback(t *testing.T) {
+func TestSearchUsesBoundedFuzzyTokenFallback(t *testing.T) {
 	t.Parallel()
 
 	service, snapshot := compiledSearchFixture(t)
@@ -289,6 +289,34 @@ func TestSearchUsesBoundedTrigramFallback(t *testing.T) {
 	}
 	if result.SegmentsDecoded > maxSearchSegments || result.BytesDecoded > maxSearchDecodedBytes || result.PostingsScanned > maxSearchPostings {
 		t.Fatalf("fuzzy receipt exceeds bounds: %#v", result)
+	}
+}
+
+func TestFuzzyPostingRoutesPreferNearbyTokensAndRejectNoise(t *testing.T) {
+	t.Parallel()
+
+	routes := []SearchPostingRouteV1{
+		{Key: "alpha"},
+		{Key: "machine"},
+		{Key: "machinery"},
+		{Key: "virtual"},
+		{Key: "visual"},
+	}
+	for _, test := range []struct {
+		query string
+		want  string
+	}{
+		{query: "alphx", want: "alpha"},
+		{query: "machne", want: "machine"},
+		{query: "virutal", want: "virtual"},
+	} {
+		matches := fuzzyPostingRoutes(routes, test.query, maxSearchFuzzyTokenRoutes)
+		if len(matches) == 0 || matches[0].Key != test.want {
+			t.Errorf("fuzzy routes for %q = %#v, want %q first", test.query, matches, test.want)
+		}
+	}
+	if matches := fuzzyPostingRoutes(routes, "nonexistentzzzz", maxSearchFuzzyTokenRoutes); len(matches) != 0 {
+		t.Fatalf("nonsense fuzzy routes = %#v, want none", matches)
 	}
 }
 
@@ -312,42 +340,22 @@ func TestSearchRejectsPostingAndDecodedWorkOverLimits(t *testing.T) {
 	}
 }
 
-func TestSearchRejectsMoreThanSixteenDecodedSegments(t *testing.T) {
+func TestSearchRejectsMoreThanTwentyDecodedRecordSegments(t *testing.T) {
 	t.Parallel()
 
-	service, snapshot := compiledSearchFixture(t)
-	recordIDs := make([]uint32, maxSearchSegments+1)
-	for index := range recordIDs {
-		recordIDs[index] = uint32(index)
-	}
-	segmentBytes, err := json.Marshal(SearchPostingSegmentV1{SchemaVersion: 1, SearchVersion: searchVersion, Entries: []SearchPostingEntryV1{{Key: "spread", Records: recordIDs}}})
-	if err != nil {
-		t.Fatal(err)
-	}
-	postingChild, err := contentAddressedSearchChild("postings", "search-posting", segmentBytes)
-	if err != nil {
-		t.Fatal(err)
-	}
-	broad := *service
-	broad.directory.ExactBuckets = nil
-	broad.directory.TokenRoutes = []SearchPostingRouteV1{{Key: "spread", Segment: 0}}
-	broad.directory.PostingSegments = []SearchSegmentReferenceV1{searchSegmentReference(postingChild, 1, uint32(len(recordIDs)))}
-	broad.directory.Ranks = make([]SearchRankRecordV1, len(recordIDs))
-	broad.directory.RecordSegments = make([]SearchRecordSegmentReferenceV1, len(recordIDs))
-	for index := range recordIDs {
-		broad.directory.Ranks[index] = SearchRankRecordV1{Title: fmt.Sprintf("Record %02d", index)}
-		broad.directory.RecordSegments[index] = SearchRecordSegmentReferenceV1{
+	receipt := searchLoadReceipt{loaded: make(map[string]struct{})}
+	for index := 0; index <= maxSearchRecordSegments; index++ {
+		reference := SearchRecordSegmentReferenceV1{
 			Path: fmt.Sprintf("search/records/%064x.json", index+1), FirstRecord: uint32(index), Records: 1,
 			Length: 1, SHA256: fmt.Sprintf("%064x", index+1),
 		}
-	}
-	broad.children = make(map[string]ChildArtifact, len(service.children)+1)
-	for pathValue, child := range service.children {
-		broad.children[pathValue] = child
-	}
-	broad.children[postingChild.Path] = postingChild
-	if _, err := broad.Search(context.Background(), snapshot.ID, "spread"); !errors.Is(err, ErrQueryTooBroad) || !strings.Contains(err.Error(), "record segments") {
-		t.Fatalf("decoded segment error = %v", err)
+		err := reserveSearchRecordReference(&receipt, reference)
+		if index < maxSearchRecordSegments && err != nil {
+			t.Fatalf("record segment %d rejected early: %v", index, err)
+		}
+		if index == maxSearchRecordSegments && (!errors.Is(err, ErrQueryTooBroad) || !strings.Contains(err.Error(), "record segments")) {
+			t.Fatalf("decoded segment error = %v", err)
+		}
 	}
 }
 
@@ -530,7 +538,7 @@ func TestSearchSnippetNormalizesWhitespaceAndStaysWithinScalarCap(t *testing.T) 
 	if strings.ContainsAny(snippet, "\n\t") || strings.Contains(snippet, "  ") {
 		t.Fatalf("snippet whitespace was not normalized: %q", snippet)
 	}
-	if len([]rune(snippet)) > maxSearchSnippetScalars || len([]rune(snippet)) > 256 {
+	if len([]rune(snippet)) > maxSearchSnippetScalars {
 		t.Fatalf("snippet scalar count = %d", len([]rune(snippet)))
 	}
 }

@@ -828,6 +828,38 @@ func TestCatalogExactDetailSearchCollectsAndRanksAcrossMounts(t *testing.T) {
 	}
 }
 
+func TestGlobalSearchContinuesWhenOneCatalogTimesOut(t *testing.T) {
+	handler, snapshot := catalogHandlerFixture(t, "/kubernetes")
+	catalogHandler := handler.(*CatalogHandler)
+	second := snapshot
+	second.ID = "snapshot-sha256-" + catalog.SnapshotID(strings.Repeat("e", 64))
+	second.Directory.CatalogID = "other"
+	second.Directory.Title = "Other"
+	if _, err := catalogHandler.runtime.ActivateMount("/other", "", 1, second); err != nil {
+		t.Fatal(err)
+	}
+	searchChildReads := 0
+	catalogHandler.children = selectiveDeadlineSearchCatalogChildren{
+		fallback: catalogHandler.children, snapshotID: snapshot.ID, reads: &searchChildReads,
+	}
+
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/search.json?q=listCoreV1Pod", nil))
+	if response.Code != http.StatusOK {
+		t.Fatalf("partial global search = %d body=%q", response.Code, response.Body.String())
+	}
+	var payload catalogSearchResponse
+	if err := json.Unmarshal(response.Body.Bytes(), &payload); err != nil {
+		t.Fatal(err)
+	}
+	if len(payload.Results) != 1 || !strings.HasPrefix(payload.Results[0].Href, "/other/") {
+		t.Fatalf("partial global results = %#v, want healthy catalog result", payload.Results)
+	}
+	if searchChildReads == 0 {
+		t.Fatal("partial global search did not exercise the timed-out catalog")
+	}
+}
+
 func TestGlobalSearchRankingUsesKindAndPageContext(t *testing.T) {
 	t.Parallel()
 
@@ -865,12 +897,49 @@ func TestGlobalSearchRankingUsesKindAndPageContext(t *testing.T) {
 	}
 
 	exactResults := []globalSearchCandidate{
-		{record: catalog.SearchRecordV1{DetailID: "schema-exact", Kind: "schema", Title: "Exact schema"}, exactID: true},
+		{record: catalog.SearchRecordV1{DetailID: "schema-exact", Kind: "schema", Title: "Exact schema"}, quality: catalog.SearchMatchExactIdentity},
 		{record: catalog.SearchRecordV1{DetailID: "operation-related", Kind: "operation", Title: "Related operation"}},
 	}
 	rankGlobalSearchCandidates(exactResults, "", "")
 	if exactResults[0].record.DetailID != "schema-exact" {
 		t.Fatalf("exact detail ranking = %+v, want exact detail first", exactResults)
+	}
+
+	crossContext := []globalSearchCandidate{
+		{record: catalog.SearchRecordV1{DetailID: "fuzzy-local", Kind: "operation", Title: "List user projects", DocumentKey: "github"}, mount: "/github", quality: catalog.SearchMatchFuzzy},
+		{record: catalog.SearchRecordV1{DetailID: "exact-remote", Kind: "schema", Title: "PodSpec", DocumentKey: "core-v1"}, mount: "/kubernetes", quality: catalog.SearchMatchExactIdentity},
+	}
+	rankGlobalSearchCandidates(crossContext, "/github", "github")
+	if crossContext[0].record.DetailID != "exact-remote" {
+		t.Fatalf("cross-context ranking = %+v, want exact remote result first", crossContext)
+	}
+}
+
+func TestGlobalNavigationMatchingKeepsCatalogAndDocumentIdentityDistinct(t *testing.T) {
+	t.Parallel()
+
+	directory := catalog.CatalogArtifactV1{CatalogID: "kubernetes", Title: "Kubernetes"}
+	if quality, matched := globalCatalogMatchQuality("Kubernetes", directory); !matched || quality != catalog.SearchMatchExactIdentity {
+		t.Fatalf("catalog match = (%v, %v), want exact identity", quality, matched)
+	}
+	document := catalog.DocumentDirectoryV1{Key: "core-v1", Title: "Kubernetes", APIVersion: "v1"}
+	if quality, matched := globalDocumentMatchQuality("Kubernetes", directory.Title, document); matched {
+		t.Fatalf("generic document title match = (%v, %v), want no duplicate catalog result", quality, matched)
+	}
+	if quality, matched := globalDocumentMatchQuality("core-v1", directory.Title, document); !matched || quality != catalog.SearchMatchExactIdentity {
+		t.Fatalf("document key match = (%v, %v), want exact identity", quality, matched)
+	}
+}
+
+func TestCatalogSearchRejectsMalformedRawQueryEscapes(t *testing.T) {
+	t.Parallel()
+	handler, _ := catalogHandlerFixture(t, "/kubernetes")
+	for _, target := range []string{"/search.json?q=%ZZ", "/kubernetes/search.json?q=%", "/kubernetes/search?q=%2"} {
+		response := httptest.NewRecorder()
+		handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, target, nil))
+		if response.Code != http.StatusBadRequest {
+			t.Errorf("malformed search %q = %d body=%q, want 400", target, response.Code, response.Body.String())
+		}
 	}
 }
 
@@ -1880,7 +1949,7 @@ func TestCatalogProjectionTransportIsNotActivatedByInitialHTML(t *testing.T) {
 		t.Fatalf("initial HTML = %d body=%q", response.Code, response.Body.String())
 	}
 	digest := sha256.Sum256(response.Body.Bytes())
-	if got := hex.EncodeToString(digest[:]); got != "ec76964e6351400f4b7d0841a34f72a3528ad0e4455fe2049959bbe6631b6fef" || response.Body.Len() != 54758 {
+	if got := hex.EncodeToString(digest[:]); got != "0ffb5607b1fc8497fb1de59d692e043bb400d0a861772e4703c7441638a07222" || response.Body.Len() != 54993 {
 		t.Errorf("initial HTML = sha256 %s, %d bytes; want accepted OC-01M9 bytes", got, response.Body.Len())
 	}
 	for _, forbidden := range []string{"projection-data", "serviceWorker", "manja:local-ready", "MANJA_LOCAL_DOCS"} {
@@ -2100,6 +2169,12 @@ type deadlineSearchCatalogChildren struct {
 	reads    *int
 }
 
+type selectiveDeadlineSearchCatalogChildren struct {
+	fallback   catalogChildReader
+	snapshotID catalog.SnapshotID
+	reads      *int
+}
+
 func fullWidthASCII(value string) string {
 	var result strings.Builder
 	for _, character := range value {
@@ -2114,6 +2189,15 @@ func fullWidthASCII(value string) string {
 
 func (children deadlineSearchCatalogChildren) ReadChild(ctx context.Context, snapshot catalog.RuntimeSnapshot, path string) ([]byte, catalog.ChildIdentityV1, error) {
 	if strings.HasPrefix(path, "search/") {
+		*children.reads = *children.reads + 1
+		<-ctx.Done()
+		return nil, catalog.ChildIdentityV1{}, ctx.Err()
+	}
+	return children.fallback.ReadChild(ctx, snapshot, path)
+}
+
+func (children selectiveDeadlineSearchCatalogChildren) ReadChild(ctx context.Context, snapshot catalog.RuntimeSnapshot, path string) ([]byte, catalog.ChildIdentityV1, error) {
+	if snapshot.ID == children.snapshotID && strings.HasPrefix(path, "search/") {
 		*children.reads = *children.reads + 1
 		<-ctx.Done()
 		return nil, catalog.ChildIdentityV1{}, ctx.Err()

@@ -385,10 +385,15 @@ func (handler *CatalogHandler) serveSearch(response http.ResponseWriter, request
 		http.Error(response, "catalog temporarily unavailable", http.StatusServiceUnavailable)
 		return
 	}
-	query := request.URL.Query().Get("q")
+	queryValues, queryErr := url.ParseQuery(request.URL.RawQuery)
+	if queryErr != nil {
+		http.Error(response, "invalid search query", http.StatusBadRequest)
+		return
+	}
+	query := queryValues.Get("q")
 	data.Search = &templates.CatalogSearchData{Query: query}
 	if query != "" {
-		if err := handler.populateGlobalSearchData(request.Context(), &data, query, mount, request.URL.Query().Get("context_document")); err != nil {
+		if err := handler.populateGlobalSearchData(request.Context(), &data, query, mount, queryValues.Get("context_document")); err != nil {
 			writeCatalogSearchError(response, err)
 			return
 		}

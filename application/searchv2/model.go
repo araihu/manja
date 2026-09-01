@@ -50,71 +50,79 @@ type RecordID string
 // spec. Catalog membership and public hrefs are deliberately added later.
 //
 // LogicalKey is kind-specific: the spec key for specs, a literal OpenAPI path
-// for paths, METHOD + SP + literal path for operations, and the canonical
+// for paths, METHOD + SP + effective request target for operations, and the canonical
 // component JSON pointer for schemas.
 type SemanticRecordInput struct {
-	Kind        RecordKind
-	SpecKey     string
-	SpecTitle   string
-	LogicalKey  string
-	Title       string
-	Description string
-	OperationID string
-	Method      string
-	Path        string
+	Kind          RecordKind
+	SpecKey       string
+	SpecTitle     string
+	LogicalKey    string
+	Title         string
+	Description   string
+	OperationID   string
+	Method        string
+	Path          string
+	RequestTarget string
+	FixedQuery    []domain.FixedQueryParameter
 }
 
 // SemanticRecord is canonical reusable search content for one spec resource.
 // It contains neither catalog identity nor catalog-specific URLs.
 type SemanticRecord struct {
-	ID          SemanticRecordID `json:"id"`
-	Kind        RecordKind       `json:"kind"`
-	SpecKey     string           `json:"specKey"`
-	SpecTitle   string           `json:"specTitle"`
-	LogicalKey  string           `json:"logicalKey"`
-	Title       string           `json:"title"`
-	Description string           `json:"description,omitempty"`
-	OperationID string           `json:"operationId,omitempty"`
-	Method      string           `json:"method,omitempty"`
-	Path        string           `json:"path,omitempty"`
+	ID            SemanticRecordID             `json:"id"`
+	Kind          RecordKind                   `json:"kind"`
+	SpecKey       string                       `json:"specKey"`
+	SpecTitle     string                       `json:"specTitle"`
+	LogicalKey    string                       `json:"logicalKey"`
+	Title         string                       `json:"title"`
+	Description   string                       `json:"description,omitempty"`
+	OperationID   string                       `json:"operationId,omitempty"`
+	Method        string                       `json:"method,omitempty"`
+	Path          string                       `json:"path,omitempty"`
+	RequestTarget string                       `json:"requestTarget,omitempty"`
+	FixedQuery    []domain.FixedQueryParameter `json:"fixedQuery,omitempty"`
 }
 
 // RecordInput is one catalog-specific deployment occurrence. Catalog records
 // are created directly; every other kind should normally be expanded from a
 // SemanticRecord with ExpandSemanticRun.
 type RecordInput struct {
-	Kind         RecordKind
-	CatalogKey   string
-	CatalogTitle string
-	SpecKey      string
-	SpecTitle    string
-	LogicalKey   string
-	Title        string
-	Description  string
-	OperationID  string
-	Method       string
-	Path         string
-	PageHref     string
-	FragmentHref string
+	Kind          RecordKind
+	CatalogKey    string
+	CatalogTitle  string
+	SpecKey       string
+	SpecTitle     string
+	LogicalKey    string
+	Title         string
+	Description   string
+	OperationID   string
+	Method        string
+	Path          string
+	RequestTarget string
+	FixedQuery    []domain.FixedQueryParameter
+	PageHref      string
+	FragmentHref  string
 }
 
 // Record is the canonical deployment-wide search input. It deliberately
 // contains no provider-specific source locators and no trusted HTML.
 type Record struct {
-	ID           RecordID   `json:"id"`
-	Kind         RecordKind `json:"kind"`
-	CatalogKey   string     `json:"catalogKey"`
-	CatalogTitle string     `json:"catalogTitle"`
-	SpecKey      string     `json:"specKey,omitempty"`
-	SpecTitle    string     `json:"specTitle,omitempty"`
-	LogicalKey   string     `json:"logicalKey"`
-	Title        string     `json:"title"`
-	Description  string     `json:"description,omitempty"`
-	OperationID  string     `json:"operationId,omitempty"`
-	Method       string     `json:"method,omitempty"`
-	Path         string     `json:"path,omitempty"`
-	PageHref     string     `json:"pageHref"`
-	FragmentHref string     `json:"fragmentHref,omitempty"`
+	ID            RecordID                     `json:"id"`
+	Kind          RecordKind                   `json:"kind"`
+	CatalogKey    string                       `json:"catalogKey"`
+	CatalogTitle  string                       `json:"catalogTitle"`
+	SpecKey       string                       `json:"specKey,omitempty"`
+	SpecTitle     string                       `json:"specTitle,omitempty"`
+	LogicalKey    string                       `json:"logicalKey"`
+	Title         string                       `json:"title"`
+	Description   string                       `json:"description,omitempty"`
+	OperationID   string                       `json:"operationId,omitempty"`
+	Method        string                       `json:"method,omitempty"`
+	Path          string                       `json:"path,omitempty"`
+	RequestTarget string                       `json:"requestTarget,omitempty"`
+	FixedQuery    []domain.FixedQueryParameter `json:"fixedQuery,omitempty"`
+	PageHref      string                       `json:"pageHref"`
+	FragmentHref  string                       `json:"fragmentHref,omitempty"`
 }
 
 // NewSemanticRecord validates and canonicalizes a reusable spec record.
@@ -131,6 +139,7 @@ func NewSemanticRecord(input SemanticRecordInput) (SemanticRecord, error) {
 		ID: id, Kind: input.Kind, SpecKey: input.SpecKey, SpecTitle: input.SpecTitle,
 		LogicalKey: input.LogicalKey, Title: input.Title, Description: input.Description,
 		OperationID: input.OperationID, Method: input.Method, Path: input.Path,
+		RequestTarget: input.RequestTarget, FixedQuery: append([]domain.FixedQueryParameter(nil), input.FixedQuery...),
 	}, nil
 }
 
@@ -151,6 +160,7 @@ func NewRecord(input RecordInput) (Record, error) {
 		SpecKey: input.SpecKey, SpecTitle: input.SpecTitle,
 		LogicalKey: input.LogicalKey, Title: input.Title, Description: input.Description,
 		OperationID: input.OperationID, Method: input.Method, Path: input.Path,
+		RequestTarget: input.RequestTarget, FixedQuery: append([]domain.FixedQueryParameter(nil), input.FixedQuery...),
 		PageHref: input.PageHref, FragmentHref: input.FragmentHref,
 	}, nil
 }
@@ -222,7 +232,7 @@ func validateRecordInput(input RecordInput) error {
 		if input.FragmentHref != "" {
 			return fmt.Errorf("catalog search record must not contain a fragment href")
 		}
-		if input.Description != "" || hasOperationFields(input.OperationID, input.Method, input.Path) {
+		if input.Description != "" || hasOperationFields(input.OperationID, input.Method, input.Path, input.RequestTarget, input.FixedQuery) {
 			return fmt.Errorf("catalog search record contains unsupported resource fields")
 		}
 		return nil
@@ -232,6 +242,7 @@ func validateRecordInput(input RecordInput) error {
 		Kind: input.Kind, SpecKey: input.SpecKey, SpecTitle: input.SpecTitle,
 		LogicalKey: input.LogicalKey, Title: input.Title, Description: input.Description,
 		OperationID: input.OperationID, Method: input.Method, Path: input.Path,
+		RequestTarget: input.RequestTarget, FixedQuery: input.FixedQuery,
 	})
 	if err != nil {
 		return err
@@ -273,11 +284,11 @@ func validateSemanticRecordInput(input SemanticRecordInput) error {
 		if input.Title != input.SpecTitle {
 			return fmt.Errorf("spec search title must equal spec title")
 		}
-		if input.Description != "" || hasOperationFields(input.OperationID, input.Method, input.Path) {
+		if input.Description != "" || hasOperationFields(input.OperationID, input.Method, input.Path, input.RequestTarget, input.FixedQuery) {
 			return fmt.Errorf("spec search record contains unsupported resource fields")
 		}
 	case KindPath:
-		if input.OperationID != "" || input.Method != "" {
+		if input.OperationID != "" || input.Method != "" || input.RequestTarget != "" || len(input.FixedQuery) != 0 {
 			return fmt.Errorf("path search record must not contain operation fields")
 		}
 		if input.Path != input.LogicalKey {
@@ -288,7 +299,7 @@ func validateSemanticRecordInput(input SemanticRecordInput) error {
 		}
 		return validateAPIPath(input.Path)
 	case KindSchema:
-		if hasOperationFields(input.OperationID, input.Method, input.Path) {
+		if hasOperationFields(input.OperationID, input.Method, input.Path, input.RequestTarget, input.FixedQuery) {
 			return fmt.Errorf("schema search record must not contain operation fields")
 		}
 		if err := validateSchemaPointer(input.LogicalKey); err != nil {
@@ -298,10 +309,14 @@ func validateSemanticRecordInput(input SemanticRecordInput) error {
 		if err := validateMethod(input.Method); err != nil {
 			return err
 		}
-		if input.Method+" "+input.Path != input.LogicalKey {
-			return fmt.Errorf("operation search logical key must equal uppercase method plus path")
+		effectiveTarget := input.RequestTarget
+		if effectiveTarget == "" {
+			effectiveTarget = input.Path
 		}
-		if err := validateAPIPath(input.Path); err != nil {
+		if input.Method+" "+effectiveTarget != input.LogicalKey {
+			return fmt.Errorf("operation search logical key must equal uppercase method plus request target")
+		}
+		if err := domain.ValidateOperationRequestTarget(input.Path, input.RequestTarget, input.FixedQuery); err != nil {
 			return err
 		}
 		if err := domain.ValidateCanonicalIdentity("search operation id", input.OperationID, true); err != nil {
@@ -357,8 +372,8 @@ func validateSchemaPointer(value string) error {
 	return nil
 }
 
-func hasOperationFields(operationID, method, apiPath string) bool {
-	return operationID != "" || method != "" || apiPath != ""
+func hasOperationFields(operationID, method, apiPath, requestTarget string, fixedQuery []domain.FixedQueryParameter) bool {
+	return operationID != "" || method != "" || apiPath != "" || requestTarget != "" || len(fixedQuery) != 0
 }
 
 func (kind RecordKind) valid() bool {
