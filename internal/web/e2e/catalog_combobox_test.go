@@ -917,7 +917,38 @@ func TestCatalogSidebarExpansionAndNavigationPreserveContext(t *testing.T) {
 	} else if expanded == "true" {
 		toggleSchemaGroup("false")
 	}
+	if _, err := page.Evaluate(`() => {
+		var style = document.createElement("style");
+		style.textContent = "#catalog-sidebar-groups .sidebar-scroll { height: 120px !important; flex: none !important; overflow-y: auto !important; }";
+		document.head.appendChild(style);
+		var panel = document.querySelector("#catalog-sidebar-groups .sidebar-scroll");
+		panel.scrollTop = Math.min(80, panel.scrollHeight - panel.clientHeight);
+		window.__manjaSidebarScrollAtGroupRequest = -1;
+		document.body.addEventListener("htmx:beforeRequest", function captureSidebarScroll(event) {
+			var trigger = event.detail && event.detail.elt;
+			if (!trigger || !trigger.closest("[data-catalog-group-control]")) return;
+			window.__manjaSidebarScrollAtGroupRequest = panel.scrollTop;
+		}, { once: true });
+		return panel.scrollTop;
+	}`); err != nil {
+		t.Fatalf("prepare sidebar scroll preservation: %v", err)
+	}
 	toggleSchemaGroup("true")
+	sidebarScroll, err := page.Evaluate(`() => {
+		var before = window.__manjaSidebarScrollAtGroupRequest;
+		var after = document.querySelector("#catalog-sidebar-groups .sidebar-scroll").scrollTop;
+		return { before: before, after: after, preserved: before > 0 && Math.abs(after - before) <= 1 };
+	}`, nil)
+	if err != nil {
+		t.Fatalf("read preserved sidebar scroll: %v", err)
+	}
+	scrollState, ok := sidebarScroll.(map[string]interface{})
+	if !ok {
+		t.Fatalf("sidebar scroll state = %#v", sidebarScroll)
+	}
+	if scrollState["preserved"] != true {
+		t.Fatalf("sidebar scroll after opening group = %#v, want preserved positive offset", sidebarScroll)
+	}
 	schema := page.Locator(`[data-catalog-sidebar-item][title="CoreWidget"]`)
 	if err := schema.WaitFor(); err != nil {
 		t.Fatalf("schema sidebar item: %v", err)

@@ -12,6 +12,73 @@
   var MAX_TOKENS = 8;
   var MAX_RECENT = 6;
 
+  function bindCatalogSidebarScrollPreservation() {
+    if (window.__manjaCatalogSidebarScrollBound) return;
+    window.__manjaCatalogSidebarScrollBound = true;
+    var pendingSidebarScrollTop = null;
+
+    function sidebarScrollPanel(root) {
+      var scope = root && root.querySelector ? root : document;
+      if (scope.matches && scope.matches(".sidebar-scroll")) return scope;
+      var panel = scope.querySelector(".sidebar-scroll");
+      if (panel) return panel;
+      var groups = document.getElementById("catalog-sidebar-groups");
+      return groups && groups.querySelector(".sidebar-scroll");
+    }
+
+    function sidebarSwapTarget(event) {
+      var target = event.detail && event.detail.target;
+      if (!target) return null;
+      if (target.id === "catalog-sidebar-groups") {
+        return document.getElementById("catalog-sidebar-groups") || target;
+      }
+      var groups = target.closest && target.closest("#catalog-sidebar-groups");
+      return groups && (document.getElementById("catalog-sidebar-groups") || groups);
+    }
+
+    function restoreSidebarScroll(root, scrollTop) {
+      var panel = sidebarScrollPanel(root);
+      if (panel) panel.scrollTop = scrollTop;
+    }
+
+    document.body.addEventListener("htmx:beforeRequest", function (event) {
+      var trigger = event.detail && event.detail.elt;
+      var control = trigger && trigger.closest && trigger.closest("[data-catalog-group-control]");
+      if (!control) return;
+      var panel = sidebarScrollPanel(control.closest("#catalog-sidebar-groups"));
+      pendingSidebarScrollTop = panel ? panel.scrollTop : null;
+    });
+    document.body.addEventListener("htmx:afterSwap", function (event) {
+      var target = sidebarSwapTarget(event);
+      if (target && pendingSidebarScrollTop !== null) {
+        restoreSidebarScroll(target, pendingSidebarScrollTop);
+      }
+    });
+    document.body.addEventListener("htmx:afterSettle", function (event) {
+      var target = sidebarSwapTarget(event);
+      if (!target || pendingSidebarScrollTop === null) return;
+      var scrollTop = pendingSidebarScrollTop;
+      pendingSidebarScrollTop = null;
+      restoreSidebarScroll(target, scrollTop);
+      window.requestAnimationFrame(function () {
+        window.requestAnimationFrame(function () {
+          window.requestAnimationFrame(function () {
+            restoreSidebarScroll(document, scrollTop);
+          });
+        });
+      });
+    });
+    ["htmx:responseError", "htmx:sendError", "htmx:timeout"].forEach(function (name) {
+      document.body.addEventListener(name, function () { pendingSidebarScrollTop = null; });
+    });
+  }
+
+  if (document.body) {
+    bindCatalogSidebarScrollPreservation();
+  } else {
+    document.addEventListener("DOMContentLoaded", bindCatalogSidebarScrollPreservation, { once: true });
+  }
+
   function usesCommandShortcut() {
     var platform = "";
     if (navigator.userAgentData && navigator.userAgentData.platform) {
