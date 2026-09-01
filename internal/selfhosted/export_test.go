@@ -35,7 +35,7 @@ func TestExportBasePathValidation(t *testing.T) {
 
 func TestExportRendererIncludesConfiguredCatalogWithLocalDocsVisibility(t *testing.T) {
 	root := t.TempDir()
-	if err := os.WriteFile(filepath.Join(root, "private.json"), []byte(`{"openapi":"3.0.3","info":{"title":"Private API","version":"v1"},"paths":{"/charges":{"get":{"operationId":"listCharges","responses":{"200":{"description":"ok"}}}}}}`), 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(root, "private.json"), []byte(`{"openapi":"3.0.3","info":{"title":"Private API","version":"v1"},"paths":{"/charges":{"get":{"operationId":"listCharges","responses":{"200":{"description":"ok","content":{"application/json":{"schema":{"$ref":"#/components/schemas/Charge"}}}}}}}},"components":{"schemas":{"Charge":{"type":"object","properties":{"id":{"type":"string"}}}}}}`), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	config := `version: 1
@@ -121,6 +121,26 @@ catalogs:
 	if !strings.Contains(string(fragment), `data-manja-local-main="true"`) || !strings.Contains(string(fragment), `listCharges`) {
 		t.Fatalf("operation fragment is incomplete: %s", fragment)
 	}
+	if strings.Contains(string(fragment), `class="manja-schema-tree"`) || strings.Contains(string(fragment), `data-schema-tree-node`) {
+		t.Fatalf("operation fragment retained duplicated schema HTML: %s", fragment)
+	}
+	resources, err := lazySchemaHTMLResources(fragment)
+	if err != nil || len(resources) != 1 {
+		t.Fatalf("operation lazy schema resources = %#v, %v", resources, err)
+	}
+	lazySchemaPath, lazySchemaSidecar, err := artifact.FragmentLocation("/private", "private", artifact.FragmentIdentity{Format: artifact.FragmentFormatV2, Kind: artifact.FragmentSchema, Resource: resources[0]})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{lazySchemaPath, lazySchemaSidecar} {
+		if _, err := os.Stat(filepath.Join(output, filepath.FromSlash(name))); err != nil {
+			t.Fatalf("missing lazy schema artifact %s: %v", name, err)
+		}
+	}
+	lazySchemaInfoBefore, err := os.Stat(filepath.Join(output, filepath.FromSlash(lazySchemaPath)))
+	if err != nil {
+		t.Fatal(err)
+	}
 	sidecarBefore, err := os.ReadFile(filepath.Join(output, filepath.FromSlash(sidecarPath)))
 	if err != nil {
 		t.Fatal(err)
@@ -149,6 +169,13 @@ catalogs:
 	}
 	if !os.SameFile(fragmentInfoBefore, fragmentInfoAfter) {
 		t.Fatal("incremental export copied an unchanged fragment instead of linking the verified cache hit")
+	}
+	lazySchemaInfoAfter, err := os.Stat(filepath.Join(output, filepath.FromSlash(lazySchemaPath)))
+	if err != nil {
+		t.Fatalf("incremental export omitted cached lazy schema: %v", err)
+	}
+	if !os.SameFile(lazySchemaInfoBefore, lazySchemaInfoAfter) {
+		t.Fatal("incremental export copied an unchanged lazy schema instead of linking the verified cache hit")
 	}
 }
 

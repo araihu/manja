@@ -131,6 +131,41 @@ catalogs:
 			}
 			assertStaticSidebarLayout(t, page, operation, schema)
 			if _, err := page.Evaluate(`() => {
+				const response = [...document.querySelectorAll('button')].find((button) => (button.textContent || '').includes('200'));
+				if (response && response.getAttribute('aria-expanded') !== 'true') response.click();
+				return !!response;
+			}`); err != nil {
+				t.Fatalf("open response schema: %v", err)
+			}
+			if err := page.Locator(`[data-manja-static-schema-fragment="true"]`).First().ScrollIntoViewIfNeeded(); err != nil {
+				t.Fatalf("reveal lazy schema: %v", err)
+			}
+			if _, err := page.WaitForFunction(`() => {
+				const placeholder = document.querySelector('[data-manja-static-schema-fragment="true"]');
+				return placeholder && placeholder.dataset.manjaSchemaState === 'ready' && placeholder.querySelector('[data-schema-tree-node], [data-schema-tree-row]');
+			}`, nil, playwright.PageWaitForFunctionOptions{Timeout: playwright.Float(10_000)}); err != nil {
+				debug, _ := page.Evaluate(`() => ({placeholder: document.querySelector('[data-manja-static-schema-fragment="true"]')?.outerHTML || '', main: document.querySelector('[data-catalog-main-content]')?.textContent || ''})`)
+				t.Fatalf("lazy verified schema composition: %v debug=%#v", err, debug)
+			}
+			requestMu.Lock()
+			lazySchemaRequests := append([]string(nil), requests...)
+			requestMu.Unlock()
+			var lazySchemaHTML, lazySchemaSidecar bool
+			for _, requestPath := range lazySchemaRequests {
+				if !strings.Contains(requestPath, "/_manja/fragments/schemas/schema-sha256-") {
+					continue
+				}
+				if strings.HasSuffix(requestPath, ".html") {
+					lazySchemaHTML = true
+				}
+				if strings.HasSuffix(requestPath, ".html.meta.json") {
+					lazySchemaSidecar = true
+				}
+			}
+			if !lazySchemaHTML || !lazySchemaSidecar {
+				t.Fatalf("lazy schema did not fetch verified HTML and sidecar: %#v", lazySchemaRequests)
+			}
+			if _, err := page.Evaluate(`() => {
 				const abi = window.ManjaLocalDocs;
 				const metrics = window.__manjaStaticMetrics = {prepare: 0, admit: 0, admittedPaths: [], longTasks: 0};
 				if (abi && typeof abi.prepare === 'function') {

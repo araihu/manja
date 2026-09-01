@@ -724,6 +724,76 @@
 	});
   }
 
+  var lazySchemaInstance = 0;
+
+  function scopeLazySchemaIDs(root) {
+	if (!root || !root.querySelectorAll) return;
+	lazySchemaInstance += 1;
+	var prefix = "manja-lazy-schema-" + lazySchemaInstance + "-";
+	var ids = Object.create(null);
+	var identified = root.querySelectorAll("[id]");
+	for (var index = 0; index < identified.length; index += 1) {
+	  var oldID = identified[index].getAttribute("id");
+	  if (!oldID) continue;
+	  ids[oldID] = prefix + oldID;
+	  identified[index].setAttribute("id", ids[oldID]);
+	}
+	var references = root.querySelectorAll("[href^='#'], [aria-controls], [aria-describedby], [aria-labelledby], [for]");
+	for (var referenceIndex = 0; referenceIndex < references.length; referenceIndex += 1) {
+	  var node = references[referenceIndex];
+	  ["aria-controls", "aria-describedby", "aria-labelledby", "for"].forEach(function (name) {
+		var value = node.getAttribute(name);
+		if (!value) return;
+		node.setAttribute(name, value.split(/\s+/).map(function (part) { return ids[part] || part; }).join(" "));
+	  });
+	  var href = node.getAttribute("href");
+	  if (href && href.charAt(0) === "#" && ids[href.slice(1)]) node.setAttribute("href", "#" + ids[href.slice(1)]);
+	}
+  }
+
+  function installLazySchemaFragments(descriptor, cache, route, root) {
+	if (!root || !root.querySelectorAll) return;
+	var placeholders = root.querySelectorAll('[data-manja-static-schema-fragment="true"]');
+	if (!placeholders.length) return;
+	var observer = typeof global.IntersectionObserver === "function" ? new global.IntersectionObserver(function (entries) {
+	  entries.forEach(function (entry) {
+		if (!entry.isIntersecting) return;
+		observer.unobserve(entry.target);
+		load(entry.target);
+	  });
+	}, { rootMargin: "256px 0px" }) : null;
+	function load(placeholder) {
+	  if (!placeholder || placeholder.getAttribute("data-manja-schema-state") === "loading" || placeholder.getAttribute("data-manja-schema-state") === "ready") return;
+	  var resource = placeholder.getAttribute("data-manja-schema-resource") || "";
+	  if (!/^tree-sha256-[0-9a-f]{64}$/.test(resource)) {
+		placeholder.setAttribute("data-manja-schema-state", "error");
+		return;
+	  }
+	  placeholder.setAttribute("data-manja-schema-state", "loading");
+	  placeholder.setAttribute("aria-busy", "true");
+	  var schemaRoute = { documentKey: route.documentKey, selected: resource, groups: [], closedGroups: [] };
+	  readStaticHTMLFragmentKind(descriptor, cache, schemaRoute, "schema").then(function (fragment) {
+		placeholder.innerHTML = fragment.mainHtml;
+		scopeLazySchemaIDs(placeholder);
+		placeholder.setAttribute("data-manja-schema-state", "ready");
+		placeholder.setAttribute("aria-busy", "false");
+		if (global.htmx && typeof global.htmx.process === "function") global.htmx.process(placeholder);
+	  }).catch(function () {
+		placeholder.setAttribute("data-manja-schema-state", "error");
+		placeholder.setAttribute("aria-busy", "false");
+		var retry = placeholder.querySelector && placeholder.querySelector("[data-manja-schema-retry]");
+		if (retry) retry.hidden = false;
+	  });
+	}
+	for (var index = 0; index < placeholders.length; index += 1) {
+	  (function (placeholder) {
+		var retry = placeholder.querySelector && placeholder.querySelector("[data-manja-schema-retry]");
+		if (retry && retry.addEventListener) retry.addEventListener("click", function () { load(placeholder); });
+		if (observer) observer.observe(placeholder); else load(placeholder);
+	  }(placeholders[index]));
+	}
+  }
+
   function readStaticSidebarChunk(descriptor, cache, documentKey, collection, chunk) {
 	var resource = documentKey + ":" + collection + ":" + chunk;
 	return fragmentResourceKey("sidebar", resource).then(function (resourceKey) {
@@ -1004,7 +1074,10 @@
 	  });
 	  }).then(function (result) {
 		if (!result || result.ok !== true) fail(result && result.error || "static render failed");
-		if (!options.sidebarOnly) main.innerHTML = result.mainHtml;
+		if (!options.sidebarOnly) {
+		  main.innerHTML = result.mainHtml;
+		  installLazySchemaFragments(descriptor, cache, route, main);
+		}
 		if (sidebar && typeof result.sidebarHtml === "string") sidebar.innerHTML = result.sidebarHtml;
 		if (!options.sidebarOnly) documentValue.title = result.title;
 		if (options.restoreScroll) restoreScroll(options.restoreScroll);

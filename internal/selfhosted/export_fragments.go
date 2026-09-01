@@ -3,15 +3,18 @@
 package selfhosted
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	htmlstd "html"
 	"io"
 	"net/url"
 	"os"
+	"path"
 	"path/filepath"
 	"runtime/debug"
 	"strconv"
@@ -25,12 +28,18 @@ import (
 	localbrowser "github.com/araihu/manja/internal/localdocs/browser"
 	"github.com/araihu/manja/renderer"
 	xhtml "golang.org/x/net/html"
+	"golang.org/x/net/html/atom"
 )
 
 type exportFragmentIdentity struct {
 	Document catalog.DocumentDirectoryV1 `json:"document"`
 	Child    catalog.ChildIdentityV1     `json:"child"`
 	Schemas  []catalog.ShardReferenceV1  `json:"schemas"`
+}
+
+type lazySchemaHTMLFragment struct {
+	Resource string
+	HTML     []byte
 }
 
 func emitCatalogHTMLFragments(ctx context.Context, writer *exportTreeWriter, active renderer.ActivationReceipt, descriptor localdocs.DescriptorV1, manifest catalog.ManifestV1, manifestBytes, catalogBytes []byte, directory catalog.CatalogArtifactV1, cacheRoot string, profile artifact.BuildProfile, fragmentWorkers uint32) error {
@@ -398,7 +407,16 @@ func emitDetailHTMLFragment(ctx context.Context, writer *exportTreeWriter, store
 			return cacheErr
 		}
 		if cached.Hit() {
-			return linkCachedHTMLArtifact(writer, cacheRoot, htmlPath, cached.Manifest)
+			if kind != artifact.FragmentOperation {
+				return linkCachedHTMLArtifact(writer, cacheRoot, htmlPath, cached.Manifest)
+			}
+			linked, linkErr := linkCachedOperationArtifacts(ctx, writer, cacheStore, cacheRoot, htmlPath, cached.Manifest, resource)
+			if linkErr != nil {
+				return linkErr
+			}
+			if linked {
+				return nil
+			}
 		}
 	}
 	verification, err := store.VerifyHTML(ctx, htmlPath, expectation)
@@ -414,6 +432,19 @@ func emitDetailHTMLFragment(ctx context.Context, writer *exportTreeWriter, store
 		fragmentBytes, rewriteErr := rewriteExportFragmentHTML([]byte(page.MainHTML), "/", nil)
 		if rewriteErr != nil {
 			return fmt.Errorf("rewrite %s fragment %q: %w", kind, resource, rewriteErr)
+		}
+		if kind == artifact.FragmentOperation {
+			var schemas []lazySchemaHTMLFragment
+			fragmentBytes, schemas, rewriteErr = extractLazySchemaHTMLFragments(fragmentBytes)
+			if rewriteErr != nil {
+				return fmt.Errorf("extract lazy schemas from operation fragment %q: %w", resource, rewriteErr)
+			}
+			for _, schema := range schemas {
+				schemaIdentity := artifact.FragmentIdentity{Format: artifact.FragmentFormatV2, Kind: artifact.FragmentSchema, Resource: schema.Resource}
+				if err := emitStaticBytesArtifact(ctx, writer, store, cacheStore, cacheRoot, active, manifest, document.Key, schemaIdentity, schema.HTML, schema.HTML, binaryIdentity, artifact.BuildProfile{}); err != nil {
+					return err
+				}
+			}
 		}
 		_, err = store.CommitHTML(ctx, htmlPath, expectation, func(output io.Writer) error {
 			_, writeErr := output.Write(fragmentBytes)
@@ -445,6 +476,271 @@ func emitDetailHTMLFragment(ctx context.Context, writer *exportTreeWriter, store
 		}
 	}
 	return nil
+}
+
+func linkCachedOperationArtifacts(ctx context.Context, writer *exportTreeWriter, cacheStore *artifactstore.Store, cacheRoot, operationPath string, operationManifest artifact.Manifest, resource string) (bool, error) {
+	operationHTML, err := os.ReadFile(filepath.Join(cacheRoot, filepath.FromSlash(operationPath)))
+	if err != nil {
+		return false, nil
+	}
+	resources, err := lazySchemaHTMLResources(operationHTML)
+	if err != nil {
+		return false, err
+	}
+	type cachedDependency struct {
+		path     string
+		manifest artifact.Manifest
+	}
+	dependencies := make([]cachedDependency, 0, len(resources)+1)
+	for _, schemaResource := range resources {
+		identity := artifact.FragmentIdentity{Format: artifact.FragmentFormatV2, Kind: artifact.FragmentSchema, Resource: schemaResource}
+		dependency, ok, verifyErr := verifiedCachedHTMLArtifact(ctx, cacheStore, cacheRoot, operationPath, identity)
+		if verifyErr != nil {
+			return false, verifyErr
+		}
+		if !ok {
+			return false, nil
+		}
+		dependencies = append(dependencies, dependency)
+	}
+	if _, ok, extractErr := extractHTMLElement(operationHTML, "data-manja-request-samples", "true"); extractErr != nil {
+		return false, extractErr
+	} else if ok {
+		identity := artifact.FragmentIdentity{Format: artifact.FragmentFormatV2, Kind: artifact.FragmentExample, Resource: resource}
+		dependency, verified, verifyErr := verifiedCachedHTMLArtifact(ctx, cacheStore, cacheRoot, operationPath, identity)
+		if verifyErr != nil {
+			return false, verifyErr
+		}
+		if !verified {
+			return false, nil
+		}
+		dependencies = append(dependencies, dependency)
+	}
+	for _, dependency := range dependencies {
+		if err := linkCachedHTMLArtifact(writer, cacheRoot, dependency.path, dependency.manifest); err != nil {
+			return false, err
+		}
+	}
+	if err := linkCachedHTMLArtifact(writer, cacheRoot, operationPath, operationManifest); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+func verifiedCachedHTMLArtifact(ctx context.Context, cacheStore *artifactstore.Store, cacheRoot, operationPath string, identity artifact.FragmentIdentity) (struct {
+	path     string
+	manifest artifact.Manifest
+}, bool, error) {
+	var result struct {
+		path     string
+		manifest artifact.Manifest
+	}
+	fragmentRoot := path.Dir(path.Dir(filepath.ToSlash(operationPath)))
+	syntheticPath, _, err := artifact.FragmentLocation("/", "document", identity)
+	if err != nil {
+		return result, false, err
+	}
+	directory, ok := map[artifact.FragmentKind]string{
+		artifact.FragmentSchema:  "schemas",
+		artifact.FragmentExample: "examples",
+	}[identity.Kind]
+	if !ok {
+		return result, false, fmt.Errorf("cached operation dependency kind %q is invalid", identity.Kind)
+	}
+	htmlPath := path.Join(fragmentRoot, directory, path.Base(syntheticPath))
+	sidecar, err := os.ReadFile(filepath.Join(cacheRoot, filepath.FromSlash(htmlPath+".meta.json")))
+	if err != nil {
+		return result, false, nil
+	}
+	if err := json.Unmarshal(sidecar, &result.manifest); err != nil || result.manifest.Validate() != nil || result.manifest.Fragment != identity {
+		return result, false, nil
+	}
+	verification, err := cacheStore.VerifyHTML(ctx, htmlPath, artifact.Expectation{Fragment: identity, BuildKey: result.manifest.BuildKey})
+	if err != nil {
+		return result, false, err
+	}
+	if !verification.Hit() {
+		return result, false, nil
+	}
+	result.path = htmlPath
+	result.manifest = verification.Manifest
+	return result, true, nil
+}
+
+func extractLazySchemaHTMLFragments(input []byte) ([]byte, []lazySchemaHTMLFragment, error) {
+	container := &xhtml.Node{Type: xhtml.ElementNode, Data: "div", DataAtom: atom.Div}
+	nodes, err := xhtml.ParseFragment(bytes.NewReader(input), container)
+	if err != nil {
+		return nil, nil, err
+	}
+	for _, node := range nodes {
+		container.AppendChild(node)
+	}
+	var trees []*xhtml.Node
+	var collect func(*xhtml.Node)
+	collect = func(node *xhtml.Node) {
+		if node.Type == xhtml.ElementNode && hasHTMLClass(node, "manja-schema-tree") {
+			trees = append(trees, node)
+			return
+		}
+		for child := node.FirstChild; child != nil; child = child.NextSibling {
+			collect(child)
+		}
+	}
+	collect(container)
+	fragments := make([]lazySchemaHTMLFragment, 0, len(trees))
+	seen := make(map[string]struct{}, len(trees))
+	for _, tree := range trees {
+		label := htmlAttribute(tree, "aria-label")
+		if label == "" {
+			label = "Schema tree"
+		}
+		canonicalizeStandaloneSchemaHTML(tree)
+		var rendered bytes.Buffer
+		if err := xhtml.Render(&rendered, tree); err != nil {
+			return nil, nil, err
+		}
+		hash := sha256.Sum256(rendered.Bytes())
+		resource := "tree-sha256-" + hex.EncodeToString(hash[:])
+		if _, ok := seen[resource]; !ok {
+			fragments = append(fragments, lazySchemaHTMLFragment{Resource: resource, HTML: append([]byte(nil), rendered.Bytes()...)})
+			seen[resource] = struct{}{}
+		}
+		placeholder := &xhtml.Node{Type: xhtml.ElementNode, Data: "div", Attr: []xhtml.Attribute{
+			{Key: "data-manja-static-schema-fragment", Val: "true"},
+			{Key: "data-manja-schema-resource", Val: resource},
+			{Key: "data-manja-schema-state", Val: "idle"},
+			{Key: "aria-label", Val: label},
+			{Key: "aria-busy", Val: "false"},
+			{Key: "class", Val: "min-h-12 rounded-radius border border-outline p-3 dark:border-outline-dark"},
+		}}
+		message := &xhtml.Node{Type: xhtml.ElementNode, Data: "p", Attr: []xhtml.Attribute{{Key: "data-manja-schema-placeholder", Val: "true"}, {Key: "class", Val: "text-sm text-on-surface-muted dark:text-on-surface-dark-muted"}}}
+		message.AppendChild(&xhtml.Node{Type: xhtml.TextNode, Data: "Schema loads when visible."})
+		placeholder.AppendChild(message)
+		retry := &xhtml.Node{Type: xhtml.ElementNode, Data: "button", Attr: []xhtml.Attribute{{Key: "type", Val: "button"}, {Key: "data-manja-schema-retry", Val: "true"}, {Key: "hidden", Val: ""}}}
+		retry.AppendChild(&xhtml.Node{Type: xhtml.TextNode, Data: "Retry schema"})
+		placeholder.AppendChild(retry)
+		parent := tree.Parent
+		if parent == nil {
+			return nil, nil, errors.New("schema tree has no parent")
+		}
+		parent.InsertBefore(placeholder, tree)
+		parent.RemoveChild(tree)
+	}
+	var output bytes.Buffer
+	for child := container.FirstChild; child != nil; child = child.NextSibling {
+		if err := xhtml.Render(&output, child); err != nil {
+			return nil, nil, err
+		}
+	}
+	return output.Bytes(), fragments, nil
+}
+
+func lazySchemaHTMLResources(input []byte) ([]string, error) {
+	container := &xhtml.Node{Type: xhtml.ElementNode, Data: "div", DataAtom: atom.Div}
+	nodes, err := xhtml.ParseFragment(bytes.NewReader(input), container)
+	if err != nil {
+		return nil, err
+	}
+	for _, node := range nodes {
+		container.AppendChild(node)
+	}
+	var resources []string
+	seen := make(map[string]struct{})
+	var visit func(*xhtml.Node) error
+	visit = func(node *xhtml.Node) error {
+		if node.Type == xhtml.ElementNode && hasHTMLAttribute(node, "data-manja-static-schema-fragment", "true") {
+			resource := htmlAttribute(node, "data-manja-schema-resource")
+			if len(resource) != len("tree-sha256-")+sha256.Size*2 || !strings.HasPrefix(resource, "tree-sha256-") {
+				return errors.New("lazy schema resource is invalid")
+			}
+			if _, err := hex.DecodeString(strings.TrimPrefix(resource, "tree-sha256-")); err != nil {
+				return errors.New("lazy schema resource is invalid")
+			}
+			if _, ok := seen[resource]; !ok {
+				resources = append(resources, resource)
+				seen[resource] = struct{}{}
+			}
+		}
+		for child := node.FirstChild; child != nil; child = child.NextSibling {
+			if err := visit(child); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+	return resources, visit(container)
+}
+
+func canonicalizeStandaloneSchemaHTML(root *xhtml.Node) {
+	setHTMLAttribute(root, "aria-label", "Schema tree")
+	ids := make(map[string]string)
+	var idOrder []string
+	var collect func(*xhtml.Node)
+	collect = func(node *xhtml.Node) {
+		if node.Type == xhtml.ElementNode {
+			if id := htmlAttribute(node, "id"); id != "" {
+				if _, ok := ids[id]; !ok {
+					idOrder = append(idOrder, id)
+					ids[id] = "manja-schema-tree-id-" + strconv.Itoa(len(idOrder))
+				}
+			}
+		}
+		for child := node.FirstChild; child != nil; child = child.NextSibling {
+			collect(child)
+		}
+	}
+	collect(root)
+	var rewrite func(*xhtml.Node)
+	rewrite = func(node *xhtml.Node) {
+		if node.Type == xhtml.ElementNode {
+			for index := range node.Attr {
+				attribute := &node.Attr[index]
+				if attribute.Key == "id" {
+					attribute.Val = ids[attribute.Val]
+					continue
+				}
+				if attribute.Key == "href" && strings.HasPrefix(attribute.Val, "#") {
+					if replacement, ok := ids[strings.TrimPrefix(attribute.Val, "#")]; ok {
+						attribute.Val = "#" + replacement
+					}
+					continue
+				}
+				switch attribute.Key {
+				case "aria-controls", "aria-describedby", "aria-labelledby", "for":
+					parts := strings.Fields(attribute.Val)
+					for partIndex, part := range parts {
+						if replacement, ok := ids[part]; ok {
+							parts[partIndex] = replacement
+						}
+					}
+					attribute.Val = strings.Join(parts, " ")
+				}
+			}
+		}
+		for child := node.FirstChild; child != nil; child = child.NextSibling {
+			rewrite(child)
+		}
+	}
+	rewrite(root)
+}
+
+func hasHTMLClass(node *xhtml.Node, class string) bool {
+	for _, candidate := range strings.Fields(htmlAttribute(node, "class")) {
+		if candidate == class {
+			return true
+		}
+	}
+	return false
+}
+
+func htmlAttribute(node *xhtml.Node, key string) string {
+	for _, attribute := range node.Attr {
+		if attribute.Key == key {
+			return attribute.Val
+		}
+	}
+	return ""
 }
 
 func fallbackDetailHTML(document catalog.DocumentDirectoryV1, kind artifact.FragmentKind, resource string) string {
