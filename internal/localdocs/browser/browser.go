@@ -28,6 +28,7 @@ type Browser struct {
 	directory  catalog.CatalogArtifactV1
 	children   map[string][]byte
 	search     *catalog.SearchService
+	loader     func(string) ([]byte, error)
 }
 
 type Route struct {
@@ -76,6 +77,64 @@ func Prepare(descriptor localdocs.DescriptorV1, manifestBytes, catalogBytes []by
 		return nil, err
 	}
 	return browser, nil
+}
+
+// PrepareWithLoader keeps large static builds bounded by admitting verified
+// projection children only when a rendered route reaches them.
+func PrepareWithLoader(descriptor localdocs.DescriptorV1, manifestBytes, catalogBytes []byte, loader func(string) ([]byte, error)) (*Browser, error) {
+	if loader == nil {
+		return nil, errors.New("local docs browser child loader is missing")
+	}
+	browser, err := Prepare(descriptor, manifestBytes, catalogBytes, nil)
+	if err != nil {
+		return nil, err
+	}
+	browser.loader = loader
+	return browser, nil
+}
+
+// ForkWithLoader creates an isolated route renderer that shares only immutable
+// admitted catalog metadata. Each fork owns its child cache and may render on a
+// separate bounded worker.
+func (browser *Browser) ForkWithLoader(loader func(string) ([]byte, error)) (*Browser, error) {
+	if browser == nil || loader == nil {
+		return nil, errors.New("local docs browser fork is not configured")
+	}
+	return &Browser{
+		descriptor: browser.descriptor,
+		activation: browser.activation,
+		manifest:   browser.manifest,
+		directory:  browser.directory,
+		children:   make(map[string][]byte),
+		loader:     loader,
+	}, nil
+}
+
+// ReleaseChildren drops route-local decoded inputs between fragment renders.
+// Immutable manifest and catalog metadata remain prepared.
+func (browser *Browser) ReleaseChildren() {
+	if browser == nil {
+		return
+	}
+	browser.children = make(map[string][]byte)
+	browser.search = nil
+}
+
+func (browser *Browser) ensureChild(childPath string) ([]byte, error) {
+	if data, ok := browser.children[childPath]; ok {
+		return data, nil
+	}
+	if browser.loader == nil {
+		return nil, errors.New("local docs browser child is missing")
+	}
+	data, err := browser.loader(childPath)
+	if err != nil {
+		return nil, err
+	}
+	if err := browser.AdmitChild(childPath, data); err != nil {
+		return nil, err
+	}
+	return browser.children[childPath], nil
 }
 
 // AdmitChildren verifies and adds projection or search children to a prepared
@@ -542,7 +601,11 @@ func (browser *Browser) detail(document catalog.DocumentDirectoryV1, detailID do
 	if childPath == "" {
 		return catalog.DetailRecordV1{}, errors.New("local docs detail is missing")
 	}
-	return browser.activation.SelectDetail(childPath, document.Key, detailID, browser.children[childPath])
+	data, err := browser.ensureChild(childPath)
+	if err != nil {
+		return catalog.DetailRecordV1{}, err
+	}
+	return browser.activation.SelectDetail(childPath, document.Key, detailID, data)
 }
 
 func (browser *Browser) schemaNode(document catalog.DocumentDirectoryV1, ordinal uint32) (projection.SchemaNode, error) {
@@ -551,7 +614,11 @@ func (browser *Browser) schemaNode(document catalog.DocumentDirectoryV1, ordinal
 		return projection.SchemaNode{}, errors.New("local docs schema node is missing")
 	}
 	reference := document.SchemaNodeShards[index]
-	return browser.activation.SelectSchemaNode(reference.Path, document.Key, ordinal, browser.children[reference.Path])
+	data, err := browser.ensureChild(reference.Path)
+	if err != nil {
+		return projection.SchemaNode{}, err
+	}
+	return browser.activation.SelectSchemaNode(reference.Path, document.Key, ordinal, data)
 }
 
 func (browser *Browser) document(key string) (catalog.DocumentDirectoryV1, bool) {

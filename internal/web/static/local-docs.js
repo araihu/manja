@@ -638,6 +638,69 @@
 	};
   }
 
+  function fragmentResourceKey(kind, resource) {
+	var fields = ["manja.html.fragment.resource.v2", "manja-html-fragment-v2", kind, resource];
+	var encoder = new TextEncoder();
+	var encoded = fields.map(function (field) { return encoder.encode(field); });
+	var length = encoded.reduce(function (total, value) { return total + 4 + value.byteLength; }, 0);
+	var buffer = new ArrayBuffer(length);
+	var view = new DataView(buffer);
+	var bytes = new Uint8Array(buffer);
+	var offset = 0;
+	encoded.forEach(function (value) {
+	  view.setUint32(offset, value.byteLength, false);
+	  offset += 4;
+	  bytes.set(value, offset);
+	  offset += value.byteLength;
+	});
+	return global.crypto.subtle.digest("SHA-256", buffer).then(function (digest) {
+	  return kind + "-sha256-" + hexDigest(digest);
+	});
+  }
+
+  function readStaticHTMLFragment(descriptor, catalog, cache, route) {
+	if (!route.selected) return Promise.reject(new Error("static fragment selection is missing"));
+	var documentValue = staticCatalogDocument(catalog, route.documentKey);
+	var selection = staticRouteSelection(documentValue, route.selected);
+	var kind = selection.schema ? "schema" : "operation";
+	var directory = selection.schema ? "schemas" : "operations";
+	return fragmentResourceKey(kind, route.selected).then(function (resourceKey) {
+	  var base = descriptor.publicationBase + "documents/" + encodeURIComponent(route.documentKey) + "/_manja/fragments/" + directory + "/" + resourceKey + ".html";
+	  var htmlURL = sameOriginPath(base);
+	  var sidecarURL = sameOriginPath(base + ".meta.json");
+	  if (!htmlURL || !sidecarURL) fail("static fragment route is invalid");
+	  return fetchWithCache(sidecarURL.href, { credentials: "same-origin", cache: "no-store", headers: { Accept: "application/json" } }, cache).then(function (response) {
+		if (!response.ok) fail("static fragment sidecar request failed");
+		return response.arrayBuffer();
+	  }).then(function (bytes) {
+		if (!bytes.byteLength || bytes.byteLength > 64 * 1024) fail("static fragment sidecar length is invalid");
+		var sidecar = parseJSONStrict(new TextDecoder("utf-8", { fatal: true }).decode(bytes));
+		if (!sidecar || sidecar.schemaVersion !== 1 || !sidecar.fragment || sidecar.fragment.format !== "manja-html-fragment-v2" ||
+			sidecar.fragment.kind !== kind || sidecar.fragment.resource !== route.selected || typeof sidecar.buildKey !== "string" ||
+			sidecar.buildKey.indexOf("fragment-build-sha256:") !== 0 || !sidecar.content || !Number.isSafeInteger(sidecar.content.length) ||
+			sidecar.content.length < 0 || !sha256(sidecar.content.sha256)) {
+		  fail("static fragment sidecar is invalid");
+		}
+		return fetchWithCache(htmlURL.href, { credentials: "same-origin", cache: "no-store", headers: { Accept: "text/html" } }, cache).then(function (response) {
+		  if (!response.ok) fail("static fragment request failed");
+		  return response.arrayBuffer();
+		}).then(function (htmlBytes) {
+		  if (htmlBytes.byteLength !== sidecar.content.length) fail("static fragment length differs");
+		  return global.crypto.subtle.digest("SHA-256", htmlBytes).then(function (digest) {
+			if (hexDigest(digest) !== sidecar.content.sha256) fail("static fragment digest differs");
+			var htmlValue = new TextDecoder("utf-8", { fatal: true }).decode(htmlBytes);
+			return Promise.all([
+			  cache.put(htmlURL.href, new Response(htmlBytes, { headers: { "Content-Type": "text/html" } })),
+			  cache.put(sidecarURL.href, new Response(bytes, { headers: { "Content-Type": "application/json" } }))
+			]).then(function () {
+			  return { mainHtml: htmlValue, title: selection.directory.title || selection.directory.name || route.selected };
+			});
+		  });
+		});
+	  });
+	});
+  }
+
 	function installStaticRouter(descriptor, manifest, catalog, cache, abi, documentValue) {
 	  var root = documentValue.documentElement;
 	  var main = documentValue.querySelector("[data-catalog-main-content]");
@@ -839,12 +902,27 @@
 	  var beforeScroll = scrollPosition();
 	  if (historyMode === "push") saveHistoryScroll(beforeScroll);
 	  setNavigationState(true);
-	  return prepareBrowser().then(function () {
+	  var preRendered = !options.sidebarOnly && route.selected ? readStaticHTMLFragment(descriptor, catalog, cache, route).then(function (fragment) {
+		return prepareBrowser().then(function () { return abi.renderSidebar(route); }).then(function (sidebarResult) {
+		  if (!sidebarResult || sidebarResult.ok !== true) fail(sidebarResult && sidebarResult.error || "static sidebar render failed");
+		  return {
+			ok: true, mainHtml: fragment.mainHtml, sidebarHtml: sidebarResult.sidebarHtml,
+			title: fragment.title, canonical: sidebarResult.canonical
+		  };
+		});
+	  }).catch(function (error) {
+		root.dataset.manjaStaticFragmentFallbackReason = error && error.message ? String(error.message).slice(0, 256) : "static fragment unavailable";
+		return null;
+	  }) : Promise.resolve(null);
+	  return preRendered.then(function (fragmentResult) {
+		if (fragmentResult) return fragmentResult;
+		return prepareBrowser().then(function () {
 		return hydrateStaticRoute(descriptor, manifest, catalog, cache, children, route);
 	  }).then(function () {
 		return admitLoadedChildren();
 	  }).then(function () {
 		return options.sidebarOnly && typeof abi.renderSidebar === "function" ? abi.renderSidebar(route) : abi.render(route);
+	  });
 	  }).then(function (result) {
 		if (!result || result.ok !== true) fail(result && result.error || "static render failed");
 		if (!options.sidebarOnly) main.innerHTML = result.mainHtml;

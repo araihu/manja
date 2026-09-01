@@ -18,9 +18,11 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 	"unicode"
 
 	"github.com/araihu/manja/application/catalog"
+	artifact "github.com/araihu/manja/application/htmlartifact"
 	"github.com/araihu/manja/internal/adapters/catalogjson"
 	"github.com/araihu/manja/internal/localdocs"
 	"github.com/araihu/manja/internal/web"
@@ -31,8 +33,10 @@ const exportManifestPath = "_manja/export.json"
 
 type ExportOptions struct {
 	RendererOptions
-	Output   string
-	BasePath string
+	Output           string
+	BasePath         string
+	SidebarChunkSize uint32
+	FragmentWorkers  uint32
 }
 
 type ExportReceipt struct {
@@ -69,16 +73,32 @@ func ExportRenderer(ctx context.Context, options ExportOptions) (ExportReceipt, 
 			return ExportReceipt{}, fmt.Errorf("export catalog %q produced no active snapshot", receipt.CatalogID)
 		}
 	}
-	return exportFromHandler(ctx, handler, receipts, options.Output, options.BasePath)
+	workers := options.FragmentWorkers
+	if workers == 0 {
+		workers = 4
+	}
+	if workers > 32 {
+		return ExportReceipt{}, errors.New("fragment workers must be between 1 and 32")
+	}
+	return exportFromHandlerWithProfile(ctx, handler, receipts, options.Output, options.BasePath, artifact.BuildProfile{SidebarChunkSize: options.SidebarChunkSize}, workers)
 }
 
 func exportFromHandler(ctx context.Context, handler http.Handler, receipts []renderer.ActivationReceipt, output, basePath string) (receipt ExportReceipt, err error) {
+	return exportFromHandlerWithProfile(ctx, handler, receipts, output, basePath, artifact.BuildProfile{}, 4)
+}
+
+func exportFromHandlerWithProfile(ctx context.Context, handler http.Handler, receipts []renderer.ActivationReceipt, output, basePath string, profile artifact.BuildProfile, fragmentWorkers uint32) (receipt ExportReceipt, err error) {
 	output, err = filepath.Abs(output)
 	if err != nil {
 		return ExportReceipt{}, fmt.Errorf("resolve output: %w", err)
 	}
-	if err := prepareExportOutput(output); err != nil {
+	reuseOutput, err := prepareExportOutput(ctx, output)
+	if err != nil {
 		return ExportReceipt{}, err
+	}
+	cacheRoot := ""
+	if reuseOutput {
+		cacheRoot = output
 	}
 	if err := os.MkdirAll(filepath.Dir(output), 0o755); err != nil {
 		return ExportReceipt{}, fmt.Errorf("create output parent: %w", err)
@@ -111,14 +131,16 @@ func exportFromHandler(ctx context.Context, handler http.Handler, receipts []ren
 	}
 
 	catalogReceipts := make([]ExportCatalogReceipt, 0, len(receipts))
+	searchCatalogs := make([]deploymentSearchCatalogV1, 0, len(receipts))
 	rootCatalog := false
 	for _, active := range receipts {
-		catalogReceipt, captureErr := captureCatalog(ctx, handler, &writer, active, basePath)
+		catalogReceipt, searchCatalog, captureErr := captureCatalog(ctx, handler, &writer, active, basePath, cacheRoot, profile.Resolved(), fragmentWorkers)
 		if captureErr != nil {
 			return ExportReceipt{}, captureErr
 		}
 		rootCatalog = rootCatalog || active.Mount == "/"
 		catalogReceipts = append(catalogReceipts, catalogReceipt)
+		searchCatalogs = append(searchCatalogs, searchCatalog)
 	}
 	if !writer.has("search/index.html") {
 		if err = writer.copy("index.html", "search/index.html"); err != nil {
@@ -131,6 +153,22 @@ func exportFromHandler(ctx context.Context, handler http.Handler, receipts []ren
 		}
 		if err = writer.rewriteHTML("search/index.html", basePath, nil); err != nil {
 			return ExportReceipt{}, err
+		}
+	}
+	searchDirectory, err := encodeDeploymentSearchDirectory(searchCatalogs)
+	if err != nil {
+		return ExportReceipt{}, err
+	}
+	if err = writer.write(deploymentSearchDirectoryPath, searchDirectory, "application/json"); err != nil {
+		return ExportReceipt{}, err
+	}
+	searchEntry := writer.entries[deploymentSearchDirectoryPath]
+	for _, entry := range writer.sortedEntries() {
+		if entry.MediaType != "text/html" {
+			continue
+		}
+		if err = writer.installDeploymentSearch(entry.Path, deploymentSearchDirectoryURL(basePath), searchEntry); err != nil {
+			return ExportReceipt{}, fmt.Errorf("install deployment search in %q: %w", entry.Path, err)
 		}
 	}
 	sort.Slice(catalogReceipts, func(i, j int) bool { return catalogReceipts[i].CatalogID < catalogReceipts[j].CatalogID })
@@ -148,11 +186,17 @@ func exportFromHandler(ctx context.Context, handler http.Handler, receipts []ren
 	if _, err = VerifyExport(ctx, stage); err != nil {
 		return ExportReceipt{}, fmt.Errorf("verify staging export: %w", err)
 	}
-	if err = removeEmptyExportOutput(output); err != nil {
-		return ExportReceipt{}, err
-	}
-	if err = os.Rename(stage, output); err != nil {
-		return ExportReceipt{}, fmt.Errorf("publish export: %w", err)
+	if reuseOutput {
+		if err = replaceExportOutput(output, stage); err != nil {
+			return ExportReceipt{}, err
+		}
+	} else {
+		if err = removeEmptyExportOutput(output); err != nil {
+			return ExportReceipt{}, err
+		}
+		if err = os.Rename(stage, output); err != nil {
+			return ExportReceipt{}, fmt.Errorf("publish export: %w", err)
+		}
 	}
 	return exportReceipt(manifest), nil
 }
@@ -162,7 +206,7 @@ type capturedHTTP struct {
 	mediaType string
 }
 
-func captureCatalog(ctx context.Context, handler http.Handler, writer *exportTreeWriter, active renderer.ActivationReceipt, basePath string) (ExportCatalogReceipt, error) {
+func captureCatalog(ctx context.Context, handler http.Handler, writer *exportTreeWriter, active renderer.ActivationReceipt, basePath, cacheRoot string, profile artifact.BuildProfile, fragmentWorkers uint32) (ExportCatalogReceipt, deploymentSearchCatalogV1, error) {
 	mountPrefix := strings.Trim(active.Mount, "/")
 	shellPath := path.Join(mountPrefix, "index.html")
 	if shellPath == "." {
@@ -173,54 +217,54 @@ func captureCatalog(ctx context.Context, handler http.Handler, writer *exportTre
 		overviewRoute += "/"
 	}
 	if err := captureShell(ctx, handler, writer, overviewRoute, shellPath); err != nil {
-		return ExportCatalogReceipt{}, err
+		return ExportCatalogReceipt{}, deploymentSearchCatalogV1{}, err
 	}
 	if err := captureShell(ctx, handler, writer, catalogRoute(active.Mount, "search"), path.Join(mountPrefix, "search/index.html")); err != nil {
-		return ExportCatalogReceipt{}, err
+		return ExportCatalogReceipt{}, deploymentSearchCatalogV1{}, err
 	}
 	if err := captureResource(ctx, handler, writer, catalogRoute(active.Mount, "llms.txt"), path.Join(mountPrefix, "llms.txt"), 0, ""); err != nil {
-		return ExportCatalogReceipt{}, err
+		return ExportCatalogReceipt{}, deploymentSearchCatalogV1{}, err
 	}
 
 	snapshotBase := catalogRoute(active.Mount, "snapshots", active.SnapshotID)
 	manifestCapture, err := captureHTTP(ctx, handler, snapshotBase+"/manifest.json", 0, "")
 	if err != nil {
-		return ExportCatalogReceipt{}, err
+		return ExportCatalogReceipt{}, deploymentSearchCatalogV1{}, err
 	}
 	manifest, err := catalogjson.DecodeManifest(manifestCapture.body)
 	if err != nil {
-		return ExportCatalogReceipt{}, fmt.Errorf("catalog %q manifest: %w", active.CatalogID, err)
+		return ExportCatalogReceipt{}, deploymentSearchCatalogV1{}, fmt.Errorf("catalog %q manifest: %w", active.CatalogID, err)
 	}
 	if manifest.Identity.CatalogID != active.CatalogID || string(manifest.SnapshotID) != active.SnapshotID || manifest.Identity.RevisionID != active.RevisionID {
-		return ExportCatalogReceipt{}, fmt.Errorf("catalog %q activation differs from manifest", active.CatalogID)
+		return ExportCatalogReceipt{}, deploymentSearchCatalogV1{}, fmt.Errorf("catalog %q activation differs from manifest", active.CatalogID)
 	}
 	manifestOutput := path.Join(mountPrefix, "snapshots", active.SnapshotID, "manifest.json")
 	if err := writer.write(manifestOutput, manifestCapture.body, manifestCapture.mediaType); err != nil {
-		return ExportCatalogReceipt{}, err
+		return ExportCatalogReceipt{}, deploymentSearchCatalogV1{}, err
 	}
 
 	catalogCapture, err := captureHTTP(ctx, handler, snapshotBase+"/catalog.json", 0, "")
 	if err != nil {
-		return ExportCatalogReceipt{}, err
+		return ExportCatalogReceipt{}, deploymentSearchCatalogV1{}, err
 	}
 	directory, err := catalogjson.DecodeCatalogWithResourceLimits(catalogCapture.body, false)
 	if err != nil || directory.CatalogID != active.CatalogID {
-		return ExportCatalogReceipt{}, fmt.Errorf("catalog %q directory is invalid", active.CatalogID)
+		return ExportCatalogReceipt{}, deploymentSearchCatalogV1{}, fmt.Errorf("catalog %q directory is invalid", active.CatalogID)
 	}
 	if child, ok := manifestChild(manifest, "catalog.json"); !ok || !matchesChild(child, catalogCapture.body) {
-		return ExportCatalogReceipt{}, fmt.Errorf("catalog %q directory differs from manifest", active.CatalogID)
+		return ExportCatalogReceipt{}, deploymentSearchCatalogV1{}, fmt.Errorf("catalog %q directory differs from manifest", active.CatalogID)
 	}
 	if err := writer.write(path.Join(mountPrefix, "snapshots", active.SnapshotID, "catalog.json"), catalogCapture.body, catalogCapture.mediaType); err != nil {
-		return ExportCatalogReceipt{}, err
+		return ExportCatalogReceipt{}, deploymentSearchCatalogV1{}, err
 	}
 
 	for _, document := range directory.Documents {
 		if err := captureShell(ctx, handler, writer, catalogRoute(active.Mount, "documents", document.Key)+"/", path.Join(mountPrefix, "documents", document.Key, "index.html")); err != nil {
-			return ExportCatalogReceipt{}, err
+			return ExportCatalogReceipt{}, deploymentSearchCatalogV1{}, err
 		}
 	}
 	if err := writer.copy(shellPath, path.Join(mountPrefix, "_manja/offline-shell/index.html")); err != nil {
-		return ExportCatalogReceipt{}, err
+		return ExportCatalogReceipt{}, deploymentSearchCatalogV1{}, err
 	}
 	for _, child := range manifest.Children {
 		if child.Path == "catalog.json" {
@@ -228,10 +272,10 @@ func captureCatalog(ctx context.Context, handler http.Handler, writer *exportTre
 		}
 		requestPath, outputPath, ok := exportedChildPath(active, directory, child)
 		if !ok {
-			return ExportCatalogReceipt{}, fmt.Errorf("catalog %q child %q cannot be exported", active.CatalogID, child.Path)
+			return ExportCatalogReceipt{}, deploymentSearchCatalogV1{}, fmt.Errorf("catalog %q child %q cannot be exported", active.CatalogID, child.Path)
 		}
 		if err := captureResource(ctx, handler, writer, requestPath, outputPath, child.Length, child.SHA256); err != nil {
-			return ExportCatalogReceipt{}, err
+			return ExportCatalogReceipt{}, deploymentSearchCatalogV1{}, err
 		}
 	}
 	publicationBase := prefixExportBase(basePath, catalogRoute(active.Mount))
@@ -240,7 +284,10 @@ func captureCatalog(ctx context.Context, handler http.Handler, writer *exportTre
 	}
 	descriptor, ok := localdocs.PrepareStaticDescriptor(active.CatalogID, catalog.RuntimeSnapshot{ID: manifest.SnapshotID, Directory: directory, Manifest: manifest}, publicationBase, basePath)
 	if !ok {
-		return ExportCatalogReceipt{}, fmt.Errorf("catalog %q static descriptor is invalid", active.CatalogID)
+		return ExportCatalogReceipt{}, deploymentSearchCatalogV1{}, fmt.Errorf("catalog %q static descriptor is invalid", active.CatalogID)
+	}
+	if err := emitCatalogHTMLFragments(ctx, writer, active, descriptor, manifest, manifestCapture.body, catalogCapture.body, directory, cacheRoot, profile, fragmentWorkers); err != nil {
+		return ExportCatalogReceipt{}, deploymentSearchCatalogV1{}, fmt.Errorf("catalog %q HTML fragments: %w", active.CatalogID, err)
 	}
 	htmlContext := &exportHTMLCatalog{Mount: active.Mount, SnapshotID: active.SnapshotID, Directory: directory, Descriptor: descriptor}
 	htmlPaths := []string{shellPath, path.Join(mountPrefix, "search/index.html"), path.Join(mountPrefix, "_manja/offline-shell/index.html")}
@@ -249,10 +296,14 @@ func captureCatalog(ctx context.Context, handler http.Handler, writer *exportTre
 	}
 	for _, htmlPath := range htmlPaths {
 		if err := writer.rewriteHTML(htmlPath, basePath, htmlContext); err != nil {
-			return ExportCatalogReceipt{}, fmt.Errorf("rewrite catalog %q shell %q: %w", active.CatalogID, htmlPath, err)
+			return ExportCatalogReceipt{}, deploymentSearchCatalogV1{}, fmt.Errorf("rewrite catalog %q shell %q: %w", active.CatalogID, htmlPath, err)
 		}
 	}
-	return ExportCatalogReceipt{CatalogID: active.CatalogID, Mount: active.Mount, PublicationKey: active.CatalogID, RevisionID: active.RevisionID, SnapshotID: active.SnapshotID}, nil
+	searchCatalog, err := deploymentSearchCatalog(active, basePath, directory, manifest)
+	if err != nil {
+		return ExportCatalogReceipt{}, deploymentSearchCatalogV1{}, err
+	}
+	return ExportCatalogReceipt{CatalogID: active.CatalogID, Mount: active.Mount, PublicationKey: active.CatalogID, RevisionID: active.RevisionID, SnapshotID: active.SnapshotID}, searchCatalog, nil
 }
 
 func exportedChildPath(active renderer.ActivationReceipt, directory catalog.CatalogArtifactV1, child catalog.ChildIdentityV1) (string, string, bool) {
@@ -371,23 +422,47 @@ func matchesChild(child catalog.ChildIdentityV1, data []byte) bool {
 	return hex.EncodeToString(digest[:]) == child.SHA256
 }
 
-func prepareExportOutput(output string) error {
+func prepareExportOutput(ctx context.Context, output string) (bool, error) {
 	info, err := os.Lstat(output)
 	if errors.Is(err, os.ErrNotExist) {
-		return nil
+		return false, nil
 	}
 	if err != nil {
-		return fmt.Errorf("inspect output: %w", err)
+		return false, fmt.Errorf("inspect output: %w", err)
 	}
 	if !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
-		return errors.New("output must be absent or an empty directory")
+		return false, errors.New("output must be absent, an empty directory, or a verified Manja export")
 	}
 	entries, err := os.ReadDir(output)
 	if err != nil {
-		return fmt.Errorf("inspect output: %w", err)
+		return false, fmt.Errorf("inspect output: %w", err)
 	}
-	if len(entries) != 0 {
-		return errors.New("output directory is not empty")
+	if len(entries) == 0 {
+		return false, nil
+	}
+	if _, err := VerifyExport(ctx, output); err != nil {
+		return false, fmt.Errorf("output directory is not an intact Manja export: %w", err)
+	}
+	return true, nil
+}
+
+func replaceExportOutput(output, stage string) error {
+	backup, err := os.MkdirTemp(filepath.Dir(output), "."+filepath.Base(output)+"-previous-*")
+	if err != nil {
+		return fmt.Errorf("create export replacement marker: %w", err)
+	}
+	if err := os.Remove(backup); err != nil {
+		return fmt.Errorf("prepare export replacement marker: %w", err)
+	}
+	if err := os.Rename(output, backup); err != nil {
+		return fmt.Errorf("retain previous export: %w", err)
+	}
+	if err := os.Rename(stage, output); err != nil {
+		_ = os.Rename(backup, output)
+		return fmt.Errorf("publish replacement export: %w", err)
+	}
+	if err := os.RemoveAll(backup); err != nil {
+		return fmt.Errorf("remove previous export after publication: %w", err)
 	}
 	return nil
 }
@@ -408,9 +483,12 @@ func removeEmptyExportOutput(output string) error {
 type exportTreeWriter struct {
 	root    string
 	entries map[string]exportFileEntry
+	mu      sync.Mutex
 }
 
 func (writer *exportTreeWriter) has(name string) bool {
+	writer.mu.Lock()
+	defer writer.mu.Unlock()
 	_, ok := writer.entries[name]
 	return ok
 }
@@ -432,6 +510,27 @@ func (writer *exportTreeWriter) rewriteHTML(name, basePath string, catalogContex
 	rewritten, err := rewriteExportHTML(data, basePath, catalogContext)
 	if err != nil {
 		return err
+	}
+	if err := os.WriteFile(filename, rewritten, 0o644); err != nil {
+		return err
+	}
+	digest := sha256.Sum256(rewritten)
+	writer.entries[name] = exportFileEntry{Path: name, Length: uint64(len(rewritten)), MediaType: "text/html", SHA256: hex.EncodeToString(digest[:])}
+	return nil
+}
+
+func (writer *exportTreeWriter) installDeploymentSearch(name, directoryURL string, entry exportFileEntry) error {
+	filename := filepath.Join(writer.root, filepath.FromSlash(name))
+	data, err := os.ReadFile(filename)
+	if err != nil {
+		return err
+	}
+	rewritten, err := installDeploymentSearchHTML(data, directoryURL, entry)
+	if err != nil {
+		return err
+	}
+	if bytes.Equal(data, rewritten) {
+		return nil
 	}
 	if err := os.WriteFile(filename, rewritten, 0o644); err != nil {
 		return err
@@ -464,11 +563,13 @@ func (writer *exportTreeWriter) bindWorkerToShells() error {
 }
 
 func (writer *exportTreeWriter) write(name string, data []byte, mediaType string) error {
+	writer.mu.Lock()
+	defer writer.mu.Unlock()
 	name = path.Clean(name)
 	if name == "." || strings.HasPrefix(name, "../") || strings.HasPrefix(name, "/") || strings.Contains(name, `\`) {
 		return fmt.Errorf("invalid export path %q", name)
 	}
-	if writer.has(name) {
+	if _, exists := writer.entries[name]; exists {
 		return fmt.Errorf("duplicate export path %q", name)
 	}
 	filename := filepath.Join(writer.root, filepath.FromSlash(name))
@@ -492,7 +593,68 @@ func (writer *exportTreeWriter) write(name string, data []byte, mediaType string
 	return nil
 }
 
+func (writer *exportTreeWriter) registerExisting(name, mediaType string) error {
+	writer.mu.Lock()
+	defer writer.mu.Unlock()
+	name = path.Clean(name)
+	if name == "." || strings.HasPrefix(name, "../") || strings.HasPrefix(name, "/") || strings.Contains(name, `\`) {
+		return fmt.Errorf("invalid export path %q", name)
+	}
+	if _, exists := writer.entries[name]; exists {
+		return nil
+	}
+	data, err := os.ReadFile(filepath.Join(writer.root, filepath.FromSlash(name)))
+	if err != nil {
+		return err
+	}
+	digest := sha256.Sum256(data)
+	writer.entries[name] = exportFileEntry{Path: name, Length: uint64(len(data)), MediaType: mediaType, SHA256: hex.EncodeToString(digest[:])}
+	return nil
+}
+
+func (writer *exportTreeWriter) linkExisting(sourceRoot, name, mediaType string, length uint64, digest string) error {
+	writer.mu.Lock()
+	defer writer.mu.Unlock()
+	name = path.Clean(name)
+	if name == "." || strings.HasPrefix(name, "../") || strings.HasPrefix(name, "/") || strings.Contains(name, `\`) {
+		return fmt.Errorf("invalid export path %q", name)
+	}
+	if _, exists := writer.entries[name]; exists {
+		return nil
+	}
+	target := filepath.Join(writer.root, filepath.FromSlash(name))
+	if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
+		return err
+	}
+	source := filepath.Join(sourceRoot, filepath.FromSlash(name))
+	if err := os.Link(source, target); err != nil {
+		data, readErr := os.ReadFile(source)
+		if readErr != nil {
+			return readErr
+		}
+		if uint64(len(data)) != length {
+			return fmt.Errorf("cached export path %q length differs", name)
+		}
+		file, openErr := os.OpenFile(target, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o644)
+		if openErr != nil {
+			return openErr
+		}
+		_, writeErr := file.Write(data)
+		closeErr := file.Close()
+		if writeErr != nil {
+			return writeErr
+		}
+		if closeErr != nil {
+			return closeErr
+		}
+	}
+	writer.entries[name] = exportFileEntry{Path: name, Length: length, MediaType: mediaType, SHA256: digest}
+	return nil
+}
+
 func (writer *exportTreeWriter) sortedEntries() []exportFileEntry {
+	writer.mu.Lock()
+	defer writer.mu.Unlock()
 	entries := make([]exportFileEntry, 0, len(writer.entries))
 	for _, entry := range writer.entries {
 		entries = append(entries, entry)

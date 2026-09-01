@@ -24,6 +24,8 @@ func runExport(ctx context.Context, args []string, stdout, stderr io.Writer, res
 	dataDir := fs.String("data-dir", "", "snapshot data directory")
 	output := fs.String("output", "", "static export output directory")
 	basePath := fs.String("base-path", "", "published URL base path")
+	sidebarChunkSize := fs.Uint("sidebar-chunk-size", 12, "operations per static sidebar chunk")
+	fragmentWorkers := fs.Uint("fragment-workers", 4, "bounded concurrent static fragment renderers")
 	if err := fs.Parse(args); err != nil {
 		fmt.Fprintf(stderr, "manja export: %v\n", err)
 		return 2
@@ -34,9 +36,11 @@ func runExport(ctx context.Context, args []string, stdout, stderr io.Writer, res
 	}
 	fmt.Fprintln(stderr, "manja export: warning: exporting every configured catalog regardless of catalog visibility")
 	receipt, err := exportRenderer(ctx, app.ExportOptions{
-		RendererOptions: app.RendererOptions{ConfigPath: *rendererConfig, DataDir: *dataDir, ResourceLimits: resourceLimits},
-		Output:          *output,
-		BasePath:        *basePath,
+		RendererOptions:  app.RendererOptions{ConfigPath: *rendererConfig, DataDir: *dataDir, ResourceLimits: resourceLimits},
+		Output:           *output,
+		BasePath:         *basePath,
+		SidebarChunkSize: uint32(*sidebarChunkSize),
+		FragmentWorkers:  uint32(*fragmentWorkers),
 	})
 	if err != nil {
 		fmt.Fprintf(stderr, "manja export: %v\n", err)

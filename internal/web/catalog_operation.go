@@ -17,13 +17,14 @@ const (
 )
 
 type catalogOperationSchemaResolver struct {
-	handler  *CatalogHandler
-	ctx      context.Context
-	snapshot catalog.RuntimeSnapshot
-	document catalog.DocumentDirectoryV1
-	active   map[projection.SchemaRef]bool
-	selected map[projection.SchemaRef]projection.SchemaNode
-	loaded   int
+	handler   *CatalogHandler
+	ctx       context.Context
+	snapshot  catalog.RuntimeSnapshot
+	document  catalog.DocumentDirectoryV1
+	active    map[projection.SchemaRef]bool
+	selected  map[projection.SchemaRef]projection.SchemaNode
+	truncated map[projection.SchemaRef]bool
+	loaded    int
 }
 
 func (handler *CatalogHandler) catalogOperationView(
@@ -34,7 +35,7 @@ func (handler *CatalogHandler) catalogOperationView(
 ) (*domain.Operation, []projection.SchemaNode, []projection.SchemaNode, []projection.SchemaNode, []projection.SchemaNode, []projection.SchemaNode, error) {
 	resolver := catalogOperationSchemaResolver{
 		handler: handler, ctx: ctx, snapshot: snapshot, document: document,
-		active: make(map[projection.SchemaRef]bool), selected: make(map[projection.SchemaRef]projection.SchemaNode),
+		active: make(map[projection.SchemaRef]bool), selected: make(map[projection.SchemaRef]projection.SchemaNode), truncated: make(map[projection.SchemaRef]bool),
 	}
 	operationID := string(detail.ID)
 	for _, directoryOperation := range document.Operations {
@@ -223,7 +224,11 @@ func (resolver *catalogOperationSchemaResolver) schema(ref projection.SchemaRef,
 		Enum: append([]string(nil), node.Enum...), Constraints: domainSchemaConstraints(node.Constraints),
 		Nullable: node.Nullable, Deprecated: node.Deprecated, JSON: node.JSON,
 	}
-	if depth >= catalogOperationSchemaDepth || resolver.loaded >= catalogOperationSchemaNodes || resolver.active[ref] {
+	if depth >= catalogOperationSchemaDepth || resolver.active[ref] {
+		return summary, nil
+	}
+	if resolver.loaded >= catalogOperationSchemaNodes {
+		resolver.truncated[ref] = true
 		return summary, nil
 	}
 	resolver.active[ref] = true
@@ -231,6 +236,7 @@ func (resolver *catalogOperationSchemaResolver) schema(ref projection.SchemaRef,
 	defer delete(resolver.active, ref)
 	for _, property := range node.Properties {
 		if resolver.loaded >= catalogOperationSchemaNodes {
+			resolver.truncated[ref] = true
 			break
 		}
 		child, err := resolver.schema(property.SchemaRef, depth+1)
@@ -251,6 +257,8 @@ func (resolver *catalogOperationSchemaResolver) schema(ref projection.SchemaRef,
 			return domain.SchemaSummary{}, err
 		}
 		summary.Items = &items
+	} else if len(node.Items) > 0 {
+		resolver.truncated[ref] = true
 	}
 	return summary, nil
 }
@@ -345,16 +353,28 @@ func (resolver *catalogOperationSchemaResolver) selectOperationSchemaTreeNodes(s
 	if !exists {
 		return fmt.Errorf("operation schema-tree node %d was not selected", ref)
 	}
-	selected[ref] = cloneProjectionSchemaNode(node)
+	selectedNode := cloneProjectionSchemaNode(node)
+	if resolver.truncated[ref] {
+		if len(schema.Properties) <= len(selectedNode.Properties) {
+			selectedNode.Properties = selectedNode.Properties[:len(schema.Properties)]
+		}
+		if schema.Items == nil {
+			selectedNode.Items = nil
+		}
+	}
+	selected[ref] = selectedNode
 	if depth >= catalogOperationSchemaDepth || active[ref] {
 		return nil
 	}
-	if len(node.Properties) != len(schema.Properties) || (len(node.Items) == 1) != (schema.Items != nil) {
+	edgesConsistent := len(node.Properties) == len(schema.Properties) && (len(node.Items) == 1) == (schema.Items != nil)
+	truncatedConsistent := resolver.truncated[ref] && len(schema.Properties) <= len(node.Properties) && (schema.Items == nil || len(node.Items) == 1)
+	if !edgesConsistent && !truncatedConsistent {
 		return fmt.Errorf("operation schema-tree node %d has inconsistent edges", ref)
 	}
 	active[ref] = true
 	defer delete(active, ref)
-	for index, property := range node.Properties {
+	for index := range schema.Properties {
+		property := node.Properties[index]
 		if err := resolver.selectOperationSchemaTreeNodes(selected, active, property.SchemaRef, schema.Properties[index].Schema, depth+1); err != nil {
 			return err
 		}

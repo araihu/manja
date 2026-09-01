@@ -354,8 +354,12 @@
     this.directorySHA256 = root.dataset.searchDirectorySha256 || "";
     this.fallbackURL = root.dataset.searchFallbackUrl || "";
     this.globalSearch = root.dataset.searchGlobal === "true";
+	this.deploymentDirectoryURL = root.dataset.searchDeploymentDirectoryUrl || "";
+	this.deploymentDirectoryLength = Number(root.dataset.searchDeploymentDirectoryLength);
+	this.deploymentDirectorySHA256 = root.dataset.searchDeploymentDirectorySha256 || "";
     this.contextMount = root.dataset.searchContextMount || "";
     this.contextDocument = root.dataset.searchContextDocument || "";
+	this.contextCatalogID = root.dataset.searchCatalogId || "";
     this.mount = root.dataset.searchMount || "/";
     this.documentLabels = Object.create(null);
     try {
@@ -368,7 +372,40 @@
     } catch (_) {}
     this.cache = new Map();
     this.directoryPromise = null;
+	this.deploymentDirectoryPromise = null;
   }
+
+  SearchRouter.prototype.fetchVerifiedURL = function (rawURL, length, digest) {
+	if (!Number.isSafeInteger(length) || length < 0 || !/^[0-9a-f]{64}$/.test(asString(digest))) {
+	  return Promise.reject(new Error("Invalid verified JSON metadata"));
+	}
+	var url;
+	try {
+	  url = new URL(rawURL, window.location.origin);
+	} catch (_) {
+	  return Promise.reject(new Error("Invalid verified JSON URL"));
+	}
+	if (url.origin !== window.location.origin || url.search || url.hash) {
+	  return Promise.reject(new Error("Invalid verified JSON URL"));
+	}
+	var key = url.pathname + ":" + digest;
+	if (this.cache.has(key)) return this.cache.get(key);
+	var request = fetch(url.pathname, { headers: { Accept: "application/json" } })
+	  .then(function (response) {
+		if (!response.ok) throw new Error("Verified JSON request failed");
+		return response.arrayBuffer();
+	  })
+	  .then(function (buffer) {
+		if (buffer.byteLength !== length) throw new Error("Verified JSON length differs");
+		return crypto.subtle.digest("SHA-256", buffer).then(function (actual) {
+		  if (bytesToHex(new Uint8Array(actual)) !== digest) throw new Error("Verified JSON digest differs");
+		  return JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(buffer));
+		});
+	  });
+	this.cache.set(key, request);
+	request.catch(function () { this.cache.delete(key); }.bind(this));
+	return request;
+  };
 
   SearchRouter.prototype.fetchVerified = function (path, length, digest) {
     if (!validReference({ path: path, length: length, sha256: digest })) {
@@ -409,6 +446,34 @@
       });
     this.directoryPromise.catch(function () { this.directoryPromise = null; }.bind(this));
     return this.directoryPromise;
+  };
+
+  SearchRouter.prototype.loadDeploymentDirectory = function () {
+	if (this.deploymentDirectoryPromise) return this.deploymentDirectoryPromise;
+	this.deploymentDirectoryPromise = this.fetchVerifiedURL(
+	  this.deploymentDirectoryURL,
+	  this.deploymentDirectoryLength,
+	  this.deploymentDirectorySHA256
+	).then(function (directory) {
+	  if (!directory || directory.schemaVersion !== 1 || directory.searchVersion !== 1 || !Array.isArray(directory.catalogs)) {
+		throw new Error("Deployment search directory is invalid");
+	  }
+	  directory.catalogs.forEach(function (catalog) {
+		if (!catalog || !asString(catalog.catalogId) || !asString(catalog.title) || !asString(catalog.mount) ||
+			!asString(catalog.childBase) || !validReference({ path: catalog.directoryPath, length: catalog.directoryLength, sha256: catalog.directorySha256 }) ||
+			!Array.isArray(catalog.documents)) {
+		  throw new Error("Deployment search catalog is invalid");
+		}
+		catalog.documents.forEach(function (document) {
+		  if (!document || !asString(document.key) || !asString(document.title) || !asString(document.href)) {
+			throw new Error("Deployment search document is invalid");
+		  }
+		});
+	  });
+	  return directory;
+	});
+	this.deploymentDirectoryPromise.catch(function () { this.deploymentDirectoryPromise = null; }.bind(this));
+	return this.deploymentDirectoryPromise;
   };
 
   SearchRouter.prototype.reserve = function (receipt, reference, includePostings) {
@@ -656,7 +721,134 @@
     }.bind(this));
   };
 
+  function deploymentNavigationMatch(value, query) {
+	var normalized = normalizeExact(value);
+	var exact = normalizeExact(query);
+	if (!normalized || !exact) return -1;
+	if (normalized === exact) return 0;
+	if (normalized.indexOf(exact) === 0) return 1;
+	if (normalized.indexOf(exact) >= 0) return 2;
+	var queryTokens = tokenize(exact);
+	var valueTokens = tokenize(normalized);
+	var allMatched = queryTokens.every(function (token) {
+	  return valueTokens.some(function (candidate) {
+		if (candidate.indexOf(token) === 0) return true;
+		var limit = Array.from(token).length >= 8 ? 2 : 1;
+		return Array.from(token).length >= 4 && boundedDamerauLevenshtein(token, candidate, limit) <= limit;
+	  });
+	});
+	return allMatched ? 3 : -1;
+  }
+
+  function deploymentResultQuality(item, query) {
+	var fields = [item.title, item.operationId, item.path];
+	var best = 4;
+	fields.forEach(function (field) {
+	  var quality = deploymentNavigationMatch(field, query);
+	  if (quality >= 0 && quality < best) best = quality;
+	});
+	if (best < 4) return best;
+	return deploymentNavigationMatch([item.description, item.section].join(" "), query) >= 0 ? 4 : 5;
+  }
+
+  function mapConcurrent(values, limit, worker) {
+	var results = new Array(values.length);
+	var next = 0;
+	function run() {
+	  var index = next++;
+	  if (index >= values.length) return Promise.resolve();
+	  return Promise.resolve(worker(values[index], index)).then(function (result) {
+		results[index] = result;
+	  }).then(run);
+	}
+	var runners = [];
+	for (var index = 0; index < Math.min(limit, values.length); index++) runners.push(run());
+	return Promise.all(runners).then(function () { return results; });
+  }
+
+  SearchRouter.prototype.catalogRouter = function (catalog) {
+	var labels = Object.create(null);
+	catalog.documents.forEach(function (document) { labels[document.key] = document.title; });
+	var root = { dataset: {
+	  searchChildBase: catalog.childBase,
+	  searchDirectoryPath: catalog.directoryPath,
+	  searchDirectoryLength: String(catalog.directoryLength),
+	  searchDirectorySha256: catalog.directorySha256,
+	  searchGlobal: "false",
+	  searchMount: catalog.mount,
+	  searchDocumentLabels: JSON.stringify(labels)
+	} };
+	var router = new SearchRouter(root);
+	// Reuse verified segment bytes across catalog routers and repeated queries.
+	router.cache = this.cache;
+	return router;
+  };
+
+  SearchRouter.prototype.searchDeployment = function (query) {
+	return this.loadDeploymentDirectory().then(function (directory) {
+	  return mapConcurrent(directory.catalogs, 4, function (catalog) {
+		return this.catalogRouter(catalog).searchClient(query).then(function (items) {
+		  return { catalog: catalog, items: items, failed: false };
+		}).catch(function () {
+		  return { catalog: catalog, items: [], failed: true };
+		});
+	  }.bind(this));
+	}.bind(this)).then(function (catalogResults) {
+	  var merged = [];
+	  var failures = 0;
+	  catalogResults.forEach(function (result) {
+		var catalog = result.catalog;
+		if (result.failed) failures++;
+		var catalogQuality = deploymentNavigationMatch([catalog.title, catalog.catalogId].join(" "), query);
+		if (catalogQuality >= 0) {
+		  merged.push({
+			id: "catalog-" + catalog.catalogId, title: catalog.title, description: "API catalog",
+			href: catalog.mount === "/" ? "/" : catalog.mount + "/", kind: "catalog", method: "", operationId: "", path: "", section: "Catalogs",
+			_quality: catalogQuality, _context: catalog.catalogId === this.contextCatalogID ? 0 : 1
+		  });
+		}
+		catalog.documents.forEach(function (document) {
+		  var quality = deploymentNavigationMatch([document.title, document.key].join(" "), query);
+		  if (quality < 0) return;
+		  merged.push({
+			id: "document-" + catalog.catalogId + "-" + document.key, title: document.title, description: catalog.title,
+			href: document.href, kind: "document", method: "", operationId: "", path: "", section: catalog.title,
+			_quality: quality, _context: catalog.catalogId === this.contextCatalogID && document.key === this.contextDocument ? 0 : 1
+		  });
+		}.bind(this));
+		result.items.forEach(function (item) {
+		  item.section = item.section ? catalog.title + " · " + item.section : catalog.title;
+		  item._quality = deploymentResultQuality(item, query);
+		  item._context = catalog.catalogId === this.contextCatalogID && (!this.contextDocument || item.href.indexOf("/documents/" + encodeURIComponent(this.contextDocument) + "/") >= 0) ? 0 : 1;
+		  merged.push(item);
+		}.bind(this));
+	  }.bind(this));
+	  var seen = new Set();
+	  merged = merged.filter(function (item) {
+		var key = item.kind + "\u0000" + item.href;
+		if (seen.has(key)) return false;
+		seen.add(key);
+		return true;
+	  });
+	  merged.sort(function (left, right) {
+		if (left._quality !== right._quality) return left._quality - right._quality;
+		if (left._context !== right._context) return left._context - right._context;
+		var kind = searchKindPriority(left.kind) - searchKindPriority(right.kind);
+		if (kind) return kind;
+		return normalizeExact(left.title).localeCompare(normalizeExact(right.title)) || left.href.localeCompare(right.href);
+	  });
+	  return { items: merged.slice(0, MAX_RESULTS), failures: failures, catalogs: catalogResults.length };
+	}.bind(this));
+  };
+
   SearchRouter.prototype.search = function (query) {
+	if (this.globalSearch && this.deploymentDirectoryURL) {
+	  return this.searchDeployment(query).then(function (result) {
+		var source = "Deployment search";
+		if (result.failures) source += " · " + result.failures + " catalog" + (result.failures === 1 ? "" : "s") + " unavailable";
+		return { items: result.items, source: source };
+	  });
+	}
     if (this.globalSearch) {
       return this.searchFallback(query).then(function (items) {
         return { items: items, source: "Global search" };

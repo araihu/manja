@@ -39,6 +39,36 @@ func TestBrowserRendersDocumentUnseenOperationAndSchema(t *testing.T) {
 	}
 }
 
+func TestBrowserOperationSchemaTreeAcceptsOnlyItsOwnNodeBudgetTruncation(t *testing.T) {
+	properties := make([]projection.SchemaNodeProperty, 4)
+	summaryProperties := make([]domain.SchemaProperty, 3)
+	selected := make(map[projection.SchemaRef]projection.SchemaNode)
+	for index := range properties {
+		ref := projection.SchemaRef(index + 1)
+		properties[index] = projection.SchemaNodeProperty{Name: string(rune('a' + index)), SchemaRef: ref}
+		selected[ref] = projection.SchemaNode{Ordinal: uint32(ref), ID: "child"}
+		if index < len(summaryProperties) {
+			summaryProperties[index] = domain.SchemaProperty{Name: properties[index].Name}
+		}
+	}
+	selected[0] = projection.SchemaNode{Ordinal: 0, ID: "root", Properties: properties}
+	resolver := browserOperationSchemaResolver{selected: selected, truncated: map[projection.SchemaRef]bool{0: true}}
+	result := make(map[projection.SchemaRef]projection.SchemaNode)
+	if err := resolver.selectOperationSchemaTreeNodes(result, make(map[projection.SchemaRef]bool), 0, domain.SchemaSummary{Properties: summaryProperties}, 0); err != nil {
+		t.Fatalf("budget-truncated tree: %v", err)
+	}
+	if len(result) != 4 {
+		t.Fatalf("selected truncated nodes = %d, want 4", len(result))
+	}
+	if len(result[0].Properties) != len(summaryProperties) {
+		t.Fatalf("selected truncated root edges = %d, want %d", len(result[0].Properties), len(summaryProperties))
+	}
+	resolver.truncated = nil
+	if err := resolver.selectOperationSchemaTreeNodes(make(map[projection.SchemaRef]projection.SchemaNode), make(map[projection.SchemaRef]bool), 0, domain.SchemaSummary{Properties: summaryProperties}, 0); err == nil {
+		t.Fatal("unmarked inconsistent edges were accepted")
+	}
+}
+
 func TestBrowserSidebarRetainsDocumentNavigationChrome(t *testing.T) {
 	descriptor, manifest, catalogBytes, children, operationID, _ := browserFixture(t)
 	browser, err := Prepare(descriptor, manifest, catalogBytes, children)

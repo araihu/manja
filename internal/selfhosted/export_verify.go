@@ -162,7 +162,14 @@ func verifyExportHTML(root, name, basePath string, declared map[string]exportFil
 				if err := verifyExportDependencyURLs(node, attribute.Val, publicPath, basePath, declared); err != nil {
 					return fmt.Errorf("export HTML %q: %w", name, err)
 				}
-			case "hx-get", "data-search-fallback-url":
+			case "hx-get":
+				if !hasHTMLAttribute(node, "data-manja-sidebar-next-chunk", "true") {
+					return fmt.Errorf("export HTML %q retains runtime-only route", name)
+				}
+				if err := verifyExportReference(node, attribute.Key, attribute.Val, publicPath, basePath, declared); err != nil {
+					return fmt.Errorf("export HTML %q: %w", name, err)
+				}
+			case "data-search-fallback-url":
 				return fmt.Errorf("export HTML %q retains runtime-only route", name)
 			}
 		}
@@ -223,7 +230,9 @@ func verifyExportReference(node *html.Node, attribute, value, publicPath, basePa
 		return fmt.Errorf("invalid reference %q", value)
 	}
 	if reference.IsAbs() {
-		if reference.Scheme == "https" && attribute == "href" && (node.Data == "a" || hasHTMLAttribute(node, "rel", "canonical")) {
+		anchorHTTPS := reference.Scheme == "https" && attribute == "href" && (node.Data == "a" || hasHTMLAttribute(node, "rel", "canonical"))
+		anchorMailto := reference.Scheme == "mailto" && attribute == "href" && node.Data == "a" && strings.TrimSpace(reference.Opaque) != ""
+		if anchorHTTPS || anchorMailto {
 			return nil
 		}
 		return fmt.Errorf("external reference %q is not supported", value)

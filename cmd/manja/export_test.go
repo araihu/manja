@@ -20,7 +20,7 @@ func TestExportCommandWritesReceiptAndDisclosureWarning(t *testing.T) {
 	}
 	var stdout, stderr bytes.Buffer
 	code := run(context.Background(), []string{"export", "--renderer-config", "renderer.yaml", "--data-dir", "data", "--output", "public", "--base-path", "/docs/"}, &stdout, &stderr)
-	if code != 0 || got.ConfigPath != "renderer.yaml" || got.DataDir != "data" || got.Output != "public" || got.BasePath != "/docs/" {
+	if code != 0 || got.ConfigPath != "renderer.yaml" || got.DataDir != "data" || got.Output != "public" || got.BasePath != "/docs/" || got.SidebarChunkSize != 12 || got.FragmentWorkers != 4 {
 		t.Fatalf("code=%d options=%#v stderr=%q", code, got, stderr.String())
 	}
 	if stdout.String() != "{\"schemaVersion\":1,\"basePath\":\"/docs/\",\"catalogs\":[{\"catalogId\":\"private\",\"mount\":\"/private\",\"publicationKey\":\"private\",\"revisionId\":\"revision\",\"snapshotId\":\"snapshot\"}],\"manifest\":\"_manja/export.json\"}\n" || !strings.Contains(stderr.String(), "every configured catalog") {

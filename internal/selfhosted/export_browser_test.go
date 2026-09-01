@@ -23,6 +23,10 @@ func TestExportBrowserRunsFromGenericStaticServerAtRootAndSubpath(t *testing.T) 
 	if err := os.WriteFile(filepath.Join(root, "private.json"), []byte(spec), 0o600); err != nil {
 		t.Fatal(err)
 	}
+	otherSpec := `{"openapi":"3.0.3","info":{"title":"Other API","version":"v1"},"paths":{"/widgets":{"get":{"operationId":"listWidgets","summary":"List widgets","responses":{"200":{"description":"ok"}}}}}}`
+	if err := os.WriteFile(filepath.Join(root, "other.json"), []byte(otherSpec), 0o600); err != nil {
+		t.Fatal(err)
+	}
 	config := `version: 1
 dataDir: data
 catalogs:
@@ -35,6 +39,15 @@ catalogs:
       kind: files
       root: .
       include: [private.json]
+  - id: other
+    mount: /other
+    title: Other
+    defaultDocument: other
+    profile: strict-v1
+    source:
+      kind: files
+      root: .
+      include: [other.json]
 `
 	configPath := filepath.Join(root, "renderer.yaml")
 	if err := os.WriteFile(configPath, []byte(config), 0o600); err != nil {
@@ -95,6 +108,9 @@ catalogs:
 				t.Fatalf("desktop document row: %v", err)
 			}
 			waitStaticExportReady(t, page)
+			if reason, err := page.Locator("html").GetAttribute("data-manja-static-fragment-fallback-reason"); err != nil || reason != "" {
+				t.Fatalf("pre-rendered initial route fell back: %q %v", reason, err)
+			}
 			operation := page.GetByRole("link", playwright.PageGetByRoleOptions{Name: "List charges"}).First()
 			schema := page.Locator("#catalog-sidebar-groups").GetByRole("link", playwright.LocatorGetByRoleOptions{Name: "Charge", Exact: playwright.Bool(true)}).First()
 			operationHref, err := operation.GetAttribute("href")
@@ -170,6 +186,25 @@ catalogs:
 				t.Fatal(err)
 			}
 			searchInput := page.Locator("#catalog-search-input")
+			if err := searchInput.Fill("List widgets"); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := searchInput.Evaluate(`element => element.dispatchEvent(new Event('input', { bubbles: true }))`, nil); err != nil {
+				t.Fatal(err)
+			}
+			crossCatalog := page.Locator("#catalog-search-dialog").GetByText("List widgets", playwright.LocatorGetByTextOptions{Exact: playwright.Bool(true)})
+			if err := crossCatalog.WaitFor(playwright.LocatorWaitForOptions{Timeout: playwright.Float(5_000)}); err != nil {
+				debug, _ := page.Evaluate(`async () => {
+				  const dialog = document.querySelector('#catalog-search-dialog');
+				  const url = dialog.dataset.searchDeploymentDirectoryUrl;
+				  const response = await fetch(url, {headers: {Accept: 'application/json'}});
+				  return {text: dialog.textContent || '', dataset: {...dialog.dataset}, status: response.status, directory: await response.text()};
+				}`)
+				requestMu.Lock()
+				searchRequests := append([]string(nil), requests...)
+				requestMu.Unlock()
+				t.Fatalf("deployment-wide static search: %v debug=%#v requests=%#v", err, debug, searchRequests)
+			}
 			if err := searchInput.Fill("List charges"); err != nil {
 				t.Fatal(err)
 			}
@@ -225,6 +260,19 @@ catalogs:
 			}
 			if got, want := countDocumentShellRequests(afterSearchNavigation), countDocumentShellRequests(beforeSearchNavigation); got != want {
 				t.Fatalf("search result caused document shell navigation: before=%d after=%d requests=%#v", want, got, afterSearchNavigation)
+			}
+			newSearchRequests := afterSearchNavigation[len(beforeSearchNavigation):]
+			fragmentLoaded := false
+			for _, requestPath := range newSearchRequests {
+				if strings.Contains(requestPath, "/_manja/fragments/operations/") && strings.HasSuffix(requestPath, ".html") {
+					fragmentLoaded = true
+				}
+				if strings.Contains(requestPath, "/projection-data/") {
+					t.Fatalf("pre-rendered operation navigation loaded projection child %q", requestPath)
+				}
+			}
+			if !fragmentLoaded {
+				t.Fatalf("operation navigation did not request a pre-rendered fragment: %#v", newSearchRequests)
 			}
 			if err := page.Keyboard().Press("Escape"); err != nil {
 				t.Fatal(err)

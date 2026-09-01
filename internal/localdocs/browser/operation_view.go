@@ -19,11 +19,12 @@ const (
 )
 
 type browserOperationSchemaResolver struct {
-	browser  *Browser
-	document catalog.DocumentDirectoryV1
-	active   map[projection.SchemaRef]bool
-	selected map[projection.SchemaRef]projection.SchemaNode
-	loaded   int
+	browser   *Browser
+	document  catalog.DocumentDirectoryV1
+	active    map[projection.SchemaRef]bool
+	selected  map[projection.SchemaRef]projection.SchemaNode
+	truncated map[projection.SchemaRef]bool
+	loaded    int
 }
 
 // browserOperationView prepares the complete operation model and the exact
@@ -37,8 +38,9 @@ func (browser *Browser) browserOperationView(
 ) (*domain.Operation, []projection.SchemaNode, []projection.SchemaNode, []projection.SchemaNode, []projection.SchemaNode, []projection.SchemaNode, error) {
 	resolver := browserOperationSchemaResolver{
 		browser: browser, document: document,
-		active:   make(map[projection.SchemaRef]bool),
-		selected: make(map[projection.SchemaRef]projection.SchemaNode),
+		active:    make(map[projection.SchemaRef]bool),
+		selected:  make(map[projection.SchemaRef]projection.SchemaNode),
+		truncated: make(map[projection.SchemaRef]bool),
 	}
 	operationID := string(detail.ID)
 	for _, directoryOperation := range document.Operations {
@@ -182,7 +184,11 @@ func (resolver *browserOperationSchemaResolver) schema(ref projection.SchemaRef,
 		Enum: append([]string(nil), node.Enum...), Constraints: browserDomainSchemaConstraints(node.Constraints),
 		Nullable: node.Nullable, Deprecated: node.Deprecated, JSON: node.JSON,
 	}
-	if depth >= browserOperationSchemaDepth || resolver.loaded >= browserOperationSchemaNodes || resolver.active[ref] {
+	if depth >= browserOperationSchemaDepth || resolver.active[ref] {
+		return summary, nil
+	}
+	if resolver.loaded >= browserOperationSchemaNodes {
+		resolver.truncated[ref] = true
 		return summary, nil
 	}
 	resolver.active[ref] = true
@@ -190,6 +196,7 @@ func (resolver *browserOperationSchemaResolver) schema(ref projection.SchemaRef,
 	defer delete(resolver.active, ref)
 	for _, property := range node.Properties {
 		if resolver.loaded >= browserOperationSchemaNodes {
+			resolver.truncated[ref] = true
 			break
 		}
 		child, err := resolver.schema(property.SchemaRef, depth+1)
@@ -208,6 +215,8 @@ func (resolver *browserOperationSchemaResolver) schema(ref projection.SchemaRef,
 			return domain.SchemaSummary{}, err
 		}
 		summary.Items = &items
+	} else if len(node.Items) > 0 {
+		resolver.truncated[ref] = true
 	}
 	return summary, nil
 }
@@ -302,16 +311,28 @@ func (resolver *browserOperationSchemaResolver) selectOperationSchemaTreeNodes(s
 	if !exists {
 		return fmt.Errorf("operation schema-tree node %d was not selected", ref)
 	}
-	selected[ref] = browserCloneProjectionSchemaNode(node)
+	selectedNode := browserCloneProjectionSchemaNode(node)
+	if resolver.truncated[ref] {
+		if len(schema.Properties) <= len(selectedNode.Properties) {
+			selectedNode.Properties = selectedNode.Properties[:len(schema.Properties)]
+		}
+		if schema.Items == nil {
+			selectedNode.Items = nil
+		}
+	}
+	selected[ref] = selectedNode
 	if depth >= browserOperationSchemaDepth || active[ref] {
 		return nil
 	}
-	if len(node.Properties) != len(schema.Properties) || (len(node.Items) == 1) != (schema.Items != nil) {
+	edgesConsistent := len(node.Properties) == len(schema.Properties) && (len(node.Items) == 1) == (schema.Items != nil)
+	truncatedConsistent := resolver.truncated[ref] && len(schema.Properties) <= len(node.Properties) && (schema.Items == nil || len(node.Items) == 1)
+	if !edgesConsistent && !truncatedConsistent {
 		return fmt.Errorf("operation schema-tree node %d has inconsistent edges", ref)
 	}
 	active[ref] = true
 	defer delete(active, ref)
-	for index, property := range node.Properties {
+	for index := range schema.Properties {
+		property := node.Properties[index]
 		if err := resolver.selectOperationSchemaTreeNodes(selected, active, property.SchemaRef, schema.Properties[index].Schema, depth+1); err != nil {
 			return err
 		}

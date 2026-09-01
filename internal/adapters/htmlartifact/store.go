@@ -21,7 +21,7 @@ import (
 )
 
 const (
-	sidecarSuffix       = ".manja.json"
+	sidecarSuffix       = ".meta.json"
 	maximumManifestSize = 64 << 10
 )
 

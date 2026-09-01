@@ -14,7 +14,55 @@ import (
 	"github.com/araihu/manja/application/catalog"
 	"github.com/araihu/manja/internal/localdocs"
 	"golang.org/x/net/html"
+	"golang.org/x/net/html/atom"
 )
+
+func installDeploymentSearchHTML(input []byte, directoryURL string, entry exportFileEntry) ([]byte, error) {
+	document, err := html.Parse(bytes.NewReader(input))
+	if err != nil {
+		return nil, fmt.Errorf("parse deployment search HTML: %w", err)
+	}
+	root := findHTMLID(document, "catalog-search-dialog")
+	if root == nil {
+		return input, nil
+	}
+	setHTMLAttribute(root, "data-search-global", "true")
+	deploymentMount := strings.TrimSuffix(directoryURL, "/_manja/search/directory.json")
+	if deploymentMount == "" {
+		deploymentMount = "/"
+	}
+	setHTMLAttribute(root, "data-search-mount", deploymentMount)
+	setHTMLAttribute(root, "data-search-deployment-directory-url", directoryURL)
+	setHTMLAttribute(root, "data-search-deployment-directory-length", fmt.Sprint(entry.Length))
+	setHTMLAttribute(root, "data-search-deployment-directory-sha256", entry.SHA256)
+	var output bytes.Buffer
+	if err := html.Render(&output, document); err != nil {
+		return nil, fmt.Errorf("render deployment search HTML: %w", err)
+	}
+	return output.Bytes(), nil
+}
+
+func findHTMLID(node *html.Node, id string) *html.Node {
+	if node.Type == html.ElementNode && hasHTMLAttribute(node, "id", id) {
+		return node
+	}
+	for child := node.FirstChild; child != nil; child = child.NextSibling {
+		if found := findHTMLID(child, id); found != nil {
+			return found
+		}
+	}
+	return nil
+}
+
+func setHTMLAttribute(node *html.Node, key, value string) {
+	for index := range node.Attr {
+		if node.Attr[index].Key == key {
+			node.Attr[index].Val = value
+			return
+		}
+	}
+	node.Attr = append(node.Attr, html.Attribute{Key: key, Val: value})
+}
 
 type exportHTMLCatalog struct {
 	Mount      string
@@ -39,6 +87,27 @@ func rewriteExportHTML(input []byte, basePath string, catalogContext *exportHTML
 	var output bytes.Buffer
 	if err := html.Render(&output, document); err != nil {
 		return nil, fmt.Errorf("render export HTML: %w", err)
+	}
+	return output.Bytes(), nil
+}
+
+func rewriteExportFragmentHTML(input []byte, basePath string, catalogContext *exportHTMLCatalog) ([]byte, error) {
+	container := &html.Node{Type: html.ElementNode, Data: "div", DataAtom: atom.Div}
+	nodes, err := html.ParseFragment(bytes.NewReader(input), container)
+	if err != nil {
+		return nil, fmt.Errorf("parse export HTML fragment: %w", err)
+	}
+	for _, node := range nodes {
+		container.AppendChild(node)
+	}
+	if err := rewriteHTMLChildren(container, basePath, catalogContext); err != nil {
+		return nil, err
+	}
+	var output bytes.Buffer
+	for child := container.FirstChild; child != nil; child = child.NextSibling {
+		if err := html.Render(&output, child); err != nil {
+			return nil, fmt.Errorf("render export HTML fragment: %w", err)
+		}
 	}
 	return output.Bytes(), nil
 }
@@ -201,7 +270,9 @@ func rewriteHTMLURL(node *html.Node, attribute, value, basePath string, catalogC
 		return "", fmt.Errorf("invalid export URL %q", value)
 	}
 	if parsed.IsAbs() {
-		if parsed.Scheme != "https" || attribute != "href" || node.Data != "a" && !hasHTMLAttribute(node, "rel", "canonical") {
+		anchorHTTPS := parsed.Scheme == "https" && attribute == "href" && (node.Data == "a" || hasHTMLAttribute(node, "rel", "canonical"))
+		anchorMailto := parsed.Scheme == "mailto" && attribute == "href" && node.Data == "a" && strings.TrimSpace(parsed.Opaque) != ""
+		if !anchorHTTPS && !anchorMailto {
 			return "", fmt.Errorf("external export resource %q is not supported", value)
 		}
 		return value, nil

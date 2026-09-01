@@ -13,6 +13,7 @@ import (
 	"testing"
 
 	"github.com/araihu/manja/application/catalog"
+	artifact "github.com/araihu/manja/application/htmlartifact"
 	"github.com/araihu/manja/internal/adapters/catalogjson"
 	"github.com/araihu/manja/internal/web"
 	"github.com/araihu/manja/renderer"
@@ -66,7 +67,34 @@ catalogs:
 	if len(receipt.Catalogs) != 1 || receipt.Catalogs[0].CatalogID != "private" || receipt.Catalogs[0].PublicationKey != "private" {
 		t.Fatalf("receipt = %#v", receipt)
 	}
-	for _, name := range []string{"index.html", "private/index.html", "private/documents/private/index.html", "private/_manja/offline-shell/index.html", "sw.js", exportManifestPath} {
+	catalogBytes, err := os.ReadFile(filepath.Join(output, "private", "snapshots", receipt.Catalogs[0].SnapshotID, "catalog.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	directory, err := catalogjson.DecodeCatalogWithResourceLimits(catalogBytes, false)
+	if err != nil || len(directory.Documents) != 1 || len(directory.Documents[0].Operations) != 1 {
+		t.Fatalf("export catalog directory = %#v, %v", directory, err)
+	}
+	fragmentPath, sidecarPath, err := artifact.FragmentLocation("/private", "private", artifact.FragmentIdentity{
+		Format: artifact.FragmentFormatV2, Kind: artifact.FragmentOperation,
+		Resource: string(directory.Documents[0].Operations[0].DetailID),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	examplePath, exampleSidecar, err := artifact.FragmentLocation("/private", "private", artifact.FragmentIdentity{Format: artifact.FragmentFormatV2, Kind: artifact.FragmentExample, Resource: string(directory.Documents[0].Operations[0].DetailID)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	pathPath, pathSidecar, err := artifact.FragmentLocation("/private", "private", artifact.FragmentIdentity{Format: artifact.FragmentFormatV2, Kind: artifact.FragmentPath, Resource: "/charges"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	sidebarPath, sidebarSidecar, err := artifact.FragmentLocation("/private", "private", artifact.FragmentIdentity{Format: artifact.FragmentFormatV2, Kind: artifact.FragmentSidebar, Resource: "private:operations:0"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"index.html", "private/index.html", "private/documents/private/index.html", "private/_manja/offline-shell/index.html", deploymentSearchDirectoryPath, fragmentPath, sidecarPath, examplePath, exampleSidecar, pathPath, pathSidecar, sidebarPath, sidebarSidecar, "sw.js", exportManifestPath} {
 		if _, err := os.Stat(filepath.Join(output, filepath.FromSlash(name))); err != nil {
 			t.Errorf("missing %s: %v", name, err)
 		}
@@ -80,6 +108,47 @@ catalogs:
 	}
 	if !strings.Contains(string(body), `id="manja-local-docs-descriptor"`) || !strings.Contains(string(body), `"publicationKey":"private"`) || !strings.Contains(string(body), `src="/manja-assets/local-docs.js"`) {
 		t.Fatalf("visibility-disabled static shell lacks export authority: %s", body)
+	}
+	for _, want := range []string{`data-search-global="true"`, `data-search-deployment-directory-url="/_manja/search/directory.json"`, `data-search-deployment-directory-sha256="`} {
+		if !strings.Contains(string(body), want) {
+			t.Errorf("static shell lacks deployment search binding %q", want)
+		}
+	}
+	fragment, err := os.ReadFile(filepath.Join(output, filepath.FromSlash(fragmentPath)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(fragment), `data-manja-local-main="true"`) || !strings.Contains(string(fragment), `listCharges`) {
+		t.Fatalf("operation fragment is incomplete: %s", fragment)
+	}
+	sidecarBefore, err := os.ReadFile(filepath.Join(output, filepath.FromSlash(sidecarPath)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	fragmentInfoBefore, err := os.Stat(filepath.Join(output, filepath.FromSlash(fragmentPath)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ExportRenderer(context.Background(), ExportOptions{RendererOptions: RendererOptions{ConfigPath: configPath}, Output: output, BasePath: "/"}); err != nil {
+		t.Fatalf("incremental export: %v", err)
+	}
+	fragmentAfter, err := os.ReadFile(filepath.Join(output, filepath.FromSlash(fragmentPath)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	sidecarAfter, err := os.ReadFile(filepath.Join(output, filepath.FromSlash(sidecarPath)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(fragmentAfter) != string(fragment) || string(sidecarAfter) != string(sidecarBefore) {
+		t.Fatal("incremental export changed a verified unchanged fragment")
+	}
+	fragmentInfoAfter, err := os.Stat(filepath.Join(output, filepath.FromSlash(fragmentPath)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !os.SameFile(fragmentInfoBefore, fragmentInfoAfter) {
+		t.Fatal("incremental export copied an unchanged fragment instead of linking the verified cache hit")
 	}
 }
 
@@ -177,7 +246,7 @@ func TestStaticExportCapturesAndVerifiesCatalogAboveRuntimeByteLimit(t *testing.
 	root := t.TempDir()
 	writer := exportTreeWriter{root: root, entries: make(map[string]exportFileEntry)}
 	writeMinimalExport(t, &writer, []byte("<!doctype html><html><body></body></html>"))
-	receipt, err := captureCatalog(context.Background(), handler, &writer, active, "/")
+	receipt, _, err := captureCatalog(context.Background(), handler, &writer, active, "/", "", artifact.BuildProfile{}.Resolved(), 4)
 	if err != nil {
 		t.Fatalf("captureCatalog rejected catalog above runtime byte limit: %v", err)
 	}
@@ -232,7 +301,7 @@ func TestExportRejectsNonEmptyOutputWithoutMutation(t *testing.T) {
 	if err := os.WriteFile(marker, []byte("keep"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if err := prepareExportOutput(output); err == nil || !strings.Contains(err.Error(), "not empty") {
+	if _, err := prepareExportOutput(context.Background(), output); err == nil || !strings.Contains(err.Error(), "not an intact Manja export") {
 		t.Fatalf("prepareExportOutput error = %v", err)
 	}
 	if data, err := os.ReadFile(marker); err != nil || string(data) != "keep" {
