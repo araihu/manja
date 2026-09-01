@@ -342,6 +342,17 @@ test('worker validates exported search child under its declared manifest path', 
   assert.equal(response.status, 200)
 })
 
+test('worker gives the search directory its codec bound without widening search segments', async () => {
+  const identity = { schemaVersion: 1, catalogId: 'public-api', revisionId: 'revision-1', projectionFormat: 'projection-v2' }
+  const projectionDigest = digest(JSON.stringify(identity))
+  const value = descriptor({ projectionDigest, snapshotId: `snapshot-sha256-${projectionDigest}` })
+  const base = { schemaVersion: 1, snapshotId: value.snapshotId, identity }
+  const child = { path: 'search/directory.json', kind: 'search-directory', length: 3 * 1024 * 1024, sha256: 'b'.repeat(64) }
+  await assert.doesNotReject(() => worker.parseManifest(bytes(JSON.stringify({ ...base, children: [child] })), value))
+  await assert.rejects(() => worker.parseManifest(bytes(JSON.stringify({ ...base, children: [{ ...child, length: worker.MAX_SEARCH_DIRECTORY_BYTES + 1 }] })), value), /search child/)
+  await assert.rejects(() => worker.parseManifest(bytes(JSON.stringify({ ...base, children: [{ ...child, path: 'search/postings/large.json', kind: 'search-posting' }] })), value), /search child/)
+})
+
 test('revalidation is single-flight and network failure serves validated offline shell', async () => {
   const storage = storageModule.createMemoryStorage()
   const identity = { schemaVersion: 1, catalogId: 'public-api', revisionId: 'revision-1', projectionFormat: 'projection-v2' }

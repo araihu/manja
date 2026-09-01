@@ -32,6 +32,7 @@ if (typeof importScripts === "function" && typeof globalThis !== "undefined" && 
   const MAX_ASSET_BYTES = 16 * 1024 * 1024
   const MAX_SPEC_BYTES = 64 * 1024 * 1024
   const MAX_CHILD_BYTES = 2 * 1024 * 1024
+  const MAX_SEARCH_DIRECTORY_BYTES = 4 * 1024 * 1024
   const DIGEST_PATTERN = /^[0-9a-f]{64}$/
   const ASSET_DIGEST_HEADER = "X-Manja-Asset-SHA256"
   const ASSET_LENGTH_HEADER = "X-Manja-Asset-Length"
@@ -51,7 +52,9 @@ if (typeof importScripts === "function" && typeof globalThis !== "undefined" && 
     STATIC_PREFIX + "manja.wasm",
     STATIC_PREFIX + "manja.wasm.br",
   ]
-  const PRECACHE_STATIC_ASSETS = DEFAULT_STATIC_ASSETS.filter((path) => !path.endsWith("manja.wasm.br"))
+  const PRECACHE_STATIC_ASSETS = DEFAULT_STATIC_ASSETS.filter((path) => STATIC_EXPORT
+    ? path.endsWith("/sw.js") || path.endsWith("/storage.js") || path.endsWith("/local-docs.js")
+    : !path.endsWith("manja.wasm.br"))
 
   // The companion is generated from the embedded production bytes. Keeping
   // sw.js outside its own source avoids a self-referential digest while still
@@ -418,7 +421,8 @@ if (typeof importScripts === "function" && typeof globalThis !== "undefined" && 
       } else if (child.path.indexOf("support/") === 0) {
         if (child.kind !== "support") fail("manifest support child kind is invalid")
       } else if (child.path.indexOf("search/") === 0) {
-        if (child.kind.indexOf("search-") !== 0 || child.length > MAX_CHILD_BYTES) fail("manifest search child is invalid")
+        const maximumSearchBytes = child.path === "search/directory.json" ? MAX_SEARCH_DIRECTORY_BYTES : MAX_CHILD_BYTES
+        if (child.kind.indexOf("search-") !== 0 || child.length > maximumSearchBytes) fail("manifest search child is invalid")
       } else {
         fail("manifest child route is invalid")
       }
@@ -445,6 +449,7 @@ if (typeof importScripts === "function" && typeof globalThis !== "undefined" && 
   }
 
   function childMaximum(child) {
+    if (child.path === "search/directory.json") return MAX_SEARCH_DIRECTORY_BYTES
     return child.path.indexOf("details/") === 0 || child.path.indexOf("schema-nodes/") === 0 || child.path.indexOf("search/") === 0 ? MAX_CHILD_BYTES : MAX_SPEC_BYTES
   }
 
@@ -940,7 +945,6 @@ if (typeof importScripts === "function" && typeof globalThis !== "undefined" && 
           await cacheStaticAssetsOnce(cacheName, PRECACHE_STATIC_ASSETS)
           if (Array.isArray(options.assets) && options.assets.length) await cacheStaticAssetsOnce(cacheName, options.assets)
         }
-        if (STATIC_EXPORT) await cacheStaticExportShells(scope, fetchImplementation)
         if (typeof scope.skipWaiting === "function") await scope.skipWaiting()
       }))
     })
@@ -1012,6 +1016,7 @@ if (typeof importScripts === "function" && typeof globalThis !== "undefined" && 
       let url
       try { url = new URL(request.url) } catch (_) { return }
       if (url.origin !== origin) return
+	  if (url.pathname.indexOf("/_manja/fragments/") !== -1) return
       if (STATIC_EXPORT && request.mode === "navigate" && url.pathname.indexOf(DEPLOYMENT_BASE) === 0) {
         event.respondWith(staticExportNavigation(scope, request, fetchImplementation))
         return
@@ -1057,6 +1062,7 @@ if (typeof importScripts === "function" && typeof globalThis !== "undefined" && 
     DEPLOYMENT_BASE,
     MAX_ASSET_BYTES,
     MAX_CHILD_BYTES,
+    MAX_SEARCH_DIRECTORY_BYTES,
     MAX_MANIFEST_BYTES,
     MAX_SPEC_BYTES,
     MAX_SHELL_BYTES,

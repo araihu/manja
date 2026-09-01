@@ -722,14 +722,21 @@
   };
 
   function deploymentNavigationMatch(value, query) {
-	var normalized = normalizeExact(value);
+	var normalized = asString(value).normalize("NFKC").replace(/[\u0000-\u001f\u007f-\u009f]+/g, " ").trim().toLowerCase();
 	var exact = normalizeExact(query);
 	if (!normalized || !exact) return -1;
 	if (normalized === exact) return 0;
 	if (normalized.indexOf(exact) === 0) return 1;
 	if (normalized.indexOf(exact) >= 0) return 2;
 	var queryTokens = tokenize(exact);
-	var valueTokens = tokenize(normalized);
+	var valueTokens = [];
+	var candidate = "";
+	Array.from(normalized).some(function (character) {
+	  if (/[\p{L}\p{N}/{}.:_-]/u.test(character)) candidate += character;
+	  else if (candidate) { valueTokens.push(candidate); candidate = ""; }
+	  return valueTokens.length >= 512;
+	});
+	if (candidate && valueTokens.length < 512) valueTokens.push(candidate);
 	var allMatched = queryTokens.every(function (token) {
 	  return valueTokens.some(function (candidate) {
 		if (candidate.indexOf(token) === 0) return true;
@@ -918,7 +925,8 @@
   }
 
   window.ManjaCatalogSearchRouter = {
-    create: function (root) { return new SearchRouter(root); },
+	create: function (root) { return new SearchRouter(root); },
+	deploymentNavigationMatch: deploymentNavigationMatch,
   };
 
 	window.manjaCatalogSearch = function (root) {

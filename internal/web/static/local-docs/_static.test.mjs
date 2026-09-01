@@ -8,6 +8,7 @@ function enhancer(pathname = '/group/project/pets/documents/doc/', additions = {
   const location = additions.location || new URL(`https://docs.test${pathname}`)
   const window = {
     URL,
+	URLSearchParams,
     TextEncoder,
     TextDecoder,
     crypto: webcrypto,
@@ -19,7 +20,7 @@ function enhancer(pathname = '/group/project/pets/documents/doc/', additions = {
     ...additions,
   }
   class CustomEvent { constructor(type, options = {}) { this.type = type; this.detail = options.detail } }
-  vm.runInNewContext(fs.readFileSync(new URL('../local-docs.js', import.meta.url), 'utf8'), { window, URL, TextEncoder, TextDecoder, Response, Promise, CustomEvent, setTimeout, clearTimeout })
+	vm.runInNewContext(fs.readFileSync(new URL('../local-docs.js', import.meta.url), 'utf8'), { window, URL, URLSearchParams, TextEncoder, TextDecoder, Response, Promise, CustomEvent, setTimeout, clearTimeout })
   return window.ManjaLocalDocsEnhancer
 }
 
@@ -60,6 +61,16 @@ test('static descriptor binds deployment worker shell and export manifest routes
   assert.throws(() => api.validateDescriptor(descriptor({ static: { ...descriptor().static, deploymentBase: '/other/' } })), /static routes/)
 })
 
+test('static manifest accepts the bounded search directory independently from search segments', () => {
+  const api = enhancer()
+  const value = api.validateDescriptor(descriptor())
+  const identity = { schemaVersion: 1, catalogId: value.catalogId, revisionId: value.revisionId, projectionFormat: value.projectionFormat }
+  const child = { path: 'search/directory.json', kind: 'search-directory', length: 3 * 1024 * 1024, sha256: 'b'.repeat(64) }
+  assert.doesNotThrow(() => api.validateManifest({ schemaVersion: 1, snapshotId: value.snapshotId, identity, children: [child] }, value))
+  assert.throws(() => api.validateManifest({ schemaVersion: 1, snapshotId: value.snapshotId, identity, children: [{ ...child, length: 4 * 1024 * 1024 + 1 }] }, value), /search child/)
+  assert.throws(() => api.validateManifest({ schemaVersion: 1, snapshotId: value.snapshotId, identity, children: [{ ...child, path: 'search/records/large.json', kind: 'search-records' }] }, value), /search child/)
+})
+
 test('static route parses direct selection node and expanded groups inside publication only', () => {
   const api = enhancer()
   const value = api.validateDescriptor(descriptor())
@@ -75,6 +86,35 @@ async function sha256(value) {
   const bytes = new TextEncoder().encode(value)
   const digest = await webcrypto.subtle.digest('SHA-256', bytes)
   return { bytes, hex: Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, '0')).join('') }
+}
+
+async function fragmentKey(kind, resource) {
+  const values = ['manja.html.fragment.resource.v2', 'manja-html-fragment-v2', kind, resource].map(value => new TextEncoder().encode(value))
+  const buffer = new ArrayBuffer(values.reduce((total, value) => total + 4 + value.byteLength, 0))
+  const view = new DataView(buffer)
+  const bytes = new Uint8Array(buffer)
+  let offset = 0
+  for (const value of values) {
+    view.setUint32(offset, value.byteLength, false)
+    offset += 4
+    bytes.set(value, offset)
+    offset += value.byteLength
+  }
+  const digest = await webcrypto.subtle.digest('SHA-256', buffer)
+  return `${kind}-sha256-${Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, '0')).join('')}`
+}
+
+async function fragmentArtifact(kind, resource, html) {
+  const content = await sha256(html)
+  return {
+    html,
+    sidecar: JSON.stringify({
+      schemaVersion: 1,
+      fragment: { format: 'manja-html-fragment-v2', kind, resource },
+      buildKey: `fragment-build-sha256:${'c'.repeat(64)}`,
+      content: { length: content.bytes.byteLength, sha256: content.hex },
+    }),
+  }
 }
 
 async function staticActivationFixture(failedPath = '', options = {}) {
@@ -104,12 +144,28 @@ async function staticActivationFixture(failedPath = '', options = {}) {
   }
   const manifest = JSON.stringify({ schemaVersion: 1, snapshotId: value.snapshotId, identity, children })
   const exported = JSON.stringify({ schemaVersion: 1, basePath: '/group/project/', catalogs: [{ catalogId: 'pets', publicationKey: 'pets', revisionId: 'revision-1', snapshotId: value.snapshotId }] })
+  const operationKey = await fragmentKey('operation', 'wanted')
+  const operationFragment = await fragmentArtifact('operation', 'wanted', '<article><h1 data-manja-settled-focus="true">Wanted</h1></article>')
+  const operationChunkKey = await fragmentKey('sidebar', 'doc:operations:0')
+  const operationChunk = await fragmentArtifact('sidebar', 'doc:operations:0', '<ul data-manja-sidebar-operation-chunk="0"></ul>')
+  const schemaChunkKey = await fragmentKey('sidebar', 'doc:schemas:0')
+  const schemaChunk = await fragmentArtifact('sidebar', 'doc:schemas:0', '<ul data-manja-sidebar-schema-chunk="0"></ul>')
+  const fragmentBase = `${value.publicationBase}documents/doc/_manja/fragments/`
+  const operationPath = `${fragmentBase}operations/${operationKey}.html`
+  const operationChunkPath = `${fragmentBase}sidebar/operations/${operationChunkKey}.html`
+  const schemaChunkPath = `${fragmentBase}sidebar/operations/${schemaChunkKey}.html`
   const requests = []
   const phases = []
   const responses = new Map([
     [value.static.exportManifestUrl, exported],
     [value.projectionManifestUrl, manifest],
     [value.catalogUrl, catalog],
+	[operationPath, operationFragment.html],
+	[operationPath + '.meta.json', operationFragment.sidecar],
+	[operationChunkPath, operationChunk.html],
+	[operationChunkPath + '.meta.json', operationChunk.sidecar],
+	[schemaChunkPath, schemaChunk.html],
+	[schemaChunkPath + '.meta.json', schemaChunk.sidecar],
     ...children.filter(child => child.path !== 'catalog.json').map(child => [child.path.startsWith('search/') ? value.searchDataBase + child.path : value.projectionDataBase + child.path, payloads[child.path]]),
   ])
   const cache = { match: async () => undefined, put: async () => undefined }
@@ -118,7 +174,7 @@ async function staticActivationFixture(failedPath = '', options = {}) {
   const fetch = async input => {
     const path = new URL(input, 'https://docs.test').pathname
     requests.push(path)
-    if (activeFailedPath && path.endsWith(activeFailedPath)) throw new Error('network down')
+	if (activeFailedPath === 'operation-fragment' && path.includes('/fragments/operations/') || activeFailedPath && activeFailedPath !== 'operation-fragment' && path.endsWith(activeFailedPath)) throw new Error('network down')
     const body = responses.get(path)
     if (body === undefined) return new Response('', { status: 404 })
     return new Response(body, { status: 200, headers: { 'Content-Length': String(new TextEncoder().encode(body).byteLength) } })
@@ -228,32 +284,33 @@ async function staticActivationFixture(failedPath = '', options = {}) {
     renderSidebar: () => { sidebarRenders.push(true); return { ok: true, sidebarHtml: '<nav></nav>', canonical: value.publicationBase + 'documents/doc/?selected=wanted#wanted' } },
   }
   const result = await api.start({ document, loadABI: () => { phases.push('loadABI'); return abi } })
-  return { result, root, requests, phases, prepared, admitted, sidebarRenders, value, api, history, focusCalls, groupFocusCalls, mainScroll, nav, groupControl, listeners, windowListeners, location, navigationError, navigationErrorMessage, navigationRetry, setFailedPath: value => { activeFailedPath = value }, mainWrites: () => mainWrites }
+	return { result, root, requests, phases, prepared, admitted, sidebarRenders, value, operationPath, api, history, focusCalls, groupFocusCalls, mainScroll, nav, groupControl, listeners, windowListeners, location, navigationError, navigationErrorMessage, navigationRetry, setFailedPath: value => { activeFailedPath = value }, mainWrites: () => mainWrites }
 }
 
-test('static direct route loads only its required projection child', async () => {
+test('static direct route loads verified HTML without projection children or Wasm', async () => {
   const fixture = await staticActivationFixture()
   assert.equal(fixture.result.ok, true)
-  assert.deepEqual(fixture.prepared, [[]])
-  assert.deepEqual(fixture.admitted, ['details/doc.json'])
-  assert.deepEqual(fixture.requests.filter(path => path.includes('/projection-data/') || path.includes('/search-data/')), [fixture.value.projectionDataBase + 'details/doc.json'])
+	assert.deepEqual(fixture.prepared, [])
+	assert.deepEqual(fixture.admitted, [])
+	assert.equal(fixture.requests.includes(fixture.operationPath), true)
+	assert.deepEqual(fixture.requests.filter(path => path.includes('/projection-data/') || path.includes('/search-data/')), [])
 })
 
-test('static startup registers the worker before loading the runtime ABI', async () => {
+test('static startup registers the worker without loading the runtime ABI', async () => {
   const fixture = await staticActivationFixture()
   assert.ok(fixture.phases.indexOf('register') >= 0)
   assert.ok(fixture.phases.indexOf('configure') >= 0)
-  assert.ok(fixture.phases.indexOf('loadABI') > fixture.phases.indexOf('configure'))
+	assert.equal(fixture.phases.includes('loadABI'), false)
 })
 
-test('static child failure reports its manifest path', async () => {
-  const fixture = await staticActivationFixture('details/doc.json')
+test('static fragment failure reports its deterministic path', async () => {
+	const fixture = await staticActivationFixture('operation-fragment')
   assert.equal(fixture.result.ok, false)
-  assert.match(fixture.root.dataset.manjaLocalDocsReason, /details\/doc\.json/)
+	assert.match(fixture.root.dataset.manjaLocalDocsReason, /network down/)
 })
 
 test('static navigation exposes a visible retry state after child failure', async () => {
-  const fixture = await staticActivationFixture('details/doc.json', { navigationError: true })
+	const fixture = await staticActivationFixture('operation-fragment', { navigationError: true })
   assert.equal(fixture.result.ok, false)
   assert.equal(fixture.navigationError.hidden, false)
   assert.equal(fixture.navigationRetry.hidden, false)
@@ -293,8 +350,8 @@ test('static detail navigation resets main scroll and saves the previous entry',
 
   assert.equal(fixture.mainScroll.scrollTop, 0)
   assert.equal(fixture.nav.scrollTop, 77)
-  assert.deepEqual(fixture.prepared, [[]])
-  assert.deepEqual(fixture.admitted, ['details/doc.json'])
+	assert.deepEqual(fixture.prepared, [])
+	assert.deepEqual(fixture.admitted, [])
   assert.equal(fixture.history.replaceStates.at(-1).manjaLocalDocs.main, 420)
   assert.equal(fixture.history.replaceStates.at(-1).manjaLocalDocs.sidebar, 77)
   assert.equal(fixture.history.pushStates.at(-1).manjaLocalDocs.main, 0)
@@ -333,7 +390,7 @@ test('static group toggles replace history, preserve both scroll containers, and
     },
     preventDefault() { prevented = true },
   })
-  await new Promise(resolve => setTimeout(resolve, 0))
+	await new Promise(resolve => setTimeout(resolve, 10))
 
   assert.equal(prevented, true)
   assert.equal(fixture.history.pushes.length, 0)

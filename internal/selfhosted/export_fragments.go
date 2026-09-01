@@ -193,6 +193,9 @@ func emitSidebarHTMLChunks(ctx context.Context, writer *exportTreeWriter, store,
 		return fmt.Errorf("sidebar chunk size is invalid")
 	}
 	chunks := (len(document.Operations) + chunkSize - 1) / chunkSize
+	if chunks == 0 {
+		chunks = 1
+	}
 	for chunk := 0; chunk < chunks; chunk++ {
 		start := chunk * chunkSize
 		end := start + chunkSize
@@ -244,11 +247,92 @@ func emitSidebarHTMLChunks(ctx context.Context, writer *exportTreeWriter, store,
 			if label == "" {
 				label = operation.OperationID
 			}
-			output.WriteString(`<li><a href="` + htmlstd.EscapeString(href) + `" class="block min-w-0 rounded px-2 py-1.5"><span class="font-mono text-xs font-bold">` + htmlstd.EscapeString(strings.ToUpper(operation.Method)) + `</span> <span>` + htmlstd.EscapeString(label) + `</span></a></li>`)
+			method := strings.ToUpper(strings.TrimSpace(operation.Method))
+			output.WriteString(`<li><a data-manja-static-route="true" data-catalog-sidebar-item="true" data-catalog-sidebar-operation="true" data-catalog-method="` + htmlstd.EscapeString(method) + `" href="` + htmlstd.EscapeString(href) + `" class="flex min-w-0 items-center rounded px-2 py-1.5"><span class="mr-2 shrink-0 font-mono text-xs font-bold">` + htmlstd.EscapeString(method) + `</span><span class="min-w-0 flex-1 truncate">` + htmlstd.EscapeString(label) + `</span></a></li>`)
 		}
 		output.WriteString(`</ul>`)
 		if chunk+1 < chunks {
 			nextIdentity := artifact.FragmentIdentity{Format: artifact.FragmentFormatV2, Kind: artifact.FragmentSidebar, Resource: document.Key + ":operations:" + strconv.Itoa(chunk+1)}
+			nextPath, _, err := artifact.FragmentLocation(active.Mount, document.Key, nextIdentity)
+			if err != nil {
+				return err
+			}
+			nextURL := prefixExportBase(descriptor.Static.DeploymentBase, "/"+nextPath)
+			output.WriteString(`<div aria-hidden="true" data-manja-sidebar-next-chunk="true" hx-get="` + htmlstd.EscapeString(nextURL) + `" hx-trigger="revealed" hx-swap="outerHTML"></div>`)
+		}
+		if _, err := store.CommitHTML(ctx, htmlPath, expectation, func(target io.Writer) error {
+			_, err := io.WriteString(target, output.String())
+			return err
+		}); err != nil {
+			return err
+		}
+		if err := writer.registerExisting(htmlPath, "text/html"); err != nil {
+			return err
+		}
+		if err := writer.registerExisting(htmlPath+".meta.json", "application/json"); err != nil {
+			return err
+		}
+	}
+	return emitSidebarSchemaHTMLChunks(ctx, writer, store, cacheStore, cacheRoot, active, descriptor, manifest, document, binaryIdentity, profile, chunkSize)
+}
+
+func emitSidebarSchemaHTMLChunks(ctx context.Context, writer *exportTreeWriter, store, cacheStore *artifactstore.Store, cacheRoot string, active renderer.ActivationReceipt, descriptor localdocs.DescriptorV1, manifest catalog.ManifestV1, document catalog.DocumentDirectoryV1, binaryIdentity string, profile artifact.BuildProfile, chunkSize int) error {
+	chunks := (len(document.Schemas) + chunkSize - 1) / chunkSize
+	if chunks == 0 {
+		chunks = 1
+	}
+	for chunk := 0; chunk < chunks; chunk++ {
+		start := chunk * chunkSize
+		end := start + chunkSize
+		if end > len(document.Schemas) {
+			end = len(document.Schemas)
+		}
+		resource := document.Key + ":schemas:" + strconv.Itoa(chunk)
+		identity := artifact.FragmentIdentity{Format: artifact.FragmentFormatV2, Kind: artifact.FragmentSidebar, Resource: resource}
+		htmlPath, _, err := artifact.FragmentLocation(active.Mount, document.Key, identity)
+		if err != nil {
+			return err
+		}
+		payload, err := json.Marshal(struct {
+			Document string                      `json:"document"`
+			Chunk    int                         `json:"chunk"`
+			Size     int                         `json:"size"`
+			Items    []catalog.SchemaDirectoryV1 `json:"items"`
+		}{document.Key, chunk, chunkSize, document.Schemas[start:end]})
+		if err != nil {
+			return err
+		}
+		compilerIdentity, _ := json.Marshal(manifest.Identity.Versions)
+		buildKey, err := artifact.NewBuildKey(artifact.BuildKeyInput{
+			Fragment: identity, CanonicalPayloadSHA256: artifact.PayloadSHA256(payload),
+			ManjaVersion: binaryIdentity, RendererFingerprint: binaryIdentity, UIFingerprint: binaryIdentity,
+			CompilerIdentity: string(compilerIdentity), NormalizerIdentity: manifest.Identity.SourceManifestSHA256, Profile: profile,
+		})
+		if err != nil {
+			return err
+		}
+		expectation := artifact.Expectation{Fragment: identity, BuildKey: buildKey}
+		if cacheStore != nil {
+			cached, err := cacheStore.VerifyHTML(ctx, htmlPath, expectation)
+			if err != nil {
+				return err
+			}
+			if cached.Hit() {
+				if err := linkCachedHTMLArtifact(writer, cacheRoot, htmlPath, cached.Manifest); err != nil {
+					return err
+				}
+				continue
+			}
+		}
+		var output strings.Builder
+		output.WriteString(`<ul data-manja-sidebar-schema-chunk="` + strconv.Itoa(chunk) + `" class="grid gap-1">`)
+		for _, schema := range document.Schemas[start:end] {
+			href := descriptor.PublicationBase + "documents/" + url.PathEscape(document.Key) + "/?selected=" + url.QueryEscape(string(schema.DetailID)) + "#" + url.PathEscape(string(schema.DetailID))
+			output.WriteString(`<li><a data-manja-static-route="true" data-catalog-sidebar-item="true" href="` + htmlstd.EscapeString(href) + `" class="flex min-w-0 items-center rounded px-2 py-1.5"><span class="min-w-0 flex-1 truncate">` + htmlstd.EscapeString(schema.Name) + `</span></a></li>`)
+		}
+		output.WriteString(`</ul>`)
+		if chunk+1 < chunks {
+			nextIdentity := artifact.FragmentIdentity{Format: artifact.FragmentFormatV2, Kind: artifact.FragmentSidebar, Resource: document.Key + ":schemas:" + strconv.Itoa(chunk+1)}
 			nextPath, _, err := artifact.FragmentLocation(active.Mount, document.Key, nextIdentity)
 			if err != nil {
 				return err

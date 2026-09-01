@@ -131,6 +131,13 @@ test('global search reports a broad query instead of a generic outage', async ()
   await assert.rejects(router.search('reset'), /Search is too broad\. Add another term/)
 })
 
+test('deployment ranking accepts multiline spec descriptions as corpus text', () => {
+  const fixture = searchModel()
+  const rank = fixture.window.ManjaCatalogSearchRouter.deploymentNavigationMatch
+  assert.equal(rank('Reconfigures the alarm properties.\nAdditional VMware details.', 'alarm properties') >= 0, true)
+  assert.equal(rank('Unrelated description\nwith several words', 'alarm properties'), -1)
+})
+
 test('Ctrl K refocuses an already-open dialog restored by browser history', () => {
   const fixture = searchModel()
   let focused = 0

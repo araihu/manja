@@ -3,6 +3,7 @@
 
   var MAX_MANIFEST_BYTES = 4 * 1024 * 1024;
   var MAX_PROJECTION_CHILD_BYTES = 2 * 1024 * 1024;
+  var MAX_SEARCH_DIRECTORY_BYTES = 4 * 1024 * 1024;
   var DEFAULT_RUNTIME_URL = "/manja-assets/local-docs/wasm_exec.js";
   var DEFAULT_WASM_URL = "/manja-assets/local-docs/manja.wasm";
   var DEFAULT_WORKER_URL = "/manja-assets/local-docs/sw.js";
@@ -150,7 +151,8 @@
       } else if (child.path.indexOf("support/") === 0) {
         if (child.kind !== "support") fail("manifest support child is invalid");
       } else if (child.path.indexOf("search/") === 0) {
-        if (child.kind.indexOf("search-") !== 0 || child.length > MAX_PROJECTION_CHILD_BYTES) fail("manifest search child is invalid");
+        var maximumSearchBytes = child.path === "search/directory.json" ? MAX_SEARCH_DIRECTORY_BYTES : MAX_PROJECTION_CHILD_BYTES;
+        if (child.kind.indexOf("search-") !== 0 || child.length > maximumSearchBytes) fail("manifest search child is invalid");
       } else {
         fail("manifest child route is invalid");
       }
@@ -658,12 +660,21 @@
 	});
   }
 
-  function readStaticHTMLFragment(descriptor, catalog, cache, route) {
+  function staticRouteCanonical(descriptor, route) {
+	var pathname = descriptor.publicationBase + "documents/" + encodeURIComponent(route.documentKey) + "/";
+	var parameters = new URLSearchParams();
+	(route.groups || []).forEach(function (group) { parameters.append("group", group); });
+	(route.closedGroups || []).forEach(function (group) { parameters.append("closed", group); });
+	if (route.selected) parameters.set("selected", route.selected);
+	if (route.node !== undefined) parameters.set("node", String(route.node));
+	var query = parameters.toString();
+	var fragment = route.node !== undefined ? "schema-node-panel" : route.selected || "";
+	return pathname + (query ? "?" + query : "") + (fragment ? "#" + encodeURIComponent(fragment) : "");
+  }
+
+  function readStaticHTMLFragmentKind(descriptor, cache, route, kind) {
 	if (!route.selected) return Promise.reject(new Error("static fragment selection is missing"));
-	var documentValue = staticCatalogDocument(catalog, route.documentKey);
-	var selection = staticRouteSelection(documentValue, route.selected);
-	var kind = selection.schema ? "schema" : "operation";
-	var directory = selection.schema ? "schemas" : "operations";
+	var directory = kind === "schema" ? "schemas" : "operations";
 	return fragmentResourceKey(kind, route.selected).then(function (resourceKey) {
 	  var base = descriptor.publicationBase + "documents/" + encodeURIComponent(route.documentKey) + "/_manja/fragments/" + directory + "/" + resourceKey + ".html";
 	  var htmlURL = sameOriginPath(base);
@@ -689,11 +700,17 @@
 		  return global.crypto.subtle.digest("SHA-256", htmlBytes).then(function (digest) {
 			if (hexDigest(digest) !== sidecar.content.sha256) fail("static fragment digest differs");
 			var htmlValue = new TextDecoder("utf-8", { fatal: true }).decode(htmlBytes);
+			var title = route.selected;
+			if (typeof global.DOMParser === "function") {
+			  var parsedHTML = new global.DOMParser().parseFromString(htmlValue, "text/html");
+			  var heading = parsedHTML && parsedHTML.querySelector("h1, h2");
+			  if (heading && heading.textContent && heading.textContent.trim()) title = heading.textContent.trim();
+			}
 			return Promise.all([
 			  cache.put(htmlURL.href, new Response(htmlBytes, { headers: { "Content-Type": "text/html" } })),
 			  cache.put(sidecarURL.href, new Response(bytes, { headers: { "Content-Type": "application/json" } }))
 			]).then(function () {
-			  return { mainHtml: htmlValue, title: selection.directory.title || selection.directory.name || route.selected };
+			  return { ok: true, mainHtml: htmlValue, title: title, canonical: staticRouteCanonical(descriptor, route) };
 			});
 		  });
 		});
@@ -701,7 +718,66 @@
 	});
   }
 
-	function installStaticRouter(descriptor, manifest, catalog, cache, abi, documentValue) {
+  function readStaticHTMLFragment(descriptor, cache, route) {
+	return readStaticHTMLFragmentKind(descriptor, cache, route, "operation").catch(function (operationError) {
+	  return readStaticHTMLFragmentKind(descriptor, cache, route, "schema").catch(function () { throw operationError; });
+	});
+  }
+
+  function readStaticSidebarChunk(descriptor, cache, documentKey, collection, chunk) {
+	var resource = documentKey + ":" + collection + ":" + chunk;
+	return fragmentResourceKey("sidebar", resource).then(function (resourceKey) {
+	  var base = descriptor.publicationBase + "documents/" + encodeURIComponent(documentKey) + "/_manja/fragments/sidebar/operations/" + resourceKey + ".html";
+	  var htmlURL = sameOriginPath(base);
+	  var sidecarURL = sameOriginPath(base + ".meta.json");
+	  if (!htmlURL || !sidecarURL) fail("static sidebar route is invalid");
+	  return fetchWithCache(sidecarURL.href, { credentials: "same-origin", cache: "no-store", headers: { Accept: "application/json" } }, cache).then(function (response) {
+		if (response.status === 404) return null;
+		if (!response.ok) fail("static sidebar sidecar request failed");
+		return response.arrayBuffer().then(function (sidecarBytes) {
+		  if (!sidecarBytes.byteLength || sidecarBytes.byteLength > 64 * 1024) fail("static sidebar sidecar length is invalid");
+		  var sidecar = parseJSONStrict(new TextDecoder("utf-8", { fatal: true }).decode(sidecarBytes));
+		  if (!sidecar || sidecar.schemaVersion !== 1 || !sidecar.fragment || sidecar.fragment.format !== "manja-html-fragment-v2" ||
+			  sidecar.fragment.kind !== "sidebar" || sidecar.fragment.resource !== resource || !sidecar.content ||
+			  !Number.isSafeInteger(sidecar.content.length) || sidecar.content.length < 0 || !sha256(sidecar.content.sha256)) fail("static sidebar sidecar is invalid");
+		  return fetchWithCache(htmlURL.href, { credentials: "same-origin", cache: "no-store", headers: { Accept: "text/html" } }, cache).then(function (htmlResponse) {
+			if (!htmlResponse.ok) fail("static sidebar request failed");
+			return htmlResponse.arrayBuffer();
+		  }).then(function (htmlBytes) {
+			if (htmlBytes.byteLength !== sidecar.content.length) fail("static sidebar length differs");
+			return global.crypto.subtle.digest("SHA-256", htmlBytes).then(function (digest) {
+			  if (hexDigest(digest) !== sidecar.content.sha256) fail("static sidebar digest differs");
+			  return Promise.all([
+				cache.put(htmlURL.href, new Response(htmlBytes, { headers: { "Content-Type": "text/html" } })),
+				cache.put(sidecarURL.href, new Response(sidecarBytes, { headers: { "Content-Type": "application/json" } }))
+			  ]).then(function () { return new TextDecoder("utf-8", { fatal: true }).decode(htmlBytes); });
+			});
+		  });
+		});
+	  });
+	});
+  }
+
+  function installStaticSidebar(descriptor, cache, documentValue, route) {
+	var sidebar = documentValue.getElementById("catalog-sidebar-groups");
+	if (!sidebar) return Promise.resolve();
+	var documentHref = descriptor.publicationBase + "documents/" + encodeURIComponent(route.documentKey) + "/";
+	sidebar.innerHTML = '<nav data-manja-local-sidebar="true" data-manja-static-default-open="true" aria-label="API navigation" class="min-h-0 overflow-y-auto scrollbar-custom px-3 pb-4">' +
+	  '<div data-manja-static-sidebar-top="true"><a data-manja-static-sidebar-top-link="true" href="' + descriptor.publicationBase + '">Back to catalog</a> <a data-manja-static-sidebar-top-link="true" href="' + documentHref + '">Spec overview</a></div>' +
+	  '<section data-manja-static-sidebar-section="operations"><div data-manja-static-sidebar-heading="operations">Operations</div><div data-manja-static-sidebar-operations="true"></div></section>' +
+	  '<section data-manja-static-sidebar-section="schemas"><div data-manja-static-sidebar-heading="schemas">Schemas</div><div data-manja-static-sidebar-schemas="true"></div></section></nav>';
+	var operations = sidebar.querySelector && sidebar.querySelector("[data-manja-static-sidebar-operations]");
+	var schemas = sidebar.querySelector && sidebar.querySelector("[data-manja-static-sidebar-schemas]");
+	return Promise.all([
+	  readStaticSidebarChunk(descriptor, cache, route.documentKey, "operations", 0).then(function (html) { if (html && operations) operations.innerHTML = html; }),
+	  readStaticSidebarChunk(descriptor, cache, route.documentKey, "schemas", 0).then(function (html) { if (html && schemas) schemas.innerHTML = html; })
+	]).then(function () {
+	  if (schemas && !schemas.innerHTML && schemas.parentNode) schemas.parentNode.hidden = true;
+	  if (global.htmx && typeof global.htmx.process === "function") global.htmx.process(sidebar);
+	});
+  }
+
+	function installStaticRouter(descriptor, cache, documentValue, loadCompatibility) {
 	  var root = documentValue.documentElement;
 	  var main = documentValue.querySelector("[data-catalog-main-content]");
 	  var sidebar = documentValue.getElementById("catalog-sidebar-groups");
@@ -712,7 +788,12 @@
 	  var browserPreparation = null;
 	  var lastRoute = null;
 	  var retryInFlight = false;
-	  var cleanManifest = Object.assign({}, manifest); delete cleanManifest.identityDigest;
+	  var manifest = null;
+	  var catalog = null;
+	  var abi = null;
+	  var cleanManifest = null;
+	  var initialMainHTML = main && main.innerHTML || "";
+	  var initialTitle = documentValue.title;
 	  if (!main) fail("static catalog main target is missing");
 	  if (global.history && "scrollRestoration" in global.history) global.history.scrollRestoration = "manual";
 	  function mainScrollContainer() {
@@ -846,7 +927,11 @@
 	  function prepareBrowser() {
 		if (browserPrepared) return Promise.resolve();
 		if (browserPreparation) return browserPreparation;
-		browserPreparation = Promise.resolve().then(function () {
+		browserPreparation = Promise.resolve().then(loadCompatibility).then(function (compatibility) {
+			manifest = compatibility.manifest;
+			catalog = compatibility.catalog;
+			abi = compatibility.abi;
+			cleanManifest = Object.assign({}, manifest); delete cleanManifest.identityDigest;
 			return abi.prepare(descriptor, cleanManifest, catalog, Object.create(null));
 		}).then(function (prepared) {
 			if (!prepared || prepared.ok !== true) fail(prepared && prepared.error || "static Wasm preparation failed");
@@ -902,18 +987,12 @@
 	  var beforeScroll = scrollPosition();
 	  if (historyMode === "push") saveHistoryScroll(beforeScroll);
 	  setNavigationState(true);
-	  var preRendered = !options.sidebarOnly && route.selected ? readStaticHTMLFragment(descriptor, catalog, cache, route).then(function (fragment) {
-		return prepareBrowser().then(function () { return abi.renderSidebar(route); }).then(function (sidebarResult) {
-		  if (!sidebarResult || sidebarResult.ok !== true) fail(sidebarResult && sidebarResult.error || "static sidebar render failed");
-		  return {
-			ok: true, mainHtml: fragment.mainHtml, sidebarHtml: sidebarResult.sidebarHtml,
-			title: fragment.title, canonical: sidebarResult.canonical
-		  };
-		});
+	  var preRendered = !options.sidebarOnly && route.selected ? readStaticHTMLFragment(descriptor, cache, route).then(function (fragment) {
+		return fragment;
 	  }).catch(function (error) {
 		root.dataset.manjaStaticFragmentFallbackReason = error && error.message ? String(error.message).slice(0, 256) : "static fragment unavailable";
-		return null;
-	  }) : Promise.resolve(null);
+		throw error;
+	  }) : !options.sidebarOnly && !route.selected ? Promise.resolve({ ok: true, mainHtml: initialMainHTML, title: initialTitle, canonical: staticRouteCanonical(descriptor, route) }) : Promise.resolve(null);
 	  return preRendered.then(function (fragmentResult) {
 		if (fragmentResult) return fragmentResult;
 		return prepareBrowser().then(function () {
@@ -926,7 +1005,7 @@
 	  }).then(function (result) {
 		if (!result || result.ok !== true) fail(result && result.error || "static render failed");
 		if (!options.sidebarOnly) main.innerHTML = result.mainHtml;
-		if (sidebar) sidebar.innerHTML = result.sidebarHtml;
+		if (sidebar && typeof result.sidebarHtml === "string") sidebar.innerHTML = result.sidebarHtml;
 		if (!options.sidebarOnly) documentValue.title = result.title;
 		if (options.restoreScroll) restoreScroll(options.restoreScroll);
 		else if (options.preserveScroll) restoreScroll(beforeScroll);
@@ -940,7 +1019,21 @@
 		if (options.initial && global.history && typeof global.history.replaceState === "function") global.history.replaceState(historyState(scrollPosition()), "", result.canonical);
 		if (global.htmx && typeof global.htmx.process === "function") { if (!options.sidebarOnly) global.htmx.process(main); if (sidebar) global.htmx.process(sidebar); }
 	  if (!options.preserveScroll && typeof global.manjaCatalogScrollSidebarSelection === "function") global.manjaCatalogScrollSidebarSelection();
-	  if (options.focus) settleRenderedDetailFocus();
+		if (options.focus) settleRenderedDetailFocus();
+		if (sidebar && sidebar.querySelectorAll) {
+		  var links = sidebar.querySelectorAll("[data-catalog-sidebar-item], [data-catalog-sidebar-operation]");
+		  for (var linkIndex = 0; linkIndex < links.length; linkIndex++) {
+			var linkRoute = staticRoute(descriptor, links[linkIndex].href || links[linkIndex].getAttribute && links[linkIndex].getAttribute("href") || "");
+			var selected = Boolean(route.selected && linkRoute && linkRoute.selected === route.selected);
+			if (selected) {
+			  links[linkIndex].setAttribute("aria-current", "page");
+			  links[linkIndex].setAttribute("data-catalog-sidebar-selected", "true");
+			} else {
+			  links[linkIndex].removeAttribute("aria-current");
+			  links[linkIndex].removeAttribute("data-catalog-sidebar-selected");
+			}
+		  }
+		}
 	  if (options.focusGroup) focusGroup(options.focusGroup);
 	  setNavigationState(false);
 	  return result;
@@ -1004,23 +1097,33 @@
 	  wasmURL: deployment + "manja-assets/local-docs/manja.wasm",
 	});
 	return global.caches.open(staticCacheName(descriptor)).then(function (cache) {
-		return registerWorker(root, descriptor, staticOptions).then(function () {
-			return Promise.all([loadABI(staticOptions), readExportManifest(descriptor, cache)]);
-		}).then(function (values) {
-		  var abi = values[0];
-		  return readManifest(sameOriginPath(descriptor.projectionManifestUrl), descriptor, cache).then(function (manifest) {
-			var activated = validateActivation(abi.activate(descriptor, manifest), descriptor);
-			var catalogIdentity = manifestChild(manifest, "catalog.json");
-			return readVerifiedJSON(descriptor.catalogUrl, catalogIdentity, cache).then(function (catalog) {
-			  var router = installStaticRouter(descriptor, manifest, catalog, cache, abi, documentValue);
-			  return (router.initial ? router.swap(router.initial, "none", { initial: true }) : Promise.resolve()).then(function () {
-				if (global.ManjaLocalDocsEnhancer) global.ManjaLocalDocsEnhancer.navigate = router.navigate;
-				mark(root, "ready");
-			  return { ok: true, result: activated };
-			});
+		return readExportManifest(descriptor, cache).then(function () {
+		  var compatibility = null;
+		  function loadCompatibility() {
+			if (compatibility) return compatibility;
+			compatibility = Promise.all([loadABI(staticOptions), readManifest(sameOriginPath(descriptor.projectionManifestUrl), descriptor, cache)]).then(function (values) {
+			  var abi = values[0];
+			  var manifest = values[1];
+			  var activated = validateActivation(abi.activate(descriptor, manifest), descriptor);
+			  var catalogIdentity = manifestChild(manifest, "catalog.json");
+			  return readVerifiedJSON(descriptor.catalogUrl, catalogIdentity, cache).then(function (catalog) {
+				return { abi: abi, manifest: manifest, catalog: catalog, activated: activated };
+			  });
+			}).catch(function (error) { compatibility = null; throw error; });
+			return compatibility;
+		  }
+		  var router = installStaticRouter(descriptor, cache, documentValue, loadCompatibility);
+		  var sidebarReady = router.initial ? installStaticSidebar(descriptor, cache, documentValue, router.initial) : Promise.resolve();
+		  return sidebarReady.then(function () {
+			return router.initial && router.initial.selected ? router.swap(router.initial, "none", { initial: true }) : undefined;
+		  }).then(function () {
+			if (global.ManjaLocalDocsEnhancer) global.ManjaLocalDocsEnhancer.navigate = router.navigate;
+			return registerWorker(root, descriptor, staticOptions);
+		  }).then(function () {
+			mark(root, "ready");
+			return { ok: true, result: { static: true } };
 		  });
 		});
-	  });
 	});
   }
 
