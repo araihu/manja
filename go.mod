@@ -5,7 +5,7 @@ go 1.27.0
 require (
 	github.com/a-h/templ v0.3.1020
 	github.com/araihu/assets v0.2.1
-	github.com/araihu/goshtoso v0.2.6
+	github.com/araihu/goshtoso v0.2.7
 	github.com/caarlos0/env/v11 v11.4.1
 	github.com/evanw/esbuild v0.28.2
 	github.com/getkin/kin-openapi v0.147.0
