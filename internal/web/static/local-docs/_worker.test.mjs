@@ -8,6 +8,16 @@ import storageModule from './storage.js'
 
 const digest = (value) => createHash('sha256').update(value).digest('hex')
 const bytes = (value) => new TextEncoder().encode(value)
+
+test('embedded Markdown WASM keeps its exact integrity expectation without widening other assets', () => {
+  const wasm = fs.readFileSync(new URL('./manja.wasm', import.meta.url))
+  const expected = worker.DEFAULT_STATIC_ASSET_EXPECTATIONS['/manja-assets/local-docs/manja.wasm']
+  assert.deepEqual(expected, { length: wasm.length, sha256: digest(wasm) })
+  assert.throws(() => worker.validateDescriptor(descriptor({
+    fallbackAssets: [{ url: '/assets/extra.js', length: worker.MAX_ASSET_BYTES + 1, sha256: 'a'.repeat(64) }],
+  }), 'https://docs.test'), /asset length/)
+})
+
 const descriptor = (overrides = {}) => {
   const projectionDigest = 'a'.repeat(64)
   const snapshotId = `snapshot-sha256-${projectionDigest}`

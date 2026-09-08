@@ -1,6 +1,7 @@
 {
   "schemaVersion": 1,
   "assets": {
+    "moduleVersion": "v0.2.3",
     "repository": "https://github.com/araihu/assets",
     "originMain": {
       "ref": "refs/remotes/origin/main",
@@ -82,13 +83,13 @@
     "repository": "https://github.com/araihu/goshtoso",
     "originMain": {
       "ref": "refs/remotes/origin/main",
-      "commitSha": "d3eaf0d19be3dcae3fe0fab688c6fe915bc3abd6",
-      "treeSha": "fa6b7ed44ab6be7ec02c36783f80a08b72dd1769"
+      "commitSha": "a0cf9fbdfaa4b7f618b1ded2f71e8946db443ad6",
+      "treeSha": "38800846db808184f3ced7ce420210db09202ed8"
     },
     "module": "github.com/araihu/goshtoso",
-    "version": "v0.2.6",
-    "tagCommitSha": "ed9750d2443ab5e961aec50b546dca4f3b033d62",
-    "tagTreeSha": "7b5a8fc3a03196f08db0b1209dcdd43b521d942c",
+    "version": "v0.2.9",
+    "tagCommitSha": "a0cf9fbdfaa4b7f618b1ded2f71e8946db443ad6",
+    "tagTreeSha": "38800846db808184f3ced7ce420210db09202ed8",
     "license": {
       "path": "LICENSE",
       "kind": "license",

@@ -1,6 +1,6 @@
 # External source provenance receipt
 
-Date: 2026-08-15
+Date: 2026-09-08
 
 Status: **MECHANICAL EVIDENCE RECORDED**
 
@@ -12,12 +12,17 @@ Goshtoso Go module. The machine-readable values are in
 the pinned asset manifest, installed asset bytes, and downloaded module license
 bytes.
 
+The resolved Arai Hû Assets **Go module** is `v0.2.3`, independently of the
+`v0.2.1` static-asset archive retained below. Its `LICENSE` and `NOTICE` bytes
+were compared against the recorded hashes and are unchanged. This dependency
+upgrade does not change installed brand assets or their release identity.
+
 ## Frozen external identities
 
 | Source | Consumer identity | Legal bytes recorded |
 | --- | --- | --- |
 | [`araihu/assets`](https://github.com/araihu/assets) | `origin/main` commit `9a1fce17ad1a99892e81bf3b3b36e7ed48448b63`, tree `2be5242f515b452052e514c8dd495a95791e5925`; consumed release `v0.2.1` commit `fdfb1c2aad8fa61779e7b8c6f208e52a6cf825ce`, tree `e89dce3f6bbb129bf3dfd3f04d874cdb220bb4a0` | `LICENSE`: Apache-2.0, 11,358 bytes, Git blob `d645695673349e3947e8e5ae42332d0ac3164cd7`, SHA-256 `cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30`; `NOTICE`: 633 bytes, Git blob `61949028cb73348c69d488a844a36fb6253b46b7`, SHA-256 `8ab9628587c91891e424abdc1c16fdd8d9a89191e56fe496dadc979994bd6366`. |
-| [`araihu/goshtoso`](https://github.com/araihu/goshtoso) | `origin/main` commit `d3eaf0d19be3dcae3fe0fab688c6fe915bc3abd6`, tree `fa6b7ed44ab6be7ec02c36783f80a08b72dd1769`; Manja dependency `v0.2.6` commit `ed9750d2443ab5e961aec50b546dca4f3b033d62`, tree `7b5a8fc3a03196f08db0b1209dcdd43b521d942c` | `LICENSE`: MIT, 1,078 bytes, Git blob `0a7743398ecbeacc05ed822e1f74023ee9b36842`, SHA-256 `cacf68ff9920c026f5de2ebf992333c1a243e45d81aaa5b4577e05b52c5a9584`. |
+| [`araihu/goshtoso`](https://github.com/araihu/goshtoso) | `origin/main` commit `a0cf9fbdfaa4b7f618b1ded2f71e8946db443ad6`, tree `38800846db808184f3ced7ce420210db09202ed8`; Manja dependency `v0.2.9` commit `a0cf9fbdfaa4b7f618b1ded2f71e8946db443ad6`, tree `38800846db808184f3ced7ce420210db09202ed8` | `LICENSE`: MIT, 1,078 bytes, Git blob `0a7743398ecbeacc05ed822e1f74023ee9b36842`, SHA-256 `cacf68ff9920c026f5de2ebf992333c1a243e45d81aaa5b4577e05b52c5a9584`. |
 
 The Assets release archive is bound by the existing
 [`araihu-assets.json`](../../araihu-assets.json) identity:

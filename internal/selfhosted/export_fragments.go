@@ -683,7 +683,7 @@ func extractLazySchemaHTMLFragments(input []byte) ([]byte, []lazySchemaHTMLFragm
 	var trees []*xhtml.Node
 	var collect func(*xhtml.Node)
 	collect = func(node *xhtml.Node) {
-		if node.Type == xhtml.ElementNode && hasHTMLClass(node, "manja-schema-tree") {
+		if node.Type == xhtml.ElementNode && hasHTMLAttribute(node, "data-manja-schema-tree", "true") {
 			trees = append(trees, node)
 			return
 		}

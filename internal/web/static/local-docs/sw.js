@@ -30,6 +30,9 @@ if (typeof importScripts === "function" && typeof globalThis !== "undefined" && 
   const MAX_MANIFEST_BYTES = 4 * 1024 * 1024
   const MAX_SHELL_BYTES = 2 * 1024 * 1024
   const MAX_ASSET_BYTES = 16 * 1024 * 1024
+  // The compiled renderer now includes safe Markdown. Only our digest-pinned
+  // runtime gets this allowance; descriptor-supplied assets retain the 16 MiB cap.
+  const MAX_RUNTIME_WASM_BYTES = 20 * 1024 * 1024
   const MAX_SPEC_BYTES = 64 * 1024 * 1024
   const MAX_CHILD_BYTES = 2 * 1024 * 1024
   const MAX_SEARCH_DIRECTORY_BYTES = 4 * 1024 * 1024
@@ -66,7 +69,8 @@ if (typeof importScripts === "function" && typeof globalThis !== "undefined" && 
   const DEFAULT_STATIC_ASSET_EXPECTATIONS = Object.freeze(DEFAULT_STATIC_ASSETS.reduce((result, path) => {
     const manifestPath = DEPLOYMENT_BASE === "/" ? path : "/" + path.slice(DEPLOYMENT_BASE.length)
     const expected = assetManifest && assetManifest.schemaVersion === 1 && assetManifest.assets && assetManifest.assets[manifestPath]
-    if (expected && Number.isSafeInteger(expected.length) && expected.length > 0 && expected.length <= MAX_ASSET_BYTES && typeof expected.sha256 === "string" && DIGEST_PATTERN.test(expected.sha256)) {
+    const maximum = manifestPath === "/manja-assets/local-docs/manja.wasm" ? MAX_RUNTIME_WASM_BYTES : MAX_ASSET_BYTES
+    if (expected && Number.isSafeInteger(expected.length) && expected.length > 0 && expected.length <= maximum && typeof expected.sha256 === "string" && DIGEST_PATTERN.test(expected.sha256)) {
       result[path] = Object.freeze({ length: expected.length, sha256: expected.sha256 })
     }
     return result
