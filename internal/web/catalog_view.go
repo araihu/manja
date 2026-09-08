@@ -25,9 +25,8 @@ import (
 var errCatalogPageNotFound = errors.New("catalog page not found")
 
 const (
-	catalogSidebarPageSize             = 100
-	catalogSidebarInitialOpenItemLimit = 600
-	catalogSearchDocumentLabelLimit    = 64
+	catalogSidebarPageSize          = 100
+	catalogSearchDocumentLabelLimit = 64
 )
 
 type catalogSidebarQuery struct {
@@ -218,10 +217,6 @@ func (handler *CatalogHandler) catalogPageDataWithSidebarQuery(
 	if len(document.Schemas) > 0 {
 		validGroupIDs[catalogGroupID("schemas")] = struct{}{}
 	}
-	sidebarItemCount := len(document.Schemas)
-	for _, grouped := range operationGroups {
-		sidebarItemCount += len(grouped.operations)
-	}
 	openGroups := make(map[string]struct{}, len(sidebarQuery.groups)+1)
 	if sidebarQuery.explicit {
 		for _, groupID := range sidebarQuery.groups {
@@ -230,16 +225,15 @@ func (handler *CatalogHandler) catalogPageDataWithSidebarQuery(
 			}
 		}
 	} else {
-		// A bounded initial sidebar is easier to scan and keeps the document
-		// representation within its response budget. Deep links still open the
-		// selected group below, while explicit group queries remain authoritative.
-		if sidebarItemCount <= catalogSidebarInitialOpenItemLimit {
-			for groupID := range validGroupIDs {
-				openGroups[groupID] = struct{}{}
-			}
-		}
+		// The overview starts with one useful group instead of expanding the
+		// entire operation catalog. A deep link opens its selected group so the
+		// active operation remains visible.
 		if selectedGroup != "" {
 			openGroups[selectedGroup] = struct{}{}
+		} else if len(operationGroups) > 0 {
+			openGroups[catalogGroupID("operations-"+operationGroups[0].label)] = struct{}{}
+		} else if len(document.Schemas) > 0 {
+			openGroups[catalogGroupID("schemas")] = struct{}{}
 		}
 	}
 	// Render every item in an expanded API section. The largest current

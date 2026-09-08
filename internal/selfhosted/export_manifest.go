@@ -22,6 +22,12 @@ type exportManifest struct {
 	Files         []exportFileEntry      `json:"files"`
 }
 
+type exportIdentity struct {
+	SchemaVersion uint32                 `json:"schemaVersion"`
+	BasePath      string                 `json:"basePath"`
+	Catalogs      []ExportCatalogReceipt `json:"catalogs"`
+}
+
 type exportFileEntry struct {
 	Path      string `json:"path"`
 	Length    uint64 `json:"length"`
@@ -33,6 +39,14 @@ func encodeExportManifest(manifest exportManifest) ([]byte, error) {
 	data, err := json.Marshal(manifest)
 	if err != nil {
 		return nil, fmt.Errorf("encode export manifest: %w", err)
+	}
+	return data, nil
+}
+
+func encodeExportIdentity(identity exportIdentity) ([]byte, error) {
+	data, err := json.Marshal(identity)
+	if err != nil {
+		return nil, fmt.Errorf("encode export identity: %w", err)
 	}
 	return data, nil
 }

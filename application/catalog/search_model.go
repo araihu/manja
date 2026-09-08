@@ -66,6 +66,8 @@ func buildSearchArtifacts(directory CatalogArtifactV1, bounds Bounds, resourceLi
 		for _, operation := range document.Operations {
 			requestTarget := operation.EffectiveRequestTarget()
 			values := []string{operation.Title, operation.OperationID, operation.Method, operation.Path, requestTarget, document.Key, searchIndexedDescription(operation.Description)}
+			aliases := searchOperationAliases(operation.OperationID, requestTarget)
+			values = append(values, aliases...)
 			values = append(values, operation.Tags...)
 			for _, facet := range operation.Facets {
 				values = append(values, facet.Name, facet.Value)
@@ -78,12 +80,12 @@ func buildSearchArtifacts(directory CatalogArtifactV1, bounds Bounds, resourceLi
 					Occurrences: 1, Documents: []string{document.Key},
 				},
 				tokens: searchTokenSet(values...),
-				exact: []searchExactKey{
+				exact: append([]searchExactKey{
 					{value: string(operation.DetailID), priority: 1},
 					{value: operation.OperationID, priority: 2},
 					{value: requestTarget, priority: 2},
 					{value: operation.Method + " " + requestTarget, priority: 2},
-				},
+				}, operationAliasExactKeys(aliases)...),
 			})
 		}
 		for _, schema := range document.Schemas {
@@ -217,6 +219,41 @@ func buildSearchArtifacts(directory CatalogArtifactV1, bounds Bounds, resourceLi
 		return SearchArtifacts{}, fmt.Errorf("search usage %d exceeds %d", usage.SearchBytes, bounds.SearchBytes)
 	}
 	return SearchArtifacts{Directory: directoryValue, Children: children, Usage: usage}, nil
+}
+
+func searchOperationAliases(values ...string) []string {
+	seen := make(map[string]struct{})
+	aliases := make([]string, 0, len(values))
+	for _, value := range values {
+		parts := strings.FieldsFunc(value, func(character rune) bool {
+			return strings.ContainsRune("/{}.:_-", character)
+		})
+		if len(parts) < 2 {
+			continue
+		}
+		alias := strings.TrimSpace(parts[len(parts)-1])
+		if utf8.RuneCountInString(alias) < 4 {
+			continue
+		}
+		normalized, err := normalizeSearchExact(alias)
+		if err != nil {
+			continue
+		}
+		if _, ok := seen[normalized]; ok {
+			continue
+		}
+		seen[normalized] = struct{}{}
+		aliases = append(aliases, alias)
+	}
+	return aliases
+}
+
+func operationAliasExactKeys(aliases []string) []searchExactKey {
+	keys := make([]searchExactKey, 0, len(aliases))
+	for _, alias := range aliases {
+		keys = append(keys, searchExactKey{value: alias, priority: 2})
+	}
+	return keys
 }
 
 func buildExactSearchSegments(matches map[string]map[uint32]uint8, segmentLimit uint64) ([]SearchExactBucketReferenceV1, []ChildArtifact, BudgetUsage, error) {

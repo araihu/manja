@@ -94,13 +94,51 @@ catalogs:
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, name := range []string{"index.html", "private/index.html", "private/documents/private/index.html", "private/_manja/offline-shell/index.html", deploymentSearchDirectoryPath, fragmentPath, sidecarPath, examplePath, exampleSidecar, pathPath, pathSidecar, sidebarPath, sidebarSidecar, "sw.js", exportManifestPath} {
+	groupID := staticSidebarGroupID("operations-charges")
+	groupPath, groupSidecar, err := artifact.FragmentLocation("/private", "private", artifact.FragmentIdentity{Format: artifact.FragmentFormatV2, Kind: artifact.FragmentSidebar, Resource: "private:" + sidebarOperationGroupCollection(groupID) + ":0"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"index.html", "private/index.html", "private/documents/private/index.html", "private/_manja/offline-shell/index.html", deploymentSearchDirectoryPath, fragmentPath, sidecarPath, examplePath, exampleSidecar, pathPath, pathSidecar, sidebarPath, sidebarSidecar, groupPath, groupSidecar, "sw.js", exportIdentityPath, exportManifestPath} {
 		if _, err := os.Stat(filepath.Join(output, filepath.FromSlash(name))); err != nil {
 			t.Errorf("missing %s: %v", name, err)
 		}
 	}
 	if _, err := VerifyExport(context.Background(), output); err != nil {
 		t.Fatalf("VerifyExport: %v", err)
+	}
+	documentShell, err := os.ReadFile(filepath.Join(output, "private", "documents", "private", "index.html"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{`Spec overview`, `data-manja-sidebar-tabs="true"`, `data-manja-sidebar-tab="operations"`, `data-manja-sidebar-tab="schemas"`} {
+		if !strings.Contains(string(documentShell), want) {
+			t.Errorf("static document shell lacks sidebar control %q", want)
+		}
+	}
+	if strings.Contains(string(documentShell), `Back to catalog`) || strings.Contains(string(documentShell), `Back to organization`) {
+		t.Fatal("static document shell retained redundant sidebar back navigation")
+	}
+	sidebarChunk, err := os.ReadFile(filepath.Join(output, filepath.FromSlash(sidebarPath)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{`data-manja-sidebar-group=`, `data-manja-static-group=`, `data-catalog-group-control="true"`, `aria-expanded="true"`, `data-manja-sidebar-group-load="true"`, `data-manja-sidebar-collection="operation-group-`} {
+		if !strings.Contains(string(sidebarChunk), want) {
+			t.Errorf("operation sidebar chunk lacks %q: %s", want, sidebarChunk)
+		}
+	}
+	groupChunk, err := os.ReadFile(filepath.Join(output, filepath.FromSlash(groupPath)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{`data-manja-sidebar-operation-group-chunk="0"`, `catalog-method-get`, `ml-auto`} {
+		if !strings.Contains(string(groupChunk), want) {
+			t.Errorf("operation group chunk lacks %q: %s", want, groupChunk)
+		}
+	}
+	if labelAt, badgeAt := strings.Index(string(groupChunk), `listCharges</span>`), strings.Index(string(groupChunk), `catalog-method-get`); labelAt < 0 || badgeAt < labelAt {
+		t.Fatalf("operation method badge is not after its label: %s", groupChunk)
 	}
 	body, err := os.ReadFile(filepath.Join(output, "private/index.html"))
 	if err != nil {

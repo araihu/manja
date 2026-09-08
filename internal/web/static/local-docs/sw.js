@@ -812,32 +812,25 @@ if (typeof importScripts === "function" && typeof globalThis !== "undefined" && 
     } catch (_) { return false }
   }
 
-  async function cacheStaticExportShells(scope, fetchImplementation) {
-    if (!STATIC_EXPORT || !scope.caches) return true
-    const manifestURL = DEPLOYMENT_BASE + "_manja/export.json"
-    const response = await fetchImplementation(manifestURL, { cache: "no-store", credentials: "same-origin" })
-    if (!response || !response.ok) return false
-    const manifest = await response.json()
-    if (!manifest || manifest.schemaVersion !== 1 || manifest.basePath !== DEPLOYMENT_BASE || !Array.isArray(manifest.files)) return false
-    const cache = await scope.caches.open("manja-static-export-shells-v1::" + encodeURIComponent(DEPLOYMENT_BASE))
-    for (const entry of manifest.files) {
-      if (!entry || typeof entry.path !== "string" || !entry.path.endsWith("index.html") || entry.path.indexOf("..") !== -1 || entry.path.charAt(0) === "/" || !Number.isSafeInteger(entry.length) || entry.length <= 0 || entry.length > MAX_SHELL_BYTES || !validDigest(entry.sha256)) continue
-      const shell = await fetchImplementation(DEPLOYMENT_BASE + entry.path, { cache: "no-store", credentials: "same-origin" })
-      if (!shell || !shell.ok) return false
-      const bytes = await readBoundedResponse(shell.clone(), entry.length)
-      if (bytes.byteLength !== entry.length || await sha256(bytes) !== entry.sha256) return false
-      const route = entry.path === "index.html" ? DEPLOYMENT_BASE : DEPLOYMENT_BASE + entry.path.slice(0, -"index.html".length)
-      await cache.put(route, shell.clone())
-    }
-    return true
-  }
-
   async function staticExportNavigation(scope, request, fetchImplementation) {
     const cache = await scope.caches.open("manja-static-export-shells-v1::" + encodeURIComponent(DEPLOYMENT_BASE))
     const url = new URL(request.url)
-    const cached = await cache.match(url.origin + url.pathname)
-    if (cached) return new Response(await cached.arrayBuffer(), { status: cached.status, statusText: cached.statusText, headers: cached.headers })
-    return fetchImplementation(request)
+    const cacheKey = url.origin + url.pathname
+    try {
+      const response = await fetchImplementation(request)
+      if (response && response.ok) {
+        try {
+          const candidate = response.clone()
+          const bytes = await readBoundedResponse(candidate, MAX_SHELL_BYTES)
+          await cache.put(cacheKey, new Response(bytes, { status: response.status, statusText: response.statusText, headers: response.headers }))
+        } catch (_) {}
+      }
+      return response
+    } catch (error) {
+      const cached = await cache.match(cacheKey)
+      if (cached) return new Response(await cached.arrayBuffer(), { status: cached.status, statusText: cached.statusText, headers: cached.headers })
+      throw error
+    }
   }
 
   function findDescriptor(descriptors, requestURL) {
@@ -1070,7 +1063,6 @@ if (typeof importScripts === "function" && typeof globalThis !== "undefined" && 
     cachedOrFetched,
     cachedStaticAsset,
     cacheOfflineShell,
-    cacheStaticExportShells,
     cacheStaticAssets,
     commitCandidate,
     createRevalidator,

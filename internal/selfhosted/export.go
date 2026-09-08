@@ -29,7 +29,10 @@ import (
 	"github.com/araihu/manja/renderer"
 )
 
-const exportManifestPath = "_manja/export.json"
+const (
+	exportIdentityPath = "_manja/identity.json"
+	exportManifestPath = "_manja/export.json"
+)
 
 type ExportOptions struct {
 	RendererOptions
@@ -173,6 +176,13 @@ func exportFromHandlerWithProfile(ctx context.Context, handler http.Handler, rec
 	}
 	sort.Slice(catalogReceipts, func(i, j int) bool { return catalogReceipts[i].CatalogID < catalogReceipts[j].CatalogID })
 	if err = writer.bindWorkerToShells(); err != nil {
+		return ExportReceipt{}, err
+	}
+	identityBytes, err := encodeExportIdentity(exportIdentity{SchemaVersion: 1, BasePath: basePath, Catalogs: catalogReceipts})
+	if err != nil {
+		return ExportReceipt{}, err
+	}
+	if err = writer.write(exportIdentityPath, identityBytes, "application/json"); err != nil {
 		return ExportReceipt{}, err
 	}
 	manifest := exportManifest{SchemaVersion: 1, BasePath: basePath, Catalogs: catalogReceipts, Files: writer.sortedEntries()}

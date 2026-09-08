@@ -16,6 +16,7 @@ import (
 	searchcomponent "github.com/araihu/goshtoso/components/search"
 	"github.com/araihu/goshtoso/components/sidebar"
 	"github.com/araihu/goshtoso/components/table"
+	"github.com/araihu/goshtoso/components/toast"
 	"github.com/araihu/manja/application/catalog"
 	core "github.com/araihu/manja/domain"
 	"github.com/araihu/manja/internal/localdocs"
@@ -164,6 +165,9 @@ type CatalogPageData struct {
 func catalogNavigationLabel(data CatalogPageData) string {
 	if data.OrganizationNav.Visible {
 		return "Catalogs and specs"
+	}
+	if data.Document == nil {
+		return "Catalog documents"
 	}
 	return "API sections"
 }
@@ -316,6 +320,7 @@ templ CatalogPage(data CatalogPageData) {
 			@catalogSearchModal(data)
 			@catalogDocumentSelection()
 			@catalogSidebarFocusRestoration()
+			@catalogSidebarTabsScript()
 			@catalogSidebarOverflowTooltip()
 		</div>
 	}
@@ -425,11 +430,14 @@ templ catalogSearchModal(data CatalogPageData) {
 }
 
 templ catalogStaticNavigationError() {
-	<div data-manja-static-navigation-error hidden role="alert" aria-live="assertive" class="fixed inset-x-4 bottom-4 z-[70] mx-auto max-w-2xl rounded-radius border border-danger bg-danger/10 px-4 py-3 text-on-surface shadow-lg dark:border-danger dark:bg-danger/15 dark:text-on-surface-dark">
-		<div class="flex flex-wrap items-start justify-between gap-3">
-			<p data-manja-static-navigation-error-message class="font-semibold">Unable to load this documentation section.</p>
-			<button type="button" data-manja-static-navigation-retry class="inline-flex min-h-11 min-w-11 items-center justify-center rounded-radius border border-danger px-4 py-2 text-sm font-semibold focus-visible:outline-2 focus-visible:outline-offset-2 dark:border-danger">Retry</button>
-		</div>
+	<div data-manja-static-navigation-error hidden aria-live="assertive" class="group pointer-events-none fixed inset-x-8 top-0 z-99 flex max-w-full flex-col gap-2 bg-transparent px-6 py-6 md:bottom-0 md:left-[unset] md:right-0 md:top-[unset] md:max-w-sm">
+		@catalogStableToast("manja-static-navigation-error-toast", toast.Config{
+			Tone: toast.ToneDanger,
+			Title: "Unable to load this documentation section",
+			Message: "Please try again.",
+			DisplayDuration: -1,
+			ActionLabel: "Retry",
+		})
 	</div>
 }
 
@@ -552,6 +560,8 @@ templ catalogSidebar(data CatalogPageData) {
 		<div id="catalog-sidebar-groups" class="flex min-h-0 flex-1 flex-col">
 			if data.OrganizationNav.Visible {
 				@catalogOrganizationNav(data.OrganizationNav)
+			} else if data.Document != nil {
+				@catalogDocumentSidebar(data)
 			} else {
 				@sidebar.Sidebar(catalogSidebarConfig(data))
 			}
@@ -1165,6 +1175,14 @@ func catalogDocumentVersionLabel(document catalog.DocumentDirectoryV1) string {
 	return value
 }
 
+func catalogDocumentOptionVersionLabel(document CatalogDocumentOption) string {
+	value := strings.TrimSpace(document.Version)
+	if strings.EqualFold(value, "unversioned") {
+		return ""
+	}
+	return value
+}
+
 func catalogRevisionTitle(data CatalogPageData) string {
 	if strings.TrimSpace(data.CommitSHA) != "" {
 		return data.CommitSHA
@@ -1185,17 +1203,23 @@ func catalogSidebarConfig(data CatalogPageData) sidebar.Config {
 		DisableSkipLink: true,
 	}
 	if data.Document == nil {
-		config.Items = []sidebar.Item{{ID: "catalog-overview", Label: "Catalog overview", Href: data.Mount, Active: true}}
-	} else {
-		backHref := data.Mount
-		backLabel := "Back to catalog"
-		if data.StandaloneSpec {
-			backHref = "/"
-			backLabel = "Back to organization"
+		config.Items = []sidebar.Item{{
+			ID: "catalog-overview", Label: "Catalog overview", Href: data.Mount,
+			Active: data.Search == nil,
+			Icon: catalogSidebarIcon(heroicons.Icon16SolidRectangleGroup),
+		}}
+		documents := make([]sidebar.Item, 0, len(data.Documents))
+		for _, document := range data.Documents {
+			documents = append(documents, sidebar.Item{
+				ID: "catalog-document-" + document.Key, Label: document.Label, Href: document.Href,
+				Badge: catalogDocumentOptionVersionLabel(document),
+				Icon: catalogSidebarIcon(heroicons.Icon16SolidDocumentText),
+				LinkAttrs: templpkg.Attributes{"data-catalog-document-navigation": "true"},
+			})
 		}
-		config.Items = []sidebar.Item{
-			{ID: "back-to-catalog", Label: backLabel, Href: backHref, Icon: catalogSidebarIcon(heroicons.Icon16SolidChevronLeft)},
-			{ID: "spec-overview", Label: "Spec overview", Href: data.DocumentHref, Active: data.Selected == nil, Icon: catalogSidebarIcon(heroicons.Icon16SolidBookOpen), LinkAttrs: catalogMainNavigationAttrs(data.DocumentHref)},
+		if len(documents) > 0 {
+			config.SectionsTitle = "Documents"
+			config.Sections = []sidebar.Section{{Items: documents}}
 		}
 	}
 	if data.Document == nil { return config }
@@ -1209,8 +1233,10 @@ func catalogSidebarConfig(data CatalogPageData) sidebar.Config {
 			if linkAttrs == nil { linkAttrs = templpkg.Attributes{} }
 			linkAttrs["id"] = "catalog-sidebar-item-" + item.ID
 			linkAttrs["data-catalog-sidebar-item"] = "true"
-			linkAttrs["data-catalog-sidebar-operation"] = "true"
-			linkAttrs["data-catalog-method"] = method
+			if method != "" {
+				linkAttrs["data-catalog-sidebar-operation"] = "true"
+				linkAttrs["data-catalog-method"] = method
+			}
 			if item.Active {
 				linkAttrs["data-catalog-sidebar-selected"] = "true"
 			}
@@ -1232,6 +1258,8 @@ func catalogSidebarConfig(data CatalogPageData) sidebar.Config {
 			"hx-select":                  "#catalog-sidebar-groups",
 			"hx-swap":                    "outerHTML",
 			"hx-push-url":                "true",
+			"data-catalog-sidebar-kind":  group.Kind,
+			"data-manja-static-group":    group.ID,
 		}
 		linkAttrs["aria-expanded"] = strconv.FormatBool(group.Open)
 		linkAttrs["aria-controls"] = "catalog-sidebar-groups"
@@ -1262,6 +1290,121 @@ func catalogSidebarConfig(data CatalogPageData) sidebar.Config {
 	return config
 }
 
+templ catalogDocumentSidebar(data CatalogPageData) {
+	<div data-manja-static-sidebar-top="true" class="shrink-0 px-3 pt-2">
+		<a
+			href={ templpkg.URL(data.DocumentHref) }
+			{ catalogSpecOverviewAttrs(data)... }
+			class={ catalogSpecOverviewClass(data.Selected == nil) }
+		>
+			@catalogSidebarIcon(heroicons.Icon16SolidBookOpen)
+			<span class="min-w-0 flex-1 truncate">Spec overview</span>
+			if data.Selected == nil {
+				<span class="sr-only">active</span>
+			}
+		</a>
+	</div>
+	@catalogSidebarTabs(catalogSidebarSelectedTab(data))
+	@sidebar.Sidebar(catalogSidebarConfig(data))
+}
+
+func catalogSpecOverviewAttrs(data CatalogPageData) templpkg.Attributes {
+	attrs := catalogMainNavigationAttrs(data.DocumentHref)
+	if attrs == nil {
+		attrs = templpkg.Attributes{}
+	}
+	attrs["id"] = "catalog-sidebar-spec-overview"
+	attrs["title"] = "Spec overview"
+	attrs["data-manja-static-route"] = "true"
+	attrs["data-manja-static-sidebar-top-link"] = "true"
+	attrs["data-catalog-sidebar-item"] = "true"
+	if data.Selected == nil {
+		attrs["data-catalog-sidebar-selected"] = "true"
+		attrs["aria-current"] = "page"
+	}
+	return attrs
+}
+
+func catalogSpecOverviewClass(active bool) string {
+	base := "flex min-h-11 items-center gap-2 rounded-radius px-2 py-2 text-base font-semibold transition-colors motion-reduce:transition-none"
+	if active {
+		return base + " bg-primary/10 text-primary dark:bg-primary-dark/10 dark:text-primary-dark"
+	}
+	return base + " text-on-surface hover:bg-surface-alt hover:text-on-surface-strong dark:text-on-surface-dark dark:hover:bg-surface-dark-alt dark:hover:text-on-surface-dark-strong"
+}
+
+func catalogSidebarSelectedTab(data CatalogPageData) string {
+	if data.Selected != nil && data.Selected.Schema != nil {
+		return "schemas"
+	}
+	return "operations"
+}
+
+templ catalogSidebarTabs(selected string) {
+	<div role="tablist" aria-label="API resources" data-manja-sidebar-tabs="true" class="mx-3 mt-2">
+		<button id="manja-sidebar-tab-operations" type="button" role="tab" data-manja-sidebar-tab="operations" aria-controls="manja-sidebar-panel-operations" aria-selected={ strconv.FormatBool(selected != "schemas") } if selected == "schemas" { tabindex="-1" }>Operations</button>
+		<button id="manja-sidebar-tab-schemas" type="button" role="tab" data-manja-sidebar-tab="schemas" aria-controls="manja-sidebar-panel-schemas" aria-selected={ strconv.FormatBool(selected == "schemas") } if selected != "schemas" { tabindex="-1" }>Schemas</button>
+	</div>
+}
+
+templ catalogSidebarTabsScript() {
+	<script data-catalog-sidebar-tabs-script="true">
+		(function () {
+			if (window.__manjaCatalogSidebarTabsBound) return;
+			window.__manjaCatalogSidebarTabsBound = true;
+			function select(tab) {
+				var root = tab && tab.closest && tab.closest("#catalog-sidebar-groups");
+				if (!root) return;
+				var selected = tab.getAttribute("data-manja-sidebar-tab");
+				var tabs = root.querySelectorAll('[role="tab"][data-manja-sidebar-tab]');
+				for (var index = 0; index < tabs.length; index++) {
+					var active = tabs[index] === tab;
+					tabs[index].setAttribute("aria-selected", active ? "true" : "false");
+					tabs[index].setAttribute("tabindex", active ? "0" : "-1");
+				}
+				var panels = root.querySelectorAll("[data-manja-sidebar-tab-panel]");
+				if (panels.length) {
+					for (var panelIndex = 0; panelIndex < panels.length; panelIndex++) panels[panelIndex].hidden = panels[panelIndex].getAttribute("data-manja-sidebar-tab-panel") !== selected;
+					return;
+				}
+				var paths = root.querySelector("[data-manja-catalog-paths-toggle]");
+				if (paths) {
+					paths.hidden = selected !== "operations";
+					if (paths.nextElementSibling) paths.nextElementSibling.hidden = selected !== "operations";
+				}
+				var controls = root.querySelectorAll("[data-catalog-sidebar-kind]");
+				for (var controlIndex = 0; controlIndex < controls.length; controlIndex++) {
+					var control = controls[controlIndex];
+					if (control.getAttribute("data-catalog-sidebar-kind") !== "schemas") continue;
+					var wrapper = control.parentElement && control.parentElement.hasAttribute("x-data") ? control.parentElement : control;
+					wrapper.hidden = selected !== "schemas";
+				}
+			}
+			function initialize(scope) {
+				var lists = (scope || document).querySelectorAll("[data-manja-sidebar-tabs]");
+				for (var index = 0; index < lists.length; index++) {
+					var selected = lists[index].querySelector('[role="tab"][aria-selected="true"]') || lists[index].querySelector('[role="tab"]');
+					if (selected) select(selected);
+				}
+			}
+			document.addEventListener("click", function (event) {
+				var tab = event.target && event.target.closest && event.target.closest('[role="tab"][data-manja-sidebar-tab]');
+				if (tab) select(tab);
+			});
+				document.addEventListener("keydown", function (event) {
+				var tab = event.target && event.target.closest && event.target.closest('[role="tab"][data-manja-sidebar-tab]');
+				if (!tab || (event.key !== "ArrowLeft" && event.key !== "ArrowRight")) return;
+				var tabs = Array.prototype.slice.call(tab.parentElement.querySelectorAll('[role="tab"][data-manja-sidebar-tab]'));
+				var offset = event.key === "ArrowRight" ? 1 : -1;
+				var next = tabs[(tabs.indexOf(tab) + offset + tabs.length) % tabs.length];
+				event.preventDefault(); select(next); next.focus();
+			});
+			document.addEventListener("htmx:afterSwap", function (event) { initialize(event.detail && event.detail.target || document); });
+			initialize(document);
+		})();
+	</script>
+}
+
 func catalogMainNavigationAttrs(href string) templpkg.Attributes {
 	href = strings.TrimSpace(href)
 	if href == "" || !strings.HasPrefix(href, "/") { return nil }
@@ -1285,12 +1428,13 @@ func catalogPathsLinkAttrs(stateKey string) templpkg.Attributes {
 		"aria-expanded":                      "true",
 		"data-manja-catalog-paths-state-key": "manja.catalog.paths." + stateKey,
 		"data-manja-catalog-paths-toggle":     "true",
+		"data-catalog-sidebar-kind":           "operations",
 		"x-on:click.stop.prevent":             "window.manjaToggleCatalogPaths($el)",
 	}
 }
 
 func catalogHasSidebar(data CatalogPageData) bool {
-	return data.OrganizationRoot || data.OrganizationNav.Visible || data.Document != nil || data.Search != nil
+	return data.OrganizationRoot || data.OrganizationNav.Visible || data.Document != nil || data.Search != nil || len(data.Documents) > 0
 }
 
 func catalogSidebarComponent(data CatalogPageData) templpkg.Component {
@@ -1497,6 +1641,8 @@ templ CatalogSidebarGroupsFragment(data CatalogPageData) {
 	<div id="catalog-sidebar-groups" class="flex min-h-0 flex-1 flex-col">
 		if data.OrganizationNav.Visible {
 			@catalogOrganizationNav(data.OrganizationNav)
+		} else if data.Document != nil {
+			@catalogDocumentSidebar(data)
 		} else {
 			@sidebar.Sidebar(catalogSidebarConfig(data))
 		}

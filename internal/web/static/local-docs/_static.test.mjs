@@ -157,7 +157,7 @@ async function staticActivationFixture(failedPath = '', options = {}) {
   const requests = []
   const phases = []
   const responses = new Map([
-    [value.static.exportManifestUrl, exported],
+    [value.static.deploymentBase + '_manja/identity.json', exported],
     [value.projectionManifestUrl, manifest],
     [value.catalogUrl, catalog],
 	[operationPath, operationFragment.html],
@@ -314,7 +314,7 @@ test('static navigation exposes a visible retry state after child failure', asyn
   assert.equal(fixture.result.ok, false)
   assert.equal(fixture.navigationError.hidden, false)
   assert.equal(fixture.navigationRetry.hidden, false)
-  assert.equal(fixture.navigationErrorMessage.textContent, 'Unable to load this documentation section. Please try again.')
+  assert.equal(fixture.navigationErrorMessage.textContent, '')
 
   await assert.rejects(fixture.navigationRetry.click(), /network down/)
   assert.equal(fixture.navigationError.hidden, false)
@@ -373,7 +373,7 @@ test('static reopening a loaded detail renders without another prepare or admiss
   assert.deepEqual(fixture.requests.filter(path => path.includes('/projection-data/')), projectionRequests)
 })
 
-test('static group toggles replace history, preserve both scroll containers, and restore control focus', async () => {
+test('static group toggles stay local, replace history, preserve scroll, and restore focus', async () => {
   const fixture = await staticActivationFixture()
   const writesBefore = fixture.mainWrites()
   fixture.mainScroll.scrollTop = 321
@@ -401,7 +401,8 @@ test('static group toggles replace history, preserve both scroll containers, and
   assert.equal(fixture.nav.scrollTop, 88)
   assert.equal(fixture.mainWrites(), writesBefore)
   assert.equal(fixture.groupFocusCalls.length, 1)
-  assert.equal(fixture.sidebarRenders.length, 1)
+  assert.equal(fixture.sidebarRenders.length, 0)
+  assert.equal(fixture.phases.includes('loadABI'), false)
 })
 
 test('static popstate restores saved nested scroll without stealing focus', async () => {
@@ -417,7 +418,7 @@ test('static popstate restores saved nested scroll without stealing focus', asyn
   fixture.mainScroll.scrollTop = 900
   fixture.nav.scrollTop = 900
   fixture.windowListeners.popstate()
-  await new Promise(resolve => setTimeout(resolve, 0))
+  await new Promise(resolve => setTimeout(resolve, 20))
 
   assert.equal(fixture.mainScroll.scrollTop, 410)
   assert.equal(fixture.nav.scrollTop, 29)

@@ -478,6 +478,38 @@ func TestCatalogSidebarTargetReturnsOnlySidebarFragment(t *testing.T) {
 	}
 }
 
+func TestCatalogSidebarDefaultsToFirstGroupAndLoadsExpandedGroupItems(t *testing.T) {
+	t.Parallel()
+
+	handlerValue, snapshot := catalogHandlerFixture(t, "/kubernetes")
+	handler := handlerValue.(*CatalogHandler)
+	initial, err := handler.catalogPageDataWithSidebarQuery(context.Background(), snapshot, "/kubernetes", "core-v1", "", "", catalogSidebarQuery{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(initial.Groups) != 2 {
+		t.Fatalf("initial groups = %d, want operation and schema groups", len(initial.Groups))
+	}
+	if !initial.Groups[0].Open || len(initial.Groups[0].Items) != 1 {
+		t.Fatalf("first group = %#v, want expanded with its operations", initial.Groups[0])
+	}
+	if initial.Groups[1].Open || len(initial.Groups[1].Items) != 0 {
+		t.Fatalf("second group = %#v, want collapsed without materialized items", initial.Groups[1])
+	}
+
+	expandedID := initial.Groups[1].ID
+	expanded, err := handler.catalogPageDataWithSidebarQuery(context.Background(), snapshot, "/kubernetes", "core-v1", "", "", catalogSidebarQuery{groups: []string{expandedID}, explicit: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if expanded.Groups[0].Open || len(expanded.Groups[0].Items) != 0 {
+		t.Fatalf("unrequested operation group materialized after swap: %#v", expanded.Groups[0])
+	}
+	if !expanded.Groups[1].Open || len(expanded.Groups[1].Items) != 1 {
+		t.Fatalf("expanded group = %#v, want lazily materialized schema item", expanded.Groups[1])
+	}
+}
+
 func TestCatalogSchemaNodeTargetReturnsOnlySchemaNodeFragment(t *testing.T) {
 	t.Parallel()
 
@@ -1949,7 +1981,7 @@ func TestCatalogProjectionTransportIsNotActivatedByInitialHTML(t *testing.T) {
 		t.Fatalf("initial HTML = %d body=%q", response.Code, response.Body.String())
 	}
 	digest := sha256.Sum256(response.Body.Bytes())
-	if got := hex.EncodeToString(digest[:]); got != "0ffb5607b1fc8497fb1de59d692e043bb400d0a861772e4703c7441638a07222" || response.Body.Len() != 54993 {
+	if got := hex.EncodeToString(digest[:]); got != "7b9e2ccc7bd2b3e109080bd115e6d20e1191bc8999492b573ea19ee39b462609" || response.Body.Len() != 58798 {
 		t.Errorf("initial HTML = sha256 %s, %d bytes; want accepted OC-01M9 bytes", got, response.Body.Len())
 	}
 	for _, forbidden := range []string{"projection-data", "serviceWorker", "manja:local-ready", "MANJA_LOCAL_DOCS"} {

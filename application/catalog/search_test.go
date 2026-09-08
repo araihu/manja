@@ -43,6 +43,34 @@ func TestSearchFindsExactKeysBeforeTokenRanking(t *testing.T) {
 	}
 }
 
+func TestSearchFindsOperationByCompoundIDSuffixBeforeSchema(t *testing.T) {
+	t.Parallel()
+	candidate, index := compilerFixture()
+	index.Documents[0].Index.Operations[0].ID = "Alarm_ReconfigureAlarm"
+	index.Documents[0].Index.Operations[0].Path = "/Alarm/{moId}/ReconfigureAlarm"
+	index.Documents[0].Index.Schemas[0].Name = "ReconfigureAlarmRequestType"
+	index.Documents[0].Index.Schemas[0].Summary = domain.SchemaSummary{Name: "ReconfigureAlarmRequestType", Type: "object"}
+	compiler, err := NewCompiler(DefaultCompilerOptions())
+	if err != nil {
+		t.Fatal(err)
+	}
+	snapshot, err := compiler.Compile(context.Background(), candidate, index)
+	if err != nil {
+		t.Fatal(err)
+	}
+	service, err := NewSearchService(snapshot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := service.Search(context.Background(), snapshot.ID, "ReconfigureAlarm")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Results) == 0 || result.Results[0].Kind != "operation" || result.Results[0].OperationID != "Alarm_ReconfigureAlarm" {
+		t.Fatalf("compound operation suffix results = %#v", result.Results)
+	}
+}
+
 func TestSearchIndexesBoundedOperationAndSchemaContent(t *testing.T) {
 	t.Parallel()
 

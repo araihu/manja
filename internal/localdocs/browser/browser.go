@@ -505,20 +505,21 @@ func (browser *Browser) renderSidebar(document catalog.DocumentDirectoryV1, rout
 	for _, group := range route.ClosedGroups {
 		closed[group] = struct{}{}
 	}
-	defaultOpen := len(route.Groups) == 0 && len(document.Operations)+len(document.Schemas) <= 600
+	defaultOpen := len(route.Groups) == 0 && len(route.ClosedGroups) == 0
+	selectedTab := "operations"
+	for _, schema := range document.Schemas {
+		if string(schema.DetailID) == route.Selected {
+			selectedTab = "schemas"
+			break
+		}
+	}
 	var output strings.Builder
 	output.WriteString(`<nav data-manja-local-sidebar="true" data-manja-static-default-open="` + strconv.FormatBool(defaultOpen) + `" aria-label="API navigation">`)
-	backHref := browser.descriptor.PublicationBase
-	backLabel := "Back to catalog"
-	if len(browser.directory.Documents) == 1 {
-		backHref = browser.descriptor.Static.DeploymentBase
-		backLabel = "Back to organization"
-	}
 	documentHref := browser.descriptor.PublicationBase + "documents/" + url.PathEscape(document.Key) + "/"
 	output.WriteString(`<div data-manja-static-sidebar-top="true">`)
-	output.WriteString(browserSidebarTopLink(backHref, backLabel, "back-to-catalog", false))
 	output.WriteString(browserSidebarTopLink(documentHref, "Spec overview", "spec-overview", route.Selected == ""))
 	output.WriteString(`</div>`)
+	output.WriteString(browserSidebarTabs(selectedTab))
 	type group struct {
 		id, label  string
 		operations []catalog.OperationDirectoryV1
@@ -533,13 +534,11 @@ func (browser *Browser) renderSidebar(document catalog.DocumentDirectoryV1, rout
 		groups = append(groups, group{id: browserGroupID("operations-" + label), label: label, operations: operations})
 	}
 	sort.Slice(groups, func(i, j int) bool { return groups[i].label < groups[j].label })
-	if len(groups) > 0 {
-		output.WriteString(`<div data-manja-static-sidebar-section="paths"><div data-manja-static-sidebar-heading="paths">Paths</div>`)
-	}
-	for _, item := range groups {
+	output.WriteString(`<div id="manja-sidebar-panel-operations" role="tabpanel" aria-labelledby="manja-sidebar-tab-operations" data-manja-sidebar-tab-panel="operations" data-manja-static-sidebar-section="paths"` + browserHiddenAttribute(selectedTab != "operations") + `>`)
+	for index, item := range groups {
 		_, explicitlyOpen := open[item.id]
 		_, explicitlyClosed := closed[item.id]
-		opened := !explicitlyClosed && (defaultOpen || explicitlyOpen || browserGroupContains(item.operations, route.Selected))
+		opened := !explicitlyClosed && (explicitlyOpen || browserGroupContains(item.operations, route.Selected) || defaultOpen && index == 0)
 		controls := ""
 		if opened {
 			controls = ` aria-controls="` + item.id + `-items"`
@@ -554,13 +553,15 @@ func (browser *Browser) renderSidebar(document catalog.DocumentDirectoryV1, rout
 		}
 		output.WriteString(`</section>`)
 	}
+	output.WriteString(`</div>`)
+	output.WriteString(`<div id="manja-sidebar-panel-schemas" role="tabpanel" aria-labelledby="manja-sidebar-tab-schemas" data-manja-sidebar-tab-panel="schemas" data-manja-static-sidebar-section="schemas"` + browserHiddenAttribute(selectedTab != "schemas") + `>`)
 	if len(document.Schemas) > 0 {
 		id := browserGroupID("schemas")
 		_, explicitlyOpen := open[id]
 		_, explicitlyClosed := closed[id]
 		opened := false
 		if !explicitlyClosed {
-			opened = defaultOpen || explicitlyOpen
+			opened = explicitlyOpen || defaultOpen && len(groups) == 0
 			for _, schema := range document.Schemas {
 				opened = opened || string(schema.DetailID) == route.Selected
 			}
@@ -579,9 +580,7 @@ func (browser *Browser) renderSidebar(document catalog.DocumentDirectoryV1, rout
 		}
 		output.WriteString(`</section>`)
 	}
-	if len(groups) > 0 {
-		output.WriteString(`</div>`)
-	}
+	output.WriteString(`</div>`)
 	output.WriteString(`</nav>`)
 	return output.String()
 }
@@ -742,13 +741,13 @@ func browserSidebarLink(publicationBase, documentKey string, id domain.DetailID,
 	label = html.EscapeString(browserPlainText(label))
 	methodLabel := ""
 	if method != "" {
-		methodLabel = `<span data-manja-sidebar-method="true" aria-hidden="true" class="catalog-method-` + browserMethodClass(method) + ` mr-2 shrink-0 font-mono text-[0.65rem] font-semibold uppercase">` + html.EscapeString(method) + `</span>`
+		methodLabel = `<span data-manja-sidebar-method="true" aria-hidden="true" class="catalog-method-` + browserMethodClass(method) + ` ml-auto shrink-0 static inline-flex min-h-5 items-center justify-center rounded-radius px-1.5 py-0.5 font-mono text-[10px] font-bold leading-none">` + html.EscapeString(method) + `</span>`
 	}
 	accessibleLabel := label
 	if method != "" {
 		accessibleLabel = html.EscapeString(method) + " " + label
 	}
-	return `<a data-manja-static-route="true" href="` + html.EscapeString(href) + `" title="` + label + `" aria-label="` + accessibleLabel + `"` + attributes + `>` + methodLabel + `<span class="min-w-0 flex-1 truncate">` + label + `</span></a>`
+	return `<a data-manja-static-route="true" href="` + html.EscapeString(href) + `" title="` + label + `" aria-label="` + accessibleLabel + `"` + attributes + `><span class="min-w-0 flex-1 truncate">` + label + `</span>` + methodLabel + `</a>`
 }
 
 func browserMethodClass(method string) string {
@@ -778,7 +777,30 @@ func browserSidebarTopLink(href, label, id string, active bool) string {
 		attributes += ` data-catalog-sidebar-selected="true" aria-current="page"`
 	}
 	label = html.EscapeString(browserPlainText(label))
-	return `<a href="` + html.EscapeString(href) + `" title="` + label + `"` + attributes + `><span class="min-w-0 flex-1 truncate">` + label + `</span></a>`
+	icon := ""
+	if id == "spec-overview" {
+		icon = `<svg viewBox="0 0 20 20" fill="currentColor" class="size-5 shrink-0" aria-hidden="true"><path d="M4.5 2.75A1.75 1.75 0 0 0 2.75 4.5v11A1.75 1.75 0 0 0 4.5 17.25h11a1.75 1.75 0 0 0 1.75-1.75v-11a1.75 1.75 0 0 0-1.75-1.75h-11Zm1.25 3h8.5v1.5h-8.5v-1.5Zm0 3.5h8.5v1.5h-8.5v-1.5Zm0 3.5h5.5v1.5h-5.5v-1.5Z"></path></svg>`
+	}
+	return `<a href="` + html.EscapeString(href) + `" title="` + label + `" class="flex min-h-11 items-center gap-2 rounded-radius px-2 py-2 font-semibold"` + attributes + `>` + icon + `<span class="min-w-0 flex-1 truncate">` + label + `</span></a>`
+}
+
+func browserSidebarTabs(selected string) string {
+	operationsSelected := selected != "schemas"
+	return `<div role="tablist" aria-label="API resources" data-manja-sidebar-tabs="true"><button id="manja-sidebar-tab-operations" type="button" role="tab" data-manja-sidebar-tab="operations" aria-controls="manja-sidebar-panel-operations" aria-selected="` + strconv.FormatBool(operationsSelected) + `"` + browserTabIndex(operationsSelected) + `>Operations</button><button id="manja-sidebar-tab-schemas" type="button" role="tab" data-manja-sidebar-tab="schemas" aria-controls="manja-sidebar-panel-schemas" aria-selected="` + strconv.FormatBool(!operationsSelected) + `"` + browserTabIndex(!operationsSelected) + `>Schemas</button></div>`
+}
+
+func browserTabIndex(selected bool) string {
+	if selected {
+		return ""
+	}
+	return ` tabindex="-1"`
+}
+
+func browserHiddenAttribute(hidden bool) string {
+	if hidden {
+		return " hidden"
+	}
+	return ""
 }
 
 func browserCanonical(documentHref string, route Route, fragment string) string {

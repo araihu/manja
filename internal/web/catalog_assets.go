@@ -93,6 +93,10 @@ func embeddedPublicAssetAllowlist(static fs.FS) (map[string]bool, error) {
 		if !entry.Type().IsRegular() {
 			return fs.ErrInvalid
 		}
+		base := path.Base(name)
+		if strings.HasSuffix(base, "_test.go") || strings.HasSuffix(base, ".test.mjs") {
+			return nil
+		}
 		allowlist[name] = true
 		return nil
 	})

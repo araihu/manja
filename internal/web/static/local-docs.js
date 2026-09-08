@@ -607,19 +607,21 @@
 	});
   }
 
-  function readExportManifest(descriptor, cache) {
-	var url = sameOriginPath(descriptor.static.exportManifestUrl);
+  function readExportIdentity(descriptor, cache) {
+	var url = sameOriginPath(descriptor.static.deploymentBase + "_manja/identity.json");
+	if (!url) return Promise.reject(new Error("export identity route is invalid"));
 	return fetchWithCache(url.href, { credentials: "same-origin", cache: "no-store", headers: { Accept: "application/json" } }, cache).then(function (response) {
-	  if (!response.ok) fail("export manifest request failed");
+	  if (!response.ok) fail("export identity request failed");
 	  return response.text();
 	}).then(function (text) {
-	  var manifest = parseJSONStrict(text);
-	  if (!manifest || manifest.schemaVersion !== 1 || manifest.basePath !== descriptor.static.deploymentBase || !Array.isArray(manifest.catalogs)) fail("export manifest identity is invalid");
-	  var matched = manifest.catalogs.some(function (catalog) {
+	  var identity = parseJSONStrict(text);
+	  var keys = identity && typeof identity === "object" && !Array.isArray(identity) ? Object.keys(identity).sort() : [];
+	  if (!identity || keys.join(",") !== "basePath,catalogs,schemaVersion" || identity.schemaVersion !== 1 || identity.basePath !== descriptor.static.deploymentBase || !Array.isArray(identity.catalogs)) fail("export identity is invalid");
+	  var matched = identity.catalogs.some(function (catalog) {
 		return catalog && catalog.catalogId === descriptor.catalogId && catalog.publicationKey === descriptor.publicationKey && catalog.revisionId === descriptor.revisionId && catalog.snapshotId === descriptor.snapshotId;
 	  });
-	  if (!matched) fail("export manifest catalog differs");
-	  return Promise.resolve(cache.put(url.href, new Response(text, { headers: { "Content-Type": "application/json" } }))).then(function () { return manifest; });
+	  if (!matched) fail("export identity catalog differs");
+	  return Promise.resolve(cache.put(url.href, new Response(text, { headers: { "Content-Type": "application/json" } }))).then(function () { return identity; });
 	});
   }
 
@@ -698,7 +700,9 @@
 		}).then(function (htmlBytes) {
 		  if (htmlBytes.byteLength !== sidecar.content.length) fail("static fragment length differs");
 		  return global.crypto.subtle.digest("SHA-256", htmlBytes).then(function (digest) {
-			if (hexDigest(digest) !== sidecar.content.sha256) fail("static fragment digest differs");
+			var contentDigest = hexDigest(digest);
+			if (contentDigest !== sidecar.content.sha256) fail("static fragment digest differs");
+			if (kind === "schema" && route.selected.indexOf("tree-sha256-") === 0 && route.selected.slice("tree-sha256-".length) !== contentDigest) fail("static schema resource identity differs");
 			var htmlValue = new TextDecoder("utf-8", { fatal: true }).decode(htmlBytes);
 			var title = route.selected;
 			if (typeof global.DOMParser === "function") {
@@ -738,10 +742,10 @@
 	  ids[oldID] = prefix + oldID;
 	  identified[index].setAttribute("id", ids[oldID]);
 	}
-	var references = root.querySelectorAll("[href^='#'], [aria-controls], [aria-describedby], [aria-labelledby], [for]");
+	var references = root.querySelectorAll("[href^='#'], [aria-controls], [aria-describedby], [aria-labelledby], [data-tooltip-content-id], [for]");
 	for (var referenceIndex = 0; referenceIndex < references.length; referenceIndex += 1) {
 	  var node = references[referenceIndex];
-	  ["aria-controls", "aria-describedby", "aria-labelledby", "for"].forEach(function (name) {
+	  ["aria-controls", "aria-describedby", "aria-labelledby", "data-tooltip-content-id", "for"].forEach(function (name) {
 		var value = node.getAttribute(name);
 		if (!value) return;
 		node.setAttribute(name, value.split(/\s+/).map(function (part) { return ids[part] || part; }).join(" "));
@@ -752,18 +756,20 @@
   }
 
   function installLazySchemaFragments(descriptor, cache, route, root) {
-	if (!root || !root.querySelectorAll) return;
+	if (!root || !root.querySelectorAll) return function () {};
 	var placeholders = root.querySelectorAll('[data-manja-static-schema-fragment="true"]');
-	if (!placeholders.length) return;
+	if (!placeholders.length) return function () {};
+	var active = true;
+	var retryBindings = [];
 	var observer = typeof global.IntersectionObserver === "function" ? new global.IntersectionObserver(function (entries) {
 	  entries.forEach(function (entry) {
-		if (!entry.isIntersecting) return;
+		if (!active || !entry.isIntersecting) return;
 		observer.unobserve(entry.target);
 		load(entry.target);
 	  });
 	}, { rootMargin: "256px 0px" }) : null;
 	function load(placeholder) {
-	  if (!placeholder || placeholder.getAttribute("data-manja-schema-state") === "loading" || placeholder.getAttribute("data-manja-schema-state") === "ready") return;
+	  if (!active || !placeholder || placeholder.getAttribute("data-manja-schema-state") === "loading" || placeholder.getAttribute("data-manja-schema-state") === "ready") return;
 	  var resource = placeholder.getAttribute("data-manja-schema-resource") || "";
 	  if (!/^tree-sha256-[0-9a-f]{64}$/.test(resource)) {
 		placeholder.setAttribute("data-manja-schema-state", "error");
@@ -773,12 +779,14 @@
 	  placeholder.setAttribute("aria-busy", "true");
 	  var schemaRoute = { documentKey: route.documentKey, selected: resource, groups: [], closedGroups: [] };
 	  readStaticHTMLFragmentKind(descriptor, cache, schemaRoute, "schema").then(function (fragment) {
+		if (!active || placeholder.isConnected === false) return;
 		placeholder.innerHTML = fragment.mainHtml;
 		scopeLazySchemaIDs(placeholder);
 		placeholder.setAttribute("data-manja-schema-state", "ready");
 		placeholder.setAttribute("aria-busy", "false");
 		if (global.htmx && typeof global.htmx.process === "function") global.htmx.process(placeholder);
 	  }).catch(function () {
+		if (!active || placeholder.isConnected === false) return;
 		placeholder.setAttribute("data-manja-schema-state", "error");
 		placeholder.setAttribute("aria-busy", "false");
 		var retry = placeholder.querySelector && placeholder.querySelector("[data-manja-schema-retry]");
@@ -788,10 +796,20 @@
 	for (var index = 0; index < placeholders.length; index += 1) {
 	  (function (placeholder) {
 		var retry = placeholder.querySelector && placeholder.querySelector("[data-manja-schema-retry]");
-		if (retry && retry.addEventListener) retry.addEventListener("click", function () { load(placeholder); });
+		if (retry && retry.addEventListener) {
+		  var retryHandler = function () { load(placeholder); };
+		  retry.addEventListener("click", retryHandler);
+		  retryBindings.push([retry, retryHandler]);
+		}
 		if (observer) observer.observe(placeholder); else load(placeholder);
 	  }(placeholders[index]));
 	}
+	return function () {
+	  active = false;
+	  if (observer) observer.disconnect();
+	  retryBindings.forEach(function (binding) { binding[0].removeEventListener("click", binding[1]); });
+	  retryBindings = [];
+	};
   }
 
   function readStaticSidebarChunk(descriptor, cache, documentKey, collection, chunk) {
@@ -828,14 +846,187 @@
 	});
   }
 
+  function installStaticSidebarContinuation(descriptor, cache, documentKey, sidebar) {
+	var navigation = sidebar && sidebar.querySelector && sidebar.querySelector('nav[data-manja-local-sidebar="true"]');
+	if (!navigation || !navigation.querySelectorAll) return function () {};
+	var active = true;
+	var observer = null;
+	var scheduled = false;
+	function visible(marker) {
+	  var panel = marker && marker.closest && marker.closest("[data-manja-sidebar-tab-panel]");
+	  if (panel && panel.hidden) return false;
+	  var groupItems = marker && marker.closest && marker.closest("[data-manja-sidebar-items]");
+	  if (groupItems && groupItems.hidden) return false;
+	  if (!marker || !marker.getBoundingClientRect || !navigation.getBoundingClientRect) return true;
+	  var markerBox = marker.getBoundingClientRect();
+	  var rootBox = navigation.getBoundingClientRect();
+	  return markerBox.bottom >= rootBox.top - 256 && markerBox.top <= rootBox.bottom + 256;
+	}
+	function failMarker(marker) {
+	  if (!active || !marker || marker.isConnected === false) return;
+	  marker.setAttribute("aria-hidden", "false");
+	  marker.setAttribute("data-manja-sidebar-state", "error");
+	  marker.innerHTML = '<button type="button" data-manja-sidebar-retry="true">Retry loading more items</button>';
+	  var retry = marker.querySelector && marker.querySelector("[data-manja-sidebar-retry]");
+	  if (retry && retry.addEventListener) retry.addEventListener("click", function () {
+		marker.innerHTML = "";
+		marker.setAttribute("aria-hidden", "true");
+		marker.removeAttribute("data-manja-sidebar-state");
+		load(marker);
+	  }, { once: true });
+	}
+	function load(marker) {
+	  if (!active || !marker || marker.getAttribute("data-manja-sidebar-state")) return;
+	  var collection = marker.getAttribute("data-manja-sidebar-collection");
+	  var chunkValue = marker.getAttribute("data-manja-sidebar-chunk") || "";
+	  var operationGroup = /^operation-group-group-[0-9a-f]{12}$/.test(collection || "");
+	  if ((collection !== "operations" && collection !== "schemas" && !operationGroup) || !/^\d+$/.test(chunkValue) || Number(chunkValue) < (operationGroup ? 0 : 1)) {
+		failMarker(marker);
+		return;
+	  }
+	  marker.setAttribute("data-manja-sidebar-state", "loading");
+	  if (observer) observer.unobserve(marker);
+	  readStaticSidebarChunk(descriptor, cache, documentKey, collection, Number(chunkValue)).then(function (html) {
+		if (!active || marker.isConnected === false) return;
+		if (!html) {
+		  marker.remove();
+		  return;
+		}
+		var parent = marker.parentNode;
+		marker.insertAdjacentHTML("beforebegin", html);
+		marker.remove();
+		coalesceStaticSidebarGroups(parent);
+		applyStaticSidebarGroupState(parent, staticRoute(descriptor, global.location.href));
+		if (global.htmx && typeof global.htmx.process === "function" && parent) global.htmx.process(parent);
+		schedule();
+	  }).catch(function () { failMarker(marker); });
+	}
+	function scan() {
+	  scheduled = false;
+	  if (!active) return;
+	  var markers = navigation.querySelectorAll('[data-manja-sidebar-next-chunk="true"]');
+	  for (var index = 0; index < markers.length; index += 1) {
+		var marker = markers[index];
+		if (marker.getAttribute("data-manja-sidebar-state")) continue;
+		if (observer) observer.observe(marker);
+		if (visible(marker)) load(marker);
+	  }
+	}
+	function schedule() {
+	  if (!active || scheduled) return;
+	  scheduled = true;
+	  if (typeof global.requestAnimationFrame === "function") global.requestAnimationFrame(scan); else global.setTimeout(scan, 0);
+	}
+	if (typeof global.IntersectionObserver === "function") observer = new global.IntersectionObserver(function (entries) {
+	  entries.forEach(function (entry) { if (entry.isIntersecting) load(entry.target); });
+	}, { root: navigation, rootMargin: "256px 0px" });
+	if (navigation.addEventListener) navigation.addEventListener("scroll", schedule, { passive: true });
+	if (sidebar.addEventListener) sidebar.addEventListener("manja:sidebar-tab", schedule);
+	if (sidebar.addEventListener) sidebar.addEventListener("manja:sidebar-group", schedule);
+	schedule();
+	return function () {
+	  active = false;
+	  if (observer) observer.disconnect();
+	  if (navigation.removeEventListener) navigation.removeEventListener("scroll", schedule);
+	  if (sidebar.removeEventListener) sidebar.removeEventListener("manja:sidebar-tab", schedule);
+	  if (sidebar.removeEventListener) sidebar.removeEventListener("manja:sidebar-group", schedule);
+	};
+  }
+
+  function coalesceStaticSidebarGroups(root) {
+	if (!root || !root.querySelectorAll) return;
+	var firstByID = Object.create(null);
+	var groups = Array.prototype.slice.call(root.querySelectorAll("section[data-manja-sidebar-group]"));
+	groups.forEach(function (group) {
+	  var id = group.getAttribute("data-manja-sidebar-group") || "";
+	  if (!id || !firstByID[id]) {
+		if (id) firstByID[id] = group;
+		return;
+	  }
+	  var target = firstByID[id].querySelector("[data-manja-sidebar-items] ul");
+	  var source = group.querySelector("[data-manja-sidebar-items] ul");
+	  if (!target || !source) return;
+	  while (source.firstChild) target.appendChild(source.firstChild);
+	  group.remove();
+	});
+  }
+
+  function applyStaticSidebarGroupState(root, route) {
+	if (!root || !root.querySelectorAll || !route) return;
+	var opened = route.groups || [];
+	var closed = route.closedGroups || [];
+	var groups = root.querySelectorAll("section[data-manja-sidebar-group]");
+	for (var index = 0; index < groups.length; index += 1) {
+	  var id = groups[index].getAttribute("data-manja-sidebar-group") || "";
+	  var control = groups[index].querySelector("[data-manja-static-group]");
+	  var items = groups[index].querySelector("[data-manja-sidebar-items]");
+	  var explicit = opened.length > 0 || closed.length > 0;
+	  var expanded = closed.indexOf(id) < 0 && (opened.indexOf(id) >= 0 || !explicit && index === 0);
+	  if (control) control.setAttribute("aria-expanded", expanded ? "true" : "false");
+	  if (items) items.hidden = !expanded;
+	}
+  }
+
+  function expandedStaticSidebarGroups(root) {
+	if (!root || !root.querySelectorAll) return [];
+	var result = [];
+	var controls = root.querySelectorAll("[data-manja-static-group]");
+	for (var index = 0; index < controls.length; index += 1) {
+	  if (controls[index].getAttribute("aria-expanded") !== "true") continue;
+	  var id = controls[index].getAttribute("data-manja-static-group") || "";
+	  if (id && result.indexOf(id) < 0) result.push(id);
+	}
+	return result;
+  }
+
+  function installStaticSidebarTabs(sidebar) {
+	if (!sidebar || !sidebar.querySelectorAll) return;
+	var tabs = Array.prototype.slice.call(sidebar.querySelectorAll('[role="tab"][data-manja-sidebar-tab]'));
+	if (!tabs.length) return;
+	function select(tab) {
+	  var selected = tab.getAttribute("data-manja-sidebar-tab");
+	  tabs.forEach(function (candidate) {
+		var active = candidate === tab;
+		candidate.setAttribute("aria-selected", active ? "true" : "false");
+		candidate.setAttribute("tabindex", active ? "0" : "-1");
+	  });
+	  var panels = sidebar.querySelectorAll("[data-manja-sidebar-tab-panel]");
+	  for (var index = 0; index < panels.length; index += 1) panels[index].hidden = panels[index].getAttribute("data-manja-sidebar-tab-panel") !== selected;
+	  if (sidebar.dispatchEvent && typeof global.CustomEvent === "function") sidebar.dispatchEvent(new global.CustomEvent("manja:sidebar-tab"));
+	}
+	tabs.forEach(function (tab, index) {
+	  if (tab.getAttribute("data-manja-sidebar-tab-bound") === "true") return;
+	  tab.setAttribute("data-manja-sidebar-tab-bound", "true");
+	  tab.addEventListener("click", function () { select(tab); });
+	  tab.addEventListener("keydown", function (event) {
+		if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+		event.preventDefault();
+		var offset = event.key === "ArrowRight" ? 1 : -1;
+		var next = tabs[(index + offset + tabs.length) % tabs.length];
+		select(next);
+		next.focus();
+	  });
+	});
+	select(tabs.filter(function (tab) { return tab.getAttribute("aria-selected") === "true"; })[0] || tabs[0]);
+  }
+
+  function replaceStaticSidebarContinuation(descriptor, cache, documentKey, sidebar) {
+	if (!sidebar) return;
+	if (typeof sidebar.manjaStaticSidebarDispose === "function") sidebar.manjaStaticSidebarDispose();
+	installStaticSidebarTabs(sidebar);
+	sidebar.manjaStaticSidebarDispose = installStaticSidebarContinuation(descriptor, cache, documentKey, sidebar);
+  }
+
   function installStaticSidebar(descriptor, cache, documentValue, route) {
 	var sidebar = documentValue.getElementById("catalog-sidebar-groups");
 	if (!sidebar) return Promise.resolve();
 	var documentHref = descriptor.publicationBase + "documents/" + encodeURIComponent(route.documentKey) + "/";
+	var overviewActive = !route.selected;
 	sidebar.innerHTML = '<nav data-manja-local-sidebar="true" data-manja-static-default-open="true" aria-label="API navigation" class="min-h-0 overflow-y-auto scrollbar-custom px-3 pb-4">' +
-	  '<div data-manja-static-sidebar-top="true"><a data-manja-static-sidebar-top-link="true" href="' + descriptor.publicationBase + '">Back to catalog</a> <a data-manja-static-sidebar-top-link="true" href="' + documentHref + '">Spec overview</a></div>' +
-	  '<section data-manja-static-sidebar-section="operations"><div data-manja-static-sidebar-heading="operations">Operations</div><div data-manja-static-sidebar-operations="true"></div></section>' +
-	  '<section data-manja-static-sidebar-section="schemas"><div data-manja-static-sidebar-heading="schemas">Schemas</div><div data-manja-static-sidebar-schemas="true"></div></section></nav>';
+	  '<div data-manja-static-sidebar-top="true"><a id="catalog-sidebar-spec-overview" data-manja-static-sidebar-top-link="true" data-manja-static-route="true" data-catalog-sidebar-item="true"' + (overviewActive ? ' data-catalog-sidebar-selected="true" aria-current="page"' : '') + ' href="' + documentHref + '" class="flex min-h-11 items-center gap-2 rounded-radius px-2 py-2 font-semibold"><svg viewBox="0 0 20 20" fill="currentColor" class="size-5 shrink-0" aria-hidden="true"><path d="M4.5 2.75A1.75 1.75 0 0 0 2.75 4.5v11A1.75 1.75 0 0 0 4.5 17.25h11a1.75 1.75 0 0 0 1.75-1.75v-11a1.75 1.75 0 0 0-1.75-1.75h-11Zm1.25 3h8.5v1.5h-8.5v-1.5Zm0 3.5h8.5v1.5h-8.5v-1.5Zm0 3.5h5.5v1.5h-5.5v-1.5Z"></path></svg><span class="min-w-0 flex-1 truncate">Spec overview</span></a></div>' +
+	  '<div role="tablist" aria-label="API resources" data-manja-sidebar-tabs="true"><button id="manja-sidebar-tab-operations" type="button" role="tab" data-manja-sidebar-tab="operations" aria-controls="manja-sidebar-panel-operations" aria-selected="true">Operations</button><button id="manja-sidebar-tab-schemas" type="button" role="tab" data-manja-sidebar-tab="schemas" aria-controls="manja-sidebar-panel-schemas" aria-selected="false" tabindex="-1">Schemas</button></div>' +
+	  '<section id="manja-sidebar-panel-operations" role="tabpanel" aria-labelledby="manja-sidebar-tab-operations" data-manja-sidebar-tab-panel="operations" data-manja-static-sidebar-section="operations"><div data-manja-static-sidebar-operations="true"></div></section>' +
+	  '<section id="manja-sidebar-panel-schemas" role="tabpanel" aria-labelledby="manja-sidebar-tab-schemas" data-manja-sidebar-tab-panel="schemas" data-manja-static-sidebar-section="schemas" hidden><div data-manja-static-sidebar-schemas="true"></div></section></nav>';
 	var operations = sidebar.querySelector && sidebar.querySelector("[data-manja-static-sidebar-operations]");
 	var schemas = sidebar.querySelector && sidebar.querySelector("[data-manja-static-sidebar-schemas]");
 	return Promise.all([
@@ -843,7 +1034,9 @@
 	  readStaticSidebarChunk(descriptor, cache, route.documentKey, "schemas", 0).then(function (html) { if (html && schemas) schemas.innerHTML = html; })
 	]).then(function () {
 	  if (schemas && !schemas.innerHTML && schemas.parentNode) schemas.parentNode.hidden = true;
+	  applyStaticSidebarGroupState(sidebar, route);
 	  if (global.htmx && typeof global.htmx.process === "function") global.htmx.process(sidebar);
+	  replaceStaticSidebarContinuation(descriptor, cache, route.documentKey, sidebar);
 	});
   }
 
@@ -862,6 +1055,7 @@
 	  var catalog = null;
 	  var abi = null;
 	  var cleanManifest = null;
+	  var disposeLazySchemaFragments = function () {};
 	  var initialMainHTML = main && main.innerHTML || "";
 	  var initialTitle = documentValue.title;
 	  if (!main) fail("static catalog main target is missing");
@@ -968,10 +1162,8 @@
 		}
 		var errorPanel = documentValue.querySelector && documentValue.querySelector("[data-manja-static-navigation-error]");
 		if (errorPanel) {
-			errorPanel.hidden = !busy && !error;
-			var errorMessage = errorPanel.querySelector && errorPanel.querySelector("[data-manja-static-navigation-error-message]");
-			if (errorMessage) errorMessage.textContent = busy ? "Loading documentation…" : "Unable to load this documentation section. Please try again.";
-			var retry = errorPanel.querySelector && errorPanel.querySelector("[data-manja-static-navigation-retry]");
+			errorPanel.hidden = !error;
+			var retry = navigationRetryControl(errorPanel);
 			if (retry) {
 				retry.hidden = !error;
 				retry.disabled = busy || retryInFlight;
@@ -979,6 +1171,13 @@
 		}
 		if (status) status.textContent = busy ? "Loading documentation…" : error ? "Unable to load this documentation section. Please try again." : "";
 		if (!busy && error && root) root.dispatchEvent(new CustomEvent("manja:local-navigation-error", { detail: { reason: error && error.message ? error.message : "navigation failed" } }));
+	  }
+	  function navigationRetryControl(scope) {
+		if (!scope || !scope.querySelector) return null;
+		var retry = scope.querySelector("[data-manja-static-navigation-retry]");
+		if (!retry) retry = scope.querySelector('button:not([aria-label])');
+		if (retry && retry.setAttribute) retry.setAttribute("data-manja-static-navigation-retry", "true");
+		return retry;
 	  }
 	  function retryNavigation() {
 		if (!lastRoute || retryInFlight) return;
@@ -1075,10 +1274,14 @@
 	  }).then(function (result) {
 		if (!result || result.ok !== true) fail(result && result.error || "static render failed");
 		if (!options.sidebarOnly) {
+		  disposeLazySchemaFragments();
 		  main.innerHTML = result.mainHtml;
-		  installLazySchemaFragments(descriptor, cache, route, main);
+		  disposeLazySchemaFragments = installLazySchemaFragments(descriptor, cache, route, main);
 		}
-		if (sidebar && typeof result.sidebarHtml === "string") sidebar.innerHTML = result.sidebarHtml;
+		if (sidebar && typeof result.sidebarHtml === "string") {
+		  sidebar.innerHTML = result.sidebarHtml;
+		  replaceStaticSidebarContinuation(descriptor, cache, route.documentKey, sidebar);
+		}
 		if (!options.sidebarOnly) documentValue.title = result.title;
 		if (options.restoreScroll) restoreScroll(options.restoreScroll);
 		else if (options.preserveScroll) restoreScroll(beforeScroll);
@@ -1097,7 +1300,7 @@
 		  var links = sidebar.querySelectorAll("[data-catalog-sidebar-item], [data-catalog-sidebar-operation]");
 		  for (var linkIndex = 0; linkIndex < links.length; linkIndex++) {
 			var linkRoute = staticRoute(descriptor, links[linkIndex].href || links[linkIndex].getAttribute && links[linkIndex].getAttribute("href") || "");
-			var selected = Boolean(route.selected && linkRoute && linkRoute.selected === route.selected);
+			var selected = Boolean(linkRoute && linkRoute.selected === route.selected && (route.selected || links[linkIndex].getAttribute("id") === "catalog-sidebar-spec-overview"));
 			if (selected) {
 			  links[linkIndex].setAttribute("aria-current", "page");
 			  links[linkIndex].setAttribute("data-catalog-sidebar-selected", "true");
@@ -1115,9 +1318,36 @@
 	  throw error;
 	  });
 	  }
-	  var retryControl = documentValue.querySelector && documentValue.querySelector("[data-manja-static-navigation-retry]");
+	  var navigationError = documentValue.querySelector && documentValue.querySelector("[data-manja-static-navigation-error]");
+	  var retryControl = navigationRetryControl(navigationError);
 	  if (retryControl && retryControl.addEventListener) retryControl.addEventListener("click", retryNavigation);
 	  documentValue.addEventListener("click", function (event) {
+	  var group = event.target && event.target.closest && event.target.closest("[data-manja-static-group]");
+	  if (group) {
+		var groupRoute = staticRoute(descriptor, global.location.href);
+		if (!groupRoute) return;
+		event.preventDefault();
+		var id = group.getAttribute("data-manja-static-group");
+		if (groupRoute.groups.length === 0 && groupRoute.closedGroups.length === 0) groupRoute.groups = expandedStaticSidebarGroups(sidebar);
+		var index = groupRoute.groups.indexOf(id);
+		var closedIndex = groupRoute.closedGroups.indexOf(id);
+		if (closedIndex >= 0) {
+		  groupRoute.closedGroups.splice(closedIndex, 1);
+		  if (groupRoute.groups.indexOf(id) < 0) groupRoute.groups.push(id);
+		} else if (index >= 0) {
+		  groupRoute.groups.splice(index, 1);
+		  groupRoute.closedGroups.push(id);
+		} else if (group.getAttribute("aria-expanded") === "true") {
+		  groupRoute.closedGroups.push(id);
+		} else {
+		  groupRoute.groups.push(id);
+		}
+		applyStaticSidebarGroupState(sidebar, groupRoute);
+		if (sidebar.dispatchEvent && typeof global.CustomEvent === "function") sidebar.dispatchEvent(new global.CustomEvent("manja:sidebar-group"));
+		if (global.history && typeof global.history.replaceState === "function") global.history.replaceState(historyState(scrollPosition()), "", staticRouteCanonical(descriptor, groupRoute));
+		focusGroup(id);
+		return;
+	  }
 	  var origin = event.target && event.target.closest && event.target.closest("a[href]");
 	  if (origin) {
 		var route = staticRoute(descriptor, origin.href);
@@ -1131,28 +1361,6 @@
 		}
 		return;
 	  }
-	  var group = event.target && event.target.closest && event.target.closest("[data-manja-static-group]");
-	  if (!group) return;
-	  var route = staticRoute(descriptor, global.location.href);
-	  if (!route) return;
-	  event.preventDefault();
-	  var id = group.getAttribute("data-manja-static-group");
-	  var index = route.groups.indexOf(id);
-	  var closedIndex = route.closedGroups.indexOf(id);
-	  var navigation = group.closest && group.closest("nav[data-manja-local-sidebar]");
-	  var defaultOpen = navigation && navigation.getAttribute("data-manja-static-default-open") === "true";
-	  if (closedIndex >= 0) {
-	    route.closedGroups.splice(closedIndex, 1);
-	    if (!defaultOpen && route.groups.indexOf(id) < 0) route.groups.push(id);
-	  } else if (index >= 0) {
-	    route.groups.splice(index, 1);
-	    route.closedGroups.push(id);
-	  } else if (group.getAttribute("aria-expanded") === "true") {
-	    route.closedGroups.push(id);
-	  } else if (!defaultOpen) {
-	    route.groups.push(id);
-	  }
-	  swap(route, "replace", { sidebarOnly: true, preserveScroll: true, focusGroup: id }).catch(function () {});
 	  });
 	  global.addEventListener("popstate", function () {
 	  var route = staticRoute(descriptor, global.location.href);
@@ -1170,7 +1378,7 @@
 	  wasmURL: deployment + "manja-assets/local-docs/manja.wasm",
 	});
 	return global.caches.open(staticCacheName(descriptor)).then(function (cache) {
-		return readExportManifest(descriptor, cache).then(function () {
+		return readExportIdentity(descriptor, cache).then(function () {
 		  var compatibility = null;
 		  function loadCompatibility() {
 			if (compatibility) return compatibility;

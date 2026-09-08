@@ -17,6 +17,7 @@ import (
 	"path"
 	"path/filepath"
 	"runtime/debug"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -26,20 +27,35 @@ import (
 	artifactstore "github.com/araihu/manja/internal/adapters/htmlartifact"
 	"github.com/araihu/manja/internal/localdocs"
 	localbrowser "github.com/araihu/manja/internal/localdocs/browser"
+	localrender "github.com/araihu/manja/internal/localdocs/render"
 	"github.com/araihu/manja/renderer"
 	xhtml "golang.org/x/net/html"
 	"golang.org/x/net/html/atom"
 )
 
 type exportFragmentIdentity struct {
-	Document catalog.DocumentDirectoryV1 `json:"document"`
-	Child    catalog.ChildIdentityV1     `json:"child"`
-	Schemas  []catalog.ShardReferenceV1  `json:"schemas"`
+	Document        catalog.DocumentDirectoryV1 `json:"document"`
+	Child           catalog.ChildIdentityV1     `json:"child"`
+	Schemas         []catalog.ShardReferenceV1  `json:"schemas"`
+	PublicationBase string                      `json:"publicationBase"`
 }
 
 type lazySchemaHTMLFragment struct {
 	Resource string
 	HTML     []byte
+}
+
+type sidebarOperationGroup struct {
+	ID         string
+	Label      string
+	Operations []catalog.OperationDirectoryV1
+}
+
+type sidebarOperationGroupSummary struct {
+	ID         string `json:"id"`
+	Label      string `json:"label"`
+	Count      int    `json:"count"`
+	Collection string `json:"collection"`
 }
 
 func emitCatalogHTMLFragments(ctx context.Context, writer *exportTreeWriter, active renderer.ActivationReceipt, descriptor localdocs.DescriptorV1, manifest catalog.ManifestV1, manifestBytes, catalogBytes []byte, directory catalog.CatalogArtifactV1, cacheRoot string, profile artifact.BuildProfile, fragmentWorkers uint32) error {
@@ -124,7 +140,7 @@ func emitCatalogHTMLFragments(ctx context.Context, writer *exportTreeWriter, act
 					if workerContext.Err() != nil {
 						return
 					}
-					if err := emitDetailHTMLFragment(workerContext, writer, store, cacheStore, cacheRoot, browser, active, manifest, document, job.child, job.kind, job.resource, binaryIdentity); err != nil {
+					if err := emitDetailHTMLFragment(workerContext, writer, store, cacheStore, cacheRoot, browser, active, descriptor, manifest, document, job.child, job.kind, job.resource, binaryIdentity); err != nil {
 						select {
 						case errChannel <- err:
 						default:
@@ -171,10 +187,11 @@ func emitPathHTMLFragments(ctx context.Context, writer *exportTreeWriter, store,
 		operations := byTarget[target]
 		identity := artifact.FragmentIdentity{Format: artifact.FragmentFormatV2, Kind: artifact.FragmentPath, Resource: target}
 		payload, err := json.Marshal(struct {
-			Document   string                         `json:"document"`
-			Target     string                         `json:"target"`
-			Operations []catalog.OperationDirectoryV1 `json:"operations"`
-		}{document.Key, target, operations})
+			Document        string                         `json:"document"`
+			Target          string                         `json:"target"`
+			Operations      []catalog.OperationDirectoryV1 `json:"operations"`
+			PublicationBase string                         `json:"publicationBase"`
+		}{document.Key, target, operations, descriptor.PublicationBase})
 		if err != nil {
 			return err
 		}
@@ -201,15 +218,16 @@ func emitSidebarHTMLChunks(ctx context.Context, writer *exportTreeWriter, store,
 	if chunkSize <= 0 {
 		return fmt.Errorf("sidebar chunk size is invalid")
 	}
-	chunks := (len(document.Operations) + chunkSize - 1) / chunkSize
+	groups := orderedSidebarOperationGroups(document.Operations)
+	chunks := (len(groups) + chunkSize - 1) / chunkSize
 	if chunks == 0 {
 		chunks = 1
 	}
 	for chunk := 0; chunk < chunks; chunk++ {
 		start := chunk * chunkSize
 		end := start + chunkSize
-		if end > len(document.Operations) {
-			end = len(document.Operations)
+		if end > len(groups) {
+			end = len(groups)
 		}
 		resource := document.Key + ":operations:" + strconv.Itoa(chunk)
 		identity := artifact.FragmentIdentity{Format: artifact.FragmentFormatV2, Kind: artifact.FragmentSidebar, Resource: resource}
@@ -217,12 +235,19 @@ func emitSidebarHTMLChunks(ctx context.Context, writer *exportTreeWriter, store,
 		if err != nil {
 			return err
 		}
+		summaries := make([]sidebarOperationGroupSummary, 0, end-start)
+		for _, group := range groups[start:end] {
+			summaries = append(summaries, sidebarOperationGroupSummary{
+				ID: group.ID, Label: group.Label, Count: len(group.Operations), Collection: sidebarOperationGroupCollection(group.ID),
+			})
+		}
 		payload, err := json.Marshal(struct {
-			Document string                         `json:"document"`
-			Chunk    int                            `json:"chunk"`
-			Size     int                            `json:"size"`
-			Items    []catalog.OperationDirectoryV1 `json:"items"`
-		}{document.Key, chunk, chunkSize, document.Operations[start:end]})
+			Document        string                         `json:"document"`
+			Chunk           int                            `json:"chunk"`
+			Size            int                            `json:"size"`
+			Groups          []sidebarOperationGroupSummary `json:"groups"`
+			PublicationBase string                         `json:"publicationBase"`
+		}{document.Key, chunk, chunkSize, summaries, descriptor.PublicationBase})
 		if err != nil {
 			return err
 		}
@@ -249,25 +274,17 @@ func emitSidebarHTMLChunks(ctx context.Context, writer *exportTreeWriter, store,
 			}
 		}
 		var output strings.Builder
-		output.WriteString(`<ul data-manja-sidebar-operation-chunk="` + strconv.Itoa(chunk) + `" class="grid gap-1">`)
-		for _, operation := range document.Operations[start:end] {
-			href := descriptor.PublicationBase + "documents/" + url.PathEscape(document.Key) + "/?selected=" + url.QueryEscape(string(operation.DetailID)) + "#" + url.PathEscape(string(operation.DetailID))
-			label := strings.TrimSpace(operation.Title)
-			if label == "" {
-				label = operation.OperationID
+		for index, group := range groups[start:end] {
+			initiallyOpen := chunk == 0 && index == 0
+			hidden := ` hidden`
+			if initiallyOpen {
+				hidden = ""
 			}
-			method := strings.ToUpper(strings.TrimSpace(operation.Method))
-			output.WriteString(`<li><a data-manja-static-route="true" data-catalog-sidebar-item="true" data-catalog-sidebar-operation="true" data-catalog-method="` + htmlstd.EscapeString(method) + `" href="` + htmlstd.EscapeString(href) + `" class="flex min-w-0 items-center rounded px-2 py-1.5"><span class="mr-2 shrink-0 font-mono text-xs font-bold">` + htmlstd.EscapeString(method) + `</span><span class="min-w-0 flex-1 truncate">` + htmlstd.EscapeString(label) + `</span></a></li>`)
+			collection := sidebarOperationGroupCollection(group.ID)
+			output.WriteString(`<section data-manja-sidebar-group="` + group.ID + `" data-manja-sidebar-group-label="` + htmlstd.EscapeString(group.Label) + `"><button type="button" data-manja-static-group="` + group.ID + `" data-catalog-group-control="true" aria-expanded="` + strconv.FormatBool(initiallyOpen) + `" aria-controls="` + group.ID + `-items" class="flex w-full items-center gap-2 border-l border-outline py-2 pl-3 text-left text-sm font-semibold text-on-surface transition hover:border-l-2 hover:text-on-surface-strong dark:border-outline-dark dark:text-on-surface-dark dark:hover:text-on-surface-dark-strong"><span class="min-w-0 flex-1 truncate">` + htmlstd.EscapeString(group.Label) + `</span><span class="shrink-0 text-xs tabular-nums text-on-surface-muted dark:text-on-surface-dark-muted">` + strconv.Itoa(len(group.Operations)) + `</span></button><div id="` + group.ID + `-items" data-manja-sidebar-items="true"` + hidden + `><div aria-hidden="true" data-manja-sidebar-next-chunk="true" data-manja-sidebar-group-load="true" data-manja-sidebar-collection="` + collection + `" data-manja-sidebar-chunk="0"></div></div></section>`)
 		}
-		output.WriteString(`</ul>`)
 		if chunk+1 < chunks {
-			nextIdentity := artifact.FragmentIdentity{Format: artifact.FragmentFormatV2, Kind: artifact.FragmentSidebar, Resource: document.Key + ":operations:" + strconv.Itoa(chunk+1)}
-			nextPath, _, err := artifact.FragmentLocation(active.Mount, document.Key, nextIdentity)
-			if err != nil {
-				return err
-			}
-			nextURL := prefixExportBase(descriptor.Static.DeploymentBase, "/"+nextPath)
-			output.WriteString(`<div aria-hidden="true" data-manja-sidebar-next-chunk="true" hx-get="` + htmlstd.EscapeString(nextURL) + `" hx-trigger="revealed" hx-swap="outerHTML"></div>`)
+			output.WriteString(`<div aria-hidden="true" data-manja-sidebar-next-chunk="true" data-manja-sidebar-collection="operations" data-manja-sidebar-chunk="` + strconv.Itoa(chunk+1) + `"></div>`)
 		}
 		if _, err := store.CommitHTML(ctx, htmlPath, expectation, func(target io.Writer) error {
 			_, err := io.WriteString(target, output.String())
@@ -282,7 +299,99 @@ func emitSidebarHTMLChunks(ctx context.Context, writer *exportTreeWriter, store,
 			return err
 		}
 	}
+	for _, group := range groups {
+		if err := emitSidebarOperationGroupHTMLChunks(ctx, writer, store, cacheStore, cacheRoot, active, descriptor, manifest, document, group, binaryIdentity, profile, chunkSize); err != nil {
+			return err
+		}
+	}
 	return emitSidebarSchemaHTMLChunks(ctx, writer, store, cacheStore, cacheRoot, active, descriptor, manifest, document, binaryIdentity, profile, chunkSize)
+}
+
+func orderedSidebarOperationGroups(operations []catalog.OperationDirectoryV1) []sidebarOperationGroup {
+	byLabel := make(map[string][]catalog.OperationDirectoryV1)
+	for _, operation := range operations {
+		label := localrender.OperationGroupLabel(operation)
+		byLabel[label] = append(byLabel[label], operation)
+	}
+	labels := make([]string, 0, len(byLabel))
+	for label := range byLabel {
+		labels = append(labels, label)
+	}
+	sort.Strings(labels)
+	groups := make([]sidebarOperationGroup, 0, len(labels))
+	for _, label := range labels {
+		groups = append(groups, sidebarOperationGroup{ID: staticSidebarGroupID("operations-" + label), Label: label, Operations: byLabel[label]})
+	}
+	return groups
+}
+
+func sidebarOperationGroupCollection(groupID string) string {
+	return "operation-group-" + groupID
+}
+
+func emitSidebarOperationGroupHTMLChunks(ctx context.Context, writer *exportTreeWriter, store, cacheStore *artifactstore.Store, cacheRoot string, active renderer.ActivationReceipt, descriptor localdocs.DescriptorV1, manifest catalog.ManifestV1, document catalog.DocumentDirectoryV1, group sidebarOperationGroup, binaryIdentity string, profile artifact.BuildProfile, chunkSize int) error {
+	chunks := (len(group.Operations) + chunkSize - 1) / chunkSize
+	for chunk := 0; chunk < chunks; chunk++ {
+		start := chunk * chunkSize
+		end := start + chunkSize
+		if end > len(group.Operations) {
+			end = len(group.Operations)
+		}
+		collection := sidebarOperationGroupCollection(group.ID)
+		resource := document.Key + ":" + collection + ":" + strconv.Itoa(chunk)
+		identity := artifact.FragmentIdentity{Format: artifact.FragmentFormatV2, Kind: artifact.FragmentSidebar, Resource: resource}
+		payload, err := json.Marshal(struct {
+			Document        string                         `json:"document"`
+			GroupID         string                         `json:"groupId"`
+			GroupLabel      string                         `json:"groupLabel"`
+			Chunk           int                            `json:"chunk"`
+			Size            int                            `json:"size"`
+			Operations      []catalog.OperationDirectoryV1 `json:"operations"`
+			PublicationBase string                         `json:"publicationBase"`
+		}{document.Key, group.ID, group.Label, chunk, chunkSize, group.Operations[start:end], descriptor.PublicationBase})
+		if err != nil {
+			return err
+		}
+		var output strings.Builder
+		output.WriteString(`<ul data-manja-sidebar-operation-group-chunk="` + strconv.Itoa(chunk) + `" class="grid gap-1 pl-2">`)
+		for _, operation := range group.Operations[start:end] {
+			href := descriptor.PublicationBase + "documents/" + url.PathEscape(document.Key) + "/?selected=" + url.QueryEscape(string(operation.DetailID)) + "#" + url.PathEscape(string(operation.DetailID))
+			label := strings.TrimSpace(operation.Title)
+			if label == "" {
+				label = operation.OperationID
+			}
+			method := strings.ToUpper(strings.TrimSpace(operation.Method))
+			output.WriteString(`<li><a data-manja-static-route="true" data-catalog-sidebar-item="true" data-catalog-sidebar-operation="true" data-catalog-method="` + htmlstd.EscapeString(method) + `" href="` + htmlstd.EscapeString(href) + `" title="` + htmlstd.EscapeString(label) + `" class="flex min-w-0 items-center gap-2 rounded px-2 py-1.5"><span class="min-w-0 flex-1 truncate">` + htmlstd.EscapeString(label) + `</span><span aria-hidden="true" class="catalog-method-` + staticSidebarMethodClass(method) + ` ml-auto shrink-0 static inline-flex min-h-5 items-center justify-center rounded-radius px-1.5 py-0.5 font-mono text-[10px] font-bold leading-none">` + htmlstd.EscapeString(method) + `</span></a></li>`)
+		}
+		output.WriteString(`</ul>`)
+		if chunk+1 < chunks {
+			output.WriteString(`<div aria-hidden="true" data-manja-sidebar-next-chunk="true" data-manja-sidebar-collection="` + collection + `" data-manja-sidebar-chunk="` + strconv.Itoa(chunk+1) + `"></div>`)
+		}
+		if err := emitStaticBytesArtifact(ctx, writer, store, cacheStore, cacheRoot, active, manifest, document.Key, identity, payload, []byte(output.String()), binaryIdentity, profile); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func staticSidebarGroupID(value string) string {
+	digest := sha256.Sum256([]byte(value))
+	return "group-" + hex.EncodeToString(digest[:6])
+}
+
+func staticSidebarMethodClass(method string) string {
+	switch strings.ToUpper(strings.TrimSpace(method)) {
+	case "GET":
+		return "get"
+	case "POST":
+		return "post"
+	case "DELETE":
+		return "delete"
+	case "PUT", "PATCH":
+		return "warning"
+	default:
+		return "neutral"
+	}
 }
 
 func emitSidebarSchemaHTMLChunks(ctx context.Context, writer *exportTreeWriter, store, cacheStore *artifactstore.Store, cacheRoot string, active renderer.ActivationReceipt, descriptor localdocs.DescriptorV1, manifest catalog.ManifestV1, document catalog.DocumentDirectoryV1, binaryIdentity string, profile artifact.BuildProfile, chunkSize int) error {
@@ -303,11 +412,12 @@ func emitSidebarSchemaHTMLChunks(ctx context.Context, writer *exportTreeWriter, 
 			return err
 		}
 		payload, err := json.Marshal(struct {
-			Document string                      `json:"document"`
-			Chunk    int                         `json:"chunk"`
-			Size     int                         `json:"size"`
-			Items    []catalog.SchemaDirectoryV1 `json:"items"`
-		}{document.Key, chunk, chunkSize, document.Schemas[start:end]})
+			Document        string                      `json:"document"`
+			Chunk           int                         `json:"chunk"`
+			Size            int                         `json:"size"`
+			Items           []catalog.SchemaDirectoryV1 `json:"items"`
+			PublicationBase string                      `json:"publicationBase"`
+		}{document.Key, chunk, chunkSize, document.Schemas[start:end], descriptor.PublicationBase})
 		if err != nil {
 			return err
 		}
@@ -337,17 +447,11 @@ func emitSidebarSchemaHTMLChunks(ctx context.Context, writer *exportTreeWriter, 
 		output.WriteString(`<ul data-manja-sidebar-schema-chunk="` + strconv.Itoa(chunk) + `" class="grid gap-1">`)
 		for _, schema := range document.Schemas[start:end] {
 			href := descriptor.PublicationBase + "documents/" + url.PathEscape(document.Key) + "/?selected=" + url.QueryEscape(string(schema.DetailID)) + "#" + url.PathEscape(string(schema.DetailID))
-			output.WriteString(`<li><a data-manja-static-route="true" data-catalog-sidebar-item="true" href="` + htmlstd.EscapeString(href) + `" class="flex min-w-0 items-center rounded px-2 py-1.5"><span class="min-w-0 flex-1 truncate">` + htmlstd.EscapeString(schema.Name) + `</span></a></li>`)
+			output.WriteString(`<li><a data-manja-static-route="true" data-catalog-sidebar-item="true" href="` + htmlstd.EscapeString(href) + `" title="` + htmlstd.EscapeString(schema.Name) + `" class="flex min-w-0 items-center rounded px-2 py-1.5"><span class="min-w-0 flex-1 truncate">` + htmlstd.EscapeString(schema.Name) + `</span></a></li>`)
 		}
 		output.WriteString(`</ul>`)
 		if chunk+1 < chunks {
-			nextIdentity := artifact.FragmentIdentity{Format: artifact.FragmentFormatV2, Kind: artifact.FragmentSidebar, Resource: document.Key + ":schemas:" + strconv.Itoa(chunk+1)}
-			nextPath, _, err := artifact.FragmentLocation(active.Mount, document.Key, nextIdentity)
-			if err != nil {
-				return err
-			}
-			nextURL := prefixExportBase(descriptor.Static.DeploymentBase, "/"+nextPath)
-			output.WriteString(`<div aria-hidden="true" data-manja-sidebar-next-chunk="true" hx-get="` + htmlstd.EscapeString(nextURL) + `" hx-trigger="revealed" hx-swap="outerHTML"></div>`)
+			output.WriteString(`<div aria-hidden="true" data-manja-sidebar-next-chunk="true" data-manja-sidebar-collection="schemas" data-manja-sidebar-chunk="` + strconv.Itoa(chunk+1) + `"></div>`)
 		}
 		if _, err := store.CommitHTML(ctx, htmlPath, expectation, func(target io.Writer) error {
 			_, err := io.WriteString(target, output.String())
@@ -378,13 +482,13 @@ func linkCachedHTMLArtifact(writer *exportTreeWriter, cacheRoot, htmlPath string
 	return writer.linkExisting(cacheRoot, sidecarPath, "application/json", uint64(len(data)), hex.EncodeToString(digest[:]))
 }
 
-func emitDetailHTMLFragment(ctx context.Context, writer *exportTreeWriter, store, cacheStore *artifactstore.Store, cacheRoot string, browser *localbrowser.Browser, active renderer.ActivationReceipt, manifest catalog.ManifestV1, document catalog.DocumentDirectoryV1, child catalog.ChildIdentityV1, kind artifact.FragmentKind, resource, binaryIdentity string) error {
+func emitDetailHTMLFragment(ctx context.Context, writer *exportTreeWriter, store, cacheStore *artifactstore.Store, cacheRoot string, browser *localbrowser.Browser, active renderer.ActivationReceipt, descriptor localdocs.DescriptorV1, manifest catalog.ManifestV1, document catalog.DocumentDirectoryV1, child catalog.ChildIdentityV1, kind artifact.FragmentKind, resource, binaryIdentity string) error {
 	identity := artifact.FragmentIdentity{Format: artifact.FragmentFormatV2, Kind: kind, Resource: resource}
 	htmlPath, _, err := artifact.FragmentLocation(active.Mount, document.Key, identity)
 	if err != nil {
 		return err
 	}
-	payload, err := json.Marshal(exportFragmentIdentity{Document: document, Child: child, Schemas: document.SchemaNodeShards})
+	payload, err := json.Marshal(exportFragmentIdentity{Document: document, Child: child, Schemas: document.SchemaNodeShards, PublicationBase: descriptor.PublicationBase})
 	if err != nil {
 		return fmt.Errorf("encode fragment identity: %w", err)
 	}
@@ -707,7 +811,7 @@ func canonicalizeStandaloneSchemaHTML(root *xhtml.Node) {
 					continue
 				}
 				switch attribute.Key {
-				case "aria-controls", "aria-describedby", "aria-labelledby", "for":
+				case "aria-controls", "aria-describedby", "aria-labelledby", "data-tooltip-content-id", "for":
 					parts := strings.Fields(attribute.Val)
 					for partIndex, part := range parts {
 						if replacement, ok := ids[part]; ok {

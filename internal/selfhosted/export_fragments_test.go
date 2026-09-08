@@ -8,7 +8,7 @@ import (
 )
 
 func TestExtractLazySchemaHTMLFragmentsDeduplicatesCanonicalTrees(t *testing.T) {
-	input := []byte(`<article><section id="operation-a-response-200-schema" aria-label="Response body schema tree" class="manja-schema-tree"><div id="operation-a-tooltip" data-schema-tree-node="Pet"><a href="#operation-a-tooltip" aria-describedby="operation-a-tooltip">Pet</a></div></section><section id="operation-b-request-body-schema" aria-label="Request body schema tree" class="manja-schema-tree"><div id="operation-b-tooltip" data-schema-tree-node="Pet"><a href="#operation-b-tooltip" aria-describedby="operation-b-tooltip">Pet</a></div></section></article>`)
+	input := []byte(`<article><section id="operation-a-response-200-schema" aria-label="Response body schema tree" class="manja-schema-tree"><div id="operation-a-tooltip" data-schema-tree-node="Pet"><a href="#operation-a-tooltip" aria-describedby="operation-a-tooltip" data-tooltip-content-id="operation-a-tooltip">Pet</a></div></section><section id="operation-b-request-body-schema" aria-label="Request body schema tree" class="manja-schema-tree"><div id="operation-b-tooltip" data-schema-tree-node="Pet"><a href="#operation-b-tooltip" aria-describedby="operation-b-tooltip" data-tooltip-content-id="operation-b-tooltip">Pet</a></div></section></article>`)
 
 	operation, fragments, err := extractLazySchemaHTMLFragments(input)
 	if err != nil {
@@ -25,7 +25,7 @@ func TestExtractLazySchemaHTMLFragmentsDeduplicatesCanonicalTrees(t *testing.T) 
 		t.Fatalf("operation placeholders do not share content resource: %s", operationText)
 	}
 	fragmentText := string(fragments[0].HTML)
-	for _, want := range []string{`aria-label="Schema tree"`, `id="manja-schema-tree-id-1"`, `id="manja-schema-tree-id-2"`, `href="#manja-schema-tree-id-2"`, `aria-describedby="manja-schema-tree-id-2"`, `data-schema-tree-node="Pet"`} {
+	for _, want := range []string{`aria-label="Schema tree"`, `id="manja-schema-tree-id-1"`, `id="manja-schema-tree-id-2"`, `href="#manja-schema-tree-id-2"`, `aria-describedby="manja-schema-tree-id-2"`, `data-tooltip-content-id="manja-schema-tree-id-2"`, `data-schema-tree-node="Pet"`} {
 		if !strings.Contains(fragmentText, want) {
 			t.Errorf("standalone schema fragment lacks %q: %s", want, fragmentText)
 		}

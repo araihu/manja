@@ -19,7 +19,7 @@ func TestExportBrowserRunsFromGenericStaticServerAtRootAndSubpath(t *testing.T) 
 		t.Skip("skipping static export browser acceptance in short mode")
 	}
 	root := t.TempDir()
-	spec := `{"openapi":"3.0.3","info":{"title":"Private API","version":"v1"},"paths":{"/charges":{"get":{"operationId":"listCharges","summary":"List charges","responses":{"200":{"description":"ok","content":{"application/json":{"schema":{"$ref":"#/components/schemas/Charge"}}}}}}}},"components":{"schemas":{"Charge":{"type":"object","properties":{"id":{"type":"string"}}}}}}`
+	spec := `{"openapi":"3.0.3","info":{"title":"Private API","version":"v1"},"paths":{"/charges":{"get":{"operationId":"listCharges","summary":"List charges","responses":{"200":{"description":"ok","content":{"application/json":{"schema":{"$ref":"#/components/schemas/Charge"}}}}}}},"/customers":{"get":{"operationId":"listCustomers","summary":"List customers with a deliberately long operation title that must truncate before the method badge","responses":{"200":{"description":"ok"}}}}},"components":{"schemas":{"Charge":{"type":"object","properties":{"id":{"type":"string"}}}}}}`
 	if err := os.WriteFile(filepath.Join(root, "private.json"), []byte(spec), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -101,6 +101,19 @@ catalogs:
 				t.Fatal(err)
 			}
 			waitStaticExportReady(t, page)
+			catalogNavigation := page.Locator(`#catalog-navigation[aria-label="Catalog documents"]`)
+			if visible, err := catalogNavigation.IsVisible(); err != nil || !visible {
+				t.Fatalf("catalog overview sidebar visible = %t, %v", visible, err)
+			}
+			if current, err := catalogNavigation.Locator(`a[aria-current="page"]`).TextContent(); err != nil || !strings.Contains(current, "Catalog overview") {
+				t.Fatalf("catalog overview current navigation item = %q, %v", current, err)
+			}
+			if count, err := catalogNavigation.Locator(`a[data-catalog-document-navigation][href="` + deployment + `/private/documents/private/"]`).Count(); err != nil || count != 1 {
+				t.Fatalf("catalog document navigation links = %d, %v; want 1", count, err)
+			}
+			if count, err := page.Locator(`[data-catalog-navigation-trigger][aria-label="Open Catalog documents"]`).Count(); err != nil || count != 1 {
+				t.Fatalf("catalog overview mobile navigation triggers = %d, %v; want 1", count, err)
+			}
 			if err := page.Locator(`[data-table-row-link]`).First().Click(); err != nil {
 				t.Fatal(err)
 			}
@@ -111,8 +124,77 @@ catalogs:
 			if reason, err := page.Locator("html").GetAttribute("data-manja-static-fragment-fallback-reason"); err != nil || reason != "" {
 				t.Fatalf("pre-rendered initial route fell back: %q %v", reason, err)
 			}
-			operation := page.GetByRole("link", playwright.PageGetByRoleOptions{Name: "List charges"}).First()
-			schema := page.Locator("#catalog-sidebar-groups").GetByRole("link", playwright.LocatorGetByRoleOptions{Name: "Charge", Exact: playwright.Bool(true)}).First()
+			groups := page.Locator(`#manja-sidebar-panel-operations section[data-manja-sidebar-group]`)
+			if count, err := groups.Count(); err != nil || count != 2 {
+				t.Fatalf("initial operation groups = %d, %v; want 2", count, err)
+			}
+			firstExpanded, err := groups.Nth(0).Locator(`[data-manja-static-group]`).GetAttribute("aria-expanded")
+			if err != nil || firstExpanded != "true" {
+				t.Fatalf("first operation group expanded = %q, %v", firstExpanded, err)
+			}
+			secondControl := groups.Nth(1).Locator(`[data-manja-static-group]`)
+			secondExpanded, err := secondControl.GetAttribute("aria-expanded")
+			if err != nil || secondExpanded != "false" {
+				t.Fatalf("second operation group expanded = %q, %v", secondExpanded, err)
+			}
+			longOperationTitle := "List customers with a deliberately long operation title that must truncate before the method badge"
+			if count, err := page.Locator(`[data-catalog-sidebar-operation][title="` + longOperationTitle + `"]`).Count(); err != nil || count != 0 {
+				t.Fatalf("collapsed group eagerly rendered %d operations: %v", count, err)
+			}
+			requestMu.Lock()
+			requestsBeforeGroupOpen := len(requests)
+			requestMu.Unlock()
+			if err := secondControl.Click(); err != nil {
+				t.Fatal(err)
+			}
+			longOperation := page.Locator(`[data-catalog-sidebar-operation][title="` + longOperationTitle + `"]`)
+			if err := longOperation.WaitFor(playwright.LocatorWaitForOptions{Timeout: playwright.Float(5_000)}); err != nil {
+				t.Fatalf("lazy operation group swap: %v", err)
+			}
+			badgeLayout, err := page.Evaluate(`() => {
+				const links = [...document.querySelectorAll('[data-catalog-sidebar-operation]')];
+				const shortLink = links.find((link) => link.title === 'List charges');
+				const longLink = links.find((link) => link.title.includes('deliberately long'));
+				const inspect = (link) => {
+					const label = link && link.querySelector('span:first-child');
+					const badge = link && link.querySelector('[class*="catalog-method-"]');
+					const linkBox = link && link.getBoundingClientRect();
+					const badgeBox = badge && badge.getBoundingClientRect();
+					return {linkRight: linkBox && linkBox.right, badgeRight: badgeBox && badgeBox.right, badgeLeft: badgeBox && badgeBox.left, labelTruncated: !!label && label.scrollWidth > label.clientWidth};
+				};
+				const short = inspect(shortLink);
+				const long = inspect(longLink);
+				return {
+					short,
+					long,
+					aligned: Math.abs(short.badgeRight - long.badgeRight) < 0.5,
+					contained: short.linkRight >= short.badgeRight && long.linkRight >= long.badgeRight,
+					truncated: long.labelTruncated,
+				};
+			}`)
+			if err != nil {
+				t.Fatal(err)
+			}
+			layout := badgeLayout.(map[string]any)
+			if layout["truncated"] != true || layout["aligned"] != true || layout["contained"] != true {
+				t.Fatalf("operation badge columns are not stable: %#v", badgeLayout)
+			}
+			requestMu.Lock()
+			requestsAfterGroupOpen := append([]string(nil), requests[requestsBeforeGroupOpen:]...)
+			requestMu.Unlock()
+			var groupHTML, groupSidecar bool
+			for _, requestPath := range requestsAfterGroupOpen {
+				if !strings.Contains(requestPath, "/_manja/fragments/sidebar/operations/sidebar-sha256-") {
+					continue
+				}
+				groupHTML = groupHTML || strings.HasSuffix(requestPath, ".html")
+				groupSidecar = groupSidecar || strings.HasSuffix(requestPath, ".html.meta.json")
+			}
+			if !groupHTML || !groupSidecar {
+				t.Fatalf("group expansion did not fetch verified operation HTML and sidecar: %#v", requestsAfterGroupOpen)
+			}
+			operation := page.Locator(`[data-catalog-sidebar-operation][title="List charges"]`).First()
+			schema := page.Locator(`#catalog-sidebar-groups [data-manja-static-sidebar-schemas] a[title="Charge"]`).First()
 			operationHref, err := operation.GetAttribute("href")
 			if err != nil {
 				t.Fatal(err)
@@ -341,14 +423,17 @@ catalogs:
 			}
 			t.Cleanup(func() { _ = page.Context().SetOffline(false) })
 
-			operation = page.GetByRole("link", playwright.PageGetByRoleOptions{Name: "List charges"}).First()
+			operation = page.Locator(`[data-catalog-sidebar-operation][title="List charges"]`).First()
 			if err := operation.Click(); err != nil {
 				t.Fatal(err)
 			}
 			if _, err := page.WaitForFunction(`() => document.querySelector('[data-catalog-main-content]').textContent.includes('/charges')`, nil); err != nil {
 				t.Fatal(err)
 			}
-			schema = page.Locator("#catalog-sidebar-groups").GetByRole("link", playwright.LocatorGetByRoleOptions{Name: "Charge", Exact: playwright.Bool(true)}).First()
+			if err := page.Locator(`[role="tab"][data-manja-sidebar-tab="schemas"]`).Click(); err != nil {
+				t.Fatalf("open offline schema tab: %v", err)
+			}
+			schema = page.Locator(`#catalog-sidebar-groups [data-manja-static-sidebar-schemas] a[title="Charge"]`).First()
 			if err := schema.Click(); err != nil {
 				t.Fatal(err)
 			}
@@ -408,12 +493,14 @@ func assertStaticSidebarLayout(t *testing.T, page playwright.Page, operation, sc
 		const topLinks = [...document.querySelectorAll('[data-manja-static-sidebar-top-link]')];
 		const operationSection = document.querySelector('[data-manja-static-sidebar-section="operations"]');
 		const schemaSection = document.querySelector('[data-manja-static-sidebar-section="schemas"]');
-		const backLink = topLinks.find((item) => item.textContent.trim() === 'Back to organization');
-		const catalogBackLink = topLinks.find((item) => item.textContent.trim() === 'Back to catalog');
 		const overviewLink = topLinks.find((item) => item.textContent.trim() === 'Spec overview');
+		const tabs = document.querySelectorAll('[role="tab"][data-manja-sidebar-tab]');
 		const operationStyle = getComputedStyle(operation);
+		const labelBox = operation.querySelector('.truncate').getBoundingClientRect();
+		const methodBox = operation.querySelector('[data-manja-sidebar-method], [class*="catalog-method-"]').getBoundingClientRect();
 		const operationBox = operation.getBoundingClientRect();
-		const schemaBox = schema.getBoundingClientRect();
+		const operationPanel = operation.closest('[data-manja-sidebar-tab-panel]');
+		const operationItems = operation.closest('[data-manja-sidebar-items]');
 		return {
 			navClientWidth: nav.clientWidth,
 			navScrollWidth: nav.scrollWidth,
@@ -421,12 +508,17 @@ func assertStaticSidebarLayout(t *testing.T, page playwright.Page, operation, sc
 			operationMethod: operation.dataset.catalogMethod,
 			hasOperationSection: !!operationSection,
 			hasSchemaSection: !!schemaSection,
-			topLinksPresent: topLinks.length === 2,
-			hasBackLink: !!backLink || !!catalogBackLink,
+			topLinksPresent: topLinks.length === 1,
+			hasBackLink: topLinks.some((item) => item.textContent.includes('Back to')),
 			hasOverviewLink: !!overviewLink,
 			overviewActive: overviewLink && overviewLink.getAttribute('aria-current') === 'page',
+			hasResourceTabs: tabs.length === 2,
+			methodBadgeAtRight: methodBox.left >= labelBox.right,
+			operationVisible: operationBox.width > 0 && operationBox.height > 0,
+			operationPanelHidden: operationPanel && operationPanel.hidden,
+			operationItemsHidden: operationItems && operationItems.hidden,
+			selectedTabs: [...tabs].filter((tab) => tab.getAttribute('aria-selected') === 'true').map((tab) => tab.dataset.manjaSidebarTab),
 			noHorizontalOverflow: nav.scrollWidth <= nav.clientWidth,
-			separateRows: operationBox.bottom <= schemaBox.top || schemaBox.bottom <= operationBox.top,
 		};
 	}`)
 	if err != nil {
@@ -436,15 +528,8 @@ func assertStaticSidebarLayout(t *testing.T, page playwright.Page, operation, sc
 	if !ok {
 		t.Fatalf("static sidebar layout result = %#v", values)
 	}
-	if result["noHorizontalOverflow"] != true || result["operationDisplay"] != "flex" || result["operationMethod"] != "GET" || result["hasOperationSection"] != true || result["hasSchemaSection"] != true || result["topLinksPresent"] != true || result["hasBackLink"] != true || result["hasOverviewLink"] != true || result["separateRows"] != true {
+	if result["noHorizontalOverflow"] != true || result["operationDisplay"] != "grid" || result["operationVisible"] != true || result["operationMethod"] != "GET" || result["hasOperationSection"] != true || result["hasSchemaSection"] != true || result["topLinksPresent"] != true || result["hasBackLink"] != false || result["hasOverviewLink"] != true || result["hasResourceTabs"] != true || result["methodBadgeAtRight"] != true {
 		t.Fatalf("static sidebar is not visually usable: %#v", result)
-	}
-	if err := operation.Focus(); err != nil {
-		t.Fatal(err)
-	}
-	focusOutline, err := operation.Evaluate(`element => getComputedStyle(element).outlineStyle`, nil)
-	if err != nil || focusOutline == "none" {
-		t.Fatalf("operation focus indicator = %#v, %v", focusOutline, err)
 	}
 	if err := operation.Click(); err != nil {
 		t.Fatal(err)
@@ -452,7 +537,10 @@ func assertStaticSidebarLayout(t *testing.T, page playwright.Page, operation, sc
 	if err := page.Locator(`[data-catalog-sidebar-operation][aria-current="page"][data-catalog-sidebar-selected="true"]`).WaitFor(); err != nil {
 		t.Fatalf("selected operation state: %v", err)
 	}
-	if err := schema.WaitFor(); err != nil {
+	if err := page.Locator(`[role="tab"][data-manja-sidebar-tab="schemas"]`).Click(); err != nil {
+		t.Fatalf("open schema tab: %v", err)
+	}
+	if err := schema.WaitFor(playwright.LocatorWaitForOptions{State: playwright.WaitForSelectorStateVisible}); err != nil {
 		t.Fatalf("schema remained discoverable: %v", err)
 	}
 }

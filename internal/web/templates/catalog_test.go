@@ -16,7 +16,6 @@ import (
 	"github.com/araihu/goshtoso/components/badge"
 	"github.com/araihu/goshtoso/components/icon"
 	"github.com/araihu/goshtoso/components/icon/heroicons"
-	"github.com/araihu/goshtoso/components/sidebar"
 	"github.com/araihu/manja/application/catalog"
 	"github.com/araihu/manja/application/projection"
 	"github.com/araihu/manja/domain"
@@ -76,6 +75,33 @@ func TestCatalogHeaderOmitsThemeSelectorButKeepsDarkMode(t *testing.T) {
 	}
 }
 
+func TestCatalogStaticNavigationFailureUsesPersistentGoshtosoToast(t *testing.T) {
+	t.Parallel()
+
+	body := renderCatalogTemplate(t, catalogTemplateFixture())
+	for _, want := range []string{
+		`data-manja-static-navigation-error`,
+		`id="manja-static-navigation-error-toast"`,
+		`data-toast-id="manja-static-navigation-error-toast"`,
+		`border-danger`,
+		`Unable to load this documentation section`,
+		`Please try again.`,
+		`>Retry</button>`,
+		`{ isVisible: true }`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("navigation failure toast missing %q", want)
+		}
+	}
+	if strings.Contains(body, `data-manja-static-navigation-error-message`) {
+		t.Fatal("navigation failure still renders the former custom banner")
+	}
+	secondRender := renderCatalogTemplate(t, catalogTemplateFixture())
+	if body != secondRender {
+		t.Fatal("navigation failure toast changed otherwise identical server-rendered HTML")
+	}
+}
+
 func TestCatalogOrganizationNavigationRendersCatalogAndSpecSections(t *testing.T) {
 	t.Parallel()
 
@@ -130,6 +156,12 @@ func TestCatalogShellUsesRouteSpecificNavigationLabels(t *testing.T) {
 				return data
 			}(),
 			label:      "Catalogs and specs",
+			otherLabel: "API sections",
+		},
+		{
+			name:       "catalog overview",
+			data:       catalogTemplateFixture(),
+			label:      "Catalog documents",
 			otherLabel: "API sections",
 		},
 		{
@@ -207,13 +239,27 @@ func TestCatalogShellProvidesOneResponsiveSidebarWithMobileDrawerControls(t *tes
 	}
 }
 
-func TestCatalogOverviewOmitsEmptySidebarAndKeepsSearchInHeader(t *testing.T) {
+func TestCatalogOverviewRendersDocumentSidebarAndKeepsSearchInHeader(t *testing.T) {
 	t.Parallel()
 
 	body := renderCatalogTemplate(t, catalogTemplateFixture())
-	for _, unwanted := range []string{`id="catalog-navigation"`, `data-catalog-navigation-backdrop="true"`, `aria-controls="catalog-navigation"`} {
-		if strings.Contains(body, unwanted) {
-			t.Errorf("catalog overview retained empty sidebar shell %q", unwanted)
+	for _, want := range []string{
+		`id="catalog-navigation"`,
+		`aria-label="Catalog documents"`,
+		`aria-label="Open Catalog documents"`,
+		`aria-label="Close Catalog documents"`,
+		`data-catalog-navigation-backdrop="true"`,
+		`aria-controls="catalog-navigation"`,
+		`href="/kubernetes"`,
+		`aria-current="page"`,
+		`>Catalog overview</span>`,
+		`>Documents</div>`,
+		`href="/kubernetes/documents/core-v1/"`,
+		`href="/kubernetes/documents/apps-v1/"`,
+		`data-catalog-document-navigation="true"`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("catalog overview document sidebar missing %q", want)
 		}
 	}
 	searchAt := strings.Index(body, `data-catalog-header-search`)
@@ -1010,14 +1056,10 @@ func TestCatalogDocumentSidebarGroupsOperationsUnderOnePathsItem(t *testing.T) {
 		{ID: "schemas", Kind: "schemas", Label: "Schemas", Href: "?group=schemas", Count: 3},
 	}
 	config := catalogSidebarConfig(data)
-	if len(config.Items) != 4 {
-		t.Fatalf("sidebar item count = %d, want 4", len(config.Items))
+	if len(config.Items) != 2 {
+		t.Fatalf("sidebar item count = %d, want 2", len(config.Items))
 	}
-	specOverview := config.Items[1]
-	if specOverview.ID != "spec-overview" || specOverview.Icon == nil {
-		t.Fatalf("spec overview = %#v, want book icon in sidebar", specOverview)
-	}
-	paths := config.Items[2]
+	paths := config.Items[0]
 	if paths.ID != "catalog-paths" || paths.Label != "Paths" || paths.Icon == nil {
 		t.Fatalf("paths parent = %#v, want visible Paths item with one icon", paths)
 	}
@@ -1031,14 +1073,19 @@ func TestCatalogDocumentSidebarGroupsOperationsUnderOnePathsItem(t *testing.T) {
 	}
 	body := renderCatalogTemplate(t, data)
 	for _, want := range []string{
-		`heroicons.svg#hi-16-solid-chevron-left`,
 		`heroicons.svg#hi-16-solid-book-open`,
 		`heroicons.svg#hi-16-solid-code-bracket`,
 		`heroicons.svg#hi-16-solid-cube`,
+		`data-manja-sidebar-tabs="true"`,
+		`data-manja-sidebar-tab="operations"`,
+		`data-manja-sidebar-tab="schemas"`,
 	} {
 		if !strings.Contains(body, want) {
 			t.Errorf("document sidebar missing Goshtoso icon %q", want)
 		}
+	}
+	if strings.Contains(body, `Back to catalog`) || strings.Contains(body, `Back to organization`) {
+		t.Fatal("document sidebar retained redundant back navigation")
 	}
 	if got := strings.Count(body, `heroicons.svg#hi-16-solid-code-bracket`); got != 1 {
 		t.Fatalf("code bracket icon count = %d, want 1", got)
@@ -1145,20 +1192,14 @@ func TestCatalogSidebarItemsUseTargetedMainNavigation(t *testing.T) {
 			t.Errorf("catalog operation link missing %q: %s", want, link)
 		}
 	}
-	config := catalogSidebarConfig(data)
-	var overview sidebar.Item
-	for _, item := range config.Items {
-		if item.ID == "spec-overview" {
-			overview = item
-			break
-		}
-	}
-	if overview.ID == "" {
+	overview := regexp.MustCompile(`<a[^>]*id="catalog-sidebar-spec-overview"[^>]*>`).FindString(body)
+	if overview == "" {
 		t.Fatal("spec overview sidebar item missing")
 	}
 	for name, want := range catalogMainNavigationAttrs(data.DocumentHref) {
-		if got := overview.LinkAttrs[name]; got != want {
-			t.Errorf("spec overview %s = %#v, want %#v", name, got, want)
+		attribute := name + `="` + fmt.Sprint(want) + `"`
+		if !strings.Contains(overview, attribute) {
+			t.Errorf("spec overview missing %s: %s", attribute, overview)
 		}
 	}
 }
@@ -1187,8 +1228,9 @@ func TestCatalogSidebarSelectedItemHasDeterministicScrollTarget(t *testing.T) {
 			t.Errorf("catalog sidebar selection behavior missing %q", want)
 		}
 	}
-	if got := strings.Count(body, `data-catalog-sidebar-selected="true"`); got != 1 {
-		t.Fatalf("selected sidebar markers = %d, want 1", got)
+	selected := regexp.MustCompile(`<a[^>]*id="catalog-sidebar-item-sidebar-selected-operation"[^>]*>`).FindString(body)
+	if !strings.Contains(selected, `data-catalog-sidebar-selected="true"`) {
+		t.Fatalf("selected operation lacks its marker: %s", selected)
 	}
 }
 

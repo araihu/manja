@@ -83,24 +83,28 @@ func TestBrowserSidebarRetainsDocumentNavigationChrome(t *testing.T) {
 	for _, want := range []string{
 		`data-manja-static-sidebar-top="true"`,
 		`data-manja-static-sidebar-top-link="true"`,
-		`href="/docs/"`,
-		`Back to organization`,
 		`href="/docs/pets/documents/doc/"`,
 		`Spec overview`,
+		`data-manja-sidebar-tabs="true"`,
+		`data-manja-sidebar-tab="operations"`,
+		`data-manja-sidebar-tab="schemas"`,
 		`data-manja-static-sidebar-section="paths"`,
-		`data-manja-static-sidebar-heading="paths"`,
+		`data-manja-sidebar-group=`,
 		`data-catalog-sidebar-selected="true" aria-current="page"`,
 	} {
 		if !strings.Contains(overview.SidebarHTML, want) {
 			t.Errorf("overview sidebar missing %q: %s", want, overview.SidebarHTML)
 		}
 	}
+	if strings.Contains(overview.SidebarHTML, `Back to catalog`) || strings.Contains(overview.SidebarHTML, `Back to organization`) {
+		t.Fatalf("overview sidebar retained redundant back navigation: %s", overview.SidebarHTML)
+	}
 
 	operation, err := browser.Render(context.Background(), Route{DocumentKey: "doc", Selected: string(operationID)})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(operation.SidebarHTML, `Back to organization`) || !strings.Contains(operation.SidebarHTML, `Spec overview`) {
+	if !strings.Contains(operation.SidebarHTML, `Spec overview`) || !strings.Contains(operation.SidebarHTML, `data-manja-sidebar-tabs="true"`) {
 		t.Fatalf("operation sidebar lost document navigation chrome: %s", operation.SidebarHTML)
 	}
 	if strings.Contains(operation.SidebarHTML, `id="catalog-sidebar-spec-overview" data-manja-static-route="true" data-catalog-sidebar-selected="true"`) {
@@ -117,7 +121,9 @@ func TestBrowserSidebarUsesSharedVisualContractAndPlainTextLabels(t *testing.T) 
 		`data-catalog-sidebar-selected="true"`,
 		`aria-current="page"`,
 		`title="Adds an issue safely."`,
-		`<span class="min-w-0 flex-1 truncate">Adds an issue safely.</span></a>`,
+		`<span class="min-w-0 flex-1 truncate">Adds an issue safely.</span><span data-manja-sidebar-method="true"`,
+		`catalog-method-get`,
+		`ml-auto`,
 	} {
 		if !strings.Contains(operation, want) {
 			t.Errorf("operation sidebar link missing %q: %s", want, operation)
