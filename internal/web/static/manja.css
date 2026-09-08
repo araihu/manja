@@ -52,6 +52,12 @@
   width: 100%;
 }
 
+/* Keep Next in the final explicit column, even without a Previous link.
+   A single-column mobile grid still uses its full width. */
+[data-manja-operation-neighbor="next"] {
+  grid-column: -2 / -1;
+}
+
 .manja-catalog-navigation-backdrop {
   background: color-mix(in oklch, var(--color-surface-dark) 40%, transparent);
   z-index: 60;
@@ -59,6 +65,21 @@
 
 .manja-catalog-navigation-open {
   z-index: 80;
+}
+
+/* Compatibility with Goshtoso's offset custom-icon wrapper in the pinned
+   release. Remove once the upstream avatar centering fix is adopted. */
+.manja-catalog-icon-avatar > span > span > span {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0;
+}
+
+.manja-catalog-icon-avatar svg {
+  width: 1rem;
+  height: 1rem;
+  flex-shrink: 0;
 }
 
 .manja-catalog-search-dialog {
@@ -425,48 +446,6 @@
 .dark #catalog-sidebar-groups #catalog-sidebar-spec-overview[data-catalog-sidebar-selected="true"] {
   background: color-mix(in oklch, var(--color-primary-dark) 14%, transparent);
   color: var(--color-primary-dark);
-}
-
-#catalog-sidebar-groups [data-manja-sidebar-tabs="true"] {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  gap: 0.25rem;
-  margin: 0.5rem 0 0.75rem;
-  padding: 0.25rem;
-  border: 1px solid var(--color-outline);
-  border-radius: var(--radius-radius);
-  background: var(--color-surface-alt);
-}
-
-.dark #catalog-sidebar-groups [data-manja-sidebar-tabs="true"] {
-  border-color: var(--color-outline-dark);
-  background: var(--color-surface-dark-alt);
-}
-
-#catalog-sidebar-groups [data-manja-sidebar-tab] {
-  min-width: 0;
-  border-radius: calc(var(--radius-radius) - 0.125rem);
-  padding: 0.5rem 0.625rem;
-  color: var(--color-on-surface-muted);
-  font-size: 0.75rem;
-  font-weight: 700;
-  line-height: 1;
-  text-align: center;
-}
-
-#catalog-sidebar-groups [data-manja-sidebar-tab][aria-selected="true"] {
-  background: var(--color-surface);
-  color: var(--color-on-surface-strong);
-  box-shadow: 0 1px 2px color-mix(in oklch, var(--color-on-surface) 14%, transparent);
-}
-
-.dark #catalog-sidebar-groups [data-manja-sidebar-tab] {
-  color: var(--color-on-surface-dark-muted);
-}
-
-.dark #catalog-sidebar-groups [data-manja-sidebar-tab][aria-selected="true"] {
-  background: var(--color-surface-dark);
-  color: var(--color-on-surface-dark-strong);
 }
 
 #catalog-sidebar-groups [data-manja-sidebar-tab-panel][hidden] {

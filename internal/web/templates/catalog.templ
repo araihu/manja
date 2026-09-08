@@ -320,7 +320,9 @@ templ CatalogPage(data CatalogPageData) {
 			@catalogSearchModal(data)
 			@catalogDocumentSelection()
 			@catalogSidebarFocusRestoration()
-			@catalogSidebarTabsScript()
+			<template id="manja-static-sidebar-tabs">
+				@localrender.StaticSidebarTabs()
+			</template>
 			@catalogSidebarOverflowTooltip()
 		</div>
 	}
@@ -1022,7 +1024,7 @@ templ catalogOrganizationAvatar(item CatalogOrganizationItem) {
 			/>
 		</span>
 	} else if item.AvatarSymbol != "" {
-		@avatar.Avatar(avatar.Config{Icon: icon.Icon(icon.Config{SpriteURL: heroicons.SpriteURL, Symbol: icon.Symbol(item.AvatarSymbol), Size: icon.SizeSM, Decorative: true}), Name: item.Label, Size: avatar.SizeXS, Shape: avatar.ShapeCircle, Tone: avatar.ToneDefault, RootClass: "shrink-0"})
+		@avatar.Avatar(avatar.Config{Icon: icon.Icon(icon.Config{SpriteURL: heroicons.SpriteURL, Symbol: icon.Symbol(item.AvatarSymbol), Size: icon.SizeSM, Decorative: true}), Name: item.Label, Size: avatar.SizeXS, Shape: avatar.ShapeCircle, Tone: avatar.ToneDefault, RootClass: "shrink-0 manja-catalog-icon-avatar"})
 	} else {
 		@avatar.Avatar(avatar.Config{Name: item.Label, Initials: item.Initials, Size: avatar.SizeXS, Shape: avatar.ShapeCircle, Tone: avatar.ToneDefault, RootClass: "shrink-0"})
 	}
@@ -1304,8 +1306,7 @@ templ catalogDocumentSidebar(data CatalogPageData) {
 			}
 		</a>
 	</div>
-	@catalogSidebarTabs(catalogSidebarSelectedTab(data))
-	@sidebar.Sidebar(catalogSidebarConfig(data))
+	@localrender.SidebarTabs(catalogSidebarSelectedTab(data), sidebar.Sidebar(catalogSidebarTabConfig(data, "operations")), sidebar.Sidebar(catalogSidebarTabConfig(data, "schemas")))
 }
 
 func catalogSpecOverviewAttrs(data CatalogPageData) templpkg.Attributes {
@@ -1340,69 +1341,17 @@ func catalogSidebarSelectedTab(data CatalogPageData) string {
 	return "operations"
 }
 
-templ catalogSidebarTabs(selected string) {
-	<div role="tablist" aria-label="API resources" data-manja-sidebar-tabs="true" class="mx-3 mt-2">
-		<button id="manja-sidebar-tab-operations" type="button" role="tab" data-manja-sidebar-tab="operations" aria-controls="manja-sidebar-panel-operations" aria-selected={ strconv.FormatBool(selected != "schemas") } if selected == "schemas" { tabindex="-1" }>Operations</button>
-		<button id="manja-sidebar-tab-schemas" type="button" role="tab" data-manja-sidebar-tab="schemas" aria-controls="manja-sidebar-panel-schemas" aria-selected={ strconv.FormatBool(selected == "schemas") } if selected != "schemas" { tabindex="-1" }>Schemas</button>
-	</div>
-}
-
-templ catalogSidebarTabsScript() {
-	<script data-catalog-sidebar-tabs-script="true">
-		(function () {
-			if (window.__manjaCatalogSidebarTabsBound) return;
-			window.__manjaCatalogSidebarTabsBound = true;
-			function select(tab) {
-				var root = tab && tab.closest && tab.closest("#catalog-sidebar-groups");
-				if (!root) return;
-				var selected = tab.getAttribute("data-manja-sidebar-tab");
-				var tabs = root.querySelectorAll('[role="tab"][data-manja-sidebar-tab]');
-				for (var index = 0; index < tabs.length; index++) {
-					var active = tabs[index] === tab;
-					tabs[index].setAttribute("aria-selected", active ? "true" : "false");
-					tabs[index].setAttribute("tabindex", active ? "0" : "-1");
-				}
-				var panels = root.querySelectorAll("[data-manja-sidebar-tab-panel]");
-				if (panels.length) {
-					for (var panelIndex = 0; panelIndex < panels.length; panelIndex++) panels[panelIndex].hidden = panels[panelIndex].getAttribute("data-manja-sidebar-tab-panel") !== selected;
-					return;
-				}
-				var paths = root.querySelector("[data-manja-catalog-paths-toggle]");
-				if (paths) {
-					paths.hidden = selected !== "operations";
-					if (paths.nextElementSibling) paths.nextElementSibling.hidden = selected !== "operations";
-				}
-				var controls = root.querySelectorAll("[data-catalog-sidebar-kind]");
-				for (var controlIndex = 0; controlIndex < controls.length; controlIndex++) {
-					var control = controls[controlIndex];
-					if (control.getAttribute("data-catalog-sidebar-kind") !== "schemas") continue;
-					var wrapper = control.parentElement && control.parentElement.hasAttribute("x-data") ? control.parentElement : control;
-					wrapper.hidden = selected !== "schemas";
-				}
-			}
-			function initialize(scope) {
-				var lists = (scope || document).querySelectorAll("[data-manja-sidebar-tabs]");
-				for (var index = 0; index < lists.length; index++) {
-					var selected = lists[index].querySelector('[role="tab"][aria-selected="true"]') || lists[index].querySelector('[role="tab"]');
-					if (selected) select(selected);
-				}
-			}
-			document.addEventListener("click", function (event) {
-				var tab = event.target && event.target.closest && event.target.closest('[role="tab"][data-manja-sidebar-tab]');
-				if (tab) select(tab);
-			});
-				document.addEventListener("keydown", function (event) {
-				var tab = event.target && event.target.closest && event.target.closest('[role="tab"][data-manja-sidebar-tab]');
-				if (!tab || (event.key !== "ArrowLeft" && event.key !== "ArrowRight")) return;
-				var tabs = Array.prototype.slice.call(tab.parentElement.querySelectorAll('[role="tab"][data-manja-sidebar-tab]'));
-				var offset = event.key === "ArrowRight" ? 1 : -1;
-				var next = tabs[(tabs.indexOf(tab) + offset + tabs.length) % tabs.length];
-				event.preventDefault(); select(next); next.focus();
-			});
-			document.addEventListener("htmx:afterSwap", function (event) { initialize(event.detail && event.detail.target || document); });
-			initialize(document);
-		})();
-	</script>
+func catalogSidebarTabConfig(data CatalogPageData, kind string) sidebar.Config {
+	config := catalogSidebarConfig(data)
+	items := make([]sidebar.Item, 0, len(config.Items))
+	for _, item := range config.Items {
+		schema := item.LinkAttrs["data-catalog-sidebar-kind"] == "schemas"
+		if (kind == "schemas") == schema {
+			items = append(items, item)
+		}
+	}
+	config.Items = items
+	return config
 }
 
 func catalogMainNavigationAttrs(href string) templpkg.Attributes {
@@ -1450,6 +1399,8 @@ templ catalogSidebarFocusRestoration() {
 			if (window.__manjaCatalogSidebarFocusBound) return;
 			window.__manjaCatalogSidebarFocusBound = true;
 			var pendingControlID = "";
+			var pendingSidebarTab = "";
+			var pendingSidebarScroll = 0;
 			var pendingSchemaNodeFocus = false;
 			var selectionScrollFrame = 0;
 
@@ -1492,16 +1443,27 @@ templ catalogSidebarFocusRestoration() {
 				var trigger = event.detail && event.detail.elt;
 				var control = trigger && trigger.closest && trigger.closest("[data-catalog-group-control]");
 				pendingControlID = control ? control.id : "";
+				var activeTab = control && document.querySelector('#catalog-sidebar-groups [role="tab"][aria-selected="true"]');
+				pendingSidebarTab = activeTab ? activeTab.getAttribute("data-manja-sidebar-tab") : "";
+				var scroll = control && control.closest(".sidebar-scroll");
+				pendingSidebarScroll = scroll ? scroll.scrollTop : 0;
 				var schemaLink = trigger && trigger.closest && trigger.closest("[data-catalog-schema-property]");
 				pendingSchemaNodeFocus = !!schemaLink;
 			});
 			document.body.addEventListener("htmx:afterSettle", function (event) {
 				if (pendingControlID) {
 					var controlID = pendingControlID;
+					var tabID = pendingSidebarTab;
+					var scrollTop = pendingSidebarScroll;
 					pendingControlID = "";
+					pendingSidebarTab = "";
+					var tab = tabID && document.querySelector('#catalog-sidebar-groups [role="tab"][data-manja-sidebar-tab="' + tabID + '"]');
+					if (tab && tab.getAttribute("aria-selected") !== "true") tab.click();
 					var restoreControlFocus = function () {
 						var control = document.getElementById(controlID);
 						if (!control) return;
+						var scroll = control.closest(".sidebar-scroll");
+						if (scroll) scroll.scrollTop = scrollTop;
 						try { control.focus({ preventScroll: true }); } catch (error) { control.focus(); }
 					};
 					window.requestAnimationFrame(function () { window.requestAnimationFrame(restoreControlFocus); });
@@ -1521,6 +1483,7 @@ templ catalogSidebarFocusRestoration() {
 			["htmx:responseError", "htmx:sendError", "htmx:timeout"].forEach(function (name) {
 				document.body.addEventListener(name, function () {
 					pendingControlID = "";
+					pendingSidebarTab = "";
 					pendingSchemaNodeFocus = false;
 				});
 			});

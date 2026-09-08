@@ -1,10 +1,12 @@
 # Manja
 
-Manja is a hosted OpenAPI renderer and publisher built with
+Manja is an OpenAPI documentation renderer and publisher built with
 [Goshtoso](https://github.com/araihu/goshtoso).
 
-The first vertical slice renders read-only OpenAPI docs from a spec file and
-provides Ctrl+K search across indexed operations and schemas.
+Generate read-only documentation for static hosting, with lazy HTML fragments
+and deployment-wide browser search across catalogs, operations, and schemas.
+The exported site needs no Manja server at request time. Manja also supports
+running as a documentation server.
 
 ## Development
 
@@ -186,22 +188,30 @@ work locally and in any CI environment with the repository checked out.
 
 ## Static export
 
-Materialize every configured renderer catalog for an ordinary static host:
+Build a static site from the catalogs in `renderer.yaml`:
 
 ```bash
 ./bin/manja export \
   --renderer-config ./renderer.yaml \
   --data-dir ./data \
   --output ./public \
-  --base-path /
+  --base-path / \
+  --sidebar-chunk-size 12 \
+  --fragment-workers 4
 
 ./bin/manja export verify --output ./public
 ```
 
+The output includes page shells, hash-verified operation/schema/example/path
+fragments, sidebar chunks, search indexes, and all required browser assets.
+Reuse an intact `public` directory on subsequent exports to enable incremental
+fragment reuse. Serve it over HTTP locally or HTTPS in production.
+
 **Export ignores catalog visibility and publishes every configured catalog.**
 Anyone who can read the static host can read every exported catalog. See
-[Static export](docs/static-export.md) for subpath hosting, output semantics,
-and server requirements.
+[Static export](docs/static-export.md) for configuration, incremental builds,
+browser behavior, and hosting requirements, and
+[Deploy to Pages](docs/pages-deployment.md) for GitHub and GitLab CI examples.
 
 ## Docker Image
 

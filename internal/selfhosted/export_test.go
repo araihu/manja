@@ -111,7 +111,7 @@ catalogs:
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{`Spec overview`, `data-manja-sidebar-tabs="true"`, `data-manja-sidebar-tab="operations"`, `data-manja-sidebar-tab="schemas"`} {
+	for _, want := range []string{`Spec overview`, `data-manja-sidebar-tabs="true"`, `aria-controls="tabpanelmanja-sidebaroperations"`, `aria-controls="tabpanelmanja-sidebarschemas"`} {
 		if !strings.Contains(string(documentShell), want) {
 			t.Errorf("static document shell lacks sidebar control %q", want)
 		}

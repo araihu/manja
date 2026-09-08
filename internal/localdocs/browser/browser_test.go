@@ -86,9 +86,9 @@ func TestBrowserSidebarRetainsDocumentNavigationChrome(t *testing.T) {
 		`href="/docs/pets/documents/doc/"`,
 		`Spec overview`,
 		`data-manja-sidebar-tabs="true"`,
-		`data-manja-sidebar-tab="operations"`,
-		`data-manja-sidebar-tab="schemas"`,
-		`data-manja-static-sidebar-section="paths"`,
+		`aria-controls="tabpanelmanja-sidebaroperations"`,
+		`aria-controls="tabpanelmanja-sidebarschemas"`,
+		`data-manja-static-sidebar-section="operations"`,
 		`data-manja-sidebar-group=`,
 		`data-catalog-sidebar-selected="true" aria-current="page"`,
 	} {

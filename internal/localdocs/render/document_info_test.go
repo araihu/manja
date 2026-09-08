@@ -44,6 +44,9 @@ func TestPreparedCatalogDocumentInfoRendersCopiedMetadata(t *testing.T) {
 	if bytes.Contains(body, []byte("<Support>")) {
 		t.Fatal("prepared document info leaked unescaped contact name")
 	}
+	if bytes.Count(body, []byte(`target="_blank" rel="noopener noreferrer"`)) != 4 {
+		t.Fatal("all OpenAPI information links must open separately with safe rel attributes")
+	}
 }
 
 func TestPrepareCatalogDocumentInfoFailsClosedOnInvalidTextOrOutput(t *testing.T) {
