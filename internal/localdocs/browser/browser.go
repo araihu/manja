@@ -21,14 +21,21 @@ import (
 	"strings"
 )
 
+type browserSchemaShard struct {
+	path     string
+	document string
+	shard    localdocs.PreparedSchemaNodeShard
+}
+
 type Browser struct {
-	descriptor localdocs.DescriptorV1
-	activation localdocs.Activation
-	manifest   catalog.ManifestV1
-	directory  catalog.CatalogArtifactV1
-	children   map[string][]byte
-	search     *catalog.SearchService
-	loader     func(string) ([]byte, error)
+	descriptor  localdocs.DescriptorV1
+	activation  localdocs.Activation
+	manifest    catalog.ManifestV1
+	directory   catalog.CatalogArtifactV1
+	children    map[string][]byte
+	search      *catalog.SearchService
+	loader      func(string) ([]byte, error)
+	schemaShard *browserSchemaShard
 }
 
 type Route struct {
@@ -117,6 +124,7 @@ func (browser *Browser) ReleaseChildren() {
 		return
 	}
 	browser.children = make(map[string][]byte)
+	browser.schemaShard = nil
 	browser.search = nil
 }
 
@@ -629,7 +637,19 @@ func (browser *Browser) schemaNode(document catalog.DocumentDirectoryV1, ordinal
 	if err != nil {
 		return projection.SchemaNode{}, err
 	}
-	return browser.activation.SelectSchemaNode(reference.Path, document.Key, ordinal, data)
+	// Children are privately copied at admission and cannot be replaced with
+	// different bytes. Cache only the last fully validated shard, independently
+	// in each browser; ReleaseChildren also drops this decoded state.
+	cached := browser.schemaShard
+	if cached == nil || cached.path != reference.Path || cached.document != document.Key {
+		shard, err := browser.activation.PrepareSchemaNodeShard(reference.Path, document.Key, data)
+		if err != nil {
+			return projection.SchemaNode{}, err
+		}
+		cached = &browserSchemaShard{path: reference.Path, document: document.Key, shard: shard}
+		browser.schemaShard = cached
+	}
+	return cached.shard.Select(ordinal)
 }
 
 func (browser *Browser) document(key string) (catalog.DocumentDirectoryV1, bool) {

@@ -309,3 +309,35 @@ func requireZeroNode(t *testing.T, got projection.SchemaNode, err error) {
 		t.Fatalf("node = %#v err=%v, want zero plus error", got, err)
 	}
 }
+
+func TestPreparedSchemaNodeShardOwnsImmutableNodes(t *testing.T) {
+	detail := mustDetailShard(t, "core-v1", domain.DetailID("detail-sha256-"+strings.Repeat("a", 64)))
+	node := projection.SchemaNode{Ordinal: 7, ID: "node", Name: "Node", Type: "object", Enum: []string{"value"}, Constraints: []projection.SchemaConstraint{{Name: "maxLength", Value: "4"}}, Properties: []projection.SchemaNodeProperty{{Ordinal: 0, ID: "property", Name: "child", SchemaRef: 8}}, Items: []projection.SchemaNodeItem{{Ordinal: 0, ID: "item", SchemaRef: 8}}}
+	data, err := catalogjson.EncodeSchemaNodeShard(catalog.SchemaNodeShardV1{SchemaVersion: 1, DocumentKey: "core-v1", FirstOrdinal: 7, Nodes: []projection.SchemaNode{node, {Ordinal: 8, ID: "child", Name: "Child", Type: "string"}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	prepared, err := shardActivation(t, detail, data).PrepareSchemaNodeShard("schema-nodes/core.json", "core-v1", data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := prepared.Select(7)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got.Enum[0] = "changed"
+	got.Constraints[0].Value = "changed"
+	got.Properties[0].Name = "changed"
+	got.Items[0].SchemaRef = 99
+	for i := range data {
+		data[i] = 'x'
+	}
+	got, err = prepared.Select(7)
+	if err != nil || !reflect.DeepEqual(got, node) {
+		t.Fatalf("prepared node aliases caller state: %+v, %v", got, err)
+	}
+	var zero PreparedSchemaNodeShard
+	if _, err := zero.Select(0); err == nil {
+		t.Fatal("zero shard accepted")
+	}
+}

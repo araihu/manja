@@ -437,7 +437,9 @@ func TestBrowserRenderMainEquivalent(t *testing.T) {
 			}
 			for _, route := range []Route{
 				{DocumentKey: "doc"}, {DocumentKey: "doc", Selected: string(operationID)},
-				{DocumentKey: "doc", Selected: string(operationID), ClosedGroups: []string{"Pets"}},
+				{DocumentKey: "doc", Selected: string(operationID), ClosedGroups: []string{browserGroupID("operations-Pets")}},
+				{DocumentKey: "doc", Selected: string(operationID), Groups: []string{browserGroupID("operations-Pets")}},
+				{DocumentKey: "doc", Selected: string(operationID), Groups: []string{"invalid-group"}},
 				{DocumentKey: "doc", Selected: string(schemaID)},
 				{DocumentKey: "doc", Selected: string(schemaID), Node: new(uint32)},
 				{DocumentKey: "missing"}, {DocumentKey: "doc", Selected: "missing"},
@@ -462,5 +464,60 @@ func TestBrowserRenderMainEquivalent(t *testing.T) {
 	var browser *Browser
 	if _, err := browser.RenderMain(context.Background(), Route{}); err == nil {
 		t.Fatal("nil browser accepted")
+	}
+}
+
+func TestBrowserSchemaShardReuseIsPrivateAndReleased(t *testing.T) {
+	descriptor, manifest, catalogBytes, children, _, _ := browserFixture(t)
+	loads := 0
+	browser, err := PrepareWithLoader(descriptor, manifest, catalogBytes, func(path string) ([]byte, error) { loads++; return children[path], nil })
+	if err != nil {
+		t.Fatal(err)
+	}
+	document := browser.directory.Documents[0]
+	first, err := browser.schemaNode(document, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	prepared := browser.schemaShard
+	if prepared == nil {
+		t.Fatal("shard was not prepared")
+	}
+	first.Name = "mutated"
+	second, err := browser.schemaNode(document, 0)
+	if err != nil || second.Name == first.Name || browser.schemaShard != prepared || loads != 1 {
+		t.Fatal("shard reuse changed content or reloaded the child", err, loads)
+	}
+	fork, err := browser.ForkWithLoader(func(path string) ([]byte, error) { return children[path], nil })
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fork.schemaShard != nil {
+		t.Fatal("fork shared mutable prepared state")
+	}
+	if _, err := fork.schemaNode(document, 0); err != nil {
+		t.Fatal(err)
+	}
+	if fork.schemaShard == prepared {
+		t.Fatal("fork reused source browser cache")
+	}
+	browser.ReleaseChildren()
+	if browser.schemaShard != nil || len(browser.children) != 0 {
+		t.Fatal("release retained route state")
+	}
+	if _, err := browser.schemaNode(document, 0); err != nil {
+		t.Fatal(err)
+	}
+	if loads != 2 || browser.schemaShard == prepared {
+		t.Fatal("release did not re-admit and re-prepare")
+	}
+	browser.ReleaseChildren()
+	path := document.SchemaNodeShards[0].Path
+	children[path] = append(children[path], ' ')
+	if _, err := browser.schemaNode(document, 0); err == nil {
+		t.Fatal("changed child bypassed verification after release")
+	}
+	if browser.schemaShard != nil {
+		t.Fatal("failed child admission populated decoded cache")
 	}
 }
