@@ -13,7 +13,7 @@ import (
 
 const (
 	goshtosoModulePath = "github.com/araihu/goshtoso"
-	goshtosoVersion    = "v0.2.9"
+	goshtosoVersion    = "v0.2.10"
 	minimumGoVersion   = "go1.26.5"
 )
 
