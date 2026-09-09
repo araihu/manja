@@ -25,6 +25,7 @@ import (
 	"github.com/araihu/manja/application/catalog"
 	artifact "github.com/araihu/manja/application/htmlartifact"
 	artifactstore "github.com/araihu/manja/internal/adapters/htmlartifact"
+	"github.com/araihu/manja/internal/adapters/schemacache"
 	"github.com/araihu/manja/internal/localdocs"
 	localbrowser "github.com/araihu/manja/internal/localdocs/browser"
 	localrender "github.com/araihu/manja/internal/localdocs/render"
@@ -33,11 +34,32 @@ import (
 	"golang.org/x/net/html/atom"
 )
 
-type exportFragmentIdentity struct {
-	Document        catalog.DocumentDirectoryV1 `json:"document"`
-	Child           catalog.ChildIdentityV1     `json:"child"`
-	Schemas         []catalog.ShardReferenceV1  `json:"schemas"`
-	PublicationBase string                      `json:"publicationBase"`
+// exportDetailDependencies retains the complete document dependency scope. Its
+// digest is computed once per document, before workers receive any jobs.
+type exportDetailDependencies struct {
+	documentSHA256   string
+	compilerIdentity string
+}
+
+func prepareExportDetailDependencies(document catalog.DocumentDirectoryV1, publicationBase, compilerIdentity string) (exportDetailDependencies, error) {
+	payload, err := json.Marshal(struct {
+		Document        catalog.DocumentDirectoryV1 `json:"document"`
+		PublicationBase string                      `json:"publicationBase"`
+	}{document, publicationBase})
+	if err != nil {
+		return exportDetailDependencies{}, fmt.Errorf("encode fragment document identity: %w", err)
+	}
+	return exportDetailDependencies{documentSHA256: artifact.PayloadSHA256(payload), compilerIdentity: compilerIdentity}, nil
+}
+
+func (dependencies exportDetailDependencies) payload(child catalog.ChildIdentityV1) ([]byte, error) {
+	// Explicitly separate this composition from the former whole-document payload.
+	// Old artifacts miss normally; their integrity checks remain unchanged.
+	return json.Marshal(struct {
+		Format         string                  `json:"format"`
+		DocumentSHA256 string                  `json:"documentSHA256"`
+		Child          catalog.ChildIdentityV1 `json:"child"`
+	}{"detail-dependencies-v2", dependencies.documentSHA256, child})
 }
 
 type lazySchemaHTMLFragment struct {
@@ -58,25 +80,21 @@ type sidebarOperationGroupSummary struct {
 	Collection string `json:"collection"`
 }
 
-func emitCatalogHTMLFragments(ctx context.Context, writer *exportTreeWriter, active renderer.ActivationReceipt, descriptor localdocs.DescriptorV1, manifest catalog.ManifestV1, manifestBytes, catalogBytes []byte, directory catalog.CatalogArtifactV1, cacheRoot string, profile artifact.BuildProfile, fragmentWorkers uint32) error {
+func emitCatalogHTMLFragments(ctx context.Context, writer *exportTreeWriter, active renderer.ActivationReceipt, descriptor localdocs.DescriptorV1, manifest catalog.ManifestV1, manifestBytes, catalogBytes []byte, directory catalog.CatalogArtifactV1, cacheRoot string, profile artifact.BuildProfile, fragmentWorkers uint32, schemaCache *schemacache.Cache, loader func(string) ([]byte, error)) error {
 	binaryIdentity, err := exportBinaryIdentity()
 	if err != nil {
 		return err
 	}
-	loader := func(childPath string) ([]byte, error) {
-		child, ok := manifestChild(manifest, childPath)
-		if !ok || child.Kind != "detail" && child.Kind != "schema-node" {
-			return nil, fmt.Errorf("fragment child %q is not a projection child", childPath)
-		}
-		_, outputPath, ok := exportedChildPath(active, directory, child)
-		if !ok {
-			return nil, fmt.Errorf("fragment child %q has no static path", childPath)
-		}
-		return os.ReadFile(filepath.Join(writer.root, filepath.FromSlash(outputPath)))
+	compilerIdentity, err := json.Marshal(manifest.Identity.Versions)
+	if err != nil {
+		return fmt.Errorf("encode fragment compiler identity: %w", err)
 	}
 	baseBrowser, err := localbrowser.PrepareWithLoader(descriptor, manifestBytes, catalogBytes, loader)
 	if err != nil {
 		return fmt.Errorf("prepare HTML fragment renderer for catalog %q: %w", active.CatalogID, err)
+	}
+	if schemaCache != nil {
+		baseBrowser.SetSchemaCache(schemaCache)
 	}
 	store := artifactstore.New(writer.root)
 	var cacheStore *artifactstore.Store
@@ -84,6 +102,10 @@ func emitCatalogHTMLFragments(ctx context.Context, writer *exportTreeWriter, act
 		cacheStore = artifactstore.New(cacheRoot)
 	}
 	for _, document := range directory.Documents {
+		dependencies, err := prepareExportDetailDependencies(document, descriptor.PublicationBase, string(compilerIdentity))
+		if err != nil {
+			return err
+		}
 		if err := emitSidebarHTMLChunks(ctx, writer, store, cacheStore, cacheRoot, active, descriptor, manifest, document, binaryIdentity, profile); err != nil {
 			return err
 		}
@@ -140,7 +162,7 @@ func emitCatalogHTMLFragments(ctx context.Context, writer *exportTreeWriter, act
 					if workerContext.Err() != nil {
 						return
 					}
-					if err := emitDetailHTMLFragment(workerContext, writer, store, cacheStore, cacheRoot, browser, active, descriptor, manifest, document, job.child, job.kind, job.resource, binaryIdentity); err != nil {
+					if err := emitDetailHTMLFragment(workerContext, writer, store, cacheStore, cacheRoot, browser, active, manifest, document, job.child, job.kind, job.resource, binaryIdentity, dependencies); err != nil {
 						select {
 						case errChannel <- err:
 						default:
@@ -168,6 +190,9 @@ func emitCatalogHTMLFragments(ctx context.Context, writer *exportTreeWriter, act
 		case workerErr := <-errChannel:
 			return workerErr
 		default:
+		}
+		if err := emitSchemaNodePanels(ctx, writer, store, cacheStore, cacheRoot, baseBrowser, active, manifest, document, binaryIdentity, dependencies); err != nil {
+			return err
 		}
 	}
 	return nil
@@ -482,24 +507,20 @@ func linkCachedHTMLArtifact(writer *exportTreeWriter, cacheRoot, htmlPath string
 	return writer.linkExisting(cacheRoot, sidecarPath, "application/json", uint64(len(data)), hex.EncodeToString(digest[:]))
 }
 
-func emitDetailHTMLFragment(ctx context.Context, writer *exportTreeWriter, store, cacheStore *artifactstore.Store, cacheRoot string, browser *localbrowser.Browser, active renderer.ActivationReceipt, descriptor localdocs.DescriptorV1, manifest catalog.ManifestV1, document catalog.DocumentDirectoryV1, child catalog.ChildIdentityV1, kind artifact.FragmentKind, resource, binaryIdentity string) error {
+func emitDetailHTMLFragment(ctx context.Context, writer *exportTreeWriter, store, cacheStore *artifactstore.Store, cacheRoot string, browser *localbrowser.Browser, active renderer.ActivationReceipt, manifest catalog.ManifestV1, document catalog.DocumentDirectoryV1, child catalog.ChildIdentityV1, kind artifact.FragmentKind, resource, binaryIdentity string, dependencies exportDetailDependencies) error {
 	identity := artifact.FragmentIdentity{Format: artifact.FragmentFormatV2, Kind: kind, Resource: resource}
 	htmlPath, _, err := artifact.FragmentLocation(active.Mount, document.Key, identity)
 	if err != nil {
 		return err
 	}
-	payload, err := json.Marshal(exportFragmentIdentity{Document: document, Child: child, Schemas: document.SchemaNodeShards, PublicationBase: descriptor.PublicationBase})
+	payload, err := dependencies.payload(child)
 	if err != nil {
 		return fmt.Errorf("encode fragment identity: %w", err)
-	}
-	compilerIdentity, err := json.Marshal(manifest.Identity.Versions)
-	if err != nil {
-		return fmt.Errorf("encode fragment compiler identity: %w", err)
 	}
 	buildKey, err := artifact.NewBuildKey(artifact.BuildKeyInput{
 		Fragment: identity, CanonicalPayloadSHA256: artifact.PayloadSHA256(payload),
 		ManjaVersion: binaryIdentity, RendererFingerprint: binaryIdentity, UIFingerprint: binaryIdentity,
-		CompilerIdentity: string(compilerIdentity), NormalizerIdentity: manifest.Identity.SourceManifestSHA256,
+		CompilerIdentity: dependencies.compilerIdentity, NormalizerIdentity: manifest.Identity.SourceManifestSHA256,
 	})
 	if err != nil {
 		return err
@@ -528,7 +549,7 @@ func emitDetailHTMLFragment(ctx context.Context, writer *exportTreeWriter, store
 		return err
 	}
 	if !verification.Hit() {
-		page, renderErr := browser.Render(ctx, localbrowser.Route{DocumentKey: document.Key, Selected: resource})
+		page, renderErr := browser.RenderMain(ctx, localbrowser.Route{DocumentKey: document.Key, Selected: resource})
 		browser.ReleaseChildren()
 		if renderErr != nil {
 			page.MainHTML = fallbackDetailHTML(document, kind, resource)

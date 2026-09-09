@@ -1,0 +1,651 @@
+{
+  "base_revision": "6ee0252301ff6fd060d206abf5fb574de8b211b2",
+  "production_commits": [
+    "5d143db",
+    "01cd0b5",
+    "9ec0e19"
+  ],
+  "toolchain": {
+    "go": "go1.27.1 linux/arm64",
+    "node": "v24.19.0",
+    "brotli": "1.2.0"
+  },
+  "hardware": {
+    "architecture": "aarch64",
+    "cpu_vendor": "Apple",
+    "visible_cpus": 12,
+    "cgroup_cpu_quota": 6,
+    "cgroup_memory_bytes": 9663676416,
+    "os": "Linux OrbStack VM"
+  },
+  "runtime_budget": {
+    "GOMAXPROCS": 4,
+    "GOMEMLIMIT": "512MiB",
+    "sidebar_chunk_size": 12,
+    "base_path": "/"
+  },
+  "binaries": {
+    "baseline": {
+      "revision": "6ee0252301ff6fd060d206abf5fb574de8b211b2",
+      "sha256": "4da16924077bbef2bf8a9f285c2445684dff2943c913ecc7433b01d849e25dd3",
+      "bytes": 53509591,
+      "patch": "baseline.patch",
+      "patch_sha256": "732f9859eee644d54d14b7f1e6c298c7899cbc05550eccf2bb38141f85df3546"
+    },
+    "final": {
+      "revision": "01cd0b51332eb70366e8e88160f35a55df9fb852",
+      "sha256": "5c30089b818c2ac010e8240000c91212ad318d004be42d1874374014cacb0419",
+      "bytes": 53581455,
+      "patch": "final-complete.patch",
+      "patch_sha256": "607d9af045a88849cf9ee81f7a6ebe479e41075f822462515a2265d9410059b8"
+    }
+  },
+  "input_manifest_sha256": "24021f85e3f28e263eda9859d6b935a94ee8144a558a0d4afb7eec80acca9376",
+  "complete": false,
+  "measurement_notes": [
+    "Export seconds and allocation counters exclude ingestion and extra verification.",
+    "Process wall/user/system/RSS include ingestion, profiling, export, extra verification and output counting.",
+    "CPU profiles cover export; cumulative heap profiles also include ingestion.",
+    "Cold means no prior output; OS page caches were not flushed.",
+    "Warm uses the exact same binary/output. Reuse counts are unchanged HTML inodes, not instrumented cache-miss counters.",
+    "First baseline ingestion used a fresh store; later runs used existing stores.",
+    "A killed unbudgeted baseline and abandoned candidates are excluded from this final matrix.",
+    "Shared machine and concurrent test activity limit wall-time interpretation."
+  ],
+  "runs": [
+    {
+      "label": "baseline-full-w4-cold-1",
+      "variant": "baseline",
+      "corpus": "full",
+      "workers": 4,
+      "cache": "cold",
+      "repetition": 1,
+      "ingestion_cache": "first ingestion",
+      "metrics": {
+        "allocated_bytes": 2990879604960,
+        "allocations": 14088187585,
+        "bytes": 663988005,
+        "export_seconds": 994.151016129,
+        "files": 77391,
+        "ingestion_seconds": 193.313631139,
+        "verify_seconds": 6.198019428,
+        "workers": 4
+      },
+      "process": {
+        "wall": 1194.330468914006,
+        "user": 3047.371112,
+        "system": 236.372431,
+        "maxrss_kib": 612716,
+        "exit": 0
+      },
+      "reuse": null
+    },
+    {
+      "label": "baseline-full-w4-warm-1",
+      "variant": "baseline",
+      "corpus": "full",
+      "workers": 4,
+      "cache": "warm",
+      "repetition": 1,
+      "ingestion_cache": "existing store",
+      "metrics": {
+        "allocated_bytes": 223281007968,
+        "allocations": 236981028,
+        "bytes": 663988005,
+        "export_seconds": 101.777823899,
+        "files": 77391,
+        "ingestion_seconds": 89.759530769,
+        "verify_seconds": 5.609226824,
+        "workers": 4
+      },
+      "process": {
+        "wall": 197.42020576199866,
+        "user": 347.523861,
+        "system": 37.77963,
+        "maxrss_kib": 595804,
+        "exit": 0
+      },
+      "reuse": {
+        "html_files": 37783,
+        "reused_html_inodes": 37700
+      }
+    },
+    {
+      "label": "baseline-small-w1-cold-3",
+      "variant": "baseline",
+      "corpus": "small",
+      "workers": 1,
+      "cache": "cold",
+      "repetition": 3,
+      "ingestion_cache": "existing store",
+      "metrics": {
+        "allocated_bytes": 214963040,
+        "allocations": 167771,
+        "bytes": 25991825,
+        "export_seconds": 0.42340278,
+        "files": 125,
+        "ingestion_seconds": 0.108589208,
+        "verify_seconds": 0.031911508,
+        "workers": 1
+      },
+      "process": {
+        "wall": 0.6541008269996382,
+        "user": 0.379138,
+        "system": 0.24054799999999998,
+        "maxrss_kib": 191916,
+        "exit": 0
+      },
+      "reuse": {
+        "html_files": 14,
+        "reused_html_inodes": 0
+      }
+    },
+    {
+      "label": "baseline-small-w1-cold-4",
+      "variant": "baseline",
+      "corpus": "small",
+      "workers": 1,
+      "cache": "cold",
+      "repetition": 4,
+      "ingestion_cache": "existing store",
+      "metrics": {
+        "allocated_bytes": 214991864,
+        "allocations": 167797,
+        "bytes": 25991825,
+        "export_seconds": 0.225147189,
+        "files": 125,
+        "ingestion_seconds": 0.031939799,
+        "verify_seconds": 0.032446081,
+        "workers": 1
+      },
+      "process": {
+        "wall": 0.32299884100211784,
+        "user": 0.174926,
+        "system": 0.111624,
+        "maxrss_kib": 165932,
+        "exit": 0
+      },
+      "reuse": {
+        "html_files": 14,
+        "reused_html_inodes": 0
+      }
+    },
+    {
+      "label": "baseline-small-w1-warm-3",
+      "variant": "baseline",
+      "corpus": "small",
+      "workers": 1,
+      "cache": "warm",
+      "repetition": 3,
+      "ingestion_cache": "existing store",
+      "metrics": {
+        "allocated_bytes": 244126968,
+        "allocations": 206470,
+        "bytes": 25991825,
+        "export_seconds": 0.230318512,
+        "files": 125,
+        "ingestion_seconds": 0.035813145,
+        "verify_seconds": 0.044263077,
+        "workers": 1
+      },
+      "process": {
+        "wall": 0.33584764998522587,
+        "user": 0.188112,
+        "system": 0.14621099999999998,
+        "maxrss_kib": 193980,
+        "exit": 0
+      },
+      "reuse": {
+        "html_files": 14,
+        "reused_html_inodes": 8
+      }
+    },
+    {
+      "label": "baseline-small-w1-warm-4",
+      "variant": "baseline",
+      "corpus": "small",
+      "workers": 1,
+      "cache": "warm",
+      "repetition": 4,
+      "ingestion_cache": "existing store",
+      "metrics": {
+        "allocated_bytes": 244099448,
+        "allocations": 206440,
+        "bytes": 25991825,
+        "export_seconds": 0.217053251,
+        "files": 125,
+        "ingestion_seconds": 0.044972356,
+        "verify_seconds": 0.025503498,
+        "workers": 1
+      },
+      "process": {
+        "wall": 0.3132289339846466,
+        "user": 0.19078599999999998,
+        "system": 0.146818,
+        "maxrss_kib": 180060,
+        "exit": 0
+      },
+      "reuse": {
+        "html_files": 14,
+        "reused_html_inodes": 8
+      }
+    },
+    {
+      "label": "baseline-small-w4-cold-3",
+      "variant": "baseline",
+      "corpus": "small",
+      "workers": 4,
+      "cache": "cold",
+      "repetition": 3,
+      "ingestion_cache": "existing store",
+      "metrics": {
+        "allocated_bytes": 214984248,
+        "allocations": 167831,
+        "bytes": 25991825,
+        "export_seconds": 0.199530026,
+        "files": 125,
+        "ingestion_seconds": 0.037625863,
+        "verify_seconds": 0.035857686,
+        "workers": 4
+      },
+      "process": {
+        "wall": 0.30247679399326444,
+        "user": 0.173339,
+        "system": 0.111382,
+        "maxrss_kib": 182756,
+        "exit": 0
+      },
+      "reuse": {
+        "html_files": 14,
+        "reused_html_inodes": 0
+      }
+    },
+    {
+      "label": "baseline-small-w4-cold-4",
+      "variant": "baseline",
+      "corpus": "small",
+      "workers": 4,
+      "cache": "cold",
+      "repetition": 4,
+      "ingestion_cache": "existing store",
+      "metrics": {
+        "allocated_bytes": 215029024,
+        "allocations": 167888,
+        "bytes": 25991825,
+        "export_seconds": 0.203144378,
+        "files": 125,
+        "ingestion_seconds": 0.034209508,
+        "verify_seconds": 0.027686209,
+        "workers": 4
+      },
+      "process": {
+        "wall": 0.2906780070043169,
+        "user": 0.178189,
+        "system": 0.09878999999999999,
+        "maxrss_kib": 183616,
+        "exit": 0
+      },
+      "reuse": {
+        "html_files": 14,
+        "reused_html_inodes": 0
+      }
+    },
+    {
+      "label": "baseline-small-w4-warm-3",
+      "variant": "baseline",
+      "corpus": "small",
+      "workers": 4,
+      "cache": "warm",
+      "repetition": 3,
+      "ingestion_cache": "existing store",
+      "metrics": {
+        "allocated_bytes": 244133896,
+        "allocations": 206464,
+        "bytes": 25991825,
+        "export_seconds": 0.236777687,
+        "files": 125,
+        "ingestion_seconds": 0.032890656,
+        "verify_seconds": 0.026209944,
+        "workers": 4
+      },
+      "process": {
+        "wall": 0.3285999899962917,
+        "user": 0.19056599999999999,
+        "system": 0.129743,
+        "maxrss_kib": 182116,
+        "exit": 0
+      },
+      "reuse": {
+        "html_files": 14,
+        "reused_html_inodes": 8
+      }
+    },
+    {
+      "label": "baseline-small-w4-warm-4",
+      "variant": "baseline",
+      "corpus": "small",
+      "workers": 4,
+      "cache": "warm",
+      "repetition": 4,
+      "ingestion_cache": "existing store",
+      "metrics": {
+        "allocated_bytes": 244135192,
+        "allocations": 206466,
+        "bytes": 25991825,
+        "export_seconds": 0.22989502,
+        "files": 125,
+        "ingestion_seconds": 0.044838608,
+        "verify_seconds": 0.112606386,
+        "workers": 4
+      },
+      "process": {
+        "wall": 0.5033147559734061,
+        "user": 0.276827,
+        "system": 0.21309999999999998,
+        "maxrss_kib": 190824,
+        "exit": 0
+      },
+      "reuse": {
+        "html_files": 14,
+        "reused_html_inodes": 8
+      }
+    },
+    {
+      "label": "final-full-w4-cold-1",
+      "variant": "final",
+      "corpus": "full",
+      "workers": 4,
+      "cache": "cold",
+      "repetition": 1,
+      "ingestion_cache": "existing store",
+      "metrics": {
+        "allocated_bytes": 1493149899872,
+        "allocations": 10564523442,
+        "bytes": 664003841,
+        "export_seconds": 678.680660579,
+        "files": 77391,
+        "ingestion_seconds": 93.645556065,
+        "verify_seconds": 10.968183086,
+        "workers": 4
+      },
+      "process": {
+        "wall": 783.9890812280064,
+        "user": 2007.623448,
+        "system": 171.441907,
+        "maxrss_kib": 557948,
+        "exit": 0
+      },
+      "reuse": {
+        "html_files": 37783,
+        "reused_html_inodes": 0
+      }
+    },
+    {
+      "label": "final-full-w4-warm-1",
+      "variant": "final",
+      "corpus": "full",
+      "workers": 4,
+      "cache": "warm",
+      "repetition": 1,
+      "ingestion_cache": "existing store",
+      "metrics": {
+        "allocated_bytes": 24851378760,
+        "allocations": 236826295,
+        "bytes": 664003841,
+        "export_seconds": 33.659474408,
+        "files": 77391,
+        "ingestion_seconds": 97.314983376,
+        "verify_seconds": 6.758796204,
+        "workers": 4
+      },
+      "process": {
+        "wall": 138.02047856498393,
+        "user": 143.803999,
+        "system": 23.363704,
+        "maxrss_kib": 557016,
+        "exit": 0
+      },
+      "reuse": null
+    },
+    {
+      "label": "final-small-w1-cold-3",
+      "variant": "final",
+      "corpus": "small",
+      "workers": 1,
+      "cache": "cold",
+      "repetition": 3,
+      "ingestion_cache": "existing store",
+      "metrics": {
+        "allocated_bytes": 215056792,
+        "allocations": 167484,
+        "bytes": 26007661,
+        "export_seconds": 0.253223058,
+        "files": 125,
+        "ingestion_seconds": 0.048386877,
+        "verify_seconds": 0.029917168,
+        "workers": 1
+      },
+      "process": {
+        "wall": 0.4225550869887229,
+        "user": 0.23069499999999998,
+        "system": 0.157378,
+        "maxrss_kib": 166284,
+        "exit": 0
+      },
+      "reuse": {
+        "html_files": 14,
+        "reused_html_inodes": 0
+      }
+    },
+    {
+      "label": "final-small-w1-cold-4",
+      "variant": "final",
+      "corpus": "small",
+      "workers": 1,
+      "cache": "cold",
+      "repetition": 4,
+      "ingestion_cache": "existing store",
+      "metrics": {
+        "allocated_bytes": 215039824,
+        "allocations": 167441,
+        "bytes": 26007661,
+        "export_seconds": 0.183472274,
+        "files": 125,
+        "ingestion_seconds": 0.081626236,
+        "verify_seconds": 0.028356281,
+        "workers": 1
+      },
+      "process": {
+        "wall": 0.3186895020189695,
+        "user": 0.16769099999999998,
+        "system": 0.11166799999999999,
+        "maxrss_kib": 194428,
+        "exit": 0
+      },
+      "reuse": {
+        "html_files": 14,
+        "reused_html_inodes": 0
+      }
+    },
+    {
+      "label": "final-small-w1-warm-3",
+      "variant": "final",
+      "corpus": "small",
+      "workers": 1,
+      "cache": "warm",
+      "repetition": 3,
+      "ingestion_cache": "existing store",
+      "metrics": {
+        "allocated_bytes": 244261744,
+        "allocations": 206458,
+        "bytes": 26007661,
+        "export_seconds": 0.193109392,
+        "files": 125,
+        "ingestion_seconds": 0.038328558,
+        "verify_seconds": 0.034145509,
+        "workers": 1
+      },
+      "process": {
+        "wall": 0.30473375401925296,
+        "user": 0.20288199999999998,
+        "system": 0.121502,
+        "maxrss_kib": 181248,
+        "exit": 0
+      },
+      "reuse": {
+        "html_files": 14,
+        "reused_html_inodes": 8
+      }
+    },
+    {
+      "label": "final-small-w1-warm-4",
+      "variant": "final",
+      "corpus": "small",
+      "workers": 1,
+      "cache": "warm",
+      "repetition": 4,
+      "ingestion_cache": "existing store",
+      "metrics": {
+        "allocated_bytes": 244259928,
+        "allocations": 206510,
+        "bytes": 26007661,
+        "export_seconds": 0.194006334,
+        "files": 125,
+        "ingestion_seconds": 0.038284601,
+        "verify_seconds": 0.031576889,
+        "workers": 1
+      },
+      "process": {
+        "wall": 0.2966217749926727,
+        "user": 0.202957,
+        "system": 0.125556,
+        "maxrss_kib": 183496,
+        "exit": 0
+      },
+      "reuse": {
+        "html_files": 14,
+        "reused_html_inodes": 8
+      }
+    },
+    {
+      "label": "final-small-w4-cold-3",
+      "variant": "final",
+      "corpus": "small",
+      "workers": 4,
+      "cache": "cold",
+      "repetition": 3,
+      "ingestion_cache": "existing store",
+      "metrics": {
+        "allocated_bytes": 215107592,
+        "allocations": 167546,
+        "bytes": 26007661,
+        "export_seconds": 0.243675771,
+        "files": 125,
+        "ingestion_seconds": 0.038880673,
+        "verify_seconds": 0.025644996,
+        "workers": 4
+      },
+      "process": {
+        "wall": 0.346393668995006,
+        "user": 0.192859,
+        "system": 0.125833,
+        "maxrss_kib": 180864,
+        "exit": 0
+      },
+      "reuse": {
+        "html_files": 14,
+        "reused_html_inodes": 0
+      }
+    },
+    {
+      "label": "final-small-w4-cold-4",
+      "variant": "final",
+      "corpus": "small",
+      "workers": 4,
+      "cache": "cold",
+      "repetition": 4,
+      "ingestion_cache": "existing store",
+      "metrics": {
+        "allocated_bytes": 215119784,
+        "allocations": 167577,
+        "bytes": 26007661,
+        "export_seconds": 0.188359311,
+        "files": 125,
+        "ingestion_seconds": 0.033559436,
+        "verify_seconds": 0.024557348,
+        "workers": 4
+      },
+      "process": {
+        "wall": 0.27709629299351946,
+        "user": 0.160307,
+        "system": 0.112776,
+        "maxrss_kib": 183432,
+        "exit": 0
+      },
+      "reuse": {
+        "html_files": 14,
+        "reused_html_inodes": 0
+      }
+    },
+    {
+      "label": "final-small-w4-warm-3",
+      "variant": "final",
+      "corpus": "small",
+      "workers": 4,
+      "cache": "warm",
+      "repetition": 3,
+      "ingestion_cache": "existing store",
+      "metrics": {
+        "allocated_bytes": 244269792,
+        "allocations": 206456,
+        "bytes": 26007661,
+        "export_seconds": 0.188456351,
+        "files": 125,
+        "ingestion_seconds": 0.040537227,
+        "verify_seconds": 0.024789178,
+        "workers": 4
+      },
+      "process": {
+        "wall": 0.28194358199834824,
+        "user": 0.195788,
+        "system": 0.11327899999999999,
+        "maxrss_kib": 182724,
+        "exit": 0
+      },
+      "reuse": {
+        "html_files": 14,
+        "reused_html_inodes": 8
+      }
+    },
+    {
+      "label": "final-small-w4-warm-4",
+      "variant": "final",
+      "corpus": "small",
+      "workers": 4,
+      "cache": "warm",
+      "repetition": 4,
+      "ingestion_cache": "existing store",
+      "metrics": {
+        "allocated_bytes": 244268648,
+        "allocations": 206510,
+        "bytes": 26007661,
+        "export_seconds": 0.235447629,
+        "files": 125,
+        "ingestion_seconds": 0.034654292,
+        "verify_seconds": 0.033123653,
+        "workers": 4
+      },
+      "process": {
+        "wall": 0.3326468750019558,
+        "user": 0.198738,
+        "system": 0.12036799999999999,
+        "maxrss_kib": 201996,
+        "exit": 0
+      },
+      "reuse": {
+        "html_files": 14,
+        "reused_html_inodes": 8
+      }
+    }
+  ]
+}

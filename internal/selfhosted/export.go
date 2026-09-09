@@ -24,6 +24,7 @@ import (
 	"github.com/araihu/manja/application/catalog"
 	artifact "github.com/araihu/manja/application/htmlartifact"
 	"github.com/araihu/manja/internal/adapters/catalogjson"
+	"github.com/araihu/manja/internal/adapters/schemacache"
 	"github.com/araihu/manja/internal/localdocs"
 	"github.com/araihu/manja/internal/web"
 	"github.com/araihu/manja/renderer"
@@ -40,6 +41,8 @@ type ExportOptions struct {
 	BasePath         string
 	SidebarChunkSize uint32
 	FragmentWorkers  uint32
+	// SchemaCacheBytes defaults to 128 MiB when nil; a pointer to zero disables retention.
+	SchemaCacheBytes *uint64
 }
 
 type ExportReceipt struct {
@@ -83,7 +86,11 @@ func ExportRenderer(ctx context.Context, options ExportOptions) (ExportReceipt, 
 	if workers > 32 {
 		return ExportReceipt{}, errors.New("fragment workers must be between 1 and 32")
 	}
-	return exportFromHandlerWithProfile(ctx, handler, receipts, options.Output, options.BasePath, artifact.BuildProfile{SidebarChunkSize: options.SidebarChunkSize}, workers)
+	budget := uint64(128 << 20)
+	if options.SchemaCacheBytes != nil {
+		budget = *options.SchemaCacheBytes
+	}
+	return exportFromHandlerWithCache(ctx, handler, receipts, options.Output, options.BasePath, artifact.BuildProfile{SidebarChunkSize: options.SidebarChunkSize}, workers, schemacache.New(budget))
 }
 
 func exportFromHandler(ctx context.Context, handler http.Handler, receipts []renderer.ActivationReceipt, output, basePath string) (receipt ExportReceipt, err error) {
@@ -91,6 +98,10 @@ func exportFromHandler(ctx context.Context, handler http.Handler, receipts []ren
 }
 
 func exportFromHandlerWithProfile(ctx context.Context, handler http.Handler, receipts []renderer.ActivationReceipt, output, basePath string, profile artifact.BuildProfile, fragmentWorkers uint32) (receipt ExportReceipt, err error) {
+	return exportFromHandlerWithCache(ctx, handler, receipts, output, basePath, profile, fragmentWorkers, schemacache.New(128<<20))
+}
+
+func exportFromHandlerWithCache(ctx context.Context, handler http.Handler, receipts []renderer.ActivationReceipt, output, basePath string, profile artifact.BuildProfile, fragmentWorkers uint32, schemaCache *schemacache.Cache) (receipt ExportReceipt, err error) {
 	output, err = filepath.Abs(output)
 	if err != nil {
 		return ExportReceipt{}, fmt.Errorf("resolve output: %w", err)
@@ -120,7 +131,7 @@ func exportFromHandlerWithProfile(ctx context.Context, handler http.Handler, rec
 	if err = captureShell(ctx, handler, &writer, "/", "index.html"); err != nil {
 		return ExportReceipt{}, err
 	}
-	for _, assetPath := range web.CatalogAssetPaths() {
+	for _, assetPath := range staticExportAssetPaths() {
 		if err = captureResource(ctx, handler, &writer, assetPath, strings.TrimPrefix(assetPath, "/"), 0, ""); err != nil {
 			return ExportReceipt{}, err
 		}
@@ -137,7 +148,7 @@ func exportFromHandlerWithProfile(ctx context.Context, handler http.Handler, rec
 	searchCatalogs := make([]deploymentSearchCatalogV1, 0, len(receipts))
 	rootCatalog := false
 	for _, active := range receipts {
-		catalogReceipt, searchCatalog, captureErr := captureCatalog(ctx, handler, &writer, active, basePath, cacheRoot, profile.Resolved(), fragmentWorkers)
+		catalogReceipt, searchCatalog, captureErr := captureCatalog(ctx, handler, &writer, active, basePath, cacheRoot, profile.Resolved(), fragmentWorkers, schemaCache)
 		if captureErr != nil {
 			return ExportReceipt{}, captureErr
 		}
@@ -185,7 +196,7 @@ func exportFromHandlerWithProfile(ctx context.Context, handler http.Handler, rec
 	if err = writer.write(exportIdentityPath, identityBytes, "application/json"); err != nil {
 		return ExportReceipt{}, err
 	}
-	manifest := exportManifest{SchemaVersion: 1, BasePath: basePath, Catalogs: catalogReceipts, Files: writer.sortedEntries()}
+	manifest := exportManifest{SchemaVersion: 1, Rendering: "html", BasePath: basePath, Catalogs: catalogReceipts, Files: writer.sortedEntries()}
 	manifestBytes, err := encodeExportManifest(manifest)
 	if err != nil {
 		return ExportReceipt{}, err
@@ -216,7 +227,7 @@ type capturedHTTP struct {
 	mediaType string
 }
 
-func captureCatalog(ctx context.Context, handler http.Handler, writer *exportTreeWriter, active renderer.ActivationReceipt, basePath, cacheRoot string, profile artifact.BuildProfile, fragmentWorkers uint32) (ExportCatalogReceipt, deploymentSearchCatalogV1, error) {
+func captureCatalog(ctx context.Context, handler http.Handler, writer *exportTreeWriter, active renderer.ActivationReceipt, basePath, cacheRoot string, profile artifact.BuildProfile, fragmentWorkers uint32, schemaCache *schemacache.Cache) (ExportCatalogReceipt, deploymentSearchCatalogV1, error) {
 	mountPrefix := strings.Trim(active.Mount, "/")
 	shellPath := path.Join(mountPrefix, "index.html")
 	if shellPath == "." {
@@ -277,7 +288,7 @@ func captureCatalog(ctx context.Context, handler http.Handler, writer *exportTre
 		return ExportCatalogReceipt{}, deploymentSearchCatalogV1{}, err
 	}
 	for _, child := range manifest.Children {
-		if child.Path == "catalog.json" {
+		if child.Path == "catalog.json" || child.Kind == "detail" || child.Kind == "schema-node" {
 			continue
 		}
 		requestPath, outputPath, ok := exportedChildPath(active, directory, child)
@@ -296,9 +307,17 @@ func captureCatalog(ctx context.Context, handler http.Handler, writer *exportTre
 	if !ok {
 		return ExportCatalogReceipt{}, deploymentSearchCatalogV1{}, fmt.Errorf("catalog %q static descriptor is invalid", active.CatalogID)
 	}
-	if err := emitCatalogHTMLFragments(ctx, writer, active, descriptor, manifest, manifestCapture.body, catalogCapture.body, directory, cacheRoot, profile, fragmentWorkers); err != nil {
+
+	inputs, err := os.MkdirTemp(filepath.Dir(writer.root), ".manja-export-inputs-")
+	if err != nil {
+		return ExportCatalogReceipt{}, deploymentSearchCatalogV1{}, err
+	}
+	defer os.RemoveAll(inputs)
+	loader := newExportProjectionLoader(ctx, handler, active, manifest, directory, inputs)
+	if err := emitCatalogHTMLFragments(ctx, writer, active, descriptor, manifest, manifestCapture.body, catalogCapture.body, directory, cacheRoot, profile, fragmentWorkers, schemaCache, loader); err != nil {
 		return ExportCatalogReceipt{}, deploymentSearchCatalogV1{}, fmt.Errorf("catalog %q HTML fragments: %w", active.CatalogID, err)
 	}
+	descriptor.Static.HTMLOnly = true
 	htmlContext := &exportHTMLCatalog{Mount: active.Mount, SnapshotID: active.SnapshotID, Directory: directory, Descriptor: descriptor}
 	htmlPaths := []string{shellPath, path.Join(mountPrefix, "search/index.html"), path.Join(mountPrefix, "_manja/offline-shell/index.html")}
 	for _, document := range directory.Documents {
@@ -709,4 +728,15 @@ func canonicalExportBasePath(value string) error {
 		return errors.New("base path must not contain duplicate slashes or dot segments")
 	}
 	return nil
+}
+
+func staticExportAssetPaths() []string {
+	var result []string
+	for _, name := range web.CatalogAssetPaths() {
+		if strings.HasSuffix(name, "/manja.wasm") || strings.HasSuffix(name, "/manja.wasm.br") || strings.HasSuffix(name, "/wasm_exec.js") {
+			continue
+		}
+		result = append(result, name)
+	}
+	return result
 }

@@ -58,7 +58,8 @@ start the Manja documentation server. These preview instructions assume
 
 The export and verify commands write JSON receipts to stdout. Verification reads only the
 export directory. It checks the canonical receipt, exact file set, hashes,
-required runtime and catalog artifacts, descriptors, and internal links.
+required browser and catalog artifacts, descriptors, internal links, and the
+complete graph of prebuilt HTML fragments and integrity sidecars.
 Store redirected command output outside `public`, since extra files invalidate
 the export's file inventory.
 
@@ -83,8 +84,9 @@ matches in that spec receive a ranking boost; results from other catalogs
 remain available. Search results navigate to document detail URLs. Search
 indexes are fetched by the browser as needed, without a backend search service.
 
-JavaScript is required for interactive navigation and search. Wasm and
-projection data remain included for browser-rendered fallback paths. Static
+JavaScript is required for interactive navigation and search. Static exports load
+verified HTML for operations, lazy trees, sidebar groups and deep schema-node links.
+Projection JSON, WASM and its loader are not published. Static
 hosting does not mean the entire site is downloaded on the first visit:
 offline availability depends on which files have been cached and on browser
 storage. An uncached fragment or search shard still requires network access.
@@ -190,6 +192,19 @@ Source compilation, catalog preparation, and output verification still need
 resources. See [resource limits](../README.md#resource-limits) for
 `MANJA_RESOURCE_LIMITS` and [environment variables](environment.md).
 
+## Build memory and concurrency
+
+Export uses four fragment workers by default; set `--fragment-workers` to a value
+from 1 to 32 to override it. Workers share a decoded schema cache with a default
+budget of 128 MiB. Set `--schema-cache-mib 256` for a larger cache, or
+`--schema-cache-mib 0` to disable shared retention.
+
+The cache budget accounts for estimated decoded storage and bookkeeping, rather
+than limiting total process memory. Active rendering, source compilation, and
+verification also consume memory. Loaded schema files remain hash-verified even
+when their decoded contents are cached. The cache is used during export and does
+not change the deployed site's browser cache or search behavior.
+
 ## URL prefixes
 
 Use the final URL prefix, including its trailing slash:
@@ -222,7 +237,6 @@ identifiers in document links, including `?selected=...#...` deep links.
 The host must:
 
 - serve directory requests from their `index.html`;
-- serve `.wasm` as `application/wasm`;
 - serve JavaScript, JSON, and CSS with their correct MIME types;
 - allow `sw.js` to control the configured base path;
 - serve the generated files without rewriting them to Manja or another API.
@@ -266,3 +280,22 @@ small fragments and sidecars consume more filesystem blocks than their payload
 size; a compressed CI archive is smaller again. Provider quotas may measure
 these differently. Check the hosting provider's current limits before
 publishing large catalog collections.
+
+## HTML-only publication
+
+The bundle includes JavaScript, the Service Worker, prebuilt HTML and integrity
+sidecars, search indexes, and OpenAPI source downloads. Operation navigation,
+lazy schema trees, sidebar groups, and deep schema-node links load verified HTML.
+Shared schema-node panels are emitted once per document and combined with the
+selected schema's HTML in the browser. Visited content remains available offline.
+
+Projection JSON shards, the WASM renderer, and its JavaScript loader are build or
+browser-rendered deployment inputs; static exports do not publish them. Snapshot
+manifests and catalog directories remain as provenance and verification metadata.
+Their source-child inventory describes the compiled snapshot, while the export
+receipt inventories the files actually published. Search retains its own index
+files and does not depend on projection shards.
+
+New export receipts declare `rendering: "html"`. Verification also accepts older
+exports, which can be used as warm-build inputs; the build identity invalidates
+HTML produced by a different executable.

@@ -93,7 +93,7 @@
     }
 	if (descriptor.static !== undefined) {
 	  var staticValue = descriptor.static;
-	  if (!staticValue || typeof staticValue !== "object" || !validBase(staticValue.deploymentBase) || descriptor.publicationBase.indexOf(staticValue.deploymentBase) !== 0 || staticValue.workerUrl !== staticValue.deploymentBase + "sw.js" || staticValue.workerScope !== staticValue.deploymentBase || staticValue.offlineShellUrl !== descriptor.publicationBase + "_manja/offline-shell/" || staticValue.exportManifestUrl !== staticValue.deploymentBase + "_manja/export.json") {
+	  if (!staticValue || typeof staticValue !== "object" || staticValue.htmlOnly !== undefined && typeof staticValue.htmlOnly !== "boolean" || !validBase(staticValue.deploymentBase) || descriptor.publicationBase.indexOf(staticValue.deploymentBase) !== 0 || staticValue.workerUrl !== staticValue.deploymentBase + "sw.js" || staticValue.workerScope !== staticValue.deploymentBase || staticValue.offlineShellUrl !== descriptor.publicationBase + "_manja/offline-shell/" || staticValue.exportManifestUrl !== staticValue.deploymentBase + "_manja/export.json") {
 		fail("descriptor static routes are invalid");
 	  }
 	  [staticValue.workerUrl, staticValue.workerScope, staticValue.offlineShellUrl, staticValue.exportManifestUrl].forEach(function (route) {
@@ -723,8 +723,35 @@
   }
 
   function readStaticHTMLFragment(descriptor, cache, route) {
-	return readStaticHTMLFragmentKind(descriptor, cache, route, "operation").catch(function (operationError) {
+	var root = readStaticHTMLFragmentKind(descriptor, cache, route, "operation").catch(function (operationError) {
 	  return readStaticHTMLFragmentKind(descriptor, cache, route, "schema").catch(function () { throw operationError; });
+	});
+	if (!descriptor.static.htmlOnly || route.node === undefined) return root;
+	var panelRoute = Object.assign({}, route, { selected: "node-" + route.node });
+	return Promise.all([root, readStaticHTMLFragmentKind(descriptor, cache, panelRoute, "schema")]).then(function (values) {
+	  var result = values[0];
+	  if (typeof global.DOMParser !== "function") fail("static schema panel parser unavailable");
+	  var parser = new global.DOMParser();
+	  var document = parser.parseFromString(result.mainHtml, "text/html");
+	  var replacement = parser.parseFromString(values[1].mainHtml, "text/html").querySelector("#schema-node-panel");
+	  var current = document.querySelector("#schema-node-panel");
+	  if (!current || !replacement || replacement.getAttribute("data-manja-schema-node") !== String(route.node)) fail("static schema panel differs");
+	  var heading = replacement.querySelector("[data-catalog-schema-node-focus]");
+	  if (heading && heading.textContent.trim() === result.title.trim()) {
+	    var header = heading.parentElement.parentElement;
+	    var description = header.nextElementSibling;
+	    if (description && (description.tagName === "P" || description.classList.contains("gs-schema-tree-description"))) description.remove();
+	    header.remove();
+	  }
+	  replacement.querySelectorAll("a[data-catalog-schema-reference]").forEach(function (link) {
+	    var target = new URL(link.getAttribute("href"), global.location.href);
+	    target.searchParams.set("selected", route.selected);
+	    link.setAttribute("href", target.pathname + target.search + target.hash);
+	  });
+	  current.replaceWith(replacement);
+	  result.mainHtml = document.body.innerHTML;
+	  result.canonical = staticRouteCanonical(descriptor, route);
+	  return result;
 	});
   }
 
@@ -1347,6 +1374,7 @@
 		return readExportIdentity(descriptor, cache).then(function () {
 		  var compatibility = null;
 		  function loadCompatibility() {
+		    if (descriptor.static.htmlOnly) fail("static export requires prebuilt HTML");
 			if (compatibility) return compatibility;
 			compatibility = Promise.all([loadABI(staticOptions), readManifest(sameOriginPath(descriptor.projectionManifestUrl), descriptor, cache)]).then(function (values) {
 			  var abi = values[0];

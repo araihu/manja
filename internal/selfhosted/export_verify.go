@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	artifact "github.com/araihu/manja/application/htmlartifact"
 	"github.com/araihu/manja/internal/adapters/catalogjson"
 	"github.com/araihu/manja/internal/localdocs"
 	"github.com/araihu/manja/internal/web"
@@ -35,12 +36,17 @@ func verifyExportStructure(root string, manifest exportManifest, declared map[st
 		}
 		return nil
 	}
-	for _, name := range append([]string{"index.html", "search/index.html", "sw.js"}, trimExportAssetPaths(web.CatalogAssetPaths())...) {
+	assets := web.CatalogAssetPaths()
+	if manifest.Rendering == "html" {
+		assets = staticExportAssetPaths()
+	}
+	for _, name := range append([]string{"index.html", "search/index.html", "sw.js"}, trimExportAssetPaths(assets)...) {
 		if err := require(name); err != nil {
 			return err
 		}
 	}
 
+	fragments := &exportFragmentVerifier{root: root, declared: declared, documents: make(map[string]exportDocumentContext), verified: make(map[string]artifact.FragmentIdentity)}
 	previousCatalog := ""
 	for _, receipt := range manifest.Catalogs {
 		if receipt.CatalogID == "" || receipt.CatalogID <= previousCatalog || receipt.PublicationKey != receipt.CatalogID || receipt.RevisionID == "" || receipt.SnapshotID == "" {
@@ -73,8 +79,28 @@ func verifyExportStructure(root string, manifest exportManifest, declared map[st
 		if err != nil || directory.CatalogID != receipt.CatalogID || catalogjson.ValidateCatalogManifest(directory, snapshot) != nil {
 			return fmt.Errorf("catalog %q export directory differs", receipt.CatalogID)
 		}
+
 		for _, document := range directory.Documents {
 			shells = append(shells, exportJoin(prefix, "documents", document.Key, "index.html"))
+			if manifest.Rendering == "html" {
+				context := exportDocumentContext{mount: receipt.Mount, key: document.Key}
+				fragments.documents[exportJoin(prefix, "documents", document.Key)+"/"] = context
+				for _, collection := range []string{"operations", "schemas"} {
+					if err := fragments.require(context, artifact.FragmentSidebar, document.Key+":"+collection+":0"); err != nil {
+						return err
+					}
+				}
+				for _, op := range document.Operations {
+					if err := fragments.require(context, artifact.FragmentOperation, string(op.DetailID)); err != nil {
+						return err
+					}
+				}
+				for _, schema := range document.Schemas {
+					if err := fragments.require(context, artifact.FragmentSchema, string(schema.DetailID)); err != nil {
+						return err
+					}
+				}
+			}
 		}
 		for _, shell := range shells {
 			if err := require(shell); err != nil {
@@ -87,13 +113,16 @@ func verifyExportStructure(root string, manifest exportManifest, declared map[st
 			if descriptor == nil || descriptor.CatalogID != receipt.CatalogID || descriptor.PublicationKey != receipt.CatalogID || descriptor.RevisionID != receipt.RevisionID || descriptor.SnapshotID != receipt.SnapshotID {
 				return fmt.Errorf("catalog %q shell descriptor differs", receipt.CatalogID)
 			}
+			if descriptor.Static == nil || descriptor.Static.HTMLOnly != (manifest.Rendering == "html") {
+				return fmt.Errorf("catalog %q rendering mode differs", receipt.CatalogID)
+			}
 			if _, err := localdocs.Admit(*descriptor, manifestBytes); err != nil {
 				return fmt.Errorf("catalog %q shell descriptor: %w", receipt.CatalogID, err)
 			}
 		}
 		active := renderer.ActivationReceipt{CatalogID: receipt.CatalogID, Mount: receipt.Mount, RevisionID: receipt.RevisionID, SnapshotID: receipt.SnapshotID}
 		for _, child := range snapshot.Children {
-			if child.Path == "catalog.json" {
+			if child.Path == "catalog.json" || manifest.Rendering == "html" && (child.Kind == "detail" || child.Kind == "schema-node") {
 				continue
 			}
 			_, output, ok := exportedChildPath(active, directory, child)
@@ -110,14 +139,21 @@ func verifyExportStructure(root string, manifest exportManifest, declared map[st
 		if entry.MediaType != "text/html" {
 			continue
 		}
-		if _, err := verifyExportHTML(root, name, manifest.BasePath, declared); err != nil {
+		var inspect []func(*html.Node) error
+		if manifest.Rendering == "html" {
+			if err := fragments.verifyPath(name); err != nil {
+				return err
+			}
+			inspect = append(inspect, fragments.inspect(name))
+		}
+		if _, err := verifyExportHTML(root, name, manifest.BasePath, declared, inspect...); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func verifyExportHTML(root, name, basePath string, declared map[string]exportFileEntry) (*localdocs.DescriptorV1, error) {
+func verifyExportHTML(root, name, basePath string, declared map[string]exportFileEntry, inspections ...func(*html.Node) error) (*localdocs.DescriptorV1, error) {
 	data, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(name)))
 	if err != nil {
 		return nil, err
@@ -131,6 +167,11 @@ func verifyExportHTML(root, name, basePath string, declared map[string]exportFil
 	if err := walkExportHTML(document, func(node *html.Node) error {
 		if node.Type != html.ElementNode {
 			return nil
+		}
+		for _, inspect := range inspections {
+			if err := inspect(node); err != nil {
+				return err
+			}
 		}
 		if node.Data == "script" && hasHTMLAttribute(node, "id", "manja-local-docs-descriptor") {
 			if descriptor != nil || node.FirstChild == nil || node.FirstChild != node.LastChild || node.FirstChild.Type != html.TextNode {
@@ -176,6 +217,11 @@ func verifyExportHTML(root, name, basePath string, declared map[string]exportFil
 		return nil
 	}); err != nil {
 		return nil, err
+	}
+	for _, inspect := range inspections {
+		if err := inspect(nil); err != nil {
+			return nil, err
+		}
 	}
 	return descriptor, nil
 }

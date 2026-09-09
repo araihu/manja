@@ -16,6 +16,7 @@ import (
 )
 
 type exportManifest struct {
+	Rendering     string                 `json:"rendering,omitempty"`
 	SchemaVersion uint32                 `json:"schemaVersion"`
 	BasePath      string                 `json:"basePath"`
 	Catalogs      []ExportCatalogReceipt `json:"catalogs"`
@@ -76,7 +77,7 @@ func VerifyExport(ctx context.Context, output string) (ExportReceipt, error) {
 	if err != nil || !bytes.Equal(data, canonical) {
 		return ExportReceipt{}, errors.New("export manifest is not canonical")
 	}
-	if manifest.SchemaVersion != 1 || canonicalExportBasePath(manifest.BasePath) != nil {
+	if manifest.SchemaVersion != 1 || canonicalExportBasePath(manifest.BasePath) != nil || manifest.Rendering != "" && manifest.Rendering != "html" {
 		return ExportReceipt{}, errors.New("export manifest identity is invalid")
 	}
 	declared := make(map[string]exportFileEntry, len(manifest.Files)+1)

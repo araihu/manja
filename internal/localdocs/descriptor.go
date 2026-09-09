@@ -28,6 +28,7 @@ type DescriptorV1 struct {
 }
 
 type StaticDescriptorV1 struct {
+	HTMLOnly          bool   `json:"htmlOnly,omitempty"`
 	DeploymentBase    string `json:"deploymentBase"`
 	WorkerURL         string `json:"workerUrl"`
 	WorkerScope       string `json:"workerScope"`

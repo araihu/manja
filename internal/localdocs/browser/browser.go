@@ -23,14 +23,33 @@ import (
 	localrender "github.com/araihu/manja/internal/localdocs/render"
 )
 
+type browserSchemaShard struct {
+	path     string
+	document string
+	shard    localdocs.PreparedSchemaNodeShard
+}
+
+// SchemaCache stores immutable, fully verified shards. Implementations must be
+// safe for concurrent workers and bound retained decoded memory.
+type SchemaCache interface {
+	Get(key string) (localdocs.PreparedSchemaNodeShard, bool)
+	Add(key string, shard localdocs.PreparedSchemaNodeShard)
+}
+
+// SetSchemaCache configures optional shared decoded reuse before workers fork.
+// Raw children are still admitted on every route before consulting this cache.
+func (browser *Browser) SetSchemaCache(cache SchemaCache) { browser.sharedSchemas = cache }
+
 type Browser struct {
-	descriptor localdocs.DescriptorV1
-	activation localdocs.Activation
-	manifest   catalog.ManifestV1
-	directory  catalog.CatalogArtifactV1
-	children   map[string][]byte
-	search     *catalog.SearchService
-	loader     func(string) ([]byte, error)
+	descriptor    localdocs.DescriptorV1
+	activation    localdocs.Activation
+	manifest      catalog.ManifestV1
+	directory     catalog.CatalogArtifactV1
+	children      map[string][]byte
+	search        *catalog.SearchService
+	loader        func(string) ([]byte, error)
+	schemaShard   *browserSchemaShard
+	sharedSchemas SchemaCache
 }
 
 type Route struct {
@@ -103,12 +122,13 @@ func (browser *Browser) ForkWithLoader(loader func(string) ([]byte, error)) (*Br
 		return nil, errors.New("local docs browser fork is not configured")
 	}
 	return &Browser{
-		descriptor: browser.descriptor,
-		activation: browser.activation,
-		manifest:   browser.manifest,
-		directory:  browser.directory,
-		children:   make(map[string][]byte),
-		loader:     loader,
+		descriptor:    browser.descriptor,
+		activation:    browser.activation,
+		manifest:      browser.manifest,
+		directory:     browser.directory,
+		children:      make(map[string][]byte),
+		loader:        loader,
+		sharedSchemas: browser.sharedSchemas,
 	}, nil
 }
 
@@ -119,6 +139,7 @@ func (browser *Browser) ReleaseChildren() {
 		return
 	}
 	browser.children = make(map[string][]byte)
+	browser.schemaShard = nil
 	browser.search = nil
 }
 
@@ -218,6 +239,16 @@ func (browser *Browser) prepareSearch() error {
 }
 
 func (browser *Browser) Render(ctx context.Context, route Route) (Page, error) {
+	return browser.render(ctx, route, true)
+}
+
+// RenderMain renders route content, title and canonical URL without generating
+// navigation HTML. Static detail exports publish their sidebar separately.
+func (browser *Browser) RenderMain(ctx context.Context, route Route) (Page, error) {
+	return browser.render(ctx, route, false)
+}
+
+func (browser *Browser) render(ctx context.Context, route Route, includeSidebar bool) (Page, error) {
 	if browser == nil {
 		return Page{}, errors.New("local docs browser is not prepared")
 	}
@@ -226,11 +257,15 @@ func (browser *Browser) Render(ctx context.Context, route Route) (Page, error) {
 		return Page{}, errors.New("local docs document is missing")
 	}
 	documentHref := browser.descriptor.PublicationBase + "documents/" + document.Key + "/"
-	sidebar, err := browser.renderSidebar(ctx, document, route)
-	if err != nil {
-		return Page{}, err
+	var sidebar string
+	if includeSidebar {
+		var err error
+		sidebar, err = browser.renderSidebar(ctx, document, route)
+		if err != nil {
+			return Page{}, err
+		}
+		sidebar = browser.deploymentHTML(sidebar)
 	}
-	sidebar = browser.deploymentHTML(sidebar)
 	if route.Selected == "" {
 		main, err := browser.renderDocument(ctx, document, documentHref)
 		return Page{MainHTML: browser.deploymentHTML(main), SidebarHTML: sidebar, Title: browserDocumentTitle(document), Canonical: browserCanonical(documentHref, route, "")}, err
@@ -633,7 +668,33 @@ func (browser *Browser) schemaNode(document catalog.DocumentDirectoryV1, ordinal
 	if err != nil {
 		return projection.SchemaNode{}, err
 	}
-	return browser.activation.SelectSchemaNode(reference.Path, document.Key, ordinal, data)
+	if browser.sharedSchemas != nil {
+		// Prepare verifies this reference against the manifest; ensureChild
+		// verifies loaded bytes before every route can consult the cache.
+		key := document.Key + "\x00" + reference.SHA256
+		shard, ok := browser.sharedSchemas.Get(key)
+		if !ok {
+			shard, err = browser.activation.PrepareSchemaNodeShard(reference.Path, document.Key, data)
+			if err != nil {
+				return projection.SchemaNode{}, err
+			}
+			browser.sharedSchemas.Add(key, shard)
+		}
+		return shard.Select(ordinal)
+	}
+	// Children are privately copied at admission and cannot be replaced with
+	// different bytes. Cache only the last fully validated shard, independently
+	// in each browser; ReleaseChildren also drops this decoded state.
+	cached := browser.schemaShard
+	if cached == nil || cached.path != reference.Path || cached.document != document.Key {
+		shard, err := browser.activation.PrepareSchemaNodeShard(reference.Path, document.Key, data)
+		if err != nil {
+			return projection.SchemaNode{}, err
+		}
+		cached = &browserSchemaShard{path: reference.Path, document: document.Key, shard: shard}
+		browser.schemaShard = cached
+	}
+	return cached.shard.Select(ordinal)
 }
 
 func (browser *Browser) document(key string) (catalog.DocumentDirectoryV1, bool) {
@@ -848,4 +909,40 @@ func browserPlainText(value string) string {
 		}
 	}
 	return strings.TrimSpace(html.UnescapeString(output.String()))
+}
+
+// RenderSchemaNodePanel renders a shared node panel without a schema's header or
+// example. Static navigation binds its reference links to the selected schema.
+func (browser *Browser) RenderSchemaNodePanel(ctx context.Context, documentKey string, ordinal uint32) ([]byte, error) {
+	document, ok := browser.document(documentKey)
+	if !ok {
+		return nil, errors.New("schema panel document is missing")
+	}
+	node, err := browser.schemaNode(document, ordinal)
+	if err != nil {
+		return nil, err
+	}
+	seen := map[projection.SchemaRef]bool{projection.SchemaRef(ordinal): true}
+	var references []projection.SchemaNode
+	for _, ref := range browserNodeReferences(node) {
+		if seen[ref] {
+			continue
+		}
+		seen[ref] = true
+		child, err := browser.schemaNode(document, uint32(ref))
+		if err != nil {
+			return nil, err
+		}
+		references = append(references, child)
+	}
+	id := domain.DetailID("detail-sha256-" + strings.Repeat("0", 64))
+	detail := catalog.DetailRecordV1{ID: id, Kind: "schema", Schema: &projection.SchemaDetail{
+		ID: string(id), Anchor: string(id), HeadingID: string(id), HeadingLevel: 3,
+		Heading: node.Name + " (shared panel)", Href: "documents/" + documentKey + "/?selected=" + string(id) + "#" + string(id),
+	}}
+	fragment, err := localrender.PrepareSchemaNode(detail, node, references, browser.descriptor.PublicationBase+"documents/"+documentKey+"/")
+	if err != nil {
+		return nil, err
+	}
+	return fragment.Bytes(ctx)
 }

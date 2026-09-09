@@ -215,6 +215,45 @@ catalogs:
 	if !os.SameFile(lazySchemaInfoBefore, lazySchemaInfoAfter) {
 		t.Fatal("incremental export copied an unchanged lazy schema instead of linking the verified cache hit")
 	}
+
+	// A document-level dependency must invalidate even an unchanged detail child.
+	specPath := filepath.Join(root, "private.json")
+	source, err := os.ReadFile(specPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	source = []byte(strings.Replace(string(source), `"title":"Private API"`, `"title":"Updated API"`, 1))
+	if err := os.WriteFile(specPath, source, 0600); err != nil {
+		t.Fatal(err)
+	}
+	options := ExportOptions{RendererOptions: RendererOptions{ConfigPath: configPath}, Output: output, BasePath: "/"}
+	if _, err := ExportRenderer(context.Background(), options); err != nil {
+		t.Fatal(err)
+	}
+	changedSidecar, err := os.ReadFile(filepath.Join(output, filepath.FromSlash(sidecarPath)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(changedSidecar) == string(sidecarBefore) {
+		t.Fatal("document title change reused the old fragment identity")
+	}
+	changedFragment, err := os.ReadFile(filepath.Join(output, filepath.FromSlash(fragmentPath)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	options.Output = filepath.Join(root, "fresh-changed")
+	if _, err := ExportRenderer(context.Background(), options); err != nil {
+		t.Fatal(err)
+	}
+	freshFragment, err := os.ReadFile(filepath.Join(options.Output, filepath.FromSlash(fragmentPath)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(changedFragment) != string(freshFragment) {
+		t.Fatal("invalidated warm fragment differs from fresh export")
+	}
+	assertHTMLOnlyBundle(t, output)
+	assertMissingHTMLDependenciesRejected(t, output, fragmentPath, lazySchemaPath, sidebarPath, groupPath)
 }
 
 func TestExportRendererRewritesSubpathDeployment(t *testing.T) {
@@ -311,11 +350,11 @@ func TestStaticExportCapturesAndVerifiesCatalogAboveRuntimeByteLimit(t *testing.
 	root := t.TempDir()
 	writer := exportTreeWriter{root: root, entries: make(map[string]exportFileEntry)}
 	writeMinimalExport(t, &writer, []byte("<!doctype html><html><body></body></html>"))
-	receipt, _, err := captureCatalog(context.Background(), handler, &writer, active, "/", "", artifact.BuildProfile{}.Resolved(), 4)
+	receipt, _, err := captureCatalog(context.Background(), handler, &writer, active, "/", "", artifact.BuildProfile{}.Resolved(), 4, nil)
 	if err != nil {
 		t.Fatalf("captureCatalog rejected catalog above runtime byte limit: %v", err)
 	}
-	manifest := exportManifest{SchemaVersion: 1, BasePath: "/", Catalogs: []ExportCatalogReceipt{receipt}, Files: writer.sortedEntries()}
+	manifest := exportManifest{SchemaVersion: 1, Rendering: "html", BasePath: "/", Catalogs: []ExportCatalogReceipt{receipt}, Files: writer.sortedEntries()}
 	if err := verifyExportStructure(root, manifest, writer.entries); err != nil {
 		t.Fatalf("verifyExportStructure rejected catalog above runtime byte limit: %v", err)
 	}
@@ -397,5 +436,101 @@ func TestExportCaptureReportsNonOKBody(t *testing.T) {
 		!strings.Contains(err.Error(), "status 503") ||
 		!strings.Contains(err.Error(), "catalog temporarily unavailable: overview metrics limit") {
 		t.Fatalf("captureHTTP error = %v", err)
+	}
+}
+
+func assertHTMLOnlyBundle(t *testing.T, output string) {
+	t.Helper()
+	err := filepath.WalkDir(output, func(p string, d os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() {
+			return nil
+		}
+		if strings.Contains(filepath.ToSlash(p), "/projection-data/") || strings.HasSuffix(p, ".wasm") || strings.HasSuffix(p, ".wasm.br") || strings.HasSuffix(p, "wasm_exec.js") {
+			t.Errorf("HTML-only export retained rendering input %s", p)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+func assertMissingHTMLDependenciesRejected(t *testing.T, output string, paths ...string) {
+	t.Helper()
+	manifestPath := filepath.Join(output, exportManifestPath)
+	original, err := os.ReadFile(manifestPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var inventory exportManifest
+	if err = json.Unmarshal(original, &inventory); err != nil {
+		t.Fatal(err)
+	}
+	expectedPaths := len(paths) + 1
+	for _, entry := range inventory.Files {
+		if !strings.HasSuffix(entry.Path, ".html.meta.json") {
+			continue
+		}
+		data, err := os.ReadFile(filepath.Join(output, filepath.FromSlash(entry.Path)))
+		if err != nil {
+			t.Fatal(err)
+		}
+		var sidecar artifact.Manifest
+		if err = json.Unmarshal(data, &sidecar); err != nil {
+			t.Fatal(err)
+		}
+		if strings.HasPrefix(sidecar.Fragment.Resource, "node-") {
+			paths = append(paths, strings.TrimSuffix(entry.Path, ".meta.json"))
+			break
+		}
+	}
+	if len(paths) != expectedPaths {
+		t.Fatal("fixture did not emit a node panel")
+	}
+	for _, missing := range paths {
+		t.Run("missing-dependency-"+filepath.Base(missing), func(t *testing.T) {
+			var manifest exportManifest
+			if err := json.Unmarshal(original, &manifest); err != nil {
+				t.Fatal(err)
+			}
+			remaining := make([]exportFileEntry, 0, len(manifest.Files))
+			for _, e := range manifest.Files {
+				if e.Path != missing && e.Path != missing+".meta.json" {
+					remaining = append(remaining, e)
+				}
+			}
+			manifest.Files = remaining
+			saved := t.TempDir()
+			for _, name := range []string{missing, missing + ".meta.json"} {
+				source := filepath.Join(output, filepath.FromSlash(name))
+				backup := filepath.Join(saved, filepath.Base(name))
+				if err := os.Rename(source, backup); err != nil {
+					t.Fatal(err)
+				}
+				t.Cleanup(func() {
+					if err := os.Rename(backup, source); err != nil {
+						t.Error(err)
+					}
+				})
+			}
+			encoded, err := encodeExportManifest(manifest)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err = os.WriteFile(manifestPath, encoded, 0600); err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() {
+				if err := os.WriteFile(manifestPath, original, 0600); err != nil {
+					t.Error(err)
+				}
+			})
+			if _, err = VerifyExport(context.Background(), output); err == nil {
+				t.Fatal("accepted an incomplete HTML-only bundle after its file inventory was updated")
+			}
+		})
 	}
 }
