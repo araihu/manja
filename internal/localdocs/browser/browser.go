@@ -27,15 +27,27 @@ type browserSchemaShard struct {
 	shard    localdocs.PreparedSchemaNodeShard
 }
 
+// SchemaCache stores immutable, fully verified shards. Implementations must be
+// safe for concurrent workers and bound retained decoded memory.
+type SchemaCache interface {
+	Get(key string) (localdocs.PreparedSchemaNodeShard, bool)
+	Add(key string, shard localdocs.PreparedSchemaNodeShard)
+}
+
+// SetSchemaCache configures optional shared decoded reuse before workers fork.
+// Raw children are still admitted on every route before consulting this cache.
+func (browser *Browser) SetSchemaCache(cache SchemaCache) { browser.sharedSchemas = cache }
+
 type Browser struct {
-	descriptor  localdocs.DescriptorV1
-	activation  localdocs.Activation
-	manifest    catalog.ManifestV1
-	directory   catalog.CatalogArtifactV1
-	children    map[string][]byte
-	search      *catalog.SearchService
-	loader      func(string) ([]byte, error)
-	schemaShard *browserSchemaShard
+	descriptor    localdocs.DescriptorV1
+	activation    localdocs.Activation
+	manifest      catalog.ManifestV1
+	directory     catalog.CatalogArtifactV1
+	children      map[string][]byte
+	search        *catalog.SearchService
+	loader        func(string) ([]byte, error)
+	schemaShard   *browserSchemaShard
+	sharedSchemas SchemaCache
 }
 
 type Route struct {
@@ -108,12 +120,13 @@ func (browser *Browser) ForkWithLoader(loader func(string) ([]byte, error)) (*Br
 		return nil, errors.New("local docs browser fork is not configured")
 	}
 	return &Browser{
-		descriptor: browser.descriptor,
-		activation: browser.activation,
-		manifest:   browser.manifest,
-		directory:  browser.directory,
-		children:   make(map[string][]byte),
-		loader:     loader,
+		descriptor:    browser.descriptor,
+		activation:    browser.activation,
+		manifest:      browser.manifest,
+		directory:     browser.directory,
+		children:      make(map[string][]byte),
+		loader:        loader,
+		sharedSchemas: browser.sharedSchemas,
 	}, nil
 }
 
@@ -636,6 +649,20 @@ func (browser *Browser) schemaNode(document catalog.DocumentDirectoryV1, ordinal
 	data, err := browser.ensureChild(reference.Path)
 	if err != nil {
 		return projection.SchemaNode{}, err
+	}
+	if browser.sharedSchemas != nil {
+		// Prepare verifies this reference against the manifest; ensureChild
+		// verifies loaded bytes before every route can consult the cache.
+		key := document.Key + "\x00" + reference.SHA256
+		shard, ok := browser.sharedSchemas.Get(key)
+		if !ok {
+			shard, err = browser.activation.PrepareSchemaNodeShard(reference.Path, document.Key, data)
+			if err != nil {
+				return projection.SchemaNode{}, err
+			}
+			browser.sharedSchemas.Add(key, shard)
+		}
+		return shard.Select(ordinal)
 	}
 	// Children are privately copied at admission and cannot be replaced with
 	// different bytes. Cache only the last fully validated shard, independently

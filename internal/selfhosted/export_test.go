@@ -348,7 +348,7 @@ func TestStaticExportCapturesAndVerifiesCatalogAboveRuntimeByteLimit(t *testing.
 	root := t.TempDir()
 	writer := exportTreeWriter{root: root, entries: make(map[string]exportFileEntry)}
 	writeMinimalExport(t, &writer, []byte("<!doctype html><html><body></body></html>"))
-	receipt, _, err := captureCatalog(context.Background(), handler, &writer, active, "/", "", artifact.BuildProfile{}.Resolved(), 4)
+	receipt, _, err := captureCatalog(context.Background(), handler, &writer, active, "/", "", artifact.BuildProfile{}.Resolved(), 4, nil)
 	if err != nil {
 		t.Fatalf("captureCatalog rejected catalog above runtime byte limit: %v", err)
 	}

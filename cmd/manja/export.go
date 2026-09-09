@@ -25,6 +25,7 @@ func runExport(ctx context.Context, args []string, stdout, stderr io.Writer, res
 	output := fs.String("output", "", "static export output directory")
 	basePath := fs.String("base-path", "", "published URL base path")
 	sidebarChunkSize := fs.Uint("sidebar-chunk-size", 12, "operations per static sidebar chunk")
+	schemaCacheMiB := fs.Uint64("schema-cache-mib", 128, "decoded schema cache budget in MiB shared by export workers (0 disables)")
 	fragmentWorkers := fs.Uint("fragment-workers", 4, "bounded concurrent static fragment renderers")
 	if err := fs.Parse(args); err != nil {
 		fmt.Fprintf(stderr, "manja export: %v\n", err)
@@ -34,6 +35,11 @@ func runExport(ctx context.Context, args []string, stdout, stderr io.Writer, res
 		fmt.Fprintln(stderr, "manja export: --renderer-config, --data-dir, --output, and --base-path are required; positional arguments are not accepted")
 		return 2
 	}
+	if *schemaCacheMiB > ^uint64(0)>>20 {
+		fmt.Fprintln(stderr, "manja export: schema cache budget is too large")
+		return 2
+	}
+	schemaCacheBytes := *schemaCacheMiB << 20
 	fmt.Fprintln(stderr, "manja export: warning: exporting every configured catalog regardless of catalog visibility")
 	receipt, err := exportRenderer(ctx, app.ExportOptions{
 		RendererOptions:  app.RendererOptions{ConfigPath: *rendererConfig, DataDir: *dataDir, ResourceLimits: resourceLimits},
@@ -41,6 +47,7 @@ func runExport(ctx context.Context, args []string, stdout, stderr io.Writer, res
 		BasePath:         *basePath,
 		SidebarChunkSize: uint32(*sidebarChunkSize),
 		FragmentWorkers:  uint32(*fragmentWorkers),
+		SchemaCacheBytes: &schemaCacheBytes,
 	})
 	if err != nil {
 		fmt.Fprintf(stderr, "manja export: %v\n", err)

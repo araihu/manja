@@ -25,6 +25,7 @@ import (
 	"github.com/araihu/manja/application/catalog"
 	artifact "github.com/araihu/manja/application/htmlartifact"
 	artifactstore "github.com/araihu/manja/internal/adapters/htmlartifact"
+	"github.com/araihu/manja/internal/adapters/schemacache"
 	"github.com/araihu/manja/internal/localdocs"
 	localbrowser "github.com/araihu/manja/internal/localdocs/browser"
 	localrender "github.com/araihu/manja/internal/localdocs/render"
@@ -79,7 +80,7 @@ type sidebarOperationGroupSummary struct {
 	Collection string `json:"collection"`
 }
 
-func emitCatalogHTMLFragments(ctx context.Context, writer *exportTreeWriter, active renderer.ActivationReceipt, descriptor localdocs.DescriptorV1, manifest catalog.ManifestV1, manifestBytes, catalogBytes []byte, directory catalog.CatalogArtifactV1, cacheRoot string, profile artifact.BuildProfile, fragmentWorkers uint32) error {
+func emitCatalogHTMLFragments(ctx context.Context, writer *exportTreeWriter, active renderer.ActivationReceipt, descriptor localdocs.DescriptorV1, manifest catalog.ManifestV1, manifestBytes, catalogBytes []byte, directory catalog.CatalogArtifactV1, cacheRoot string, profile artifact.BuildProfile, fragmentWorkers uint32, schemaCache *schemacache.Cache) error {
 	binaryIdentity, err := exportBinaryIdentity()
 	if err != nil {
 		return err
@@ -102,6 +103,9 @@ func emitCatalogHTMLFragments(ctx context.Context, writer *exportTreeWriter, act
 	baseBrowser, err := localbrowser.PrepareWithLoader(descriptor, manifestBytes, catalogBytes, loader)
 	if err != nil {
 		return fmt.Errorf("prepare HTML fragment renderer for catalog %q: %w", active.CatalogID, err)
+	}
+	if schemaCache != nil {
+		baseBrowser.SetSchemaCache(schemaCache)
 	}
 	store := artifactstore.New(writer.root)
 	var cacheStore *artifactstore.Store

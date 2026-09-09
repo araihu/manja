@@ -24,9 +24,22 @@ Both commands write a JSON receipt to stdout. Verification reads only the
 export directory. It checks the canonical receipt, exact file set, hashes,
 required runtime and catalog artifacts, descriptors, and internal links.
 
-The output path must be absent or an empty directory. Export builds in a
-sibling staging directory, verifies it, then renames it into place. It does not
-replace a non-empty output directory.
+The output path may be absent, empty, or an existing valid export that can be
+reused for a warm build. Other non-empty directories are rejected. Export builds
+in a sibling staging directory, verifies it, then publishes it into place.
+
+## Build memory and concurrency
+
+Export uses four fragment workers by default; set `--fragment-workers` to a value
+from 1 to 32 to override it. Workers share a decoded schema cache with a default
+budget of 128 MiB. Set `--schema-cache-mib 256` for a larger cache, or
+`--schema-cache-mib 0` to disable shared retention.
+
+The cache budget accounts for estimated decoded storage and bookkeeping, rather
+than limiting total process memory. Active rendering, source compilation, and
+verification also consume memory. Loaded schema files remain hash-verified even
+when their decoded contents are cached. The cache is used during export and does
+not change the deployed site's browser cache or search behavior.
 
 ## Project subpaths
 

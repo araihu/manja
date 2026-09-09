@@ -6,6 +6,7 @@ import (
 	"errors"
 	"slices"
 	"sort"
+	"unsafe"
 
 	"github.com/araihu/manja/application/catalog"
 	"github.com/araihu/manja/application/projection"
@@ -40,6 +41,35 @@ type PreparedSchemaNodeShard struct {
 	firstOrdinal uint32
 	nodes        []projection.SchemaNode
 	valid        bool
+}
+
+// RetainedBytes estimates decoded storage, including backing-array capacity and
+// string payloads. Twofold headroom covers allocation rounding; cache bookkeeping
+// and keys are charged separately. This is a retention budget, not an RSS limit.
+func (shard PreparedSchemaNodeShard) RetainedBytes() uint64 {
+	n := uint64(unsafe.Sizeof(shard)) + uint64(cap(shard.nodes))*uint64(unsafe.Sizeof(projection.SchemaNode{}))
+	for _, node := range shard.nodes {
+		for _, s := range []string{node.ID, node.Name, node.Type, node.Format, node.Description, node.DefaultValue, node.ExampleText, node.JSON} {
+			n += uint64(len(s))
+		}
+		n += uint64(cap(node.Enum)) * uint64(unsafe.Sizeof(""))
+		for _, s := range node.Enum {
+			n += uint64(len(s))
+		}
+		n += uint64(cap(node.Constraints)) * uint64(unsafe.Sizeof(projection.SchemaConstraint{}))
+		for _, c := range node.Constraints {
+			n += uint64(len(c.Name) + len(c.Value))
+		}
+		n += uint64(cap(node.Properties)) * uint64(unsafe.Sizeof(projection.SchemaNodeProperty{}))
+		for _, p := range node.Properties {
+			n += uint64(len(p.ID) + len(p.Name) + len(p.Description))
+		}
+		n += uint64(cap(node.Items)) * uint64(unsafe.Sizeof(projection.SchemaNodeItem{}))
+		for _, i := range node.Items {
+			n += uint64(len(i.ID))
+		}
+	}
+	return 2 * n
 }
 
 func (activation Activation) PrepareSchemaNodeShard(pathValue, documentKey string, data []byte) (PreparedSchemaNodeShard, error) {

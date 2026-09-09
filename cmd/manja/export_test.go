@@ -20,7 +20,7 @@ func TestExportCommandWritesReceiptAndDisclosureWarning(t *testing.T) {
 	}
 	var stdout, stderr bytes.Buffer
 	code := run(context.Background(), []string{"export", "--renderer-config", "renderer.yaml", "--data-dir", "data", "--output", "public", "--base-path", "/docs/"}, &stdout, &stderr)
-	if code != 0 || got.ConfigPath != "renderer.yaml" || got.DataDir != "data" || got.Output != "public" || got.BasePath != "/docs/" || got.SidebarChunkSize != 12 || got.FragmentWorkers != 4 {
+	if code != 0 || got.ConfigPath != "renderer.yaml" || got.DataDir != "data" || got.Output != "public" || got.BasePath != "/docs/" || got.SidebarChunkSize != 12 || got.FragmentWorkers != 4 || got.SchemaCacheBytes == nil || *got.SchemaCacheBytes != 128<<20 {
 		t.Fatalf("code=%d options=%#v stderr=%q", code, got, stderr.String())
 	}
 	if stdout.String() != "{\"schemaVersion\":1,\"basePath\":\"/docs/\",\"catalogs\":[{\"catalogId\":\"private\",\"mount\":\"/private\",\"publicationKey\":\"private\",\"revisionId\":\"revision\",\"snapshotId\":\"snapshot\"}],\"manifest\":\"_manja/export.json\"}\n" || !strings.Contains(stderr.String(), "every configured catalog") {
@@ -69,5 +69,29 @@ func TestExportCommandPreservesOperationalFailure(t *testing.T) {
 	code := run(context.Background(), []string{"export", "--renderer-config", "r", "--data-dir", "d", "--output", "o", "--base-path", "/"}, &stdout, &stderr)
 	if code != 1 || stdout.Len() != 0 || !strings.Contains(stderr.String(), "capture failed") {
 		t.Fatalf("code=%d stdout=%q stderr=%q", code, stdout.String(), stderr.String())
+	}
+}
+
+func TestExportSchemaCacheBudget(t *testing.T) {
+	original := exportRenderer
+	t.Cleanup(func() { exportRenderer = original })
+	for _, tc := range []struct {
+		value string
+		bytes uint64
+		code  int
+	}{{"0", 0, 0}, {"256", 256 << 20, 0}, {"-1", 0, 2}, {"18446744073709551615", 0, 2}} {
+		called := false
+		exportRenderer = func(_ context.Context, o app.ExportOptions) (app.ExportReceipt, error) {
+			called = true
+			if o.SchemaCacheBytes == nil || *o.SchemaCacheBytes != tc.bytes {
+				t.Fatal(o.SchemaCacheBytes)
+			}
+			return app.ExportReceipt{}, nil
+		}
+		var out, err bytes.Buffer
+		code := run(context.Background(), []string{"export", "--renderer-config", "r", "--data-dir", "d", "--output", "o", "--base-path", "/", "--schema-cache-mib", tc.value}, &out, &err)
+		if code != tc.code || called != (tc.code == 0) {
+			t.Fatal(tc, code, called, err.String())
+		}
 	}
 }

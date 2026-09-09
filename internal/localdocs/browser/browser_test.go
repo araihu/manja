@@ -1,11 +1,13 @@
 package browser
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"github.com/araihu/manja/internal/adapters/schemacache"
 	"net/url"
 	"strings"
 	"testing"
@@ -519,5 +521,106 @@ func TestBrowserSchemaShardReuseIsPrivateAndReleased(t *testing.T) {
 	}
 	if browser.schemaShard != nil {
 		t.Fatal("failed child admission populated decoded cache")
+	}
+}
+
+func TestSharedSchemaCachePreservesAdmissionAcrossRoutesAndForks(t *testing.T) {
+	descriptor, manifest, catalogBytes, children, _, _ := browserFixture(t)
+	loader := func(path string) ([]byte, error) { return children[path], nil }
+	browser, err := PrepareWithLoader(descriptor, manifest, catalogBytes, loader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cache := schemacache.New(128 << 20)
+	browser.SetSchemaCache(cache)
+	document := browser.directory.Documents[0]
+	node, err := browser.schemaNode(document, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	browser.ReleaseChildren()
+	fork, err := browser.ForkWithLoader(loader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := fork.schemaNode(document, 0)
+	if err != nil || got.ID != node.ID {
+		t.Fatal(got, err)
+	}
+	if s := cache.Stats(); s.Misses != 1 || s.Hits != 1 {
+		t.Fatal(s)
+	}
+	fork.ReleaseChildren()
+	childPath := document.SchemaNodeShards[0].Path
+	children[childPath] = append(children[childPath], ' ')
+	if _, err := fork.schemaNode(document, 0); err == nil {
+		t.Fatal("cache hid corrupt input")
+	}
+	if s := cache.Stats(); s.Hits != 1 {
+		t.Fatal("corrupt data consulted decoded cache", s)
+	}
+}
+
+func TestSharedSchemaCacheSeparatesChangedPublication(t *testing.T) {
+	descriptor, manifestBytes, catalogBytes, children, _, _ := browserFixture(t)
+	cache := schemacache.New(128 << 20)
+	original, err := Prepare(descriptor, manifestBytes, catalogBytes, children)
+	if err != nil {
+		t.Fatal(err)
+	}
+	original.SetSchemaCache(cache)
+	if _, err = original.schemaNode(original.directory.Documents[0], 0); err != nil {
+		t.Fatal(err)
+	}
+	// Keep the same path and ordinal while publishing new, correctly signed bytes.
+	var manifest catalog.ManifestV1
+	if err = json.Unmarshal(manifestBytes, &manifest); err != nil {
+		t.Fatal(err)
+	}
+	directory, err := catalogjson.DecodeCatalog(catalogBytes)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ref := &directory.Documents[0].SchemaNodeShards[0]
+	data := bytes.ReplaceAll(children[ref.Path], []byte("A pet"), []byte("A cat"))
+	child := browserIdentity(ref.Path, "schema-node", data)
+	ref.SHA256 = child.SHA256
+	ref.Length = child.Length
+	children[ref.Path] = data
+	catalogBytes, err = catalogjson.EncodeCatalog(directory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := range manifest.Children {
+		if manifest.Children[i].Path == child.Path {
+			manifest.Children[i] = child
+		}
+		if manifest.Children[i].Path == "catalog.json" {
+			manifest.Children[i] = browserIdentity("catalog.json", "catalog", catalogBytes)
+		}
+	}
+	manifest.Identity.Children = append([]catalog.ChildIdentityV1(nil), manifest.Children...)
+	identity, _ := json.Marshal(manifest.Identity)
+	digest := sha256.Sum256(identity)
+	manifest.SnapshotID = catalog.SnapshotID("snapshot-sha256-" + hex.EncodeToString(digest[:]))
+	manifestBytes, err = catalogjson.EncodeManifest(manifest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	descriptor, ok := localdocs.PrepareStaticDescriptor("pets", catalog.RuntimeSnapshot{ID: manifest.SnapshotID, Directory: directory, Manifest: manifest}, "/docs/pets/", "/docs/")
+	if !ok {
+		t.Fatal("descriptor")
+	}
+	changed, err := Prepare(descriptor, manifestBytes, catalogBytes, children)
+	if err != nil {
+		t.Fatal(err)
+	}
+	changed.SetSchemaCache(cache)
+	node, err := changed.schemaNode(changed.directory.Documents[0], 0)
+	if err != nil || node.Description != "A cat" {
+		t.Fatal(node, err)
+	}
+	if s := cache.Stats(); s.Misses != 2 {
+		t.Fatal(s)
 	}
 }
