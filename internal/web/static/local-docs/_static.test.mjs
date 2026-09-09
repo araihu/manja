@@ -264,7 +264,9 @@ async function staticActivationFixture(failedPath = '', options = {}) {
   const document = {
     documentElement: root,
     title: '',
-    getElementById(id) { return id === 'manja-local-docs-descriptor' ? script : id === 'catalog-sidebar-groups' ? sidebar : null },
+    // Markup is emitted by the shared Go component; real tab behavior is
+    // exercised by the static-export Chromium acceptance test.
+    getElementById(id) { return id === 'manja-local-docs-descriptor' ? script : id === 'catalog-sidebar-groups' ? sidebar : id === 'manja-static-sidebar-tabs' ? { innerHTML: '<div data-tabs-config="fixture"></div>' } : null },
     querySelector(selector) {
       if (selector === '[data-catalog-main-content]') return main
       if (options.navigationError && selector === '[data-manja-static-navigation-error]') return navigationError

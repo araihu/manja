@@ -979,41 +979,9 @@
 	return result;
   }
 
-  function installStaticSidebarTabs(sidebar) {
-	if (!sidebar || !sidebar.querySelectorAll) return;
-	var tabs = Array.prototype.slice.call(sidebar.querySelectorAll('[role="tab"][data-manja-sidebar-tab]'));
-	if (!tabs.length) return;
-	function select(tab) {
-	  var selected = tab.getAttribute("data-manja-sidebar-tab");
-	  tabs.forEach(function (candidate) {
-		var active = candidate === tab;
-		candidate.setAttribute("aria-selected", active ? "true" : "false");
-		candidate.setAttribute("tabindex", active ? "0" : "-1");
-	  });
-	  var panels = sidebar.querySelectorAll("[data-manja-sidebar-tab-panel]");
-	  for (var index = 0; index < panels.length; index += 1) panels[index].hidden = panels[index].getAttribute("data-manja-sidebar-tab-panel") !== selected;
-	  if (sidebar.dispatchEvent && typeof global.CustomEvent === "function") sidebar.dispatchEvent(new global.CustomEvent("manja:sidebar-tab"));
-	}
-	tabs.forEach(function (tab, index) {
-	  if (tab.getAttribute("data-manja-sidebar-tab-bound") === "true") return;
-	  tab.setAttribute("data-manja-sidebar-tab-bound", "true");
-	  tab.addEventListener("click", function () { select(tab); });
-	  tab.addEventListener("keydown", function (event) {
-		if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
-		event.preventDefault();
-		var offset = event.key === "ArrowRight" ? 1 : -1;
-		var next = tabs[(index + offset + tabs.length) % tabs.length];
-		select(next);
-		next.focus();
-	  });
-	});
-	select(tabs.filter(function (tab) { return tab.getAttribute("aria-selected") === "true"; })[0] || tabs[0]);
-  }
-
   function replaceStaticSidebarContinuation(descriptor, cache, documentKey, sidebar) {
 	if (!sidebar) return;
 	if (typeof sidebar.manjaStaticSidebarDispose === "function") sidebar.manjaStaticSidebarDispose();
-	installStaticSidebarTabs(sidebar);
 	sidebar.manjaStaticSidebarDispose = installStaticSidebarContinuation(descriptor, cache, documentKey, sidebar);
   }
 
@@ -1024,9 +992,7 @@
 	var overviewActive = !route.selected;
 	sidebar.innerHTML = '<nav data-manja-local-sidebar="true" data-manja-static-default-open="true" aria-label="API navigation" class="min-h-0 overflow-y-auto scrollbar-custom px-3 pb-4">' +
 	  '<div data-manja-static-sidebar-top="true"><a id="catalog-sidebar-spec-overview" data-manja-static-sidebar-top-link="true" data-manja-static-route="true" data-catalog-sidebar-item="true"' + (overviewActive ? ' data-catalog-sidebar-selected="true" aria-current="page"' : '') + ' href="' + documentHref + '" class="flex min-h-11 items-center gap-2 rounded-radius px-2 py-2 font-semibold"><svg viewBox="0 0 20 20" fill="currentColor" class="size-5 shrink-0" aria-hidden="true"><path d="M4.5 2.75A1.75 1.75 0 0 0 2.75 4.5v11A1.75 1.75 0 0 0 4.5 17.25h11a1.75 1.75 0 0 0 1.75-1.75v-11a1.75 1.75 0 0 0-1.75-1.75h-11Zm1.25 3h8.5v1.5h-8.5v-1.5Zm0 3.5h8.5v1.5h-8.5v-1.5Zm0 3.5h5.5v1.5h-5.5v-1.5Z"></path></svg><span class="min-w-0 flex-1 truncate">Spec overview</span></a></div>' +
-	  '<div role="tablist" aria-label="API resources" data-manja-sidebar-tabs="true"><button id="manja-sidebar-tab-operations" type="button" role="tab" data-manja-sidebar-tab="operations" aria-controls="manja-sidebar-panel-operations" aria-selected="true">Operations</button><button id="manja-sidebar-tab-schemas" type="button" role="tab" data-manja-sidebar-tab="schemas" aria-controls="manja-sidebar-panel-schemas" aria-selected="false" tabindex="-1">Schemas</button></div>' +
-	  '<section id="manja-sidebar-panel-operations" role="tabpanel" aria-labelledby="manja-sidebar-tab-operations" data-manja-sidebar-tab-panel="operations" data-manja-static-sidebar-section="operations"><div data-manja-static-sidebar-operations="true"></div></section>' +
-	  '<section id="manja-sidebar-panel-schemas" role="tabpanel" aria-labelledby="manja-sidebar-tab-schemas" data-manja-sidebar-tab-panel="schemas" data-manja-static-sidebar-section="schemas" hidden><div data-manja-static-sidebar-schemas="true"></div></section></nav>';
+	  documentValue.getElementById("manja-static-sidebar-tabs").innerHTML + '</nav>';
 	var operations = sidebar.querySelector && sidebar.querySelector("[data-manja-static-sidebar-operations]");
 	var schemas = sidebar.querySelector && sidebar.querySelector("[data-manja-static-sidebar-schemas]");
 	return Promise.all([

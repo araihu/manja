@@ -1,0 +1,55 @@
+package render
+
+import (
+	"fmt"
+	templpkg "github.com/a-h/templ"
+	"github.com/araihu/goshtoso/components/tabs"
+)
+
+// SidebarTabs shares Goshtoso's tab rendering and Alpine state across hosted,
+// pre-rendered and WASM-rendered documentation. Manja only observes visibility
+// to schedule its verified fragment loading.
+templ SidebarTabs(selected string, operations, schemas templpkg.Component) {
+	<div data-manja-sidebar-tabs="true" class="mt-2">
+		@tabs.Tabs(tabs.Config{
+			ID: "manja-sidebar",
+			DefaultTab: selected,
+			Tabs: []tabs.Tab{
+				{ID: "operations", Label: "Operations", LabelSlot: sidebarTabLabel("operations", "Operations"), Content: sidebarTabPanel("operations", selected, operations)},
+				{ID: "schemas", Label: "Schemas", LabelSlot: sidebarTabLabel("schemas", "Schemas"), Content: sidebarTabPanel("schemas", selected, schemas)},
+			},
+		})
+	</div>
+}
+
+templ sidebarTabLabel(id, label string) {
+	<span x-init={ fmt.Sprintf("$el.parentElement.dataset.manjaSidebarTab = '%s'; $el.parentElement.id = 'manja-sidebar-tab-%s'; $el.closest('[role=tablist]').setAttribute('aria-label', 'API resources')", id, id) }>{ label }</span>
+}
+
+templ sidebarTabPanel(id, selected string, content templpkg.Component) {
+	<div
+		id={ "manja-sidebar-panel-" + id }
+		data-manja-sidebar-tab-panel={ id }
+		data-manja-static-sidebar-section={ id }
+		hidden?={ selected != id }
+		x-effect={ fmt.Sprintf("$el.hidden = selectedTab !== '%s'; $nextTick(() => $dispatch('manja:sidebar-tab'))", id) }
+	>
+		if content != nil {
+			@content
+		}
+	</div>
+}
+
+// StaticSidebarTabs is cloned by the static router. Keeping its source in Go
+// avoids maintaining a separate JavaScript copy of Goshtoso's markup.
+templ StaticSidebarTabs() {
+	@SidebarTabs("operations", staticSidebarOperations(), staticSidebarSchemas())
+}
+
+templ staticSidebarOperations() {
+	<div data-manja-static-sidebar-operations="true"></div>
+}
+
+templ staticSidebarSchemas() {
+	<div data-manja-static-sidebar-schemas="true"></div>
+}
