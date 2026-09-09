@@ -22,7 +22,8 @@ manja export verify --output ./public
 
 Both commands write a JSON receipt to stdout. Verification reads only the
 export directory. It checks the canonical receipt, exact file set, hashes,
-required runtime and catalog artifacts, descriptors, and internal links.
+required browser and catalog artifacts, descriptors, internal links, and the
+complete graph of prebuilt HTML fragments and their integrity sidecars.
 
 The output path may be absent, empty, or an existing valid export that can be
 reused for a warm build. Other non-empty directories are rejected. Export builds
@@ -62,11 +63,22 @@ URL prefix.
 The host must:
 
 - serve directory requests from their `index.html`;
-- serve `.wasm` as `application/wasm`;
 - allow `sw.js` to control the configured base path;
 - serve the generated files without rewriting them to Manja or another API.
 
-All JavaScript, Service Worker, Wasm, snapshot, search, projection, and OpenAPI
-source bytes are included under the configured base path. Direct document
-loads and reloads therefore work on a generic static server, while unseen
-operation and schema navigation is rendered locally from the exported data.
+The bundle includes JavaScript, the Service Worker, prebuilt HTML and integrity
+sidecars, search indexes, and OpenAPI source downloads. Operation navigation,
+lazy schema trees, sidebar groups, and deep schema-node links load verified HTML.
+Shared schema-node panels are emitted once per document and combined with the
+selected schema's HTML in the browser. Visited content remains available offline.
+
+Projection JSON shards, the WASM renderer, and its JavaScript loader are build or
+browser-rendered deployment inputs; static exports do not publish them. Snapshot
+manifests and catalog directories remain as provenance and verification metadata.
+Their source-child inventory describes the compiled snapshot, while the export
+receipt inventories the files actually published. Search retains its own index
+files and does not depend on projection shards.
+
+New export receipts declare `rendering: "html"`. Verification also accepts older
+exports, which can be used as warm-build inputs; the build identity invalidates
+HTML produced by a different executable.

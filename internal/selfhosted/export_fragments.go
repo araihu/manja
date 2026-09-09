@@ -80,7 +80,7 @@ type sidebarOperationGroupSummary struct {
 	Collection string `json:"collection"`
 }
 
-func emitCatalogHTMLFragments(ctx context.Context, writer *exportTreeWriter, active renderer.ActivationReceipt, descriptor localdocs.DescriptorV1, manifest catalog.ManifestV1, manifestBytes, catalogBytes []byte, directory catalog.CatalogArtifactV1, cacheRoot string, profile artifact.BuildProfile, fragmentWorkers uint32, schemaCache *schemacache.Cache) error {
+func emitCatalogHTMLFragments(ctx context.Context, writer *exportTreeWriter, active renderer.ActivationReceipt, descriptor localdocs.DescriptorV1, manifest catalog.ManifestV1, manifestBytes, catalogBytes []byte, directory catalog.CatalogArtifactV1, cacheRoot string, profile artifact.BuildProfile, fragmentWorkers uint32, schemaCache *schemacache.Cache, loader func(string) ([]byte, error)) error {
 	binaryIdentity, err := exportBinaryIdentity()
 	if err != nil {
 		return err
@@ -88,17 +88,6 @@ func emitCatalogHTMLFragments(ctx context.Context, writer *exportTreeWriter, act
 	compilerIdentity, err := json.Marshal(manifest.Identity.Versions)
 	if err != nil {
 		return fmt.Errorf("encode fragment compiler identity: %w", err)
-	}
-	loader := func(childPath string) ([]byte, error) {
-		child, ok := manifestChild(manifest, childPath)
-		if !ok || child.Kind != "detail" && child.Kind != "schema-node" {
-			return nil, fmt.Errorf("fragment child %q is not a projection child", childPath)
-		}
-		_, outputPath, ok := exportedChildPath(active, directory, child)
-		if !ok {
-			return nil, fmt.Errorf("fragment child %q has no static path", childPath)
-		}
-		return os.ReadFile(filepath.Join(writer.root, filepath.FromSlash(outputPath)))
 	}
 	baseBrowser, err := localbrowser.PrepareWithLoader(descriptor, manifestBytes, catalogBytes, loader)
 	if err != nil {
@@ -201,6 +190,9 @@ func emitCatalogHTMLFragments(ctx context.Context, writer *exportTreeWriter, act
 		case workerErr := <-errChannel:
 			return workerErr
 		default:
+		}
+		if err := emitSchemaNodePanels(ctx, writer, store, cacheStore, cacheRoot, baseBrowser, active, manifest, document, binaryIdentity, dependencies); err != nil {
+			return err
 		}
 	}
 	return nil

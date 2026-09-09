@@ -44,7 +44,7 @@ func TestExportDetailDependenciesInvalidateCompleteDocument(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		result, err := artifact.NewBuildKey(artifact.BuildKeyInput{Fragment: artifact.FragmentIdentity{Format: artifact.FragmentFormatV2, Kind: artifact.FragmentOperation, Resource: "detail"}, CanonicalPayloadSHA256: artifact.PayloadSHA256(payload), CompilerIdentity: compiler, NormalizerIdentity: normalizer, ManjaVersion: binary, RendererFingerprint: binary, UIFingerprint: binary})
+		result, err := artifact.NewBuildKey(artifact.BuildKeyInput{Fragment: artifact.FragmentIdentity{Format: artifact.FragmentFormatV2, Kind: artifact.FragmentOperation, Resource: "detail"}, CanonicalPayloadSHA256: artifact.PayloadSHA256(payload), CompilerIdentity: dependencies.compilerIdentity, NormalizerIdentity: normalizer, ManjaVersion: binary, RendererFingerprint: binary, UIFingerprint: binary})
 		if err != nil {
 			t.Fatal(err)
 		}

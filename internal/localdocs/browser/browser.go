@@ -911,3 +911,39 @@ func browserPlainText(value string) string {
 	}
 	return strings.TrimSpace(html.UnescapeString(output.String()))
 }
+
+// RenderSchemaNodePanel renders a shared node panel without a schema's header or
+// example. Static navigation binds its reference links to the selected schema.
+func (browser *Browser) RenderSchemaNodePanel(ctx context.Context, documentKey string, ordinal uint32) ([]byte, error) {
+	document, ok := browser.document(documentKey)
+	if !ok {
+		return nil, errors.New("schema panel document is missing")
+	}
+	node, err := browser.schemaNode(document, ordinal)
+	if err != nil {
+		return nil, err
+	}
+	seen := map[projection.SchemaRef]bool{projection.SchemaRef(ordinal): true}
+	var references []projection.SchemaNode
+	for _, ref := range browserNodeReferences(node) {
+		if seen[ref] {
+			continue
+		}
+		seen[ref] = true
+		child, err := browser.schemaNode(document, uint32(ref))
+		if err != nil {
+			return nil, err
+		}
+		references = append(references, child)
+	}
+	id := domain.DetailID("detail-sha256-" + strings.Repeat("0", 64))
+	detail := catalog.DetailRecordV1{ID: id, Kind: "schema", Schema: &projection.SchemaDetail{
+		ID: string(id), Anchor: string(id), HeadingID: string(id), HeadingLevel: 3,
+		Heading: node.Name + " (shared panel)", Href: "documents/" + documentKey + "/?selected=" + string(id) + "#" + string(id),
+	}}
+	fragment, err := localrender.PrepareSchemaNode(detail, node, references, browser.descriptor.PublicationBase+"documents/"+documentKey+"/")
+	if err != nil {
+		return nil, err
+	}
+	return fragment.Bytes(ctx)
+}

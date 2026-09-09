@@ -19,7 +19,7 @@ func TestExportBrowserRunsFromGenericStaticServerAtRootAndSubpath(t *testing.T) 
 		t.Skip("skipping static export browser acceptance in short mode")
 	}
 	root := t.TempDir()
-	spec := `{"openapi":"3.0.3","info":{"title":"Private API","version":"v1"},"paths":{"/charges":{"get":{"operationId":"listCharges","summary":"List charges","responses":{"200":{"description":"ok","content":{"application/json":{"schema":{"$ref":"#/components/schemas/Charge"}}}}}}},"/customers":{"get":{"operationId":"listCustomers","summary":"List customers with a deliberately long operation title that must truncate before the method badge","responses":{"200":{"description":"ok"}}}}},"components":{"schemas":{"Charge":{"type":"object","properties":{"id":{"type":"string"}}}}}}`
+	spec := `{"openapi":"3.0.3","info":{"title":"Private API","version":"v1"},"paths":{"/charges":{"get":{"operationId":"listCharges","summary":"List charges","responses":{"200":{"description":"ok","content":{"application/json":{"schema":{"$ref":"#/components/schemas/Charge"}}}}}}},"/customers":{"get":{"operationId":"listCustomers","summary":"List customers with a deliberately long operation title that must truncate before the method badge","responses":{"200":{"description":"ok"}}}}},"components":{"schemas":{"Charge":{"type":"object","properties":{"id":{"type":"string"},"customer":{"$ref":"#/components/schemas/Customer"}}},"Customer":{"type":"object","properties":{"address":{"$ref":"#/components/schemas/Address"}}},"Address":{"type":"object","properties":{"city":{"type":"string"}}}}}}`
 	if err := os.WriteFile(filepath.Join(root, "private.json"), []byte(spec), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -70,6 +70,7 @@ catalogs:
 			if _, err := ExportRenderer(context.Background(), ExportOptions{RendererOptions: RendererOptions{ConfigPath: configPath}, Output: output, BasePath: basePath}); err != nil {
 				t.Fatal(err)
 			}
+			assertHTMLOnlyBundle(t, output)
 			var requestMu sync.Mutex
 			var requests []string
 			files := http.FileServer(http.Dir(output))
@@ -414,6 +415,38 @@ catalogs:
 			}
 			waitStaticExportReady(t, page)
 
+			if err := page.Locator(`a[data-catalog-schema-reference="true"]`).GetByText("Customer", playwright.LocatorGetByTextOptions{Exact: playwright.Bool(true)}).First().Click(); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := page.WaitForFunction(`() => location.search.includes('node=') && document.title === 'Charge' && document.querySelector('#schema-node-panel [data-catalog-schema-property="address"]')`, nil); err != nil {
+				t.Fatal(err)
+			}
+			if err := page.Locator(`#schema-node-panel a[data-catalog-schema-reference="true"]`).GetByText("Address", playwright.LocatorGetByTextOptions{Exact: playwright.Bool(true)}).First().Click(); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := page.WaitForFunction(`() => document.title === 'Charge' && document.querySelector('#schema-node-panel [data-catalog-schema-property="city"]')`, nil); err != nil {
+				t.Fatal(err)
+			}
+			nodeURL := page.URL()
+			if _, err := page.Reload(); err != nil {
+				t.Fatal(err)
+			}
+			waitStaticExportReady(t, page)
+			if _, err := page.WaitForFunction(`() => document.querySelector('#schema-node-panel [data-catalog-schema-property="city"]')`, nil); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := page.GoBack(); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := page.WaitForFunction(`() => document.querySelector('#schema-node-panel [data-catalog-schema-property="address"]')`, nil); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := page.GoForward(); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := page.WaitForFunction(`() => document.querySelector('#schema-node-panel [data-catalog-schema-property="city"]')`, nil); err != nil {
+				t.Fatal(err)
+			}
 			if _, err := page.Goto(documentURL); err != nil {
 				t.Fatal(err)
 			}
@@ -441,9 +474,23 @@ catalogs:
 				debug, _ := page.Evaluate(`() => ({title: document.title, href: location.href, main: document.querySelector('[data-catalog-main-content]').textContent, links: [...document.querySelectorAll('#catalog-sidebar-groups a')].map((value) => ({text: value.textContent, href: value.href}))})`)
 				t.Fatalf("offline schema navigation: %v; debug=%#v", err, debug)
 			}
+			if _, err := page.Goto(nodeURL); err != nil {
+				t.Fatal(err)
+			}
+			waitStaticExportReady(t, page)
+			if _, err := page.WaitForFunction(`() => document.title === 'Charge' && document.querySelector('#schema-node-panel [data-catalog-schema-property="city"]')`, nil); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := page.Reload(); err != nil {
+				t.Fatal(err)
+			}
+			waitStaticExportReady(t, page)
 			requestMu.Lock()
 			defer requestMu.Unlock()
 			for _, requestPath := range requests {
+				if strings.Contains(requestPath, "/projection-data/") || strings.HasSuffix(requestPath, ".wasm") || strings.HasSuffix(requestPath, ".wasm.br") || strings.HasSuffix(requestPath, "/wasm_exec.js") {
+					t.Fatalf("HTML-only navigation requested rendering input %q", requestPath)
+				}
 				if !strings.HasPrefix(requestPath, basePath) {
 					t.Fatalf("static browser requested outside deployment base %q", requestPath)
 				}
