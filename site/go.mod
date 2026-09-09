@@ -1,6 +1,6 @@
 module github.com/araihu/manja/site
 
-go 1.27.0
+go 1.27.1
 
 require github.com/araihu/manja v0.0.0
 
@@ -11,6 +11,7 @@ require (
 	github.com/dlclark/regexp2/v2 v2.2.1 // indirect
 	github.com/getkin/kin-openapi v0.147.0 // indirect
 	github.com/go-openapi/jsonpointer v1.0.0 // indirect
+	github.com/hashicorp/golang-lru/v2 v2.0.7 // indirect
 	github.com/kr/pretty v0.3.1 // indirect
 	github.com/oasdiff/yaml v0.1.1 // indirect
 	github.com/oasdiff/yaml3 v0.0.14 // indirect

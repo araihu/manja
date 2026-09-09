@@ -6,7 +6,7 @@ containing `renderer.yaml` and its OpenAPI sources. Start with the
 requirements. The site runs without a Manja server after deployment.
 
 The examples install revision `6ee0252301ff6fd060d206abf5fb574de8b211b2`, which
-includes incremental HTML export, with Go 1.27.0. Update this pin deliberately
+includes incremental HTML export, with Go 1.27.1. Update this pin deliberately
 when adopting a newer version; older releases may have different export
 behavior. The documentation repository does not need a Go module of its own.
 To install the same version locally into `./bin`:
@@ -53,7 +53,7 @@ jobs:
       - uses: actions/checkout@v6
       - uses: actions/setup-go@v7
         with:
-          go-version: '1.27.0'
+          go-version: '1.27.1'
           cache: false
       - uses: actions/configure-pages@v5
       - name: Install Manja
@@ -106,7 +106,7 @@ A unique or custom domain normally serves at `/`; a project/subgroup URL may
 have a prefix. Do not assume the prefix equals the full repository namespace.
 
 ```yaml
-image: golang:1.27.0
+image: golang:1.27.1
 
 stages:
   - deploy
