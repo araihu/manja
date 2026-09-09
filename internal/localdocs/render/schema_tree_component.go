@@ -8,14 +8,7 @@ import (
 	"github.com/a-h/templ"
 	"github.com/araihu/goshtoso/components/schematree"
 	"github.com/araihu/manja/domain"
-	"github.com/yuin/goldmark"
-	"github.com/yuin/goldmark/extension"
 )
-
-// Schema descriptions use safe Markdown: raw HTML and dangerous link schemes
-// are disabled by Goldmark's default renderer. No generated heading IDs means
-// repeated descriptions in independently composed fragments cannot collide.
-var schemaDescriptionMarkdown = goldmark.New(goldmark.WithExtensions(extension.GFM))
 
 // SchemaTreeFromSummary adapts the legacy server-rendered schema model to the
 // same component used by verified offline fragments. No parsing or fetching is
@@ -66,7 +59,10 @@ func schemaDescriptionContent(description string) templ.Component {
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		return schemaDescriptionMarkdown.Convert([]byte(description), w)
+		// The shared tree supports rich component slots, but Manja descriptions
+		// remain plain text until Markdown rendering is explicitly supported.
+		_, err := io.WriteString(w, `<p class="whitespace-pre-wrap">`+templ.EscapeString(description)+`</p>`)
+		return err
 	})
 }
 

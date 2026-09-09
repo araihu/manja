@@ -4,23 +4,23 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"html"
 	"io"
 	"strings"
 	"testing"
 )
 
-func TestSchemaDescriptionMarkdownIsRichAndSafe(t *testing.T) {
-	description := "Use **either** `value`.\n\n- [Help](/help)\n- Second item\n\n<script>alert(1)</script>\n\n[unsafe](javascript:alert%281%29)"
+func TestSchemaDescriptionRemainsPlainText(t *testing.T) {
+	description := "Use **either** `value`.\n\n- [Help](/docs/identity/verification-checks)\n- Second item\n\n![Image](https://example.com/image.png)\n\n<script>alert(1)</script>\n\n[unsafe](javascript:alert%281%29)"
 	var out bytes.Buffer
 	if err := schemaDescriptionContent(description).Render(context.Background(), &out); err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"<strong>either</strong>", "<code>value</code>", "<ul>", `href="/help"`} {
-		if !strings.Contains(out.String(), want) {
-			t.Errorf("missing %q in %s", want, out.String())
-		}
+	plain := strings.TrimSuffix(strings.TrimPrefix(out.String(), `<p class="whitespace-pre-wrap">`), `</p>`)
+	if html.UnescapeString(plain) != description {
+		t.Fatalf("description text changed: %s", out.String())
 	}
-	for _, unsafe := range []string{"<script", "javascript:", " id="} {
+	for _, unsafe := range []string{"<script", "<a ", "<img", "<strong", "<code", "<ul", " id="} {
 		if strings.Contains(out.String(), unsafe) {
 			t.Errorf("unsafe or fragment-colliding markup %q", unsafe)
 		}
