@@ -216,6 +216,16 @@ func (browser *Browser) prepareSearch() error {
 }
 
 func (browser *Browser) Render(ctx context.Context, route Route) (Page, error) {
+	return browser.render(ctx, route, true)
+}
+
+// RenderMain renders route content, title and canonical URL without generating
+// navigation HTML. Static detail exports publish their sidebar separately.
+func (browser *Browser) RenderMain(ctx context.Context, route Route) (Page, error) {
+	return browser.render(ctx, route, false)
+}
+
+func (browser *Browser) render(ctx context.Context, route Route, includeSidebar bool) (Page, error) {
 	if browser == nil {
 		return Page{}, errors.New("local docs browser is not prepared")
 	}
@@ -224,8 +234,10 @@ func (browser *Browser) Render(ctx context.Context, route Route) (Page, error) {
 		return Page{}, errors.New("local docs document is missing")
 	}
 	documentHref := browser.descriptor.PublicationBase + "documents/" + document.Key + "/"
-	sidebar := browser.renderSidebar(document, route)
-	sidebar = browser.deploymentHTML(sidebar)
+	var sidebar string
+	if includeSidebar {
+		sidebar = browser.deploymentHTML(browser.renderSidebar(document, route))
+	}
 	if route.Selected == "" {
 		main, err := browser.renderDocument(ctx, document, documentHref)
 		return Page{MainHTML: browser.deploymentHTML(main), SidebarHTML: sidebar, Title: browserDocumentTitle(document), Canonical: browserCanonical(documentHref, route, "")}, err

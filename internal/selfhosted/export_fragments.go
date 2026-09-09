@@ -528,7 +528,7 @@ func emitDetailHTMLFragment(ctx context.Context, writer *exportTreeWriter, store
 		return err
 	}
 	if !verification.Hit() {
-		page, renderErr := browser.Render(ctx, localbrowser.Route{DocumentKey: document.Key, Selected: resource})
+		page, renderErr := browser.RenderMain(ctx, localbrowser.Route{DocumentKey: document.Key, Selected: resource})
 		browser.ReleaseChildren()
 		if renderErr != nil {
 			page.MainHTML = fallbackDetailHTML(document, kind, resource)

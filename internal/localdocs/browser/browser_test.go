@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"net/url"
 	"strings"
 	"testing"
@@ -326,7 +327,7 @@ func TestBrowserRejectsUnknownOrChangedChildren(t *testing.T) {
 	}
 }
 
-func browserFixture(t *testing.T) (localdocs.DescriptorV1, []byte, []byte, map[string][]byte, domain.DetailID, domain.DetailID) {
+func browserFixture(t testing.TB) (localdocs.DescriptorV1, []byte, []byte, map[string][]byte, domain.DetailID, domain.DetailID) {
 	t.Helper()
 	operationID := domain.DetailID("detail-sha256-" + strings.Repeat("a", 64))
 	schemaID := domain.DetailID("detail-sha256-" + strings.Repeat("b", 64))
@@ -390,4 +391,76 @@ func browserFixture(t *testing.T) (localdocs.DescriptorV1, []byte, []byte, map[s
 func browserIdentity(pathValue, kind string, data []byte) catalog.ChildIdentityV1 {
 	digest := sha256.Sum256(data)
 	return catalog.ChildIdentityV1{Path: pathValue, Kind: kind, Length: uint64(len(data)), SHA256: hex.EncodeToString(digest[:])}
+}
+
+// BenchmarkBrowserDetail isolates the exporter route on a large navigation
+// inventory. Projection children remain the verified small fixture.
+func BenchmarkBrowserDetail(b *testing.B) {
+	descriptor, manifest, catalogBytes, children, operationID, _ := browserFixture(b)
+	browser, err := PrepareWithLoader(descriptor, manifest, catalogBytes, func(path string) ([]byte, error) { return children[path], nil })
+	if err != nil {
+		b.Fatal(err)
+	}
+	operation := browser.directory.Documents[0].Operations[0]
+	for i := 1; i < 2000; i++ {
+		operation.DetailID = domain.DetailID(fmt.Sprintf("detail-sha256-%064x", i))
+		operation.OperationID = fmt.Sprintf("operation%d", i)
+		operation.Href = "documents/doc/?selected=" + string(operation.DetailID) + "#" + string(operation.DetailID)
+		browser.directory.Documents[0].Operations = append(browser.directory.Documents[0].Operations, operation)
+	}
+	route := Route{DocumentKey: "doc", Selected: string(operationID)}
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		if _, err := browser.RenderMain(context.Background(), route); err != nil {
+			b.Fatal(err)
+		}
+		browser.ReleaseChildren()
+	}
+}
+
+func TestBrowserRenderMainEquivalent(t *testing.T) {
+	for _, base := range []string{"/", "/group/project/"} {
+		t.Run(base, func(t *testing.T) {
+			descriptor, manifest, catalogBytes, children, operationID, schemaID := browserFixture(t)
+			directory, err := catalogjson.DecodeCatalog(catalogBytes)
+			if err != nil {
+				t.Fatal(err)
+			}
+			decoded, err := catalogjson.DecodeManifest(manifest)
+			if err != nil {
+				t.Fatal(err)
+			}
+			descriptor, ok := localdocs.PrepareStaticDescriptor("pets", catalog.RuntimeSnapshot{ID: decoded.SnapshotID, Directory: directory, Manifest: decoded}, base+"pets/", base)
+			if !ok {
+				t.Fatal("prepare descriptor")
+			}
+			for _, route := range []Route{
+				{DocumentKey: "doc"}, {DocumentKey: "doc", Selected: string(operationID)},
+				{DocumentKey: "doc", Selected: string(operationID), ClosedGroups: []string{"Pets"}},
+				{DocumentKey: "doc", Selected: string(schemaID)},
+				{DocumentKey: "doc", Selected: string(schemaID), Node: new(uint32)},
+				{DocumentKey: "missing"}, {DocumentKey: "doc", Selected: "missing"},
+			} {
+				full, err := Prepare(descriptor, manifest, catalogBytes, children)
+				if err != nil {
+					t.Fatal(err)
+				}
+				main, err := Prepare(descriptor, manifest, catalogBytes, children)
+				if err != nil {
+					t.Fatal(err)
+				}
+				want, wantErr := full.Render(context.Background(), route)
+				got, gotErr := main.RenderMain(context.Background(), route)
+				want.SidebarHTML = ""
+				if got != want || fmt.Sprint(gotErr) != fmt.Sprint(wantErr) {
+					t.Fatalf("route %+v: RenderMain differs: errors %v / %v", route, gotErr, wantErr)
+				}
+			}
+		})
+	}
+	var browser *Browser
+	if _, err := browser.RenderMain(context.Background(), Route{}); err == nil {
+		t.Fatal("nil browser accepted")
+	}
 }
