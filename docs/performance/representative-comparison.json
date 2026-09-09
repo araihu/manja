@@ -1,0 +1,12 @@
+{
+  "identical_outputs": [
+    "jsonv2-representative-w4-2",
+    "jsonv2-representative-w1-1",
+    "jsonv2-representative-w1-2",
+    "jsonv2-invalidated-representative",
+    "jsonv2-representative-w4-3",
+    "jsonv2-representative-w4-4"
+  ],
+  "file_entries_per_output": 2272,
+  "search_files_byte_identical_to_baseline": 26
+}

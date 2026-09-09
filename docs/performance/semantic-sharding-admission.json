@@ -1,0 +1,50 @@
+[
+  {
+    "catalog": "github",
+    "catalog_bytes": 1434100,
+    "detail_files": 705,
+    "manifest_bytes": 1339237,
+    "old_catalog_bytes": 865343,
+    "old_manifest_bytes": 40140,
+    "schema_files": 2296,
+    "search_children_rebuilt_and_compared": 81,
+    "search_children_unchanged": true
+  },
+  {
+    "catalog": "kubernetes",
+    "catalog_admission_error": "catalogjson: input bytes 5255753 exceed 4194304",
+    "catalog_bytes": 5255753,
+    "detail_files": 2428,
+    "manifest_admission_error": "catalogjson: input bytes 5732955 exceed 4194304",
+    "manifest_bytes": 5732955,
+    "old_catalog_bytes": 2761596,
+    "old_manifest_bytes": 164104,
+    "schema_files": 9433,
+    "search_children_rebuilt_and_compared": 145,
+    "search_children_unchanged": true
+  },
+  {
+    "catalog": "stripe",
+    "catalog_bytes": 1651787,
+    "detail_files": 740,
+    "manifest_bytes": 2067392,
+    "old_catalog_bytes": 660555,
+    "old_manifest_bytes": 30257,
+    "schema_files": 4127,
+    "search_children_rebuilt_and_compared": 54,
+    "search_children_unchanged": true
+  },
+  {
+    "catalog": "vmware-vsphere",
+    "catalog_admission_error": "catalogjson: input bytes 24256481 exceed 4194304",
+    "catalog_bytes": 24256481,
+    "detail_files": 15585,
+    "manifest_admission_error": "catalogjson: input bytes 24472153 exceed 4194304",
+    "manifest_bytes": 24472153,
+    "old_catalog_bytes": 14162308,
+    "old_manifest_bytes": 550376,
+    "schema_files": 41588,
+    "search_children_rebuilt_and_compared": 1156,
+    "search_children_unchanged": true
+  }
+]

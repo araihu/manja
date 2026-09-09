@@ -1,0 +1,254 @@
+diff --git a/application/catalog/compiler.go b/application/catalog/compiler.go
+index 0c6e6af..57f131e 100644
+--- a/application/catalog/compiler.go
++++ b/application/catalog/compiler.go
+@@ -34 +34 @@ func DefaultCompilerOptions() CompilerOptions {
+-			SearchFormat: "catalog-search-v1", PartitionPolicy: "catalog-partition-v1",
++			SearchFormat: "catalog-search-v1", PartitionPolicy: "catalog-partition-semantic-v2",
+diff --git a/application/catalog/partition.go b/application/catalog/partition.go
+index 4f8a506..43e3c82 100644
+--- a/application/catalog/partition.go
++++ b/application/catalog/partition.go
+@@ -39 +39 @@ func PartitionDocument(documentKey string, document projection.Document, directo
+-	detailChildren, detailPathByID, usage, err := partitionDetailRecords(documentKey, records, limits)
++	detailChildren, detailPathByID, usage, err := partitionSemanticDetails(documentKey, records, limits)
+@@ -131,0 +132,41 @@ func catalogOperationKey(method, operationPath, requestTarget string) string {
++// Group operation details by literal API path, while keeping each standalone
++// schema detail separate. Oversized paths still obey the record/byte ceilings.
++func partitionSemanticDetails(documentKey string, records []DetailRecordV1, limits PartitionLimits) ([]ChildArtifact, map[domain.DetailID]string, BudgetUsage, error) {
++	groupKey := func(r DetailRecordV1) string {
++		if r.Operation != nil {
++			return "operation\x00" + r.Operation.Path
++		}
++		return "schema\x00" + string(r.ID)
++	}
++	sort.Slice(records, func(i, j int) bool {
++		a, b := groupKey(records[i]), groupKey(records[j])
++		if a != b {
++			return a < b
++		}
++		return records[i].ID < records[j].ID
++	})
++	var children []ChildArtifact
++	paths := make(map[domain.DetailID]string, len(records))
++	var usage BudgetUsage
++	for start := 0; start < len(records); {
++		end := start + 1
++		for end < len(records) && groupKey(records[end]) == groupKey(records[start]) {
++			end++
++		}
++		part, mapped, used, err := partitionDetailRecords(documentKey, records[start:end], limits)
++		if err != nil {
++			return nil, nil, BudgetUsage{}, err
++		}
++		children = append(children, part...)
++		for id, p := range mapped {
++			paths[id] = p
++		}
++		usage.Children += used.Children
++		usage.ProjectionBytes += used.ProjectionBytes
++		usage.DetailShardRecords = max(usage.DetailShardRecords, used.DetailShardRecords)
++		usage.DetailShardBytes = max(usage.DetailShardBytes, used.DetailShardBytes)
++		start = end
++	}
++	return children, paths, usage, nil
++}
++
+@@ -189 +230 @@ func partitionSchemaNodes(documentKey string, nodes []projection.SchemaNode, lim
+-		for end < len(nodes) && uint64(end-start) < limits.SchemaNodeRecords {
++		for end < len(nodes) && end == start {
+diff --git a/application/catalog/partition_test.go b/application/catalog/partition_test.go
+index be9829f..2960269 100644
+--- a/application/catalog/partition_test.go
++++ b/application/catalog/partition_test.go
+@@ -56,2 +56,2 @@ func TestPartitionDetailShardsUseLowerRecordAndByteBounds(t *testing.T) {
+-	if got := countChildren(artifacts.Children, "detail"); got != 2 {
+-		t.Fatalf("detail shard count = %d, want 2", got)
++	if got := countChildren(artifacts.Children, "detail"); got != 257 {
++		t.Fatalf("detail shard count = %d, want 257 separate paths", got)
+@@ -95,2 +95,2 @@ func TestPartitionSchemaNodesPreservesCyclesAndRecordBound(t *testing.T) {
+-	if got := countChildren(artifacts.Children, "schema-node"); got != 2 {
+-		t.Fatalf("schema-node shard count = %d, want 2", got)
++	if got := countChildren(artifacts.Children, "schema-node"); got != 513 {
++		t.Fatalf("schema-node shard count = %d, want 513", got)
+@@ -102,2 +102,6 @@ func TestPartitionSchemaNodesPreservesCyclesAndRecordBound(t *testing.T) {
+-	if first.Nodes[0].Items[0].SchemaRef != 1 || first.Nodes[1].Items[0].SchemaRef != 0 {
+-		t.Fatalf("cycle refs changed: %#v / %#v", first.Nodes[0].Items, first.Nodes[1].Items)
++	var second SchemaNodeShardV1
++	if err := json.Unmarshal(schemaNodeChild(artifacts.Children, 1).Bytes, &second); err != nil {
++		t.Fatal(err)
++	}
++	if first.Nodes[0].Items[0].SchemaRef != 1 || second.Nodes[0].Items[0].SchemaRef != 0 {
++		t.Fatal("cycle references changed")
+diff --git a/internal/selfhosted/semantic_partition_profile_test.go b/internal/selfhosted/semantic_partition_profile_test.go
+new file mode 100644
+index 0000000..ad8a07c
+--- /dev/null
++++ b/internal/selfhosted/semantic_partition_profile_test.go
+@@ -0,0 +1,166 @@
++package selfhosted
++
++import (
++	"bytes"
++	"crypto/sha256"
++	"encoding/hex"
++	"encoding/json"
++	"fmt"
++	"os"
++	"path/filepath"
++	"sort"
++	"testing"
++
++	"github.com/araihu/manja/application/catalog"
++	"github.com/araihu/manja/application/projection"
++	"github.com/araihu/manja/internal/adapters/catalogjson"
++)
++
++// TestSemanticPartitionProfile recompiles only partitioning from an existing
++// verified export, leaving source and search data untouched. It exercises the
++// real encoders/admission bounds before investing in a full export.
++func TestSemanticPartitionProfile(t *testing.T) {
++	root := os.Getenv("MANJA_PARTITION_INPUT")
++	if root == "" {
++		t.Skip("opt-in partition experiment")
++	}
++	report := os.Getenv("MANJA_PARTITION_REPORT")
++	if report == "" {
++		t.Fatal("explicit report required")
++	}
++	var results []map[string]any
++	err := filepath.WalkDir(root, func(p string, d os.DirEntry, err error) error {
++		if err != nil {
++			return err
++		}
++		if d.IsDir() || d.Name() != "catalog.json" {
++			return nil
++		}
++		data, err := os.ReadFile(p)
++		if err != nil {
++			return err
++		}
++		var directory catalog.CatalogArtifactV1
++		if err = json.Unmarshal(data, &directory); err != nil {
++			return err
++		}
++		manifestBytes, err := os.ReadFile(filepath.Join(filepath.Dir(p), "manifest.json"))
++		if err != nil {
++			return err
++		}
++		var manifest catalog.ManifestV1
++		if err = json.Unmarshal(manifestBytes, &manifest); err != nil {
++			return err
++		}
++		var identities []catalog.ChildIdentityV1
++		for _, c := range manifest.Children {
++			if c.Kind != "detail" && c.Kind != "schema-node" && c.Kind != "catalog" {
++				identities = append(identities, c)
++			}
++		}
++		nodes, details := 0, 0
++		for i := range directory.Documents {
++			dir := &directory.Documents[i]
++			var doc projection.Document
++			paths := map[string]bool{}
++			for _, op := range dir.Operations {
++				paths[op.DetailChild] = true
++			}
++			for _, s := range dir.Schemas {
++				paths[s.DetailChild] = true
++			}
++			for path := range paths {
++				b, e := os.ReadFile(filepath.Join(filepath.Dir(p), "projection-data", path))
++				if e != nil {
++					return e
++				}
++				shard, e := catalogjson.DecodeDetailShard(b)
++				if e != nil {
++					return e
++				}
++				for _, r := range shard.Records {
++					if r.Operation != nil {
++						doc.OperationDetails = append(doc.OperationDetails, *r.Operation)
++					}
++					if r.Schema != nil {
++						doc.SchemaDetails = append(doc.SchemaDetails, *r.Schema)
++					}
++				}
++			}
++			for _, ref := range dir.SchemaNodeShards {
++				b, e := os.ReadFile(filepath.Join(filepath.Dir(p), "projection-data", ref.Path))
++				if e != nil {
++					return e
++				}
++				shard, e := catalogjson.DecodeSchemaNodeShard(b)
++				if e != nil {
++					return e
++				}
++				doc.SchemaNodes = append(doc.SchemaNodes, shard.Nodes...)
++			}
++			partition, e := catalog.PartitionDocument(dir.Key, doc, *dir, catalog.DefaultPartitionLimits(catalog.DefaultBounds()))
++			if e != nil {
++				return e
++			}
++			*dir = partition.Directory
++			for _, c := range partition.Children {
++				identities = append(identities, catalog.ChildIdentityV1{Path: c.Path, Kind: c.Kind, Length: c.Length, SHA256: c.SHA256})
++				if c.Kind == "schema-node" {
++					nodes++
++				} else {
++					details++
++				}
++			}
++		}
++
++		search, err := catalog.BuildSearchArtifactsWithoutResourceLimits(directory, catalog.DefaultBounds())
++		if err != nil {
++			return err
++		}
++		for _, child := range search.Children {
++			old, e := os.ReadFile(filepath.Join(filepath.Dir(p), "search-data", child.Path))
++			if e != nil {
++				return e
++			}
++			if !bytes.Equal(old, child.Bytes) {
++				return fmt.Errorf("search output changed: %s", child.Path)
++			}
++		}
++		encoded, err := json.Marshal(directory)
++		if err != nil {
++			return err
++		}
++		digest := sha256.Sum256(encoded)
++		identities = append(identities, catalog.ChildIdentityV1{Path: "catalog.json", Kind: "catalog", Length: uint64(len(encoded)), SHA256: hex.EncodeToString(digest[:])})
++		sort.Slice(identities, func(i, j int) bool { return identities[i].Path < identities[j].Path })
++		manifest.Children = identities
++		manifest.Identity.Children = identities
++		manifest.Identity.Versions.PartitionPolicy = catalog.DefaultCompilerOptions().Versions.PartitionPolicy
++		idBytes, _ := json.Marshal(manifest.Identity)
++		id := sha256.Sum256(idBytes)
++		manifest.SnapshotID = catalog.SnapshotID("snapshot-sha256-" + hex.EncodeToString(id[:]))
++		encodedManifest, err := json.Marshal(manifest)
++		if err != nil {
++			return err
++		}
++		_, catalogErr := catalogjson.DecodeCatalog(encoded)
++		_, manifestErr := catalogjson.DecodeManifest(encodedManifest)
++		r := map[string]any{"catalog": directory.CatalogID, "schema_files": nodes, "detail_files": details, "old_catalog_bytes": len(data), "catalog_bytes": len(encoded), "old_manifest_bytes": len(manifestBytes), "manifest_bytes": len(encodedManifest), "search_children_unchanged": true, "search_children_rebuilt_and_compared": len(search.Children)}
++		if catalogErr != nil {
++			r["catalog_admission_error"] = catalogErr.Error()
++		}
++		if manifestErr != nil {
++			r["manifest_admission_error"] = manifestErr.Error()
++		}
++		results = append(results, r)
++		t.Log(r)
++		return nil
++	})
++	if err != nil {
++		t.Fatal(err)
++	}
++	data, _ := json.MarshalIndent(results, "", "  ")
++	if err = os.WriteFile(report, data, 0600); err != nil {
++		t.Fatal(err)
++	}
++}

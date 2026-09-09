@@ -1,0 +1,231 @@
+{
+  "source_base": "9ec0e19",
+  "artifacts_sha256": {
+    "final.test": "5c30089b818c2ac010e8240000c91212ad318d004be42d1874374014cacb0419",
+    "final-complete.patch": "607d9af045a88849cf9ee81f7a6ebe479e41075f822462515a2265d9410059b8",
+    "cache128.test": "03261772f797092637d2be0eace2292b9abf00efe9278f11622d7c6416793c67",
+    "cache128.patch": "72fb4ac2448e018422ba325fc4ba97f866ceea6fc9eae19f026d80f91d757530",
+    "bounded.test": "1b37902f2e2a18c5c85313250f3f4066807081369c4faf32f0dd45fe6dcc7a24",
+    "bounded.patch": "3d630922a049fcb24e546a132958a3fca30a1b4d413d06bc2f9c2a17303df433",
+    "semantic.test": "b13f52a0e3b78dd108f47fda1759ff46eaa926c098a5e5fd0730eda0661a21a4",
+    "semantic-complete.patch": "6031d513b0d82c822480543872ea7cd4a2a2e9fd4fbc913f55292eb03bb4ca0e"
+  },
+  "cache_budget_default_bytes": 134217728,
+  "environment": {
+    "GOMAXPROCS": 4,
+    "GOMEMLIMIT": "512MiB",
+    "go": "go1.27.1 linux/arm64"
+  },
+  "runs": [
+    {
+      "allocated_bytes": 1493149899872,
+      "allocations": 10564523442,
+      "bytes": 664003841,
+      "export_seconds": 678.680660579,
+      "files": 77391,
+      "ingestion_seconds": 93.645556065,
+      "verify_seconds": 10.968183086,
+      "workers": 4,
+      "label": "final-full-w4-cold-1",
+      "process": {
+        "wall": 783.9890812280064,
+        "user": 2007.623448,
+        "system": 171.441907,
+        "maxrss_kib": 557948,
+        "exit": 0
+      }
+    },
+    {
+      "allocated_bytes": 24851378760,
+      "allocations": 236826295,
+      "bytes": 664003841,
+      "export_seconds": 33.659474408,
+      "files": 77391,
+      "ingestion_seconds": 97.314983376,
+      "verify_seconds": 6.758796204,
+      "workers": 4,
+      "label": "final-full-w4-warm-1",
+      "process": {
+        "wall": 138.02047856498393,
+        "user": 143.803999,
+        "system": 23.363704,
+        "maxrss_kib": 557016,
+        "exit": 0
+      }
+    },
+    {
+      "allocated_bytes": 396052586376,
+      "allocations": 1341204685,
+      "bytes": 664006537,
+      "export_seconds": 302.577611683,
+      "files": 77391,
+      "ingestion_seconds": 87.494111991,
+      "schema_cache": {
+        "hits": 293641,
+        "misses": 304,
+        "evictions": 0,
+        "oversized": 0,
+        "retainedBytes": 126472050,
+        "peakBytes": 126472050
+      },
+      "schema_cache_budget": 134217728,
+      "verify_seconds": 7.324181289,
+      "workers": 4,
+      "label": "cache128-full-w4-cold-1",
+      "process": {
+        "wall": 397.745275852998,
+        "user": 545.569369,
+        "system": 148.988932,
+        "maxrss_kib": 591352,
+        "exit": 0
+      }
+    },
+    {
+      "allocated_bytes": 24988142208,
+      "allocations": 236829313,
+      "bytes": 664006537,
+      "export_seconds": 31.964090685,
+      "files": 77391,
+      "ingestion_seconds": 94.50354338,
+      "schema_cache": {
+        "hits": 0,
+        "misses": 0,
+        "evictions": 0,
+        "oversized": 0,
+        "retainedBytes": 0,
+        "peakBytes": 0
+      },
+      "schema_cache_budget": 134217728,
+      "verify_seconds": 6.292566242,
+      "workers": 4,
+      "label": "cache128-full-w4-warm-1",
+      "process": {
+        "wall": 133.03803540600347,
+        "user": 137.954593,
+        "system": 25.581154,
+        "maxrss_kib": 557800,
+        "exit": 0
+      }
+    },
+    {
+      "allocated_bytes": 397021048944,
+      "allocations": 1341439652,
+      "bytes": 664001490,
+      "export_seconds": 269.325173108,
+      "files": 77391,
+      "ingestion_seconds": 86.183360516,
+      "schema_cache": {
+        "hits": 293633,
+        "misses": 312,
+        "evictions": 0,
+        "oversized": 0,
+        "retainedBytes": 126482610,
+        "peakBytes": 126482610
+      },
+      "schema_cache_budget": 134217728,
+      "verify_seconds": 5.900981375,
+      "workers": 4,
+      "label": "bounded-full-w4-cold-1",
+      "process": {
+        "wall": 361.7098418860114,
+        "user": 458.757182,
+        "system": 120.738054,
+        "maxrss_kib": 593640,
+        "exit": 0
+      },
+      "reuse": {
+        "html_files": 37783,
+        "reused_html_inodes": 0
+      }
+    },
+    {
+      "allocated_bytes": 397067274720,
+      "allocations": 1341070532,
+      "bytes": 664001490,
+      "export_seconds": 319.934229471,
+      "files": 77391,
+      "ingestion_seconds": 85.744742888,
+      "schema_cache": {
+        "hits": 293646,
+        "misses": 299,
+        "evictions": 0,
+        "oversized": 0,
+        "retainedBytes": 126482610,
+        "peakBytes": 126482610
+      },
+      "schema_cache_budget": 134217728,
+      "verify_seconds": 6.562431287,
+      "workers": 4,
+      "label": "bounded-full-w4-cold-2",
+      "process": {
+        "wall": 412.6272403949988,
+        "user": 507.539883,
+        "system": 119.523532,
+        "maxrss_kib": 593692,
+        "exit": 0
+      }
+    },
+    {
+      "allocated_bytes": 24977035064,
+      "allocations": 236825466,
+      "bytes": 664001490,
+      "export_seconds": 29.978877142,
+      "files": 77391,
+      "ingestion_seconds": 83.920365128,
+      "schema_cache": {
+        "hits": 0,
+        "misses": 0,
+        "evictions": 0,
+        "oversized": 0,
+        "retainedBytes": 0,
+        "peakBytes": 0
+      },
+      "schema_cache_budget": 134217728,
+      "verify_seconds": 6.360749461,
+      "workers": 4,
+      "label": "bounded-full-w4-warm-1",
+      "process": {
+        "wall": 120.47482525301166,
+        "user": 125.001231,
+        "system": 21.150461,
+        "maxrss_kib": 556456,
+        "exit": 0
+      },
+      "reuse": {
+        "html_files": 37783,
+        "reused_html_inodes": 37700
+      }
+    },
+    {
+      "allocated_bytes": 2865850272,
+      "allocations": 18051257,
+      "bytes": 34783094,
+      "export_seconds": 4.220820393,
+      "files": 2015,
+      "ingestion_seconds": 0.544801319,
+      "schema_cache": {
+        "hits": 6401,
+        "misses": 4,
+        "evictions": 0,
+        "oversized": 0,
+        "retainedBytes": 738770,
+        "peakBytes": 738770
+      },
+      "schema_cache_budget": 134217728,
+      "verify_seconds": 0.131758319,
+      "workers": 4,
+      "label": "bounded-representative-w4-cold-1",
+      "process": {
+        "wall": 5.012843578006141,
+        "user": 4.314525,
+        "system": 1.407048,
+        "maxrss_kib": 178960,
+        "exit": 0
+      },
+      "reuse": {
+        "html_files": 950,
+        "reused_html_inodes": 0
+      }
+    }
+  ]
+}

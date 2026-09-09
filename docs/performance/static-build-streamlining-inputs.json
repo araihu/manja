@@ -1,0 +1,282 @@
+{
+  "/tmp/manja-static-build-streamlining/internal/renderer/testdata/kubernetes/specs/.well-known__openid-configuration_openapi.json": {
+    "bytes": 987,
+    "sha256": "d776f5a3b4924075c3105f6576a4167c56a9b31d94219e4eb304af17841f1c0c"
+  },
+  "/tmp/manja-static-build-streamlining/internal/renderer/testdata/kubernetes/specs/api__v1_openapi.json": {
+    "bytes": 2135483,
+    "sha256": "d09ab224a98fb9c0e7fd128b6f395f66b23d43b6635272109dcaaafc4a3dd9c9"
+  },
+  "/tmp/manja-static-build-streamlining/internal/renderer/testdata/kubernetes/specs/api_openapi.json": {
+    "bytes": 4957,
+    "sha256": "c8b5ff931e265a81bce87df0e27a8d512fa056623b99b7a7d307b6ad9f9c0f8e"
+  },
+  "/tmp/manja-static-build-streamlining/internal/renderer/testdata/kubernetes/specs/apis__admissionregistration.k8s.io__v1_openapi.json": {
+    "bytes": 607771,
+    "sha256": "4a54b50b7562d3b220cd2e7fd9547bac9585982968f692bc96e99fdcca42dbc3"
+  },
+  "/tmp/manja-static-build-streamlining/internal/renderer/testdata/kubernetes/specs/apis__admissionregistration.k8s.io__v1alpha1_openapi.json": {
+    "bytes": 231488,
+    "sha256": "7d41dcbcf2de444ad4d1d0feaee329aaa8d7a6ac53242e996fdab0e376660222"
+  },
+  "/tmp/manja-static-build-streamlining/internal/renderer/testdata/kubernetes/specs/apis__admissionregistration.k8s.io__v1beta1_openapi.json": {
+    "bytes": 231707,
+    "sha256": "9109b819da37019a7c83d957029dbacbf8e34b5c2902e2f97c0f5ce80a38e421"
+  },
+  "/tmp/manja-static-build-streamlining/internal/renderer/testdata/kubernetes/specs/apis__admissionregistration.k8s.io_openapi.json": {
+    "bytes": 6360,
+    "sha256": "70cb34b24e86d43a7a92b88581766ff56a5330fafa4a166f2634c545d235b1ce"
+  },
+  "/tmp/manja-static-build-streamlining/internal/renderer/testdata/kubernetes/specs/apis__apiextensions.k8s.io__v1_openapi.json": {
+    "bytes": 182439,
+    "sha256": "41d85b9f6f2757d35b6645086d5bcadf4904a8f0133b00d77e2576b3feb47d56"
+  },
+  "/tmp/manja-static-build-streamlining/internal/renderer/testdata/kubernetes/specs/apis__apiextensions.k8s.io_openapi.json": {
+    "bytes": 6336,
+    "sha256": "704cf006b3e6f5770b3b0ad6bb5a7e537118460002a362c0fe0fd8e6031181ae"
+  },
+  "/tmp/manja-static-build-streamlining/internal/renderer/testdata/kubernetes/specs/apis__apiregistration.k8s.io__v1_openapi.json": {
+    "bytes": 138365,
+    "sha256": "a8e1310237c1b7a484ab98cd594f1d98e46e6d4c6ae7d7c9fd2c86f4cd91a19c"
+  },
+  "/tmp/manja-static-build-streamlining/internal/renderer/testdata/kubernetes/specs/apis__apiregistration.k8s.io_openapi.json": {
+    "bytes": 6342,
+    "sha256": "165a977dbe9f1b72fe7279bad3c0673233e36f35721b560261cd7d14b2a74ce1"
+  },
+  "/tmp/manja-static-build-streamlining/internal/renderer/testdata/kubernetes/specs/apis__apps__v1_openapi.json": {
+    "bytes": 934942,
+    "sha256": "e1326db2904fd6356d2f16e6179f8ad8e4800c0112cb74ab3b21da7286df4dbe"
+  },
+  "/tmp/manja-static-build-streamlining/internal/renderer/testdata/kubernetes/specs/apis__apps_openapi.json": {
+    "bytes": 6302,
+    "sha256": "6779f188ee2c99db2bdd88917239a9c9625a19a6750b320d96f461c540abc50f"
+  },
+  "/tmp/manja-static-build-streamlining/internal/renderer/testdata/kubernetes/specs/apis__authentication.k8s.io__v1_openapi.json": {
+    "bytes": 43337,
+    "sha256": "443427d822f77db77202c96df06d453845abc5cc67390180129a67e6c74d421e"
+  },
+  "/tmp/manja-static-build-streamlining/internal/renderer/testdata/kubernetes/specs/apis__authentication.k8s.io_openapi.json": {
+    "bytes": 6339,
+    "sha256": "47ea9f9e3db010ab9aad434d2267bafe7312db3fd86f4894845ec3d1d61325d4"
+  },
+  "/tmp/manja-static-build-streamlining/internal/renderer/testdata/kubernetes/specs/apis__authorization.k8s.io__v1_openapi.json": {
+    "bytes": 76665,
+    "sha256": "520953628cb42765e372fe5d616421e3743f42bd236bf0b12cfd37781aa37b0f"
+  },
+  "/tmp/manja-static-build-streamlining/internal/renderer/testdata/kubernetes/specs/apis__authorization.k8s.io_openapi.json": {
+    "bytes": 6336,
+    "sha256": "c382b090a07e46c830b5473b245e939a07df06a8f272a75eca53e42946a6a9b4"
+  },
+  "/tmp/manja-static-build-streamlining/internal/renderer/testdata/kubernetes/specs/apis__autoscaling__v1_openapi.json": {
+    "bytes": 160978,
+    "sha256": "424e756aa03460e09e39ead79c767dcb0450d0647dd1a4302598d3961c159898"
+  },
+  "/tmp/manja-static-build-streamlining/internal/renderer/testdata/kubernetes/specs/apis__autoscaling__v2_openapi.json": {
+    "bytes": 196036,
+    "sha256": "9c0e4bd6cb82e135feddc7c36459d6bebcdd166409e1df64782582420d2db062"
+  },
+  "/tmp/manja-static-build-streamlining/internal/renderer/testdata/kubernetes/specs/apis__autoscaling_openapi.json": {
+    "bytes": 6323,
+    "sha256": "49ad88585dbb6e0d7c1678b64229b0318c0c3c77a43e39ed9e4e1291dc998b67"
+  },
+  "/tmp/manja-static-build-streamlining/internal/renderer/testdata/kubernetes/specs/apis__batch__v1_openapi.json": {
+    "bytes": 551273,
+    "sha256": "39e41a47689d58ed0ba29c7e576fd88a47917b5c00dd2efaab71c9cf90a6b5f7"
+  },
+  "/tmp/manja-static-build-streamlining/internal/renderer/testdata/kubernetes/specs/apis__batch_openapi.json": {
+    "bytes": 6305,
+    "sha256": "ca1cff400884c89ec9937307bf5df57d76134a6e6398d2b8d702f0d317e4dc27"
+  },
+  "/tmp/manja-static-build-streamlining/internal/renderer/testdata/kubernetes/specs/apis__certificates.k8s.io__v1_openapi.json": {
+    "bytes": 362653,
+    "sha256": "ec9984a600f4e8116faa04e64980bfda39ae4ec30333324900c59e0a8b43b4f8"
+  },
+  "/tmp/manja-static-build-streamlining/internal/renderer/testdata/kubernetes/specs/apis__certificates.k8s.io__v1beta1_openapi.json": {
+    "bytes": 249990,
+    "sha256": "862c93b791e05332c611c53d6e5ad9aca897e948f268053d0a92d608160567dd"
+  },
+  "/tmp/manja-static-build-streamlining/internal/renderer/testdata/kubernetes/specs/apis__certificates.k8s.io_openapi.json": {
+    "bytes": 6333,
+    "sha256": "0f707ce9c9958b5b3626c413b0321e3c0d9bd19054312d3ecfa6ba9c99e2dc83"
+  },
+  "/tmp/manja-static-build-streamlining/internal/renderer/testdata/kubernetes/specs/apis__coordination.k8s.io__v1_openapi.json": {
+    "bytes": 143625,
+    "sha256": "7799819c8dcc9d851cf8ba6150a8e5d4769299391bf7c04b61fe434533b0a2b3"
+  },
+  "/tmp/manja-static-build-streamlining/internal/renderer/testdata/kubernetes/specs/apis__coordination.k8s.io__v1alpha2_openapi.json": {
+    "bytes": 145755,
+    "sha256": "ac7ddea6f340e6b15dc9a64a71b66f9cb8ede1915fc21374425b43fc13d27915"
+  },
+  "/tmp/manja-static-build-streamlining/internal/renderer/testdata/kubernetes/specs/apis__coordination.k8s.io__v1beta1_openapi.json": {
+    "bytes": 145773,
+    "sha256": "2b24466baffd395c0a88a6e655c2574277c7dc3ffabadbe3ea3480a02f3f8be8"
+  },
+  "/tmp/manja-static-build-streamlining/internal/renderer/testdata/kubernetes/specs/apis__coordination.k8s.io_openapi.json": {
+    "bytes": 6333,
+    "sha256": "e8b44c0014c66639de9ab49fd2f6b94b4638248fdd12c7e28fd37a65070857c7"
+  },
+  "/tmp/manja-static-build-streamlining/internal/renderer/testdata/kubernetes/specs/apis__discovery.k8s.io__v1_openapi.json": {
+    "bytes": 154056,
+    "sha256": "ec495888f7179b410d365dca5491d3d928028330ace1337c507c29e800303155"
+  },
+  "/tmp/manja-static-build-streamlining/internal/renderer/testdata/kubernetes/specs/apis__discovery.k8s.io_openapi.json": {
+    "bytes": 6324,
+    "sha256": "d91aba554ae0aa379e9f791e1c8e22946049145563507ee521e032c42c7aa000"
+  },
+  "/tmp/manja-static-build-streamlining/internal/renderer/testdata/kubernetes/specs/apis__events.k8s.io__v1_openapi.json": {
+    "bytes": 149012,
+    "sha256": "d987e47b95996c84d6bd05a30e7064e377793641a442d28f884324d6e2e71693"
+  },
+  "/tmp/manja-static-build-streamlining/internal/renderer/testdata/kubernetes/specs/apis__events.k8s.io_openapi.json": {
+    "bytes": 6315,
+    "sha256": "150d18a0678f49742512e8542389a3922f3c97ae726a3d50b94d3764a16ca5d5"
+  },
+  "/tmp/manja-static-build-streamlining/internal/renderer/testdata/kubernetes/specs/apis__flowcontrol.apiserver.k8s.io__v1_openapi.json": {
+    "bytes": 250281,
+    "sha256": "39016db91b91e617f59cd40e8e8c96b657b583e142c92843f0b603fc99661e27"
+  },
+  "/tmp/manja-static-build-streamlining/internal/renderer/testdata/kubernetes/specs/apis__flowcontrol.apiserver.k8s.io_openapi.json": {
+    "bytes": 6358,
+    "sha256": "76ef41112e6821e5033d753958098ec54a5429326f28cb2ac1db6a186e2614e0"
+  },
+  "/tmp/manja-static-build-streamlining/internal/renderer/testdata/kubernetes/specs/apis__internal.apiserver.k8s.io__v1alpha1_openapi.json": {
+    "bytes": 136592,
+    "sha256": "a8cfae049ce35813a609c15a043850af2f38d458d96f45ca3e6749ce8d945fea"
+  },
+  "/tmp/manja-static-build-streamlining/internal/renderer/testdata/kubernetes/specs/apis__internal.apiserver.k8s.io_openapi.json": {
+    "bytes": 6349,
+    "sha256": "8ad8517418e0d51c124eedf31262ac74aeba40d4e134eff629130ddac955187c"
+  },
+  "/tmp/manja-static-build-streamlining/internal/renderer/testdata/kubernetes/specs/apis__lifecycle.k8s.io__v1alpha1_openapi.json": {
+    "bytes": 296034,
+    "sha256": "affaa294525704e113d4e059eb298cb328bd6c2c46e518fcc270ff11845b030f"
+  },
+  "/tmp/manja-static-build-streamlining/internal/renderer/testdata/kubernetes/specs/apis__lifecycle.k8s.io_openapi.json": {
+    "bytes": 6324,
+    "sha256": "3ce58a6ccff5596e528f7a1cadbfcc63d089a507b7655551bff0d6268af35cd0"
+  },
+  "/tmp/manja-static-build-streamlining/internal/renderer/testdata/kubernetes/specs/apis__networking.k8s.io__v1_openapi.json": {
+    "bytes": 536415,
+    "sha256": "253b343c3cae24b9c42df30842b55f54d0aed3b30d91c35aa25bf0511f6c7848"
+  },
+  "/tmp/manja-static-build-streamlining/internal/renderer/testdata/kubernetes/specs/apis__networking.k8s.io_openapi.json": {
+    "bytes": 6327,
+    "sha256": "cae94ff4f36c4ce2466dccbac517b9aa33b51ceca2d730bc77ffff8024ca69ae"
+  },
+  "/tmp/manja-static-build-streamlining/internal/renderer/testdata/kubernetes/specs/apis__node.k8s.io__v1_openapi.json": {
+    "bytes": 124463,
+    "sha256": "d36da40a20d350140016227fe371b3b87dcb8493cd0e56ee3b6e5c14680f0d24"
+  },
+  "/tmp/manja-static-build-streamlining/internal/renderer/testdata/kubernetes/specs/apis__node.k8s.io_openapi.json": {
+    "bytes": 6309,
+    "sha256": "2c0e84baa43a28671434c1493bcf0923272035d6d023763702e0aca812bcabf4"
+  },
+  "/tmp/manja-static-build-streamlining/internal/renderer/testdata/kubernetes/specs/apis__policy__v1_openapi.json": {
+    "bytes": 167454,
+    "sha256": "21d1bc36490cee723d1785f265de69d98228f1c51522b10f5c6e4c7d213ebb0b"
+  },
+  "/tmp/manja-static-build-streamlining/internal/renderer/testdata/kubernetes/specs/apis__policy_openapi.json": {
+    "bytes": 6308,
+    "sha256": "1c16756247e546e403c3f60c23ca09dc5976d6a564613e1fe3e675f838cfc6e4"
+  },
+  "/tmp/manja-static-build-streamlining/internal/renderer/testdata/kubernetes/specs/apis__rbac.authorization.k8s.io__v1_openapi.json": {
+    "bytes": 404130,
+    "sha256": "58efa60097c0c4bfbde12e27bc14c00bbfd86e927feea109e5e368baee5c6fc0"
+  },
+  "/tmp/manja-static-build-streamlining/internal/renderer/testdata/kubernetes/specs/apis__rbac.authorization.k8s.io_openapi.json": {
+    "bytes": 6349,
+    "sha256": "c5e049cbae7855f68f3ee2f581b519d97088723f0fd92437bc06a035d4de84e6"
+  },
+  "/tmp/manja-static-build-streamlining/internal/renderer/testdata/kubernetes/specs/apis__resource.k8s.io__v1_openapi.json": {
+    "bytes": 600590,
+    "sha256": "743996fbedf996cea03b243e83e23b2d254b80d4a0cdcbf8ed8e9874bc449ab6"
+  },
+  "/tmp/manja-static-build-streamlining/internal/renderer/testdata/kubernetes/specs/apis__resource.k8s.io__v1alpha3_openapi.json": {
+    "bytes": 245700,
+    "sha256": "9d1665130f5a036c0a2075d89ba08d5500330b23ae27ca3cafda5f0aafeb8fed"
+  },
+  "/tmp/manja-static-build-streamlining/internal/renderer/testdata/kubernetes/specs/apis__resource.k8s.io__v1beta1_openapi.json": {
+    "bytes": 510484,
+    "sha256": "c43f1056ca52f2a8d9c7b0c1123315c7863bf4c797ff8461cbdb0963f0080fd0"
+  },
+  "/tmp/manja-static-build-streamlining/internal/renderer/testdata/kubernetes/specs/apis__resource.k8s.io__v1beta2_openapi.json": {
+    "bytes": 604139,
+    "sha256": "5b8bbb8c7a14ab015145739dab1486572dc41571c8bd4490dc4f0d9417b7411a"
+  },
+  "/tmp/manja-static-build-streamlining/internal/renderer/testdata/kubernetes/specs/apis__resource.k8s.io_openapi.json": {
+    "bytes": 6321,
+    "sha256": "37dadaef1dbaa713091f98f68c8f5528aefefa026d372c64a8b456e20013c4c0"
+  },
+  "/tmp/manja-static-build-streamlining/internal/renderer/testdata/kubernetes/specs/apis__scheduling.k8s.io__v1_openapi.json": {
+    "bytes": 118047,
+    "sha256": "c95d06aaea2dbf186b67bd7d1854ee7d06b0be37a8441eb264c6d5db05c33259"
+  },
+  "/tmp/manja-static-build-streamlining/internal/renderer/testdata/kubernetes/specs/apis__scheduling.k8s.io__v1alpha3_openapi.json": {
+    "bytes": 414442,
+    "sha256": "f82d942f2614cfd2a5e93f331b2f3bdc84205de7a93dda801aee813f886f39fc"
+  },
+  "/tmp/manja-static-build-streamlining/internal/renderer/testdata/kubernetes/specs/apis__scheduling.k8s.io__v1beta1_openapi.json": {
+    "bytes": 291624,
+    "sha256": "9a63eba6a0a0bf0bd6111c0d909a5079c663899783a89d4beaff996db5aa544b"
+  },
+  "/tmp/manja-static-build-streamlining/internal/renderer/testdata/kubernetes/specs/apis__scheduling.k8s.io_openapi.json": {
+    "bytes": 6327,
+    "sha256": "17c721726736034c2cc3dc4f54362e92f3278f21c18ed68128c7f66622975242"
+  },
+  "/tmp/manja-static-build-streamlining/internal/renderer/testdata/kubernetes/specs/apis__storage.k8s.io__v1_openapi.json": {
+    "bytes": 645367,
+    "sha256": "96c4f09112d51adc3d64c73f782927e88956ba6db4fa74b12fff2cf23ea7e5fe"
+  },
+  "/tmp/manja-static-build-streamlining/internal/renderer/testdata/kubernetes/specs/apis__storage.k8s.io_openapi.json": {
+    "bytes": 6318,
+    "sha256": "f5c8f45497c04ca9018b161efdecfbe96241fcec1105ba53f7399bc51224373d"
+  },
+  "/tmp/manja-static-build-streamlining/internal/renderer/testdata/kubernetes/specs/apis__storagemigration.k8s.io__v1_openapi.json": {
+    "bytes": 136448,
+    "sha256": "65b0af315e396248fc1b88ac7b9c852f8e4c60350acb95ca1e2eaec4b04d19c7"
+  },
+  "/tmp/manja-static-build-streamlining/internal/renderer/testdata/kubernetes/specs/apis__storagemigration.k8s.io__v1beta1_openapi.json": {
+    "bytes": 137033,
+    "sha256": "cdd86caa43e1f1095240ff429bf8cc34bad101155a57ee8f16739ab452703819"
+  },
+  "/tmp/manja-static-build-streamlining/internal/renderer/testdata/kubernetes/specs/apis__storagemigration.k8s.io_openapi.json": {
+    "bytes": 6345,
+    "sha256": "05b4951c0c4f1de457513751a16c031f5d2bf38622fe0f32352c6db861ec2556"
+  },
+  "/tmp/manja-static-build-streamlining/internal/renderer/testdata/kubernetes/specs/apis_openapi.json": {
+    "bytes": 7842,
+    "sha256": "b3cc654411b42803e5f8b6f7299ec0f96bf19a0c21133640d4c270be6ee98792"
+  },
+  "/tmp/manja-static-build-streamlining/internal/renderer/testdata/kubernetes/specs/logs_openapi.json": {
+    "bytes": 1099,
+    "sha256": "6b263751854cd33af73aa5d3a753e8e406c9f32d60e8fa67af7c188141134bf7"
+  },
+  "/tmp/manja-static-build-streamlining/internal/renderer/testdata/kubernetes/specs/openid__v1__jwks_openapi.json": {
+    "bytes": 972,
+    "sha256": "be0369fabc2dd2e26ddde8ffcc4829f0559c4f76841d96d154f76cb3ad2e95db"
+  },
+  "/tmp/manja-static-build-streamlining/internal/renderer/testdata/kubernetes/specs/version_openapi.json": {
+    "bytes": 3124,
+    "sha256": "9077133c6af1c993f466a91f9f870daaee779581adc2c3614176c273dd2f52a2"
+  },
+  "/tmp/manja-static-build-streamlining/internal/renderer/testdata/kubernetes/default-allowlist.json": {
+    "bytes": 51232,
+    "sha256": "26eb5590fad1c6fae99e4ad7b30deebf52d1b944721cbec3b8e3c600e7505518"
+  },
+  "/tmp/manja-static-build-streamlining/internal/adapters/openapi/testdata/github-v3-rest.json": {
+    "bytes": 3319366,
+    "sha256": "dedfee9ad6a676c2f7186b8e2137d887d6449cad8b7af8253aecdaae24b27977"
+  },
+  "/tmp/manja-fire-specs/stripe.json": {
+    "bytes": 3840021,
+    "sha256": "8b608cba7129d121f12358a7092574e176833fe8cb4c9fcead178c71c545f870"
+  },
+  "/tmp/manja-fire-specs/vcenter.yaml": {
+    "bytes": 8459136,
+    "sha256": "35de8570f0b0694460f5205ab3e21480ebc930558c661c139973d46e934c474b"
+  },
+  "/tmp/manja-fire-specs/vi-json.yaml": {
+    "bytes": 10854699,
+    "sha256": "8070ebbd85fc875e74c4b5b93bd1100308a6bbabb057766850b4abdcbb495ff7"
+  }
+}

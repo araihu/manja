@@ -1,0 +1,16 @@
+{
+  "search_files_byte_identical": 1436,
+  "existing_fragment_html": 37700,
+  "fragment_html_changed_only_node_attribute": 15233,
+  "unexpected_existing_fragment_changes": [],
+  "added_files": 31524,
+  "removed_files": 306,
+  "removed_bytes": 133479428,
+  "added_bytes": 63994004,
+  "removed_kinds": {
+    "projection": 303,
+    "wasm": 3
+  },
+  "source_download_files_byte_identical": 69,
+  "final_html_search_source_entries_identical_to_prototype": 55050
+}
