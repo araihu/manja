@@ -27,9 +27,9 @@ func TestPreparedOperationSchemaTreesRenderBoundRecursiveData(t *testing.T) {
 		`id="detail-sha256-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa-request-body-application-json-schema"`,
 		`aria-label="Request body schema for application/json schema tree"`,
 		`data-schema-tree-row="kind"`, `data-schema-tree-row="phase"`,
-		`data-required="true">required`, `data-required="false">optional`,
-		`Child &lt;description&gt;.`, `Default:</span> <code>Pod`, `Example:</span> <code>pod-1`,
-		`Allowed:</span> <code>Pod</code><code>Service`, `minLength:</span><code>1`,
+		`data-required="true">required`,
+		`Child <!-- raw HTML omitted -->.`, `<dt>Default</dt><dd><code>Pod`, `<dt>Example</dt><dd><code>pod-1`,
+		`<dt>Allowed</dt><dd><code>Pod, Service`, `<dt>minLength</dt><dd><code>1`,
 		`data-manja-schema-enum-reference="true"`, `hx-target="#catalog-main-content"`,
 		`hx-select="#catalog-main-content"`, `hx-swap="outerHTML show:#main-content:top"`,
 	} {
@@ -38,6 +38,9 @@ func TestPreparedOperationSchemaTreesRenderBoundRecursiveData(t *testing.T) {
 		}
 	}
 
+	if bytes.Contains(request, []byte(`data-required="false"`)) {
+		t.Fatal("optional schema labels must be hidden by default")
+	}
 	response, err := fragment.ResponseBytes(context.Background(), 0, 0)
 	if err != nil {
 		t.Fatal(err)

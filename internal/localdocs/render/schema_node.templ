@@ -3,10 +3,10 @@ package render
 import (
 	"strconv"
 	"strings"
-	"unicode/utf8"
 
 	templpkg "github.com/a-h/templ"
 	"github.com/araihu/goshtoso/components/tooltip"
+	"github.com/araihu/goshtoso/components/schematree"
 )
 
 templ schemaNode(node schemaNodeData) {
@@ -22,7 +22,9 @@ templ schemaNode(node schemaNodeData) {
 				}
 			</div>
 			if node.Description != "" {
-				<p class="mt-4 max-w-[70ch] whitespace-pre-wrap break-words text-on-surface-muted dark:text-on-surface-dark-muted">{ node.Description }</p>
+				<div class="gs-schema-tree-description">
+					@schemaDescriptionContent(node.Description)
+				</div>
 			}
 		}
 		if schemaHasMetadata(node.DefaultValue, node.ExampleText, node.EnumValues, node.Constraints, node.Nullable, node.Deprecated) {
@@ -31,24 +33,7 @@ templ schemaNode(node schemaNodeData) {
 			</div>
 		}
 		if len(node.Edges) > 0 {
-			<div class="mt-6 grid gap-4">
-				for _, edge := range node.Edges {
-					<article data-catalog-schema-property={ edge.Name } class="min-w-0 border-b border-outline px-1 pb-4 last:border-b-0 last:pb-0 dark:border-outline-dark">
-						<div class="manja-schema-label">
-							<div class="manja-schema-heading">
-								@schemaPropertyIdentity(node.Ordinal, edge)
-								@schemaPropertyStates(schemaPropertyStateLabel(edge.Required), edge.Nullable, edge.Deprecated)
-							</div>
-							if schemaEdgeHasDescription(edge) {
-								@schemaEdgeDescription(node.Ordinal, edge)
-							}
-							if schemaHasMetadata(edge.DefaultValue, edge.ExampleText, edge.EnumValues, edge.Constraints, false, false) {
-								@schemaMetadata(edge.DefaultValue, edge.ExampleText, edge.EnumValues, edge.Constraints, false, false)
-							}
-						</div>
-					</article>
-				}
-			</div>
+			@schematree.SchemaTree(sharedSchemaNodeEdges(node))
 		}
 		if node.Truncated {
 			<p class="mt-4 text-sm text-on-surface-muted dark:text-on-surface-dark-muted">Showing first 100 links from this node.</p>
@@ -56,20 +41,17 @@ templ schemaNode(node schemaNodeData) {
 	</section>
 }
 
-templ schemaPropertyIdentity(nodeOrdinal uint32, edge schemaEdgeData) {
-	<div class="manja-schema-identity">
-		<span class="manja-schema-name">{ edge.Name }</span>
-		if edge.ReferenceIsEnumAlias {
-			@schemaEnumAliasType(nodeOrdinal, edge)
-		} else {
-			if edge.Reference != "" {
-				@schemaReferenceLink(edge, "")
-			}
-			if edge.Type != "" {
-				<span class="manja-schema-type">{ edge.Type }</span>
-			}
+templ sharedSchemaEdgeType(nodeOrdinal uint32, edge schemaEdgeData) {
+	if edge.ReferenceIsEnumAlias {
+		@schemaEnumAliasType(nodeOrdinal, edge)
+	} else {
+		if edge.Reference != "" {
+			@schemaReferenceLink(edge, "")
 		}
-	</div>
+		if edge.Type != "" {
+			<span>{ edge.Type }</span>
+		}
+	}
 }
 
 templ schemaEnumAliasType(nodeOrdinal uint32, edge schemaEdgeData) {
@@ -139,23 +121,6 @@ func schemaEnumAliasPreview(values []string) string {
 	return "Allowed: " + strings.Join(preview, ", ")
 }
 
-templ schemaEdgeDescription(nodeOrdinal uint32, edge schemaEdgeData) {
-	{{ descriptionID := "catalog-schema-property-" + strconv.FormatUint(uint64(nodeOrdinal), 10) + "-" + anchorFragment(edge.Name) + "-description" }}
-	if schemaDescriptionNeedsCollapse(edge.Description) {
-		<div x-data="{ expanded: false }" class="manja-schema-description">
-			<p id={ descriptionID } data-catalog-schema-description-content="true" data-expanded="true" x-bind:data-expanded="expanded.toString()" class="manja-schema-description-content whitespace-pre-wrap">{ edge.Description }</p>
-			<button type="button" x-cloak data-catalog-schema-description-toggle="true" class="manja-description-toggle mt-1 text-xs font-medium text-primary underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary dark:text-primary-dark dark:focus-visible:outline-primary-dark" x-bind:aria-expanded="expanded.toString()" aria-controls={ descriptionID } x-on:click="expanded = !expanded" x-text="expanded ? 'Show less' : 'Show more'">Show more</button>
-		</div>
-	} else {
-		<p class="manja-schema-description whitespace-pre-wrap">{ edge.Description }</p>
-	}
-}
-
-func schemaDescriptionNeedsCollapse(description string) bool {
-	text := strings.TrimSpace(description)
-	return utf8.RuneCountInString(text) > 220 || strings.Count(text, "\n") >= 4
-}
-
 func schemaEdgeHasDescription(edge schemaEdgeData) bool {
 	description := strings.TrimSpace(edge.Description)
 	return description != "" && !strings.EqualFold(description, strings.TrimSpace(edge.Reference))
@@ -194,26 +159,6 @@ templ schemaMetadata(defaultValue string, exampleText string, enumValues []strin
 
 func schemaHasMetadata(defaultValue string, exampleText string, enumValues []string, constraints []schemaConstraintData, nullable bool, deprecated bool) bool {
 	return defaultValue != "" || exampleText != "" || len(enumValues) > 0 || len(constraints) > 0 || nullable || deprecated
-}
-
-templ schemaPropertyState(state string) {
-	if state == "required" {
-		<span class="manja-schema-property-state" data-required="true">required</span>
-	} else if state == "optional" {
-		<span class="manja-schema-property-state" data-required="false">optional</span>
-	}
-}
-
-templ schemaPropertyStates(state string, nullable bool, deprecated bool) {
-	<span class="flex flex-wrap items-center justify-end gap-2">
-		@schemaPropertyState(state)
-		if nullable {
-			<span class="manja-schema-property-state">nullable</span>
-		}
-		if deprecated {
-			<span class="manja-schema-property-state" data-deprecated="true">deprecated</span>
-		}
-	</span>
 }
 
 func schemaPropertyStateLabel(required bool) string {
