@@ -27,7 +27,6 @@ import (
 	selectfield "github.com/araihu/goshtoso/components/select"
 	"github.com/araihu/goshtoso/components/sidebar"
 	"github.com/araihu/goshtoso/components/skeleton"
-	"github.com/araihu/goshtoso/components/tooltip"
 
 	"github.com/araihu/manja/application/port"
 	core "github.com/araihu/manja/domain"
@@ -1546,13 +1545,7 @@ templ responseHeaders(headers []core.OperationResponseHeader, scope string, opts
 	if len(headers) > 0 {
 		<section data-manja-response-section="headers" aria-label="Response headers" class="grid gap-3">
 			<h6 class="font-title text-sm font-semibold text-on-surface-strong dark:text-on-surface-dark-strong">Headers</h6>
-			<div class="manja-schema-tree">
-				<div class="manja-schema-root">
-					for _, header := range headers {
-						@schemaTreeNode(header.Name, "", responseHeaderSummary(header), scope, false, opts)
-					}
-				</div>
-			</div>
+			@localrender.ResponseHeaderSchemaTree(headers, scope, opts.SchemaLinks)
 		</section>
 	}
 }
@@ -1710,105 +1703,7 @@ templ schemaProperties(id string, caption string, schema core.SchemaSummary, opt
 }
 
 templ schemaTree(id string, caption string, schema core.SchemaSummary, opts PublicDocsOptions) {
-	<section id={ id } aria-label={ caption + " schema tree" } class="manja-schema-tree">
-		if schemaTreeExpandable(schema) {
-			<div class="manja-schema-root">
-				@schemaTreeChildNodes(schema, opts, id)
-			</div>
-		} else {
-			@schemaTreeNode(schemaTreeRootName(caption, schema), "", schema, id, true, opts)
-		}
-	</section>
-}
-
-templ schemaTreeNode(name string, propertyState string, schema core.SchemaSummary, scope string, root bool, opts PublicDocsOptions) {
-	{{ displayName := schemaTreeDisplayName(name, schema) }}
-	{{ rowScope := scope + "-" + anchorFragment(displayName) }}
-	if schemaTreeExpandable(schema) {
-		if root {
-			<details open data-schema-tree-node={ displayName } class="manja-schema-node manja-schema-node-root">
-				@schemaTreeSummary(displayName, propertyState, schema, rowScope, opts)
-				@schemaTreeChildren(schema, opts, rowScope)
-			</details>
-		} else {
-			<details open data-schema-tree-row={ displayName } class="manja-schema-node">
-				@schemaTreeSummary(displayName, propertyState, schema, rowScope, opts)
-				@schemaTreeChildren(schema, opts, rowScope)
-			</details>
-		}
-	} else {
-		if root {
-			<div data-schema-tree-node={ displayName } class="manja-schema-node manja-schema-node-root">
-				<div class="manja-schema-row">
-					<span class="manja-schema-branch" aria-hidden="true"></span>
-					@schemaTreeLabel(displayName, propertyState, schema, rowScope, opts)
-				</div>
-			</div>
-		} else {
-			<div data-schema-tree-row={ displayName } class="manja-schema-node">
-				<div class="manja-schema-row">
-					<span class="manja-schema-branch" aria-hidden="true"></span>
-					@schemaTreeLabel(displayName, propertyState, schema, rowScope, opts)
-				</div>
-			</div>
-		}
-	}
-}
-
-templ schemaTreeSummary(name string, propertyState string, schema core.SchemaSummary, scope string, opts PublicDocsOptions) {
-	<summary class="manja-schema-row">
-		<span class="manja-schema-branch" aria-hidden="true"></span>
-		<span class="manja-schema-caret" aria-hidden="true"></span>
-		@schemaTreeLabel(name, propertyState, schema, scope, opts)
-	</summary>
-}
-
-templ schemaTreeLabel(name string, propertyState string, schema core.SchemaSummary, scope string, opts PublicDocsOptions) {
-	<div class="manja-schema-label">
-		<div class="manja-schema-heading">
-			@schemaTreePropertyIdentity(name, schema, scope, opts)
-			@schemaPropertyStates(propertyState, schema.Nullable, schema.Deprecated)
-		</div>
-		if schema.Description != "" {
-			if hasMarkdown(opts.MarkdownRenderer, schema.Description) {
-				<div class="manja-schema-description">
-					@renderedMarkdown(opts.MarkdownRenderer, schema.Description)
-				</div>
-			} else {
-				<p class="manja-schema-description">{ schema.Description }</p>
-			}
-		}
-		if schema.Default != "" {
-			<p class="manja-schema-metadata">
-				<span>Default:</span>
-				<code>{ schema.Default }</code>
-			</p>
-		}
-		if schema.Example != "" {
-			if schemaTreeExampleBlock(schema.Example) {
-				<div class="manja-schema-example manja-schema-example-block">
-					<span>Example:</span>
-					<pre><code>{ schema.Example }</code></pre>
-				</div>
-			} else {
-				<p class="manja-schema-example manja-schema-example-inline">
-					<span>Example:</span>
-					<code>{ schema.Example }</code>
-				</p>
-			}
-		}
-		if len(schema.Enum) > 0 {
-			<p class="manja-schema-metadata">
-				<span>Allowed:</span>
-				for _, value := range schema.Enum {
-					<code>{ value }</code>
-				}
-			</p>
-		}
-		for _, constraint := range schema.Constraints {
-			<p class="manja-schema-metadata"><span>{ constraint.Name }:</span><code>{ constraint.Value }</code></p>
-		}
-	</div>
+	@localrender.SchemaTreeFromSummary(id, caption, schema, opts.SchemaLinks, opts.SchemaLinkTarget, opts.SchemaLinkSelect, opts.SchemaLinkSwap)
 }
 
 templ schemaPropertyIdentity(name string, typeLabel string) {
@@ -1825,80 +1720,6 @@ templ schemaPropertyState(state string) {
 		<span class="manja-schema-property-state" data-required="true">required</span>
 	} else if state == "optional" {
 		<span class="manja-schema-property-state" data-required="false">optional</span>
-	}
-}
-
-templ schemaTreePropertyIdentity(name string, schema core.SchemaSummary, scope string, opts PublicDocsOptions) {
-	<div class="manja-schema-identity">
-		<span class="manja-schema-name">{ name }</span>
-		if schemaIsNamedPrimitiveEnumAlias(schema) {
-			@schemaEnumAliasType(name, schema, scope, opts)
-		} else if typeLabel := schemaInline(schema); typeLabel != "" {
-			<span class="manja-schema-type">{ typeLabel }</span>
-		}
-	</div>
-}
-
-templ schemaEnumAliasType(name string, schema core.SchemaSummary, scope string, opts PublicDocsOptions) {
-	{{ tooltipID := schemaEnumAliasTooltipID(scope, name, schema) }}
-	@tooltip.Tooltip(
-		tooltipID,
-		schema.Name,
-		tooltip.WithDescription(schemaEnumAliasPreview(schema.Enum)),
-		tooltip.WithPosition(tooltip.PositionBottom),
-		tooltip.WithTrigger(schemaEnumAliasTrigger(schema, opts, tooltipID)),
-	)
-}
-
-templ schemaEnumAliasTrigger(schema core.SchemaSummary, opts PublicDocsOptions, tooltipID string) {
-	{{ href := schemaTypeHref(schema, opts) }}
-	<span class="manja-schema-type">{ schemaInlineTypeLabel(schema) }&lt;</span>
-	if href != "" {
-		<a
-			data-manja-schema-enum-reference="true"
-			href={ templpkg.URL(href) }
-			hx-get={ href }
-			hx-target={ opts.SchemaLinkTarget }
-			if opts.SchemaLinkSelect != "" {
-				hx-select={ opts.SchemaLinkSelect }
-			}
-			hx-swap={ opts.SchemaLinkSwap }
-			hx-push-url="true"
-			aria-describedby={ tooltipID }
-			aria-label={ "Open schema " + schema.Name }
-			title={ "Open schema " + schema.Name }
-			class="manja-schema-reference rounded-radius underline-offset-4 transition hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary dark:focus-visible:outline-primary-dark"
-		>{ schema.Name }</a>
-	} else {
-		<span class="manja-schema-type">{ schema.Name }</span>
-	}
-	<span class="manja-schema-type">&gt;</span>
-}
-
-templ schemaPropertyStates(state string, nullable bool, deprecated bool) {
-	<span class="flex flex-wrap items-center justify-end gap-2">
-		@schemaPropertyState(state)
-		if nullable {
-			<span class="manja-schema-property-state">nullable</span>
-		}
-		if deprecated {
-			<span class="manja-schema-property-state" data-deprecated="true">deprecated</span>
-		}
-	</span>
-}
-
-templ schemaTreeChildren(schema core.SchemaSummary, opts PublicDocsOptions, scope string) {
-	<div class="manja-schema-children">
-		@schemaTreeChildNodes(schema, opts, scope)
-	</div>
-}
-
-templ schemaTreeChildNodes(schema core.SchemaSummary, opts PublicDocsOptions, scope string) {
-	if schema.Items != nil && schemaTreeExpandable(*schema.Items) {
-		@schemaTreeNode("items", "", *schema.Items, scope, false, opts)
-	}
-	for _, property := range schema.Properties {
-		@schemaTreeNode(property.Name, schemaPropertyStateLabel(property.Required), property.Schema, scope, false, opts)
 	}
 }
 
@@ -2676,32 +2497,6 @@ func schemaIsPrimitiveType(schema core.SchemaSummary) bool {
 
 func schemaIsNamedPrimitiveEnumAlias(schema core.SchemaSummary) bool {
 	return strings.TrimSpace(schema.Name) != "" && schemaIsPrimitiveType(schema) && len(schema.Enum) > 0
-}
-
-func schemaEnumAliasPreview(values []string) string {
-	const previewLimit = 5
-	preview := make([]string, 0, min(len(values), previewLimit))
-	for _, value := range values {
-		value = strings.TrimSpace(value)
-		if value == "" {
-			continue
-		}
-		preview = append(preview, value)
-		if len(preview) == previewLimit {
-			break
-		}
-	}
-	if len(preview) == 0 {
-		return "Named primitive enum."
-	}
-	if len(values) > len(preview) {
-		return "Allowed: " + strings.Join(preview, ", ") + ", and more."
-	}
-	return "Allowed: " + strings.Join(preview, ", ")
-}
-
-func schemaEnumAliasTooltipID(scope string, name string, schema core.SchemaSummary) string {
-	return "schema-enum-alias-" + anchorFragment(scope) + "-" + anchorFragment(name) + "-" + anchorFragment(schema.Name)
 }
 
 func schemaLinksForIndex(idx core.SpecIndex, existing map[string]string) map[string]string {

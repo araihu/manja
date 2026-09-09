@@ -902,6 +902,9 @@ func TestCatalogSidebarExpansionAndNavigationPreserveContext(t *testing.T) {
 	}
 
 	schemaControl := page.Locator(`#catalog-sidebar-groups a[data-catalog-group-control]`).Filter(playwright.LocatorFilterOptions{HasText: "Schemas"})
+	if err := page.Locator(`[role="tab"][data-manja-sidebar-tab="schemas"]`).Click(); err != nil {
+		t.Fatalf("select schema tab: %v", err)
+	}
 	toggleSchemaGroup := func(wantExpanded string) {
 		t.Helper()
 		if _, err := page.Evaluate(`() => window.__manjaSchemaGroupSettleBaseline = window.__manjaCatalogSidebarSettleCount`); err != nil {
@@ -923,9 +926,11 @@ func TestCatalogSidebarExpansionAndNavigationPreserveContext(t *testing.T) {
 	}
 	if _, err := page.Evaluate(`() => {
 		var style = document.createElement("style");
-		style.textContent = "#catalog-sidebar-groups .sidebar-scroll { height: 120px !important; flex: none !important; overflow-y: auto !important; }";
+		// Keep the single collapsed schema group scrollable too, independently
+		// of the operation list now living in a different tab.
+		style.textContent = "#catalog-sidebar-groups .sidebar-scroll { height: 120px !important; flex: none !important; overflow-y: auto !important; } #manja-sidebar-panel-schemas .sidebar-scroll::before { content: ''; display: block; min-height: 240px; }";
 		document.head.appendChild(style);
-		var panel = document.querySelector("#catalog-sidebar-groups .sidebar-scroll");
+		var panel = document.querySelector("#manja-sidebar-panel-schemas .sidebar-scroll");
 		panel.scrollTop = Math.min(80, panel.scrollHeight - panel.clientHeight);
 		window.__manjaSidebarScrollAtGroupRequest = -1;
 		document.body.addEventListener("htmx:beforeRequest", function captureSidebarScroll(event) {
@@ -938,9 +943,12 @@ func TestCatalogSidebarExpansionAndNavigationPreserveContext(t *testing.T) {
 		t.Fatalf("prepare sidebar scroll preservation: %v", err)
 	}
 	toggleSchemaGroup("true")
+	if _, err := page.WaitForFunction(`() => document.querySelector('[data-manja-sidebar-tab="schemas"]').getAttribute('aria-selected') === 'true' && Math.abs(document.querySelector('#manja-sidebar-panel-schemas .sidebar-scroll').scrollTop - window.__manjaSidebarScrollAtGroupRequest) <= 1`, nil); err != nil {
+		t.Fatalf("schema tab and scroll should survive group swap: %v", err)
+	}
 	sidebarScroll, err := page.Evaluate(`() => {
 		var before = window.__manjaSidebarScrollAtGroupRequest;
-		var after = document.querySelector("#catalog-sidebar-groups .sidebar-scroll").scrollTop;
+		var after = document.querySelector("#manja-sidebar-panel-schemas .sidebar-scroll").scrollTop;
 		return { before: before, after: after, preserved: before > 0 && Math.abs(after - before) <= 1 };
 	}`, nil)
 	if err != nil {

@@ -33,10 +33,10 @@ func TestPreparedOperationResponseDetailsPreservesProjectedHeaderExampleFallback
 		`aria-label="Response headers"`,
 		`>Headers</h6>`,
 		`data-schema-tree-row="X-Rate-Limit"`,
-		`>X-Rate-Limit</span>`,
+		`>X-Rate-Limit</code>`,
 		`>array[array[string&lt;uuid&gt;]]</span>`,
 		`>Header quota.</p>`,
-		`<span>Example:</span> <code>17</code>`,
+		`<dt>Example</dt><dd><code>17</code>`,
 	} {
 		if !strings.Contains(string(body), want) {
 			t.Errorf("response detail missing %q in %s", want, body)

@@ -1981,8 +1981,8 @@ func TestCatalogProjectionTransportIsNotActivatedByInitialHTML(t *testing.T) {
 		t.Fatalf("initial HTML = %d body=%q", response.Code, response.Body.String())
 	}
 	digest := sha256.Sum256(response.Body.Bytes())
-	if got := hex.EncodeToString(digest[:]); got != "7b9e2ccc7bd2b3e109080bd115e6d20e1191bc8999492b573ea19ee39b462609" || response.Body.Len() != 58798 {
-		t.Errorf("initial HTML = sha256 %s, %d bytes; want accepted OC-01M9 bytes", got, response.Body.Len())
+	if got := hex.EncodeToString(digest[:]); got != "544bbfe517377446657c0785af9400792257d65ea52c93899aa4a3f32678e509" || response.Body.Len() != 63517 {
+		t.Errorf("initial HTML = sha256 %s, %d bytes; want accepted Goshtoso sidebar tabs bytes", got, response.Body.Len())
 	}
 	for _, forbidden := range []string{"projection-data", "serviceWorker", "manja:local-ready", "MANJA_LOCAL_DOCS"} {
 		if strings.Contains(response.Body.String(), forbidden) {
@@ -2065,11 +2065,12 @@ func TestCatalogAssetsServeDeterministicLocalDocsWasmRuntime(t *testing.T) {
 			contentType: "text/javascript",
 		},
 		{
-			name:        "wasm binary",
-			path:        "/manja-assets/local-docs/manja.wasm",
-			embedded:    "static/local-docs/manja.wasm",
-			length:      15_825_837,
-			digest:      "51c55cb6de451b058fa6dee220d6fcce86e1f4f8d08e48b0028728b468eb6ca9",
+			name:     "wasm binary",
+			path:     "/manja-assets/local-docs/manja.wasm",
+			embedded: "static/local-docs/manja.wasm",
+			length:   17_287_779,
+			digest:   "5edcddf4778f19e15c5f9c1d04b2dcddeb6a999b7c256ce004efee33af39ccb8",
+
 			contentType: "application/wasm",
 			prefix:      []byte{0x00, 'a', 's', 'm'},
 		},
@@ -2077,8 +2078,8 @@ func TestCatalogAssetsServeDeterministicLocalDocsWasmRuntime(t *testing.T) {
 			name:     "brotli wasm binary",
 			path:     "/manja-assets/local-docs/manja.wasm.br",
 			embedded: "static/local-docs/manja.wasm.br",
-			length:   2_823_187,
-			digest:   "d3387e658be5e28b014e8bbdc53a9c5d40300e451bf3921b6e879ed3285842d1",
+			length:   2_994_353,
+			digest:   "5e4e2d6443627887aa9e7ab67dd3e31d6a773f913faa0faf98d22139ab946e28",
 		},
 	} {
 		t.Run(test.name, func(t *testing.T) {

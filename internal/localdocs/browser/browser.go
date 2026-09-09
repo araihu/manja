@@ -7,18 +7,20 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"github.com/araihu/manja/application/catalog"
-	"github.com/araihu/manja/application/projection"
-	"github.com/araihu/manja/domain"
-	"github.com/araihu/manja/internal/adapters/catalogjson"
-	"github.com/araihu/manja/internal/localdocs"
-	localrender "github.com/araihu/manja/internal/localdocs/render"
 	"html"
 	"net/url"
 	"path"
 	"sort"
 	"strconv"
 	"strings"
+
+	"github.com/a-h/templ"
+	"github.com/araihu/manja/application/catalog"
+	"github.com/araihu/manja/application/projection"
+	"github.com/araihu/manja/domain"
+	"github.com/araihu/manja/internal/adapters/catalogjson"
+	"github.com/araihu/manja/internal/localdocs"
+	localrender "github.com/araihu/manja/internal/localdocs/render"
 )
 
 type browserSchemaShard struct {
@@ -257,7 +259,12 @@ func (browser *Browser) render(ctx context.Context, route Route, includeSidebar 
 	documentHref := browser.descriptor.PublicationBase + "documents/" + document.Key + "/"
 	var sidebar string
 	if includeSidebar {
-		sidebar = browser.deploymentHTML(browser.renderSidebar(document, route))
+		var err error
+		sidebar, err = browser.renderSidebar(ctx, document, route)
+		if err != nil {
+			return Page{}, err
+		}
+		sidebar = browser.deploymentHTML(sidebar)
 	}
 	if route.Selected == "" {
 		main, err := browser.renderDocument(ctx, document, documentHref)
@@ -293,8 +300,12 @@ func (browser *Browser) RenderSidebar(route Route) (Page, error) {
 		return Page{}, errors.New("local docs document is missing")
 	}
 	documentHref := browser.descriptor.PublicationBase + "documents/" + document.Key + "/"
+	sidebar, err := browser.renderSidebar(context.Background(), document, route)
+	if err != nil {
+		return Page{}, err
+	}
 	return Page{
-		SidebarHTML: browser.deploymentHTML(browser.renderSidebar(document, route)),
+		SidebarHTML: browser.deploymentHTML(sidebar),
 		Canonical:   browserCanonical(documentHref, route, browserRouteFragment(route)),
 	}, nil
 }
@@ -529,7 +540,7 @@ func (browser *Browser) renderSchema(ctx context.Context, document catalog.Docum
 	return string(main), detail.Schema.Heading, err
 }
 
-func (browser *Browser) renderSidebar(document catalog.DocumentDirectoryV1, route Route) string {
+func (browser *Browser) renderSidebar(ctx context.Context, document catalog.DocumentDirectoryV1, route Route) (string, error) {
 	open := make(map[string]struct{}, len(route.Groups))
 	for _, group := range route.Groups {
 		open[group] = struct{}{}
@@ -552,7 +563,9 @@ func (browser *Browser) renderSidebar(document catalog.DocumentDirectoryV1, rout
 	output.WriteString(`<div data-manja-static-sidebar-top="true">`)
 	output.WriteString(browserSidebarTopLink(documentHref, "Spec overview", "spec-overview", route.Selected == ""))
 	output.WriteString(`</div>`)
-	output.WriteString(browserSidebarTabs(selectedTab))
+	var operations, schemas strings.Builder
+	prefix := output.String()
+	output.Reset()
 	type group struct {
 		id, label  string
 		operations []catalog.OperationDirectoryV1
@@ -567,7 +580,6 @@ func (browser *Browser) renderSidebar(document catalog.DocumentDirectoryV1, rout
 		groups = append(groups, group{id: browserGroupID("operations-" + label), label: label, operations: operations})
 	}
 	sort.Slice(groups, func(i, j int) bool { return groups[i].label < groups[j].label })
-	output.WriteString(`<div id="manja-sidebar-panel-operations" role="tabpanel" aria-labelledby="manja-sidebar-tab-operations" data-manja-sidebar-tab-panel="operations" data-manja-static-sidebar-section="paths"` + browserHiddenAttribute(selectedTab != "operations") + `>`)
 	for index, item := range groups {
 		_, explicitlyOpen := open[item.id]
 		_, explicitlyClosed := closed[item.id]
@@ -586,8 +598,8 @@ func (browser *Browser) renderSidebar(document catalog.DocumentDirectoryV1, rout
 		}
 		output.WriteString(`</section>`)
 	}
-	output.WriteString(`</div>`)
-	output.WriteString(`<div id="manja-sidebar-panel-schemas" role="tabpanel" aria-labelledby="manja-sidebar-tab-schemas" data-manja-sidebar-tab-panel="schemas" data-manja-static-sidebar-section="schemas"` + browserHiddenAttribute(selectedTab != "schemas") + `>`)
+	operations.WriteString(output.String())
+	output.Reset()
 	if len(document.Schemas) > 0 {
 		id := browserGroupID("schemas")
 		_, explicitlyOpen := open[id]
@@ -613,9 +625,15 @@ func (browser *Browser) renderSidebar(document catalog.DocumentDirectoryV1, rout
 		}
 		output.WriteString(`</section>`)
 	}
-	output.WriteString(`</div>`)
+	schemas.WriteString(output.String())
+	output.Reset()
+	output.WriteString(prefix)
+	// Both strings are constructed above from escaped catalog fields.
+	if err := localrender.SidebarTabs(selectedTab, templ.Raw(operations.String()), templ.Raw(schemas.String())).Render(ctx, &output); err != nil {
+		return "", err
+	}
 	output.WriteString(`</nav>`)
-	return output.String()
+	return output.String(), nil
 }
 
 func (browser *Browser) detail(document catalog.DocumentDirectoryV1, detailID domain.DetailID) (catalog.DetailRecordV1, error) {
@@ -841,25 +859,6 @@ func browserSidebarTopLink(href, label, id string, active bool) string {
 		icon = `<svg viewBox="0 0 20 20" fill="currentColor" class="size-5 shrink-0" aria-hidden="true"><path d="M4.5 2.75A1.75 1.75 0 0 0 2.75 4.5v11A1.75 1.75 0 0 0 4.5 17.25h11a1.75 1.75 0 0 0 1.75-1.75v-11a1.75 1.75 0 0 0-1.75-1.75h-11Zm1.25 3h8.5v1.5h-8.5v-1.5Zm0 3.5h8.5v1.5h-8.5v-1.5Zm0 3.5h5.5v1.5h-5.5v-1.5Z"></path></svg>`
 	}
 	return `<a href="` + html.EscapeString(href) + `" title="` + label + `" class="flex min-h-11 items-center gap-2 rounded-radius px-2 py-2 font-semibold"` + attributes + `>` + icon + `<span class="min-w-0 flex-1 truncate">` + label + `</span></a>`
-}
-
-func browserSidebarTabs(selected string) string {
-	operationsSelected := selected != "schemas"
-	return `<div role="tablist" aria-label="API resources" data-manja-sidebar-tabs="true"><button id="manja-sidebar-tab-operations" type="button" role="tab" data-manja-sidebar-tab="operations" aria-controls="manja-sidebar-panel-operations" aria-selected="` + strconv.FormatBool(operationsSelected) + `"` + browserTabIndex(operationsSelected) + `>Operations</button><button id="manja-sidebar-tab-schemas" type="button" role="tab" data-manja-sidebar-tab="schemas" aria-controls="manja-sidebar-panel-schemas" aria-selected="` + strconv.FormatBool(!operationsSelected) + `"` + browserTabIndex(!operationsSelected) + `>Schemas</button></div>`
-}
-
-func browserTabIndex(selected bool) string {
-	if selected {
-		return ""
-	}
-	return ` tabindex="-1"`
-}
-
-func browserHiddenAttribute(hidden bool) string {
-	if hidden {
-		return " hidden"
-	}
-	return ""
 }
 
 func browserCanonical(documentHref string, route Route, fragment string) string {

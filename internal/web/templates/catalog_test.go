@@ -986,12 +986,12 @@ func renderLegacyCatalogDocumentInfo(document catalog.DocumentDirectoryV1) ([]by
 				}
 			}
 			if contact.URL != "" {
-				if err := write(`<a href="` + legacyURL(contact.URL) + `" rel="noreferrer" class="min-w-0 truncate text-primary hover:underline dark:text-primary-dark" title="` + legacyAttribute(contact.URL) + `">` + templ.EscapeString(contact.URL) + `</a> `); err != nil {
+				if err := write(`<a href="` + legacyURL(contact.URL) + `" target="_blank" rel="noopener noreferrer" class="font-medium text-primary underline-offset-2 transition-colors motion-reduce:transition-none hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary dark:text-primary-dark dark:focus-visible:outline-primary-dark min-w-0 truncate" title="` + legacyAttribute(contact.URL) + `">` + templ.EscapeString(contact.URL) + `</a>`); err != nil {
 					return err
 				}
 			}
 			if contact.Email != "" {
-				if err := write(`<a href="` + legacyURL("mailto:"+contact.Email) + `" class="min-w-0 truncate text-primary hover:underline dark:text-primary-dark" title="` + legacyAttribute(contact.Email) + `">` + templ.EscapeString(contact.Email) + `</a>`); err != nil {
+				if err := write(`<a href="` + legacyURL("mailto:"+contact.Email) + `" target="_blank" rel="noopener noreferrer" class="font-medium text-primary underline-offset-2 transition-colors motion-reduce:transition-none hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary dark:text-primary-dark dark:focus-visible:outline-primary-dark min-w-0 truncate" title="` + legacyAttribute(contact.Email) + `">` + templ.EscapeString(contact.Email) + `</a>`); err != nil {
 					return err
 				}
 			}
@@ -1004,7 +1004,7 @@ func renderLegacyCatalogDocumentInfo(document catalog.DocumentDirectoryV1) ([]by
 				return err
 			}
 			if license.URL != "" {
-				if err := write(`<a href="` + legacyURL(license.URL) + `" rel="noreferrer" class="min-w-0 truncate font-semibold text-primary hover:underline dark:text-primary-dark" title="` + legacyAttribute(license.URL) + `">`); err != nil {
+				if err := write(`<a href="` + legacyURL(license.URL) + `" target="_blank" rel="noopener noreferrer" class="font-medium text-primary underline-offset-2 transition-colors motion-reduce:transition-none hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary dark:text-primary-dark dark:focus-visible:outline-primary-dark min-w-0 truncate font-semibold" title="` + legacyAttribute(license.URL) + `">`); err != nil {
 					return err
 				}
 				if license.Name != "" {
@@ -1014,7 +1014,7 @@ func renderLegacyCatalogDocumentInfo(document catalog.DocumentDirectoryV1) ([]by
 				} else if err := write(`View license`); err != nil {
 					return err
 				}
-				if err := write(`</a> `); err != nil {
+				if err := write(`</a>`); err != nil {
 					return err
 				}
 			} else if license.Name != "" {
@@ -1032,7 +1032,7 @@ func renderLegacyCatalogDocumentInfo(document catalog.DocumentDirectoryV1) ([]by
 			}
 		}
 		if showTerms {
-			if err := write(`<div class="min-w-0"><dt class="text-xs font-semibold uppercase tracking-wide text-on-surface-muted dark:text-on-surface-dark-muted">Terms of service</dt><dd class="mt-2 min-w-0 text-sm"><a href="` + legacyURL(document.Overview.TermsOfService) + `" rel="noreferrer" class="block min-w-0 truncate font-semibold text-primary hover:underline dark:text-primary-dark" title="` + legacyAttribute(document.Overview.TermsOfService) + `">View terms</a></dd></div>`); err != nil {
+			if err := write(`<div class="min-w-0"><dt class="text-xs font-semibold uppercase tracking-wide text-on-surface-muted dark:text-on-surface-dark-muted">Terms of service</dt><dd class="mt-2 min-w-0 text-sm"><a href="` + legacyURL(document.Overview.TermsOfService) + `" target="_blank" rel="noopener noreferrer" class="font-medium text-primary underline-offset-2 transition-colors motion-reduce:transition-none hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary dark:text-primary-dark dark:focus-visible:outline-primary-dark block min-w-0 truncate font-semibold" title="` + legacyAttribute(document.Overview.TermsOfService) + `">View terms</a></dd></div>`); err != nil {
 				return err
 			}
 		}
@@ -1077,8 +1077,9 @@ func TestCatalogDocumentSidebarGroupsOperationsUnderOnePathsItem(t *testing.T) {
 		`heroicons.svg#hi-16-solid-code-bracket`,
 		`heroicons.svg#hi-16-solid-cube`,
 		`data-manja-sidebar-tabs="true"`,
-		`data-manja-sidebar-tab="operations"`,
-		`data-manja-sidebar-tab="schemas"`,
+		`x-data="goshtosoTabs($el)"`,
+		`aria-controls="tabpanelmanja-sidebaroperations"`,
+		`aria-controls="tabpanelmanja-sidebarschemas"`,
 	} {
 		if !strings.Contains(body, want) {
 			t.Errorf("document sidebar missing Goshtoso icon %q", want)

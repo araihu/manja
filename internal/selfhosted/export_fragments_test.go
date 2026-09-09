@@ -8,7 +8,7 @@ import (
 )
 
 func TestExtractLazySchemaHTMLFragmentsDeduplicatesCanonicalTrees(t *testing.T) {
-	input := []byte(`<article><section id="operation-a-response-200-schema" aria-label="Response body schema tree" class="manja-schema-tree"><div id="operation-a-tooltip" data-schema-tree-node="Pet"><a href="#operation-a-tooltip" aria-describedby="operation-a-tooltip" data-tooltip-content-id="operation-a-tooltip">Pet</a></div></section><section id="operation-b-request-body-schema" aria-label="Request body schema tree" class="manja-schema-tree"><div id="operation-b-tooltip" data-schema-tree-node="Pet"><a href="#operation-b-tooltip" aria-describedby="operation-b-tooltip" data-tooltip-content-id="operation-b-tooltip">Pet</a></div></section></article>`)
+	input := []byte(`<article><section id="operation-a-response-200-schema" aria-label="Response body schema tree" class="gs-schema-tree" data-manja-schema-tree="true"><div id="operation-a-tooltip" data-schema-tree-node="Pet"><a href="#operation-a-tooltip" aria-describedby="operation-a-tooltip" data-tooltip-content-id="operation-a-tooltip">Pet</a></div></section><section id="operation-b-request-body-schema" aria-label="Request body schema tree" class="gs-schema-tree" data-manja-schema-tree="true"><div id="operation-b-tooltip" data-schema-tree-node="Pet"><a href="#operation-b-tooltip" aria-describedby="operation-b-tooltip" data-tooltip-content-id="operation-b-tooltip">Pet</a></div></section></article>`)
 
 	operation, fragments, err := extractLazySchemaHTMLFragments(input)
 	if err != nil {
@@ -18,7 +18,7 @@ func TestExtractLazySchemaHTMLFragmentsDeduplicatesCanonicalTrees(t *testing.T) 
 		t.Fatalf("standalone schema fragments = %d, want 1", len(fragments))
 	}
 	operationText := string(operation)
-	if strings.Contains(operationText, `class="manja-schema-tree"`) || strings.Contains(operationText, `data-schema-tree-node`) {
+	if strings.Contains(operationText, `class="gs-schema-tree" data-manja-schema-tree="true"`) || strings.Contains(operationText, `data-schema-tree-node`) {
 		t.Fatalf("operation retained schema HTML: %s", operationText)
 	}
 	if strings.Count(operationText, `data-manja-schema-resource="`+fragments[0].Resource+`"`) != 2 {

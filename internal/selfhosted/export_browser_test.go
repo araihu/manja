@@ -20,6 +20,8 @@ func TestExportBrowserRunsFromGenericStaticServerAtRootAndSubpath(t *testing.T) 
 	}
 	root := t.TempDir()
 	spec := `{"openapi":"3.0.3","info":{"title":"Private API","version":"v1"},"paths":{"/charges":{"get":{"operationId":"listCharges","summary":"List charges","responses":{"200":{"description":"ok","content":{"application/json":{"schema":{"$ref":"#/components/schemas/Charge"}}}}}}},"/customers":{"get":{"operationId":"listCustomers","summary":"List customers with a deliberately long operation title that must truncate before the method badge","responses":{"200":{"description":"ok"}}}}},"components":{"schemas":{"Charge":{"type":"object","properties":{"id":{"type":"string"},"customer":{"$ref":"#/components/schemas/Customer"}}},"Customer":{"type":"object","properties":{"address":{"$ref":"#/components/schemas/Address"}}},"Address":{"type":"object","properties":{"city":{"type":"string"}}}}}}`
+	spec = strings.Replace(spec, `"version":"v1"`, `"version":"v1","contact":{"name":"Support","url":"https://example.test/contact","email":"support@example.test"},"license":{"name":"License","url":"https://example.test/license"},"termsOfService":"https://example.test/terms"`, 1)
+
 	if err := os.WriteFile(filepath.Join(root, "private.json"), []byte(spec), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -98,6 +100,35 @@ catalogs:
 			t.Cleanup(func() { _ = page.Close() })
 			deployment := strings.TrimSuffix(basePath, "/")
 			documentURL := server.URL + deployment + "/private/documents/private/"
+			if _, err := page.Goto(server.URL + basePath); err != nil {
+				t.Fatal(err)
+			}
+			for _, width := range []int{816, 1280} {
+				if err := page.SetViewportSize(width, 994); err != nil {
+					t.Fatal(err)
+				}
+				if width < 1024 {
+					if err := page.Locator("[data-catalog-navigation-trigger]").Click(); err != nil {
+						t.Fatal(err)
+					}
+				}
+				for _, dark := range []bool{false, true} {
+					centered, err := page.Evaluate(`dark => {
+						document.documentElement.classList.toggle('dark', dark);
+						const avatars = [...document.querySelectorAll('.manja-catalog-icon-avatar')];
+						return avatars.length > 0 && avatars.every(el => {
+							const a = el.getBoundingClientRect();
+							const i = el.querySelector('svg').getBoundingClientRect();
+							return a.width === 32 && a.height === 32 && i.width === 16 && i.height === 16 &&
+								Math.abs(i.left + i.right - a.left - a.right) < 1 &&
+								Math.abs(i.top + i.bottom - a.top - a.bottom) < 1;
+						});
+					}`, dark)
+					if err != nil || centered != true {
+						t.Fatalf("catalog avatar alignment at width=%d dark=%t: centered=%v err=%v", width, dark, centered, err)
+					}
+				}
+			}
 			if _, err := page.Goto(server.URL + deployment + "/private/"); err != nil {
 				t.Fatal(err)
 			}
@@ -125,7 +156,57 @@ catalogs:
 			if reason, err := page.Locator("html").GetAttribute("data-manja-static-fragment-fallback-reason"); err != nil || reason != "" {
 				t.Fatalf("pre-rendered initial route fell back: %q %v", reason, err)
 			}
+			operationsTab := page.Locator(`[role="tab"][data-manja-sidebar-tab="operations"]`)
+			schemasTab := page.Locator(`[role="tab"][data-manja-sidebar-tab="schemas"]`)
+			if err := operationsTab.Focus(); err != nil {
+				t.Fatal(err)
+			}
+			if err := operationsTab.Press("ArrowRight"); err != nil {
+				t.Fatal(err)
+			}
+			if focused, err := schemasTab.Evaluate("(el) => el === document.activeElement", nil); err != nil || focused != true {
+				t.Fatalf("Goshtoso tab keyboard focus: %v, %v", focused, err)
+			}
+			if err := schemasTab.Press("Enter"); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := page.WaitForFunction(`() => document.querySelector('[data-manja-sidebar-tab="schemas"]').getAttribute('aria-selected') === 'true' && !document.querySelector('#manja-sidebar-panel-schemas').hidden`, nil); err != nil {
+				t.Fatal(err)
+			}
+			if active, err := schemasTab.Evaluate("(el) => el.classList.contains('border-primary') && getComputedStyle(el).borderBottomWidth === '2px'", nil); err != nil || active != true {
+				t.Fatalf("Goshtoso active tab underline: %v, %v", active, err)
+			}
+			if err := schemasTab.Press("ArrowLeft"); err != nil {
+				t.Fatal(err)
+			}
+			if err := operationsTab.Press("Enter"); err != nil {
+				t.Fatal(err)
+			}
 			groups := page.Locator(`#manja-sidebar-panel-operations section[data-manja-sidebar-group]`)
+			// Intercept external destinations so the test never contacts third parties.
+			if err := page.Context().Route("https://example.test/**", func(route playwright.Route) {
+				_ = route.Fulfill(playwright.RouteFulfillOptions{Status: playwright.Int(200), Body: "External information"})
+			}); err != nil {
+				t.Fatal(err)
+			}
+			for _, destination := range []string{"contact", "license", "terms"} {
+				href := "https://example.test/" + destination
+				infoLink := page.Locator(`dl[aria-label="OpenAPI information"] a[href="` + href + `"]`)
+				popup, err := page.ExpectPopup(func() error { return infoLink.Click() })
+				if err != nil {
+					t.Fatalf("open %s separately: %v", destination, err)
+				}
+				if err := popup.WaitForURL(href); err != nil {
+					t.Fatal(err)
+				}
+				if opener, err := popup.Evaluate("window.opener === null"); err != nil || opener != true {
+					t.Fatalf("unsafe popup opener: %v, %v", opener, err)
+				}
+				if page.URL() != documentURL {
+					t.Fatalf("external link navigated documentation: %s", page.URL())
+				}
+				_ = popup.Close()
+			}
 			if count, err := groups.Count(); err != nil || count != 2 {
 				t.Fatalf("initial operation groups = %d, %v; want 2", count, err)
 			}

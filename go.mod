@@ -4,8 +4,8 @@ go 1.27.0
 
 require (
 	github.com/a-h/templ v0.3.1020
-	github.com/araihu/assets v0.2.1
-	github.com/araihu/goshtoso v0.2.6
+	github.com/araihu/assets v0.2.3
+	github.com/araihu/goshtoso v0.2.10
 	github.com/caarlos0/env/v11 v11.4.1
 	github.com/evanw/esbuild v0.28.2
 	github.com/getkin/kin-openapi v0.147.0
@@ -66,7 +66,7 @@ require (
 	github.com/santhosh-tekuri/jsonschema/v6 v6.0.2 // indirect
 	github.com/shirou/gopsutil/v4 v4.26.6 // indirect
 	github.com/sirupsen/logrus v1.9.4 // indirect
-	github.com/stretchr/testify v1.12.0 // indirect
+	github.com/stretchr/testify v1.12.1 // indirect
 	github.com/tklauser/go-sysconf v0.4.0 // indirect
 	github.com/tklauser/numcpus v0.12.0 // indirect
 	github.com/yusufpapurcu/wmi v1.2.4 // indirect
@@ -75,5 +75,6 @@ require (
 	go.opentelemetry.io/otel v1.44.0 // indirect
 	go.opentelemetry.io/otel/metric v1.44.0 // indirect
 	go.opentelemetry.io/otel/trace v1.44.0 // indirect
+	go.yaml.in/yaml/v3 v3.0.5 // indirect
 	golang.org/x/crypto v0.55.0 // indirect
 )

@@ -1,8 +1,9 @@
 # syntax=docker/dockerfile:1
 
-FROM golang:1.27.0-alpine AS build
+FROM golang:1.27.1-alpine AS build
 
 ARG MANJA_VERSION=dev
+ENV GOEXPERIMENT=jsonv2
 
 WORKDIR /src
 RUN apk add --no-cache ca-certificates git

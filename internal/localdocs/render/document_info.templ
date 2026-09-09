@@ -1,6 +1,9 @@
 package render
 
-import templpkg "github.com/a-h/templ"
+import (
+	templpkg "github.com/a-h/templ"
+	"github.com/araihu/goshtoso/components/link"
+)
 
 templ catalogDocumentInfo(data catalogDocumentInfoData) {
 	if data.HasInfo {
@@ -13,10 +16,14 @@ templ catalogDocumentInfo(data catalogDocumentInfoData) {
 							<span class="font-semibold text-on-surface-strong dark:text-on-surface-dark-strong">{ data.ContactName }</span>
 						}
 						if data.ContactURL != "" {
-							<a href={ templpkg.URL(data.ContactURL) } rel="noreferrer" class="min-w-0 truncate text-primary hover:underline dark:text-primary-dark" title={ data.ContactURL }>{ data.ContactURL }</a>
+							@link.Link(data.ContactURL, link.WithTarget("_blank"), link.WithRootClass("min-w-0 truncate"), link.WithAttrs(templpkg.Attributes{"title": data.ContactURL})) {
+								{ data.ContactURL }
+							}
 						}
 						if data.ContactEmail != "" {
-							<a href={ templpkg.URL("mailto:" + data.ContactEmail) } class="min-w-0 truncate text-primary hover:underline dark:text-primary-dark" title={ data.ContactEmail }>{ data.ContactEmail }</a>
+							@link.Link("mailto:" + data.ContactEmail, link.WithTarget("_blank"), link.WithRootClass("min-w-0 truncate"), link.WithAttrs(templpkg.Attributes{"title": data.ContactEmail})) {
+								{ data.ContactEmail }
+							}
 						}
 					</dd>
 				</div>
@@ -26,13 +33,13 @@ templ catalogDocumentInfo(data catalogDocumentInfoData) {
 					<dt class="text-xs font-semibold uppercase tracking-wide text-on-surface-muted dark:text-on-surface-dark-muted">License</dt>
 					<dd class="mt-2 grid min-w-0 gap-1 text-sm">
 						if data.LicenseURL != "" {
-							<a href={ templpkg.URL(data.LicenseURL) } rel="noreferrer" class="min-w-0 truncate font-semibold text-primary hover:underline dark:text-primary-dark" title={ data.LicenseURL }>
+							@link.Link(data.LicenseURL, link.WithTarget("_blank"), link.WithRootClass("min-w-0 truncate font-semibold"), link.WithAttrs(templpkg.Attributes{"title": data.LicenseURL})) {
 								if data.LicenseName != "" {
 									{ data.LicenseName }
 								} else {
 									View license
 								}
-							</a>
+							}
 						} else if data.LicenseName != "" {
 							<span class="font-semibold text-on-surface-strong dark:text-on-surface-dark-strong">{ data.LicenseName }</span>
 						}
@@ -46,7 +53,9 @@ templ catalogDocumentInfo(data catalogDocumentInfoData) {
 				<div class="min-w-0">
 					<dt class="text-xs font-semibold uppercase tracking-wide text-on-surface-muted dark:text-on-surface-dark-muted">Terms of service</dt>
 					<dd class="mt-2 min-w-0 text-sm">
-						<a href={ templpkg.URL(data.TermsOfService) } rel="noreferrer" class="block min-w-0 truncate font-semibold text-primary hover:underline dark:text-primary-dark" title={ data.TermsOfService }>View terms</a>
+						@link.Link(data.TermsOfService, link.WithTarget("_blank"), link.WithRootClass("block min-w-0 truncate font-semibold"), link.WithAttrs(templpkg.Attributes{"title": data.TermsOfService})) {
+							View terms
+						}
 					</dd>
 				</div>
 			}

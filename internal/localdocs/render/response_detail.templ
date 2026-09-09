@@ -1,12 +1,11 @@
 package render
 
 import (
-	"context"
-	"io"
 	"strings"
 
 	templpkg "github.com/a-h/templ"
 	"github.com/araihu/goshtoso/components/tooltip"
+	"github.com/araihu/goshtoso/components/schematree"
 	"github.com/araihu/manja/domain"
 )
 
@@ -30,13 +29,7 @@ templ operationResponseDetailHeaders(headers []operationResponseHeaderData, scop
 	if len(headers) > 0 {
 		<section data-manja-response-section="headers" aria-label="Response headers" class="grid gap-3">
 			<h6 class="font-title text-sm font-semibold text-on-surface-strong dark:text-on-surface-dark-strong">Headers</h6>
-			<div class="manja-schema-tree">
-				<div class="manja-schema-root">
-					for _, header := range headers {
-						@operationResponseDetailSchemaTreeNode(header.Name, "", operationResponseDetailHeaderSummary(header), scope, false, schemaLinks)
-					}
-				</div>
-			</div>
+			@schematree.SchemaTree(sharedResponseHeaderTree(headers, scope, schemaLinks))
 		</section>
 	}
 }
@@ -50,98 +43,6 @@ func operationResponseDetailHeaderSummary(header operationResponseHeaderData) do
 		summary.Example = header.Example
 	}
 	return summary
-}
-
-templ operationResponseDetailSchemaTreeNode(name string, propertyState string, schema domain.SchemaSummary, scope string, root bool, schemaLinks map[string]string) {
-	{{ displayName := operationResponseDetailSchemaTreeDisplayName(name, schema) }}
-	{{ rowScope := scope + "-" + anchorFragment(displayName) }}
-	if operationResponseDetailSchemaTreeExpandable(schema) {
-		if root {
-			<details open data-schema-tree-node={ displayName } class="manja-schema-node manja-schema-node-root">
-				@operationResponseDetailSchemaTreeSummary(displayName, propertyState, schema, rowScope, schemaLinks)
-				@operationResponseDetailSchemaTreeChildren(schema, rowScope, schemaLinks)
-			</details>
-		} else {
-			<details open data-schema-tree-row={ displayName } class="manja-schema-node">
-				@operationResponseDetailSchemaTreeSummary(displayName, propertyState, schema, rowScope, schemaLinks)
-				@operationResponseDetailSchemaTreeChildren(schema, rowScope, schemaLinks)
-			</details>
-		}
-	} else {
-		if root {
-			<div data-schema-tree-node={ displayName } class="manja-schema-node manja-schema-node-root">
-				<div class="manja-schema-row">
-					<span class="manja-schema-branch" aria-hidden="true"></span>
-					@operationResponseDetailSchemaTreeLabel(displayName, propertyState, schema, rowScope, schemaLinks)
-				</div>
-			</div>
-		} else {
-			<div data-schema-tree-row={ displayName } class="manja-schema-node">
-				<div class="manja-schema-row">
-					<span class="manja-schema-branch" aria-hidden="true"></span>
-					@operationResponseDetailSchemaTreeLabel(displayName, propertyState, schema, rowScope, schemaLinks)
-				</div>
-			</div>
-		}
-	}
-}
-
-templ operationResponseDetailSchemaTreeSummary(name string, propertyState string, schema domain.SchemaSummary, scope string, schemaLinks map[string]string) {
-	<summary class="manja-schema-row">
-		<span class="manja-schema-branch" aria-hidden="true"></span>
-		<span class="manja-schema-caret" aria-hidden="true"></span>
-		@operationResponseDetailSchemaTreeLabel(name, propertyState, schema, scope, schemaLinks)
-	</summary>
-}
-
-templ operationResponseDetailSchemaTreeLabel(name string, propertyState string, schema domain.SchemaSummary, scope string, schemaLinks map[string]string) {
-	<div class="manja-schema-label">
-		<div class="manja-schema-heading">
-			@operationResponseDetailSchemaTreePropertyIdentity(name, schema, scope, schemaLinks)
-			@schemaPropertyStates(propertyState, schema.Nullable, schema.Deprecated)
-		</div>
-		if schema.Description != "" {
-			<p class="manja-schema-description">{ schema.Description }</p>
-		}
-		if schema.Default != "" {
-			<p class="manja-schema-metadata"><span>Default:</span><code>{ schema.Default }</code></p>
-		}
-		if schema.Example != "" {
-			if operationResponseDetailSchemaTreeExampleBlock(schema.Example) {
-				<div class="manja-schema-example manja-schema-example-block">
-					<span>Example:</span>
-					<pre><code>{ schema.Example }</code></pre>
-				</div>
-			} else {
-				<p class="manja-schema-example manja-schema-example-inline">
-					<span>Example:</span>
-					<code>{ schema.Example }</code>
-				</p>
-			}
-		}
-		if len(schema.Enum) > 0 {
-			<p class="manja-schema-metadata">
-				<span>Allowed:</span>
-				for _, value := range schema.Enum {
-					<code>{ value }</code>
-				}
-			</p>
-		}
-		for _, constraint := range schema.Constraints {
-			<p class="manja-schema-metadata"><span>{ constraint.Name }:</span><code>{ constraint.Value }</code></p>
-		}
-	</div>
-}
-
-templ operationResponseDetailSchemaTreePropertyIdentity(name string, schema domain.SchemaSummary, scope string, schemaLinks map[string]string) {
-	<div class="manja-schema-identity">
-		<span class="manja-schema-name">{ name }</span>
-		if responseDetailSchemaIsNamedPrimitiveEnumAlias(schema) {
-			@operationResponseDetailSchemaEnumAliasType(name, schema, scope, schemaLinks)
-		} else if typeLabel := parameterSchemaInline(schema); typeLabel != "" {
-			<span class="manja-schema-type">{ typeLabel }</span>
-		}
-	</div>
 }
 
 templ operationResponseDetailSchemaEnumAliasType(name string, schema domain.SchemaSummary, scope string, schemaLinks map[string]string) {
@@ -175,28 +76,6 @@ func operationResponseDetailSchemaTreeExpandable(schema domain.SchemaSummary) bo
 		return true
 	}
 	return schema.Items != nil && operationResponseDetailSchemaTreeExpandable(*schema.Items)
-}
-
-func operationResponseDetailSchemaTreeChildren(schema domain.SchemaSummary, scope string, schemaLinks map[string]string) templpkg.Component {
-	return templpkg.ComponentFunc(func(ctx context.Context, writer io.Writer) error {
-		return operationResponseDetailSchemaTreeChildrenTemplate(schema, scope, schemaLinks).Render(ctx, writer)
-	})
-}
-
-templ operationResponseDetailSchemaTreeChildrenTemplate(schema domain.SchemaSummary, scope string, schemaLinks map[string]string) {
-	<div class="manja-schema-children">
-		if schema.Items != nil && operationResponseDetailSchemaTreeExpandable(*schema.Items) {
-			@operationResponseDetailSchemaTreeNode("items", "", *schema.Items, scope, false, schemaLinks)
-		}
-		for _, property := range schema.Properties {
-			@operationResponseDetailSchemaTreeNode(property.Name, schemaPropertyStateLabel(property.Required), property.Schema, scope, false, schemaLinks)
-		}
-	</div>
-}
-
-func operationResponseDetailSchemaTreeExampleBlock(example string) bool {
-	trimmed := strings.TrimSpace(example)
-	return len(trimmed) > 96 || strings.Contains(trimmed, "\n")
 }
 
 func operationResponseDetailSchemaInlineTypeLabel(schema domain.SchemaSummary) string {

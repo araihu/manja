@@ -52,6 +52,12 @@
   width: 100%;
 }
 
+/* Keep Next in the final explicit column, even without a Previous link.
+   A single-column mobile grid still uses its full width. */
+[data-manja-operation-neighbor="next"] {
+  grid-column: -2 / -1;
+}
+
 .manja-catalog-navigation-backdrop {
   background: color-mix(in oklch, var(--color-surface-dark) 40%, transparent);
   z-index: 60;
@@ -59,6 +65,21 @@
 
 .manja-catalog-navigation-open {
   z-index: 80;
+}
+
+/* Compatibility with Goshtoso's offset custom-icon wrapper in the pinned
+   release. Remove once the upstream avatar centering fix is adopted. */
+.manja-catalog-icon-avatar > span > span > span {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0;
+}
+
+.manja-catalog-icon-avatar svg {
+  width: 1rem;
+  height: 1rem;
+  flex-shrink: 0;
 }
 
 .manja-catalog-search-dialog {
@@ -425,48 +446,6 @@
 .dark #catalog-sidebar-groups #catalog-sidebar-spec-overview[data-catalog-sidebar-selected="true"] {
   background: color-mix(in oklch, var(--color-primary-dark) 14%, transparent);
   color: var(--color-primary-dark);
-}
-
-#catalog-sidebar-groups [data-manja-sidebar-tabs="true"] {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  gap: 0.25rem;
-  margin: 0.5rem 0 0.75rem;
-  padding: 0.25rem;
-  border: 1px solid var(--color-outline);
-  border-radius: var(--radius-radius);
-  background: var(--color-surface-alt);
-}
-
-.dark #catalog-sidebar-groups [data-manja-sidebar-tabs="true"] {
-  border-color: var(--color-outline-dark);
-  background: var(--color-surface-dark-alt);
-}
-
-#catalog-sidebar-groups [data-manja-sidebar-tab] {
-  min-width: 0;
-  border-radius: calc(var(--radius-radius) - 0.125rem);
-  padding: 0.5rem 0.625rem;
-  color: var(--color-on-surface-muted);
-  font-size: 0.75rem;
-  font-weight: 700;
-  line-height: 1;
-  text-align: center;
-}
-
-#catalog-sidebar-groups [data-manja-sidebar-tab][aria-selected="true"] {
-  background: var(--color-surface);
-  color: var(--color-on-surface-strong);
-  box-shadow: 0 1px 2px color-mix(in oklch, var(--color-on-surface) 14%, transparent);
-}
-
-.dark #catalog-sidebar-groups [data-manja-sidebar-tab] {
-  color: var(--color-on-surface-dark-muted);
-}
-
-.dark #catalog-sidebar-groups [data-manja-sidebar-tab][aria-selected="true"] {
-  background: var(--color-surface-dark);
-  color: var(--color-on-surface-dark-strong);
 }
 
 #catalog-sidebar-groups [data-manja-sidebar-tab-panel][hidden] {
@@ -1318,126 +1297,9 @@ html.boot [data-boot-anim="main"] {
   min-width: 0;
 }
 
-.manja-schema-detail-layout .manja-schema-tree {
+.manja-schema-detail-layout .gs-schema-tree {
   margin-top: 0;
   max-width: none;
-}
-
-.manja-schema-tree {
-  --manja-schema-caret-gap: 0.4rem;
-  --manja-schema-caret-size: 0.35rem;
-  --manja-schema-child-indent-x: 1.5rem;
-  --manja-schema-elbow-tip-x: 1.35rem;
-  --manja-schema-gutter-x: calc(
-    var(--manja-schema-elbow-tip-x) + var(--manja-schema-caret-gap) + var(--manja-schema-caret-size)
-  );
-  --manja-schema-root-child-indent-x: 2.5rem;
-  color: var(--color-on-surface);
-  font-size: 0.875rem;
-  margin-top: 1.5rem;
-  max-width: 56rem;
-  padding: 0.25rem 0 0.5rem;
-}
-
-.manja-schema-node {
-  position: relative;
-}
-
-.manja-schema-node + .manja-schema-node {
-  margin-top: 0.125rem;
-}
-
-.manja-schema-row {
-  align-items: start;
-  border-radius: var(--radius-radius);
-  display: grid;
-  gap: 0.625rem;
-  grid-template-columns: var(--manja-schema-gutter-x) minmax(0, 1fr) auto;
-  min-height: 2.25rem;
-  padding: 0.4rem 0.75rem 0.4rem 0;
-  position: relative;
-}
-
-summary.manja-schema-row {
-  cursor: pointer;
-  list-style: none;
-}
-
-summary.manja-schema-row::-webkit-details-marker {
-  display: none;
-}
-
-summary.manja-schema-row::marker {
-  content: "";
-}
-
-.manja-schema-row:hover {
-  background: color-mix(in oklch, var(--color-surface-alt) 52%, transparent);
-}
-
-.manja-schema-branch {
-  align-self: start;
-  display: block;
-  grid-column: 1;
-  grid-row: 1;
-  height: 1.25rem;
-  position: relative;
-  width: var(--manja-schema-gutter-x);
-}
-
-.manja-schema-branch::before {
-  border-top: 1px solid var(--color-outline);
-  content: "";
-  left: 0;
-  position: absolute;
-  top: 0.72rem;
-  width: var(--manja-schema-elbow-tip-x);
-}
-
-.manja-schema-caret {
-  align-self: start;
-  display: block;
-  grid-column: 1;
-  grid-row: 1;
-  height: 1.25rem;
-  pointer-events: none;
-  position: relative;
-  width: var(--manja-schema-gutter-x);
-  z-index: 1;
-}
-
-.manja-schema-caret::before {
-  border-bottom: 1px solid var(--color-on-surface-muted);
-  border-right: 1px solid var(--color-on-surface-muted);
-  content: "";
-  height: var(--manja-schema-caret-size);
-  left: calc(var(--manja-schema-elbow-tip-x) + var(--manja-schema-caret-gap));
-  position: absolute;
-  top: 0.55rem;
-  transform: rotate(45deg);
-  width: var(--manja-schema-caret-size);
-}
-
-.manja-schema-node:not([open]) > summary .manja-schema-caret::before {
-  transform: rotate(-45deg);
-}
-
-.manja-schema-node-root > .manja-schema-row .manja-schema-branch::before {
-  display: none;
-}
-
-.manja-schema-children {
-  border-left: 1px solid var(--color-outline);
-  margin-left: var(--manja-schema-child-indent-x);
-  padding: 0.125rem 0 0.25rem 0;
-}
-
-.manja-schema-root > .manja-schema-node > .manja-schema-children {
-  margin-left: var(--manja-schema-root-child-indent-x);
-}
-
-.manja-schema-root > .manja-schema-node > .manja-schema-row .manja-schema-branch::before {
-  display: none;
 }
 
 .manja-schema-label {
@@ -1812,26 +1674,13 @@ summary.manja-schema-row::marker {
   color: var(--color-on-surface-dark);
 }
 
-.dark .manja-schema-tree {
-  color: var(--color-on-surface-dark);
-}
 
 .dark .manja-endpoint-responses-section {
   border-top-color: var(--color-outline-dark);
 }
 
-.dark .manja-schema-row:hover {
-  background: color-mix(in oklch, var(--color-surface-dark-alt) 78%, transparent);
-}
 
-.dark .manja-schema-branch::before,
-.dark .manja-schema-children {
-  border-color: var(--color-outline-dark);
-}
 
-.dark .manja-schema-caret::before {
-  border-color: var(--color-on-surface-dark-muted);
-}
 
 .dark .manja-schema-name {
   background: color-mix(in oklch, var(--color-primary-dark) 14%, transparent);

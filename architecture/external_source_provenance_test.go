@@ -37,11 +37,12 @@ type legalFileEvidence struct {
 }
 
 type assetsProvenance struct {
-	Repository string                    `json:"repository"`
-	OriginMain sourceRevision            `json:"originMain"`
-	Release    assetsReleaseProvenance   `json:"release"`
-	Legal      []legalFileEvidence       `json:"legal"`
-	Consumers  []assetConsumerProvenance `json:"consumers"`
+	ModuleVersion string                    `json:"moduleVersion"`
+	Repository    string                    `json:"repository"`
+	OriginMain    sourceRevision            `json:"originMain"`
+	Release       assetsReleaseProvenance   `json:"release"`
+	Legal         []legalFileEvidence       `json:"legal"`
+	Consumers     []assetConsumerProvenance `json:"consumers"`
 }
 
 type assetsReleaseProvenance struct {
@@ -75,7 +76,8 @@ type goshtosoProvenance struct {
 var approvedExternalSourceProvenance = externalSourceProvenance{
 	SchemaVersion: 1,
 	Assets: assetsProvenance{
-		Repository: "https://github.com/araihu/assets",
+		ModuleVersion: "v0.2.3",
+		Repository:    "https://github.com/araihu/assets",
 		OriginMain: sourceRevision{
 			Ref:       "refs/remotes/origin/main",
 			CommitSHA: "9a1fce17ad1a99892e81bf3b3b36e7ed48448b63",
@@ -102,11 +104,11 @@ var approvedExternalSourceProvenance = externalSourceProvenance{
 	},
 	Goshtoso: goshtosoProvenance{
 		Repository:   "https://github.com/araihu/goshtoso",
-		OriginMain:   sourceRevision{Ref: "refs/remotes/origin/main", CommitSHA: "d3eaf0d19be3dcae3fe0fab688c6fe915bc3abd6", TreeSHA: "fa6b7ed44ab6be7ec02c36783f80a08b72dd1769"},
+		OriginMain:   sourceRevision{Ref: "refs/remotes/origin/main", CommitSHA: "e8744f6bd997c4b62dd7d1d50263f1fc731b057a", TreeSHA: "6f62b12ff3131f2876bb75d8b24c2e7bf86b746b"},
 		Module:       "github.com/araihu/goshtoso",
-		Version:      "v0.2.6",
-		TagCommitSHA: "ed9750d2443ab5e961aec50b546dca4f3b033d62",
-		TagTreeSHA:   "7b5a8fc3a03196f08db0b1209dcdd43b521d942c",
+		Version:      "v0.2.10",
+		TagCommitSHA: "e8744f6bd997c4b62dd7d1d50263f1fc731b057a",
+		TagTreeSHA:   "6f62b12ff3131f2876bb75d8b24c2e7bf86b746b",
 		License:      legalFileEvidence{Path: "LICENSE", Kind: "license", SPDX: "MIT", Size: 1078, GitBlobSHA: "0a7743398ecbeacc05ed822e1f74023ee9b36842", SHA256: "cacf68ff9920c026f5de2ebf992333c1a243e45d81aaa5b4577e05b52c5a9584"},
 	},
 }
@@ -196,9 +198,9 @@ func TestExternalSourceProvenanceMatchesPinnedModuleLicenseBytes(t *testing.T) {
 		version string
 		file    legalFileEvidence
 	}{
-		{module: "github.com/araihu/assets", version: "v0.2.1", file: approvedExternalSourceProvenance.Assets.Legal[0]},
-		{module: "github.com/araihu/assets", version: "v0.2.1", file: approvedExternalSourceProvenance.Assets.Legal[1]},
-		{module: "github.com/araihu/goshtoso", version: "v0.2.6", file: approvedExternalSourceProvenance.Goshtoso.License},
+		{module: "github.com/araihu/assets", version: approvedExternalSourceProvenance.Assets.ModuleVersion, file: approvedExternalSourceProvenance.Assets.Legal[0]},
+		{module: "github.com/araihu/assets", version: approvedExternalSourceProvenance.Assets.ModuleVersion, file: approvedExternalSourceProvenance.Assets.Legal[1]},
+		{module: "github.com/araihu/goshtoso", version: "v0.2.10", file: approvedExternalSourceProvenance.Goshtoso.License},
 	} {
 		moduleRoot := goModuleRoot(t, root, evidence.module)
 		if got := goModuleVersion(t, root, evidence.module); got != evidence.version {
