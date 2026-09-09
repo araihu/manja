@@ -27,7 +27,7 @@ func TestPreparedSchemaNodeFragmentRendersCanonicalEscapedHTML(t *testing.T) {
 		`aria-label="Pod schema node"`,
 		`data-catalog-schema-property="metadata"`,
 		`href="/kubernetes/documents/core-v1/?selected=detail-sha256-cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc&amp;node=8#schema-node-panel"`,
-		`<!-- raw HTML omitted -->`,
+		`&lt;script&gt;alert(&#39;x&#39;)&lt;/script&gt;`,
 	} {
 		if !strings.Contains(string(body), want) {
 			t.Errorf("fragment missing %q:\n%s", want, body)
