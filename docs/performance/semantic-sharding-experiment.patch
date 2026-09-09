@@ -82,10 +82,10 @@ index be9829f..2960269 100644
 +		t.Fatal("cycle references changed")
 diff --git a/internal/selfhosted/semantic_partition_profile_test.go b/internal/selfhosted/semantic_partition_profile_test.go
 new file mode 100644
-index 0000000..ad8a07c
+index 0000000..e39216f
 --- /dev/null
 +++ b/internal/selfhosted/semantic_partition_profile_test.go
-@@ -0,0 +1,166 @@
+@@ -0,0 +1,198 @@
 +package selfhosted
 +
 +import (
@@ -205,8 +205,40 @@ index 0000000..ad8a07c
 +		if err != nil {
 +			return err
 +		}
++		searchRoot := filepath.Join(filepath.Dir(p), "search-data")
++		oldPaths := make(map[string]bool)
++		if err := filepath.WalkDir(searchRoot, func(path string, entry os.DirEntry, err error) error {
++			if err != nil {
++				return err
++			}
++			if entry.IsDir() {
++				return nil
++			}
++			relative, err := filepath.Rel(searchRoot, path)
++			if err != nil {
++				return err
++			}
++			oldPaths[filepath.ToSlash(relative)] = true
++			return nil
++		}); err != nil {
++			return err
++		}
++		newPaths := make(map[string]bool)
 +		for _, child := range search.Children {
-+			old, e := os.ReadFile(filepath.Join(filepath.Dir(p), "search-data", child.Path))
++			newPaths[child.Path] = true
++		}
++		for path := range oldPaths {
++			if !newPaths[path] {
++				return fmt.Errorf("search output removed: %s", path)
++			}
++		}
++		for path := range newPaths {
++			if !oldPaths[path] {
++				return fmt.Errorf("search output added: %s", path)
++			}
++		}
++		for _, child := range search.Children {
++			old, e := os.ReadFile(filepath.Join(searchRoot, child.Path))
 +			if e != nil {
 +				return e
 +			}
