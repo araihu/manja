@@ -215,6 +215,43 @@ catalogs:
 	if !os.SameFile(lazySchemaInfoBefore, lazySchemaInfoAfter) {
 		t.Fatal("incremental export copied an unchanged lazy schema instead of linking the verified cache hit")
 	}
+
+	// A document-level dependency must invalidate even an unchanged detail child.
+	specPath := filepath.Join(root, "private.json")
+	source, err := os.ReadFile(specPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	source = []byte(strings.Replace(string(source), `"title":"Private API"`, `"title":"Updated API"`, 1))
+	if err := os.WriteFile(specPath, source, 0600); err != nil {
+		t.Fatal(err)
+	}
+	options := ExportOptions{RendererOptions: RendererOptions{ConfigPath: configPath}, Output: output, BasePath: "/"}
+	if _, err := ExportRenderer(context.Background(), options); err != nil {
+		t.Fatal(err)
+	}
+	changedSidecar, err := os.ReadFile(filepath.Join(output, filepath.FromSlash(sidecarPath)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(changedSidecar) == string(sidecarBefore) {
+		t.Fatal("document title change reused the old fragment identity")
+	}
+	changedFragment, err := os.ReadFile(filepath.Join(output, filepath.FromSlash(fragmentPath)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	options.Output = filepath.Join(root, "fresh-changed")
+	if _, err := ExportRenderer(context.Background(), options); err != nil {
+		t.Fatal(err)
+	}
+	freshFragment, err := os.ReadFile(filepath.Join(options.Output, filepath.FromSlash(fragmentPath)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(changedFragment) != string(freshFragment) {
+		t.Fatal("invalidated warm fragment differs from fresh export")
+	}
 }
 
 func TestExportRendererRewritesSubpathDeployment(t *testing.T) {
