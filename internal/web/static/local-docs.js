@@ -1276,7 +1276,10 @@
 		  sidebar.innerHTML = result.sidebarHtml;
 		  replaceStaticSidebarContinuation(descriptor, cache, route.documentKey, sidebar);
 		}
-		if (!options.sidebarOnly) documentValue.title = result.title;
+		if (!options.sidebarOnly) {
+		  documentValue.title = result.title;
+		  main.dataset.documentTitle = result.title;
+		}
 		if (options.restoreScroll) restoreScroll(options.restoreScroll);
 		else if (options.preserveScroll) restoreScroll(beforeScroll);
 		else if (!options.sidebarOnly) {

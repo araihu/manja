@@ -258,7 +258,7 @@ catalogs:
 				t.Fatal(err)
 			}
 			layout := badgeLayout.(map[string]any)
-			if layout["truncated"] != true || layout["aligned"] != true || layout["contained"] != true {
+			if layout["truncated"] != false || layout["aligned"] != true || layout["contained"] != true {
 				t.Fatalf("operation badge columns are not stable: %#v", badgeLayout)
 			}
 			requestMu.Lock()

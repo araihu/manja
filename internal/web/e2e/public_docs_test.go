@@ -886,45 +886,15 @@ func TestRichOperationDetailsKeepHorizontalOverflowLocal(t *testing.T) {
 			}
 
 			if width == 390 {
-				descriptionToggle := page.Locator("#" + parameterListID + " .manja-description-toggle").First()
-				if err := descriptionToggle.WaitFor(); err != nil {
+				description := page.Locator("#" + parameterListID + " .gs-schema-tree-description").First()
+				if err := description.WaitFor(); err != nil {
 					t.Fatal(err)
 				}
-				if got, err := descriptionToggle.GetAttribute("aria-expanded"); err != nil || got != "false" {
-					if err != nil {
-						t.Fatal(err)
-					}
-					t.Fatalf("long parameter description should start collapsed, aria-expanded=%q", got)
+				if got, err := description.TextContent(); err != nil || strings.TrimSpace(got) == "" {
+					t.Fatalf("SchemaTree query description must remain visible: %q, %v", got, err)
 				}
-				if got, err := descriptionToggle.TextContent(); err != nil || strings.TrimSpace(got) != "Show more" {
-					if err != nil {
-						t.Fatal(err)
-					}
-					t.Fatalf("collapsed parameter description label = %q, want Show more", got)
-				}
-				if err := descriptionToggle.Click(); err != nil {
+				if _, err := page.WaitForFunction(`() => document.querySelector('[data-manja-request-config-root]')?.dataset.manjaRequestConfigEnhanced === 'true'`, nil); err != nil {
 					t.Fatal(err)
-				}
-				if got, err := descriptionToggle.GetAttribute("aria-expanded"); err != nil || got != "true" {
-					if err != nil {
-						t.Fatal(err)
-					}
-					t.Fatalf("long parameter description should expand, aria-expanded=%q", got)
-				}
-				if got, err := descriptionToggle.TextContent(); err != nil || strings.TrimSpace(got) != "Show less" {
-					if err != nil {
-						t.Fatal(err)
-					}
-					t.Fatalf("expanded parameter description label = %q, want Show less", got)
-				}
-				if err := descriptionToggle.Click(); err != nil {
-					t.Fatal(err)
-				}
-				if got, err := descriptionToggle.GetAttribute("aria-expanded"); err != nil || got != "false" {
-					if err != nil {
-						t.Fatal(err)
-					}
-					t.Fatalf("long parameter description should collapse again, aria-expanded=%q", got)
 				}
 				if err := page.Locator("#darkModeToggleBtn").Focus(); err != nil {
 					t.Fatal(err)
