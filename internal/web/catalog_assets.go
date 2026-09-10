@@ -29,11 +29,16 @@ func NewCatalogAssetsHandler() http.Handler {
 		panic(err)
 	}
 	mux := http.NewServeMux()
+	markdown := markdownAssetsHandler()
 	mux.Handle("/assets/", assets.Handler())
 	mux.Handle("/manja-assets/", http.StripPrefix("/manja-assets/", http.FileServer(http.FS(static))))
 	return http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
 		if !validPublicAssetRequest(request) || (!strings.HasPrefix(request.URL.Path, "/assets/") && !strings.HasPrefix(request.URL.Path, "/manja-assets/")) {
 			http.NotFound(response, request)
+			return
+		}
+		if strings.HasPrefix(request.URL.Path, "/manja-assets/margo/") {
+			markdown.ServeHTTP(response, request)
 			return
 		}
 		switch {
@@ -68,6 +73,9 @@ func CatalogAssetPaths() []string {
 		panic(err)
 	}
 	paths := make([]string, 0, len(manja)+len(goshtoso))
+	for _, name := range markdownAssetNames {
+		paths = append(paths, "/manja-assets/margo/"+name)
+	}
 	for name := range manja {
 		paths = append(paths, "/manja-assets/"+name)
 	}

@@ -6,6 +6,11 @@ import (
 )
 
 templ operationParameterGroup(group operationParameterGroupData) {
+	if group.UseTree {
+		@PathParameterSection(group.ID, group.Title) {
+			@preparedPathParameterTree(group)
+		}
+	} else {
 	<section class="grid min-w-0 gap-4" aria-labelledby={ group.ID + "-heading" }>
 		<h5 id={ group.ID + "-heading" } class="font-title text-lg font-bold text-on-surface-strong dark:text-on-surface-dark-strong">{ group.Title }</h5>
 		<dl id={ group.ID } data-manja-parameter-list class="divide-y divide-outline border-y border-outline dark:divide-outline-dark dark:border-outline-dark">
@@ -13,6 +18,16 @@ templ operationParameterGroup(group operationParameterGroupData) {
 				@operationParameterRow(parameter)
 			}
 		</dl>
+	</section>
+	}
+}
+
+templ PathParameterSection(id string, title string) {
+	<section class="min-w-0 rounded-radius border border-outline dark:border-outline-dark" aria-labelledby={ id + "-heading" }>
+		<h5 id={ id + "-heading" } class="border-b border-outline px-4 py-3 font-title text-lg font-bold text-on-surface-strong dark:border-outline-dark dark:text-on-surface-dark-strong">{ title }</h5>
+		<div class="min-w-0 p-4">
+			{ children... }
+		</div>
 	</section>
 }
 

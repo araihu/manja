@@ -28,7 +28,7 @@ func TestPreparedOperationSchemaTreesRenderBoundRecursiveData(t *testing.T) {
 		`aria-label="Request body schema for application/json schema tree"`,
 		`data-schema-tree-row="kind"`, `data-schema-tree-row="phase"`,
 		`data-required="true">required`,
-		`Child <!-- raw HTML omitted -->.`, `<dt>Default</dt><dd><code>Pod`, `<dt>Example</dt><dd><code>pod-1`,
+		`Child &lt;description&gt;.`, `<dt>Default</dt><dd><code>Pod`, `<dt>Example</dt><dd><code>pod-1`,
 		`<dt>Allowed</dt><dd><code>Pod, Service`, `<dt>minLength</dt><dd><code>1`,
 		`data-manja-schema-enum-reference="true"`, `hx-target="#catalog-main-content"`,
 		`hx-select="#catalog-main-content"`, `hx-swap="outerHTML show:#main-content:top"`,

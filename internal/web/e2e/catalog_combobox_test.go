@@ -822,25 +822,16 @@ func TestCatalogSidebarExpansionAndNavigationPreserveContext(t *testing.T) {
 	if err := directPage.Close(); err != nil {
 		t.Fatal(err)
 	}
-	overflow, err := longLink.Locator(".truncate").Evaluate(`element => element.scrollWidth > element.clientWidth`, nil)
-	if err != nil || overflow != true {
+	overflow, err := longLink.Locator(".truncate").Evaluate(`element => element.scrollWidth > element.clientWidth || getComputedStyle(element).whiteSpace !== 'normal'`, nil)
+	if err != nil || overflow != false {
 		t.Fatalf("long sidebar label overflow = %v, err=%v", overflow, err)
 	}
 	if err := longLink.Hover(); err != nil {
 		t.Fatal(err)
 	}
 	tooltip := page.Locator(`#catalog-sidebar-overflow-tooltip`)
-	if err := tooltip.WaitFor(); err != nil {
-		t.Fatalf("overflow tooltip: %v", err)
-	}
-	if hidden, err := tooltip.IsHidden(); err != nil || hidden {
-		t.Fatalf("overflow tooltip hidden = %v, err=%v", hidden, err)
-	}
-	if text, err := tooltip.TextContent(); err != nil || text != "List core pods in every namespace with a deliberately long title for overflow verification" {
-		t.Fatalf("overflow tooltip text = %q, err=%v", text, err)
-	}
-	if describedBy, err := longLink.GetAttribute("aria-describedby"); err != nil || describedBy != "catalog-sidebar-overflow-tooltip" {
-		t.Fatalf("overflow tooltip aria-describedby = %q, err=%v", describedBy, err)
+	if visible, err := tooltip.IsVisible(); err != nil || visible {
+		t.Fatalf("wrapped labels should not need an overflow tooltip: %v, err=%v", visible, err)
 	}
 
 	target := page.Locator(`[data-catalog-sidebar-operation][title="Create widget"]`)

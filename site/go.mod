@@ -8,6 +8,7 @@ require (
 	github.com/a-h/templ v0.3.1020 // indirect
 	github.com/alecthomas/chroma/v2 v2.27.0 // indirect
 	github.com/araihu/goshtoso v0.2.10 // indirect
+	github.com/araihu/margo v0.0.24-0.20260909050059-149877346da8 // indirect
 	github.com/dlclark/regexp2/v2 v2.2.1 // indirect
 	github.com/getkin/kin-openapi v0.147.0 // indirect
 	github.com/go-openapi/jsonpointer v1.0.0 // indirect

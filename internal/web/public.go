@@ -253,6 +253,7 @@ func NewPublicServerWithOptions(idx core.SpecIndex, opts PublicOptions) http.Han
 	mux := http.NewServeMux()
 	mux.Handle("/assets/", assets.Handler())
 	mux.Handle("/manja-assets/", http.StripPrefix("/manja-assets/", http.FileServer(http.Dir(opts.StaticDir))))
+	mux.Handle("/manja-assets/margo/", markdownAssetsHandler())
 	mux.HandleFunc(searchJSONPath, func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != searchJSONPath {
 			http.NotFound(w, r)
@@ -388,7 +389,7 @@ func NewPublicServerWithOptions(idx core.SpecIndex, opts PublicOptions) http.Han
 			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		}
 	})
-	return mux
+	return withOperationMarkdown(mux)
 }
 
 func publicDocsRequestMetadata(request *http.Request, configuredOrigin string, allowLoopback bool, selected templates.PublicDocsSelection) templates.PageMetadata {

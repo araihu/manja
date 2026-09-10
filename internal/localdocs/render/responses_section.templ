@@ -8,7 +8,7 @@ import (
 )
 
 templ operationResponses(data operationResponsesData) {
-	<section class="manja-endpoint-responses-section grid gap-5" aria-label="Responses">
+	<section class="manja-endpoint-responses-section grid gap-4" aria-label="Responses">
 		<h4 class="font-title text-2xl font-bold text-on-surface-strong dark:text-on-surface-dark-strong">Responses</h4>
 		@accordion.Accordion(operationResponsesAccordionConfig(data))
 	</section>
@@ -117,16 +117,19 @@ templ operationResponseMediaBlock(data operationResponsesData, responseIndex int
 	if inAccordion {
 		{{ blockClass += " grid gap-4" }}
 	} else {
-		{{ blockClass += " border-t border-outline pt-6 pb-5 dark:border-outline-dark" }}
+		{{ blockClass += " pb-5" }}
 	}
 	<div class={ blockClass }>
 		<div class="manja-response-panel-layout">
 			<div class="manja-response-panel-main grid gap-4">
+				@operationResponseDetails(response.Details, idPrefix+"-"+anchorFragment(media.Summary.ContentType)+"-headers", data.SchemaLinks)
+				<section data-manja-response-section="body" aria-label="Response body" class="min-w-0 grid gap-3">
 				<div data-manja-response-section="media-type" class="flex flex-wrap items-center gap-3">
+					<h6 class="font-title text-sm font-semibold text-on-surface-strong dark:text-on-surface-dark-strong">Body</h6>
 					@operationResponseMedia(media.Summary)
 				</div>
-				@operationResponseDetails(response.Details, idPrefix+"-"+anchorFragment(media.Summary.ContentType)+"-headers", data.SchemaLinks)
 				@operationSchemaProperties(media.Tree)
+				</section>
 			</div>
 			if media.Example.visible {
 				<aside class="manja-response-panel-example" aria-label={ "Response " + response.Status + " " + media.Summary.ContentType + " example" }>

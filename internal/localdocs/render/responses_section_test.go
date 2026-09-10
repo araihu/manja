@@ -52,6 +52,8 @@ func TestPreparedOperationResponsesRendersCanonicalSection(t *testing.T) {
 		` Created</span>`,
 		`>201<`,
 		`data-manja-response-section="media-type"`,
+		`data-manja-response-section="body" aria-label="Response body"`,
+		`>Body</h6>`,
 		`aria-label="Response 201 application/json example"`,
 		`dark:border-outline-dark`,
 	} {

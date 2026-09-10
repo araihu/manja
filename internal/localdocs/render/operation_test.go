@@ -27,7 +27,7 @@ func TestPreparedOperationHeaderRendersCanonicalEscapedHTML(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, want := range []string{
-		`<header class="mb-8 min-w-0 border-b border-outline pb-6 dark:border-outline-dark" data-public-page-header="true">`,
+		`<header class="mb-6 min-w-0" data-public-page-header="true">`,
 		`id="detail-sha256-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa-heading"`,
 		`data-public-doc-identity="detail-sha256-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"`,
 		`data-manja-settled-focus="true"`,
@@ -46,6 +46,15 @@ func TestPreparedOperationHeaderRendersCanonicalEscapedHTML(t *testing.T) {
 	}
 	if bytes.Contains(body, []byte("<Create>")) || bytes.Contains(body, []byte("Creates <Pod>.")) {
 		t.Fatalf("operation header contains unescaped projection content: %s", body)
+	}
+	titleAt := bytes.Index(body, []byte("</h1>"))
+	routeAt := bytes.Index(body, []byte(`aria-label="Endpoint route"`))
+	descriptionAt := bytes.Index(body, []byte("manja-operation-markdown"))
+	if titleAt >= routeAt || routeAt >= descriptionAt {
+		t.Fatal("endpoint route must follow title and precede description")
+	}
+	if !bytes.Contains(body, []byte(`class="mt-4 flex min-w-0 w-full items-center gap-3 rounded-radius border border-outline`)) {
+		t.Fatal("endpoint route must be a full-width bordered bar")
 	}
 }
 

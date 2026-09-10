@@ -6,6 +6,7 @@ require (
 	github.com/a-h/templ v0.3.1020
 	github.com/araihu/assets v0.2.3
 	github.com/araihu/goshtoso v0.2.10
+	github.com/araihu/margo v0.0.24-0.20260909050059-149877346da8
 	github.com/caarlos0/env/v11 v11.4.1
 	github.com/evanw/esbuild v0.28.2
 	github.com/getkin/kin-openapi v0.147.0
@@ -35,7 +36,6 @@ require (
 	github.com/cpuguy83/dockercfg v0.3.2 // indirect
 	github.com/deckarep/golang-set/v2 v2.8.0 // indirect
 	github.com/distribution/reference v0.6.0 // indirect
-	github.com/dlclark/regexp2 v1.12.0 // indirect
 	github.com/dlclark/regexp2/v2 v2.2.1 // indirect
 	github.com/docker/go-connections v0.7.0 // indirect
 	github.com/docker/go-units v0.5.0 // indirect

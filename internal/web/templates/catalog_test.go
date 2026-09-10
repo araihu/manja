@@ -461,7 +461,7 @@ func TestCatalogRootRendersStandaloneSpecsAndRootBreadcrumb(t *testing.T) {
 	data.Document = &data.Directory.Documents[0]
 	data.DocumentHref = "/kubernetes/documents/core-v1/"
 	body = renderCatalogTemplate(t, data)
-	if !strings.Contains(body, `href="/"`) || !strings.Contains(body, ">Catalogs</a>") {
+	if !strings.Contains(body, `href="/"`) || strings.Contains(body, ">Catalogs</a>") {
 		t.Fatal("nested catalog breadcrumb does not return to organization root")
 	}
 	for _, want := range []string{`href="/kubernetes/documents/core-v1/"`, `aria-current="page"`, `>Kubernetes Core v1</span>`} {
@@ -1302,7 +1302,7 @@ func TestCatalogOperationReusesRichPublicEndpointRenderer(t *testing.T) {
 		`aria-label="Request body"`,
 		"application/json",
 		"Request body JSON",
-		`class="manja-endpoint-responses-section grid gap-5"`,
+		`class="manja-endpoint-responses-section grid gap-4"`,
 		"Request Sample: Shell / cURL",
 		"curl --request POST",
 	} {
@@ -1345,7 +1345,7 @@ func TestPreparedOperationHeaderMatchesCatalogSSRBytes(t *testing.T) {
 		t.Fatal(err)
 	}
 	legacy := rendered.Bytes()
-	start := bytes.Index(legacy, []byte(`<header class="mb-8 min-w-0 border-b border-outline pb-6 dark:border-outline-dark" data-public-page-header="true">`))
+	start := bytes.Index(legacy, []byte(`<header class="mb-6 min-w-0" data-public-page-header="true">`))
 	if start < 0 {
 		t.Fatalf("SSR operation header absent: %s", legacy)
 	}
@@ -1642,7 +1642,7 @@ func renderLegacySchemaDetailHeader(data CatalogPageData, schema projection.Sche
 			return err
 		}
 		if schema.Description != "" {
-			if _, err := io.WriteString(writer, `<p class="max-w-[70ch] whitespace-pre-wrap break-words text-on-surface-muted dark:text-on-surface-dark-muted">`+schema.Description+`</p>`); err != nil {
+			if _, err := io.WriteString(writer, `<div class="manja-schema-markdown min-w-0"><p class="whitespace-pre-wrap">`+schema.Description+`</p></div>`); err != nil {
 				return err
 			}
 		}
@@ -2460,7 +2460,7 @@ func TestParameterListUsesStackedRowsAndRequiredMarkers(t *testing.T) {
 	}
 
 	output := body.String()
-	for _, want := range []string{`data-manja-parameter-list`, "namespace", "dryRun", "string", `data-required="true"`, `data-required="false"`} {
+	for _, want := range []string{`data-manja-parameter-list`, "gs-schema-tree", "namespace", "dryRun", "string", `data-required="true"`} {
 		if !strings.Contains(output, want) {
 			t.Errorf("stacked parameter list missing %q: %s", want, output)
 		}

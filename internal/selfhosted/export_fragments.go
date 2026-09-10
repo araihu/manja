@@ -737,7 +737,7 @@ func extractLazySchemaHTMLFragments(input []byte) ([]byte, []lazySchemaHTMLFragm
 			{Key: "data-manja-schema-state", Val: "idle"},
 			{Key: "aria-label", Val: label},
 			{Key: "aria-busy", Val: "false"},
-			{Key: "class", Val: "min-h-12 rounded-radius border border-outline p-3 dark:border-outline-dark"},
+			{Key: "class", Val: "min-h-12 min-w-0"},
 		}}
 		message := &xhtml.Node{Type: xhtml.ElementNode, Data: "p", Attr: []xhtml.Attribute{{Key: "data-manja-schema-placeholder", Val: "true"}, {Key: "class", Val: "text-sm text-on-surface-muted dark:text-on-surface-dark-muted"}}}
 		message.AppendChild(&xhtml.Node{Type: xhtml.TextNode, Data: "Schema loads when visible."})

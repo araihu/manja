@@ -36,6 +36,42 @@
   }
 }
 
+.gs-schema-tree .gs-schema-tree-body {
+  padding-inline-start: 2.5rem;
+}
+
+.gs-schema-tree .gs-schema-tree-node {
+  padding-block: 0.25rem;
+}
+
+.gs-schema-tree details[open].gs-schema-tree-node::before {
+  inset-block-start: 3rem;
+  inset-block-end: 0.25rem;
+}
+
+.gs-schema-tree .gs-schema-tree-description {
+  margin-block-end: 0.5rem;
+}
+
+.manja-operation-markdown .margo-document,
+.manja-schema-markdown .margo-document,
+.gs-schema-tree-description .margo-document {
+  --document-page-background: transparent;
+  --document-font-body: var(--font-sans);
+  --document-font-heading: var(--font-title);
+  --document-line-height: 1.65;
+  --document-content-width: 100%;
+
+  padding: 0;
+  margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.manja-operation-markdown .margo-document :is(h1, h2, h3, h4, h5, h6) {
+  max-width: 100%;
+}
+
 .manja-markdown {
   color: var(--color-on-surface);
   line-height: 1.65;
@@ -383,16 +419,20 @@
   width: 100%;
   min-width: 0;
   max-width: 100%;
-  align-items: center;
+  align-items: start;
   column-gap: 0.5rem;
   overflow: hidden;
 }
 
-#catalog-sidebar-groups a[data-catalog-sidebar-operation] > span:first-child {
+#catalog-sidebar-groups a[data-catalog-sidebar-operation] > span:first-child,
+#catalog-sidebar-groups a[data-catalog-sidebar-kind="schemas"] > span:first-child,
+#catalog-sidebar-groups [data-manja-static-sidebar-schemas] a > span:first-child {
   min-width: 0;
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  text-overflow: clip;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  line-height: 1.5;
 }
 
 #catalog-sidebar-groups a[data-catalog-sidebar-operation] > :is(span, sup)[class*="catalog-method-"] {
@@ -1213,9 +1253,19 @@ html.boot [data-boot-anim="main"] {
 .manja-endpoint-detail-layout {
   align-items: start;
   display: grid;
-  gap: 2rem;
+  gap: 1.5rem;
   grid-template-columns: minmax(0, 1fr);
-  padding-top: 1.5rem;
+  padding-top: 0;
+}
+
+.manja-operation-reference { container-type: inline-size; }
+.manja-operation-reference-grid { display: grid; gap: 1.5rem; grid-template-columns: minmax(0, 1fr); align-items: start; }
+.manja-operation-samples { display: grid; gap: 1rem; min-width: 0; grid-template-columns: minmax(0, 1fr); }
+.manja-operation-samples > section { grid-template-columns: minmax(0, 1fr); }
+.manja-operation-samples > section > div { min-width: 0; }
+.manja-operation-samples pre { max-width: 100%; overflow-x: auto; }
+@container (min-width: 58rem) {
+  .manja-operation-reference-grid:has(> .manja-operation-samples) { grid-template-columns: minmax(0, 1fr) minmax(20rem, 24rem); }
 }
 
 .manja-endpoint-main {
@@ -1236,8 +1286,7 @@ html.boot [data-boot-anim="main"] {
 }
 
 .manja-endpoint-responses-section {
-  border-top: 1px solid var(--color-outline);
-  padding-top: 1.5rem;
+  padding-top: 0;
 }
 
 .manja-response-accordion > div > button {
@@ -1675,9 +1724,6 @@ html.boot [data-boot-anim="main"] {
 }
 
 
-.dark .manja-endpoint-responses-section {
-  border-top-color: var(--color-outline-dark);
-}
 
 
 

@@ -24,8 +24,10 @@ import (
 	"github.com/araihu/manja/application/catalog"
 	artifact "github.com/araihu/manja/application/htmlartifact"
 	"github.com/araihu/manja/internal/adapters/catalogjson"
+	markdownadapter "github.com/araihu/manja/internal/adapters/markdown"
 	"github.com/araihu/manja/internal/adapters/schemacache"
 	"github.com/araihu/manja/internal/localdocs"
+	localrender "github.com/araihu/manja/internal/localdocs/render"
 	"github.com/araihu/manja/internal/web"
 	"github.com/araihu/manja/renderer"
 )
@@ -61,6 +63,7 @@ type ExportCatalogReceipt struct {
 }
 
 func ExportRenderer(ctx context.Context, options ExportOptions) (ExportReceipt, error) {
+	ctx = localrender.WithDescriptionRenderer(ctx, markdownadapter.DescriptionComponent)
 	if err := canonicalExportBasePath(options.BasePath); err != nil {
 		return ExportReceipt{}, err
 	}

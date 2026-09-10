@@ -142,6 +142,7 @@ func (handler *CatalogHandler) CatalogFlightReservationBytes() uint64 {
 }
 
 func (handler *CatalogHandler) ServeHTTP(response http.ResponseWriter, request *http.Request) {
+	request = operationMarkdownRequest(request)
 	if handler.runtime == nil || handler.children == nil {
 		http.Error(response, "catalog unavailable", http.StatusServiceUnavailable)
 		return
