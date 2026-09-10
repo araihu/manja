@@ -1,0 +1,92 @@
+package render
+
+import "strconv"
+import templpkg "github.com/a-h/templ"
+import selectfield "github.com/araihu/goshtoso/components/select"
+
+templ operationReference(sections *OperationDetailSectionsFragment, samples []operationCodeSampleData, responses []operationResponseExampleData, header templpkg.Component, requestGenerator templpkg.Component) {
+	<div class="manja-operation-reference">
+		<div class="manja-operation-reference-grid">
+			<div class="min-w-0">
+				if header != nil {
+					@header
+				}
+				if sections != nil {
+					@OperationDetailSections(*sections)
+				}
+			</div>
+			if requestGenerator != nil || len(samples) > 0 || len(responses) > 0 {
+				<aside class="manja-operation-samples" aria-label="Request and response examples">
+					if requestGenerator != nil {
+						@requestGenerator
+					} else if len(samples) > 0 {
+						<section data-manja-request-samples="true" aria-label="Request samples" class="grid min-w-0 gap-3" x-data="{ sample: '0' }">
+							<div class="flex items-center justify-between gap-3">
+								<h4 class="font-title text-lg font-semibold">Request</h4>
+								if len(samples) > 1 {
+									<select aria-label="Request sample language" class="min-w-0 rounded-radius border border-outline bg-surface px-2 py-1 text-sm dark:border-outline-dark dark:bg-surface-dark" x-model="sample">
+										for i, sample := range samples {
+											<option value={ strconv.Itoa(i) }>{ sample.DisplayLabel }</option>
+										}
+									</select>
+								}
+							</div>
+							for i, sample := range samples {
+								<div hidden?={ i != 0 } x-bind:hidden={ "sample !== '"+strconv.Itoa(i)+"'" }>
+									@operationCodeSample(sample)
+								</div>
+							}
+						</section>
+					}
+					if len(responses) > 0 {
+						<section data-manja-response-samples="true" aria-label="Response examples" class="grid min-w-0 gap-3" x-data="{ response: '0' }">
+							<div class="flex items-center justify-between gap-3">
+								<h4 class="font-title text-lg font-semibold">Response</h4>
+								if len(responses) > 1 {
+									@selectfield.Select(selectfield.Config{
+										ID: "response-example-"+anchorFragment(responses[0].ID+"-"+responses[0].Status),
+										Name: "responseExample", Options: responseExampleOptions(responses),
+										Alpine: &selectfield.AlpineConfig{Model: "response"},
+										RootClass: "min-w-0 w-64 max-w-full",
+										TriggerAttrs: templpkg.Attributes{"aria-label": "Response example"},
+									})
+								}
+							</div>
+							for i, response := range responses {
+								<div hidden?={ i != 0 } x-bind:hidden={ "response !== '"+strconv.Itoa(i)+"'" }>
+									if response.visible {
+										@operationResponseExample(response)
+									} else {
+										<div data-manja-response-example-empty class="rounded-radius border border-outline p-4 text-sm dark:border-outline-dark">
+											<p class="font-semibold">{ responseExampleOptionLabel(response) }</p>
+											<p class="mt-2 text-on-surface-muted dark:text-on-surface-dark-muted">
+												if response.ContentType == "" {
+													No response body defined.
+												} else {
+													No example provided for this response. See the response schema for its structure.
+												}
+											</p>
+										</div>
+									}
+								</div>
+							}
+						</section>
+					}
+				</aside>
+			}
+		</div>
+	</div>
+}
+
+func responseExampleOptionLabel(response operationResponseExampleData) string {
+	if response.ContentType == "" {
+		return response.Status
+	}
+	return response.Status + " · " + response.ContentType
+}
+
+func responseExampleOptions(responses []operationResponseExampleData) []selectfield.Option {
+	options := make([]selectfield.Option, len(responses))
+	for i, response := range responses { options[i] = selectfield.Option{Value: strconv.Itoa(i), Label: responseExampleOptionLabel(response), Selected: i == 0} }
+	return options
+}

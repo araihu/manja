@@ -25,7 +25,9 @@ templ schemaDetailHeader(data schemaDetailHeaderData, actions, provenance templp
 		</div>
 		<h1 tabindex="-1" data-manja-settled-focus="true" class="manja-schema-title font-title text-2xl font-bold text-on-surface-strong sm:text-3xl dark:text-on-surface-dark-strong">{ data.Title }</h1>
 		if data.Description != "" {
-			<p class="max-w-[70ch] whitespace-pre-wrap break-words text-on-surface-muted dark:text-on-surface-dark-muted">{ data.Description }</p>
+			<div class="manja-schema-markdown min-w-0">
+				@schemaDescriptionContent(data.Description, "header-" + data.Title)
+			</div>
 		}
 		if provenance != nil {
 			@provenance

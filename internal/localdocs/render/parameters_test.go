@@ -157,8 +157,9 @@ func TestPreparedOperationParametersCopiesInputsAndRendersDeterministically(t *t
 func TestPreparedOperationParametersPreserveDisclosureFocusMarkup(t *testing.T) {
 	detail, operation, nodes := operationParametersFixture()
 	long := strings.Repeat("description ", 30)
-	detail.Operation.Parameters[0].Description = long
-	operation.Parameters[0].Description = long
+	// Header parameters retain the existing disclosure presentation.
+	detail.Operation.Parameters[2].Description = long
+	operation.Parameters[2].Description = long
 	fragment, err := PrepareOperationParameters(detail, operation, nodes)
 	if err != nil {
 		t.Fatal(err)

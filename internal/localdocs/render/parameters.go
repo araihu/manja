@@ -14,6 +14,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/a-h/templ"
+	"github.com/araihu/goshtoso/components/schematree"
 	"github.com/araihu/manja/application/catalog"
 	"github.com/araihu/manja/application/projection"
 	"github.com/araihu/manja/domain"
@@ -35,10 +36,12 @@ type OperationParametersFragment struct {
 type operationParameterGroupData struct {
 	ID         string
 	Title      string
+	UseTree    bool
 	Parameters []operationParameterData
 }
 
 type operationParameterData struct {
+	TreeNode    schematree.Node
 	ID          string
 	Name        string
 	TypeLabel   string
@@ -89,7 +92,7 @@ func PrepareOperationParameters(detail catalog.DetailRecordV1, operation domain.
 		location string
 		title    string
 	}{{"path", "Path Parameters"}, {"query", "Query Parameters"}, {"header", "Header Parameters"}} {
-		data := operationParameterGroupData{ID: operation.Anchor + "-" + anchorFragment(group.title), Title: group.title}
+		data := operationParameterGroupData{ID: operation.Anchor + "-" + anchorFragment(group.title), Title: group.title, UseTree: group.location == "path" || group.location == "query"}
 		for _, parameter := range operation.Parameters {
 			if !strings.EqualFold(parameter.In, group.location) {
 				continue
@@ -98,11 +101,15 @@ func PrepareOperationParameters(detail catalog.DetailRecordV1, operation domain.
 			if typeLabel == "" {
 				typeLabel = parameter.In
 			}
-			data.Parameters = append(data.Parameters, operationParameterData{
+			row := operationParameterData{
 				ID:   operation.Anchor + "-" + anchorFragment(group.title) + "-" + anchorFragment(parameter.In+"-"+parameter.Name),
 				Name: parameter.Name, TypeLabel: typeLabel, Required: parameter.Required,
 				Description: parameter.Description, Example: parameter.Example,
-			})
+			}
+			if data.UseTree {
+				row.TreeNode = pathParameterNode(parameter, row.ID)
+			}
+			data.Parameters = append(data.Parameters, row)
 		}
 		fragment.groups = append(fragment.groups, data)
 	}
@@ -112,6 +119,42 @@ func PrepareOperationParameters(detail catalog.DetailRecordV1, operation domain.
 	}
 	fragment.binding = operationPreparationBinding{parent: parentBinding}
 	return fragment, nil
+}
+
+func pathParameterNode(parameter domain.OperationParameter, id string) schematree.Node {
+	schema := cloneResponseDetailSchema(parameter.Schema)
+	if parameter.Description != "" {
+		schema.Description = parameter.Description
+	}
+	if parameter.Example != "" {
+		schema.Example = parameter.Example
+	}
+	node := sharedResponseSchemaNode(parameter.Name, schemaPropertyStateLabel(parameter.Required), schema, id, nil)
+	node.RootAttrs = templ.Attributes{"id": id, "data-manja-parameter-row": "", "data-schema-tree-row": parameter.Name}
+	return node
+}
+
+func preparedPathParameterTree(group operationParameterGroupData) templ.Component {
+	cfg := schematree.Config{ID: group.ID, AriaLabel: group.Title, RootAttrs: templ.Attributes{"data-manja-parameter-list": ""}}
+	for _, parameter := range group.Parameters {
+		cfg.Nodes = append(cfg.Nodes, parameter.TreeNode)
+	}
+	return schematree.SchemaTree(cfg)
+}
+
+// PathParameterTree shares the path-parameter presentation with hosted pages.
+func PathParameterTree(groupID string, parameters []domain.OperationParameter) templ.Component {
+	return ParameterTree(groupID, "Path parameters", parameters)
+}
+
+// ParameterTree shares schema-tree rendering for path and query parameters.
+func ParameterTree(groupID, title string, parameters []domain.OperationParameter) templ.Component {
+	group := operationParameterGroupData{ID: groupID, Title: title, UseTree: true}
+	for _, parameter := range parameters {
+		id := groupID + "-" + anchorFragment(parameter.In+"-"+parameter.Name)
+		group.Parameters = append(group.Parameters, operationParameterData{TreeNode: pathParameterNode(parameter, id)})
+	}
+	return preparedPathParameterTree(group)
 }
 
 func validateProjectedParameter(index int, parameter projection.Parameter) error {

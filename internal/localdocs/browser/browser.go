@@ -461,25 +461,22 @@ func (browser *Browser) renderOperation(ctx context.Context, document catalog.Do
 	if err != nil {
 		return "", "", err
 	}
-	fragments := []func() ([]byte, error){func() ([]byte, error) { return header.Bytes(ctx, nil, nil) }}
-	if sections != nil {
-		fragments = append(fragments, func() ([]byte, error) { return sections.Bytes(ctx) })
+	var fragments []func() ([]byte, error)
+	serverURL := "https://example.invalid"
+	if len(document.Overview.Servers) > 0 {
+		server := document.Overview.Servers[0]
+		serverURL = server.URL
+		for _, variable := range server.Variables {
+			serverURL = strings.ReplaceAll(serverURL, "{"+variable.Name+"}", variable.Default)
+		}
 	}
-	if len(operation.Snippets) > 0 {
-		fragments = append(fragments, func() ([]byte, error) {
-			var output bytes.Buffer
-			output.WriteString(`<section data-manja-request-samples="true" aria-label="Request samples" class="mt-8 grid min-w-0 gap-4"><h4 class="font-title text-2xl font-bold text-on-surface-strong dark:text-on-surface-dark-strong">Request samples</h4>`)
-			for index := range operation.Snippets {
-				data, sampleErr := examples.CodeSampleBytes(ctx, index)
-				if sampleErr != nil {
-					return nil, sampleErr
-				}
-				output.Write(data)
-			}
-			output.WriteString(`</section>`)
-			return output.Bytes(), nil
-		})
-	}
+	fragments = append(fragments, func() ([]byte, error) {
+		var output bytes.Buffer
+		if err := localrender.OperationReference(sections, examples, localrender.OperationHeader(header, nil, nil), localrender.RequestGenerator(*operation, serverURL)).Render(ctx, &output); err != nil {
+			return nil, err
+		}
+		return output.Bytes(), nil
+	})
 	fragments = append(fragments, func() ([]byte, error) { return navigation.Bytes(ctx) })
 	main, err := renderBrowserFragments(fragments)
 	return main, projected.Heading, err

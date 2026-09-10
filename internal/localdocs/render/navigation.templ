@@ -11,7 +11,7 @@ import (
 
 templ operationNavigation(navigation operationNavigationData) {
 	if navigation.Previous != nil || navigation.Next != nil {
-		<nav data-manja-operation-navigation data-manja-operation-group={ navigation.Group } aria-label={ operationNavigationLabel(navigation.Group) } class="mt-10 border-t border-outline pt-6 dark:border-outline-dark">
+		<nav data-manja-operation-navigation data-manja-operation-group={ navigation.Group } aria-label={ operationNavigationLabel(navigation.Group) } class="mt-10 pt-6">
 			<div class="grid gap-3 lg:grid-cols-2">
 				if navigation.Previous != nil {
 					@operationNavigationLink(*navigation.Previous, "previous")

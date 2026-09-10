@@ -76,7 +76,7 @@ func TestPreparedOperationRequestSectionRendersCanonicalMarkup(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, want := range []string{
-		`<section class="grid gap-8" aria-label="Request">`,
+		`<section class="grid gap-4" aria-label="Request">`,
 		`<h4 class="font-title text-2xl font-bold text-on-surface-strong dark:text-on-surface-dark-strong">Request</h4>`,
 		`data-manja-request-body`,
 		`data-manja-request-body-media="application/json"`,

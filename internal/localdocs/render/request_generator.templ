@@ -1,0 +1,69 @@
+package render
+
+import (
+	"strings"
+	"github.com/araihu/manja/domain"
+	templpkg "github.com/a-h/templ"
+	"github.com/araihu/goshtoso/components/codeblock"
+	"github.com/araihu/goshtoso/components/combobox"
+)
+
+templ RequestGenerator(operation domain.Operation, serverURL string) {
+	<section data-manja-request-composer data-manja-request-samples="true" aria-label="Request samples" class="grid min-w-0 gap-3">
+		<h4 class="font-title text-lg font-semibold">Request</h4>
+		<div data-manja-request-sample class="min-w-0">
+			<div
+				data-manja-request-sample-target class="mb-3 min-w-0" x-data="{}"
+				x-init="$el.querySelectorAll('[data-combobox-option]').forEach(option => option.tabIndex = -1)"
+				x-on:combobox:change="$dispatch('manja-request-sample-target-change', { value: $event.detail.values[0] })"
+				x-on:input.capture="if ($event.target.matches('[data-combobox-search]')) { $event.stopImmediatePropagation(); const query = $event.target.value.trim().toLowerCase(); $el.querySelectorAll('[data-combobox-option]').forEach(option => option.hidden = !option.textContent.toLowerCase().includes(query)); }"
+				x-on:keydown.capture="if (['ArrowDown', 'ArrowUp'].includes($event.key) && $event.target.matches('[data-combobox-search], [data-combobox-option]')) { $event.preventDefault(); $event.stopImmediatePropagation(); const options = [...$el.querySelectorAll('[data-combobox-option]')].filter(option => !option.hidden && option.getAttribute('aria-disabled') !== 'true'); const index = options.indexOf($event.target); const next = index < 0 ? ($event.key === 'ArrowDown' ? 0 : options.length - 1) : (index + ($event.key === 'ArrowDown' ? 1 : -1) + options.length) % options.length; options[next]?.focus(); }"
+			>
+				{{ cfg := requestGeneratorCombobox(operation.Anchor) }}
+				@combobox.Combobox(cfg, cfg.InitialState())
+			</div>
+			@codeblock.CodeBlock(codeblock.Config{ID: operation.Anchor+"-request-sample-code", Label: "Request Sample: Shell / cURL", Language: "shell", Code: requestGeneratorFallback(operation, serverURL), MaxHeight: "24rem"})
+		</div>
+		for _, parameter := range operation.Parameters {
+			<input type="hidden" name={ "parameters."+parameter.Name } value={ requestGeneratorParameterValue(parameter) }/>
+		}
+		if operation.RequestBody != nil && len(operation.RequestBody.MediaTypes) > 0 {
+			<textarea hidden data-manja-request-body-input>{ operation.RequestBody.MediaTypes[0].Example }</textarea>
+		}
+		@templpkg.JSONScript(operation.Anchor+"-request-composer-payload", requestGeneratorPayload(operation, serverURL))
+	</section>
+}
+
+func requestGeneratorCombobox(anchor string) combobox.Config {
+	options := make([]combobox.Option, 0, len(RequestSampleTargets()))
+	for _, target := range RequestSampleTargets() {
+		options = append(options, combobox.Option{Value: target.Value, Label: target.Label})
+	}
+	return combobox.Config{
+		ID: anchor+"-sample-target", Name: "requestSampleTarget", Label: "Language / tool",
+		Mode: combobox.ModeSingle, Source: combobox.Source{Static: options},
+		Selected: []string{"shell:curl"}, EnableSearch: true, RootClass: "w-full",
+	}
+}
+
+func requestGeneratorFallback(operation domain.Operation, serverURL string) string {
+	copy := operation
+	copy.RequestTarget = strings.TrimRight(serverURL, "/")+domain.EffectiveOperationRequestTarget(operation)
+	return operationExamplesCurl(copy)
+}
+
+func requestGeneratorParameterValue(parameter domain.OperationParameter) string {
+	if parameter.Example != "" { return parameter.Example }
+	if parameter.In == "path" { return "{"+parameter.Name+"}" }
+	return ""
+}
+
+func requestGeneratorPayload(operation domain.Operation, serverURL string) map[string]any {
+	parameters := make([]map[string]string, 0, len(operation.Parameters))
+	for _, parameter := range operation.Parameters {
+		parameters = append(parameters, map[string]string{"name": parameter.Name, "in": parameter.In, "fieldName": "parameters."+parameter.Name})
+	}
+	payload := map[string]any{"method": operation.Method, "urlTemplate": strings.TrimRight(serverURL, "/")+domain.EffectiveOperationRequestTarget(operation), "parameters": parameters, "sampleTargets": RequestSampleTargets()}
+	if operation.RequestBody != nil && len(operation.RequestBody.MediaTypes) > 0 { payload["bodyContentType"] = operation.RequestBody.MediaTypes[0].ContentType }
+	return payload
+}

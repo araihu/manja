@@ -513,8 +513,6 @@ templ catalogHeader(data CatalogPageData) {
 			</a>
 			if !data.OrganizationRoot {
 				<span class="text-on-surface-muted dark:text-on-surface-dark-muted">/</span>
-				<a href="/" class="hidden min-h-11 shrink-0 items-center text-sm font-semibold text-on-surface-muted hover:text-on-surface-strong sm:inline-flex dark:text-on-surface-dark-muted dark:hover:text-on-surface-dark-strong">Catalogs</a>
-				<span class="hidden text-on-surface-muted sm:inline dark:text-on-surface-dark-muted">/</span>
 				<a href={ templpkg.URL(data.Mount) } aria-label={ catalogBrandName(data) } class="flex min-w-0 shrink-0 items-center gap-2 font-title text-lg font-bold text-on-surface-strong dark:text-on-surface-dark-strong">
 					if data.Directory.Branding.LogoSrc != "" {
 						<img src={ templpkg.URL(data.Directory.Branding.LogoSrc) } alt="" loading="lazy" decoding="async" class="size-8 shrink-0 rounded-full object-cover"/>
@@ -960,13 +958,12 @@ templ catalogOperationDetail(data CatalogPageData) {
 	} else {
 		{{ operation := *data.Selected.Operation }}
 	<article id={ operation.Anchor } data-catalog-detail="operation" class="space-y-6">
-		<div class="flex flex-wrap items-center gap-3">
-			@badge.Badge(badge.Config{Label: operation.Method, Tone: catalogMethodTone(operation.Method), Appearance: badge.AppearanceSoft, Size: badge.SizeMD})
-			<code class="break-all text-base text-on-surface-strong dark:text-on-surface-dark-strong">{ operation.Path }</code>
-		</div>
 		<h2 class="font-title text-3xl font-bold text-on-surface-strong dark:text-on-surface-dark-strong">{ operation.Heading }</h2>
+		@localrender.EndpointRoute(operation.Method, operation.Path)
 		if operation.Description != "" {
-			<p class="max-w-4xl whitespace-pre-wrap break-words text-on-surface-muted dark:text-on-surface-dark-muted">{ operation.Description }</p>
+			<div class="manja-operation-markdown min-w-0">
+				@localrender.OperationDescription(operation.Description, operation.Anchor)
+			</div>
 		}
 		if len(operation.Parameters) > 0 {
 			<section class="rounded-radius border border-outline p-5 dark:border-outline-dark">

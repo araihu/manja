@@ -1,8 +1,7 @@
 package render
 
 import (
-	"context"
-	"io"
+	"fmt"
 	"strings"
 
 	"github.com/a-h/templ"
@@ -51,19 +50,11 @@ func ResponseHeaderSchemaTree(headers []domain.OperationResponseHeader, scope st
 	return schematree.SchemaTree(sharedResponseHeaderTree(prepared, scope, links))
 }
 
-func schemaDescriptionContent(description string) templ.Component {
+func schemaDescriptionContent(description, scope string) templ.Component {
 	if strings.TrimSpace(description) == "" {
 		return nil
 	}
-	return templ.ComponentFunc(func(ctx context.Context, w io.Writer) error {
-		if err := ctx.Err(); err != nil {
-			return err
-		}
-		// The shared tree supports rich component slots, but Manja descriptions
-		// remain plain text until Markdown rendering is explicitly supported.
-		_, err := io.WriteString(w, `<p class="whitespace-pre-wrap">`+templ.EscapeString(description)+`</p>`)
-		return err
-	})
+	return Description(description, "schema-"+scope)
 }
 
 func operationSharedSchemaTree(tree operationSchemaTreeData) schematree.Config {
@@ -96,7 +87,7 @@ func operationSharedSchemaNode(node operationSchemaTreeNodeData, scope, state st
 		attrs = templ.Attributes{"data-schema-tree-node": node.Name}
 	}
 	result := schematree.Node{
-		Name: node.Name, Type: node.Inline, DescriptionContent: schemaDescriptionContent(node.Description),
+		Name: node.Name, Type: node.Inline, DescriptionContent: schemaDescriptionContent(node.Description, rowScope),
 		Required: state == "required", Nullable: node.Nullable, Deprecated: node.Deprecated,
 		RootAttrs: attrs, Constraints: sharedSchemaConstraints(node.DefaultValue, node.ExampleText, node.EnumValues, node.Constraints),
 	}
@@ -136,7 +127,7 @@ func sharedSchemaNodeEdges(node schemaNodeData) schematree.Config {
 			RootAttrs:   templ.Attributes{"data-catalog-schema-property": edge.Name},
 		}
 		if schemaEdgeHasDescription(edge) {
-			item.DescriptionContent = schemaDescriptionContent(edge.Description)
+			item.DescriptionContent = schemaDescriptionContent(edge.Description, fmt.Sprintf("node-%d-property-%s", node.Ordinal, edge.Name))
 		}
 		cfg.Nodes = append(cfg.Nodes, item)
 	}
@@ -159,7 +150,7 @@ func sharedResponseSchemaNode(name, state string, schema domain.SchemaSummary, s
 		constraints = append(constraints, schemaConstraintData{Name: c.Name, Value: c.Value})
 	}
 	node := schematree.Node{
-		Name: name, Type: parameterSchemaInline(schema), DescriptionContent: schemaDescriptionContent(schema.Description),
+		Name: name, Type: parameterSchemaInline(schema), DescriptionContent: schemaDescriptionContent(schema.Description, scope),
 		Required: state == "required", Nullable: schema.Nullable, Deprecated: schema.Deprecated,
 		RootAttrs:   templ.Attributes{"data-schema-tree-row": name},
 		Constraints: sharedSchemaConstraints(schema.Default, schema.Example, schema.Enum, constraints),

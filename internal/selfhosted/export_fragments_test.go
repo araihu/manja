@@ -18,6 +18,9 @@ func TestExtractLazySchemaHTMLFragmentsDeduplicatesCanonicalTrees(t *testing.T) 
 		t.Fatalf("standalone schema fragments = %d, want 1", len(fragments))
 	}
 	operationText := string(operation)
+	if strings.Count(operationText, `class="min-h-12 min-w-0"`) != 2 || strings.Contains(operationText, "border-outline") || strings.Contains(operationText, "rounded-radius") {
+		t.Fatalf("lazy schema containers must stay unboxed: %s", operationText)
+	}
 	if strings.Contains(operationText, `class="gs-schema-tree" data-manja-schema-tree="true"`) || strings.Contains(operationText, `data-schema-tree-node`) {
 		t.Fatalf("operation retained schema HTML: %s", operationText)
 	}

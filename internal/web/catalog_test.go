@@ -1981,8 +1981,8 @@ func TestCatalogProjectionTransportIsNotActivatedByInitialHTML(t *testing.T) {
 		t.Fatalf("initial HTML = %d body=%q", response.Code, response.Body.String())
 	}
 	digest := sha256.Sum256(response.Body.Bytes())
-	if got := hex.EncodeToString(digest[:]); got != "544bbfe517377446657c0785af9400792257d65ea52c93899aa4a3f32678e509" || response.Body.Len() != 63517 {
-		t.Errorf("initial HTML = sha256 %s, %d bytes; want accepted Goshtoso sidebar tabs bytes", got, response.Body.Len())
+	if got := hex.EncodeToString(digest[:]); got != "976812c444002d2dc77ea7b3016ba0a506dd8fd421fe43049fed08081db8f223" || response.Body.Len() != 63256 {
+		t.Errorf("initial HTML = sha256 %s, %d bytes; want accepted sidebar shell plus shared Margo stylesheet", got, response.Body.Len())
 	}
 	for _, forbidden := range []string{"projection-data", "serviceWorker", "manja:local-ready", "MANJA_LOCAL_DOCS"} {
 		if strings.Contains(response.Body.String(), forbidden) {

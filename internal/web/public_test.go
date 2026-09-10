@@ -222,7 +222,7 @@ func TestPublicDocsRenderSearchAndOperations(t *testing.T) {
 	if !postMethodBadge.MatchString(body) {
 		t.Fatalf("operation sidebar link should associate its label with the POST method text:\n%s", body)
 	}
-	pageMethodBadge := regexp.MustCompile(`(?s)<div aria-label="Endpoint route"[^>]*>.*?>GET</span>.*?<p[^>]*>/pets</p>`)
+	pageMethodBadge := regexp.MustCompile(`(?s)<div aria-label="Endpoint route"[^>]*>.*?>GET</span>.*?<code[^>]*>/pets</code>`)
 	if !pageMethodBadge.MatchString(body) {
 		t.Fatalf("selected endpoint should expose its method and path in the labelled native route group:\n%s", body)
 	}
@@ -1801,7 +1801,7 @@ func TestPublicDocsRenderEndpointDetails(t *testing.T) {
 		`id="content-operation-updatetodo-response-200" role="region" aria-labelledby="controls-operation-updatetodo-response-200"`,
 		`class="manja-response-panel-main grid gap-4"`,
 		`class="manja-response-panel-example"`,
-		`class="manja-response-media-block border-t border-outline pt-6 pb-5 dark:border-outline-dark"><div class="manja-response-panel-layout">`,
+		`class="manja-response-media-block pb-5"><div class="manja-response-panel-layout">`,
 		`id="controls-operation-updatetodo-response-404"`,
 		`id="content-operation-updatetodo-response-404" role="region" aria-labelledby="controls-operation-updatetodo-response-404"`,
 		`aria-label="Request body schema for application/json schema tree"`,
@@ -2179,7 +2179,7 @@ func TestPublicDocsMethodBadgesAssociateMethodsWithOperations(t *testing.T) {
 		if !strings.Contains(endpointBody, `bg-`+softTone+`/10`) {
 			t.Fatalf("endpoint %s missing soft method tone for %s:\n%s", item.anchor, item.method, endpointBody)
 		}
-		endpointPattern := regexp.MustCompile(`(?s)<section id="` + regexp.QuoteMeta(item.anchor) + `"[^>]*>.*?<div aria-label="Endpoint route"[^>]*>.*?>` + regexp.QuoteMeta(item.method) + `</span>.*?<p[^>]*>/resource</p>`)
+		endpointPattern := regexp.MustCompile(`(?s)<section id="` + regexp.QuoteMeta(item.anchor) + `"[^>]*>.*?<div aria-label="Endpoint route"[^>]*>.*?>` + regexp.QuoteMeta(item.method) + `</span>.*?<code[^>]*>/resource</code>`)
 		if !endpointPattern.MatchString(endpointBody) {
 			t.Fatalf("endpoint %s should expose method %s and its path in the labelled route group:\n%s", item.anchor, item.method, endpointBody)
 		}
@@ -2230,7 +2230,7 @@ func TestPublicDocsEndpointResponseExamplesRenderInsideMatchingTabPanel(t *testi
 	}
 	response200Panel := htmlBetween(t, body, `id="content-operation-gettodo-response-200"`, `id="controls-operation-gettodo-response-404"`)
 	for _, want := range []string{
-		`class="manja-response-media-block border-t border-outline pt-6 pb-5 dark:border-outline-dark"><div class="manja-response-panel-layout">`,
+		`class="manja-response-media-block pb-5"><div class="manja-response-panel-layout">`,
 		`class="manja-response-panel-main grid gap-4"`,
 		`class="manja-response-panel-example"`,
 		`Response Example: 200 application/json`,

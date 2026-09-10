@@ -13,7 +13,7 @@ import (
 func TestSchemaDescriptionRemainsPlainText(t *testing.T) {
 	description := "Use **either** `value`.\n\n- [Help](/docs/identity/verification-checks)\n- Second item\n\n![Image](https://example.com/image.png)\n\n<script>alert(1)</script>\n\n[unsafe](javascript:alert%281%29)"
 	var out bytes.Buffer
-	if err := schemaDescriptionContent(description).Render(context.Background(), &out); err != nil {
+	if err := schemaDescriptionContent(description, "test").Render(context.Background(), &out); err != nil {
 		t.Fatal(err)
 	}
 	plain := strings.TrimSuffix(strings.TrimPrefix(out.String(), `<p class="whitespace-pre-wrap">`), `</p>`)
@@ -25,12 +25,12 @@ func TestSchemaDescriptionRemainsPlainText(t *testing.T) {
 			t.Errorf("unsafe or fragment-colliding markup %q", unsafe)
 		}
 	}
-	if schemaDescriptionContent(" \n") != nil {
+	if schemaDescriptionContent(" \n", "test") != nil {
 		t.Fatal("empty description must not create a slot")
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	if err := schemaDescriptionContent("text").Render(ctx, io.Discard); !errors.Is(err, context.Canceled) {
+	if err := schemaDescriptionContent("text", "test").Render(ctx, io.Discard); !errors.Is(err, context.Canceled) {
 		t.Fatalf("cancellation = %v", err)
 	}
 }

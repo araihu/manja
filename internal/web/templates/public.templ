@@ -164,13 +164,7 @@ type requestConfigBody struct {
 	Config ExampleConfig
 }
 
-type requestSampleTarget struct {
-	Value    string
-	Label    string
-	Target   string
-	Client   string
-	Language string
-}
+type requestSampleTarget = localrender.RequestSampleTarget
 
 templ PublicDocs(idx core.SpecIndex, selectedID string) {
 	@PublicDocsWithOptions(idx, selectedID, PublicDocsOptions{})
@@ -1010,22 +1004,17 @@ templ endpointSection(op core.Operation, servers []core.SpecServer, exampleSpecJ
 		<div class="manja-endpoint-shell-layout">
 			<div class="manja-endpoint-main min-w-0">
 				if !opts.OperationIdentityInHeader {
-					<div class="border-b border-outline pb-6 dark:border-outline-dark">
+					<div class="pb-6">
 						if op.Deprecated {
 							<div class="mb-3 flex flex-wrap items-center gap-2">
 								@badge.Badge(badge.Config{Label: "Deprecated", Tone: badge.ToneWarning, Appearance: badge.AppearanceSoft, Size: badge.SizeSM})
 							</div>
 						}
-						<div aria-label="Endpoint route" class="mt-4 inline-flex max-w-full items-center gap-3 rounded-radius border border-outline bg-surface-alt px-3 py-2 dark:border-outline-dark dark:bg-surface-dark-alt">
-							@methodBadge(op.Method)
-							<p class="min-w-0 break-words font-mono text-sm font-semibold text-on-surface-strong dark:text-on-surface-dark-strong">{ op.Path }</p>
-						</div>
-						if hasMarkdown(opts.MarkdownRenderer, op.Description) {
-							<div class="mt-4 max-w-[70ch]">
-								@renderedMarkdown(opts.MarkdownRenderer, op.Description)
+						@localrender.EndpointRoute(op.Method, op.Path)
+						if op.Description != "" {
+							<div class="manja-operation-markdown mt-4 min-w-0">
+								@localrender.OperationDescription(op.Description, opID)
 							</div>
-						} else if op.Description != "" {
-							<p class="mt-4 max-w-[70ch] text-base leading-6 text-on-surface dark:text-on-surface-dark">{ op.Description }</p>
 						}
 					</div>
 				}
@@ -1178,7 +1167,7 @@ templ endpointSection(op core.Operation, servers []core.SpecServer, exampleSpecJ
 
 templ operationNavigation(navigation OperationNavigationData) {
 	if navigation.Previous != nil || navigation.Next != nil {
-		<nav data-manja-operation-navigation data-manja-operation-group={ navigation.Group } aria-label={ operationNavigationLabel(navigation.Group) } class="mt-10 border-t border-outline pt-6 dark:border-outline-dark">
+		<nav data-manja-operation-navigation data-manja-operation-group={ navigation.Group } aria-label={ operationNavigationLabel(navigation.Group) } class="mt-10 pt-6">
 			<div class="grid gap-3 lg:grid-cols-2">
 				if navigation.Previous != nil {
 					@operationNavigationLink(*navigation.Previous, "previous", navigation)
@@ -1625,12 +1614,20 @@ templ responseMediaTypeBlock(opID string, responseIndex int, response core.Opera
 	if inAccordion {
 		{{ blockClass += " grid gap-4" }}
 	} else {
-		{{ blockClass += " border-t border-outline pt-6 pb-5 dark:border-outline-dark" }}
+		{{ blockClass += " pb-5" }}
 	}
 	<div class={ blockClass }>
 		<div class="manja-response-panel-layout">
 			<div class="manja-response-panel-main grid gap-4">
+				if opts.OperationResponseDetails != nil {
+					@localrender.OperationResponseDetails(*opts.OperationResponseDetails, responseIndex, idPrefix+"-"+anchorFragment(media.ContentType)+"-headers")
+				} else {
+					@responseDescription(response.Description, opts)
+					@responseHeaders(response.Headers, idPrefix+"-"+anchorFragment(media.ContentType)+"-headers", opts)
+				}
+				<section data-manja-response-section="body" aria-label="Response body" class="min-w-0 grid gap-3">
 				<div data-manja-response-section="media-type" class="flex flex-wrap items-center gap-3">
+					<h6 class="font-title text-sm font-semibold text-on-surface-strong dark:text-on-surface-dark-strong">Body</h6>
 					if opts.OperationResponseMedia != nil {
 						@localrender.OperationResponseMedia(*opts.OperationResponseMedia, responseIndex, mediaIndex)
 					} else {
@@ -1640,17 +1637,12 @@ templ responseMediaTypeBlock(opID string, responseIndex int, response core.Opera
 						}
 					}
 				</div>
-				if opts.OperationResponseDetails != nil {
-					@localrender.OperationResponseDetails(*opts.OperationResponseDetails, responseIndex, idPrefix+"-"+anchorFragment(media.ContentType)+"-headers")
-				} else {
-					@responseDescription(response.Description, opts)
-					@responseHeaders(response.Headers, idPrefix+"-"+anchorFragment(media.ContentType)+"-headers", opts)
-				}
 				if opts.OperationSchemaTrees != nil {
 					@localrender.OperationResponseSchemaTree(*opts.OperationSchemaTrees, responseIndex, mediaIndex)
 				} else {
 					@schemaProperties(mediaTypeTableID(idPrefix, media), "Response body", media.Schema, opts)
 				}
+				</section>
 			</div>
 			if opts.OperationExamples != nil && opts.OperationExamples.HasResponseExample(responseIndex, mediaIndex) {
 				<aside class="manja-response-panel-example" aria-label={ "Response " + response.Status + " " + media.ContentType + " example" }>
@@ -1668,6 +1660,11 @@ templ responseMediaTypeBlock(opID string, responseIndex int, response core.Opera
 templ paramGroup(idPrefix string, title string, parameters []core.OperationParameter, opts PublicDocsOptions) {
 	if len(parameters) > 0 {
 		{{ groupID := idPrefix + "-" + anchorFragment(title) }}
+		if strings.EqualFold(parameters[0].In, "path") || strings.EqualFold(parameters[0].In, "query") {
+			@localrender.PathParameterSection(groupID, title) {
+				@localrender.ParameterTree(groupID, title, parameters)
+			}
+		} else {
 		<section class="grid min-w-0 gap-4" aria-labelledby={ groupID + "-heading" }>
 			<h5 id={ groupID + "-heading" } class="font-title text-lg font-bold text-on-surface-strong dark:text-on-surface-dark-strong">{ title }</h5>
 			<dl id={ groupID } data-manja-parameter-list class="divide-y divide-outline border-y border-outline dark:divide-outline-dark dark:border-outline-dark">
@@ -1676,6 +1673,7 @@ templ paramGroup(idPrefix string, title string, parameters []core.OperationParam
 				}
 			</dl>
 		</section>
+		}
 	}
 }
 
@@ -2835,30 +2833,7 @@ func securityPlaceholder(security core.OperationSecurity) string {
 }
 
 func requestSampleTargets() []requestSampleTarget {
-	return []requestSampleTarget{
-		{Value: "shell:curl", Label: "Shell / cURL", Target: "shell", Client: "curl", Language: "shell"},
-		{Value: "shell:httpie", Label: "Shell / HTTPie", Target: "shell", Client: "httpie", Language: "shell"},
-		{Value: "shell:wget", Label: "Shell / Wget", Target: "shell", Client: "wget", Language: "shell"},
-		{Value: "javascript:fetch", Label: "JavaScript / fetch", Target: "javascript", Client: "fetch", Language: "javascript"},
-		{Value: "javascript:axios", Label: "JavaScript / Axios", Target: "javascript", Client: "axios", Language: "javascript"},
-		{Value: "node:fetch", Label: "Node.js / fetch", Target: "node", Client: "fetch", Language: "javascript"},
-		{Value: "python:requests", Label: "Python / Requests", Target: "python", Client: "requests", Language: "python"},
-		{Value: "go:native", Label: "Go / NewRequest", Target: "go", Client: "native", Language: "go"},
-		{Value: "java:okhttp", Label: "Java / OkHttp", Target: "java", Client: "okhttp", Language: "java"},
-		{Value: "php:curl", Label: "PHP / cURL", Target: "php", Client: "curl", Language: "php"},
-		{Value: "ruby:native", Label: "Ruby / net::http", Target: "ruby", Client: "native", Language: "ruby"},
-		{Value: "csharp:restsharp", Label: "C# / RestSharp", Target: "csharp", Client: "restsharp", Language: "csharp"},
-		{Value: "powershell:webrequest", Label: "Powershell / Invoke-WebRequest", Target: "powershell", Client: "webrequest", Language: "powershell"},
-		{Value: "powershell:restmethod", Label: "Powershell / Invoke-RestMethod", Target: "powershell", Client: "restmethod", Language: "powershell"},
-		{Value: "swift:urlsession", Label: "Swift / URLSession", Target: "swift", Client: "urlsession", Language: "swift"},
-		{Value: "kotlin:okhttp", Label: "Kotlin / OkHttp", Target: "kotlin", Client: "okhttp", Language: "kotlin"},
-		{Value: "http:http1.1", Label: "HTTP / HTTP/1.1", Target: "http", Client: "http1.1", Language: "http"},
-		{Value: "c:libcurl", Label: "C / Libcurl", Target: "c", Client: "libcurl", Language: "c"},
-		{Value: "clojure:clj_http", Label: "Clojure / clj-http", Target: "clojure", Client: "clj_http", Language: "clojure"},
-		{Value: "objc:nsurlsession", Label: "Objective-C / NSURLSession", Target: "objc", Client: "nsurlsession", Language: "objc"},
-		{Value: "ocaml:cohttp", Label: "OCaml / CoHTTP", Target: "ocaml", Client: "cohttp", Language: "ocaml"},
-		{Value: "r:httr", Label: "R / httr", Target: "r", Client: "httr", Language: "r"},
-	}
+	return localrender.RequestSampleTargets()
 }
 
 func requestSampleTargetOptions() []selectfield.Option {

@@ -28,9 +28,17 @@
         hydrate();
       }
       root.document.addEventListener('htmx:afterSwap', hydrate);
+      const restore = () => {
+        hydrate();
+        // Re-enable Goshtoso code controls in restored document markup too.
+        root.document.body.dispatchEvent(new root.CustomEvent('htmx:afterSwap', { bubbles: true }));
+      };
+      root.document.addEventListener('htmx:historyRestore', restore);
+      if (typeof root.addEventListener === 'function') root.addEventListener('pageshow', restore);
     }
   }
 })(typeof globalThis !== 'undefined' ? globalThis : this, function (snippetLib, highlightLib) {
+  const hydratedComposers = new WeakMap();
   function hydrateRequestComposers({ roots, sampler, snippetGenerator, syntaxHighlighter, logger } = {}) {
     if (!roots) {
       return;
@@ -114,7 +122,11 @@
   }
 
   function hydrateRequestComposer(root, sampler, snippetGenerator, syntaxHighlighter, logger) {
-    if (!root || root.dataset.manjaRequestComposerHydrated === 'true') {
+    if (!root) {
+      return;
+    }
+    if (hydratedComposers.has(root)) {
+      hydratedComposers.get(root)();
       return;
     }
     const payloadScript = root.querySelector('script[id$="-request-composer-payload"][type="application/json"]') ||
@@ -155,6 +167,7 @@
     };
 
     root.dataset.manjaRequestComposerHydrated = 'true';
+    hydratedComposers.set(root, render);
     root.querySelectorAll('input, select, textarea').forEach((input) => {
       input.addEventListener('input', render);
       input.addEventListener('change', render);
@@ -170,6 +183,7 @@
       });
     }
     if (typeof root.addEventListener === 'function') {
+      root.addEventListener('combobox:change', render);
       root.addEventListener('manja-request-sample-target-change', (event) => {
         const value = event && event.detail ? event.detail.value : '';
         if (targetInput && value) {
