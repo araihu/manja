@@ -61,6 +61,7 @@
   --document-font-heading: var(--font-title);
   --document-line-height: 1.65;
   --document-content-width: 100%;
+
   padding: 0;
   margin: 0;
   min-width: 0;

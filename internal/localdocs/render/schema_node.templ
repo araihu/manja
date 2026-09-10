@@ -21,7 +21,7 @@ templ schemaNode(node schemaNodeData) {
 					<code class="rounded-radius bg-surface-alt px-3 py-1.5 text-sm text-on-surface-strong dark:bg-surface-dark-alt dark:text-on-surface-dark-strong">{ strings.TrimSpace(node.Type + " " + node.Format) }</code>
 				}
 			</div>
-			if node.Description != "" {
+			if strings.TrimSpace(node.Description) != "" {
 				<div class="gs-schema-tree-description">
 					@schemaDescriptionContent(node.Description, "node-" + strconv.FormatUint(uint64(node.Ordinal), 10))
 				</div>

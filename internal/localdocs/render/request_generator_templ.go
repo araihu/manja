@@ -64,9 +64,9 @@ func RequestGenerator(operation domain.Operation, serverURL string) templ.Compon
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var2 string
-			templ_7745c5c3_Var2, templ_7745c5c3_Err = templ.ResolveAttributeValue("parameters." + parameter.Name)
+			templ_7745c5c3_Var2, templ_7745c5c3_Err = templ.ResolveAttributeValue(requestGeneratorParameterField(parameter))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/localdocs/render/request_generator.templ`, Line: 28, Col: 59}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/localdocs/render/request_generator.templ`, Line: 28, Col: 72}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var2)
 			if templ_7745c5c3_Err != nil {
@@ -79,7 +79,7 @@ func RequestGenerator(operation domain.Operation, serverURL string) templ.Compon
 			var templ_7745c5c3_Var3 string
 			templ_7745c5c3_Var3, templ_7745c5c3_Err = templ.ResolveAttributeValue(requestGeneratorParameterValue(parameter))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/localdocs/render/request_generator.templ`, Line: 28, Col: 111}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/localdocs/render/request_generator.templ`, Line: 28, Col: 124}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var3)
 			if templ_7745c5c3_Err != nil {
@@ -139,6 +139,10 @@ func requestGeneratorFallback(operation domain.Operation, serverURL string) stri
 	return operationExamplesCurl(copy)
 }
 
+func requestGeneratorParameterField(parameter domain.OperationParameter) string {
+	return "parameters." + parameter.In + "." + parameter.Name
+}
+
 func requestGeneratorParameterValue(parameter domain.OperationParameter) string {
 	if parameter.Example != "" {
 		return parameter.Example
@@ -152,7 +156,7 @@ func requestGeneratorParameterValue(parameter domain.OperationParameter) string 
 func requestGeneratorPayload(operation domain.Operation, serverURL string) map[string]any {
 	parameters := make([]map[string]string, 0, len(operation.Parameters))
 	for _, parameter := range operation.Parameters {
-		parameters = append(parameters, map[string]string{"name": parameter.Name, "in": parameter.In, "fieldName": "parameters." + parameter.Name})
+		parameters = append(parameters, map[string]string{"name": parameter.Name, "in": parameter.In, "fieldName": requestGeneratorParameterField(parameter)})
 	}
 	payload := map[string]any{"method": operation.Method, "urlTemplate": strings.TrimRight(serverURL, "/") + domain.EffectiveOperationRequestTarget(operation), "parameters": parameters, "sampleTargets": RequestSampleTargets()}
 	if operation.RequestBody != nil && len(operation.RequestBody.MediaTypes) > 0 {

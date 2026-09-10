@@ -11,6 +11,7 @@ import templruntime "github.com/a-h/templ/runtime"
 import (
 	templpkg "github.com/a-h/templ"
 	"github.com/araihu/goshtoso/components/badge"
+	"strings"
 )
 
 func schemaDetailHeader(data schemaDetailHeaderData, actions, provenance templpkg.Component) templ.Component {
@@ -56,7 +57,7 @@ func schemaDetailHeader(data schemaDetailHeaderData, actions, provenance templpk
 			var templ_7745c5c3_Var2 string
 			templ_7745c5c3_Var2, templ_7745c5c3_Err = templ.JoinStringErrs(data.TypeLabel)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/localdocs/render/schema_detail_header.templ`, Line: 17, Col: 166}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/localdocs/render/schema_detail_header.templ`, Line: 18, Col: 166}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var2))
 			if templ_7745c5c3_Err != nil {
@@ -92,7 +93,7 @@ func schemaDetailHeader(data schemaDetailHeaderData, actions, provenance templpk
 		var templ_7745c5c3_Var3 string
 		templ_7745c5c3_Var3, templ_7745c5c3_Err = templ.JoinStringErrs(data.Title)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/localdocs/render/schema_detail_header.templ`, Line: 26, Col: 189}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/localdocs/render/schema_detail_header.templ`, Line: 27, Col: 189}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var3))
 		if templ_7745c5c3_Err != nil {
@@ -102,7 +103,7 @@ func schemaDetailHeader(data schemaDetailHeaderData, actions, provenance templpk
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		if data.Description != "" {
+		if strings.TrimSpace(data.Description) != "" {
 			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 9, "<div class=\"manja-schema-markdown min-w-0\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err

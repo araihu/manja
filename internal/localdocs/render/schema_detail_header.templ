@@ -1,6 +1,7 @@
 package render
 
 import (
+	"strings"
 	templpkg "github.com/a-h/templ"
 	"github.com/araihu/goshtoso/components/badge"
 )
@@ -24,7 +25,7 @@ templ schemaDetailHeader(data schemaDetailHeaderData, actions, provenance templp
 			}
 		</div>
 		<h1 tabindex="-1" data-manja-settled-focus="true" class="manja-schema-title font-title text-2xl font-bold text-on-surface-strong sm:text-3xl dark:text-on-surface-dark-strong">{ data.Title }</h1>
-		if data.Description != "" {
+		if strings.TrimSpace(data.Description) != "" {
 			<div class="manja-schema-markdown min-w-0">
 				@schemaDescriptionContent(data.Description, "header-" + data.Title)
 			</div>

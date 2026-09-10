@@ -110,7 +110,7 @@ func schemaNode(node schemaNodeData) templ.Component {
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			if node.Description != "" {
+			if strings.TrimSpace(node.Description) != "" {
 				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 9, "<div class=\"gs-schema-tree-description\">")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err

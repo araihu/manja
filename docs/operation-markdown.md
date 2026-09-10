@@ -3,10 +3,10 @@
 Manja renders operation and schema descriptions with the Margo Go module.
 This includes standalone schema headers/nodes and nested property/item
 descriptions supplied through SchemaTree's `DescriptionContent` slot. The
-integration targets the checked-in GitHub REST fixture; parameter-level and
-response-level descriptions and catalog READMEs retain their existing behavior.
-Path parameters use SchemaTree, including Margo-rendered descriptions, required
-markers, schema constraints, defaults, and examples. Query and header parameter
+integration targets the checked-in GitHub REST fixture; response-level
+descriptions and catalog READMEs retain their existing behavior.
+Path and query parameters use SchemaTree, including Margo-rendered descriptions,
+required markers, schema constraints, defaults, and examples. Header parameter
 groups retain their existing presentation.
 
 The host injects a component factory into the portable renderer's context.

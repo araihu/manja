@@ -25,7 +25,7 @@ templ RequestGenerator(operation domain.Operation, serverURL string) {
 			@codeblock.CodeBlock(codeblock.Config{ID: operation.Anchor+"-request-sample-code", Label: "Request Sample: Shell / cURL", Language: "shell", Code: requestGeneratorFallback(operation, serverURL), MaxHeight: "24rem"})
 		</div>
 		for _, parameter := range operation.Parameters {
-			<input type="hidden" name={ "parameters."+parameter.Name } value={ requestGeneratorParameterValue(parameter) }/>
+			<input type="hidden" name={ requestGeneratorParameterField(parameter) } value={ requestGeneratorParameterValue(parameter) }/>
 		}
 		if operation.RequestBody != nil && len(operation.RequestBody.MediaTypes) > 0 {
 			<textarea hidden data-manja-request-body-input>{ operation.RequestBody.MediaTypes[0].Example }</textarea>
@@ -52,6 +52,10 @@ func requestGeneratorFallback(operation domain.Operation, serverURL string) stri
 	return operationExamplesCurl(copy)
 }
 
+func requestGeneratorParameterField(parameter domain.OperationParameter) string {
+	return "parameters." + parameter.In + "." + parameter.Name
+}
+
 func requestGeneratorParameterValue(parameter domain.OperationParameter) string {
 	if parameter.Example != "" { return parameter.Example }
 	if parameter.In == "path" { return "{"+parameter.Name+"}" }
@@ -61,7 +65,7 @@ func requestGeneratorParameterValue(parameter domain.OperationParameter) string 
 func requestGeneratorPayload(operation domain.Operation, serverURL string) map[string]any {
 	parameters := make([]map[string]string, 0, len(operation.Parameters))
 	for _, parameter := range operation.Parameters {
-		parameters = append(parameters, map[string]string{"name": parameter.Name, "in": parameter.In, "fieldName": "parameters."+parameter.Name})
+		parameters = append(parameters, map[string]string{"name": parameter.Name, "in": parameter.In, "fieldName": requestGeneratorParameterField(parameter)})
 	}
 	payload := map[string]any{"method": operation.Method, "urlTemplate": strings.TrimRight(serverURL, "/")+domain.EffectiveOperationRequestTarget(operation), "parameters": parameters, "sampleTargets": RequestSampleTargets()}
 	if operation.RequestBody != nil && len(operation.RequestBody.MediaTypes) > 0 { payload["bodyContentType"] = operation.RequestBody.MediaTypes[0].ContentType }
