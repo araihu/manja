@@ -1026,7 +1026,7 @@ templ endpointSection(op core.Operation, servers []core.SpecServer, exampleSpecJ
 							if opts.OperationRequestSection != nil {
 								@localrender.OperationRequestSection(*opts.OperationRequestSection)
 							} else {
-							<section class="grid gap-8" aria-label="Request">
+							<section class="grid gap-4" aria-label="Request">
 								<h4 class="font-title text-2xl font-bold text-on-surface-strong dark:text-on-surface-dark-strong">Request</h4>
 								if opts.OperationAuthorization != nil {
 									@localrender.OperationAuthorization(*opts.OperationAuthorization)
@@ -1067,7 +1067,7 @@ templ endpointSection(op core.Operation, servers []core.SpecServer, exampleSpecJ
 								if opts.OperationResponses != nil {
 									@localrender.OperationResponses(*opts.OperationResponses)
 								} else {
-								<section class="manja-endpoint-responses-section grid gap-5" aria-label="Responses">
+								<section class="manja-endpoint-responses-section grid gap-4" aria-label="Responses">
 									<h4 class="font-title text-2xl font-bold text-on-surface-strong dark:text-on-surface-dark-strong">Responses</h4>
 									@accordion.Accordion(responseAccordionConfig(opID, op.Responses, exampleSpecJSON, opts))
 								</section>

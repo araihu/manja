@@ -1121,7 +1121,7 @@ func TestCatalogOperationRouteReusesRichEndpointProjection(t *testing.T) {
 		"metadata",
 		"Request body JSON",
 		"Request Sample: Shell / cURL",
-		`class="manja-endpoint-responses-section grid gap-5"`,
+		`class="manja-endpoint-responses-section grid gap-4"`,
 	} {
 		if !strings.Contains(response.Body.String(), want) {
 			t.Errorf("rich operation response missing %q", want)
