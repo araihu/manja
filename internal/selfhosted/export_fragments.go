@@ -552,7 +552,7 @@ func emitDetailHTMLFragment(ctx context.Context, writer *exportTreeWriter, store
 		page, renderErr := browser.RenderMain(ctx, localbrowser.Route{DocumentKey: document.Key, Selected: resource})
 		browser.ReleaseChildren()
 		if renderErr != nil {
-			page.MainHTML = fallbackDetailHTML(document, kind, resource)
+			return fmt.Errorf("render %s fragment %q in document %q: %w", kind, resource, document.Key, renderErr)
 		}
 		fragmentBytes, rewriteErr := rewriteExportFragmentHTML([]byte(page.MainHTML), "/", nil)
 		if rewriteErr != nil {
@@ -866,34 +866,6 @@ func htmlAttribute(node *xhtml.Node, key string) string {
 		}
 	}
 	return ""
-}
-
-func fallbackDetailHTML(document catalog.DocumentDirectoryV1, kind artifact.FragmentKind, resource string) string {
-	title := resource
-	description := ""
-	meta := ""
-	if kind == artifact.FragmentOperation {
-		for _, operation := range document.Operations {
-			if string(operation.DetailID) != resource {
-				continue
-			}
-			title = strings.TrimSpace(operation.Title)
-			if title == "" {
-				title = operation.OperationID
-			}
-			description = operation.Description
-			meta = `<p><strong>` + htmlstd.EscapeString(strings.ToUpper(operation.Method)) + `</strong> <code>` + htmlstd.EscapeString(operation.EffectiveRequestTarget()) + `</code></p>`
-			break
-		}
-	} else if kind == artifact.FragmentSchema {
-		for _, schema := range document.Schemas {
-			if string(schema.DetailID) == resource {
-				title, description = schema.Name, schema.Description
-				break
-			}
-		}
-	}
-	return `<div data-manja-local-main="true" data-manja-fragment-degraded="true"><article><h1 tabindex="-1" data-manja-settled-focus="true" class="font-title text-3xl font-bold">` + htmlstd.EscapeString(title) + `</h1>` + meta + `<p>` + htmlstd.EscapeString(description) + `</p></article></div>`
 }
 
 func emitStaticBytesArtifact(ctx context.Context, writer *exportTreeWriter, store, cacheStore *artifactstore.Store, cacheRoot string, active renderer.ActivationReceipt, manifest catalog.ManifestV1, documentKey string, identity artifact.FragmentIdentity, payload, htmlBytes []byte, binaryIdentity string, profile artifact.BuildProfile) error {

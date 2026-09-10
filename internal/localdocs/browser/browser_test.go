@@ -331,6 +331,11 @@ func TestBrowserRejectsUnknownOrChangedChildren(t *testing.T) {
 
 func browserFixture(t testing.TB) (localdocs.DescriptorV1, []byte, []byte, map[string][]byte, domain.DetailID, domain.DetailID) {
 	t.Helper()
+	return browserFixtureWithOperationID(t, "listPets")
+}
+
+func browserFixtureWithOperationID(t testing.TB, sourceOperationID string) (localdocs.DescriptorV1, []byte, []byte, map[string][]byte, domain.DetailID, domain.DetailID) {
+	t.Helper()
 	operationID := domain.DetailID("detail-sha256-" + strings.Repeat("a", 64))
 	schemaID := domain.DetailID("detail-sha256-" + strings.Repeat("b", 64))
 	operationHref := "documents/doc/?selected=" + string(operationID) + "#" + string(operationID)
@@ -353,7 +358,7 @@ func browserFixture(t testing.TB) (localdocs.DescriptorV1, []byte, []byte, map[s
 	schemaIdentity := browserIdentity("schema-nodes/doc-000000.json", "schema-node", schemaBytes)
 	directory := catalog.CatalogArtifactV1{SchemaVersion: 1, CatalogID: "pets", Title: "Pets", DefaultDocumentKey: "doc", SearchChild: "search/directory.json", Documents: []catalog.DocumentDirectoryV1{{
 		Key: "doc", SourcePath: "doc.json", Title: "Pets", APIVersion: "v1", SourceChild: "sources/doc.json",
-		Operations:       []catalog.OperationDirectoryV1{{DetailID: operationID, OperationID: "listPets", Method: "GET", Path: "/pets", Title: "List pets", Description: "Returns pets", Href: operationHref, DetailChild: "details/doc.json", Tags: []string{"Pets"}}},
+		Operations:       []catalog.OperationDirectoryV1{{DetailID: operationID, OperationID: sourceOperationID, Method: "GET", Path: "/pets", Title: "List pets", Description: "Returns pets", Href: operationHref, DetailChild: "details/doc.json", Tags: []string{"Pets"}}},
 		Schemas:          []catalog.SchemaDirectoryV1{{DetailID: schemaID, Name: "Pet", Description: "A pet", Href: schemaHref, DetailChild: "details/doc.json", CanonicalSHA256: strings.Repeat("c", 64), ProjectionSHA256: strings.Repeat("d", 64)}},
 		SchemaNodeShards: []catalog.ShardReferenceV1{{Path: schemaIdentity.Path, FirstOrdinal: 0, LastOrdinal: 0, Records: 1, Length: schemaIdentity.Length, SHA256: schemaIdentity.SHA256}},
 	}}}
@@ -622,5 +627,22 @@ func TestSharedSchemaCacheSeparatesChangedPublication(t *testing.T) {
 	}
 	if s := cache.Stats(); s.Misses != 2 {
 		t.Fatal(s)
+	}
+}
+
+func TestBrowserRenderMainWithoutSourceOperationID(t *testing.T) {
+	descriptor, manifest, catalogBytes, children, operationID, _ := browserFixtureWithOperationID(t, "")
+	browser, err := Prepare(descriptor, manifest, catalogBytes, children)
+	if err != nil {
+		t.Fatal(err)
+	}
+	page, err := browser.RenderMain(context.Background(), Route{DocumentKey: "doc", Selected: string(operationID)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"List pets", "/pets", "Returns pets"} {
+		if !strings.Contains(page.MainHTML, want) {
+			t.Errorf("operation page missing %q", want)
+		}
 	}
 }

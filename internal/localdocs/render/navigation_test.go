@@ -50,6 +50,30 @@ func TestPreparedOperationNavigationRendersCanonicalCatalogNeighbors(t *testing.
 	}
 }
 
+func TestPrepareOperationNavigationWithoutSourceOperationID(t *testing.T) {
+	t.Parallel()
+	detail, operation, document, href := operationNavigationFixture()
+	document.Operations[1].OperationID = ""
+	operation.ID = string(detail.ID)
+	fragment, err := PrepareOperationNavigation(detail, operation, document, href, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, err := fragment.Bytes(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{`data-manja-operation-neighbor="previous"`, `data-manja-operation-neighbor="next"`, string(document.Operations[0].DetailID), string(document.Operations[3].DetailID)} {
+		if !strings.Contains(string(body), want) {
+			t.Errorf("navigation missing %q", want)
+		}
+	}
+	operation.ID = "unrelated"
+	if _, err := PrepareOperationNavigation(detail, operation, document, href, nil); err == nil {
+		t.Fatal("accepted an unrelated fallback identity")
+	}
+}
+
 func TestPrepareOperationNavigationFailsClosedOnInconsistentInputs(t *testing.T) {
 	t.Parallel()
 
