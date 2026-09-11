@@ -61,8 +61,13 @@ type RendererCatalogConfig struct {
 	Source                 RendererSourceConfig         `yaml:"source"`
 	SEO                    RendererSEOConfig            `yaml:"seo"`
 	LocalDocs              RendererCatalogLocalDocs     `yaml:"localDocs"`
+	CatalogOverview        RendererCatalogOverview      `yaml:"catalogOverview"`
 
 	compatibilityAllowlist []byte
+}
+
+type RendererCatalogOverview struct {
+	Sidebar *bool `yaml:"sidebar"`
 }
 
 type RendererCatalogLocalDocs struct {
@@ -181,6 +186,7 @@ func (file RendererFile) RuntimeConfig() renderer.Config {
 			ID: catalog.ID, Mount: catalog.Mount, Title: catalog.Title, Readme: catalog.Readme,
 			License:                renderer.CatalogLicense{Name: catalog.License.Name, URL: catalog.License.URL},
 			DefaultDocumentKey:     catalog.DefaultDocumentKey,
+			CatalogOverview:        renderer.CatalogOverview{Sidebar: catalog.CatalogOverview.Sidebar},
 			ProfileID:              domain.CompatibilityProfileID(catalog.ProfileID),
 			CompatibilityAllowlist: append([]byte(nil), catalog.compatibilityAllowlist...),
 			SEO: renderer.CatalogSEO{

@@ -427,3 +427,35 @@ test('static popstate restores saved nested scroll without stealing focus', asyn
   assert.equal(fixture.nav.scrollTop, 29)
   assert.equal(fixture.focusCalls.length, detailFocusCount)
 })
+
+test('search from a catalog overview requires the destination document shell', async () => {
+  const fixture = await staticActivationFixture()
+  fixture.location.href = new URL(fixture.value.publicationBase, fixture.location.href).href
+  const result = fixture.api.navigate('https://docs.test/group/project/pets/documents/doc/?selected=wanted#wanted')
+  if (result?.catch) result.catch(() => {})
+  assert.equal(result, null)
+  assert.deepEqual(fixture.history.pushes, [])
+})
+
+test('search across documents requires the destination document shell', async () => {
+  const fixture = await staticActivationFixture()
+  const result = fixture.api.navigate('https://docs.test/group/project/pets/documents/other/?selected=wanted#wanted')
+  if (result?.catch) result.catch(() => {})
+  assert.equal(result, null)
+  assert.deepEqual(fixture.history.pushes, [])
+})
+
+test('overview and cross-document links retain normal browser navigation', async () => {
+  for (const current of ['/group/project/pets/', '/group/project/pets/documents/other/']) {
+    const fixture = await staticActivationFixture()
+    fixture.location.href = new URL(current, fixture.location.href).href
+    let prevented = false
+    const anchor = { href: 'https://docs.test/group/project/pets/documents/doc/?selected=wanted#wanted' }
+    fixture.listeners.click({
+      target: { closest: selector => selector === 'a[href]' ? anchor : null },
+      preventDefault: () => { prevented = true },
+    })
+    assert.equal(prevented, false)
+    assert.deepEqual(fixture.history.pushes, [])
+  }
+})

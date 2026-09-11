@@ -2,6 +2,7 @@ package selfhosted
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -44,6 +45,8 @@ catalogs:
   - id: other
     mount: /other
     title: Other
+    catalogOverview:
+      sidebar: false
     defaultDocument: other
     profile: strict-v1
     source:
@@ -579,6 +582,10 @@ catalogs:
 				t.Fatal(err)
 			}
 			waitStaticExportReady(t, page)
+			if err := page.Context().SetOffline(false); err != nil {
+				t.Fatal(err)
+			}
+			assertStaticOverviewWithoutSidebar(t, page, server.URL, deployment)
 			requestMu.Lock()
 			defer requestMu.Unlock()
 			for _, requestPath := range requests {
@@ -692,4 +699,172 @@ func waitStaticExportReady(t *testing.T, page playwright.Page) {
 		debug, _ := page.Evaluate(`() => ({state: document.documentElement.dataset.manjaLocalDocsState || '', reason: document.documentElement.dataset.manjaLocalDocsReason || '', worker: document.documentElement.dataset.manjaLocalDocsWorker || '', workerReason: document.documentElement.dataset.manjaLocalDocsWorkerReason || ''})`)
 		t.Fatalf("static export did not become ready: %v; debug=%#v", err, debug)
 	}
+}
+
+func assertStaticOverviewWithoutSidebar(t *testing.T, page playwright.Page, serverURL, deployment string) {
+	t.Helper()
+	var errorMu sync.Mutex
+	var pageErrors []string
+	onPageError := func(err error) { errorMu.Lock(); defer errorMu.Unlock(); pageErrors = append(pageErrors, err.Error()) }
+	page.On("pageerror", onPageError)
+	defer page.RemoveListener("pageerror", onPageError)
+	overviewURL := serverURL + deployment + "/other/"
+	if _, err := page.Goto(overviewURL); err != nil {
+		t.Fatal(err)
+	}
+	waitStaticExportReady(t, page)
+	if _, err := page.Evaluate(`async () => await window.goshtosoDependencies.ready`, nil); err != nil {
+		t.Fatal(err)
+	}
+	for _, width := range []int{390, 1440} {
+		if err := page.SetViewportSize(width, 900); err != nil {
+			t.Fatal(err)
+		}
+		for _, theme := range []string{"goshtoso", "minimal"} {
+			for _, dark := range []bool{false, true} {
+				if _, err := page.Evaluate(`value => {
+					localStorage.setItem('theme', value.theme);
+					localStorage.setItem('darkMode', String(value.dark));
+				}`, map[string]any{"theme": theme, "dark": dark}); err != nil {
+					t.Fatal(err)
+				}
+				if _, err := page.Reload(); err != nil {
+					t.Fatal(err)
+				}
+				waitStaticExportReady(t, page)
+				if _, err := page.Evaluate(`async () => await window.goshtosoDependencies.ready`, nil); err != nil {
+					t.Fatal(err)
+				}
+				if script := os.Getenv("MANJA_OVERVIEW_AXE_SCRIPT"); script != "" {
+					if _, err := page.AddScriptTag(playwright.PageAddScriptTagOptions{Path: playwright.String(script)}); err != nil {
+						t.Fatal(err)
+					}
+				}
+				valid, err := page.Evaluate(`() => {
+					const main = document.querySelector('#main-content');
+					const box = main.getBoundingClientRect();
+					return !document.querySelector('#catalog-navigation, [data-catalog-navigation-trigger], [data-catalog-navigation-backdrop]') &&
+						Math.abs(box.left) < 1 && Math.abs(box.width - innerWidth) < 1 &&
+						document.documentElement.scrollWidth <= innerWidth &&
+						!!document.querySelector('[data-catalog-header-search]') &&
+						!!document.querySelector('[data-table-row-link]');
+				}`)
+				if err != nil || valid != true {
+					t.Fatalf("overview without sidebar width=%d theme=%s dark=%t: %v, %v", width, theme, dark, valid, err)
+				}
+				if os.Getenv("MANJA_OVERVIEW_AXE_SCRIPT") != "" {
+					violations, err := page.Evaluate(`async () => {
+						const results = await axe.run(document, {runOnly: {type: 'tag', values: ['wcag2a', 'wcag2aa', 'wcag21aa']}});
+						return results.violations.filter(v => v.impact === 'serious' || v.impact === 'critical').map(v => ({id: v.id, impact: v.impact, nodes: v.nodes.map(n => n.target)}));
+					}`)
+					if err != nil {
+						t.Fatal(err)
+					}
+					if found, ok := violations.([]any); !ok || len(found) != 0 {
+						t.Fatalf("overview accessibility width=%d theme=%s dark=%t: %#v", width, theme, dark, violations)
+					}
+				}
+				if directory := os.Getenv("MANJA_OVERVIEW_SCREENSHOT_DIR"); directory != "" {
+					if err := os.MkdirAll(directory, 0o755); err != nil {
+						t.Fatal(err)
+					}
+					name := fmt.Sprintf("overview-%s-%d-%s-dark-%t.png", strings.ReplaceAll(deployment, "/", "-"), width, theme, dark)
+					if _, err := page.Screenshot(playwright.PageScreenshotOptions{Path: playwright.String(filepath.Join(directory, name)), Animations: playwright.ScreenshotAnimationsDisabled}); err != nil {
+						t.Fatal(err)
+					}
+				}
+			}
+		}
+	}
+	if err := page.Keyboard().Press("Control+k"); err != nil {
+		t.Fatal(err)
+	}
+	if err := page.Locator("#catalog-search-input").WaitFor(); err != nil {
+		t.Fatal(err)
+	}
+	if err := page.Locator("#catalog-search-input").Fill("listWidgets"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := page.Locator("#catalog-search-input").Evaluate(`el => el.dispatchEvent(new Event('input', {bubbles: true}))`, nil); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := page.Evaluate(`() => { window.__manjaOverviewShell = true; }`, nil); err != nil {
+		t.Fatal(err)
+	}
+	if err := page.Locator("#catalog-search-dialog").GetByText("List widgets", playwright.LocatorGetByTextOptions{Exact: playwright.Bool(true)}).Click(); err != nil {
+		t.Fatal(err)
+	}
+	if err := page.WaitForURL("**/other/documents/other/?selected=*"); err != nil {
+		t.Fatal(err)
+	}
+	waitStaticExportReady(t, page)
+	if _, err := page.WaitForFunction(`() => window.__manjaOverviewShell !== true && document.querySelectorAll('#catalog-navigation [data-catalog-sidebar-operation]').length === 2 && document.title === 'List widgets'`, nil); err != nil {
+		t.Fatalf("overview search must load the document shell and navigation: %v", err)
+	}
+	if _, err := page.GoBack(); err != nil {
+		t.Fatal(err)
+	}
+	waitStaticExportReady(t, page)
+	if page.URL() != overviewURL {
+		t.Fatalf("back from search URL = %s, want %s", page.URL(), overviewURL)
+	}
+	if err := page.Keyboard().Press("Escape"); err != nil {
+		t.Fatal(err)
+	}
+	if err := page.Locator("[data-table-row-link]").First().Click(); err != nil {
+		t.Fatal(err)
+	}
+	waitStaticExportReady(t, page)
+	if err := page.WaitForURL(serverURL + deployment + "/other/documents/other/"); err != nil {
+		t.Fatal(err)
+	}
+	waitStaticExportReady(t, page)
+	if _, err := page.WaitForFunction(`() => document.querySelectorAll('#catalog-navigation [data-catalog-sidebar-operation]').length === 2`, nil, playwright.PageWaitForFunctionOptions{Timeout: playwright.Float(5_000)}); err != nil {
+		debug, _ := page.Evaluate(`() => ({href: location.href, title: document.title, state: document.documentElement.dataset.manjaLocalDocsState, sidebar: document.querySelector('#catalog-navigation')?.outerHTML, main: document.querySelector('[data-catalog-main-content]')?.textContent})`)
+		t.Fatalf("document navigation after overview: %v; debug=%#v", err, debug)
+	}
+	if count, err := page.Locator(`#catalog-navigation [data-catalog-sidebar-operation]`).Count(); err != nil || count != 2 {
+		t.Fatalf("hidden-overview catalog document operations = %d, %v", count, err)
+	}
+	if count, err := page.Locator(`[data-catalog-navigation-trigger]`).Count(); err != nil || count != 1 {
+		t.Fatalf("document mobile trigger = %d, %v", count, err)
+	}
+	if _, err := page.GoBack(); err != nil {
+		t.Fatal(err)
+	}
+	waitStaticExportReady(t, page)
+	if page.URL() != overviewURL {
+		t.Fatalf("back URL = %s, want %s", page.URL(), overviewURL)
+	}
+	if _, err := page.Reload(); err != nil {
+		t.Fatal(err)
+	}
+	waitStaticExportReady(t, page)
+	if err := page.Context().SetOffline(true); err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := page.Context().SetOffline(false); err != nil {
+			t.Errorf("restore online mode: %v", err)
+		}
+	}()
+	if _, err := page.Reload(); err != nil {
+		t.Fatal(err)
+	}
+	waitStaticExportReady(t, page)
+	if count, err := page.Locator(`#catalog-navigation, [data-catalog-navigation-trigger], [data-catalog-navigation-backdrop]`).Count(); err != nil || count != 0 {
+		t.Fatalf("offline overview navigation count = %d, %v", count, err)
+	}
+	if err := page.SetViewportSize(1440, 900); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := page.Evaluate(`() => { localStorage.setItem('theme', 'araihu'); localStorage.setItem('darkMode', 'false'); document.documentElement.dataset.theme = 'araihu'; document.documentElement.classList.remove('dark'); }`, nil); err != nil {
+		t.Fatal(err)
+	}
+	errorMu.Lock()
+	defer errorMu.Unlock()
+	if len(pageErrors) != 0 {
+		t.Fatalf("overview page errors: %v", pageErrors)
+	}
+
 }

@@ -611,3 +611,47 @@ func rendererTestCandidateVersion(id, title, revisionID, digestCharacter string)
 	candidate.Documents[0].Bytes = []byte(strings.Replace(string(candidate.Documents[0].Bytes), "Payments", title, 1))
 	return candidate
 }
+
+func TestCatalogOverviewSidebarIsScopedToConfiguredOverview(t *testing.T) {
+	for _, test := range []struct {
+		name    string
+		sidebar *bool
+	}{
+		{name: "default"}, {name: "visible", sidebar: new(true)}, {name: "hidden", sidebar: new(false)},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			server, err := New(Config{Version: 1, DataDir: t.TempDir(), Catalogs: []CatalogConfig{
+				{ID: "payments", Mount: "/payments", Title: "Payments", ProfileID: domain.CompatibilityProfileStrict, CatalogOverview: CatalogOverview{Sidebar: test.sidebar}, LocalDocs: CatalogLocalDocs{Public: true, Anonymous: true, PublicationKey: "payments"}},
+				{ID: "inventory", Mount: "/inventory", Title: "Inventory", ProfileID: domain.CompatibilityProfileStrict},
+			}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, id := range []string{"payments", "inventory"} {
+				if _, err := server.Activate(context.Background(), rendererTestCandidate(id)); err != nil {
+					t.Fatal(err)
+				}
+			}
+			for _, route := range []string{"/payments/", "/payments/_manja/offline-shell", "/payments/documents/payments-v1/", "/payments/search", "/inventory/", "/"} {
+				response := httptest.NewRecorder()
+				server.Handler().ServeHTTP(response, httptest.NewRequest(http.MethodGet, route, nil))
+				if response.Code != http.StatusOK {
+					t.Fatalf("GET %s: %d", route, response.Code)
+				}
+				body := response.Body.String()
+				hidden := test.sidebar != nil && !*test.sidebar && (route == "/payments/" || route == "/payments/_manja/offline-shell")
+				for _, marker := range []string{`id="catalog-navigation"`, `data-catalog-navigation-trigger="true"`, `data-catalog-navigation-backdrop="true"`} {
+					if strings.Contains(body, marker) == hidden {
+						t.Errorf("%s marker %s: hidden=%t", route, marker, hidden)
+					}
+				}
+				if !strings.Contains(body, `data-catalog-header-search`) {
+					t.Errorf("%s lost header search", route)
+				}
+				if route == "/payments/" && !strings.Contains(body, `href="/payments/documents/payments-v1/"`) {
+					t.Fatal("overview lost document navigation")
+				}
+			}
+		})
+	}
+}
