@@ -220,6 +220,7 @@ func prefixHTMLPaths(body []byte, prefix string) []byte {
 }
 
 var dependencyAttribute = regexp.MustCompile(`data-goshtoso-dependencies="([^"]*)"`)
+var dependencyAttributeTemplate = template.Must(template.New("dependency-attribute").Parse(`data-goshtoso-dependencies="{{.}}"`))
 
 func prefixDependencyPaths(markup, prefix string) string {
 	return dependencyAttribute.ReplaceAllStringFunc(markup, func(attribute string) string {
@@ -242,7 +243,11 @@ func prefixDependencyPaths(markup, prefix string) string {
 		if err != nil {
 			return attribute
 		}
-		return `data-goshtoso-dependencies="` + template.HTMLEscapeString(string(encoded)) + `"`
+		var output bytes.Buffer
+		if err := dependencyAttributeTemplate.Execute(&output, string(encoded)); err != nil {
+			return attribute
+		}
+		return output.String()
 	})
 }
 
