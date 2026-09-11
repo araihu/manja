@@ -82,7 +82,7 @@ templ schemaReferenceLink(edge schemaEdgeData, tooltipID string) {
 			hx-get={ edge.ReferenceHref }
 			hx-target="#schema-node-panel"
 			hx-select="#schema-node-panel"
-			hx-swap="outerHTML show:#schema-node-panel:top"
+			hx-swap="outerHTML show:top showTarget:#schema-node-panel"
 			hx-push-url="true"
 			if tooltipID != "" {
 				aria-describedby={ tooltipID }

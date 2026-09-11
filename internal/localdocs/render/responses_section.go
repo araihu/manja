@@ -106,7 +106,7 @@ func PrepareOperationResponses(
 			mediaIDs[projectedMedia.ID] = struct{}{}
 			wantTreeID := operationSchemaTreeMediaID(operation.Anchor+"-response-"+anchorFragment(response.Status), projectedMedia.ContentType)
 			if preparedTree.ID != wantTreeID || preparedTree.Caption != "Response body" ||
-				preparedTree.LinkTarget != "#catalog-main-content" || preparedTree.LinkSelect != "#catalog-main-content" || preparedTree.LinkSwap != "outerHTML show:#main-content:top" {
+				preparedTree.LinkTarget != "#catalog-main-content" || preparedTree.LinkSelect != "#catalog-main-content" || preparedTree.LinkSwap != "outerHTML show:top showTarget:#main-content" {
 				return OperationResponsesFragment{}, invalidOperationResponsesField("response schema tree")
 			}
 			wantExampleID := operation.Anchor + "-response-" + anchorFragment(response.Status) + "-" + anchorFragment(projectedMedia.ContentType) + "-example"

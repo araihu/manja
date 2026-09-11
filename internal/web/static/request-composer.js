@@ -97,13 +97,13 @@ punycode/punycode.js:
       } else {
         hydrate();
       }
-      root.document.addEventListener('htmx:afterSwap', hydrate);
+      root.document.addEventListener('htmx:after:swap', hydrate);
       const restore = () => {
         hydrate();
         // Re-enable Goshtoso code controls in restored document markup too.
-        root.document.body.dispatchEvent(new root.CustomEvent('htmx:afterSwap', { bubbles: true }));
+        root.document.body.dispatchEvent(new root.CustomEvent('htmx:after:swap', { bubbles: true }));
       };
-      root.document.addEventListener('htmx:historyRestore', restore);
+      root.document.addEventListener('htmx:before:history:restore', restore);
       if (typeof root.addEventListener === 'function') root.addEventListener('pageshow', restore);
     }
   }

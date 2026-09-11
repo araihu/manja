@@ -89,7 +89,7 @@ func TestGoshtosoAffectedSurfaceVisualMatrix(t *testing.T) {
 		},
 	})
 	server := httptestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Header.Get("HX-Request") == "true" && r.URL.Query().Get("visual_hold") == "true" {
+		if r.Header.Get("HX-Request-Type") == "partial" && r.URL.Query().Get("visual_hold") == "true" {
 			time.Sleep(2 * time.Second)
 		}
 		primaryHandler.ServeHTTP(w, r)

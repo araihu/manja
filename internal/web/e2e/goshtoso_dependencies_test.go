@@ -298,7 +298,7 @@ func goshtosoRenderedPrimaryURLs(t *testing.T, server string) []string {
 		t.Fatalf("decode rendered Goshtoso dependency configuration: %v", err)
 	}
 
-	wantOrder := []string{"alpine-collapse", "alpine-focus", "alpine-mask", "first-party", "alpine", "htmx"}
+	wantOrder := []string{"alpine-collapse", "alpine-focus", "alpine-mask", "first-party", "htmx", "htmx-alpine-compat", "alpine"}
 	if len(config.Dependencies) != len(wantOrder) {
 		t.Fatalf("rendered dependency count = %d, want %d: %#v", len(config.Dependencies), len(wantOrder), config.Dependencies)
 	}
@@ -386,8 +386,8 @@ func validateGoshtosoDependencyBrowserEvidence(forceFallback bool, expectedPrima
 		return failures
 	}
 
-	if len(expectedPrimaryURLs) != 5 {
-		failures = append(failures, fmt.Sprintf("expected primary URL count = %d, want 5", len(expectedPrimaryURLs)))
+	if len(expectedPrimaryURLs) != 6 {
+		failures = append(failures, fmt.Sprintf("expected primary URL count = %d, want 6", len(expectedPrimaryURLs)))
 	}
 	expectedURLCounts := goshtosoDependencyURLCounts(expectedPrimaryURLs)
 	if len(expectedURLCounts) != len(expectedPrimaryURLs) {
@@ -601,7 +601,7 @@ func testPublicDocsGoshtosoDependencyJourney(t *testing.T, forceFallback bool) {
 	wantFallbacks := []string{}
 	wantSource := "primary"
 	if forceFallback {
-		wantFallbacks = []string{"alpine-collapse", "alpine-focus", "alpine-mask", "alpine", "htmx"}
+		wantFallbacks = []string{"alpine-collapse", "alpine-focus", "alpine-mask", "htmx", "htmx-alpine-compat", "alpine"}
 		wantSource = "fallback"
 	}
 	if fmt.Sprint(evidence.Fallbacks) != fmt.Sprint(wantFallbacks) {
@@ -616,7 +616,7 @@ func testPublicDocsGoshtosoDependencyJourney(t *testing.T, forceFallback bool) {
 	if len(evidence.Rejections) != 0 {
 		t.Errorf("unhandled rejections = %v, want none", evidence.Rejections)
 	}
-	for _, name := range []string{"alpine-collapse", "alpine-focus", "alpine-mask", "alpine", "htmx"} {
+	for _, name := range []string{"alpine-collapse", "alpine-focus", "alpine-mask", "htmx", "htmx-alpine-compat", "alpine"} {
 		if evidence.Sources[name] != wantSource {
 			t.Errorf("%s source = %q, want %s", name, evidence.Sources[name], wantSource)
 		}

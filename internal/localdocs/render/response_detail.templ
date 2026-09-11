@@ -54,7 +54,7 @@ templ operationResponseDetailSchemaEnumAliasTrigger(schema domain.SchemaSummary,
 	{{ href := strings.TrimSpace(schemaLinks[strings.TrimSpace(schema.Name)]) }}
 	<span class="manja-schema-type">{ operationResponseDetailSchemaInlineTypeLabel(schema) }&lt;</span>
 	if href != "" {
-		<a data-manja-schema-enum-reference="true" href={ templpkg.URL(href) } hx-get={ href } hx-target="#catalog-main-content" hx-select="#catalog-main-content" hx-swap="outerHTML show:#main-content:top" hx-push-url="true" aria-describedby={ tooltipID } aria-label={ "Open schema " + schema.Name } title={ "Open schema " + schema.Name } class="manja-schema-reference rounded-radius underline-offset-4 transition hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary dark:focus-visible:outline-primary-dark">{ schema.Name }</a>
+		<a data-manja-schema-enum-reference="true" href={ templpkg.URL(href) } hx-get={ href } hx-target="#catalog-main-content" hx-select="#catalog-main-content" hx-swap="outerHTML show:top showTarget:#main-content" hx-push-url="true" aria-describedby={ tooltipID } aria-label={ "Open schema " + schema.Name } title={ "Open schema " + schema.Name } class="manja-schema-reference rounded-radius underline-offset-4 transition hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary dark:focus-visible:outline-primary-dark">{ schema.Name }</a>
 	} else {
 		<span class="manja-schema-type">{ schema.Name }</span>
 	}

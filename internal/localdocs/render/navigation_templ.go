@@ -155,7 +155,7 @@ func operationNavigationLink(item operationNavigationItemData, direction string)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 8, "\" hx-target=\"#main-content\" hx-select=\"#main-content\" hx-select-oob=\"#catalog-navigation\" hx-swap=\"outerHTML show:#main-content:top\" hx-push-url=\"true\" class=\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 8, "\" hx-target=\"#main-content\" hx-select=\"#main-content\" hx-select-oob=\"#catalog-navigation\" hx-swap=\"outerHTML show:top showTarget:#main-content\" hx-push-url=\"true\" class=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}

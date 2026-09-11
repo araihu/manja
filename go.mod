@@ -5,7 +5,7 @@ go 1.27.1
 require (
 	github.com/a-h/templ v0.3.1020
 	github.com/araihu/assets v0.2.3
-	github.com/araihu/goshtoso v0.2.10
+	github.com/araihu/goshtoso v0.3.0
 	github.com/araihu/margo v0.0.24-0.20260909050059-149877346da8
 	github.com/caarlos0/env/v11 v11.4.1
 	github.com/evanw/esbuild v0.28.2
@@ -17,7 +17,7 @@ require (
 	github.com/testcontainers/testcontainers-go/modules/forgejo v0.44.0
 	github.com/yuin/goldmark v1.8.5
 	golang.org/x/net v0.58.0
-	golang.org/x/sys v0.47.0
+	golang.org/x/sys v0.48.0
 	golang.org/x/text v0.41.0
 	gopkg.in/yaml.v3 v3.0.1
 )

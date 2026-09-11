@@ -575,12 +575,13 @@ func (handler *CatalogHandler) renderCatalogPage(response http.ResponseWriter, r
 }
 
 func catalogFragmentTarget(request *http.Request) string {
-	if !strings.EqualFold(strings.TrimSpace(request.Header.Get("HX-Request")), "true") ||
+	if !strings.EqualFold(strings.TrimSpace(request.Header.Get("HX-Request-Type")), "partial") ||
 		strings.EqualFold(strings.TrimSpace(request.Header.Get("HX-Boosted")), "true") ||
 		strings.EqualFold(strings.TrimSpace(request.Header.Get("HX-History-Restore-Request")), "true") {
 		return ""
 	}
 	target := strings.TrimSpace(request.Header.Get("HX-Target"))
+	_, target, _ = strings.Cut(target, "#")
 	switch target {
 	case "catalog-main-content", "catalog-sidebar-groups", "schema-node-panel":
 		return target
@@ -631,7 +632,7 @@ func writeCatalogRepresentation(response http.ResponseWriter, request *http.Requ
 	response.Header().Set("Cache-Control", "private, no-cache")
 	response.Header().Set("Content-Type", contentType)
 	response.Header().Set("ETag", etag)
-	response.Header().Set("Vary", "HX-Request, HX-Boosted, HX-Target, HX-History-Restore-Request, Accept-Encoding")
+	response.Header().Set("Vary", "HX-Request-Type, HX-Boosted, HX-Target, HX-History-Restore-Request, Accept-Encoding")
 	response.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; object-src 'none'; base-uri 'none'")
 	if request.Header.Get("If-None-Match") == etag {
 		response.WriteHeader(http.StatusNotModified)

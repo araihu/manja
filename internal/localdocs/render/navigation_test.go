@@ -34,7 +34,7 @@ func TestPreparedOperationNavigationRendersCanonicalCatalogNeighbors(t *testing.
 		`hx-target="#main-content"`,
 		`hx-select="#main-content"`,
 		`hx-select-oob="#catalog-navigation"`,
-		`hx-swap="outerHTML show:#main-content:top"`,
+		`hx-swap="outerHTML show:top showTarget:#main-content"`,
 		`focus-visible:outline-primary`,
 		`dark:focus-visible:outline-primary-dark`,
 		`sm:col-start-2`,

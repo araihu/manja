@@ -519,8 +519,8 @@ func TestRequestComposerRemainsReachableWhenAlpineFailsToLoad(t *testing.T) {
 			defer page.Close()
 
 			for _, url := range []string{
-				"https://unpkg.com/alpinejs@3.14.9/dist/cdn.min.js",
-				server + "/assets/js/runtime/alpinejs/3.14.9/alpine.min.js",
+				"https://unpkg.com/alpinejs@3.17.2/dist/cdn.min.js",
+				server + "/assets/js/runtime/alpinejs/3.17.2/alpine.min.js",
 			} {
 				if err := page.Route(url, func(route playwright.Route) {
 					if err := route.Fulfill(playwright.RouteFulfillOptions{
@@ -719,7 +719,7 @@ func TestRichOperationDetailsKeepHorizontalOverflowLocal(t *testing.T) {
 		t.Fatal(err)
 	}
 	if _, err := page.Evaluate(`() => {
-		const description = document.querySelector('[data-public-page-header="true"] .manja-doc-title + p');
+		const description = document.querySelector('[data-public-page-header="true"] p');
 		description.style.fontFamily = 'monospace';
 		description.style.fontSize = '18px';
 	}`); err != nil {
@@ -836,7 +836,7 @@ func TestRichOperationDetailsKeepHorizontalOverflowLocal(t *testing.T) {
 			const rows = [...(list?.querySelectorAll('[data-manja-parameter-row]') || [])];
 			const maxRowClientWidth = rows.reduce((width, row) => Math.max(width, row.clientWidth || 0), 0);
 			const maxRowScrollWidth = rows.reduce((width, row) => Math.max(width, row.scrollWidth || 0), 0);
-			const headerDescription = document.querySelector('[data-catalog-detail="operation"] [data-public-page-header] .manja-doc-title + p');
+			const headerDescription = document.querySelector('[data-catalog-detail="operation"] [data-public-page-header] p');
 			return {
 				mainClientWidth: main?.clientWidth || 0,
 				mainScrollWidth: main?.scrollWidth || 0,

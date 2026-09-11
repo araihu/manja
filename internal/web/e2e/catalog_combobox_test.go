@@ -412,6 +412,9 @@ func TestCatalogDocumentSearchUsesGlobalModal(t *testing.T) {
 	if expanded, err := searchField.Evaluate(`element => element.getAttribute('aria-expanded')`, nil); err != nil || expanded != "true" {
 		t.Fatalf("Ctrl+K sidebar search state = %v, err=%v", expanded, err)
 	}
+	if _, err := page.WaitForFunction(`() => document.activeElement === document.getElementById("catalog-search-input")`, nil, playwright.PageWaitForFunctionOptions{Timeout: playwright.Float(5000)}); err != nil {
+		t.Fatalf("reopened search should restore input focus: %v", err)
+	}
 	focusIndicatorValue, err := input.Evaluate(`element => {
 		const probe = document.createElement('span');
 		document.body.appendChild(probe);
@@ -694,7 +697,7 @@ func TestCatalogSidebarExpansionAndNavigationPreserveContext(t *testing.T) {
 	// the replacement control to finish HTMX processing before activating it.
 	if _, err := page.Evaluate(`() => {
 		window.__manjaCatalogSidebarSettleCount = 0;
-		document.body.addEventListener('htmx:afterSettle', () => {
+		document.body.addEventListener('htmx:after:settle', () => {
 			window.__manjaCatalogSidebarSettleCount += 1;
 		});
 		return true;
@@ -843,8 +846,8 @@ func TestCatalogSidebarExpansionAndNavigationPreserveContext(t *testing.T) {
 		window.__manjaCatalogNavigationSentinel = "kept";
 		window.__manjaCatalogNavigationSettled = false;
 		document.getElementById("catalog-sidebar-groups").dataset.navigationSentinel = "kept";
-		document.body.addEventListener("htmx:afterSettle", function onSettle(event) {
-			if (event.detail && event.detail.target && event.detail.target.id === "catalog-main-content") {
+		document.body.addEventListener("htmx:after:settle", function onSettle(event) {
+			if (event.detail && (event.detail.ctx || event.detail.task).target && (event.detail.ctx || event.detail.task).target.id === "catalog-main-content") {
 				window.__manjaCatalogNavigationSettled = true;
 			}
 		}, { once: true });
@@ -924,8 +927,8 @@ func TestCatalogSidebarExpansionAndNavigationPreserveContext(t *testing.T) {
 		var panel = document.querySelector("#manja-sidebar-panel-schemas .sidebar-scroll");
 		panel.scrollTop = Math.min(80, panel.scrollHeight - panel.clientHeight);
 		window.__manjaSidebarScrollAtGroupRequest = -1;
-		document.body.addEventListener("htmx:beforeRequest", function captureSidebarScroll(event) {
-			var trigger = event.detail && event.detail.elt;
+		document.body.addEventListener("htmx:before:request", function captureSidebarScroll(event) {
+			var trigger = event.detail && event.detail.ctx && event.detail.ctx.sourceElement;
 			if (!trigger || !trigger.closest("[data-catalog-group-control]")) return;
 			window.__manjaSidebarScrollAtGroupRequest = panel.scrollTop;
 		}, { once: true });
@@ -935,7 +938,8 @@ func TestCatalogSidebarExpansionAndNavigationPreserveContext(t *testing.T) {
 	}
 	toggleSchemaGroup("true")
 	if _, err := page.WaitForFunction(`() => document.querySelector('[data-manja-sidebar-tab="schemas"]').getAttribute('aria-selected') === 'true' && Math.abs(document.querySelector('#manja-sidebar-panel-schemas .sidebar-scroll').scrollTop - window.__manjaSidebarScrollAtGroupRequest) <= 1`, nil); err != nil {
-		t.Fatalf("schema tab and scroll should survive group swap: %v", err)
+		state, _ := page.Evaluate(`() => ({before: window.__manjaSidebarScrollAtGroupRequest, after: document.querySelector("#manja-sidebar-panel-schemas .sidebar-scroll").scrollTop, selected: document.querySelector('[data-manja-sidebar-tab="schemas"]').getAttribute("aria-selected"), hidden: document.querySelector("#manja-sidebar-panel-schemas").hidden})`)
+		t.Fatalf("schema tab and scroll should survive group swap: %v; state=%v", err, state)
 	}
 	sidebarScroll, err := page.Evaluate(`() => {
 		var before = window.__manjaSidebarScrollAtGroupRequest;
@@ -972,8 +976,8 @@ func TestCatalogSidebarExpansionAndNavigationPreserveContext(t *testing.T) {
 		window.__manjaSchemaNavigationSentinel = "kept";
 		window.__manjaSchemaNavigationSettled = false;
 		document.getElementById("catalog-sidebar-groups").dataset.schemaNavigationSentinel = "kept";
-		document.body.addEventListener("htmx:afterSettle", function onSettle(event) {
-			if (event.detail && event.detail.target && event.detail.target.id === "catalog-main-content") {
+		document.body.addEventListener("htmx:after:settle", function onSettle(event) {
+			if (event.detail && (event.detail.ctx || event.detail.task).target && (event.detail.ctx || event.detail.task).target.id === "catalog-main-content") {
 				window.__manjaSchemaNavigationSettled = true;
 			}
 		}, { once: true });
@@ -1018,8 +1022,8 @@ func TestCatalogSidebarExpansionAndNavigationPreserveContext(t *testing.T) {
 		window.__manjaSchemaNodeSentinel = "kept";
 		window.__manjaSchemaNodeSettled = false;
 		document.getElementById("catalog-main-content").dataset.schemaNodeSentinel = "kept";
-		document.body.addEventListener("htmx:afterSettle", function onSettle(event) {
-			if (event.detail && event.detail.target && event.detail.target.id === "schema-node-panel") {
+		document.body.addEventListener("htmx:after:settle", function onSettle(event) {
+			if (event.detail && (event.detail.ctx || event.detail.task).target && (event.detail.ctx || event.detail.task).target.id === "schema-node-panel") {
 				window.__manjaSchemaNodeSettled = true;
 			}
 		}, { once: true });

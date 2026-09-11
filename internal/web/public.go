@@ -379,7 +379,7 @@ func NewPublicServerWithOptions(idx core.SpecIndex, opts PublicOptions) http.Han
 			Selection:            &selected,
 		}
 		component := templates.PublicDocsWithOptions(idx, selectedID, renderOpts)
-		if r.Header.Get("HX-Request") == "true" &&
+		if r.Header.Get("HX-Request-Type") == "partial" &&
 			r.Header.Get("HX-Boosted") != "true" &&
 			r.Header.Get("HX-History-Restore-Request") != "true" {
 			component = templates.PublicDocsFragmentWithOptions(idx, selectedID, renderOpts)

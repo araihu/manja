@@ -812,7 +812,7 @@
 		placeholder.setAttribute("data-manja-schema-state", "ready");
 		placeholder.setAttribute("aria-busy", "false");
 		if (global.htmx && typeof global.htmx.process === "function") global.htmx.process(placeholder);
-		if (placeholder.dispatchEvent && typeof CustomEvent === "function") placeholder.dispatchEvent(new CustomEvent("htmx:afterSwap", { bubbles: true, detail: { elt: placeholder, target: placeholder } }));
+		if (placeholder.dispatchEvent && typeof CustomEvent === "function") placeholder.dispatchEvent(new CustomEvent("htmx:after:swap", { bubbles: true, detail: { ctx: { sourceElement: placeholder, target: placeholder } } }));
 	  }).catch(function () {
 		if (!active || placeholder.isConnected === false) return;
 		placeholder.setAttribute("data-manja-schema-state", "error");
@@ -1291,7 +1291,7 @@
 		if (historyMode === "replace" && global.history && typeof global.history.replaceState === "function") global.history.replaceState(historyState(scrollPosition()), "", result.canonical);
 		if (options.initial && global.history && typeof global.history.replaceState === "function") global.history.replaceState(historyState(scrollPosition()), "", result.canonical);
 		if (global.htmx && typeof global.htmx.process === "function") { if (!options.sidebarOnly) global.htmx.process(main); if (sidebar) global.htmx.process(sidebar); }
-		if (!options.sidebarOnly && main.dispatchEvent && typeof CustomEvent === "function") main.dispatchEvent(new CustomEvent("htmx:afterSwap", { bubbles: true, detail: { elt: main, target: main } }));
+		if (!options.sidebarOnly && main.dispatchEvent && typeof CustomEvent === "function") main.dispatchEvent(new CustomEvent("htmx:after:swap", { bubbles: true, detail: { ctx: { sourceElement: main, target: main } } }));
 	  if (!options.preserveScroll && typeof global.manjaCatalogScrollSidebarSelection === "function") global.manjaCatalogScrollSidebarSelection();
 		if (options.focus) settleRenderedDetailFocus();
 		if (sidebar && sidebar.querySelectorAll) {

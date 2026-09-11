@@ -32,7 +32,7 @@ func TestPreparedOperationSchemaTreesRenderBoundRecursiveData(t *testing.T) {
 		`Child &lt;description&gt;.`, `<dt>Default</dt><dd><code>Pod`, `<dt>Example</dt><dd><code>pod-1`,
 		`<dt>Allowed</dt><dd><code>Pod, Service`, `<dt>minLength</dt><dd><code>1`,
 		`data-manja-schema-enum-reference="true"`, `hx-target="#catalog-main-content"`,
-		`hx-select="#catalog-main-content"`, `hx-swap="outerHTML show:#main-content:top"`,
+		`hx-select="#catalog-main-content"`, `hx-swap="outerHTML show:top showTarget:#main-content"`,
 	} {
 		if !bytes.Contains(request, []byte(want)) {
 			t.Errorf("request schema tree missing %q:\n%s", want, request)

@@ -132,7 +132,7 @@ func PrepareOperationSchemaTrees(
 			fragment.request = append(fragment.request, operationSchemaTreeData{
 				ID: operationSchemaTreeMediaID(operation.Anchor+"-request-body", media.ContentType), Caption: "Request body schema for " + media.ContentType,
 				HasContent: operationSchemaTreeHasContent(root), Root: root,
-				LinkTarget: "#catalog-main-content", LinkSelect: "#catalog-main-content", LinkSwap: "outerHTML show:#main-content:top",
+				LinkTarget: "#catalog-main-content", LinkSelect: "#catalog-main-content", LinkSwap: "outerHTML show:top showTarget:#main-content",
 			})
 		}
 	}
@@ -172,7 +172,7 @@ func PrepareOperationSchemaTrees(
 			fragment.responses[responseIndex] = append(fragment.responses[responseIndex], operationSchemaTreeData{
 				ID: operationSchemaTreeMediaID(idPrefix, media.ContentType), Caption: "Response body",
 				HasContent: operationSchemaTreeHasContent(root), Root: root,
-				LinkTarget: "#catalog-main-content", LinkSelect: "#catalog-main-content", LinkSwap: "outerHTML show:#main-content:top",
+				LinkTarget: "#catalog-main-content", LinkSelect: "#catalog-main-content", LinkSwap: "outerHTML show:top showTarget:#main-content",
 			})
 		}
 	}

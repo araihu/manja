@@ -90,7 +90,7 @@ func operationRequestBodyMedia(media operationRequestBodyMediaData) templ.Compon
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 6, "\" hx-target=\"#catalog-main-content\" hx-select=\"#catalog-main-content\" hx-swap=\"outerHTML show:#main-content:top\" hx-push-url=\"true\" aria-label=\"")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 6, "\" hx-target=\"#catalog-main-content\" hx-select=\"#catalog-main-content\" hx-swap=\"outerHTML show:top showTarget:#main-content\" hx-push-url=\"true\" aria-label=\"")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}

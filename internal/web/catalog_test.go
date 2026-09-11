@@ -305,7 +305,7 @@ func TestCatalogOverviewDocumentTableSortsThroughHTMXFragment(t *testing.T) {
 
 	handler, _ := catalogHandlerFixture(t, "/kubernetes")
 	request := httptest.NewRequest(http.MethodGet, "/kubernetes/?table_id=catalog-documents-table&order_by=operations&order_dir=desc", nil)
-	request.Header.Set("HX-Request", "true")
+	request.Header.Set("HX-Request-Type", "partial")
 	response := httptest.NewRecorder()
 	handler.ServeHTTP(response, request)
 
@@ -334,8 +334,8 @@ func TestCatalogSelectedMainTargetReturnsOnlyMainFragment(t *testing.T) {
 	handler, _ := catalogHandlerFixture(t, "/kubernetes")
 	detailID := "detail-sha256-" + strings.Repeat("a", 64)
 	request := httptest.NewRequest(http.MethodGet, "/kubernetes/documents/core-v1/?selected="+detailID, nil)
-	request.Header.Set("HX-Request", "true")
-	request.Header.Set("HX-Target", "catalog-main-content")
+	request.Header.Set("HX-Request-Type", "partial")
+	request.Header.Set("HX-Target", "div#catalog-main-content")
 	response := httptest.NewRecorder()
 	handler.ServeHTTP(response, request)
 
@@ -369,7 +369,7 @@ func TestCatalogSelectedMainTargetReturnsOnlyMainFragment(t *testing.T) {
 			t.Errorf("catalog main fragment retained shell marker %q:\n%s", reject, body)
 		}
 	}
-	for _, vary := range []string{"HX-Request", "HX-Boosted", "HX-Target", "HX-History-Restore-Request", "Accept-Encoding"} {
+	for _, vary := range []string{"HX-Request-Type", "HX-Boosted", "HX-Target", "HX-History-Restore-Request", "Accept-Encoding"} {
 		if !strings.Contains(response.Header().Get("Vary"), vary) {
 			t.Errorf("catalog fragment Vary = %q, missing %q", response.Header().Get("Vary"), vary)
 		}
@@ -459,8 +459,8 @@ func TestCatalogSidebarTargetReturnsOnlySidebarFragment(t *testing.T) {
 
 	handler, _ := catalogHandlerFixture(t, "/kubernetes")
 	request := httptest.NewRequest(http.MethodGet, "/kubernetes/documents/core-v1/?group=group-sidebar", nil)
-	request.Header.Set("HX-Request", "true")
-	request.Header.Set("HX-Target", "catalog-sidebar-groups")
+	request.Header.Set("HX-Request-Type", "partial")
+	request.Header.Set("HX-Target", "div#catalog-sidebar-groups")
 	response := httptest.NewRecorder()
 	handler.ServeHTTP(response, request)
 
@@ -516,8 +516,8 @@ func TestCatalogSchemaNodeTargetReturnsOnlySchemaNodeFragment(t *testing.T) {
 	handler, _ := catalogHandlerFixture(t, "/kubernetes")
 	schemaID := "detail-sha256-" + strings.Repeat("c", 64)
 	request := httptest.NewRequest(http.MethodGet, "/kubernetes/documents/core-v1/?selected="+schemaID+"&node=1", nil)
-	request.Header.Set("HX-Request", "true")
-	request.Header.Set("HX-Target", "schema-node-panel")
+	request.Header.Set("HX-Request-Type", "partial")
+	request.Header.Set("HX-Target", "div#schema-node-panel")
 	response := httptest.NewRecorder()
 	handler.ServeHTTP(response, request)
 
@@ -563,8 +563,8 @@ func TestLocalSchemaNodeRendererMatchesSSRFragmentBytes(t *testing.T) {
 	}
 
 	request := httptest.NewRequest(http.MethodGet, "/kubernetes/documents/core-v1/?selected="+string(schemaID)+"&node=1", nil)
-	request.Header.Set("HX-Request", "true")
-	request.Header.Set("HX-Target", "schema-node-panel")
+	request.Header.Set("HX-Request-Type", "partial")
+	request.Header.Set("HX-Target", "div#schema-node-panel")
 	response := httptest.NewRecorder()
 	handler.ServeHTTP(response, request)
 	if response.Code != http.StatusOK {
@@ -582,10 +582,10 @@ func TestCatalogMainFragmentRequiresDirectNonRestoreRequest(t *testing.T) {
 		name    string
 		headers map[string]string
 	}{
-		{name: "missing target", headers: map[string]string{"HX-Request": "true"}},
-		{name: "unknown target", headers: map[string]string{"HX-Request": "true", "HX-Target": "unknown-target"}},
-		{name: "boosted", headers: map[string]string{"HX-Request": "true", "HX-Target": "catalog-main-content", "HX-Boosted": "true"}},
-		{name: "history restore", headers: map[string]string{"HX-Request": "true", "HX-Target": "catalog-main-content", "HX-History-Restore-Request": "true"}},
+		{name: "missing target", headers: map[string]string{"HX-Request-Type": "partial"}},
+		{name: "unknown target", headers: map[string]string{"HX-Request-Type": "partial", "HX-Target": "unknown-target"}},
+		{name: "boosted", headers: map[string]string{"HX-Request-Type": "partial", "HX-Target": "div#catalog-main-content", "HX-Boosted": "true"}},
+		{name: "history restore", headers: map[string]string{"HX-Request-Type": "partial", "HX-Target": "div#catalog-main-content", "HX-History-Restore-Request": "true"}},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -1981,7 +1981,7 @@ func TestCatalogProjectionTransportIsNotActivatedByInitialHTML(t *testing.T) {
 		t.Fatalf("initial HTML = %d body=%q", response.Code, response.Body.String())
 	}
 	digest := sha256.Sum256(response.Body.Bytes())
-	if got := hex.EncodeToString(digest[:]); got != "976812c444002d2dc77ea7b3016ba0a506dd8fd421fe43049fed08081db8f223" || response.Body.Len() != 63256 {
+	if got := hex.EncodeToString(digest[:]); got != "adc5af85aecc66f5f9967a43f9bbbd2b13b1ae8d57f0f09cf5b9126c6daef242" || response.Body.Len() != 64000 {
 		t.Errorf("initial HTML = sha256 %s, %d bytes; want accepted sidebar shell plus shared Margo stylesheet", got, response.Body.Len())
 	}
 	for _, forbidden := range []string{"projection-data", "serviceWorker", "manja:local-ready", "MANJA_LOCAL_DOCS"} {
@@ -2068,8 +2068,8 @@ func TestCatalogAssetsServeDeterministicLocalDocsWasmRuntime(t *testing.T) {
 			name:     "wasm binary",
 			path:     "/manja-assets/local-docs/manja.wasm",
 			embedded: "static/local-docs/manja.wasm",
-			length:   17_287_779,
-			digest:   "8c846450706ef89a7b34b8ba1e24f9ee9149d6f11ed4e3af8127cfd73b39d590",
+			length:   16_067_018,
+			digest:   "118b987a5bc28430d821f81792b978f6d2eae4e82ad08226cc6c68479a2e5ac8",
 
 			contentType: "application/wasm",
 			prefix:      []byte{0x00, 'a', 's', 'm'},
@@ -2078,8 +2078,8 @@ func TestCatalogAssetsServeDeterministicLocalDocsWasmRuntime(t *testing.T) {
 			name:     "brotli wasm binary",
 			path:     "/manja-assets/local-docs/manja.wasm.br",
 			embedded: "static/local-docs/manja.wasm.br",
-			length:   2_993_699,
-			digest:   "b9cb12088bf1a77886e2f719757065e531ae652a736fc75026e7c97dd68907dc",
+			length:   2_862_576,
+			digest:   "5502c5732d16026ead54b0c4d519059f16a3ba65567a6abd251d189f579f8812",
 		},
 	} {
 		t.Run(test.name, func(t *testing.T) {

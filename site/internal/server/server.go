@@ -3,8 +3,12 @@ package server
 import (
 	"bytes"
 	"context"
+	"encoding/json"
+	htmlstd "html"
+	"html/template"
 	"net/http"
 	"os"
+	"regexp"
 	"strings"
 
 	core "github.com/araihu/manja/domain"
@@ -212,7 +216,39 @@ func prefixHTMLPaths(body []byte, prefix string) []byte {
 	} {
 		html = prefixHTMLAttributePaths(html, attr, prefix)
 	}
-	return []byte(html)
+	return []byte(prefixDependencyPaths(html, prefix))
+}
+
+var dependencyAttribute = regexp.MustCompile(`data-goshtoso-dependencies="([^"]*)"`)
+var dependencyAttributeTemplate = template.Must(template.New("dependency-attribute").Parse(`data-goshtoso-dependencies="{{.}}"`))
+
+func prefixDependencyPaths(markup, prefix string) string {
+	return dependencyAttribute.ReplaceAllStringFunc(markup, func(attribute string) string {
+		match := dependencyAttribute.FindStringSubmatch(attribute)
+		var config map[string]any
+		if err := json.Unmarshal([]byte(htmlstd.UnescapeString(match[1])), &config); err != nil {
+			return attribute
+		}
+		dependencies, _ := config["dependencies"].([]any)
+		for _, entry := range dependencies {
+			dependency, _ := entry.(map[string]any)
+			for _, key := range []string{"primary_url", "fallback_url"} {
+				value, _ := dependency[key].(string)
+				if strings.HasPrefix(value, "/") && !strings.HasPrefix(value, "//") && value != prefix && !strings.HasPrefix(value, prefix+"/") {
+					dependency[key] = prefix + value
+				}
+			}
+		}
+		encoded, err := json.Marshal(config)
+		if err != nil {
+			return attribute
+		}
+		var output bytes.Buffer
+		if err := dependencyAttributeTemplate.Execute(&output, string(encoded)); err != nil {
+			return attribute
+		}
+		return output.String()
+	})
 }
 
 func prefixHTMLAttributePaths(html string, attr string, prefix string) string {

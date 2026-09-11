@@ -27,7 +27,7 @@
     }
 
     function sidebarSwapTarget(event) {
-      var target = event.detail && event.detail.target;
+      var target = event.detail && (event.detail.ctx || event.detail.task)?.target;
       if (!target) return null;
       if (target.id === "catalog-sidebar-groups") {
         return document.getElementById("catalog-sidebar-groups") || target;
@@ -41,20 +41,20 @@
       if (panel) panel.scrollTop = scrollTop;
     }
 
-    document.body.addEventListener("htmx:beforeRequest", function (event) {
-      var trigger = event.detail && event.detail.elt;
+    document.body.addEventListener("htmx:before:request", function (event) {
+      var trigger = event.detail && event.detail.ctx?.sourceElement;
       var control = trigger && trigger.closest && trigger.closest("[data-catalog-group-control]");
       if (!control) return;
       var panel = sidebarScrollPanel(control.closest("#catalog-sidebar-groups"));
       pendingSidebarScrollTop = panel ? panel.scrollTop : null;
     });
-    document.body.addEventListener("htmx:afterSwap", function (event) {
+    document.body.addEventListener("htmx:after:swap", function (event) {
       var target = sidebarSwapTarget(event);
       if (target && pendingSidebarScrollTop !== null) {
         restoreSidebarScroll(target, pendingSidebarScrollTop);
       }
     });
-    document.body.addEventListener("htmx:afterSettle", function (event) {
+    document.body.addEventListener("htmx:after:settle", function (event) {
       var target = sidebarSwapTarget(event);
       if (!target || pendingSidebarScrollTop === null) return;
       var scrollTop = pendingSidebarScrollTop;
@@ -68,7 +68,7 @@
         });
       });
     });
-    ["htmx:responseError", "htmx:sendError", "htmx:timeout"].forEach(function (name) {
+    ["htmx:response:error", "htmx:error"].forEach(function (name) {
       document.body.addEventListener(name, function () { pendingSidebarScrollTop = null; });
     });
   }
@@ -105,7 +105,7 @@
   } else {
     syncPlatformShortcuts(document);
   }
-  document.addEventListener("htmx:afterSettle", function (event) {
+  document.addEventListener("htmx:after:settle", function (event) {
     syncPlatformShortcuts(event.target || document);
   });
 

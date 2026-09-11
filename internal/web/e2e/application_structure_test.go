@@ -309,10 +309,10 @@ func TestManagementMutationBackForwardAndReloadRemainAuthoritative(t *testing.T)
 	if _, err := page.Evaluate(`() => {
 		window.__managementNavigationHistoryPushed = false;
 		window.__managementNavigationSettled = false;
-		document.addEventListener('htmx:pushedIntoHistory', () => {
+		document.addEventListener('htmx:after:history:push', () => {
 			window.__managementNavigationHistoryPushed = true;
 		}, { once: true });
-		document.addEventListener('htmx:afterSettle', () => {
+		document.addEventListener('htmx:after:settle', () => {
 			window.__managementNavigationSettled = true;
 		}, { once: true });
 	}`, nil); err != nil {
@@ -345,7 +345,7 @@ func TestManagementMutationBackForwardAndReloadRemainAuthoritative(t *testing.T)
 	}
 	if _, err := page.Evaluate(`() => {
 		window.__managementMutationSettled = false;
-		document.addEventListener('htmx:afterSettle', () => {
+		document.addEventListener('htmx:after:settle', () => {
 			window.__managementMutationSettled = true;
 		}, { once: true });
 	}`, nil); err != nil {

@@ -28,7 +28,7 @@ func TestPreparedOperationRequestBodyMediaRendersCanonicalSummary(t *testing.T) 
 		`href="/documents/core-v1/?selected=detail-sha256-cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc#detail-sha256-cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"`,
 		`hx-target="#catalog-main-content"`,
 		`hx-select="#catalog-main-content"`,
-		`hx-swap="outerHTML show:#main-content:top"`,
+		`hx-swap="outerHTML show:top showTarget:#main-content"`,
 		`aria-label="Open schema Pod object"`,
 		`focus-visible:outline-primary`,
 		`>Pod object<`,

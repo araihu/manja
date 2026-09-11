@@ -272,7 +272,6 @@ templ CatalogPage(data CatalogPageData) {
 		}<script src="/manja-assets/catalog-search.js"></script>
 		@copyPageScript()
 		<div
-			hx-history="false"
 			x-data="{ catalogNavOpen: false }"
 			x-on:goshtoso-search-open.window="catalogNavOpen = false"
 			x-on:keydown.escape.window="if (catalogNavOpen) { catalogNavOpen = false; $nextTick(() => $refs.catalogNavTrigger.focus()) }"
@@ -952,7 +951,7 @@ templ catalogOperationDetail(data CatalogPageData) {
 				SchemaLinks:      data.SchemaLinks,
 				SchemaLinkTarget: "#catalog-main-content",
 				SchemaLinkSelect: "#catalog-main-content",
-				SchemaLinkSwap:   "outerHTML show:#main-content:top",
+				SchemaLinkSwap:   "outerHTML show:top showTarget:#main-content",
 			}, OperationNavigationData{})
 		</article>
 	} else {
@@ -1358,7 +1357,7 @@ func catalogMainNavigationAttrs(href string) templpkg.Attributes {
 		"hx-get": href,
 		"hx-target": "#catalog-main-content",
 		"hx-select": "#catalog-main-content",
-		"hx-swap": "outerHTML show:#main-content:top",
+		"hx-swap": "outerHTML show:top showTarget:#main-content",
 		"hx-push-url": "true",
 		"data-manja-sidebar-nav": "true",
 	}
@@ -1398,6 +1397,7 @@ templ catalogSidebarFocusRestoration() {
 			var pendingControlID = "";
 			var pendingSidebarTab = "";
 			var pendingSidebarScroll = 0;
+			var sidebarRestoreObserver = null;
 			var pendingSchemaNodeFocus = false;
 			var selectionScrollFrame = 0;
 
@@ -1436,8 +1436,9 @@ templ catalogSidebarFocusRestoration() {
 				if (trigger) scheduleSidebarSelectionScroll();
 			});
 			window.addEventListener("resize", scheduleSidebarSelectionScroll);
-			document.body.addEventListener("htmx:beforeRequest", function (event) {
-				var trigger = event.detail && event.detail.elt;
+			document.body.addEventListener("htmx:before:request", function (event) {
+				if (sidebarRestoreObserver) { sidebarRestoreObserver.disconnect(); sidebarRestoreObserver = null; }
+				var trigger = event.detail && event.detail.ctx && event.detail.ctx.sourceElement;
 				var control = trigger && trigger.closest && trigger.closest("[data-catalog-group-control]");
 				pendingControlID = control ? control.id : "";
 				var activeTab = control && document.querySelector('#catalog-sidebar-groups [role="tab"][aria-selected="true"]');
@@ -1447,23 +1448,33 @@ templ catalogSidebarFocusRestoration() {
 				var schemaLink = trigger && trigger.closest && trigger.closest("[data-catalog-schema-property]");
 				pendingSchemaNodeFocus = !!schemaLink;
 			});
-			document.body.addEventListener("htmx:afterSettle", function (event) {
+			document.body.addEventListener("htmx:after:settle", function (event) {
 				if (pendingControlID) {
 					var controlID = pendingControlID;
 					var tabID = pendingSidebarTab;
 					var scrollTop = pendingSidebarScroll;
 					pendingControlID = "";
 					pendingSidebarTab = "";
-					var tab = tabID && document.querySelector('#catalog-sidebar-groups [role="tab"][data-manja-sidebar-tab="' + tabID + '"]');
-					if (tab && tab.getAttribute("aria-selected") !== "true") tab.click();
 					var restoreControlFocus = function () {
 						var control = document.getElementById(controlID);
 						if (!control) return;
 						var scroll = control.closest(".sidebar-scroll");
+						if (scroll && scroll.clientHeight === 0) {
+							if (!sidebarRestoreObserver) {
+								sidebarRestoreObserver = new ResizeObserver(restoreControlFocus);
+								sidebarRestoreObserver.observe(scroll);
+							}
+							return;
+						}
+						if (sidebarRestoreObserver) { sidebarRestoreObserver.disconnect(); sidebarRestoreObserver = null; }
 						if (scroll) scroll.scrollTop = scrollTop;
 						try { control.focus({ preventScroll: true }); } catch (error) { control.focus(); }
 					};
-					window.requestAnimationFrame(function () { window.requestAnimationFrame(restoreControlFocus); });
+					window.requestAnimationFrame(function () {
+						var tab = tabID && document.querySelector('#catalog-sidebar-groups [role="tab"][data-manja-sidebar-tab="' + tabID + '"]');
+						if (tab && tab.getAttribute("aria-selected") !== "true") tab.click();
+						window.Alpine.nextTick(restoreControlFocus);
+					});
 				}
 				if (pendingSchemaNodeFocus) {
 					pendingSchemaNodeFocus = false;
@@ -1472,12 +1483,12 @@ templ catalogSidebarFocusRestoration() {
 						try { schemaHeading.focus({ preventScroll: true }); } catch (error) { schemaHeading.focus(); }
 					}
 				}
-				var target = event.detail && event.detail.target;
+				var target = event.detail && (event.detail.ctx || event.detail.task)?.target;
 				if (target && (target.id === "catalog-main-content" || target.id === "catalog-sidebar-groups" || (target.closest && target.closest("#catalog-sidebar-groups")))) {
 					scheduleSidebarSelectionScroll();
 				}
 			});
-			["htmx:responseError", "htmx:sendError", "htmx:timeout"].forEach(function (name) {
+			["htmx:response:error", "htmx:error"].forEach(function (name) {
 				document.body.addEventListener(name, function () {
 					pendingControlID = "";
 					pendingSidebarTab = "";
@@ -1576,7 +1587,7 @@ templ catalogSidebarOverflowTooltip() {
 			});
 			window.addEventListener("resize", hide);
 			window.addEventListener("scroll", hide, true);
-			document.body.addEventListener("htmx:beforeSwap", hide);
+			document.body.addEventListener("htmx:before:swap", hide);
 		})();
 	</script>
 }
