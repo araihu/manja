@@ -86,7 +86,12 @@ func PrepareOperationSchemaTrees(
 	for _, response := range projected.Responses {
 		rootCount += len(response.Headers) + len(response.MediaTypes)
 	}
-	resolver, err := newOperationSchemaTreeResolver(nodes, documentHref, schemaLinks, rootCount)
+	// Nodes retained at the depth boundary do not consume expansion budget.
+	// Count them from the prepared summaries, stopping once the candidate
+	// inventory is covered. Replay below still validates every edge and rejects
+	// duplicate, unvisited, or inconsistent nodes.
+	retainedCount := rootCount + operationSchemaTreeBoundaryNodes(operation, len(nodes))
+	resolver, err := newOperationSchemaTreeResolver(nodes, documentHref, schemaLinks, retainedCount)
 	if err != nil {
 		return OperationSchemaTreesFragment{}, err
 	}
@@ -215,8 +220,45 @@ type operationSchemaTreeResolver struct {
 	schemaLinks  map[string]string
 }
 
-func newOperationSchemaTreeResolver(nodes []projection.SchemaNode, documentHref string, schemaLinks map[string]string, rootCount int) (*operationSchemaTreeResolver, error) {
-	if rootCount < 0 || len(nodes) > maximumParameterSchemaNodes+rootCount {
+func operationSchemaTreeBoundaryNodes(operation domain.Operation, limit int) int {
+	count := 0
+	var visit func(domain.SchemaSummary, int)
+	visit = func(schema domain.SchemaSummary, depth int) {
+		if count >= limit {
+			return
+		}
+		if depth == maximumParameterSchemaDepth {
+			count++
+			return
+		}
+		for _, property := range schema.Properties {
+			visit(property.Schema, depth+1)
+		}
+		if schema.Items != nil {
+			visit(*schema.Items, depth+1)
+		}
+	}
+	for _, parameter := range operation.Parameters {
+		visit(parameter.Schema, 0)
+	}
+	if operation.RequestBody != nil {
+		for _, media := range operation.RequestBody.MediaTypes {
+			visit(media.Schema, 0)
+		}
+	}
+	for _, response := range operation.Responses {
+		for _, header := range response.Headers {
+			visit(header.Schema, 0)
+		}
+		for _, media := range response.MediaTypes {
+			visit(media.Schema, 0)
+		}
+	}
+	return count
+}
+
+func newOperationSchemaTreeResolver(nodes []projection.SchemaNode, documentHref string, schemaLinks map[string]string, retainedCount int) (*operationSchemaTreeResolver, error) {
+	if retainedCount < 0 || len(nodes) > maximumParameterSchemaNodes+retainedCount {
 		return nil, invalidOperationSchemaTreesField("schema-node inventory")
 	}
 	resolver := &operationSchemaTreeResolver{

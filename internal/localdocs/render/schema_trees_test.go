@@ -320,3 +320,47 @@ func TestOperationSchemaTreeSharedReferenceKeepsContextBudget(t *testing.T) {
 		}
 	}
 }
+
+func TestOperationSchemaTreeBoundaryInventoryStillValidatesIdentity(t *testing.T) {
+	detail, operation, _, href, links := operationSchemaTreeFixture()
+	nodes := make([]projection.SchemaNode, 4)
+	for index := range nodes {
+		nodes[index] = projection.SchemaNode{Ordinal: uint32(index), ID: fmt.Sprintf("branch-%d", index), Type: "object"}
+		if index < 3 {
+			nodes[index].Properties = []projection.SchemaNodeProperty{{Ordinal: 0, ID: "nested", Name: "nested", SchemaRef: projection.SchemaRef(index + 1)}}
+		}
+	}
+	schema := domain.SchemaSummary{Type: "object"}
+	for index := 0; index < 300; index++ {
+		name := fmt.Sprintf("leaf-%d", index)
+		nodes[3].Properties = append(nodes[3].Properties, projection.SchemaNodeProperty{Ordinal: uint32(index), ID: name, Name: name, SchemaRef: projection.SchemaRef(index + 4)})
+		nodes = append(nodes, projection.SchemaNode{Ordinal: uint32(index + 4), ID: name, Type: "string"})
+		schema.Properties = append(schema.Properties, domain.SchemaProperty{Name: name, Schema: domain.SchemaSummary{Type: "string"}})
+	}
+	for depth := 0; depth < 3; depth++ {
+		schema = domain.SchemaSummary{Type: "object", Properties: []domain.SchemaProperty{{Name: "nested", Schema: schema}}}
+	}
+	detail.Operation.RequestBody.MediaTypes[0].SchemaRef = 0
+	operation.RequestBody.MediaTypes[0].Schema = schema
+	detail.Operation.Responses = nil
+	operation.Responses = nil
+	if _, err := PrepareOperationSchemaTrees(detail, operation, nodes, href, links); err != nil {
+		t.Fatal(err)
+	}
+	for _, kind := range []string{"duplicate ordinal", "duplicate ID", "unused node"} {
+		t.Run(kind, func(t *testing.T) {
+			changed := append([]projection.SchemaNode(nil), nodes...)
+			switch kind {
+			case "duplicate ordinal":
+				changed[len(changed)-1].Ordinal = changed[len(changed)-2].Ordinal
+			case "duplicate ID":
+				changed[len(changed)-1].ID = changed[len(changed)-2].ID
+			case "unused node":
+				changed = append(changed, projection.SchemaNode{Ordinal: 304, ID: "unused", Type: "string"})
+			}
+			if _, err := PrepareOperationSchemaTrees(detail, operation, changed, href, links); err == nil {
+				t.Fatal("accepted invalid inventory")
+			}
+		})
+	}
+}
