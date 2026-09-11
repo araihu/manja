@@ -86,7 +86,7 @@ func PrepareOperationRequestBody(
 		}
 		wantTreeID := operationSchemaTreeMediaID(operation.Anchor+"-request-body", projectedMedia.ContentType)
 		if preparedTree.ID != wantTreeID || preparedTree.Caption != "Request body schema for "+projectedMedia.ContentType ||
-			preparedTree.LinkTarget != "#catalog-main-content" || preparedTree.LinkSelect != "#catalog-main-content" || preparedTree.LinkSwap != "outerHTML show:#main-content:top" {
+			preparedTree.LinkTarget != "#catalog-main-content" || preparedTree.LinkSelect != "#catalog-main-content" || preparedTree.LinkSwap != "outerHTML show:top showTarget:#main-content" {
 			return OperationRequestBodyFragment{}, invalidOperationRequestBodyField("schema tree")
 		}
 		fragment.data.Media = append(fragment.data.Media, operationRequestBodyItemData{

@@ -725,7 +725,7 @@ func managementSpecRedirectPath(spec ManagedSpec) string {
 }
 
 func managementWantsFragment(r *http.Request) bool {
-	return strings.EqualFold(r.Header.Get("HX-Request"), "true") &&
+	return strings.EqualFold(r.Header.Get("HX-Request-Type"), "partial") &&
 		!strings.EqualFold(r.Header.Get("HX-Boosted"), "true") &&
 		!strings.EqualFold(strings.TrimSpace(r.Header.Get("HX-Target")), "body") &&
 		!strings.EqualFold(r.Header.Get("HX-History-Restore-Request"), "true")

@@ -160,13 +160,13 @@ templ LayoutWithBrandingMetadata(metadata PageMetadata, branding core.DocsBrandi
 						restoreCatalogPathsDisclosure(document);
 					});
 
-					document.addEventListener('htmx:afterSwap', function (event) {
-						restoreCatalogPathsDisclosure(event.target);
+					document.addEventListener('htmx:after:swap', function (event) {
+						restoreCatalogPathsDisclosure(document);
 					});
 
 					function sidebarLinkFromEvent(event) {
 						var detail = event && event.detail;
-						var element = detail && (detail.elt || (detail.requestConfig && detail.requestConfig.elt));
+						var element = detail && detail.ctx && detail.ctx.sourceElement;
 						if (!element || !element.closest) return null;
 						return element.closest('[data-manja-sidebar-nav="true"]');
 					}
@@ -227,18 +227,18 @@ templ LayoutWithBrandingMetadata(metadata PageMetadata, branding core.DocsBrandi
 					}
 
 					function mainContentTarget(event) {
-						var target = event && event.detail && event.detail.target;
+						var target = event && event.detail && (event.detail.ctx || event.detail.task)?.target;
 						if (!target || (target.id !== "main-content" && target.id !== "catalog-main-content")) return null;
 						if (target.isConnected) return target;
 						return document.getElementById(target.id);
 					}
 
-					document.addEventListener('htmx:beforeRequest', function (e) {
+					document.addEventListener('htmx:before:request', function (e) {
 						var link = sidebarLinkFromEvent(e);
 						if (link) pendingSidebarHref = link.getAttribute('href') || "";
 					});
 
-					document.addEventListener('htmx:afterSwap', function (e) {
+					document.addEventListener('htmx:before:settle', function (e) {
 						var target = mainContentTarget(e);
 						if (!target) return;
 						var contentSelector = '[data-public-docs-content="true"], [data-catalog-main-content="true"]';
@@ -255,7 +255,7 @@ templ LayoutWithBrandingMetadata(metadata PageMetadata, branding core.DocsBrandi
 						target.dataset.manjaFocusAfterSettle = shouldFocus ? "true" : "";
 					});
 
-					document.addEventListener('htmx:afterSettle', function (e) {
+					document.addEventListener('htmx:after:settle', function (e) {
 						var target = mainContentTarget(e);
 						if (!target) return;
 						var scrollTarget = target.querySelector('[data-manja-scroll-sentinel="true"]');

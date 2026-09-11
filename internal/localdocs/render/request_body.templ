@@ -19,7 +19,7 @@ templ operationRequestBodyMedia(media operationRequestBodyMediaData) {
 					hx-get={ media.SchemaHref }
 					hx-target="#catalog-main-content"
 					hx-select="#catalog-main-content"
-					hx-swap="outerHTML show:#main-content:top"
+					hx-swap="outerHTML show:top showTarget:#main-content"
 					hx-push-url="true"
 					aria-label={ "Open schema " + media.SchemaLabel }
 					title={ "Open schema " + media.SchemaLabel }

@@ -16,6 +16,9 @@ func TestRewriteExportHTMLPrefixesSubpathInjectsDescriptorAndRemovesRuntimeRoute
 		t.Fatal(err)
 	}
 	body := string(output)
+	if !strings.Contains(body, `name="htmx-config" content="{&#34;history&#34;:false}"`) {
+		t.Fatal("static export must leave history to its own router")
+	}
 	for _, want := range []string{
 		`href="/group/project/assets/app.css"`, `src="/group/project/manja-assets/catalog-search.js"`, `href="/group/project/"`,
 		`href="/group/project/payments/snapshots/snapshot/catalog.json"`, `href="/group/project/payments/snapshots/snapshot/openapi/core.json"`,

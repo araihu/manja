@@ -251,14 +251,14 @@ func operationResponseDetailSchemaEnumAliasTrigger(schema domain.SchemaSummary, 
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 9, "\" hx-target=\"#catalog-main-content\" hx-select=\"#catalog-main-content\" hx-swap=\"outerHTML show:#main-content:top\" hx-push-url=\"true\" aria-describedby=\"")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 9, "\" hx-target=\"#catalog-main-content\" hx-select=\"#catalog-main-content\" hx-swap=\"outerHTML show:top showTarget:#main-content\" hx-push-url=\"true\" aria-describedby=\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var11 string
 			templ_7745c5c3_Var11, templ_7745c5c3_Err = templ.ResolveAttributeValue(tooltipID)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/localdocs/render/response_detail.templ`, Line: 57, Col: 247}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/localdocs/render/response_detail.templ`, Line: 57, Col: 258}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var11)
 			if templ_7745c5c3_Err != nil {
@@ -271,7 +271,7 @@ func operationResponseDetailSchemaEnumAliasTrigger(schema domain.SchemaSummary, 
 			var templ_7745c5c3_Var12 string
 			templ_7745c5c3_Var12, templ_7745c5c3_Err = templ.ResolveAttributeValue("Open schema " + schema.Name)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/localdocs/render/response_detail.templ`, Line: 57, Col: 291}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/localdocs/render/response_detail.templ`, Line: 57, Col: 302}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var12)
 			if templ_7745c5c3_Err != nil {
@@ -284,7 +284,7 @@ func operationResponseDetailSchemaEnumAliasTrigger(schema domain.SchemaSummary, 
 			var templ_7745c5c3_Var13 string
 			templ_7745c5c3_Var13, templ_7745c5c3_Err = templ.ResolveAttributeValue("Open schema " + schema.Name)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/localdocs/render/response_detail.templ`, Line: 57, Col: 330}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/localdocs/render/response_detail.templ`, Line: 57, Col: 341}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var13)
 			if templ_7745c5c3_Err != nil {
@@ -297,7 +297,7 @@ func operationResponseDetailSchemaEnumAliasTrigger(schema domain.SchemaSummary, 
 			var templ_7745c5c3_Var14 string
 			templ_7745c5c3_Var14, templ_7745c5c3_Err = templ.JoinStringErrs(schema.Name)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/localdocs/render/response_detail.templ`, Line: 57, Col: 563}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/localdocs/render/response_detail.templ`, Line: 57, Col: 574}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var14))
 			if templ_7745c5c3_Err != nil {

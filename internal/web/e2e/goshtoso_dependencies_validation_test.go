@@ -9,10 +9,10 @@ import (
 func TestValidateGoshtosoDependencyBrowserEvidenceAcceptsIndependentChannelPermutations(t *testing.T) {
 	expectedURLs := goshtosoDependencyValidationURLs()
 	evidence := goshtosoDependencyValidationEvidence(expectedURLs)
-	evidence.InterceptedPrimaryURLs = permuteStrings(evidence.InterceptedPrimaryURLs, 4, 2, 0, 3, 1)
-	evidence.FailedResponses = permuteResponses(evidence.FailedResponses, 1, 4, 2, 0, 3)
-	evidence.FailedRequests = permuteRequests(evidence.FailedRequests, 3, 0, 4, 1, 2)
-	evidence.ConsoleErrors = permuteConsoleErrors(evidence.ConsoleErrors, 2, 3, 1, 4, 0)
+	evidence.InterceptedPrimaryURLs = permuteStrings(evidence.InterceptedPrimaryURLs, 5, 4, 2, 0, 3, 1)
+	evidence.FailedResponses = permuteResponses(evidence.FailedResponses, 1, 4, 5, 2, 0, 3)
+	evidence.FailedRequests = permuteRequests(evidence.FailedRequests, 3, 0, 4, 1, 5, 2)
+	evidence.ConsoleErrors = permuteConsoleErrors(evidence.ConsoleErrors, 2, 3, 1, 4, 0, 5)
 
 	if failures := validateGoshtosoDependencyBrowserEvidence(true, expectedURLs, evidence); len(failures) != 0 {
 		t.Fatalf("valid URL-correlated multisets rejected after harmless callback permutation: %v", failures)
@@ -219,6 +219,7 @@ func goshtosoDependencyValidationURLs() []string {
 		"https://unpkg.com/dependency-mask@v0.0.13/index.js",
 		"https://unpkg.com/dependency-alpine@v0.0.13/index.js",
 		"https://unpkg.com/dependency-htmx@v0.0.13/index.js",
+		"https://unpkg.com/dependency-htmx-alpine-compat@v0.0.13/index.js",
 	}
 }
 

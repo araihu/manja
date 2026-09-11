@@ -93,7 +93,7 @@ templ managementShell(model ManagementOverviewModel, active string) {
 				Sidebar:      managementSidebar(model, active, ""),
 				MainID:       "main-content",
 				RootClass:    "h-full",
-				RootAttrs:    templpkg.Attributes{"data-manja-app-shell": "true", "hx-history": "false"},
+				RootAttrs:    templpkg.Attributes{"data-manja-app-shell": "true"},
 				HeaderClass:  "manja-docs-header relative z-50 shrink-0 border-b border-outline bg-surface dark:border-outline-dark dark:bg-surface-dark",
 				HeaderAttrs:  templpkg.Attributes{"data-boot-anim": "header"},
 				SidebarClass: "hidden h-full w-72 shrink-0 lg:block",
@@ -471,7 +471,7 @@ templ managementPublishCandidatePanel(spec ManagedSpecModel) {
 				hx-post="/manage/publication"
 				hx-target="#management-main-content"
 				hx-swap="outerHTML"
-				hx-disabled-elt="find button[type='submit']"
+				hx-disable="find button[type='submit']"
 				class="grid gap-4 border-t border-outline pt-4 dark:border-outline-dark"
 			>
 				<input type="hidden" name="spec_id" value={ spec.ID }/>
@@ -576,7 +576,7 @@ templ managementRouteSettingsPanel(spec ManagedSpecModel) {
 			hx-post="/manage/publication"
 			hx-target="#management-main-content"
 			hx-swap="outerHTML"
-			hx-disabled-elt="find button[type='submit']"
+			hx-disable="find button[type='submit']"
 			class="grid gap-4 border-t border-outline pt-4 dark:border-outline-dark"
 		>
 			<input type="hidden" name="spec_id" value={ spec.ID }/>
@@ -716,7 +716,7 @@ templ managementSyncForm(spec ManagedSpecModel, idPrefix string) {
 		hx-post="/manage/sync"
 		hx-target="#management-main-content"
 		hx-swap="outerHTML"
-		hx-disabled-elt="find button[type='submit']"
+		hx-disable="find button[type='submit']"
 		class="grid gap-4 border-t border-outline pt-4 dark:border-outline-dark"
 	>
 		<input type="hidden" name="spec_id" value={ spec.ID }/>
@@ -954,16 +954,6 @@ templ managementSidebarScript() {
 				});
 			}
 
-			function initializeSwappedControls(target) {
-				if (!target || !window.Alpine || typeof window.Alpine.initTree !== "function") return;
-				window.Alpine.initTree(target);
-			}
-
-			function destroySwappedControls(target) {
-				if (!target || !window.Alpine || typeof window.Alpine.destroyTree !== "function") return;
-				window.Alpine.destroyTree(target);
-			}
-
 			document.addEventListener("input", function (event) {
 				if (event.target && event.target.matches("[data-management-sidebar-search]")) filterSidebar(event.target);
 			});
@@ -974,9 +964,9 @@ templ managementSidebarScript() {
 				if (window.htmx) window.htmx.trigger(lastMutationForm, "submit");
 				else lastMutationForm.requestSubmit();
 			});
-			document.addEventListener("htmx:beforeRequest", function (event) {
+			document.addEventListener("htmx:before:request", function (event) {
 				var detail = event && event.detail;
-				var element = detail && (detail.elt || (detail.requestConfig && detail.requestConfig.elt));
+				var element = detail && detail.ctx && detail.ctx.sourceElement;
 				var mutationForm = element && element.closest && element.closest("form[hx-post^='/manage/']");
 				if (mutationForm) {
 					lastMutationForm = mutationForm;
@@ -984,24 +974,16 @@ templ managementSidebarScript() {
 				}
 				focusAfterSettle = !!(mutationForm || (element && element.closest && element.closest("[data-management-nav], #management-specs-table a")));
 			});
-			document.addEventListener("htmx:sendError", showTransportRecovery);
-			document.addEventListener("htmx:timeout", showTransportRecovery);
-			document.addEventListener("htmx:responseError", showTransportRecovery);
-			document.addEventListener("htmx:afterRequest", function (event) {
-				if (event && event.detail && event.detail.successful) hideTransportRecovery();
+			document.addEventListener("htmx:error", showTransportRecovery);
+			document.addEventListener("htmx:after:request", function (event) {
+				if (event && event.detail && event.detail.ctx && event.detail.ctx.response.status < 400) hideTransportRecovery();
 			});
-			document.addEventListener("htmx:beforeCleanupElement", function (event) {
-				var target = event && event.detail && event.detail.elt;
-				if (!target || target.id !== "management-main-content") return;
-				destroySwappedControls(target);
-			});
-			document.addEventListener("htmx:afterSwap", function (event) {
+			document.addEventListener("htmx:after:swap", function (event) {
 				var content = document.getElementById("management-main-content");
 				if (!content) return;
-				initializeSwappedControls(content);
 				bindManagementTabsSoon(content);
 			});
-			document.addEventListener("htmx:afterSettle", function () {
+			document.addEventListener("htmx:after:settle", function () {
 				var content = document.getElementById("management-main-content");
 				if (!content) return;
 				var main = document.getElementById("main-content");
@@ -1018,7 +1000,7 @@ templ managementSidebarScript() {
 				}
 				focusAfterSettle = false;
 			});
-			document.addEventListener("htmx:pushedIntoHistory", refreshActive);
+			document.addEventListener("htmx:after:history:push", refreshActive);
 			window.addEventListener("popstate", refreshActive);
 			bindManagementTabsSoon(document);
 			refreshActive();

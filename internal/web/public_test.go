@@ -61,12 +61,13 @@ func TestPublicDocsUsesGoshtosoCDNFirstDependencyFallbackContract(t *testing.T) 
 	}
 
 	want := []dependencyEntry{
-		{Name: "alpine-collapse", PrimaryURL: "https://unpkg.com/@alpinejs/collapse@3.14.9/dist/cdn.min.js", FallbackURL: "/assets/js/runtime/alpinejs-collapse/3.14.9/alpine-collapse.min.js"},
-		{Name: "alpine-focus", PrimaryURL: "https://unpkg.com/@alpinejs/focus@3.14.9/dist/cdn.min.js", FallbackURL: "/assets/js/runtime/alpinejs-focus/3.14.9/alpine-focus.min.js"},
-		{Name: "alpine-mask", PrimaryURL: "https://unpkg.com/@alpinejs/mask@3.14.9/dist/cdn.min.js", FallbackURL: "/assets/js/runtime/alpinejs-mask/3.14.9/alpine-mask.min.js"},
+		{Name: "alpine-collapse", PrimaryURL: "https://unpkg.com/@alpinejs/collapse@3.17.2/dist/cdn.min.js", FallbackURL: "/assets/js/runtime/alpinejs-collapse/3.17.2/alpine-collapse.min.js"},
+		{Name: "alpine-focus", PrimaryURL: "https://unpkg.com/@alpinejs/focus@3.17.2/dist/cdn.min.js", FallbackURL: "/assets/js/runtime/alpinejs-focus/3.17.2/alpine-focus.min.js"},
+		{Name: "alpine-mask", PrimaryURL: "https://unpkg.com/@alpinejs/mask@3.17.2/dist/cdn.min.js", FallbackURL: "/assets/js/runtime/alpinejs-mask/3.17.2/alpine-mask.min.js"},
 		{Name: "first-party", PrimaryURL: "/assets/js/goshtoso.min.js"},
-		{Name: "alpine", PrimaryURL: "https://unpkg.com/alpinejs@3.14.9/dist/cdn.min.js", FallbackURL: "/assets/js/runtime/alpinejs/3.14.9/alpine.min.js"},
-		{Name: "htmx", PrimaryURL: "https://unpkg.com/htmx.org@2.0.8/dist/htmx.min.js", FallbackURL: "/assets/js/runtime/htmx.org/2.0.8/htmx.min.js", WaitForWindowLoaded: true},
+		{Name: "htmx", PrimaryURL: "https://unpkg.com/htmx.org@4.0.0/dist/htmx.min.js", FallbackURL: "/assets/js/runtime/htmx.org/4.0.0/htmx.min.js"},
+		{Name: "htmx-alpine-compat", PrimaryURL: "https://unpkg.com/htmx.org@4.0.0/dist/ext/hx-alpine-compat.js", FallbackURL: "/assets/js/runtime/htmx.org/4.0.0/hx-alpine-compat.js"},
+		{Name: "alpine", PrimaryURL: "https://unpkg.com/alpinejs@3.17.2/dist/cdn.min.js", FallbackURL: "/assets/js/runtime/alpinejs/3.17.2/alpine.min.js"},
 	}
 	if len(config.Dependencies) != len(want) {
 		t.Fatalf("dependency count = %d, want %d: %#v", len(config.Dependencies), len(want), config.Dependencies)
@@ -1089,7 +1090,6 @@ func TestPublicDocsFragmentRequestReturnsOnlyMainContent(t *testing.T) {
 		`hx-target="#main-content"`,
 		`hx-swap="innerHTML swap:120ms settle:240ms"`,
 		`hx-push-url="true"`,
-		`hx-history="false"`,
 	} {
 		if !strings.Contains(full, want) {
 			t.Fatalf("full page missing fragment navigation marker %q:\n%s", want, full)
@@ -1098,7 +1098,7 @@ func TestPublicDocsFragmentRequestReturnsOnlyMainContent(t *testing.T) {
 
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/?selected=operation-createPet", nil)
-	req.Header.Set("HX-Request", "true")
+	req.Header.Set("HX-Request-Type", "partial")
 	srv.ServeHTTP(rec, req)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("fragment status = %d", rec.Code)
@@ -1119,14 +1119,14 @@ func TestPublicDocsFragmentRequestReturnsOnlyMainContent(t *testing.T) {
 
 	historyRec := httptest.NewRecorder()
 	historyReq := httptest.NewRequest(http.MethodGet, "/?selected=operation-listPets", nil)
-	historyReq.Header.Set("HX-Request", "true")
+	historyReq.Header.Set("HX-Request-Type", "partial")
 	historyReq.Header.Set("HX-History-Restore-Request", "true")
 	srv.ServeHTTP(historyRec, historyReq)
 	if historyRec.Code != http.StatusOK {
 		t.Fatalf("history restore status = %d", historyRec.Code)
 	}
 	historyBody := historyRec.Body.String()
-	for _, want := range []string{`<!doctype html>`, `<html`, `id="main-content"`, `id="sidebar-nav-content"`, `hx-history="false"`} {
+	for _, want := range []string{`<!doctype html>`, `<html`, `id="main-content"`, `id="sidebar-nav-content"`} {
 		if !strings.Contains(historyBody, want) {
 			t.Fatalf("history restore should return a complete public document with %q:\n%s", want, historyBody)
 		}
@@ -1264,7 +1264,7 @@ func TestPublicDocsRendersPoweredByFooterInFullPageAndFragments(t *testing.T) {
 
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/?selected=operation-listPets", nil)
-	req.Header.Set("HX-Request", "true")
+	req.Header.Set("HX-Request-Type", "partial")
 	srv.ServeHTTP(rec, req)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("fragment status = %d", rec.Code)
@@ -1519,7 +1519,7 @@ func TestPublicDocsPageDescriptionCSSWrapsLongPaths(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	descriptionRule := regexp.MustCompile(`(?s)\[data-public-page-header="true"\]\s+\.manja-doc-title\s*\+\s*p\s*\{[^}]*\}`)
+	descriptionRule := regexp.MustCompile(`(?s)\[data-public-page-header="true"\]\s+p\s*\{[^}]*\}`)
 	rule := descriptionRule.FindString(string(css))
 	if rule == "" {
 		t.Fatalf("missing public page-header description rule")

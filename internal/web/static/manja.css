@@ -196,7 +196,7 @@
   overflow-wrap: anywhere;
 }
 
-[data-public-page-header="true"] .manja-doc-title + p {
+[data-public-page-header="true"] p {
   overflow-wrap: anywhere;
 }
 

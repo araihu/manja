@@ -2,16 +2,53 @@ package server_test
 
 import (
 	"crypto/sha256"
+	"encoding/json"
 	"fmt"
+	"html"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 
 	"github.com/araihu/manja/site/internal/server"
 )
+
+func TestDemoRuntimeDependenciesStayMounted(t *testing.T) {
+	srv := httptest.NewServer(newTestServer(t))
+	t.Cleanup(srv.Close)
+	for _, path := range []string{"/demo/payments/v1/", "/demo/manage/specs"} {
+		t.Run(path, func(t *testing.T) {
+			body := get(t, srv.URL+path, http.StatusOK)
+			match := regexp.MustCompile(`data-goshtoso-dependencies="([^"]+)"`).FindStringSubmatch(body)
+			if len(match) != 2 {
+				t.Fatal("missing dependency configuration")
+			}
+			var config struct {
+				Dependencies []struct {
+					Primary  string `json:"primary_url"`
+					Fallback string `json:"fallback_url"`
+				} `json:"dependencies"`
+			}
+			if err := json.Unmarshal([]byte(html.UnescapeString(match[1])), &config); err != nil {
+				t.Fatal(err)
+			}
+			for _, dependency := range config.Dependencies {
+				for _, asset := range []string{dependency.Primary, dependency.Fallback} {
+					if !strings.HasPrefix(asset, "/") {
+						continue
+					}
+					if !strings.HasPrefix(asset, "/demo/") {
+						t.Fatalf("runtime asset escaped demo mount: %s", asset)
+					}
+					get(t, srv.URL+asset, http.StatusOK)
+				}
+			}
+		})
+	}
+}
 
 func TestRoutesRender(t *testing.T) {
 	t.Parallel()
@@ -203,7 +240,7 @@ func TestDemoManagementHTMXMutationStaysMounted(t *testing.T) {
 		t.Fatal(err)
 	}
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	req.Header.Set("HX-Request", "true")
+	req.Header.Set("HX-Request-Type", "partial")
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		t.Fatal(err)

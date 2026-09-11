@@ -58,7 +58,7 @@ func (handler *CatalogHandler) serveCatalogDocumentCombobox(response http.Respon
 	defer admission.Release()
 
 	response.Header().Set("Cache-Control", "private, no-store")
-	response.Header().Set("Vary", "HX-Request, Accept-Encoding")
+	response.Header().Set("Vary", "HX-Request-Type, Accept-Encoding")
 	response.Header().Set("X-Content-Type-Options", "nosniff")
 	ctx := context.WithValue(request.Context(), catalogDocumentComboboxContextKey{}, catalogDocumentComboboxContext{
 		mount: mount, snapshot: admission.Snapshot,

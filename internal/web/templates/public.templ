@@ -175,7 +175,7 @@ templ PublicDocsWithOptions(idx core.SpecIndex, selectedID string, opts PublicDo
 	{{ opts.SchemaLinks = schemaLinksForIndex(idx, opts.SchemaLinks) }}
 	{{ selected := opts.selectedFor(idx, selectedID) }}
 	@LayoutWithBrandingMetadata(publicDocsPageMetadata(idx, selected, opts.Metadata), idx.Branding, true, opts.ManageDefaultFavicon) {
-		<div hx-history="false" class="fixed inset-0 overflow-clip bg-surface text-on-surface dark:bg-surface-dark dark:text-on-surface-dark">
+		<div class="fixed inset-0 overflow-clip bg-surface text-on-surface dark:bg-surface-dark dark:text-on-surface-dark">
 			@appshell.AppShell(appshell.Config{
 				Header:       publicApplicationHeader(idx, selected, opts),
 				Sidebar:      publicDocsSidebar(idx, selected, opts),
@@ -1189,7 +1189,7 @@ templ operationNavigationLink(item OperationNavigationItem, direction string, na
 			hx-target="#main-content"
 			hx-select="#main-content"
 			hx-select-oob="#catalog-navigation"
-			hx-swap="outerHTML show:#main-content:top"
+			hx-swap="outerHTML show:top showTarget:#main-content"
 			hx-push-url="true"
 			class={ operationNavigationLinkClass(direction) }
 		>

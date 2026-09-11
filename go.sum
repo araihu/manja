@@ -16,8 +16,8 @@ github.com/alecthomas/repr v0.5.2 h1:SU73FTI9D1P5UNtvseffFSGmdNci/O6RsqzeXJtP0Qs
 github.com/alecthomas/repr v0.5.2/go.mod h1:Fr0507jx4eOXV7AlPV6AVZLYrLIuIeSOWtW57eE/O/4=
 github.com/araihu/assets v0.2.3 h1:PoQ3xfAT58uH+aMLGEyJvzQ8VzqDxBlg66tDfNIA2i4=
 github.com/araihu/assets v0.2.3/go.mod h1:VM1Mx/AHKYDz7SMpaUWS9EDNUmw/aJ5OpyHEpucbihg=
-github.com/araihu/goshtoso v0.2.10 h1:3yGxwRlyvf858ppVfX+XRsQcGevoK/Cd99lojBcTMpI=
-github.com/araihu/goshtoso v0.2.10/go.mod h1:n+Jlx+WLx81gk2fq0nhgt1PhtdltbQrmv07mJx1aNQM=
+github.com/araihu/goshtoso v0.3.0 h1:6+fTBCzDHFCfEtw8UGH3IePfrDsCyDvaZPIEn3V85i8=
+github.com/araihu/goshtoso v0.3.0/go.mod h1:9gg3IPPU1C1gJZUZts+AUDfbV/iYb0N5mSbL5NtyRzU=
 github.com/araihu/margo v0.0.24-0.20260909050059-149877346da8 h1:D+UYav2nN51pI5kFzUN3fVJ9aOrrBc3zWGJdC0uKtrk=
 github.com/araihu/margo v0.0.24-0.20260909050059-149877346da8/go.mod h1:+GEtMyVVQL0WeviRkSYdcqAljHyrXJ0wXdJZEMVfagc=
 github.com/caarlos0/env/v11 v11.4.1 h1:fYwH0sWEsBSMPG7t4e/PEfTFzrWrpjyygXyUnWiSwEw=
@@ -183,8 +183,8 @@ golang.org/x/sys v0.0.0-20201204225414-ed752295db88/go.mod h1:h1NjWce9XRLGQEsW7w
 golang.org/x/sys v0.0.0-20210616094352-59db8d763f22/go.mod h1:oPkhp1MJrh7nUepCBck5+mAzfO9JrbApNNgaTdGDITg=
 golang.org/x/sys v0.0.0-20220715151400-c0bba94af5f8/go.mod h1:oPkhp1MJrh7nUepCBck5+mAzfO9JrbApNNgaTdGDITg=
 golang.org/x/sys v0.1.0/go.mod h1:oPkhp1MJrh7nUepCBck5+mAzfO9JrbApNNgaTdGDITg=
-golang.org/x/sys v0.47.0 h1:o7XGOvZQCADBQQ4Y7VNq2dRWQR7JmOUW8Kxx4ZsNgWs=
-golang.org/x/sys v0.47.0/go.mod h1:4GL1E5IUh+htKOUEOaiffhrAeqysfVGipDYzABqnCmw=
+golang.org/x/sys v0.48.0 h1:bbX/i/6MgT9BVLM9RT1thmxL04yeTAhbEz4SyadbXoo=
+golang.org/x/sys v0.48.0/go.mod h1:hNLxWAXmnKAxqDtdwIYC4bM9oQPEecfsnNMuSxOs3og=
 golang.org/x/term v0.45.0 h1:NwWyBmoJCbfTHpxrWoZ9C6/VxOf7ic219I8xZZFdrf0=
 golang.org/x/term v0.45.0/go.mod h1:9aqxs0blBcrm/n0L9QW0aRVD+ktan8ssZromtqJC43w=
 golang.org/x/text v0.41.0 h1:vz/seA0lnX87Othu2f/0L24RcgrXD9/YFTSuGjj3rH8=

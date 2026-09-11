@@ -45,7 +45,7 @@ func TestStaticResponseExampleCopy(t *testing.T) {
 		t.Fatal(err)
 	}
 	// History snapshots preserve data attributes, but not attached event listeners.
-	if _, err := page.Evaluate(`() => { const main = document.querySelector('#catalog-main-content'); main.innerHTML = main.innerHTML; main.querySelectorAll('[data-code-block-copy]').forEach(button => button.hidden = true); document.dispatchEvent(new CustomEvent('htmx:historyRestore', {bubbles: true})); }`); err != nil {
+	if _, err := page.Evaluate(`() => { const main = document.querySelector('#catalog-main-content'); main.innerHTML = main.innerHTML; main.querySelectorAll('[data-code-block-copy]').forEach(button => button.hidden = true); document.dispatchEvent(new CustomEvent('htmx:before:history:restore', {bubbles: true})); }`); err != nil {
 		t.Fatal(err)
 	}
 	if err := request.Locator(`[role="combobox"]`).Click(); err != nil {

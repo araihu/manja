@@ -106,9 +106,9 @@ var approvedExternalSourceProvenance = externalSourceProvenance{
 		Repository:   "https://github.com/araihu/goshtoso",
 		OriginMain:   sourceRevision{Ref: "refs/remotes/origin/main", CommitSHA: "e8744f6bd997c4b62dd7d1d50263f1fc731b057a", TreeSHA: "6f62b12ff3131f2876bb75d8b24c2e7bf86b746b"},
 		Module:       "github.com/araihu/goshtoso",
-		Version:      "v0.2.10",
-		TagCommitSHA: "e8744f6bd997c4b62dd7d1d50263f1fc731b057a",
-		TagTreeSHA:   "6f62b12ff3131f2876bb75d8b24c2e7bf86b746b",
+		Version:      "v0.3.0",
+		TagCommitSHA: "2c4e86ab838868335e99f485bbab8caa88b54c8b",
+		TagTreeSHA:   "37ac981351457c03d60e907dbb3ad310c0fdeb2d",
 		License:      legalFileEvidence{Path: "LICENSE", Kind: "license", SPDX: "MIT", Size: 1078, GitBlobSHA: "0a7743398ecbeacc05ed822e1f74023ee9b36842", SHA256: "cacf68ff9920c026f5de2ebf992333c1a243e45d81aaa5b4577e05b52c5a9584"},
 	},
 }
@@ -200,7 +200,7 @@ func TestExternalSourceProvenanceMatchesPinnedModuleLicenseBytes(t *testing.T) {
 	}{
 		{module: "github.com/araihu/assets", version: approvedExternalSourceProvenance.Assets.ModuleVersion, file: approvedExternalSourceProvenance.Assets.Legal[0]},
 		{module: "github.com/araihu/assets", version: approvedExternalSourceProvenance.Assets.ModuleVersion, file: approvedExternalSourceProvenance.Assets.Legal[1]},
-		{module: "github.com/araihu/goshtoso", version: "v0.2.10", file: approvedExternalSourceProvenance.Goshtoso.License},
+		{module: "github.com/araihu/goshtoso", version: "v0.3.0", file: approvedExternalSourceProvenance.Goshtoso.License},
 	} {
 		moduleRoot := goModuleRoot(t, root, evidence.module)
 		if got := goModuleVersion(t, root, evidence.module); got != evidence.version {

@@ -9,6 +9,7 @@
   --line: var(--color-outline);
   --line-strong: var(--color-outline-strong);
   --accent: var(--color-primary);
+  --on-accent: var(--color-on-primary);
   --accent-strong: var(--color-secondary);
   --info: var(--color-info);
   --warn: var(--color-warning);
@@ -28,6 +29,7 @@
   --line: var(--color-outline-dark);
   --line-strong: var(--color-outline-dark-strong);
   --accent: var(--color-primary-dark);
+  --on-accent: var(--color-on-primary-dark);
   --accent-strong: var(--color-secondary-dark);
   --info: var(--color-info);
   --warn: var(--color-warning);
@@ -145,6 +147,10 @@ pre {
   width: 2.45rem;
 }
 
+.theme-toggle[hidden] {
+  display: none;
+}
+
 .theme-toggle:hover {
   border-color: var(--line-strong);
   color: var(--ink);
@@ -231,7 +237,7 @@ h1 {
 
 .button-primary {
   background: var(--accent);
-  color: #07120f;
+  color: var(--on-accent);
 }
 
 .button-secondary {

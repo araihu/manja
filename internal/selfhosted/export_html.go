@@ -121,6 +121,12 @@ func rewriteHTMLChildren(parent *html.Node, basePath string, catalogContext *exp
 			continue
 		}
 		if node.Type == html.ElementNode {
+			if node.DataAtom == atom.Head {
+				// Static navigation owns history; HTMX must not intercept Back/Forward.
+				node.AppendChild(&html.Node{Type: html.ElementNode, DataAtom: atom.Meta, Data: "meta", Attr: []html.Attribute{
+					{Key: "name", Val: "htmx-config"}, {Key: "content", Val: `{"history":false}`},
+				}})
+			}
 			attributes := node.Attr[:0]
 			for _, attribute := range node.Attr {
 				switch attribute.Key {

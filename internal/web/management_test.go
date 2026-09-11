@@ -610,7 +610,7 @@ func TestManagementHTMXRoutesRenderFragments(t *testing.T) {
 	for _, path := range []string{"/manage", "/manage/specs", "/manage/spec/payments-api"} {
 		rec := httptest.NewRecorder()
 		req := httptest.NewRequest(http.MethodGet, path, nil)
-		req.Header.Set("HX-Request", "true")
+		req.Header.Set("HX-Request-Type", "partial")
 		srv.ServeHTTP(rec, req)
 		if rec.Code != http.StatusOK {
 			t.Fatalf("%s status = %d", path, rec.Code)
@@ -854,7 +854,7 @@ func TestManagementPublicationPostCanReturnHTMXFragment(t *testing.T) {
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodPost, "/manage/publication", strings.NewReader(managementMutationForm(form).Encode()))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	req.Header.Set("HX-Request", "true")
+	req.Header.Set("HX-Request-Type", "partial")
 
 	srv.ServeHTTP(rec, req)
 
@@ -913,7 +913,7 @@ func TestManagementSyncPostCanReturnHTMXFragment(t *testing.T) {
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodPost, "/manage/sync", strings.NewReader(managementMutationForm(form).Encode()))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	req.Header.Set("HX-Request", "true")
+	req.Header.Set("HX-Request-Type", "partial")
 
 	srv.ServeHTTP(rec, req)
 
@@ -1090,7 +1090,7 @@ func TestManagementOverviewRendersOneSyncFormForSelectedSpec(t *testing.T) {
 		`Publish this revision`,
 		`Save route settings`,
 		`Sync selected ref`,
-		`hx-disabled-elt="find button[type='submit']"`,
+		`hx-disable="find button[type='submit']"`,
 		`data-goshtoso-loading`,
 		`Publishing revision…`,
 		`Saving route…`,
@@ -1205,7 +1205,7 @@ func TestManagementSyncRejectsUnavailableCandidateWithoutEffect(t *testing.T) {
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodPost, "/manage/sync", strings.NewReader(managementMutationForm(form).Encode()))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	req.Header.Set("HX-Request", "true")
+	req.Header.Set("HX-Request-Type", "partial")
 	srv.ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusOK {
@@ -1241,7 +1241,7 @@ func TestManagementPublicationFailureRetainsSelectedContractAndValues(t *testing
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodPost, "/manage/publication", strings.NewReader(managementMutationForm(form).Encode()))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	req.Header.Set("HX-Request", "true")
+	req.Header.Set("HX-Request-Type", "partial")
 	srv.ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusOK {
@@ -1341,7 +1341,7 @@ func TestManagementSameTokenDifferentPayloadIsRejectedWithoutEffect(t *testing.T
 	rec = httptest.NewRecorder()
 	req = httptest.NewRequest(http.MethodPost, "/manage/sync", strings.NewReader(second.Encode()))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	req.Header.Set("HX-Request", "true")
+	req.Header.Set("HX-Request-Type", "partial")
 	srv.ServeHTTP(rec, req)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("conflict status = %d, want %d", rec.Code, http.StatusOK)
@@ -1403,7 +1403,7 @@ func TestManagementInvalidMutationTokensAreRejectedWithoutEffect(t *testing.T) {
 				rec := httptest.NewRecorder()
 				req := httptest.NewRequest(http.MethodPost, path, strings.NewReader(managementMutationForm(form).Encode()))
 				req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-				req.Header.Set("HX-Request", "true")
+				req.Header.Set("HX-Request-Type", "partial")
 				srv.ServeHTTP(rec, req)
 				if rec.Code != http.StatusOK {
 					t.Fatalf("status = %d, want %d: %s", rec.Code, http.StatusOK, rec.Body.String())
@@ -1431,7 +1431,7 @@ func TestManagementHTMXNotFoundReturnsSwappableRecovery(t *testing.T) {
 			srv := managementStructureServer()
 			rec := httptest.NewRecorder()
 			req := httptest.NewRequest(http.MethodGet, path, nil)
-			req.Header.Set("HX-Request", "true")
+			req.Header.Set("HX-Request-Type", "partial")
 			req.Header.Set("HX-Target", "management-main-content")
 			srv.ServeHTTP(rec, req)
 			if rec.Code != http.StatusOK {
@@ -1453,7 +1453,7 @@ func TestManagementSameURLMutationUsesReplaceURLAndDisablesHistorySnapshots(t *t
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodPost, "/manage/publication", strings.NewReader(managementMutationForm(form).Encode()))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	req.Header.Set("HX-Request", "true")
+	req.Header.Set("HX-Request-Type", "partial")
 	req.Header.Set("HX-Current-URL", "http://example.test/manage/spec/payments-api")
 	srv.ServeHTTP(rec, req)
 	if rec.Code != http.StatusOK {
@@ -1467,8 +1467,8 @@ func TestManagementSameURLMutationUsesReplaceURLAndDisablesHistorySnapshots(t *t
 	}
 
 	body := renderManagementRequest(t, srv, "/manage/spec/payments-api", http.StatusOK)
-	if !strings.Contains(body, `hx-history="false"`) {
-		t.Fatalf("management shell must disable HTMX history snapshots: %s", body)
+	if strings.Contains(body, `hx-history=`) {
+		t.Fatalf("management shell must not use removed HTMX history attributes: %s", body)
 	}
 }
 

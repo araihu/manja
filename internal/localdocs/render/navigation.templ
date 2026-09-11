@@ -32,7 +32,7 @@ templ operationNavigationLink(item operationNavigationItemData, direction string
 		hx-target="#main-content"
 		hx-select="#main-content"
 		hx-select-oob="#catalog-navigation"
-		hx-swap="outerHTML show:#main-content:top"
+		hx-swap="outerHTML show:top showTarget:#main-content"
 		hx-push-url="true"
 		class={ operationNavigationLinkClass(direction) }
 	>

@@ -87,7 +87,7 @@ func TestCatalogStaticNavigationFailureUsesPersistentGoshtosoToast(t *testing.T)
 		`Unable to load this documentation section`,
 		`Please try again.`,
 		`>Retry</button>`,
-		`{ isVisible: true }`,
+		`goshtosoToast($el, 8000, true)`,
 	} {
 		if !strings.Contains(body, want) {
 			t.Errorf("navigation failure toast missing %q", want)
@@ -1185,7 +1185,7 @@ func TestCatalogSidebarItemsUseTargetedMainNavigation(t *testing.T) {
 		`hx-get="` + href + `"`,
 		`hx-target="#catalog-main-content"`,
 		`hx-select="#catalog-main-content"`,
-		`hx-swap="outerHTML show:#main-content:top"`,
+		`hx-swap="outerHTML show:top showTarget:#main-content"`,
 		`hx-push-url="true"`,
 		`data-manja-sidebar-nav="true"`,
 	} {
@@ -1855,7 +1855,7 @@ func TestPreparedOperationRequestBodyMediaMatchesCatalogSSRBytes(t *testing.T) {
 				t.Fatal(err)
 			}
 			baseOptions := PublicDocsOptions{
-				SchemaLinks: schemaLinks, SchemaLinkTarget: "#catalog-main-content", SchemaLinkSelect: "#catalog-main-content", SchemaLinkSwap: "outerHTML show:#main-content:top",
+				SchemaLinks: schemaLinks, SchemaLinkTarget: "#catalog-main-content", SchemaLinkSelect: "#catalog-main-content", SchemaLinkSwap: "outerHTML show:top showTarget:#main-content",
 			}
 			var legacy, delegated bytes.Buffer
 			if err := endpointSection(operation, nil, "", baseOptions, OperationNavigationData{}).Render(context.Background(), &legacy); err != nil {
@@ -1971,7 +1971,7 @@ func TestPreparedOperationResponseMediaMatchesCatalogSSRBytes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	baseOptions := PublicDocsOptions{SchemaLinks: schemaLinks, SchemaLinkTarget: "#catalog-main-content", SchemaLinkSelect: "#catalog-main-content", SchemaLinkSwap: "outerHTML show:#main-content:top"}
+	baseOptions := PublicDocsOptions{SchemaLinks: schemaLinks, SchemaLinkTarget: "#catalog-main-content", SchemaLinkSelect: "#catalog-main-content", SchemaLinkSwap: "outerHTML show:top showTarget:#main-content"}
 	var legacy, delegated bytes.Buffer
 	if err := endpointSection(operation, nil, "", baseOptions, OperationNavigationData{}).Render(context.Background(), &legacy); err != nil {
 		t.Fatal(err)
@@ -2054,7 +2054,7 @@ func TestPreparedOperationSchemaTreesMatchCompleteCatalogSSRBytes(t *testing.T) 
 	if err != nil {
 		t.Fatal(err)
 	}
-	baseOptions := PublicDocsOptions{SchemaLinks: schemaLinks, SchemaLinkTarget: "#catalog-main-content", SchemaLinkSelect: "#catalog-main-content", SchemaLinkSwap: "outerHTML show:#main-content:top"}
+	baseOptions := PublicDocsOptions{SchemaLinks: schemaLinks, SchemaLinkTarget: "#catalog-main-content", SchemaLinkSelect: "#catalog-main-content", SchemaLinkSwap: "outerHTML show:top showTarget:#main-content"}
 	var legacy, delegated bytes.Buffer
 	if err := endpointSection(operation, nil, "", baseOptions, OperationNavigationData{}).Render(context.Background(), &legacy); err != nil {
 		t.Fatal(err)
@@ -2122,7 +2122,7 @@ func TestPreparedOperationRequestSectionMatchesCompleteCatalogSSRBytes(t *testin
 	if err != nil {
 		t.Fatal(err)
 	}
-	baseOptions := PublicDocsOptions{SchemaLinks: schemaLinks, SchemaLinkTarget: "#catalog-main-content", SchemaLinkSelect: "#catalog-main-content", SchemaLinkSwap: "outerHTML show:#main-content:top"}
+	baseOptions := PublicDocsOptions{SchemaLinks: schemaLinks, SchemaLinkTarget: "#catalog-main-content", SchemaLinkSelect: "#catalog-main-content", SchemaLinkSwap: "outerHTML show:top showTarget:#main-content"}
 	var legacy, delegated bytes.Buffer
 	if err := endpointSection(operation, nil, "", baseOptions, OperationNavigationData{}).Render(context.Background(), &legacy); err != nil {
 		t.Fatal(err)
@@ -2287,7 +2287,7 @@ func TestPreparedOperationDetailSectionsWithResponsesMatchesCompleteEndpointSSRB
 				t.Fatal(err)
 			}
 
-			baseOptions := PublicDocsOptions{SchemaLinks: schemaLinks, SchemaLinkTarget: "#catalog-main-content", SchemaLinkSelect: "#catalog-main-content", SchemaLinkSwap: "outerHTML show:#main-content:top"}
+			baseOptions := PublicDocsOptions{SchemaLinks: schemaLinks, SchemaLinkTarget: "#catalog-main-content", SchemaLinkSelect: "#catalog-main-content", SchemaLinkSwap: "outerHTML show:top showTarget:#main-content"}
 			var legacy, delegated bytes.Buffer
 			if err := endpointSection(operation, nil, "", baseOptions, OperationNavigationData{}).Render(context.Background(), &legacy); err != nil {
 				t.Fatal(err)
