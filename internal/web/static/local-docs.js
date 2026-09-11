@@ -1238,10 +1238,10 @@
 		var route = staticRoute(descriptor, href);
 		if (!route) return null;
 		var current = staticRoute(descriptor, global.location.href);
-		if (current) {
-		  if (route.groups.length === 0) route.groups = current.groups.slice();
-		  if (route.closedGroups.length === 0) route.closedGroups = current.closedGroups.slice();
-		}
+		// Overview pages and other documents need their own shell and sidebar.
+		if (!current || route.documentKey !== current.documentKey) return null;
+		if (route.groups.length === 0) route.groups = current.groups.slice();
+		if (route.closedGroups.length === 0) route.closedGroups = current.closedGroups.slice();
 		return swap(route, "push", { focus: true });
 	  }
 	  function swap(route, historyMode) {
@@ -1348,14 +1348,9 @@
 	  }
 	  var origin = event.target && event.target.closest && event.target.closest("a[href]");
 	  if (origin) {
-		var route = staticRoute(descriptor, origin.href);
-		if (route) {
-		  var current = staticRoute(descriptor, global.location.href);
-		  if (current) {
-		    if (route.groups.length === 0) route.groups = current.groups.slice();
-		    if (route.closedGroups.length === 0) route.closedGroups = current.closedGroups.slice();
-		  }
-		  event.preventDefault(); swap(route, "push", { focus: true }).catch(function () {});
+		var pending = navigate(origin.href);
+		if (pending) {
+		  event.preventDefault(); pending.catch(function () {});
 		}
 		return;
 	  }

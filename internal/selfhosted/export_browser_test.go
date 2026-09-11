@@ -132,7 +132,6 @@ catalogs:
 					}
 				}
 			}
-			assertStaticOverviewWithoutSidebar(t, page, server.URL, deployment)
 			if _, err := page.Goto(server.URL + deployment + "/private/"); err != nil {
 				t.Fatal(err)
 			}
@@ -583,6 +582,10 @@ catalogs:
 				t.Fatal(err)
 			}
 			waitStaticExportReady(t, page)
+			if err := page.Context().SetOffline(false); err != nil {
+				t.Fatal(err)
+			}
+			assertStaticOverviewWithoutSidebar(t, page, server.URL, deployment)
 			requestMu.Lock()
 			defer requestMu.Unlock()
 			for _, requestPath := range requests {
@@ -779,6 +782,32 @@ func assertStaticOverviewWithoutSidebar(t *testing.T, page playwright.Page, serv
 	if err := page.Locator("#catalog-search-input").WaitFor(); err != nil {
 		t.Fatal(err)
 	}
+	if err := page.Locator("#catalog-search-input").Fill("listWidgets"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := page.Locator("#catalog-search-input").Evaluate(`el => el.dispatchEvent(new Event('input', {bubbles: true}))`, nil); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := page.Evaluate(`() => { window.__manjaOverviewShell = true; }`, nil); err != nil {
+		t.Fatal(err)
+	}
+	if err := page.Locator("#catalog-search-dialog").GetByText("List widgets", playwright.LocatorGetByTextOptions{Exact: playwright.Bool(true)}).Click(); err != nil {
+		t.Fatal(err)
+	}
+	if err := page.WaitForURL("**/other/documents/other/?selected=*"); err != nil {
+		t.Fatal(err)
+	}
+	waitStaticExportReady(t, page)
+	if _, err := page.WaitForFunction(`() => window.__manjaOverviewShell !== true && document.querySelectorAll('#catalog-navigation [data-catalog-sidebar-operation]').length === 2 && document.title === 'List widgets'`, nil); err != nil {
+		t.Fatalf("overview search must load the document shell and navigation: %v", err)
+	}
+	if _, err := page.GoBack(); err != nil {
+		t.Fatal(err)
+	}
+	waitStaticExportReady(t, page)
+	if page.URL() != overviewURL {
+		t.Fatalf("back from search URL = %s, want %s", page.URL(), overviewURL)
+	}
 	if err := page.Keyboard().Press("Escape"); err != nil {
 		t.Fatal(err)
 	}
@@ -790,6 +819,10 @@ func assertStaticOverviewWithoutSidebar(t *testing.T, page playwright.Page, serv
 		t.Fatal(err)
 	}
 	waitStaticExportReady(t, page)
+	if _, err := page.WaitForFunction(`() => document.querySelectorAll('#catalog-navigation [data-catalog-sidebar-operation]').length === 2`, nil, playwright.PageWaitForFunctionOptions{Timeout: playwright.Float(5_000)}); err != nil {
+		debug, _ := page.Evaluate(`() => ({href: location.href, title: document.title, state: document.documentElement.dataset.manjaLocalDocsState, sidebar: document.querySelector('#catalog-navigation')?.outerHTML, main: document.querySelector('[data-catalog-main-content]')?.textContent})`)
+		t.Fatalf("document navigation after overview: %v; debug=%#v", err, debug)
+	}
 	if count, err := page.Locator(`#catalog-navigation [data-catalog-sidebar-operation]`).Count(); err != nil || count != 2 {
 		t.Fatalf("hidden-overview catalog document operations = %d, %v", count, err)
 	}
