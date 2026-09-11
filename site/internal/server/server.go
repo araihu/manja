@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	htmlstd "html"
+	"html/template"
 	"net/http"
 	"os"
 	"regexp"
@@ -241,7 +242,7 @@ func prefixDependencyPaths(markup, prefix string) string {
 		if err != nil {
 			return attribute
 		}
-		return `data-goshtoso-dependencies="` + htmlstd.EscapeString(string(encoded)) + `"`
+		return `data-goshtoso-dependencies="` + template.HTMLEscapeString(string(encoded)) + `"`
 	})
 }
 
