@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/araihu/manja/application/catalog"
@@ -61,10 +62,24 @@ catalogs:
 		t.Fatal(err)
 	}
 	output := filepath.Join(root, "public")
-	receipt, err := ExportRenderer(context.Background(), ExportOptions{RendererOptions: RendererOptions{ConfigPath: configPath}, Output: output, BasePath: "/"})
+	var progressMu sync.Mutex
+	var progressEvents []ExportProgressEvent
+	receipt, err := ExportRenderer(context.Background(), ExportOptions{
+		RendererOptions: RendererOptions{ConfigPath: configPath}, Output: output, BasePath: "/",
+		Progress: func(event ExportProgressEvent) {
+			progressMu.Lock()
+			progressEvents = append(progressEvents, event)
+			progressMu.Unlock()
+		},
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
+	progressMu.Lock()
+	if len(progressEvents) < 2 || progressEvents[len(progressEvents)-1].Event != "complete" || progressEvents[len(progressEvents)-1].Status != "success" {
+		t.Fatalf("progress events = %#v", progressEvents)
+	}
+	progressMu.Unlock()
 	if len(receipt.Catalogs) != 1 || receipt.Catalogs[0].CatalogID != "private" || receipt.Catalogs[0].PublicationKey != "private" {
 		t.Fatalf("receipt = %#v", receipt)
 	}

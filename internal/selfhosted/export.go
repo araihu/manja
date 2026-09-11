@@ -45,6 +45,9 @@ type ExportOptions struct {
 	FragmentWorkers  uint32
 	// SchemaCacheBytes defaults to 128 MiB when nil; a pointer to zero disables retention.
 	SchemaCacheBytes *uint64
+	// Progress receives periodic progress events. A nil callback keeps export
+	// output and execution on the default quiet path.
+	Progress ExportProgress
 }
 
 type ExportReceipt struct {
@@ -62,7 +65,10 @@ type ExportCatalogReceipt struct {
 	SnapshotID     string `json:"snapshotId"`
 }
 
-func ExportRenderer(ctx context.Context, options ExportOptions) (ExportReceipt, error) {
+func ExportRenderer(ctx context.Context, options ExportOptions) (receipt ExportReceipt, err error) {
+	progress := newExportProgress(ctx, options.Progress)
+	defer func() { progress.finish(err) }()
+	ctx = withExportProgress(ctx, progress)
 	ctx = localrender.WithDescriptionRenderer(ctx, markdownadapter.DescriptionComponent)
 	if err := canonicalExportBasePath(options.BasePath); err != nil {
 		return ExportReceipt{}, err
@@ -74,6 +80,8 @@ func ExportRenderer(ctx context.Context, options ExportOptions) (ExportReceipt, 
 	if err != nil {
 		return ExportReceipt{}, err
 	}
+	progress.setCatalogTotals(len(receipts))
+	progress.phase("materialize")
 	for _, receipt := range receipts {
 		if receipt.Degraded {
 			return ExportReceipt{}, fmt.Errorf("export catalog %q: %s", receipt.CatalogID, receipt.Diagnostic)
@@ -105,6 +113,8 @@ func exportFromHandlerWithProfile(ctx context.Context, handler http.Handler, rec
 }
 
 func exportFromHandlerWithCache(ctx context.Context, handler http.Handler, receipts []renderer.ActivationReceipt, output, basePath string, profile artifact.BuildProfile, fragmentWorkers uint32, schemaCache *schemacache.Cache) (receipt ExportReceipt, err error) {
+	progress := exportProgressFromContext(ctx)
+	progress.phase("materialize")
 	output, err = filepath.Abs(output)
 	if err != nil {
 		return ExportReceipt{}, fmt.Errorf("resolve output: %w", err)
@@ -130,7 +140,7 @@ func exportFromHandlerWithCache(ctx context.Context, handler http.Handler, recei
 		}
 	}()
 
-	writer := exportTreeWriter{root: stage, entries: make(map[string]exportFileEntry)}
+	writer := exportTreeWriter{root: stage, entries: make(map[string]exportFileEntry), progress: progress}
 	if err = captureShell(ctx, handler, &writer, "/", "index.html"); err != nil {
 		return ExportReceipt{}, err
 	}
@@ -172,6 +182,7 @@ func exportFromHandlerWithCache(ctx context.Context, handler http.Handler, recei
 			return ExportReceipt{}, err
 		}
 	}
+	progress.phase("hash/manifest")
 	searchDirectory, err := encodeDeploymentSearchDirectory(searchCatalogs)
 	if err != nil {
 		return ExportReceipt{}, err
@@ -207,6 +218,13 @@ func exportFromHandlerWithCache(ctx context.Context, handler http.Handler, recei
 	if err = writer.write(exportManifestPath, manifestBytes, "application/json"); err != nil {
 		return ExportReceipt{}, err
 	}
+	progress.phase("verify")
+	entries := writer.sortedEntries()
+	var totalBytes uint64
+	for _, entry := range entries {
+		totalBytes += entry.Length
+	}
+	progress.setFinalTotals(uint64(len(entries)), totalBytes)
 	if _, err = VerifyExport(ctx, stage); err != nil {
 		return ExportReceipt{}, fmt.Errorf("verify staging export: %w", err)
 	}
@@ -231,6 +249,9 @@ type capturedHTTP struct {
 }
 
 func captureCatalog(ctx context.Context, handler http.Handler, writer *exportTreeWriter, active renderer.ActivationReceipt, basePath, cacheRoot string, profile artifact.BuildProfile, fragmentWorkers uint32, schemaCache *schemacache.Cache) (ExportCatalogReceipt, deploymentSearchCatalogV1, error) {
+	progress := exportProgressFromContext(ctx)
+	progress.catalogStarted(active.CatalogID)
+	progress.phase("materialize")
 	mountPrefix := strings.Trim(active.Mount, "/")
 	shellPath := path.Join(mountPrefix, "index.html")
 	if shellPath == "." {
@@ -275,6 +296,12 @@ func captureCatalog(ctx context.Context, handler http.Handler, writer *exportTre
 	if err != nil || directory.CatalogID != active.CatalogID {
 		return ExportCatalogReceipt{}, deploymentSearchCatalogV1{}, fmt.Errorf("catalog %q directory is invalid", active.CatalogID)
 	}
+	var operationTotal, schemaTotal int
+	for _, document := range directory.Documents {
+		operationTotal += len(document.Operations)
+		schemaTotal += len(document.Schemas)
+	}
+	progress.addCatalogTotals(len(directory.Documents), operationTotal, schemaTotal)
 	if child, ok := manifestChild(manifest, "catalog.json"); !ok || !matchesChild(child, catalogCapture.body) {
 		return ExportCatalogReceipt{}, deploymentSearchCatalogV1{}, fmt.Errorf("catalog %q directory differs from manifest", active.CatalogID)
 	}
@@ -317,9 +344,11 @@ func captureCatalog(ctx context.Context, handler http.Handler, writer *exportTre
 	}
 	defer os.RemoveAll(inputs)
 	loader := newExportProjectionLoader(ctx, handler, active, manifest, directory, inputs)
+	progress.phase("render")
 	if err := emitCatalogHTMLFragments(ctx, writer, active, descriptor, manifest, manifestCapture.body, catalogCapture.body, directory, cacheRoot, profile, fragmentWorkers, schemaCache, loader); err != nil {
 		return ExportCatalogReceipt{}, deploymentSearchCatalogV1{}, fmt.Errorf("catalog %q HTML fragments: %w", active.CatalogID, err)
 	}
+	progress.phase("materialize")
 	descriptor.Static.HTMLOnly = true
 	htmlContext := &exportHTMLCatalog{Mount: active.Mount, SnapshotID: active.SnapshotID, Directory: directory, Descriptor: descriptor}
 	htmlPaths := []string{shellPath, path.Join(mountPrefix, "search/index.html"), path.Join(mountPrefix, "_manja/offline-shell/index.html")}
@@ -335,6 +364,7 @@ func captureCatalog(ctx context.Context, handler http.Handler, writer *exportTre
 	if err != nil {
 		return ExportCatalogReceipt{}, deploymentSearchCatalogV1{}, err
 	}
+	progress.catalogCompleted()
 	return ExportCatalogReceipt{CatalogID: active.CatalogID, Mount: active.Mount, PublicationKey: active.CatalogID, RevisionID: active.RevisionID, SnapshotID: active.SnapshotID}, searchCatalog, nil
 }
 
@@ -513,9 +543,10 @@ func removeEmptyExportOutput(output string) error {
 }
 
 type exportTreeWriter struct {
-	root    string
-	entries map[string]exportFileEntry
-	mu      sync.Mutex
+	root     string
+	entries  map[string]exportFileEntry
+	progress *exportProgress
+	mu       sync.Mutex
 }
 
 func (writer *exportTreeWriter) has(name string) bool {
@@ -622,6 +653,7 @@ func (writer *exportTreeWriter) write(name string, data []byte, mediaType string
 	}
 	digest := sha256.Sum256(data)
 	writer.entries[name] = exportFileEntry{Path: name, Length: uint64(len(data)), MediaType: mediaType, SHA256: hex.EncodeToString(digest[:])}
+	writer.progress.materialized(uint64(len(data)))
 	return nil
 }
 
@@ -641,6 +673,7 @@ func (writer *exportTreeWriter) registerExisting(name, mediaType string) error {
 	}
 	digest := sha256.Sum256(data)
 	writer.entries[name] = exportFileEntry{Path: name, Length: uint64(len(data)), MediaType: mediaType, SHA256: hex.EncodeToString(digest[:])}
+	writer.progress.materialized(uint64(len(data)))
 	return nil
 }
 
@@ -681,6 +714,7 @@ func (writer *exportTreeWriter) linkExisting(sourceRoot, name, mediaType string,
 		}
 	}
 	writer.entries[name] = exportFileEntry{Path: name, Length: length, MediaType: mediaType, SHA256: digest}
+	writer.progress.materialized(length)
 	return nil
 }
 
