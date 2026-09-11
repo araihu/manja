@@ -81,6 +81,7 @@ type sidebarOperationGroupSummary struct {
 }
 
 func emitCatalogHTMLFragments(ctx context.Context, writer *exportTreeWriter, active renderer.ActivationReceipt, descriptor localdocs.DescriptorV1, manifest catalog.ManifestV1, manifestBytes, catalogBytes []byte, directory catalog.CatalogArtifactV1, cacheRoot string, profile artifact.BuildProfile, fragmentWorkers uint32, schemaCache *schemacache.Cache, loader func(string) ([]byte, error)) error {
+	progress := exportProgressFromContext(ctx)
 	binaryIdentity, err := exportBinaryIdentity()
 	if err != nil {
 		return err
@@ -102,6 +103,7 @@ func emitCatalogHTMLFragments(ctx context.Context, writer *exportTreeWriter, act
 		cacheStore = artifactstore.New(cacheRoot)
 	}
 	for _, document := range directory.Documents {
+		progress.documentStarted(active.CatalogID, document.Key)
 		dependencies, err := prepareExportDetailDependencies(document, descriptor.PublicationBase, string(compilerIdentity))
 		if err != nil {
 			return err
@@ -133,6 +135,7 @@ func emitCatalogHTMLFragments(ctx context.Context, writer *exportTreeWriter, act
 			jobs = append(jobs, detailJob{child: child, kind: artifact.FragmentSchema, resource: string(schema.DetailID)})
 		}
 		if len(jobs) == 0 {
+			progress.documentCompleted()
 			continue
 		}
 		workerCount := int(fragmentWorkers)
@@ -162,7 +165,9 @@ func emitCatalogHTMLFragments(ctx context.Context, writer *exportTreeWriter, act
 					if workerContext.Err() != nil {
 						return
 					}
+					progress.workerStarted()
 					if err := emitDetailHTMLFragment(workerContext, writer, store, cacheStore, cacheRoot, browser, active, manifest, document, job.child, job.kind, job.resource, binaryIdentity, dependencies); err != nil {
+						progress.workerFinished()
 						select {
 						case errChannel <- err:
 						default:
@@ -170,6 +175,8 @@ func emitCatalogHTMLFragments(ctx context.Context, writer *exportTreeWriter, act
 						cancel()
 						return
 					}
+					progress.workerFinished()
+					progress.detailCompleted(job.kind == artifact.FragmentOperation)
 				}
 			}(workerBrowser)
 		}
@@ -194,6 +201,7 @@ func emitCatalogHTMLFragments(ctx context.Context, writer *exportTreeWriter, act
 		if err := emitSchemaNodePanels(ctx, writer, store, cacheStore, cacheRoot, baseBrowser, active, manifest, document, binaryIdentity, dependencies); err != nil {
 			return err
 		}
+		progress.documentCompleted()
 	}
 	return nil
 }

@@ -46,7 +46,8 @@ manja export \
   --output ./public \
   --base-path / \
   --sidebar-chunk-size 12 \
-  --fragment-workers 4
+  --fragment-workers 4 \
+  --progress
 
 manja export verify --output ./public
 python3 -m http.server 8080 --directory ./public
@@ -62,6 +63,41 @@ required browser and catalog artifacts, descriptors, internal links, and the
 complete graph of prebuilt HTML fragments and integrity sidecars.
 Store redirected command output outside `public`, since extra files invalidate
 the export's file inventory.
+
+## Progress reporting
+
+Export is quiet apart from its catalog-visibility warning unless `--progress` is
+requested. Progress events are written to stderr, so the JSON receipt on stdout
+remains safe for callers to parse. Use `--progress` for plain log lines or
+`--progress=json` for newline-delimited JSON events. Both modes flush each event
+and work in TTY and non-interactive CI logs; no terminal control sequences are
+used. JSON mode also omits the ordinary visibility warning from stderr so the
+stream contains only progress events; the default invocation and human mode
+retain that warning.
+
+The event schema has `schemaVersion: 1` and these event values:
+
+| Event | Meaning |
+| --- | --- |
+| `start` | Export reporter started; the initial phase is `load/normalize/compile`. |
+| `progress` | A phase change or periodic snapshot while export is running. |
+| `complete` | Export succeeded and the final counters are available. |
+| `error` | Export failed; `error` contains the returned diagnostic. |
+
+Every event includes `status`, `phase`, `elapsedMs`, catalog/document progress,
+operation and schema counts where available, `files`, `bytes`, and worker
+activity. Phases are `load/normalize/compile`, `materialize`, `render`,
+`hash/manifest`, `verify`, and `complete`. A typical machine-readable event is:
+
+```json
+{"schemaVersion":1,"event":"progress","status":"running","phase":"render","elapsedMs":12000,"catalog":"pets","document":"petstore","catalogsCompleted":0,"catalogsTotal":1,"documentsCompleted":0,"documentsTotal":1,"operationsCompleted":24,"operationsTotal":81,"schemasCompleted":0,"schemasTotal":32,"fragmentsCompleted":24,"fragmentsTotal":113,"files":145,"bytes":823104,"activeWorkers":4,"peakWorkers":4}
+```
+
+The final `complete` or `error` event reports success or failure, elapsed time,
+and the output file and byte totals. Without `--progress`, generated files,
+hashes, ordering, and runtime behavior are unchanged.
+The command exits `0` after a `complete` event, `1` after an export `error`,
+and `2` for invalid command-line arguments before an export starts.
 
 ## What readers get
 
@@ -184,6 +220,7 @@ with a fresh output directory or invalidate that CI cache.
 | --- | --- | --- |
 | `--sidebar-chunk-size` | `12` | Maximum entries per sidebar chunk; larger values trade fewer fetches for larger chunks. |
 | `--fragment-workers` | `4` | Concurrent detail fragment renderers; use 1–32, reducing it when build memory is constrained. |
+| `--progress[=json]` | off | Emit periodic human-readable progress to stderr, or stable newline-delimited JSON with `=json`. |
 | `--base-path` | Required | Final URL prefix, starting and ending with `/`. |
 
 The renderer configuration, data directory, and output directory flags are

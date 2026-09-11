@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"strings"
 	"testing"
@@ -93,5 +94,69 @@ func TestExportSchemaCacheBudget(t *testing.T) {
 		if code != tc.code || called != (tc.code == 0) {
 			t.Fatal(tc, code, called, err.String())
 		}
+	}
+}
+
+func TestExportCommandProgressModesWriteToStderr(t *testing.T) {
+	original := exportRenderer
+	t.Cleanup(func() { exportRenderer = original })
+	exportRenderer = func(_ context.Context, options app.ExportOptions) (app.ExportReceipt, error) {
+		if options.Progress == nil {
+			t.Fatal("progress callback is nil")
+		}
+		options.Progress(app.ExportProgressEvent{SchemaVersion: 1, Event: "complete", Status: "success", Phase: "complete", Files: 2, Bytes: 3})
+		return app.ExportReceipt{}, nil
+	}
+	for _, tc := range []struct {
+		flag string
+		want string
+	}{
+		{flag: "--progress", want: "event=complete"},
+		{flag: "--progress=json", want: `"event":"complete"`},
+	} {
+		var stdout, stderr bytes.Buffer
+		args := []string{"export", "--renderer-config", "r", "--data-dir", "d", "--output", "o", "--base-path", "/", tc.flag}
+		if code := run(context.Background(), args, &stdout, &stderr); code != 0 {
+			t.Fatalf("mode %s code=%d stderr=%q", tc.flag, code, stderr.String())
+		}
+		if !strings.Contains(stderr.String(), tc.want) {
+			t.Fatalf("mode %s stderr=%q", tc.flag, stderr.String())
+		}
+		if tc.flag == "--progress=json" {
+			var event app.ExportProgressEvent
+			if err := json.Unmarshal([]byte(stderr.String()), &event); err != nil {
+				t.Fatalf("json progress = %q: %v", stderr.String(), err)
+			}
+			if event.Event != "complete" || event.Files != 2 || event.Bytes != 3 {
+				t.Fatalf("json event = %#v", event)
+			}
+		}
+		if stdout.String() != "{\"schemaVersion\":0,\"basePath\":\"\",\"catalogs\":null,\"manifest\":\"\"}\n" {
+			t.Fatalf("mode %s stdout=%q", tc.flag, stdout.String())
+		}
+	}
+}
+
+func TestExportCommandJSONProgressKeepsFailureStreamMachineReadable(t *testing.T) {
+	original := exportRenderer
+	t.Cleanup(func() { exportRenderer = original })
+	exportRenderer = func(_ context.Context, options app.ExportOptions) (app.ExportReceipt, error) {
+		options.Progress(app.ExportProgressEvent{SchemaVersion: 1, Event: "error", Status: "failure", Phase: "render", Error: "capture failed"})
+		return app.ExportReceipt{}, errors.New("capture failed")
+	}
+	var stdout, stderr bytes.Buffer
+	args := []string{"export", "--renderer-config", "r", "--data-dir", "d", "--output", "o", "--base-path", "/", "--progress=json"}
+	if code := run(context.Background(), args, &stdout, &stderr); code != 1 {
+		t.Fatalf("code=%d stdout=%q stderr=%q", code, stdout.String(), stderr.String())
+	}
+	var event app.ExportProgressEvent
+	if err := json.Unmarshal(stderr.Bytes(), &event); err != nil {
+		t.Fatalf("stderr=%q: %v", stderr.String(), err)
+	}
+	if event.Event != "error" || event.Status != "failure" || event.Error != "capture failed" {
+		t.Fatalf("event = %#v", event)
+	}
+	if stdout.Len() != 0 {
+		t.Fatalf("stdout=%q", stdout.String())
 	}
 }
