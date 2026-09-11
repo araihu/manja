@@ -392,7 +392,7 @@ func operationSchemaDisplayName(name, schemaName string) string {
 }
 
 func operationSchemaTreeHasContent(schema operationSchemaTreeNodeData) bool {
-	return schema.Inline != "" || strings.TrimSpace(schema.Description) != "" || strings.TrimSpace(schema.ExampleText) != "" || len(schema.Properties) > 0 || schema.Items != nil
+	return schema.Limited || schema.Inline != "" || strings.TrimSpace(schema.Description) != "" || strings.TrimSpace(schema.ExampleText) != "" || len(schema.Properties) > 0 || schema.Items != nil
 }
 
 func finishOperationSchemaTreeNode(node *operationSchemaTreeNodeData) {

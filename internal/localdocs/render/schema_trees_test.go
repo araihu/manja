@@ -364,3 +364,15 @@ func TestOperationSchemaTreeBoundaryInventoryStillValidatesIdentity(t *testing.T
 		})
 	}
 }
+
+func TestLimitedAnonymousSchemaRetainsPreviewNotice(t *testing.T) {
+	root := operationSchemaTreeNodeData{Limited: true}
+	tree := operationSchemaTreeData{ID: "limited-anonymous", Caption: "Response body", HasContent: operationSchemaTreeHasContent(root), Root: root}
+	var output bytes.Buffer
+	if err := operationSchemaProperties(tree).Render(context.Background(), &output); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(output.String(), "Schema preview is limited") {
+		t.Fatal("limited anonymous schema hid its notice")
+	}
+}
