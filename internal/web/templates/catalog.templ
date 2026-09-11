@@ -515,7 +515,7 @@ templ catalogHeader(data CatalogPageData) {
 				<span class="text-on-surface-muted dark:text-on-surface-dark-muted">/</span>
 				<a href={ templpkg.URL(data.Mount) } aria-label={ catalogBrandName(data) } class="flex min-w-0 shrink-0 items-center gap-2 font-title text-lg font-bold text-on-surface-strong dark:text-on-surface-dark-strong">
 					if data.Directory.Branding.LogoSrc != "" {
-						<img src={ templpkg.URL(data.Directory.Branding.LogoSrc) } alt="" loading="lazy" decoding="async" class="size-8 shrink-0 rounded-full object-cover"/>
+						<img src={ templpkg.URL(data.Directory.Branding.LogoSrc) } alt="" loading="lazy" decoding="async" class="size-8 shrink-0 object-contain"/>
 					}
 					<span data-catalog-header-brand-label class="max-w-[12rem] truncate">{ catalogBrandName(data) }</span>
 				</a>
