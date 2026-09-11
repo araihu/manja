@@ -534,3 +534,90 @@ func assertMissingHTMLDependenciesRejected(t *testing.T, output string, paths ..
 		})
 	}
 }
+
+func TestExportOperationsWithoutSourceOperationID(t *testing.T) {
+	root := t.TempDir()
+	source, err := os.ReadFile("testdata/missing-operation-id.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "widgets.yaml"), source, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	config := `version: 1
+dataDir: data
+catalogs:
+  - id: widgets
+    mount: /widgets
+    title: Widgets
+    localDocs:
+      public: true
+      anonymous: true
+      publicationKey: widgets
+    defaultDocument: widgets
+    profile: strict-v1
+    source:
+      kind: files
+      root: .
+      include: [widgets.yaml]
+`
+	configPath := filepath.Join(root, "renderer.yaml")
+	if err := os.WriteFile(configPath, []byte(config), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	output := filepath.Join(root, "public")
+	receipt, err := ExportRenderer(context.Background(), ExportOptions{RendererOptions: RendererOptions{ConfigPath: configPath}, Output: output, BasePath: "/"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, err := os.ReadFile(filepath.Join(output, "widgets", "snapshots", receipt.Catalogs[0].SnapshotID, "catalog.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	directory, err := catalogjson.DecodeCatalogWithResourceLimits(raw, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	operations := directory.Documents[0].Operations
+	if len(operations) != 3 {
+		t.Fatalf("got %d operations", len(operations))
+	}
+	for index, operation := range operations {
+		fragmentPath, _, err := artifact.FragmentLocation("/widgets", "widgets", artifact.FragmentIdentity{Format: artifact.FragmentFormatV2, Kind: artifact.FragmentOperation, Resource: string(operation.DetailID)})
+		if err != nil {
+			t.Fatal(err)
+		}
+		raw, err := os.ReadFile(filepath.Join(output, filepath.FromSlash(fragmentPath)))
+		if err != nil {
+			t.Fatal(err)
+		}
+		body := string(raw)
+		if strings.Contains(body, `data-manja-fragment-degraded`) {
+			t.Errorf("%s %s degraded", operation.Method, operation.Path)
+		}
+		wants := []string{`aria-label="Responses"`}
+		if operation.Method == "POST" {
+			wants = append(wants, "Create a widget", "application/json", "Request body", "name", "cURL")
+		}
+		if index > 0 {
+			wants = append(wants, `data-manja-operation-neighbor="previous"`, string(operations[index-1].DetailID))
+		}
+		if index+1 < len(operations) {
+			wants = append(wants, `data-manja-operation-neighbor="next"`, string(operations[index+1].DetailID))
+		}
+		for _, want := range wants {
+			if !strings.Contains(body, want) {
+				t.Errorf("%s %s missing %q", operation.Method, operation.Path, want)
+			}
+		}
+		if operation.Method == "DELETE" && operation.OperationID != "deleteWidget" {
+			t.Errorf("explicit ID changed: %q", operation.OperationID)
+		}
+		if want := "documents/widgets/?selected=" + string(operation.DetailID) + "#" + string(operation.DetailID); operation.Href != want {
+			t.Errorf("href = %q, want %q", operation.Href, want)
+		}
+	}
+	if _, err := VerifyExport(context.Background(), output); err != nil {
+		t.Fatal(err)
+	}
+}

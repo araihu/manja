@@ -117,7 +117,13 @@ func PrepareOperationNavigation(
 		return OperationNavigationFragment{}, invalidOperationNavigationField("selected operation")
 	}
 	selected := document.Operations[selectedIndex]
-	if selected.OperationID != operation.ID || selected.Method != operation.Method || selected.Path != operation.Path || selected.RequestTarget != operation.RequestTarget || !equalDomainFixedQuery(selected.FixedQuery, operation.FixedQuery) ||
+	// The source operationId is optional; projected operations use the stable
+	// detail ID as their internal identity when it is absent.
+	selectedID := selected.OperationID
+	if strings.TrimSpace(selectedID) == "" {
+		selectedID = string(selected.DetailID)
+	}
+	if selectedID != operation.ID || selected.Method != operation.Method || selected.Path != operation.Path || selected.RequestTarget != operation.RequestTarget || !equalDomainFixedQuery(selected.FixedQuery, operation.FixedQuery) ||
 		strings.TrimSpace(selected.Title) != operationNavigationTitle(operation.Title, operation.Summary, operation.ID, operation.Method, domain.EffectiveOperationRequestTarget(operation)) ||
 		!equalNavigationStrings(selected.Tags, operation.Tags) || (selected.Href != projected.Href && selected.Href != strings.TrimPrefix(projected.Href, "documents/")) {
 		return OperationNavigationFragment{}, invalidOperationNavigationField("selected directory operation")
