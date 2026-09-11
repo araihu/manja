@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -617,6 +618,142 @@ catalogs:
 			t.Errorf("href = %q, want %q", operation.Href, want)
 		}
 	}
+	if _, err := VerifyExport(context.Background(), output); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestExportSharedSchemaReferencesAcrossBudgetContexts(t *testing.T) {
+	testExportSharedSchemaReferences(t, false)
+}
+
+func TestExportSchemaInventoryRetainsDepthBoundaryLeaves(t *testing.T) {
+	testExportSharedSchemaReferences(t, true)
+}
+
+func testExportSharedSchemaReferences(t *testing.T, boundaryLeaves bool) {
+	t.Helper()
+	root := t.TempDir()
+	source, err := os.ReadFile("../adapters/openapi/testdata/shared-schema-refs.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if boundaryLeaves {
+		var spec map[string]any
+		if err := json.Unmarshal(source, &spec); err != nil {
+			t.Fatal(err)
+		}
+		properties := make(map[string]any)
+		for index := 0; index < 300; index++ {
+			name := fmt.Sprintf("boundary%03d", index)
+			properties[name] = map[string]any{"type": "string", "description": name}
+		}
+		branch := map[string]any{"type": "object", "properties": properties}
+		for depth := 0; depth < 2; depth++ {
+			branch = map[string]any{"type": "object", "properties": map[string]any{"nested": branch}}
+		}
+		operation := spec["paths"].(map[string]any)["/wireless-controller/wtp-profile"].(map[string]any)["get"].(map[string]any)
+		response := operation["responses"].(map[string]any)["200"].(map[string]any)
+		schema := response["content"].(map[string]any)["application/json"].(map[string]any)["schema"].(map[string]any)
+		schema["properties"].(map[string]any)["aBoundary"] = branch
+		source, err = json.Marshal(spec)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	if err := os.WriteFile(filepath.Join(root, "wireless.json"), source, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	configPath := filepath.Join(root, "renderer.yaml")
+	config := `version: 1
+dataDir: data
+catalogs:
+  - id: wireless
+    mount: /wireless
+    title: Wireless
+    localDocs:
+      public: true
+      anonymous: true
+      publicationKey: wireless
+    defaultDocument: wireless
+    profile: strict-v1
+    source:
+      kind: files
+      root: .
+      include: [wireless.json]
+`
+	if err := os.WriteFile(configPath, []byte(config), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	output := filepath.Join(root, "public")
+	receipt, err := ExportRenderer(context.Background(), ExportOptions{RendererOptions: RendererOptions{ConfigPath: configPath}, Output: output, BasePath: "/"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, err := os.ReadFile(filepath.Join(output, "wireless", "snapshots", receipt.Catalogs[0].SnapshotID, "catalog.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	directory, err := catalogjson.DecodeCatalogWithResourceLimits(raw, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	operation := directory.Documents[0].Operations[0]
+	fragmentPath, _, err := artifact.FragmentLocation("/wireless", "wireless", artifact.FragmentIdentity{Format: artifact.FragmentFormatV2, Kind: artifact.FragmentOperation, Resource: string(operation.DetailID)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, err = os.ReadFile(filepath.Join(output, filepath.FromSlash(fragmentPath)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(raw), "data-manja-fragment-degraded") || !strings.Contains(string(raw), `aria-label="Responses"`) || !strings.Contains(string(raw), "Schema preview is limited") {
+		t.Fatal("missing complete operation response")
+	}
+	resources, err := lazySchemaHTMLResources(raw)
+	if err != nil || len(resources) == 0 {
+		t.Fatalf("schema resources: %v, %v", resources, err)
+	}
+	var schemas strings.Builder
+	for _, resource := range resources {
+		schemaPath, _, err := artifact.FragmentLocation("/wireless", "wireless", artifact.FragmentIdentity{Format: artifact.FragmentFormatV2, Kind: artifact.FragmentSchema, Resource: resource})
+		if err != nil {
+			t.Fatal(err)
+		}
+		raw, err := os.ReadFile(filepath.Join(output, filepath.FromSlash(schemaPath)))
+		if err != nil {
+			t.Fatal(err)
+		}
+		schemas.Write(raw)
+	}
+	for i := 0; i < 44; i++ {
+		if want := fmt.Sprintf(`data-schema-tree-row="property%02d"`, i); !strings.Contains(schemas.String(), want) {
+			t.Errorf("shared schema lost %s", want)
+		}
+	}
+	if boundaryLeaves && !strings.Contains(schemas.String(), `data-schema-tree-row="boundary299"`) {
+		t.Fatal("static schema lost retained boundary leaf")
+	}
+	// The hosted catalog uses the same bounded projection contract.
+	handler, _, err := NewRenderer(context.Background(), RendererOptions{ConfigPath: configPath, DataDir: filepath.Join(root, "hosted-data")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/wireless/documents/wireless/?selected="+string(operation.DetailID), nil))
+	if response.Code != http.StatusOK {
+		t.Fatalf("hosted operation: %d %s", response.Code, response.Body.String())
+	}
+	if boundaryLeaves && !strings.Contains(response.Body.String(), `data-schema-tree-row="boundary299"`) {
+		t.Fatal("hosted schema lost retained boundary leaf")
+	}
+	for _, want := range []string{`data-schema-tree-row="property43"`, "Schema preview is limited"} {
+		if !strings.Contains(response.Body.String(), want) {
+			t.Errorf("hosted operation missing %q", want)
+		}
+	}
+
 	if _, err := VerifyExport(context.Background(), output); err != nil {
 		t.Fatal(err)
 	}

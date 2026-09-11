@@ -63,8 +63,8 @@ func TestBrowserOperationSchemaTreeAcceptsOnlyItsOwnNodeBudgetTruncation(t *test
 	if len(result) != 4 {
 		t.Fatalf("selected truncated nodes = %d, want 4", len(result))
 	}
-	if len(result[0].Properties) != len(summaryProperties) {
-		t.Fatalf("selected truncated root edges = %d, want %d", len(result[0].Properties), len(summaryProperties))
+	if len(result[0].Properties) != len(properties) {
+		t.Fatalf("canonical root edges = %d, want %d", len(result[0].Properties), len(properties))
 	}
 	resolver.truncated = nil
 	if err := resolver.selectOperationSchemaTreeNodes(make(map[projection.SchemaRef]projection.SchemaNode), make(map[projection.SchemaRef]bool), 0, domain.SchemaSummary{Properties: summaryProperties}, 0); err == nil {

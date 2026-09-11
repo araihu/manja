@@ -12,6 +12,9 @@ templ operationSchemaProperties(tree operationSchemaTreeData) {
 	if tree.HasContent {
 		<div class="mt-4">
 			@operationSchemaTree(tree)
+			if tree.Root.Limited {
+				<p class="mt-2 text-sm text-on-surface">Schema preview is limited. Download the OpenAPI document for the complete schema.</p>
+			}
 		</div>
 	}
 }

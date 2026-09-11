@@ -1,0 +1,233 @@
+{
+  "openapi": "3.0.0",
+  "info": {
+    "title": "Shared schema references",
+    "version": "1.0.0"
+  },
+  "paths": {
+    "/wireless-controller/wtp-profile": {
+      "get": {
+        "summary": "Get shared profiles",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "branch0": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Shared"
+                      }
+                    },
+                    "branch1": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Shared"
+                      }
+                    },
+                    "branch2": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Shared"
+                      }
+                    },
+                    "branch3": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Shared"
+                      }
+                    },
+                    "branch4": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Shared"
+                      }
+                    },
+                    "branch5": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Shared"
+                      }
+                    },
+                    "branch6": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Shared"
+                      }
+                    },
+                    "branch7": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Shared"
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "headers": {
+              "X-Total": {
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ]
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "Shared": {
+        "type": "object",
+        "properties": {
+          "property00": {
+            "type": "string"
+          },
+          "property01": {
+            "type": "string"
+          },
+          "property02": {
+            "type": "string"
+          },
+          "property03": {
+            "type": "string"
+          },
+          "property04": {
+            "type": "string"
+          },
+          "property05": {
+            "type": "string"
+          },
+          "property06": {
+            "type": "string"
+          },
+          "property07": {
+            "type": "string"
+          },
+          "property08": {
+            "type": "string"
+          },
+          "property09": {
+            "type": "string"
+          },
+          "property10": {
+            "type": "string"
+          },
+          "property11": {
+            "type": "string"
+          },
+          "property12": {
+            "type": "string"
+          },
+          "property13": {
+            "type": "string"
+          },
+          "property14": {
+            "type": "string"
+          },
+          "property15": {
+            "type": "string"
+          },
+          "property16": {
+            "type": "string"
+          },
+          "property17": {
+            "type": "string"
+          },
+          "property18": {
+            "type": "string"
+          },
+          "property19": {
+            "type": "string"
+          },
+          "property20": {
+            "type": "string"
+          },
+          "property21": {
+            "type": "string"
+          },
+          "property22": {
+            "type": "string"
+          },
+          "property23": {
+            "type": "string"
+          },
+          "property24": {
+            "type": "string"
+          },
+          "property25": {
+            "type": "string"
+          },
+          "property26": {
+            "type": "string"
+          },
+          "property27": {
+            "type": "string"
+          },
+          "property28": {
+            "type": "string"
+          },
+          "property29": {
+            "type": "string"
+          },
+          "property30": {
+            "type": "string"
+          },
+          "property31": {
+            "type": "string"
+          },
+          "property32": {
+            "type": "string"
+          },
+          "property33": {
+            "type": "string"
+          },
+          "property34": {
+            "type": "string"
+          },
+          "property35": {
+            "type": "string"
+          },
+          "property36": {
+            "type": "string"
+          },
+          "property37": {
+            "type": "string"
+          },
+          "property38": {
+            "type": "string"
+          },
+          "property39": {
+            "type": "string"
+          },
+          "property40": {
+            "type": "string"
+          },
+          "property41": {
+            "type": "string"
+          },
+          "property42": {
+            "type": "string"
+          },
+          "property43": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  }
+}

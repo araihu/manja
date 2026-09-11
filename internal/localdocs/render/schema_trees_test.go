@@ -3,6 +3,7 @@ package render
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"reflect"
 	"strings"
 	"testing"
@@ -264,4 +265,114 @@ func operationSchemaTreeFixture() (catalog.DetailRecordV1, domain.Operation, []p
 	}
 	schemaLinks := map[string]string{"Phase": documentHref + "?selected=" + phaseID + "#" + phaseID}
 	return detail, operation, nodes, documentHref, schemaLinks
+}
+
+func TestOperationSchemaTreeSharedReferenceKeepsContextBudget(t *testing.T) {
+	object := projection.SchemaNode{Ordinal: 0, ID: "shared", Type: "object"}
+	summary := domain.SchemaSummary{Type: "object"}
+	for index := 0; index < 44; index++ {
+		name := fmt.Sprintf("property%02d", index)
+		object.Properties = append(object.Properties, projection.SchemaNodeProperty{Ordinal: uint32(index), ID: name, Name: name, SchemaRef: 2})
+		summary.Properties = append(summary.Properties, domain.SchemaProperty{Name: name, Schema: domain.SchemaSummary{Type: "string"}})
+	}
+	nodes := []projection.SchemaNode{object, {Ordinal: 1, ID: "array", Type: "array", Items: []projection.SchemaNodeItem{{Ordinal: 0, ID: "items", SchemaRef: 0}}}, {Ordinal: 2, ID: "string", Type: "string"}}
+	resolver, err := newOperationSchemaTreeResolver(nodes, "/docs/documents/doc/", nil, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := resolver.prepare(0, summary, 0); err != nil {
+		t.Fatal(err)
+	}
+	for index := 0; index < 4; index++ {
+		tree, err := resolver.prepare(1, domain.SchemaSummary{Type: "array", Items: &summary}, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(tree.Items.Properties) != 44 {
+			t.Fatal("shared schema lost properties")
+		}
+	}
+	partial := summary
+	partial.Properties = partial.Properties[:25]
+	tree, err := resolver.prepare(1, domain.SchemaSummary{Type: "array", Items: &partial}, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(tree.Items.Properties) != 25 || resolver.loaded != maximumParameterSchemaNodes {
+		t.Fatalf("partial visit = %d properties, %d nodes", len(tree.Items.Properties), resolver.loaded)
+	}
+	if _, err := resolver.prepare(1, domain.SchemaSummary{Type: "array"}, 0); err != nil {
+		t.Fatal(err)
+	}
+	if len(resolver.nodes[0].Properties) != 44 {
+		t.Fatal("canonical shared node was truncated")
+	}
+	for _, loaded := range []int{0, 229} {
+		resolver, err := newOperationSchemaTreeResolver(nodes, "/docs/documents/doc/", nil, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		resolver.loaded = loaded
+		invalid := summary
+		invalid.Properties = invalid.Properties[:26]
+		if _, err := resolver.prepare(1, domain.SchemaSummary{Type: "array", Items: &invalid}, 0); err == nil {
+			t.Fatalf("accepted inconsistent edges with initial budget use %d", loaded)
+		}
+	}
+}
+
+func TestOperationSchemaTreeBoundaryInventoryStillValidatesIdentity(t *testing.T) {
+	detail, operation, _, href, links := operationSchemaTreeFixture()
+	nodes := make([]projection.SchemaNode, 4)
+	for index := range nodes {
+		nodes[index] = projection.SchemaNode{Ordinal: uint32(index), ID: fmt.Sprintf("branch-%d", index), Type: "object"}
+		if index < 3 {
+			nodes[index].Properties = []projection.SchemaNodeProperty{{Ordinal: 0, ID: "nested", Name: "nested", SchemaRef: projection.SchemaRef(index + 1)}}
+		}
+	}
+	schema := domain.SchemaSummary{Type: "object"}
+	for index := 0; index < 300; index++ {
+		name := fmt.Sprintf("leaf-%d", index)
+		nodes[3].Properties = append(nodes[3].Properties, projection.SchemaNodeProperty{Ordinal: uint32(index), ID: name, Name: name, SchemaRef: projection.SchemaRef(index + 4)})
+		nodes = append(nodes, projection.SchemaNode{Ordinal: uint32(index + 4), ID: name, Type: "string"})
+		schema.Properties = append(schema.Properties, domain.SchemaProperty{Name: name, Schema: domain.SchemaSummary{Type: "string"}})
+	}
+	for depth := 0; depth < 3; depth++ {
+		schema = domain.SchemaSummary{Type: "object", Properties: []domain.SchemaProperty{{Name: "nested", Schema: schema}}}
+	}
+	detail.Operation.RequestBody.MediaTypes[0].SchemaRef = 0
+	operation.RequestBody.MediaTypes[0].Schema = schema
+	detail.Operation.Responses = nil
+	operation.Responses = nil
+	if _, err := PrepareOperationSchemaTrees(detail, operation, nodes, href, links); err != nil {
+		t.Fatal(err)
+	}
+	for _, kind := range []string{"duplicate ordinal", "duplicate ID", "unused node"} {
+		t.Run(kind, func(t *testing.T) {
+			changed := append([]projection.SchemaNode(nil), nodes...)
+			switch kind {
+			case "duplicate ordinal":
+				changed[len(changed)-1].Ordinal = changed[len(changed)-2].Ordinal
+			case "duplicate ID":
+				changed[len(changed)-1].ID = changed[len(changed)-2].ID
+			case "unused node":
+				changed = append(changed, projection.SchemaNode{Ordinal: 304, ID: "unused", Type: "string"})
+			}
+			if _, err := PrepareOperationSchemaTrees(detail, operation, changed, href, links); err == nil {
+				t.Fatal("accepted invalid inventory")
+			}
+		})
+	}
+}
+
+func TestLimitedAnonymousSchemaRetainsPreviewNotice(t *testing.T) {
+	root := operationSchemaTreeNodeData{Limited: true}
+	tree := operationSchemaTreeData{ID: "limited-anonymous", Caption: "Response body", HasContent: operationSchemaTreeHasContent(root), Root: root}
+	var output bytes.Buffer
+	if err := operationSchemaProperties(tree).Render(context.Background(), &output); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(output.String(), "Schema preview is limited") {
+		t.Fatal("limited anonymous schema hid its notice")
+	}
 }

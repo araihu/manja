@@ -315,6 +315,12 @@ func (resolver *catalogOperationSchemaResolver) selectedResponseDetailNodes(resp
 
 func (resolver *catalogOperationSchemaResolver) selectedOperationSchemaTreeNodes(detail projection.OperationDetail, operation domain.Operation) ([]projection.SchemaNode, error) {
 	selected := make(map[projection.SchemaRef]projection.SchemaNode)
+	// Parameters and response headers consume the same projection budget as
+	// body trees. Keep their canonical nodes so validation can replay it.
+	for ref, node := range resolver.selected {
+		selected[ref] = cloneProjectionSchemaNode(node)
+	}
+
 	if detail.HasRequestBody {
 		if operation.RequestBody == nil || len(detail.RequestBody.MediaTypes) != len(operation.RequestBody.MediaTypes) {
 			return nil, fmt.Errorf("request schema-tree inventory changed")
@@ -353,16 +359,7 @@ func (resolver *catalogOperationSchemaResolver) selectOperationSchemaTreeNodes(s
 	if !exists {
 		return fmt.Errorf("operation schema-tree node %d was not selected", ref)
 	}
-	selectedNode := cloneProjectionSchemaNode(node)
-	if resolver.truncated[ref] {
-		if len(schema.Properties) <= len(selectedNode.Properties) {
-			selectedNode.Properties = selectedNode.Properties[:len(schema.Properties)]
-		}
-		if schema.Items == nil {
-			selectedNode.Items = nil
-		}
-	}
-	selected[ref] = selectedNode
+	selected[ref] = cloneProjectionSchemaNode(node)
 	if depth >= catalogOperationSchemaDepth || active[ref] {
 		return nil
 	}

@@ -55,6 +55,7 @@ type operationSchemaTreeNodeData struct {
 	Expandable    bool
 	EnumAlias     bool
 	ReferenceHref string
+	Limited       bool
 }
 
 type operationSchemaTreePropertyData struct {
@@ -63,6 +64,8 @@ type operationSchemaTreePropertyData struct {
 	Schema   operationSchemaTreeNodeData
 }
 
+// PrepareOperationSchemaTrees validates canonical nodes for every schema visited
+// by the operation projection, including parameters and response headers.
 func PrepareOperationSchemaTrees(
 	detail catalog.DetailRecordV1,
 	operation domain.Operation,
@@ -78,9 +81,29 @@ func PrepareOperationSchemaTrees(
 	if projected.ID != id || projected.Anchor != id || projected.HeadingID != id || projected.HeadingLevel == 0 || operation.Anchor != projected.Anchor {
 		return OperationSchemaTreesFragment{}, invalidOperationSchemaTreesField("operation identity")
 	}
-	resolver, err := newOperationSchemaTreeResolver(nodes, documentHref, schemaLinks)
+	// Root schemas are still visited after the expansion budget is exhausted.
+	rootCount := len(projected.Parameters) + len(projected.RequestBody.MediaTypes)
+	for _, response := range projected.Responses {
+		rootCount += len(response.Headers) + len(response.MediaTypes)
+	}
+	// Nodes retained at the depth boundary do not consume expansion budget.
+	// Count them from the prepared summaries, stopping once the candidate
+	// inventory is covered. Replay below still validates every edge and rejects
+	// duplicate, unvisited, or inconsistent nodes.
+	retainedCount := rootCount + operationSchemaTreeBoundaryNodes(operation, len(nodes))
+	resolver, err := newOperationSchemaTreeResolver(nodes, documentHref, schemaLinks, retainedCount)
 	if err != nil {
 		return OperationSchemaTreesFragment{}, err
+	}
+	// Replay schema visits in projection order. The node budget is shared by
+	// parameters, request bodies, response headers, and response bodies.
+	if len(projected.Parameters) != len(operation.Parameters) {
+		return OperationSchemaTreesFragment{}, invalidOperationSchemaTreesField("parameter inventory")
+	}
+	for index, parameter := range projected.Parameters {
+		if _, err := resolver.prepare(parameter.SchemaRef, operation.Parameters[index].Schema, 0); err != nil {
+			return OperationSchemaTreesFragment{}, err
+		}
 	}
 	fragment := OperationSchemaTreesFragment{
 		responses: make([][]operationSchemaTreeData, len(projected.Responses)),
@@ -122,6 +145,14 @@ func PrepareOperationSchemaTrees(
 		_, duplicate := responseIDs[response.ID]
 		if response.Ordinal != uint32(responseIndex) || response.ID != response.Status || duplicate || domain.ValidateCanonicalIdentity("response status", response.Status, false) != nil || response.Status != preparedResponse.Status || len(response.MediaTypes) != len(preparedResponse.MediaTypes) {
 			return OperationSchemaTreesFragment{}, invalidOperationSchemaTreesField("response identity")
+		}
+		if len(response.Headers) != len(preparedResponse.Headers) {
+			return OperationSchemaTreesFragment{}, invalidOperationSchemaTreesField("response header inventory")
+		}
+		for index, header := range response.Headers {
+			if _, err := resolver.prepare(header.SchemaRef, preparedResponse.Headers[index].Schema, 0); err != nil {
+				return OperationSchemaTreesFragment{}, err
+			}
 		}
 		responseIDs[response.ID] = struct{}{}
 		fragment.responses[responseIndex] = make([]operationSchemaTreeData, 0, len(response.MediaTypes))
@@ -184,12 +215,50 @@ type operationSchemaTreeResolver struct {
 	nodes        map[projection.SchemaRef]projection.SchemaNode
 	used         map[projection.SchemaRef]struct{}
 	active       map[projection.SchemaRef]bool
+	loaded       int
 	documentHref string
 	schemaLinks  map[string]string
 }
 
-func newOperationSchemaTreeResolver(nodes []projection.SchemaNode, documentHref string, schemaLinks map[string]string) (*operationSchemaTreeResolver, error) {
-	if len(nodes) > maximumParameterSchemaNodes {
+func operationSchemaTreeBoundaryNodes(operation domain.Operation, limit int) int {
+	count := 0
+	var visit func(domain.SchemaSummary, int)
+	visit = func(schema domain.SchemaSummary, depth int) {
+		if count >= limit {
+			return
+		}
+		if depth == maximumParameterSchemaDepth {
+			count++
+			return
+		}
+		for _, property := range schema.Properties {
+			visit(property.Schema, depth+1)
+		}
+		if schema.Items != nil {
+			visit(*schema.Items, depth+1)
+		}
+	}
+	for _, parameter := range operation.Parameters {
+		visit(parameter.Schema, 0)
+	}
+	if operation.RequestBody != nil {
+		for _, media := range operation.RequestBody.MediaTypes {
+			visit(media.Schema, 0)
+		}
+	}
+	for _, response := range operation.Responses {
+		for _, header := range response.Headers {
+			visit(header.Schema, 0)
+		}
+		for _, media := range response.MediaTypes {
+			visit(media.Schema, 0)
+		}
+	}
+	return count
+}
+
+func newOperationSchemaTreeResolver(nodes []projection.SchemaNode, documentHref string, schemaLinks map[string]string, retainedCount int) (*operationSchemaTreeResolver, error) {
+	if retainedCount < 0 || len(nodes) > maximumParameterSchemaNodes+retainedCount {
 		return nil, invalidOperationSchemaTreesField("schema-node inventory")
 	}
 	resolver := &operationSchemaTreeResolver{
@@ -237,20 +306,25 @@ func (resolver *operationSchemaTreeResolver) prepare(ref projection.SchemaRef, s
 			return operationSchemaTreeNodeData{}, invalidOperationSchemaTreesField("schema href")
 		}
 	}
-	if depth >= maximumParameterSchemaDepth || resolver.active[ref] {
+	if depth >= maximumParameterSchemaDepth || resolver.active[ref] || resolver.loaded >= maximumParameterSchemaNodes {
 		if len(schema.Properties) != 0 || schema.Items != nil {
 			return operationSchemaTreeNodeData{}, invalidOperationSchemaTreesField("schema recursion")
 		}
+		data.Limited = len(node.Properties) > 0 || len(node.Items) > 0
 		finishOperationSchemaTreeNode(&data)
 		return data, nil
 	}
-	if len(node.Properties) != len(schema.Properties) || (len(node.Items) == 1) != (schema.Items != nil) {
-		return operationSchemaTreeNodeData{}, invalidOperationSchemaTreesField("schema edges")
-	}
+	resolver.loaded++
 	resolver.active[ref] = true
 	defer delete(resolver.active, ref)
 	data.Properties = make([]operationSchemaTreePropertyData, 0, len(node.Properties))
 	for index, property := range node.Properties {
+		if resolver.loaded >= maximumParameterSchemaNodes {
+			break
+		}
+		if index >= len(schema.Properties) {
+			return operationSchemaTreeNodeData{}, invalidOperationSchemaTreesField("schema edges")
+		}
 		preparedProperty := schema.Properties[index]
 		child, err := resolver.prepare(property.SchemaRef, preparedProperty.Schema, depth+1)
 		if err != nil {
@@ -263,18 +337,24 @@ func (resolver *operationSchemaTreeResolver) prepare(ref projection.SchemaRef, s
 		if property.Name != preparedProperty.Name || property.Required != preparedProperty.Required || expectedDescription != preparedProperty.Description {
 			return operationSchemaTreeNodeData{}, invalidOperationSchemaTreesField("schema property")
 		}
+		data.Limited = data.Limited || child.Limited
 		child.Name = operationSchemaDisplayName(property.Name, child.SchemaName)
 		data.Properties = append(data.Properties, operationSchemaTreePropertyData{Name: child.Name, Required: property.Required, Schema: child})
+	}
+	if len(data.Properties) != len(schema.Properties) || ((len(node.Items) == 1 && resolver.loaded < maximumParameterSchemaNodes) != (schema.Items != nil)) {
+		return operationSchemaTreeNodeData{}, invalidOperationSchemaTreesField("schema edges")
 	}
 	if schema.Items != nil {
 		child, err := resolver.prepare(node.Items[0].SchemaRef, *schema.Items, depth+1)
 		if err != nil {
 			return operationSchemaTreeNodeData{}, err
 		}
+		data.Limited = data.Limited || child.Limited
 		child.Name = operationSchemaDisplayName("items", child.SchemaName)
 		data.Items = &child
 	}
 	data.Expandable = len(data.Properties) > 0 || data.Items != nil && data.Items.Expandable
+	data.Limited = data.Limited || len(data.Properties) < len(node.Properties) || (len(node.Items) > 0 && data.Items == nil)
 	finishOperationSchemaTreeNode(&data)
 	return data, nil
 }
@@ -312,7 +392,7 @@ func operationSchemaDisplayName(name, schemaName string) string {
 }
 
 func operationSchemaTreeHasContent(schema operationSchemaTreeNodeData) bool {
-	return schema.Inline != "" || strings.TrimSpace(schema.Description) != "" || strings.TrimSpace(schema.ExampleText) != "" || len(schema.Properties) > 0 || schema.Items != nil
+	return schema.Limited || schema.Inline != "" || strings.TrimSpace(schema.Description) != "" || strings.TrimSpace(schema.ExampleText) != "" || len(schema.Properties) > 0 || schema.Items != nil
 }
 
 func finishOperationSchemaTreeNode(node *operationSchemaTreeNodeData) {
