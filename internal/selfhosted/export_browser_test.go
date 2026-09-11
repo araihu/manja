@@ -810,7 +810,11 @@ func assertStaticOverviewWithoutSidebar(t *testing.T, page playwright.Page, serv
 	if err := page.Context().SetOffline(true); err != nil {
 		t.Fatal(err)
 	}
-	defer page.Context().SetOffline(false)
+	defer func() {
+		if err := page.Context().SetOffline(false); err != nil {
+			t.Errorf("restore online mode: %v", err)
+		}
+	}()
 	if _, err := page.Reload(); err != nil {
 		t.Fatal(err)
 	}
