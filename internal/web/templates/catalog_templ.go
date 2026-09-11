@@ -1181,7 +1181,7 @@ func catalogHeader(data CatalogPageData) templ.Component {
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 66, "\" alt=\"\" loading=\"lazy\" decoding=\"async\" class=\"size-8 shrink-0 rounded-full object-cover\"> ")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 66, "\" alt=\"\" loading=\"lazy\" decoding=\"async\" class=\"size-8 shrink-0 object-contain\"> ")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
