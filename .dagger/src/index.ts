@@ -120,6 +120,13 @@ export class Manja {
       ])
       .withExec(["npm", "audit", "--package-lock-only", "--omit=dev", "--audit-level=high"])
       .withWorkdir("/work")
+      .withExec([
+        "node", "--test",
+        "internal/web/static/catalog-search.test.mjs",
+        "internal/web/static/local-docs/_static.test.mjs",
+        "internal/web/static/local-docs/_storage.test.mjs",
+        "internal/web/static/local-docs/_worker.test.mjs",
+      ])
       .withExec(["go", "mod", "tidy"])
       .withExec(["git", "diff", "--exit-code", "--", "go.mod", "go.sum"])
       .withWorkdir("/work/tools")

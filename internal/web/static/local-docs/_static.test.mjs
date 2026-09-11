@@ -235,6 +235,7 @@ async function staticActivationFixture(failedPath = '', options = {}) {
   let mainHTML = ''
   let mainWrites = 0
   const main = {
+    dataset: {},
     scrollTop: 0,
     closest(selector) { return selector === '[data-manja-primary-scroll]' ? mainScroll : null },
     querySelector(selector) { return selector === '[data-manja-settled-focus="true"]' ? focusTarget : null },

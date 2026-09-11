@@ -25,7 +25,7 @@ func TestExportBrowserRunsFromGenericStaticServerAtRootAndSubpath(t *testing.T) 
 	if err := os.WriteFile(filepath.Join(root, "private.json"), []byte(spec), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	otherSpec := `{"openapi":"3.0.3","info":{"title":"Other API","version":"v1"},"paths":{"/widgets":{"get":{"operationId":"listWidgets","summary":"List widgets","responses":{"200":{"description":"ok"}}}}}}`
+	otherSpec := `{"openapi":"3.0.3","info":{"title":"Other · API","version":"v1"},"paths":{"/widgets/virtual":{"get":{"operationId":"listVirtualWidgets","summary":"List widgets · Virtual\nInfrastructure","responses":{"200":{"description":"ok"}}}},"/widgets":{"get":{"operationId":"listWidgets","summary":"List widgets","responses":{"200":{"description":"ok"}}}}}}`
 	if err := os.WriteFile(filepath.Join(root, "other.json"), []byte(otherSpec), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -397,6 +397,19 @@ catalogs:
 				searchRequests := append([]string(nil), requests...)
 				requestMu.Unlock()
 				t.Fatalf("deployment-wide static search: %v debug=%#v requests=%#v", err, debug, searchRequests)
+			}
+			if err := searchInput.Fill("widgets"); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := searchInput.Evaluate(`element => element.dispatchEvent(new Event('input', { bubbles: true }))`, nil); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := page.WaitForFunction(`() => {
+				const dialog = document.querySelector('#catalog-search-dialog');
+				const titles = [...dialog.querySelectorAll('[data-catalog-search-result]')].map(el => el.textContent);
+				return titles.length === 2 && titles.some(title => title.includes('Virtual')) && !dialog.textContent.includes('unavailable');
+			}`, nil, playwright.PageWaitForFunctionOptions{Timeout: playwright.Float(5_000)}); err != nil {
+				t.Fatalf("search ranks multiline and Unicode operation titles: %v", err)
 			}
 			if err := searchInput.Fill("List charges"); err != nil {
 				t.Fatal(err)
