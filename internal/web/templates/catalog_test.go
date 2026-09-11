@@ -1986,7 +1986,7 @@ func TestPreparedOperationResponseMediaMatchesCatalogSSRBytes(t *testing.T) {
 		index := firstDifferentByte(legacy.Bytes(), delegated.Bytes())
 		t.Fatalf("delegated response-media summary changed complete SSR endpoint bytes at byte %d:\nlegacy=%q\ndelegated=%q", index, nearbyBytes(legacy.Bytes(), index), nearbyBytes(delegated.Bytes(), index))
 	}
-	operationSchemaTrees, err := localrender.PrepareOperationSchemaTrees(detail, operation, nodes[:5], documentHref, schemaLinks)
+	operationSchemaTrees, err := localrender.PrepareOperationSchemaTrees(detail, operation, nodes, documentHref, schemaLinks)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -64,6 +64,8 @@ type operationSchemaTreePropertyData struct {
 	Schema   operationSchemaTreeNodeData
 }
 
+// PrepareOperationSchemaTrees validates canonical nodes for every schema visited
+// by the operation projection, including parameters and response headers.
 func PrepareOperationSchemaTrees(
 	detail catalog.DetailRecordV1,
 	operation domain.Operation,
