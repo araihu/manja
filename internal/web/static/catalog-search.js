@@ -125,6 +125,12 @@
     }
   }
 
+  // Indexed text is not a user query: titles may be empty, multiline, Unicode,
+  // or longer than the query limits. Fold it for comparison without rejecting it.
+  function normalizeCorpus(input) {
+    return asString(input).normalize("NFKC").replace(/[\u0000-\u001f\u007f-\u009f]+/g, " ").trim().toLowerCase();
+  }
+
   function normalizeExact(input) {
     var value = asString(input);
     if (utf8Length(value) > 256 || /[\u0000-\u001f\u007f-\u009f]/.test(value)) {
@@ -670,8 +676,8 @@
             var leftKind = searchKindPriority(directory.ranks[left].k);
             var rightKind = searchKindPriority(directory.ranks[right].k);
             if (leftKind !== rightKind) return leftKind - rightKind;
-            var leftTitle = normalizeExact(directory.ranks[left].t);
-            var rightTitle = normalizeExact(directory.ranks[right].t);
+            var leftTitle = normalizeCorpus(directory.ranks[left].t);
+            var rightTitle = normalizeCorpus(directory.ranks[right].t);
             if ((leftTitle === exact) !== (rightTitle === exact)) return leftTitle === exact ? -1 : 1;
             var lengthDifference = utf8Length(directory.ranks[left].t) - utf8Length(directory.ranks[right].t);
             return lengthDifference || left - right;
@@ -722,7 +728,7 @@
   };
 
   function deploymentNavigationMatch(value, query) {
-	var normalized = asString(value).normalize("NFKC").replace(/[\u0000-\u001f\u007f-\u009f]+/g, " ").trim().toLowerCase();
+	var normalized = normalizeCorpus(value);
 	var exact = normalizeExact(query);
 	if (!normalized || !exact) return -1;
 	if (normalized === exact) return 0;
@@ -842,7 +848,7 @@
 		if (left._context !== right._context) return left._context - right._context;
 		var kind = searchKindPriority(left.kind) - searchKindPriority(right.kind);
 		if (kind) return kind;
-		return normalizeExact(left.title).localeCompare(normalizeExact(right.title)) || left.href.localeCompare(right.href);
+		return normalizeCorpus(left.title).localeCompare(normalizeCorpus(right.title)) || left.href.localeCompare(right.href);
 	  });
 	  return { items: merged.slice(0, MAX_RESULTS), failures: failures, catalogs: catalogResults.length };
 	}.bind(this));
