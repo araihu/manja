@@ -74,6 +74,7 @@ func (handler *CatalogHandler) catalogPageDataWithSidebarQuery(
 	}
 	data.CatalogMetrics = &catalogMetrics
 	presentation := handler.presentation[mount]
+	data.HideOverviewSidebar = presentation.HideOverviewSidebar
 	data.CatalogReadme = strings.TrimSpace(presentation.Readme)
 	data.CatalogLicense = templates.CatalogOrganizationLicenseData{
 		Name: strings.TrimSpace(presentation.License.Name),

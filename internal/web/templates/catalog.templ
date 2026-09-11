@@ -94,6 +94,7 @@ type CatalogOrganizationPageData struct {
 
 type CatalogPageData struct {
 	Metadata         PageMetadata
+	HideOverviewSidebar bool
 	OrganizationRoot bool
 	Mount string
 	SnapshotID catalog.SnapshotID
@@ -1379,6 +1380,9 @@ func catalogPathsLinkAttrs(stateKey string) templpkg.Attributes {
 }
 
 func catalogHasSidebar(data CatalogPageData) bool {
+	if data.HideOverviewSidebar && !data.OrganizationRoot && data.Document == nil && data.Search == nil {
+		return false
+	}
 	return data.OrganizationRoot || data.OrganizationNav.Visible || data.Document != nil || data.Search != nil || len(data.Documents) > 0
 }
 

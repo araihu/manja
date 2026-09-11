@@ -494,3 +494,39 @@ func writeRendererConfigWithAllowlist(t *testing.T, data string) string {
 	}
 	return filename
 }
+
+func TestRendererCatalogOverviewSidebarConfiguration(t *testing.T) {
+	for _, test := range []struct {
+		name, setting string
+		want          *bool
+		invalid       bool
+	}{
+		{name: "default"},
+		{name: "hidden", setting: "    catalogOverview:\n      sidebar: false\n", want: new(false)},
+		{name: "visible", setting: "    catalogOverview:\n      sidebar: true\n", want: new(true)},
+		{name: "invalid", setting: "    catalogOverview:\n      sidebar: sometimes\n", invalid: true},
+		{name: "unknown field", setting: "    catalogOverview:\n      sidebaar: false\n", invalid: true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			filename := filepath.Join(t.TempDir(), "renderer.yaml")
+			body := "version: 1\ncatalogs:\n  - id: pets\n    mount: /pets\n    title: Pets\n    profile: strict-v1\n" + test.setting + "    source:\n      kind: files\n      root: .\n      include: [pets.json]\n"
+			if err := os.WriteFile(filename, []byte(body), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			loaded, err := LoadRenderer(filename)
+			if test.invalid {
+				if err == nil {
+					t.Fatal("invalid sidebar setting accepted")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			got := loaded.RuntimeConfig().Catalogs[0].CatalogOverview.Sidebar
+			if (got == nil) != (test.want == nil) || got != nil && *got != *test.want {
+				t.Fatalf("sidebar = %v, want %v", got, test.want)
+			}
+		})
+	}
+}

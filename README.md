@@ -188,6 +188,26 @@ work locally and in any CI environment with the repository checked out.
 
 ## Static export
 
+To give a catalog overview the full page width, hide its document-list sidebar
+in `renderer.yaml`:
+
+```yaml
+catalogs:
+  - id: vmware
+    mount: /vmware
+    title: VMware
+    # Keep the catalog's existing source/profile configuration here.
+    catalogOverview:
+      sidebar: false
+```
+
+The option applies per catalog and only to its overview page, in both the
+server and static export. It removes the desktop sidebar and mobile navigation
+trigger/backdrop. Header search, the document table, and document-page
+operation/schema navigation remain available. Omit the option or set `sidebar: true` to preserve the default. Go consumers use
+`renderer.CatalogConfig.CatalogOverview` with `renderer.CatalogOverview.Sidebar`;
+`nil` keeps the default.
+
 Build a static site from the catalogs in `renderer.yaml`:
 
 ```bash

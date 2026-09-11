@@ -64,6 +64,13 @@ type CatalogConfig struct {
 	CompatibilityAllowlist []byte
 	SEO                    CatalogSEO
 	LocalDocs              CatalogLocalDocs
+	CatalogOverview        CatalogOverview
+}
+
+// CatalogOverview controls only the catalog overview page, never document or
+// search navigation. An omitted Sidebar preserves the default visible sidebar.
+type CatalogOverview struct {
+	Sidebar *bool
 }
 
 type CatalogLocalDocs struct {

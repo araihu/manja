@@ -33,6 +33,7 @@ type CatalogHandler struct {
 }
 
 type CatalogPresentation struct {
+	HideOverviewSidebar bool
 	Description         string
 	Readme              string
 	License             CatalogLicensePresentation
