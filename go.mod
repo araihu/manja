@@ -10,7 +10,7 @@ require (
 	github.com/caarlos0/env/v11 v11.4.1
 	github.com/evanw/esbuild v0.28.2
 	github.com/getkin/kin-openapi v0.149.0
-	github.com/go-openapi/jsonpointer v1.0.1
+	github.com/go-openapi/jsonpointer v1.0.2
 	github.com/hashicorp/golang-lru/v2 v2.0.7
 	github.com/mxschmitt/playwright-go v0.6201.1
 	github.com/testcontainers/testcontainers-go v0.44.0
