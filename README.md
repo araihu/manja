@@ -80,7 +80,7 @@ tests, Playwright, and the standalone `site/` module with `GOWORK=off`.
 bindings. It needs no Docker daemon, privileged service, or host runtime socket.
 Mutable Go, npm, Muamba, and browser caches are partitioned by the runner trust
 boundary. Admitted pull requests run on `hostinger-vps-pr`; protected main,
-tag, publication, deployment, and Assets jobs run on
+tag, publication, and Assets jobs run on
 `hostinger-vps-trusted`. Host configuration isolates the two labels' Dagger
 Engines, sockets, data roots, and ACLs.
 
@@ -92,7 +92,7 @@ npm downloads, Muamba's verified download cache, and Playwright browser tools;
 source, generated outputs, publication artifacts, application state, metadata
 files, and secrets remain outside them.
 
-`publish-image`, `dispatch-fly`, and `update-araihu-assets` are uncached
+`publish-image` and `update-araihu-assets` are uncached
 effect/freshness functions. They require strict JSON `File` inputs, typed
 secrets, and a unique nonce. Local callers can use
 `local-$(uuidgen | tr '[:upper:]' '[:lower:]')` and

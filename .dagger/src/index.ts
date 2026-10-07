@@ -267,57 +267,6 @@ export class Manja {
     return references.join("\n") + `\nrun=${runNonce}`
   }
 
-  /** Dispatch one verified main identity to the central Fly deployment repo. */
-  @func({ cache: "never" })
-  async dispatchFly(
-    metadata: File,
-    token: Secret,
-    runNonce: string,
-  ): Promise<string> {
-    this.validateRunNonce(runNonce)
-    const input = await this.readStringObject(metadata, [
-      "source_repository", "source_run_id", "source_sha",
-    ])
-    this.validateSourceRepository(input.source_repository)
-    if (!/^[0-9a-f]{40}$/.test(input.source_sha)) {
-      throw new Error("Fly source SHA must be a full lowercase Git SHA-1")
-    }
-    if (!/^[1-9][0-9]*$/.test(input.source_run_id)) {
-      throw new Error("Fly source run ID must be a positive decimal integer")
-    }
-    const payload = JSON.stringify({
-      event_type: "manja-main",
-      client_payload: {
-        manja_ref: input.source_sha,
-        manja_sha: input.source_sha,
-        manja_run_id: input.source_run_id,
-        source_repository: "araihu/manja",
-      },
-    })
-
-    return dag.container()
-      .from(GO_IMAGE)
-      .withExec(["apt-get", "update"])
-      .withExec([
-        "apt-get", "install", "-y", "--no-install-recommends", "ca-certificates", "curl",
-      ])
-      .withExec(["rm", "-rf", "/var/lib/apt/lists/*"])
-      .withSecretVariable("GH_TOKEN", token)
-      .withNewFile("/tmp/payload.json", payload)
-      .withEnvVariable("MANJA_RUN_NONCE", runNonce)
-      .withExec([
-        "bash", "-euo", "pipefail", "-c",
-        `curl --fail --silent --show-error --request POST \
-  --header 'Accept: application/vnd.github+json' \
-  --header "Authorization: Bearer $GH_TOKEN" \
-  --header 'X-GitHub-Api-Version: 2022-11-28' \
-  --data-binary @/tmp/payload.json \
-  https://api.github.com/repos/araihu/fly-deploy/dispatches`,
-      ])
-      .withExec(["printf", "Fly dispatch accepted\n"])
-      .stdout()
-  }
-
   /** Verify an immutable Assets handoff and return only allowlisted updated files. */
   @func({ cache: "never" })
   async updateAraihuAssets(
