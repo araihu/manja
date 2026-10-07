@@ -35,7 +35,7 @@ func TestDaggerConfigurationAndRuntimeContract(t *testing.T) {
 
 func TestDaggerModulePreservesPipelineBoundaries(t *testing.T) {
 	module := readFile(t, ".dagger/src/index.ts")
-	for _, function := range []string{"verify", "integration", "image", "publishImage", "dispatchFly", "updateAraihuAssets"} {
+	for _, function := range []string{"verify", "integration", "image", "publishImage", "updateAraihuAssets"} {
 		if !strings.Contains(module, "  "+function+"(") && !strings.Contains(module, "  async "+function+"(") {
 			t.Errorf("Dagger function %s missing", function)
 		}
@@ -72,7 +72,6 @@ func TestDaggerModulePreservesPipelineBoundaries(t *testing.T) {
 		`.dockerBuild({`,
 		`.withRegistryAuth(`,
 		`.publish(`,
-		`https://api.github.com/repos/araihu/fly-deploy/dispatches`,
 		`dag.http(releaseUrl`,
 	} {
 		assertContains(t, module, want)
@@ -199,8 +198,6 @@ func TestProviderValidationPrecedesSensitiveCredentials(t *testing.T) {
 	ci := readFile(t, ".github/workflows/ci.yml")
 	image := workflowJob(t, ci, "image")
 	assertOrdered(t, image, "Materialize trusted publish identity", "REGISTRY_TOKEN: ${{ secrets.GITHUB_TOKEN }}")
-	deploy := workflowJob(t, ci, "deploy")
-	assertOrdered(t, deploy, "Materialize trusted deployment identity", "FLY_DEPLOY_DISPATCH_TOKEN: ${{ secrets.FLY_DEPLOY_DISPATCH_TOKEN }}")
 
 	module := readFile(t, ".dagger/src/index.ts")
 	assertOrdered(t, daggerFunction(t, module, "publishImage"),
@@ -211,13 +208,6 @@ func TestProviderValidationPrecedesSensitiveCredentials(t *testing.T) {
 		"registry username is not a valid GitHub login",
 		"resolvePublication(",
 		".withRegistryAuth(\"ghcr.io\", input.registry_username, registryToken)",
-	)
-	assertOrdered(t, daggerFunction(t, module, "dispatchFly"),
-		"await this.readStringObject(metadata,",
-		"this.validateSourceRepository(input.source_repository)",
-		"Fly source SHA must be a full lowercase Git SHA-1",
-		"Fly source run ID must be a positive decimal integer",
-		".withSecretVariable(\"GH_TOKEN\", token)",
 	)
 	assertOrdered(t, daggerFunction(t, module, "updateAraihuAssets"),
 		"await this.readStringObject(metadata,",
@@ -246,7 +236,7 @@ func TestAssetsPRAdapterExportsExactValidatedSchema(t *testing.T) {
 
 func TestDaggerEffectFunctionsAreFreshAndStrict(t *testing.T) {
 	module := readFile(t, ".dagger/src/index.ts")
-	for _, name := range []string{"publishImage", "dispatchFly", "updateAraihuAssets"} {
+	for _, name := range []string{"publishImage", "updateAraihuAssets"} {
 		body := daggerFunction(t, module, name)
 		if !strings.HasPrefix(strings.TrimSpace(body), `@func({ cache: "never" })`) {
 			t.Errorf("%s is not cache=never", name)
@@ -315,7 +305,7 @@ func TestWorkflowAdaptersUseExactDaggerCLIAndDirectCalls(t *testing.T) {
 		setups int
 		calls  int
 	}{
-		{"ci.yml", 4, 4},
+		{"ci.yml", 3, 3},
 		{"araihu-assets.yml", 1, 1},
 	} {
 		workflow := readFile(t, filepath.Join(".github", "workflows", test.name))
@@ -349,8 +339,6 @@ func TestWorkflowAdaptersUseTypedExternalInputsAndTrustPartitions(t *testing.T) 
 		"--metadata=\"$MANJA_METADATA\"",
 		`test -n "$REGISTRY_TOKEN"`,
 		"--registry-token=env://REGISTRY_TOKEN",
-		`test -n "$FLY_DEPLOY_DISPATCH_TOKEN"`,
-		"--token=env://FLY_DEPLOY_DISPATCH_TOKEN",
 		"--run-nonce='${{ github.run_id }}-${{ github.run_attempt }}'",
 	} {
 		assertContains(t, ci, want)
@@ -467,11 +455,6 @@ dagger call publish-image \
   --source=. \
   --metadata="$MANJA_METADATA" \
   --registry-token=env://REGISTRY_TOKEN \
-  --run-nonce='${{ github.run_id }}-${{ github.run_attempt }}'`: true,
-		`test -n "$FLY_DEPLOY_DISPATCH_TOKEN"
-dagger call dispatch-fly \
-  --metadata="$MANJA_METADATA" \
-  --token=env://FLY_DEPLOY_DISPATCH_TOKEN \
   --run-nonce='${{ github.run_id }}-${{ github.run_attempt }}'`: true,
 		`dagger call update-araihu-assets \
   --source=. \
