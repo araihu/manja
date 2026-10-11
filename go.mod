@@ -3,7 +3,7 @@ module github.com/araihu/manja
 go 1.27.1
 
 require (
-	github.com/a-h/templ v0.3.1020
+	github.com/a-h/templ v0.3.1070
 	github.com/araihu/assets v0.2.3
 	github.com/araihu/goshtoso v0.3.3
 	github.com/araihu/margo v0.0.24
@@ -17,7 +17,7 @@ require (
 	github.com/testcontainers/testcontainers-go/modules/forgejo v0.44.0
 	github.com/yuin/goldmark v1.8.6
 	golang.org/x/net v0.59.0
-	golang.org/x/sys v0.48.0
+	golang.org/x/sys v0.49.0
 	golang.org/x/text v0.42.0
 	gopkg.in/yaml.v3 v3.0.1
 )
