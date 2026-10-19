@@ -7,7 +7,7 @@ require github.com/araihu/manja v0.0.0
 require (
 	github.com/a-h/templ v0.3.1070 // indirect
 	github.com/alecthomas/chroma/v2 v2.27.0 // indirect
-	github.com/araihu/goshtoso v0.3.3 // indirect
+	github.com/araihu/goshtoso v0.4.0 // indirect
 	github.com/araihu/margo v0.0.24 // indirect
 	github.com/dlclark/regexp2/v2 v2.2.1 // indirect
 	github.com/getkin/kin-openapi v0.150.0 // indirect

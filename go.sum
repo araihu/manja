@@ -16,8 +16,8 @@ github.com/alecthomas/repr v0.5.2 h1:SU73FTI9D1P5UNtvseffFSGmdNci/O6RsqzeXJtP0Qs
 github.com/alecthomas/repr v0.5.2/go.mod h1:Fr0507jx4eOXV7AlPV6AVZLYrLIuIeSOWtW57eE/O/4=
 github.com/araihu/assets v0.2.3 h1:PoQ3xfAT58uH+aMLGEyJvzQ8VzqDxBlg66tDfNIA2i4=
 github.com/araihu/assets v0.2.3/go.mod h1:VM1Mx/AHKYDz7SMpaUWS9EDNUmw/aJ5OpyHEpucbihg=
-github.com/araihu/goshtoso v0.3.3 h1:5I5VxwfP+wiz0zmGuk2YjWfU0R9GaussxrFhdZ3xT1Q=
-github.com/araihu/goshtoso v0.3.3/go.mod h1:l/mIkhkc9fqRy6OMAZ0jIYhiCgTba391m0m7iTm4GEc=
+github.com/araihu/goshtoso v0.4.0 h1:xMs4L6+IIItyCySzMFx/vGFXY4C1XjxSCfnGhUAEB+E=
+github.com/araihu/goshtoso v0.4.0/go.mod h1:G2l9ca5YESuKukZsFlTsPhTuTqRI60Puw4s5v2AS000=
 github.com/araihu/margo v0.0.24 h1:JOcvvwF1XIQeoxqN0VrlSPvMWjPoWnW4EWizrspgMqw=
 github.com/araihu/margo v0.0.24/go.mod h1:Q1w1RWSGjdHFZJD8MW3glaiwv+SWh/mep6BSDsW7IbA=
 github.com/caarlos0/env/v11 v11.4.1 h1:fYwH0sWEsBSMPG7t4e/PEfTFzrWrpjyygXyUnWiSwEw=
@@ -138,6 +138,8 @@ github.com/rogpeppe/go-internal v1.15.0 h1:D0RCU5rMAp+SpgkiNdrjfJ+LX4J1M32V2NeCY
 github.com/rogpeppe/go-internal v1.15.0/go.mod h1:DrUVZyrJU+txYW5/1kwtXQSMFio52ZOxX7yM1VHvnxs=
 github.com/santhosh-tekuri/jsonschema/v6 v6.0.3 h1:1EYB5IzjZawrrnELUi78f9fPu57HuXjmddZPjrls/28=
 github.com/santhosh-tekuri/jsonschema/v6 v6.0.3/go.mod h1:JXeL+ps8p7/KNMjDQk3TCwPpBy0wYklyWTfbkIzdIFU=
+github.com/sergi/go-diff v1.4.0 h1:n/SP9D5ad1fORl+llWyN+D6qoUETXNZARKjyY2/KVCw=
+github.com/sergi/go-diff v1.4.0/go.mod h1:A0bzQcvG0E7Rwjx0REVgAGH58e96+X0MeOfepqsbeW4=
 github.com/shirou/gopsutil/v4 v4.26.6 h1:Mzr/npDtQC/xpeEuQKHZt8Zo9CmPvhTj8nkR8w5TLDs=
 github.com/shirou/gopsutil/v4 v4.26.6/go.mod h1:LZ6ewCSkBqUpvSOf+LsTGnRinC6iaNUNMGBtDkJBaLQ=
 github.com/sirupsen/logrus v1.9.4 h1:TsZE7l11zFCLZnZ+teH4Umoq5BhEIfIzfRDZ1Uzql2w=
