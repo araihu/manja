@@ -369,12 +369,7 @@ func (fragment OperationParametersFragment) Render(ctx context.Context, writer i
 		return errInvalidOperationParametersFragment
 	}
 	var output boundedBuffer
-	for index, group := range fragment.groups {
-		if index > 0 {
-			if _, err := output.Write([]byte(" ")); err != nil {
-				return err
-			}
-		}
+	for _, group := range fragment.groups {
 		if len(group.Parameters) == 0 {
 			continue
 		}

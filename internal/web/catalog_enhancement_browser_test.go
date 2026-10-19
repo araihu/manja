@@ -170,6 +170,16 @@ func TestCatalogEnhancementServedOfflineShellPersistsManifestAndTombstonesInBrow
 	if err := context.SetOffline(false); err != nil {
 		t.Fatal(err)
 	}
+	// The offline navigation above can leave Chromium on its network-error
+	// document. Use a fresh client in the same browser context for the next
+	// scenario, preserving the worker, IndexedDB, and tombstone evidence.
+	if err := page.Close(); err != nil {
+		t.Fatal(err)
+	}
+	page, err = context.NewPage()
+	if err != nil {
+		t.Fatal(err)
+	}
 	if _, err := page.Goto(server.URL+"/kubernetes/", playwright.PageGotoOptions{WaitUntil: playwright.WaitUntilStateDomcontentloaded}); err != nil {
 		t.Fatal(err)
 	}

@@ -38,13 +38,13 @@ immutable local sources:
   blobs were independently checked at upstream `origin/main` commit
   `9a1fce17ad1a99892e81bf3b3b36e7ed48448b63`, tree
   `2be5242f515b452052e514c8dd495a95791e5925`;
-- Goshtoso `v0.3.3`, commit
-  `1b6eb747a7de7df5156f51575af46f89fc01013f`, source tree
-  `5f10756fc47c65c6290d46e21bcd56d4e2585c76`, with its upstream MIT
+- Goshtoso `v0.4.0`, commit
+  `51ae589df9adb1b5e029507ed2fe61e5ca51415a`, source tree
+  `bf8a22f934be64b09a88cd15d8a0249ac6277101`, with its upstream MIT
   `LICENSE` blob and SHA-256 receipt recorded in that file. The same blob was
   independently checked at upstream `origin/main` commit
-  `1b6eb747a7de7df5156f51575af46f89fc01013f`, tree
-  `5f10756fc47c65c6290d46e21bcd56d4e2585c76`.
+  `51ae589df9adb1b5e029507ed2fe61e5ca51415a`, tree
+  `bf8a22f934be64b09a88cd15d8a0249ac6277101`.
 
 Those upstream holder/year statements apply only to their respective upstream
 projects. They are not Manja attribution, and their license or notice bytes

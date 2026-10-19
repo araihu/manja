@@ -4,8 +4,9 @@ updates:
     directories:
       - "/"
       - "/site"
+      - "/tools"
     schedule:
-      interval: "weekly"
+      interval: "daily"
     groups:
       go-minor-patch:
         patterns: ["*"]
@@ -31,7 +32,7 @@ updates:
   - package-ecosystem: "docker"
     directory: "/"
     schedule:
-      interval: "weekly"
+      interval: "daily"
     groups:
       container-minor-patch:
         patterns: ["*"]
@@ -51,7 +52,7 @@ updates:
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
-      interval: "weekly"
+      interval: "daily"
     groups:
       github-actions:
         patterns: ["*"]

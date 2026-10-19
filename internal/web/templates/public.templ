@@ -954,7 +954,8 @@ templ endpointSection(op core.Operation, servers []core.SpecServer, exampleSpecJ
 					}));
 				});
 			},
-			focusRequestConfigTrigger() {
+			focusRequestConfigTrigger(previousFocus) {
+				if (previousFocus && document.activeElement !== previousFocus && document.activeElement !== document.body) return;
 				const trigger = this.$refs.requestConfigTrigger;
 				if (trigger && trigger.getClientRects().length > 0 && !trigger.disabled) trigger.focus({ preventScroll: true });
 			},
@@ -1111,7 +1112,7 @@ templ endpointSection(op core.Operation, servers []core.SpecServer, exampleSpecJ
 						<button
 							type="button"
 							x-ref="requestConfigDesktopToggle"
-							x-on:click="requestConfigDesktopVisible = false; $nextTick(() => requestAnimationFrame(() => requestAnimationFrame(() => focusRequestConfigTrigger())))"
+							x-on:click="const previousFocus = $el; requestConfigDesktopVisible = false; $nextTick(() => requestAnimationFrame(() => requestAnimationFrame(() => focusRequestConfigTrigger(previousFocus))))"
 							x-bind:aria-expanded="requestConfigDesktopVisible.toString()"
 							aria-controls={ requestConfigID }
 							aria-label="Collapse request configuration"

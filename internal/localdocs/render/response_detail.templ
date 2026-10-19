@@ -11,9 +11,6 @@ import (
 
 templ operationResponseDetails(response operationResponseDetailData, scope string, schemaLinks map[string]string) {
 	@operationResponseDetailDescription(response.Description)
-	if response.Description != "" && len(response.Headers) > 0 {
-		{ " " }
-	}
 	@operationResponseDetailHeaders(response.Headers, scope, schemaLinks)
 }
 

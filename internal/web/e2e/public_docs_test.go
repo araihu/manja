@@ -782,7 +782,6 @@ func TestRichOperationDetailsKeepHorizontalOverflowLocal(t *testing.T) {
 	if got, ok := desktopVisibility.(map[string]any); !ok || got["enhanced"] != "true" || got["rail"] != "none" || got["trigger"] != "flex" || got["open"] != "false" || got["ariaHidden"] != nil || got["content"] != "grid" || got["contentAriaHidden"] != "true" || got["toggle"] == "none" {
 		t.Fatalf("desktop request configuration should start collapsed behind its trigger, got %#v", desktopVisibility)
 	}
-	desktopToggle := page.Locator(".manja-request-config-desktop-toggle")
 	if err := page.Locator(".manja-request-config-trigger-bar").Click(); err != nil {
 		t.Fatal(err)
 	}
@@ -808,8 +807,19 @@ func TestRichOperationDetailsKeepHorizontalOverflowLocal(t *testing.T) {
 	if state, ok := desktopOpenState.(map[string]any); !ok || state["open"] != "true" || state["content"] == "none" || state["expanded"] != "true" || metricNumber(t, state, "footerGap") < 16 {
 		t.Fatalf("desktop request configuration open state should preserve footer breathing room, got %#v", desktopOpenState)
 	}
-	if err := desktopToggle.Click(); err != nil {
+	// Moving focus while the panel collapses must win over its deferred focus
+	// restoration, including when the next interaction changes the viewport.
+	collapseFocus, err := page.Evaluate(`async () => {
+		document.querySelector('.manja-request-config-desktop-toggle').click();
+		document.getElementById('darkModeToggleBtn').focus();
+		await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+		return document.activeElement?.id;
+	}`)
+	if err != nil {
 		t.Fatal(err)
+	}
+	if collapseFocus != "darkModeToggleBtn" {
+		t.Fatalf("collapsing request configuration stole focus from another control: %v", collapseFocus)
 	}
 	if _, err := page.WaitForFunction(`() => document.querySelector('[data-manja-request-config-sheet]')?.getAttribute('data-open') === 'false'`, nil); err != nil {
 		t.Fatalf("desktop request configuration should collapse from its header toggle: %v", err)
