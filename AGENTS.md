@@ -17,6 +17,14 @@ The current public docs surface is read-only, search-first, and server-rendered.
 It should not grow a v1 "try it" console or server-side proxy for upstream API
 requests.
 
+## Dependency updates
+
+Use the latest stable Go release and dependency versions. Keep root, site,
+external consumer, and tools modules synchronized; update Docker and Dagger Go
+image pins, generator outputs, and exact upstream provenance receipts in the
+same change. Prefer comparing consumers with the root module version over
+duplicating dependency versions in tests. Verify upgrades with the CI gates.
+
 ## Commands
 
 ```bash
