@@ -194,9 +194,25 @@ func copyUpstream(source, root string) error {
 	if err := json.Unmarshal(data, &entries); err != nil {
 		return err
 	}
+	var assets struct {
+		AssetsRevision string `json:"assetsRevision"`
+	}
+	data, err = os.ReadFile(filepath.Join(source, "araihu-assets.json"))
+	if err != nil {
+		return err
+	}
+	if err := json.Unmarshal(data, &assets); err != nil {
+		return err
+	}
 	for _, entry := range entries {
 		if !fs.ValidPath(entry.Path) || !strings.HasPrefix(entry.URL, "https://") {
 			return fmt.Errorf("invalid upstream source")
+		}
+		if entry.Path == "assets-LICENSE" || entry.Path == "assets-NOTICE" {
+			url := "https://raw.githubusercontent.com/araihu/assets/" + assets.AssetsRevision + "/" + strings.TrimPrefix(entry.Path, "assets-")
+			if entry.URL != url {
+				return fmt.Errorf("asset license source differs from pinned asset revision")
+			}
 		}
 		path := filepath.Join(source, "licenses/oci", entry.Path)
 		data, err := os.ReadFile(path)
