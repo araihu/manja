@@ -8,18 +8,20 @@ This module builds two independent static sites for Cloudflare Workers:
 | `manja-demo` | `demo.manja.araihu.com` | `dist/demo` | API documentation demo with browser search |
 
 Both Workers use Static Assets without a Worker script, Go server, database or
-runtime secrets. The demo uses Manja's verified HTML exporter and the original
-Kubernetes (65 documents), GitHub REST API and Stripe catalogs
-from `internal/renderer/testdata/kubernetes/renderer.yaml`, with their existing
-pinned sources, versions, profiles and provenance receipts. Management,
+runtime secrets. The demo uses Manja's verified HTML exporter with the original
+GitHub REST API and Stripe specs plus the smaller official Twilio Messaging
+spec, configured in `demo/renderer.yaml`. Existing source revisions, profiles
+and Stripe provenance receipts are preserved. Management,
 sync and publication actions are available only in the local Go workbench.
-The original remote Kubernetes logo and GitHub label emoji are bundled as
-hash-verified local assets; the OpenAPI source bytes are preserved.
+The GitHub label emoji is bundled as a hash-verified local asset; the OpenAPI
+source bytes are preserved. Twilio's spec declares Apache 2.0 and the upstream
+repository includes an MIT license. Both license texts and attribution are
+published with the demo; see [the input provenance](demo/README.md).
 
-The full original demo exports 26,977 files (about 341 MB), exceeding the
-Workers Free limit of 20,000 assets per Worker. Publishing it requires Workers
-Paid, which supports 100,000 assets per Worker. Static asset storage and
-requests have no usage charge; the account subscription starts at USD 5/month.
+The demo exports 12,327 files (about 150 MB), within the Workers Free limit of
+20,000 assets per Worker. Browser acceptance checks reject an export above that limit. Static
+asset storage and requests have no usage charge; Workers Paid is unnecessary
+for this demo.
 See [Cloudflare's limits](https://developers.cloudflare.com/workers/platform/limits/)
 and [static asset billing](https://developers.cloudflare.com/workers/static-assets/billing-and-limitations/).
 
@@ -42,8 +44,10 @@ npm run dev:demo # http://localhost:8788
 verifies its file inventory, hashes, links, fragments and search artifacts
 in `dist/demo-export`, then copies that tree to `dist/demo` with Cloudflare's
 `_headers` metadata. Keeping that metadata separate preserves export verification
-and incremental reuse. Compiled snapshots remain in `dist/demo-data`, outside the
-published directory; the Stripe source is acquired only during the build. Do not add files or modify exported
+and incremental reuse. Compiled snapshots remain in `dist/demo-data`, isolated
+by configuration hash so removed catalogs cannot survive in navigation or search.
+They stay outside the published directory; the Stripe and Twilio sources are
+acquired only during the build. Do not add files or modify exported
 HTML/JS: the integrity sidecars must match the published bytes. Preview the
 demo through HTTP, rather than opening files directly.
 
@@ -85,10 +89,15 @@ The initial synthetic-demo deployment passed checks on both
 `workers.dev` URLs and the two production domains. The landing domain was moved
 from its previous VPS A record to the `manja-site` Worker, and the demo's managed
 certificate is active.
-The original 67-document demo passed local export verification and browser
-checks; its manual upload was rejected by the Free asset limit before
-publication. That corpus must be published and checked on the public domain
-after the account supports the required asset count.
+The current demo inputs replace Kubernetes with Twilio Messaging to remain
+within the Free asset limit while preserving the original GitHub and Stripe
+specs.
+
+The zone's legacy `manja_catalogs_per_client` rate-limit rule protects dynamic
+catalog rendering at 20 requests per 10 seconds. Its expression excludes only
+`demo.manja.araihu.com`: static search and document navigation fetch multiple
+catalog assets and would otherwise receive HTTP 429. The rule remains enabled
+with its existing threshold for all other hosts.
 
 For a manual Wrangler deployment instead, authenticate against the Cloudflare
 account managing `araihu.com`:

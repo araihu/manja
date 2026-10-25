@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"crypto/sha256"
 	"fmt"
 	"io/fs"
 	"net/http"
@@ -79,13 +80,12 @@ func exportSiteFiles(output string) error {
 	return nil
 }
 
-// ExportDemo publishes the same pinned Kubernetes, GitHub and Stripe catalogs
-// as the original hosted renderer, using the demo domain for public metadata.
+// ExportDemo publishes the pinned GitHub, Stripe and Twilio demo catalogs.
 func ExportDemo(ctx context.Context, output string) error {
 	configPath := firstExistingPath(
-		"../internal/renderer/testdata/kubernetes/renderer.yaml",
-		"internal/renderer/testdata/kubernetes/renderer.yaml",
-		"../../../internal/renderer/testdata/kubernetes/renderer.yaml",
+		"demo/renderer.yaml",
+		"site/demo/renderer.yaml",
+		"../../demo/renderer.yaml",
 	)
 	return exportDemo(ctx, output, configPath, func(event app.ExportProgressEvent) {
 		fmt.Fprintln(os.Stderr, app.FormatExportProgress(event))
@@ -107,11 +107,19 @@ func exportDemo(ctx context.Context, output, sourceConfigPath string, progress a
 	if err != nil {
 		return err
 	}
+	configBytes, err := os.ReadFile(configPath)
+	if err != nil {
+		return err
+	}
+	// Renderer state retains previously activated catalogs. Separate it by
+	// configuration so removing a demo catalog also removes it from navigation
+	// and global search, while repeated builds can reuse the same snapshots.
+	dataDir := filepath.Join(output+"-data", fmt.Sprintf("%x", sha256.Sum256(configBytes)))
 	// Keep the verified export separate from Cloudflare's hosting metadata so
 	// subsequent exports can verify and reuse the complete original inventory.
 	exportRoot := output + "-export"
 	_, err = app.ExportRenderer(ctx, app.ExportOptions{
-		RendererOptions: app.RendererOptions{ConfigPath: configPath, DataDir: output + "-data"},
+		RendererOptions: app.RendererOptions{ConfigPath: configPath, DataDir: dataDir},
 		Output:          exportRoot, BasePath: "/", Progress: progress,
 	})
 	if err != nil {

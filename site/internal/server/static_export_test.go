@@ -93,4 +93,22 @@ func TestStaticSiteAndDemoRunAsSeparateFileTrees(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(siteRoot, "_manja")); !os.IsNotExist(err) {
 		t.Fatal("demo output leaked into the product site")
 	}
+	// Rebuilding after removing a catalog must not expose its persisted renderer
+	// state through the root navigation or global search directory.
+	updated := fixture.String()[:strings.LastIndex(fixture.String(), "  - id: notifications\n")]
+	if err := os.WriteFile(configPath, []byte(updated), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := server.ExportDemoFromConfig(t.Context(), demoRoot, configPath); err != nil {
+		t.Fatal(err)
+	}
+	rebuilt, err := app.VerifyExport(t.Context(), demoRoot+"-export")
+	if err != nil || len(rebuilt.Catalogs) != 2 {
+		t.Fatalf("rebuilt demo receipt = %#v, error = %v", rebuilt, err)
+	}
+	for _, path := range []string{"/", "/_manja/search/directory.json"} {
+		if body := get(t, demo.URL+path, http.StatusOK); strings.Contains(body, "/notifications/v1") {
+			t.Fatalf("removed catalog remains in %s", path)
+		}
+	}
 }

@@ -10,8 +10,7 @@ import (
 
 func TestStaticExportLocalizesPinnedCatalogImages(t *testing.T) {
 	for remote, local := range map[string]string{
-		"https://raw.githubusercontent.com/kubernetes/kubernetes/a818af18fe29d999d6741234c8cd72709ef2f424/logo/logo.svg": "/docs/manja-assets/kubernetes-mark.svg",
-		"https://github.githubassets.com/images/icons/emoji/unicode/1f353.png":                                           "/docs/manja-assets/github-strawberry.png",
+		"https://github.githubassets.com/images/icons/emoji/unicode/1f353.png": "/docs/manja-assets/github-strawberry.png",
 	} {
 		input := []byte(`<html><body><img src="` + remote + `"></body></html>`)
 		output, err := rewriteExportHTML(input, "/docs/", nil)

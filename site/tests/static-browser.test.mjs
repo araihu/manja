@@ -72,22 +72,28 @@ test("separate Workers serve landing/docs and a searchable static demo", {
   assert.equal((await fetch(siteURL + "/missing")).status, 404);
 
   await page.goto(demoURL + "/");
-  for (const catalog of ["kubernetes", "github", "stripe"]) {
-    assert.ok(await page.locator(`a[href="/catalogs/${catalog}/"]`).count(), `missing original catalog: ${catalog}`);
+  for (const catalog of ["twilio", "github", "stripe"]) {
+    assert.ok(await page.locator(`a[href="/catalogs/${catalog}/"]`).count(), `missing demo catalog: ${catalog}`);
   }
+  assert.equal(await page.locator('a[href="/catalogs/kubernetes/"]').count(), 0);
   await page.keyboard.press("Control+k");
   await page.locator("#catalog-search-input").fill("List public repositories");
   await page.locator("#catalog-search-dialog").getByText("List public repositories", { exact: true }).waitFor();
   await page.keyboard.press("Escape");
 
   const waitReady = () => page.waitForFunction(() => document.documentElement.dataset.manjaLocalDocsState === "ready");
-  await page.goto(demoURL + "/catalogs/kubernetes/documents/core-v1/");
+  await page.goto(demoURL + "/catalogs/twilio/documents/twilio-messaging-v1/");
   await waitReady();
-  assert.match(await page.title(), /Kubernetes/);
-  assert.ok(await page.locator('img[src="/manja-assets/kubernetes-mark.svg"]').count());
-  const logo = await fetch(demoURL + "/manja-assets/kubernetes-mark.svg");
-  assert.equal(logo.status, 200);
-  assert.match(logo.headers.get("content-type"), /image\/svg\+xml/);
+  assert.match(await page.title(), /Twilio/);
+  await page.keyboard.press("Control+k");
+  await page.locator("#catalog-search-input").fill("ListService");
+  await page.locator("#catalog-search-dialog").getByRole("option", { name: /^GET ListService operation/ }).first().click();
+  await page.waitForFunction(() => location.search.includes("selected=detail-") && document.querySelector("[data-catalog-main-content]").textContent.includes("ListService"));
+  const notices = await fetch(demoURL + "/manja-assets/twilio-messaging-notices.txt");
+  assert.equal(notices.status, 200);
+  const noticeText = await notices.text();
+  assert.match(noticeText, /Apache License/);
+  assert.match(noticeText, /Copyright \(C\) 2023, Twilio/);
   await page.goto(demoURL + "/catalogs/github/documents/github-v3-rest/");
   await waitReady();
   await page.keyboard.press("Control+k");
@@ -117,7 +123,7 @@ test("separate Workers serve landing/docs and a searchable static demo", {
     await page.setViewportSize({ width, height: 900 });
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
   }
-  for (const path of ["/manage/", "/api/", "/missing.json", "/catalogs/github/documents/missing/"]) {
+  for (const path of ["/manage/", "/api/", "/missing.json", "/catalogs/kubernetes/", "/catalogs/github/documents/missing/"]) {
     assert.equal((await fetch(demoURL + path)).status, 404, path);
   }
   // Hosting must preserve exported bytes, including full offline shells.
@@ -125,6 +131,7 @@ test("separate Workers serve landing/docs and a searchable static demo", {
   const manifestResponse = await fetch(demoURL + "/_manja/export.json");
   assert.equal(manifestResponse.status, 200);
   const manifest = await manifestResponse.json();
+  assert.ok(manifest.files.length + 1 <= 20_000, "demo exceeds Workers Free asset limit");
   // Full source/export verification always happens at build time. The default
   // hosted smoke check covers every full HTML shell plus a distributed sample
   // of fragments, search data and assets; a full audit is opt-in for large demos.
@@ -144,6 +151,6 @@ test("separate Workers serve landing/docs and a searchable static demo", {
       assert.equal(digest, entry.sha256, `published bytes changed: ${entry.path}`);
     }
   }));
-  console.log(`Verified ${files.length} deployed files across ${manifest.catalogs.length} original catalogs.`);
+  console.log(`Verified ${files.length} deployed files across ${manifest.catalogs.length} demo catalogs.`);
   assert.deepEqual(errors, []);
 });
