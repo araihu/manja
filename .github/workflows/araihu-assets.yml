@@ -151,6 +151,8 @@ jobs:
             - Archive SHA-256: `${{ steps.event.outputs.release_sha256 }}`
             - `release.json` SHA-256: `${{ steps.event.outputs.release_json_sha256 }}`
 
+            Before merging a new release, independently verify its source and legal bytes, then update `docs/legal/external-source-provenance.json` and the approved identity in `architecture/external_source_provenance_test.go`. The updater cannot approve this receipt.
+
             This workflow never auto-merges.
           labels: ${{ steps.labels.outputs.labels }}
           add-paths: |
