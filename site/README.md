@@ -59,7 +59,9 @@ The browser check launches both Workers on available local ports and checks
 landing/docs, redirects, operation deep-link reloads, cross-catalog search,
 schema navigation, mobile layout and missing-route responses.
 It compares every full HTML shell and a distributed sample of assets against
-the export's SHA-256 inventory. Set `MANJA_VERIFY_ALL_ASSETS=1` to audit every
+the local export's SHA-256 inventory, requires the published manifest to match
+that build, and checks every landing/docs file against its local bytes.
+Set `MANJA_VERIFY_ALL_ASSETS=1` to audit every
 deployed file. The complete local export is always verified before publication.
 Both Workers send `Cache-Control: no-transform` to preserve generated HTML,
 including offline shells, against Cloudflare's JavaScript Detections injection.

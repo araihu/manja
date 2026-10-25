@@ -2,11 +2,20 @@ import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { once } from "node:events";
 import { createHash } from "node:crypto";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, readFile, readdir, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import { chromium } from "playwright";
+
+const sha256 = bytes => createHash("sha256").update(bytes).digest("hex");
+
+async function verifyPublishedFile(origin, path, expectedHash, status = 200) {
+  const response = await fetch(origin + "/" + path, { signal: AbortSignal.timeout(20_000) });
+  assert.equal(response.status, status, path);
+  assert.match(response.headers.get("cache-control") || "", /no-transform/, path);
+  assert.equal(sha256(Buffer.from(await response.arrayBuffer())), expectedHash, `published bytes changed: ${path}`);
+}
 
 async function startWorker(t, config) {
   const state = await mkdtemp(join(tmpdir(), "manja-worker-state-"));
@@ -132,7 +141,10 @@ test("separate Workers serve landing/docs and a searchable static demo", {
   // Cloudflare's HTML injections can otherwise invalidate their integrity.
   const manifestResponse = await fetch(demoURL + "/_manja/export.json");
   assert.equal(manifestResponse.status, 200);
-  const manifest = await manifestResponse.json();
+  const expectedManifest = await readFile(new URL("../dist/demo-export/_manja/export.json", import.meta.url));
+  const publishedManifest = Buffer.from(await manifestResponse.arrayBuffer());
+  assert.equal(sha256(publishedManifest), sha256(expectedManifest), "published demo does not match this build's export manifest");
+  const manifest = JSON.parse(expectedManifest);
   assert.ok(manifest.files.length + 1 <= 20_000, "demo exceeds Workers Free asset limit");
   // Full source/export verification always happens at build time. The default
   // hosted smoke check covers every full HTML shell plus a distributed sample
@@ -146,13 +158,22 @@ test("separate Workers serve landing/docs and a searchable static demo", {
   await Promise.all(Array.from({ length: 4 }, async () => {
     while (next < files.length) {
       const entry = files[next++];
-      const response = await fetch(demoURL + "/" + entry.path, { signal: AbortSignal.timeout(20_000) });
-      assert.equal(response.status, 200, entry.path);
-      assert.match(response.headers.get("cache-control") || "", /no-transform/, entry.path);
-      const digest = createHash("sha256").update(Buffer.from(await response.arrayBuffer())).digest("hex");
-      assert.equal(digest, entry.sha256, `published bytes changed: ${entry.path}`);
+      await verifyPublishedFile(demoURL, entry.path, entry.sha256);
     }
   }));
-  console.log(`Verified ${files.length} deployed files across ${manifest.catalogs.length} demo catalogs.`);
+  const siteRoot = new URL("../dist/site/", import.meta.url);
+  const siteFiles = (await readdir(siteRoot, { recursive: true })).filter(path => !["_headers", "_redirects"].includes(path));
+  let nextSite = 0;
+  let verifiedSite = 0;
+  await Promise.all(Array.from({ length: 4 }, async () => {
+    while (nextSite < siteFiles.length) {
+      const path = siteFiles[nextSite++];
+      const local = new URL(path, siteRoot);
+      if (!(await stat(local)).isFile()) continue;
+      await verifyPublishedFile(siteURL, path === "404.html" ? "missing" : path, sha256(await readFile(local)), path === "404.html" ? 404 : 200);
+      verifiedSite++;
+    }
+  }));
+  console.log(`Verified ${verifiedSite} site files and ${files.length} demo files against this build across ${manifest.catalogs.length} demo catalogs.`);
   assert.deepEqual(errors, []);
 });
