@@ -2,6 +2,9 @@
 
 Date: 2026-08-15
 
+Asset release evidence updated: 2026-10-25. The original checkpoint and
+remaining clearance decisions below retain their original scope.
+
 Status: **BLOCKED** for redistribution. The repository now carries the
 project's user-authorized MIT license label, a project notice, and an explicit
 third-party notice record. These files are evidence inputs, not a clearance
@@ -30,10 +33,10 @@ requirement for independent authority and attribution evidence.
 `THIRD_PARTY_NOTICES.md` records only material verified from the following
 immutable local sources:
 
-- Arai Hû Assets release `v0.2.1`, revision
-  `fdfb1c2aad8fa61779e7b8c6f208e52a6cf825ce`, release SHA-256
-  `818a32246c040871c8f28bb085269b6b9f21c579b18dc4c3c1f20d70716eaf70`,
-  source tree `e89dce3f6bbb129bf3dfd3f04d874cdb220bb4a0`, with upstream
+- Arai Hû Assets release `v0.2.5`, revision
+  `da708ce30a3806757644278df421ae39fa4ec37c`, release SHA-256
+  `9f5331dc4b6c075aa2dee9b653b0fd7e5ea67d64069155f20da93777fa1df857`,
+  source tree `30ed94741462571739d00339db62367278f41e13`, with upstream
   `LICENSE`/`NOTICE` blob and SHA-256 receipts recorded in that file. The same
   blobs were independently checked at upstream `origin/main` commit
   `9a1fce17ad1a99892e81bf3b3b36e7ed48448b63`, tree

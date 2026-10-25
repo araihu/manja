@@ -22,7 +22,7 @@ Run a pinned release locally after separately verifying its archive:
 ```bash
 go run ./cmd/araihu-assets-update \
   -root . \
-  -release-dir /path/to/extracted/araihu-assets-v0.1.1
+  -release-dir /path/to/extracted/araihu-assets-v0.2.5
 ```
 
 The updater verifies `release.json`, `catalog.json`, selected catalog roles,
@@ -44,3 +44,9 @@ The workflow authenticates the release tag against the dispatched revision,
 verifies and extracts the archive once, proves the updater is idempotent, then
 opens or updates a labeled version branch with a selected-repository GitHub App
 token. It never auto-merges.
+
+Release integration also requires manual review of
+`docs/legal/external-source-provenance.json` and its independently approved
+identity in `architecture/external_source_provenance_test.go`. Verify the new
+release commit, tree, archive, selected source bytes, and legal-file evidence
+before updating that receipt. The updater cannot approve its own provenance.

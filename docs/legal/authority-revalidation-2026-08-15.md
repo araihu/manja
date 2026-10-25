@@ -2,6 +2,10 @@
 
 Date: 2026-08-15
 
+Historical checkpoint. Release and module identities below describe the
+2026-08-15 source freeze. Current consumed identities are maintained in
+[`external-source-provenance.json`](external-source-provenance.json).
+
 Result: **BLOCKED**
 
 This receipt records mechanical identity and public-source observations. It is

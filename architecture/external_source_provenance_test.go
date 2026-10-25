@@ -84,12 +84,12 @@ var approvedExternalSourceProvenance = externalSourceProvenance{
 			TreeSHA:   "2be5242f515b452052e514c8dd495a95791e5925",
 		},
 		Release: assetsReleaseProvenance{
-			Tag:               "v0.2.1",
-			CommitSHA:         "fdfb1c2aad8fa61779e7b8c6f208e52a6cf825ce",
-			TreeSHA:           "e89dce3f6bbb129bf3dfd3f04d874cdb220bb4a0",
-			ArchiveURL:        "https://github.com/araihu/assets/releases/download/v0.2.1/araihu-assets-v0.2.1.tar.gz",
-			ArchiveSHA256:     "818a32246c040871c8f28bb085269b6b9f21c579b18dc4c3c1f20d70716eaf70",
-			ReleaseJSONSHA256: "1e071ba6d88efa862b6166820bdc759c7edb917c8566ce7111358c5c3dc2714e",
+			Tag:               "v0.2.5",
+			CommitSHA:         "da708ce30a3806757644278df421ae39fa4ec37c",
+			TreeSHA:           "30ed94741462571739d00339db62367278f41e13",
+			ArchiveURL:        "https://github.com/araihu/assets/releases/download/v0.2.5/araihu-assets-v0.2.5.tar.gz",
+			ArchiveSHA256:     "9f5331dc4b6c075aa2dee9b653b0fd7e5ea67d64069155f20da93777fa1df857",
+			ReleaseJSONSHA256: "b749ac93b9a56a0884fa9345a4906b99e6b96df903311a5835af3cc4768b79c6",
 		},
 		Legal: []legalFileEvidence{
 			{Path: "LICENSE", Kind: "license", SPDX: "Apache-2.0", Size: 11358, GitBlobSHA: "d645695673349e3947e8e5ae42332d0ac3164cd7", SHA256: "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"},

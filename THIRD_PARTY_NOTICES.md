@@ -8,14 +8,14 @@ trademark permission, or final redistribution clearance. The distribution
 gate must remain fail-closed while any shipped input lacks reviewed attribution
 or terms.
 
-## Arai Hû Assets v0.2.1
+## Arai Hû Assets v0.2.5
 
 Manja's pinned asset manifest (`araihu-assets.json`) identifies release
-`v0.2.1`, revision
-`fdfb1c2aad8fa61779e7b8c6f208e52a6cf825ce`, and release SHA-256
-`818a32246c040871c8f28bb085269b6b9f21c579b18dc4c3c1f20d70716eaf70`.
+`v0.2.5`, revision
+`da708ce30a3806757644278df421ae39fa4ec37c`, and release SHA-256
+`9f5331dc4b6c075aa2dee9b653b0fd7e5ea67d64069155f20da93777fa1df857`.
 The upstream release commit has tree
-`e89dce3f6bbb129bf3dfd3f04d874cdb220bb4a0`.
+`30ed94741462571739d00339db62367278f41e13`.
 
 The upstream `LICENSE` is Apache-2.0 (11,358 bytes, Git blob
 `d645695673349e3947e8e5ae42332d0ac3164cd7`, SHA-256
