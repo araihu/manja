@@ -6,7 +6,7 @@ require (
 	github.com/a-h/templ v0.3.1070
 	github.com/araihu/assets v0.2.3
 	github.com/araihu/goshtoso v0.4.0
-	github.com/araihu/margo v0.0.24
+	github.com/araihu/margo v0.0.25
 	github.com/caarlos0/env/v11 v11.4.1
 	github.com/evanw/esbuild v0.28.2
 	github.com/getkin/kin-openapi v0.151.0
