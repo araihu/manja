@@ -8,8 +8,8 @@ github.com/alecthomas/repr v0.5.4 h1:OVP7JEcuzU9CCDsT6STCr3rg17oQfWILtPWd2EG0uN4
 github.com/alecthomas/repr v0.5.4/go.mod h1:Fr0507jx4eOXV7AlPV6AVZLYrLIuIeSOWtW57eE/O/4=
 github.com/araihu/goshtoso v0.4.0 h1:xMs4L6+IIItyCySzMFx/vGFXY4C1XjxSCfnGhUAEB+E=
 github.com/araihu/goshtoso v0.4.0/go.mod h1:G2l9ca5YESuKukZsFlTsPhTuTqRI60Puw4s5v2AS000=
-github.com/araihu/margo v0.0.24 h1:JOcvvwF1XIQeoxqN0VrlSPvMWjPoWnW4EWizrspgMqw=
-github.com/araihu/margo v0.0.24/go.mod h1:Q1w1RWSGjdHFZJD8MW3glaiwv+SWh/mep6BSDsW7IbA=
+github.com/araihu/margo v0.0.25 h1:dau3FMakAY2PZxxvXUkl+lThhgWhqybSCcc8AEzPhwU=
+github.com/araihu/margo v0.0.25/go.mod h1:Q1w1RWSGjdHFZJD8MW3glaiwv+SWh/mep6BSDsW7IbA=
 github.com/chromedp/cdproto v0.158.3 h1:vLLW+mou2kaaol1Z7E5hFhoqFoEDMJYic/7lG8FsIhI=
 github.com/chromedp/cdproto v0.158.3/go.mod h1:h68JaIuFr9o3yiayxEYhBdvaxgYO3shDrPSYhNlyfu0=
 github.com/chromedp/chromedp v0.21.0 h1:nVHgS2LHyhZJ1l3BWRbG2eFIFYiJMnvkJbELbd8WBoQ=
