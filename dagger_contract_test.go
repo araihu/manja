@@ -265,6 +265,20 @@ func TestAssetsPRAdapterExportsExactValidatedSchema(t *testing.T) {
 	}
 }
 
+func TestOCIValidationIsIndependentAndCannotPublish(t *testing.T) {
+	workflow := readFile(t, ".github/workflows/ci.yml")
+	check := workflowJob(t, workflow, "image-check")
+	assertContains(t, check, "if: github.event_name == 'pull_request'")
+	assertContains(t, check, "runs-on: ubuntu-latest")
+	assertContains(t, check, "dagger call image --source=. sync")
+	assertNotContains(t, check, "needs:")
+	assertNotContains(t, check, "secrets.")
+	assertNotContains(t, check, "packages: write")
+	publication := workflowJob(t, workflow, "image")
+	assertContains(t, publication, "if: github.event_name != 'pull_request'")
+	assertContains(t, publication, "needs: [test, integration]")
+}
+
 func TestDaggerEffectFunctionsAreFreshAndStrict(t *testing.T) {
 	module := readFile(t, ".dagger/src/index.ts")
 	for _, name := range []string{"publishImage", "updateAraihuAssets"} {
@@ -336,7 +350,7 @@ func TestWorkflowAdaptersUseExactDaggerCLIAndDirectCalls(t *testing.T) {
 		setups int
 		calls  int
 	}{
-		{"ci.yml", 4, 5},
+		{"ci.yml", 5, 5},
 		{"araihu-assets.yml", 1, 1},
 	} {
 		workflow := readFile(t, filepath.Join(".github", "workflows", test.name))

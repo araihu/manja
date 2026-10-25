@@ -415,7 +415,7 @@ tar --extract --gzip --file /tmp/araihu-assets-release.tar.gz \
       .withEnvVariable("MANJA_RUN_NONCE", runNonce)
       .withMountedDirectory("/image", image.rootfs())
       .withExec(["go", "run", "./cmd/oci-package", "-verify", "-root", "/image"])
-      .withServiceBinding("manja", image.asService())
+      .withServiceBinding("manja", image.asService({ useEntrypoint: true }))
       .withExec(["wget", "-q", "-O", "/dev/null", "http://manja:8080/"])
       .withExec(["wget", "-q", "-O", "/dev/null", "http://manja:8080/catalogs/kubernetes"])
       .withExec(["wget", "-q", "-O", "/dev/null", "http://manja:8080/catalogs/github"])

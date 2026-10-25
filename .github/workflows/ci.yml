@@ -11,6 +11,22 @@ permissions:
   contents: read
 
 jobs:
+  image-check:
+    name: Validate OCI image
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install or verify exact Dagger CLI
+        env:
+          RUNNER_ENVIRONMENT: ${{ runner.environment }}
+        run: bash .github/scripts/setup-dagger.sh
+      - name: Build and validate image without publishing
+        run: dagger call image --source=. sync
+
   test:
     runs-on: >-
       ${{
@@ -117,6 +133,7 @@ jobs:
 
   image:
     name: Build and publish image
+    if: github.event_name != 'pull_request'
     needs: [test, integration]
     runs-on: >-
       ${{
@@ -146,9 +163,6 @@ jobs:
         env:
           RUNNER_ENVIRONMENT: ${{ runner.environment }}
         run: bash .github/scripts/setup-dagger.sh
-      - name: Build and validate image without publishing
-        if: github.event_name == 'pull_request'
-        run: dagger call image --source=. sync
       - name: Materialize trusted publish identity
         if: github.event_name != 'pull_request'
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0

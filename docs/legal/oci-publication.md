@@ -53,7 +53,7 @@ Dagger pins the build base by digest. `image` and `publish-image` verify the
 image and request the index and all three catalogs. The helper and credentials
 never enter the shipped image. Publication repeats verification using the run
 nonce before adding registry authentication. Only tested `main` and stable
-`vX.Y.Z` tags may publish; pull requests build and smoke-test without publishing.
+`vX.Y.Z` tags may publish; pull requests build and smoke-test in a separate parallel job without publishing.
 
 ```sh
 dagger call image --source=. sync
