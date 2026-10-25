@@ -69,8 +69,8 @@ func TestRoutesRender(t *testing.T) {
 				"Publish OpenAPI docs from the source you already maintain.",
 				"OpenAPI publishing from source",
 				"Versions stay close to source",
-				`href="/demo" target="_blank" rel="noopener"`,
-				`href="/demo" target="_blank" rel="noopener">Open the live demo</a>`,
+				`href="https://demo.manja.araihu.com/" target="_blank" rel="noopener"`,
+				`href="https://demo.manja.araihu.com/" target="_blank" rel="noopener">Open the live demo</a>`,
 			},
 		},
 		{

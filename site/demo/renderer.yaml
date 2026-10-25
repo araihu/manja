@@ -1,0 +1,115 @@
+version: 1
+organization:
+  title: Manja
+  readme: >-
+    Explore GitHub, Stripe and Twilio Messaging as searchable static API
+    documentation. The Twilio specification is pinned to an official release;
+    license and attribution notices are included with the demo.
+  seo:
+    description: Explore OpenAPI catalogs and standalone specs with Manja.
+    canonicalBase: https://demo.manja.araihu.com
+    socialImage: https://demo.manja.araihu.com/manja-assets/manja-social.png
+    socialImageAlt: Manja OpenAPI workbench
+catalogs:
+  - id: github
+    mount: /catalogs/github
+    title: GitHub REST API
+    localDocs:
+      public: true
+      anonymous: true
+      publicationKey: github
+    branding:
+      displayName: GitHub
+      logo:
+        src: /manja-assets/github-mark.svg
+        alt: GitHub
+    license:
+      name: MIT License
+      url: https://github.com/github/rest-api-description/blob/6948cb04f5304188569c4bb4ae2190c08e7cbdba/LICENSE.md
+    defaultDocument: github-v3-rest
+    profile: strict-v1
+    seo:
+      description: Explore the GitHub REST API as a searchable OpenAPI catalog rendered by Manja.
+      canonicalBase: https://manja.araihu.com/catalogs/github
+      socialImage: https://manja.araihu.com/manja-assets/manja-social.png
+      socialImageAlt: GitHub REST API reference rendered by Manja
+    source:
+      kind: files
+      root: ../../internal/adapters/openapi/testdata
+      include:
+        - github-v3-rest.json
+      documents:
+        - path: github-v3-rest.json
+          key: github-v3-rest
+  - id: stripe
+    mount: /catalogs/stripe
+    title: Stripe API
+    localDocs:
+      public: true
+      anonymous: true
+      publicationKey: stripe
+    readme: >-
+      A pinned official Stripe OpenAPI release from 2020-08-27, retained as a
+      stable public demo catalog.
+    branding:
+      displayName: Stripe
+      logo:
+        src: /manja-assets/stripe-mark.svg
+        alt: Stripe
+    license:
+      name: MIT License
+      url: https://github.com/stripe/openapi/blob/d70de345383dd818a0ce831f4e20d375c5a90cec/LICENSE
+    defaultDocument: stripe-v1
+    profile: strict-v1
+    seo:
+      description: Explore the Stripe API as a searchable OpenAPI catalog rendered by Manja.
+      canonicalBase: https://manja.araihu.com/catalogs/stripe
+      socialImage: https://manja.araihu.com/manja-assets/manja-social.png
+      socialImageAlt: Stripe API reference rendered by Manja
+    source:
+      kind: git
+      repository: https://github.com/stripe/openapi.git
+      ref: d70de345383dd818a0ce831f4e20d375c5a90cec
+      integrityReceipt: stripe-openapi.integrity.json
+      include:
+        - openapi/spec3.json
+      documents:
+        - path: openapi/spec3.json
+          key: stripe-v1
+  - id: twilio
+    mount: /catalogs/twilio
+    title: Twilio Messaging API
+    localDocs:
+      public: true
+      anonymous: true
+      publicationKey: twilio
+    branding:
+      displayName: Twilio Messaging
+      logo:
+        src: /manja-assets/twilio-mark.svg
+        alt: Twilio
+    readme: >-
+      The official Twilio Messaging OpenAPI specification, pinned to
+      [d9775142962e](https://github.com/twilio/twilio-oai/blob/d9775142962ea67d5f3d50c5021a23ae6d330c5b/spec/json/twilio_messaging_v1.json).
+      This specification declares Apache 2.0; the upstream repository also
+      includes an MIT license. [Full license and attribution notices](/manja-assets/twilio-messaging-notices.txt)
+      are included with this demo. The upstream specification bytes are unchanged.
+    license:
+      name: Apache 2.0
+      url: https://www.apache.org/licenses/LICENSE-2.0.html
+    defaultDocument: twilio-messaging-v1
+    profile: strict-v1
+    seo:
+      description: Explore Twilio Messaging operations, request bodies and response schemas with Manja.
+      canonicalBase: https://demo.manja.araihu.com/catalogs/twilio
+      socialImage: https://demo.manja.araihu.com/manja-assets/manja-social.png
+      socialImageAlt: Twilio Messaging reference rendered by Manja
+    source:
+      kind: git
+      repository: https://github.com/twilio/twilio-oai.git
+      ref: d9775142962ea67d5f3d50c5021a23ae6d330c5b
+      integrityReceipt: twilio-openapi.integrity.json
+      include: [spec/json/twilio_messaging_v1.json]
+      documents:
+        - path: spec/json/twilio_messaging_v1.json
+          key: twilio-messaging-v1

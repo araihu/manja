@@ -91,6 +91,12 @@ const SOURCE_EXCLUDES = [
   "bin/**",
   "tmp",
   "tmp/**",
+  "site/dist",
+  "site/dist/**",
+  "site/node_modules",
+  "site/node_modules/**",
+  "site/.wrangler",
+  "site/.wrangler/**",
 ]
 
 const ASSET_OUTPUTS = [
@@ -158,6 +164,39 @@ export class Manja {
       .withWorkdir("/work/site")
       .withExec(["go", "mod", "tidy", "-diff"])
       .withExec(["go", "test", "./...", "-count=1"])
+      .withExec(["npm", "ci", "--ignore-scripts", "--no-fund", "--no-audit"])
+      .withExec(["npm", "run", "test:browser"])
+      .stdout()
+  }
+
+  /** Publish the two static Workers from tested main sources, then verify their public URLs. */
+  @func()
+  async deploySites(
+    @argument({ defaultPath: ".", ignore: SOURCE_EXCLUDES }) source: Directory,
+    accountId: string,
+    apiToken: Secret,
+    runNonce: string,
+  ): Promise<string> {
+    if (!/^[0-9a-f]{32}$/.test(accountId)) {
+      throw new Error("Cloudflare account ID must be 32 lowercase hexadecimal characters")
+    }
+    this.validateRunNonce(runNonce)
+    const build = this.browserProject(source, "main")
+      .withWorkdir("/work/site")
+      .withExec(["npm", "ci", "--ignore-scripts", "--no-fund", "--no-audit"])
+      .withExec(["npm", "run", "build"])
+      .withExec(["npx", "playwright", "install", "--with-deps", "chromium"])
+    return build
+      .withEnvVariable("CLOUDFLARE_ACCOUNT_ID", accountId)
+      .withSecretVariable("CLOUDFLARE_API_TOKEN", apiToken)
+      .withEnvVariable("WRANGLER_SEND_METRICS", "false")
+      .withEnvVariable("MANJA_RUN_NONCE", runNonce)
+      .withExec(["npx", "wrangler", "deploy", "--config", "wrangler.demo.jsonc"])
+      .withExec(["npx", "wrangler", "deploy", "--config", "wrangler.jsonc"])
+      .withoutSecretVariable("CLOUDFLARE_API_TOKEN")
+      .withEnvVariable("MANJA_SITE_URL", "https://manja.araihu.com")
+      .withEnvVariable("MANJA_DEMO_URL", "https://demo.manja.araihu.com")
+      .withExec(["npm", "run", "test:deployed"])
       .stdout()
   }
 

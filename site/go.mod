@@ -2,7 +2,10 @@ module github.com/araihu/manja/site
 
 go 1.27.2
 
-require github.com/araihu/manja v0.0.0
+require (
+	github.com/araihu/manja v0.0.0
+	gopkg.in/yaml.v3 v3.0.1
+)
 
 require (
 	github.com/a-h/templ v0.3.1070 // indirect
@@ -22,7 +25,6 @@ require (
 	golang.org/x/net v0.61.0 // indirect
 	golang.org/x/sys v0.49.0 // indirect
 	golang.org/x/text v0.43.0 // indirect
-	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
 
 replace github.com/araihu/manja => ..

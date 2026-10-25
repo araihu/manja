@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 2,
+  "catalogId": "twilio",
+  "cloneRepository": "https://github.com/twilio/twilio-oai.git",
+  "provenanceUrl": "https://github.com/twilio/twilio-oai/tree/d9775142962ea67d5f3d50c5021a23ae6d330c5b",
+  "objectFormat": "sha1",
+  "sourceRoot": ".",
+  "commitObjectId": "d9775142962ea67d5f3d50c5021a23ae6d330c5b",
+  "treeObjectId": "c92020bd5646cd657c1957d04f0150767120fa5a",
+  "artifacts": [
+    {
+      "path": "spec/json/twilio_messaging_v1.json",
+      "mode": "100644",
+      "size": 491482,
+      "gitObjectId": "63a4d44ad292c9056f85e47a9960e424c59f7c20",
+      "sha256": "28993c66048625cb9421c8534609d9b3573365d0e25a5170b5026806634b3f9a"
+    }
+  ]
+}

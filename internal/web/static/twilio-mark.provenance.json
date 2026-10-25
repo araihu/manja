@@ -1,0 +1,41 @@
+{
+  "schemaVersion": 1,
+  "repository": "https://github.com/simple-icons/simple-icons",
+  "version": "9.21.0",
+  "commitSha": "14a89c73d3a1666d3fa073f865fc45ec98b88850",
+  "commitTreeSha": "da461f1a202ecc66b1ec10ce97a10fb0aac7a270",
+  "icon": {
+    "name": "Twilio",
+    "brandSource": "https://www.twilio.com/company/brand",
+    "localPath": "internal/web/static/twilio-mark.svg",
+    "upstreamPath": "icons/twilio.svg",
+    "upstreamSize": 923,
+    "upstreamGitBlobSha": "2b8f075dc305ea5ef18cf11860d6f71f40b4c7d0",
+    "upstreamSha256": "52dcf3b6cea65fdc9b5b525aa2bb9517f405a58c68d464f207f0ddf60c0114ea",
+    "localSize": 1126,
+    "localGitBlobSha": "cd5192b04452e1a816e992290c960543c77aa6ce",
+    "localSha256": "0c8aeb54df24518eab93fab1659d0ef6775efbb429afdce11a397de3b9206188",
+    "adaptation": {
+      "sourceViewBox": "0 0 24 24",
+      "localViewBox": "0 0 64 64",
+      "pathDataComparison": "exact",
+      "pathDataSha256": "639c066ffe1a39d9603bb22964ac02f6da8e78c0f5ef262b300c5e9672f2a171",
+      "localPathTransform": "translate(14 14) scale(1.5)",
+      "localPathFill": "#fff",
+      "localBackgroundCircle": {
+        "cx": "32",
+        "cy": "32",
+        "r": "32",
+        "fill": "#F22F46"
+      }
+    }
+  },
+  "license": {
+    "name": "CC0 1.0 Universal",
+    "spdx": "CC0-1.0",
+    "upstreamPath": "LICENSE.md",
+    "size": 6568,
+    "gitBlobSha": "f0f4b0328708d159d99696ccdb9d09284037d63e",
+    "sha256": "4674b210d8a1a0926e070843950aef43367cf44dcac86081c25540e03c089e58"
+  }
+}

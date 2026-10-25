@@ -1,5 +1,13 @@
 schema: 1
 resources:
+  github-label-emoji:
+    version: "1f353"
+    downloads:
+      image:
+        url: https://github.githubassets.com/images/icons/emoji/unicode/1f353.png
+        path: internal/web/static/github-strawberry.png
+        max_size: 1MiB
+        integrity: sha384-kzwYl41fcgrDnMXRKuRcUP8j03ex7hhoYNvbIDRNqwUuAUjpCRgAHk7qSHtTFqU9
   readme-httpsnippet:
     version: "11.1.0"
     downloads:
