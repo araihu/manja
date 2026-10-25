@@ -30,7 +30,7 @@ RUN mkdir -p /out/rootfs/usr/local/bin /out/rootfs/app/renderer \
  && printf 'manja:x:65532:65532:Manja:/app:/sbin/nologin\n' > /out/rootfs/etc/passwd \
  && printf 'manja:x:65532:\n' > /out/rootfs/etc/group \
  && mkdir -p /out/rootfs/usr/share/licenses/manja \
- && { apk info -v ca-certificates ca-certificates-bundle; \
+ && { apk info -v ca-certificates ca-certificates-bundle && \
       printf 'Source: https://gitlab.alpinelinux.org/alpine/aports/-/tree/3.24-stable/main/ca-certificates\n'; \
     } > /out/rootfs/usr/share/licenses/manja/ca-certificates-source.txt \
  && CGO_ENABLED=0 go build -trimpath -o /out/oci-package ./cmd/oci-package \

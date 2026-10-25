@@ -1,5 +1,10 @@
 # Root legal materials
 
+> Historical checkpoint: [OCI publication](oci-publication.md) records the
+> maintainer-confirmed MIT attribution and current packaging policy from
+> 2026-10-25. The provisional-file and blanket-block statements below describe
+> the August checkpoint. The generic evidence API retains its own checks.
+
 Date: 2026-08-15
 
 Asset release evidence updated: 2026-10-25. The original checkpoint and
