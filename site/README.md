@@ -76,7 +76,10 @@ browser checks against the public domains.
 
 Configure the repository variable `CLOUDFLARE_ACCOUNT_ID` and repository secret
 `CLOUDFLARE_API_TOKEN` before merging. Scope the token to the target account and
-the Workers/DNS permissions needed by these custom domains. Credentials are
+grant Workers Scripts Write there, plus Zone Read and Workers Routes Write for
+the `araihu.com` zone. The configured account-owned token is named
+`manja-github-actions-static-workers`; its value is stored only in the repository
+secret. Credentials are
 injected only at publication time and removed before browser validation.
 
 ## Manual deployment for initial validation
