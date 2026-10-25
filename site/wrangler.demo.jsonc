@@ -1,0 +1,12 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "manja-demo",
+  "compatibility_date": "2026-10-25",
+  "assets": {
+    "directory": "./dist/demo",
+    "html_handling": "auto-trailing-slash",
+    "not_found_handling": "none"
+  },
+  "routes": [{ "pattern": "demo.manja.araihu.com", "custom_domain": true }],
+  "workers_dev": true
+}

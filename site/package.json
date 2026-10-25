@@ -1,0 +1,27 @@
+{
+  "name": "manja-site",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22.13.0"
+  },
+  "scripts": {
+    "build": "go run ./cmd/generate",
+    "build:site": "go run ./cmd/generate -target site",
+    "build:demo": "go run ./cmd/generate -target demo",
+    "dev:site": "npm run build:site && wrangler dev --config wrangler.jsonc --port 8787",
+    "dev:demo": "npm run build:demo && wrangler dev --config wrangler.demo.jsonc --port 8788",
+    "deploy:site": "npm run build:site && wrangler deploy --config wrangler.jsonc",
+    "deploy:demo": "npm run build:demo && wrangler deploy --config wrangler.demo.jsonc",
+    "test": "go test ./...",
+    "test:browser": "npm run build && node --test tests/static-browser.test.mjs",
+    "test:deployed": "node --input-type=module -e \"if (!process.env.MANJA_SITE_URL || !process.env.MANJA_DEMO_URL) throw new Error('Set MANJA_SITE_URL and MANJA_DEMO_URL')\" && node --test tests/static-browser.test.mjs"
+  },
+  "devDependencies": {
+    "playwright": "1.62.1",
+    "wrangler": "4.152.0"
+  },
+  "overrides": {
+    "undici": "7.30.1"
+  }
+}

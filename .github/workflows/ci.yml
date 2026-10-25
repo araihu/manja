@@ -48,6 +48,37 @@ jobs:
           test -z "$(git ls-files '.dagger/sdk/**')"
           dagger call verify --source=. --trust-domain="$MANJA_TRUST_DOMAIN"
 
+  deploy-sites:
+    name: Deploy static site and demo
+    needs: [test]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: [self-hosted, Linux, X64, hostinger-vps-trusted]
+    timeout-minutes: 20
+    concurrency:
+      group: manja-sites-production
+      cancel-in-progress: false
+    env:
+      CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install or verify exact Dagger CLI
+        env:
+          RUNNER_ENVIRONMENT: ${{ runner.environment }}
+        run: bash .github/scripts/setup-dagger.sh
+      - name: Deploy demo, deploy site, and check public behavior
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          : "${CLOUDFLARE_ACCOUNT_ID:?Set the CLOUDFLARE_ACCOUNT_ID repository variable}"
+          : "${CLOUDFLARE_API_TOKEN:?Set the CLOUDFLARE_API_TOKEN repository secret}"
+          dagger call deploy-sites \
+            --source=. \
+            --account-id="$CLOUDFLARE_ACCOUNT_ID" \
+            --api-token=env://CLOUDFLARE_API_TOKEN \
+            --run-nonce='${{ github.run_id }}-${{ github.run_attempt }}'
+
   integration:
     timeout-minutes: 15
     runs-on: >-

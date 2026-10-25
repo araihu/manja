@@ -11,6 +11,8 @@ const (
 	Home PageKey = "home"
 	Docs PageKey = "docs"
 
+	DemoOrigin = "https://demo.manja.araihu.com"
+
 	productionSiteOrigin = "https://manja.araihu.com"
 	socialPreviewURL     = productionSiteOrigin + "/manja-assets/manja-social.png"
 	socialPreviewAlt     = "Manja OpenAPI documentation preview"
@@ -103,7 +105,7 @@ var pageTemplate = template.Must(template.New("page").Parse(`<!doctype html>
         <img class="brand-logo" src="/static/manja-logo.svg" alt="Manja" width="160" height="40" crossorigin="anonymous" data-asset-brand="logo">
       </a>
       <div class="nav-actions">
-        <a href="/demo" target="_blank" rel="noopener"{{if eq .Path "/demo"}} aria-current="page"{{end}}>Demo</a>
+        <a href="` + DemoOrigin + `/" target="_blank" rel="noopener">Demo</a>
         <a href="/docs"{{if eq .Path "/docs"}} aria-current="page"{{end}}>Docs</a>
         <a href="https://github.com/araihu/manja" rel="noopener">GitHub</a>
         <button class="theme-toggle" type="button" aria-label="Toggle color mode" aria-pressed="false" data-theme-toggle>
@@ -135,7 +137,7 @@ var homeBody = template.HTML(`
     <h1>Publish OpenAPI docs from the source you already maintain.</h1>
     <p class="lead">Connect an OpenAPI file or Git source, choose a revision, and publish a read-only reference. Manja keeps readers on the selected known-good version when a later sync or parse fails.</p>
     <div class="actions">
-      <a class="button button-primary" href="/demo" target="_blank" rel="noopener">Open the live demo</a>
+      <a class="button button-primary" href="` + DemoOrigin + `/" target="_blank" rel="noopener">Open the live demo</a>
       <a class="button button-secondary" href="/docs">Run Manja</a>
     </div>
   </div>
