@@ -29,7 +29,9 @@ npm run dev:demo # http://localhost:8788
 
 `build:site` and `build:demo` build each output separately. The demo export
 verifies its file inventory, hashes, links, fragments and search artifacts
-before replacing an existing export. Do not add files or modify exported
+in `dist/demo-export`, then copies that tree to `dist/demo` with Cloudflare's
+`_headers` metadata. Keeping that metadata separate preserves export verification
+and incremental reuse. Do not add files or modify exported
 HTML/JS: the integrity sidecars must match the published bytes. Preview the
 demo through HTTP, rather than opening files directly.
 
@@ -40,6 +42,9 @@ directly. Unknown demo routes return 404; there is no SPA fallback.
 The browser check launches both Workers on available local ports and checks
 landing/docs, redirects, operation deep-link reloads, cross-catalog search,
 schema navigation, mobile layout and missing-route responses.
+It also compares every deployed demo file against the export's SHA-256 inventory.
+Both Workers send `Cache-Control: no-transform` to preserve generated HTML,
+including offline shells, against Cloudflare's JavaScript Detections injection.
 
 ## Production deployment through CI
 

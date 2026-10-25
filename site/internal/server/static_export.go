@@ -15,6 +15,8 @@ import (
 	"github.com/araihu/manja/site/internal/site"
 )
 
+const staticHeaders = "/*\n  Cache-Control: public, max-age=0, must-revalidate, no-transform\n  X-Content-Type-Options: nosniff\n  Referrer-Policy: strict-origin-when-cross-origin\n"
+
 // ExportSite renders the landing and setup documentation without starting the
 // demo workbench or writing publication state.
 func ExportSite(output string) error {
@@ -65,7 +67,7 @@ func exportSiteFiles(output string) error {
 	for name, body := range map[string][]byte{
 		"manja-assets/manja-social.png": response.Body.Bytes(),
 		"404.html":                      []byte(`<!doctype html><html lang="en"><meta charset="utf-8"><title>Page not found | Manja</title><h1>Page not found</h1><p><a href="/">Return to Manja</a></p></html>`),
-		"_headers":                      []byte("/*\n  X-Content-Type-Options: nosniff\n  Referrer-Policy: strict-origin-when-cross-origin\n"),
+		"_headers":                      []byte(staticHeaders),
 		"_redirects":                    []byte("/demo " + site.DemoOrigin + "/ 302\n/demo/* " + site.DemoOrigin + "/:splat 302\n"),
 	} {
 		if err := writeStaticFile(output, name, body); err != nil {
@@ -98,11 +100,31 @@ func ExportDemo(ctx context.Context, output string) error {
 	if err := os.WriteFile(configPath, []byte(config.String()), 0o600); err != nil {
 		return err
 	}
+	// Keep the verified export separate from Cloudflare's hosting metadata so
+	// subsequent exports can verify and reuse the complete original inventory.
+	exportRoot := output + "-export"
 	_, err = app.ExportRenderer(ctx, app.ExportOptions{
 		RendererOptions: app.RendererOptions{ConfigPath: configPath, DataDir: filepath.Join(root, "data")},
-		Output:          output, BasePath: "/",
+		Output:          exportRoot, BasePath: "/",
 	})
-	return err
+	if err != nil {
+		return err
+	}
+	stage, err := os.MkdirTemp(filepath.Dir(output), ".manja-demo-*")
+	if err != nil {
+		return err
+	}
+	defer os.RemoveAll(stage)
+	if err := os.CopyFS(stage, os.DirFS(exportRoot)); err != nil {
+		return err
+	}
+	if err := writeStaticFile(stage, "_headers", []byte(staticHeaders)); err != nil {
+		return err
+	}
+	if err := os.RemoveAll(output); err != nil {
+		return err
+	}
+	return os.Rename(stage, output)
 }
 
 func writeStaticFile(root, name string, body []byte) error {

@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { once } from "node:events";
+import { createHash } from "node:crypto";
 import test from "node:test";
 import { chromium } from "playwright";
 
@@ -100,5 +101,21 @@ test("separate Workers serve landing/docs and a searchable static demo", { timeo
   for (const path of ["/manage/", "/api/", "/missing.json", "/payments/v1/documents/missing/"]) {
     assert.equal((await fetch(demoURL + path)).status, 404, path);
   }
+  // Hosting must preserve exported bytes, including full offline shells.
+  // Cloudflare's HTML injections can otherwise invalidate their integrity.
+  const manifestResponse = await fetch(demoURL + "/_manja/export.json");
+  assert.equal(manifestResponse.status, 200);
+  const manifest = await manifestResponse.json();
+  let next = 0;
+  await Promise.all(Array.from({ length: 4 }, async () => {
+    while (next < manifest.files.length) {
+      const entry = manifest.files[next++];
+      const response = await fetch(demoURL + "/" + entry.path, { signal: AbortSignal.timeout(20_000) });
+      assert.equal(response.status, 200, entry.path);
+      assert.match(response.headers.get("cache-control") || "", /no-transform/, entry.path);
+      const digest = createHash("sha256").update(Buffer.from(await response.arrayBuffer())).digest("hex");
+      assert.equal(digest, entry.sha256, `published bytes changed: ${entry.path}`);
+    }
+  }));
   assert.deepEqual(errors, []);
 });

@@ -22,7 +22,7 @@ func TestStaticSiteAndDemoRunAsSeparateFileTrees(t *testing.T) {
 	if err := server.ExportDemo(t.Context(), demoRoot); err != nil {
 		t.Fatal(err)
 	}
-	receipt, err := app.VerifyExport(t.Context(), demoRoot)
+	receipt, err := app.VerifyExport(t.Context(), demoRoot+"-export")
 	if err != nil {
 		t.Fatal(err)
 	}
