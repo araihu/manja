@@ -1,5 +1,21 @@
 schema: 1
 resources:
+  kubernetes-logo:
+    version: "a818af18fe29d999d6741234c8cd72709ef2f424"
+    downloads:
+      image:
+        url: https://raw.githubusercontent.com/kubernetes/kubernetes/a818af18fe29d999d6741234c8cd72709ef2f424/logo/logo.svg
+        path: internal/web/static/kubernetes-mark.svg
+        max_size: 1MiB
+        integrity: sha384-0PcusAy629njzJYTM3M1nObTJhmWGYkApdb/Pva22S6yfC2R6GYsRVpEmKyAS9IY
+  github-label-emoji:
+    version: "1f353"
+    downloads:
+      image:
+        url: https://github.githubassets.com/images/icons/emoji/unicode/1f353.png
+        path: internal/web/static/github-strawberry.png
+        max_size: 1MiB
+        integrity: sha384-kzwYl41fcgrDnMXRKuRcUP8j03ex7hhoYNvbIDRNqwUuAUjpCRgAHk7qSHtTFqU9
   readme-httpsnippet:
     version: "11.1.0"
     downloads:

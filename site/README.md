@@ -8,9 +8,20 @@ This module builds two independent static sites for Cloudflare Workers:
 | `manja-demo` | `demo.manja.araihu.com` | `dist/demo` | API documentation demo with browser search |
 
 Both Workers use Static Assets without a Worker script, Go server, database or
-runtime secrets. The demo uses Manja's verified HTML exporter and the three
-synthetic published specs already used by the local workbench. Management,
+runtime secrets. The demo uses Manja's verified HTML exporter and the original
+Kubernetes (65 documents), GitHub REST API and Stripe catalogs
+from `internal/renderer/testdata/kubernetes/renderer.yaml`, with their existing
+pinned sources, versions, profiles and provenance receipts. Management,
 sync and publication actions are available only in the local Go workbench.
+The original remote Kubernetes logo and GitHub label emoji are bundled as
+hash-verified local assets; the OpenAPI source bytes are preserved.
+
+The full original demo exports 26,977 files (about 341 MB), exceeding the
+Workers Free limit of 20,000 assets per Worker. Publishing it requires Workers
+Paid, which supports 100,000 assets per Worker. Static asset storage and
+requests have no usage charge; the account subscription starts at USD 5/month.
+See [Cloudflare's limits](https://developers.cloudflare.com/workers/platform/limits/)
+and [static asset billing](https://developers.cloudflare.com/workers/static-assets/billing-and-limitations/).
 
 ## Build and preview
 
@@ -31,7 +42,8 @@ npm run dev:demo # http://localhost:8788
 verifies its file inventory, hashes, links, fragments and search artifacts
 in `dist/demo-export`, then copies that tree to `dist/demo` with Cloudflare's
 `_headers` metadata. Keeping that metadata separate preserves export verification
-and incremental reuse. Do not add files or modify exported
+and incremental reuse. Compiled snapshots remain in `dist/demo-data`, outside the
+published directory; the Stripe source is acquired only during the build. Do not add files or modify exported
 HTML/JS: the integrity sidecars must match the published bytes. Preview the
 demo through HTTP, rather than opening files directly.
 
@@ -42,7 +54,9 @@ directly. Unknown demo routes return 404; there is no SPA fallback.
 The browser check launches both Workers on available local ports and checks
 landing/docs, redirects, operation deep-link reloads, cross-catalog search,
 schema navigation, mobile layout and missing-route responses.
-It also compares every deployed demo file against the export's SHA-256 inventory.
+It compares every full HTML shell and a distributed sample of assets against
+the export's SHA-256 inventory. Set `MANJA_VERIFY_ALL_ASSETS=1` to audit every
+deployed file. The complete local export is always verified before publication.
 Both Workers send `Cache-Control: no-transform` to preserve generated HTML,
 including offline shells, against Cloudflare's JavaScript Detections injection.
 
@@ -67,10 +81,14 @@ in its Wrangler config, then assign its custom domain. This uses the same
 static output that CI publishes. The MCP connection is separate from Wrangler
 authentication and must not be copied into CI.
 
-The initial manual deployment on 2026-10-25 passed the browser checks on both
+The initial synthetic-demo deployment passed checks on both
 `workers.dev` URLs and the two production domains. The landing domain was moved
 from its previous VPS A record to the `manja-site` Worker, and the demo's managed
 certificate is active.
+The original 67-document demo passed local export verification and browser
+checks; its manual upload was rejected by the Free asset limit before
+publication. That corpus must be published and checked on the public domain
+after the account supports the required asset count.
 
 For a manual Wrangler deployment instead, authenticate against the Cloudflare
 account managing `araihu.com`:

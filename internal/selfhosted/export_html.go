@@ -276,6 +276,17 @@ func rewriteHTMLURL(node *html.Node, attribute, value, basePath string, catalogC
 		return "", fmt.Errorf("invalid export URL %q", value)
 	}
 	if parsed.IsAbs() {
+		// The built-in public catalogs use these pinned resources. Publish their
+		// verified embedded copies while preserving the original OpenAPI bytes.
+		if attribute == "src" && node.Data == "img" {
+			local := map[string]string{
+				"https://raw.githubusercontent.com/kubernetes/kubernetes/a818af18fe29d999d6741234c8cd72709ef2f424/logo/logo.svg": "/manja-assets/kubernetes-mark.svg",
+				"https://github.githubassets.com/images/icons/emoji/unicode/1f353.png":                                           "/manja-assets/github-strawberry.png",
+			}[value]
+			if local != "" {
+				return prefixExportBase(basePath, local), nil
+			}
+		}
 		anchorHTTPS := parsed.Scheme == "https" && attribute == "href" && (node.Data == "a" || hasHTMLAttribute(node, "rel", "canonical"))
 		anchorMailto := parsed.Scheme == "mailto" && attribute == "href" && node.Data == "a" && strings.TrimSpace(parsed.Opaque) != ""
 		if !anchorHTTPS && !anchorMailto {

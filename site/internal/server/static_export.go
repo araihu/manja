@@ -10,9 +10,11 @@ import (
 	"path/filepath"
 	"strings"
 
+	configadapter "github.com/araihu/manja/internal/adapters/config"
 	app "github.com/araihu/manja/internal/selfhosted"
 	"github.com/araihu/manja/internal/web"
 	"github.com/araihu/manja/site/internal/site"
+	"gopkg.in/yaml.v3"
 )
 
 const staticHeaders = "/*\n  Cache-Control: public, max-age=0, must-revalidate, no-transform\n  X-Content-Type-Options: nosniff\n  Referrer-Policy: strict-origin-when-cross-origin\n"
@@ -77,35 +79,40 @@ func exportSiteFiles(output string) error {
 	return nil
 }
 
-// ExportDemo publishes only the synthetic, published demo specs. Git history,
-// candidate revisions, credentials and management handlers are never exported.
-// The renderer exports and verifies all navigation, fragments and search data.
+// ExportDemo publishes the same pinned Kubernetes, GitHub and Stripe catalogs
+// as the original hosted renderer, using the demo domain for public metadata.
 func ExportDemo(ctx context.Context, output string) error {
+	configPath := firstExistingPath(
+		"../internal/renderer/testdata/kubernetes/renderer.yaml",
+		"internal/renderer/testdata/kubernetes/renderer.yaml",
+		"../../../internal/renderer/testdata/kubernetes/renderer.yaml",
+	)
+	return exportDemo(ctx, output, configPath, func(event app.ExportProgressEvent) {
+		fmt.Fprintln(os.Stderr, app.FormatExportProgress(event))
+	})
+}
+
+// ExportDemoFromConfig supports bounded fixtures and alternate local catalogs.
+func ExportDemoFromConfig(ctx context.Context, output, configPath string) error {
+	return exportDemo(ctx, output, configPath, nil)
+}
+
+func exportDemo(ctx context.Context, output, sourceConfigPath string, progress app.ExportProgress) error {
 	root, err := os.MkdirTemp("", "manja-site-demo-*")
 	if err != nil {
 		return err
 	}
 	defer os.RemoveAll(root)
-
-	var config strings.Builder
-	fmt.Fprintf(&config, "version: 1\norganization:\n  title: Manja API demo\n  seo:\n    canonicalBase: %q\ncatalogs:\n", site.DemoOrigin)
-	for _, seed := range demoSpecSeeds {
-		name := seed.ID + ".yaml"
-		if err := os.WriteFile(filepath.Join(root, name), []byte(seed.PublishedSpec), 0o600); err != nil {
-			return err
-		}
-		fmt.Fprintf(&config, "  - id: %q\n    mount: %q\n    title: %q\n    defaultDocument: %q\n    profile: strict-v1\n    seo:\n      canonicalBase: %q\n    source:\n      kind: files\n      root: .\n      include: [%q]\n", seed.ProjectID, seed.PublishedPath, seed.ProjectName, seed.ID, site.DemoOrigin+seed.PublishedPath, name)
-	}
-	configPath := filepath.Join(root, "renderer.yaml")
-	if err := os.WriteFile(configPath, []byte(config.String()), 0o600); err != nil {
+	configPath, err := writeDemoConfig(sourceConfigPath, root)
+	if err != nil {
 		return err
 	}
 	// Keep the verified export separate from Cloudflare's hosting metadata so
 	// subsequent exports can verify and reuse the complete original inventory.
 	exportRoot := output + "-export"
 	_, err = app.ExportRenderer(ctx, app.ExportOptions{
-		RendererOptions: app.RendererOptions{ConfigPath: configPath, DataDir: filepath.Join(root, "data")},
-		Output:          exportRoot, BasePath: "/",
+		RendererOptions: app.RendererOptions{ConfigPath: configPath, DataDir: output + "-data"},
+		Output:          exportRoot, BasePath: "/", Progress: progress,
 	})
 	if err != nil {
 		return err
@@ -125,6 +132,58 @@ func ExportDemo(ctx context.Context, output string) error {
 		return err
 	}
 	return os.Rename(stage, output)
+}
+
+func writeDemoConfig(sourcePath, outputDir string) (string, error) {
+	sourcePath, err := filepath.Abs(sourcePath)
+	if err != nil {
+		return "", err
+	}
+	config, err := configadapter.LoadRenderer(sourcePath)
+	if err != nil {
+		return "", err
+	}
+	sourceDir := filepath.Dir(sourcePath)
+	resolve := func(name string) string {
+		if name == "" || filepath.IsAbs(name) {
+			return name
+		}
+		return filepath.Join(sourceDir, name)
+	}
+	updateSEO := func(seo *configadapter.RendererSEOConfig) {
+		seo.CanonicalBase = strings.ReplaceAll(seo.CanonicalBase, "https://manja.araihu.com", site.DemoOrigin)
+		seo.SocialImage = strings.ReplaceAll(seo.SocialImage, "https://manja.araihu.com", site.DemoOrigin)
+	}
+	updateSEO(&config.Organization.SEO)
+	for i := range config.Catalogs {
+		catalog := &config.Catalogs[i]
+		updateSEO(&catalog.SEO)
+		catalog.CompatibilityAllowlist = resolve(catalog.CompatibilityAllowlist)
+		if catalog.Source.Kind == configadapter.RendererSourceFiles {
+			catalog.Source.Root = resolve(catalog.Source.Root)
+		}
+		if catalog.Source.IntegrityReceipt != nil {
+			name := *catalog.Source.IntegrityReceipt
+			data, err := os.ReadFile(resolve(name))
+			if err != nil {
+				return "", err
+			}
+			name = filepath.Base(name)
+			if err := os.WriteFile(filepath.Join(outputDir, name), data, 0o600); err != nil {
+				return "", err
+			}
+			catalog.Source.IntegrityReceipt = &name
+		}
+	}
+	data, err := yaml.Marshal(config)
+	if err != nil {
+		return "", err
+	}
+	path := filepath.Join(outputDir, "renderer.yaml")
+	if err := os.WriteFile(path, data, 0o600); err != nil {
+		return "", err
+	}
+	return path, nil
 }
 
 func writeStaticFile(root, name string, body []byte) error {

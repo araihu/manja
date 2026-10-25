@@ -1,6 +1,7 @@
 package server_test
 
 import (
+	"fmt"
 	"io/fs"
 	"net/http"
 	"net/http/httptest"
@@ -19,7 +20,27 @@ func TestStaticSiteAndDemoRunAsSeparateFileTrees(t *testing.T) {
 	if err := server.ExportSite(siteRoot); err != nil {
 		t.Fatal(err)
 	}
-	if err := server.ExportDemo(t.Context(), demoRoot); err != nil {
+	// Keep HTTP/export packaging tests small; production input preservation is
+	// tested separately against the original renderer configuration.
+	var fixture strings.Builder
+	fixture.WriteString("version: 1\ncatalogs:\n")
+	for _, spec := range []struct{ id, mount, title, document string }{
+		{"payments", "/payments/v1", "Acme Payments API", "payments-api"},
+		{"identity", "/identity/v2", "Acme Identity API", "identity-api"},
+		{"notifications", "/notifications/v1", "Acme Notifications API", "notifications-api"},
+	} {
+		name := spec.document + ".json"
+		body := fmt.Sprintf(`{"openapi":"3.0.3","info":{"title":%q,"version":"1"},"paths":{"/items":{"get":{"responses":{"200":{"description":"ok"}}}}}}`, spec.title)
+		if err := os.WriteFile(filepath.Join(root, name), []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		fmt.Fprintf(&fixture, "  - id: %s\n    mount: %s\n    title: %s\n    defaultDocument: %s\n    profile: strict-v1\n    source:\n      kind: files\n      root: .\n      include: [%s]\n", spec.id, spec.mount, spec.title, spec.document, name)
+	}
+	configPath := filepath.Join(root, "renderer.yaml")
+	if err := os.WriteFile(configPath, []byte(fixture.String()), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := server.ExportDemoFromConfig(t.Context(), demoRoot, configPath); err != nil {
 		t.Fatal(err)
 	}
 	receipt, err := app.VerifyExport(t.Context(), demoRoot+"-export")

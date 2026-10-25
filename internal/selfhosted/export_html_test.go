@@ -8,6 +8,19 @@ import (
 	"github.com/araihu/manja/internal/localdocs"
 )
 
+func TestStaticExportLocalizesPinnedCatalogImages(t *testing.T) {
+	for remote, local := range map[string]string{
+		"https://raw.githubusercontent.com/kubernetes/kubernetes/a818af18fe29d999d6741234c8cd72709ef2f424/logo/logo.svg": "/docs/manja-assets/kubernetes-mark.svg",
+		"https://github.githubassets.com/images/icons/emoji/unicode/1f353.png":                                           "/docs/manja-assets/github-strawberry.png",
+	} {
+		input := []byte(`<html><body><img src="` + remote + `"></body></html>`)
+		output, err := rewriteExportHTML(input, "/docs/", nil)
+		if err != nil || !strings.Contains(string(output), `src="`+local+`"`) {
+			t.Fatalf("image %s: %s, %v", remote, output, err)
+		}
+	}
+}
+
 func TestRewriteExportHTMLPrefixesSubpathInjectsDescriptorAndRemovesRuntimeRoutes(t *testing.T) {
 	descriptor := localdocs.DescriptorV1{SchemaVersion: 1, CatalogID: "payments", PublicationKey: "payments", Public: true, Anonymous: true, PublicationBase: "/group/project/payments/", Static: &localdocs.StaticDescriptorV1{DeploymentBase: "/group/project/"}}
 	input := `<!doctype html><html><head><link rel="stylesheet" href="/assets/app.css"><script id="manja-local-docs-descriptor" type="application/json">{"stale":true}</script><script src="/manja-assets/catalog-search.js"></script></head><body><a href="/">Catalogs</a><a href="/payments/catalog.json">Catalog</a><a href="/payments/openapi/core.json">Source</a><a href="https://example.test/repo">Repo</a><a href="mailto:docs@example.test">Email</a><div data-manja-copy-page><a href="/payments/documents/core/page.md?selected=x">Markdown</a></div><div data-table-row-link="/payments/documents/core/" data-catalog-search-href="/payments/search" data-search-global="true" data-search-mount="/" data-search-scope-label="All catalogs" hx-get="/payments/documents/core/?selected=x" data-search-fallback-url="/payments/search.json" data-search-child-base="/payments/snapshots/s/search-data/"></div><script id="catalog-search-current-visit" type="application/json">{"href":"/payments/documents/core/?selected=detail#detail","title":"Core"}</script><script id="manja-local-docs-descriptor" type="application/json">{"stale":true}</script><script src="/manja-assets/local-docs.js"></script></body></html>`
@@ -48,6 +61,7 @@ func TestRewriteExportHTMLPrefixesSubpathInjectsDescriptorAndRemovesRuntimeRoute
 func TestRewriteExportHTMLRejectsExternalResources(t *testing.T) {
 	for _, input := range []string{
 		`<html><head><script src="https://cdn.example/app.js"></script></head></html>`,
+		`<html><body><img src="https://cdn.example/logo.svg"></body></html>`,
 		`<html><head></head><body><img src="//cdn.example/logo.svg"></body></html>`,
 		`<html><head></head><body><a href="http://example.test">insecure</a></body></html>`,
 	} {
