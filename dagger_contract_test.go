@@ -216,6 +216,36 @@ func TestProviderValidationPrecedesSensitiveCredentials(t *testing.T) {
 	)
 }
 
+func TestStaticWorkerDeploymentKeepsMainAndCredentialBoundaries(t *testing.T) {
+	ci := readFile(t, ".github/workflows/ci.yml")
+	job := workflowJob(t, ci, "deploy-sites")
+	for _, want := range []string{
+		"needs: [test]",
+		"if: github.event_name == 'push' && github.ref == 'refs/heads/main'",
+		"runs-on: [self-hosted, Linux, X64, hostinger-vps-trusted]",
+		"group: manja-sites-production",
+		"cancel-in-progress: false",
+		"CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}",
+		"--api-token=env://CLOUDFLARE_API_TOKEN",
+	} {
+		assertContains(t, job, want)
+	}
+	for _, name := range []string{"test", "integration", "image"} {
+		assertNotContains(t, workflowJob(t, ci, name), "CLOUDFLARE_API_TOKEN")
+	}
+	deploy := daggerFunction(t, readFile(t, ".dagger/src/index.ts"), "deploySites")
+	assertOrdered(t, deploy,
+		"this.validateRunNonce(runNonce)",
+		`const build = this.browserProject(source, "main")`,
+		`.withSecretVariable("CLOUDFLARE_API_TOKEN", apiToken)`,
+		`.withEnvVariable("MANJA_RUN_NONCE", runNonce)`,
+		`["npx", "wrangler", "deploy", "--config", "wrangler.demo.jsonc"]`,
+		`["npx", "wrangler", "deploy", "--config", "wrangler.jsonc"]`,
+		`.withoutSecretVariable("CLOUDFLARE_API_TOKEN")`,
+		`["npm", "run", "test:deployed"]`,
+	)
+}
+
 func TestAssetsPRAdapterExportsExactValidatedSchema(t *testing.T) {
 	assets := readFile(t, ".github/workflows/araihu-assets.yml")
 	for _, want := range []string{
@@ -305,7 +335,7 @@ func TestWorkflowAdaptersUseExactDaggerCLIAndDirectCalls(t *testing.T) {
 		setups int
 		calls  int
 	}{
-		{"ci.yml", 3, 3},
+		{"ci.yml", 4, 4},
 		{"araihu-assets.yml", 1, 1},
 	} {
 		workflow := readFile(t, filepath.Join(".github", "workflows", test.name))
@@ -455,6 +485,13 @@ dagger call publish-image \
   --source=. \
   --metadata="$MANJA_METADATA" \
   --registry-token=env://REGISTRY_TOKEN \
+  --run-nonce='${{ github.run_id }}-${{ github.run_attempt }}'`: true,
+		`: "${CLOUDFLARE_ACCOUNT_ID:?Set the CLOUDFLARE_ACCOUNT_ID repository variable}"
+: "${CLOUDFLARE_API_TOKEN:?Set the CLOUDFLARE_API_TOKEN repository secret}"
+dagger call deploy-sites \
+  --source=. \
+  --account-id="$CLOUDFLARE_ACCOUNT_ID" \
+  --api-token=env://CLOUDFLARE_API_TOKEN \
   --run-nonce='${{ github.run_id }}-${{ github.run_attempt }}'`: true,
 		`dagger call update-araihu-assets \
   --source=. \
