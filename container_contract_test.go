@@ -10,7 +10,7 @@ import (
 func TestContainerImageContract(t *testing.T) {
 	dockerfile := readFile(t, "Dockerfile")
 	assertContains(t, dockerfile, "FROM golang:"+moduleGoVersion(t)+"-alpine AS build")
-	assertContains(t, dockerfile, "FROM alpine:")
+	assertContains(t, dockerfile, "FROM scratch")
 	assertContains(t, dockerfile, "ARG MANJA_VERSION=dev")
 	assertContains(t, dockerfile, "./cmd/manja-runtime")
 	assertContains(t, dockerfile, "-tags=manja_runtime")
@@ -18,14 +18,16 @@ func TestContainerImageContract(t *testing.T) {
 	assertContains(t, dockerfile, "manja build")
 	assertContains(t, dockerfile, "-renderer-config /src/internal/renderer/testdata/kubernetes/renderer.yaml")
 	assertContains(t, dockerfile, "-data-dir /out/renderer-data")
-	assertContains(t, dockerfile, "COPY --from=build /out/renderer-data /app/renderer-data")
+	assertContains(t, dockerfile, "cp -a /out/renderer-data /out/rootfs/app/renderer-data")
 	assertContains(t, dockerfile, "internal/renderer/testdata/kubernetes/renderer.yaml")
 	assertContains(t, dockerfile, "internal/renderer/testdata/kubernetes/default-allowlist.json")
-	assertContains(t, dockerfile, "internal/web/static")
+	assertContains(t, dockerfile, "./cmd/oci-package")
+	assertContains(t, dockerfile, "COPY --from=build /out/rootfs /")
+	assertContains(t, dockerfile, "USER 65532:65532")
 	assertContains(t, dockerfile, `CMD ["-addr", ":8080", "-renderer-config", "/app/renderer/renderer.yaml", "-data-dir", "/app/renderer-data"]`)
 	assertNotContains(t, dockerfile, "internal/adapters/openapi/testdata/github-v3-rest.json")
 	assertNotContains(t, dockerfile, `CMD ["-addr", ":8080", "-spec"`)
-	finalStage := dockerfile[strings.LastIndex(dockerfile, "FROM alpine:"):]
+	finalStage := dockerfile[strings.LastIndex(dockerfile, "FROM scratch"):]
 	assertNotContains(t, finalStage, " git")
 	assertNotContains(t, finalStage, "/out/manja ")
 }
@@ -85,7 +87,7 @@ func TestContainerPublishWorkflowContract(t *testing.T) {
 	}
 	for _, exact := range []string{
 		`const OCI_DESCRIPTION = "Hosted OpenAPI renderer and publisher built with Goshtoso"`,
-		`const OCI_LICENSES = ""`,
+		`const OCI_LICENSES = "MIT"`,
 		`const OCI_SOURCE = "https://github.com/araihu/manja"`,
 		`const OCI_TITLE = "manja"`,
 		`const OCI_URL = "https://github.com/araihu/manja"`,

@@ -207,6 +207,7 @@ func TestProviderValidationPrecedesSensitiveCredentials(t *testing.T) {
 		"source SHA must be a full lowercase Git SHA-1",
 		"registry username is not a valid GitHub login",
 		"resolvePublication(",
+		"await this.verifyImage(source, built, runNonce)",
 		".withRegistryAuth(\"ghcr.io\", input.registry_username, registryToken)",
 	)
 	assertOrdered(t, daggerFunction(t, module, "updateAraihuAssets"),
@@ -262,6 +263,20 @@ func TestAssetsPRAdapterExportsExactValidatedSchema(t *testing.T) {
 	} {
 		assertContains(t, assets, want)
 	}
+}
+
+func TestOCIValidationIsIndependentAndCannotPublish(t *testing.T) {
+	workflow := readFile(t, ".github/workflows/ci.yml")
+	check := workflowJob(t, workflow, "image-check")
+	assertContains(t, check, "if: github.event_name == 'pull_request'")
+	assertContains(t, check, "runs-on: ubuntu-latest")
+	assertContains(t, check, "dagger call image --source=. sync")
+	assertNotContains(t, check, "needs:")
+	assertNotContains(t, check, "secrets.")
+	assertNotContains(t, check, "packages: write")
+	publication := workflowJob(t, workflow, "image")
+	assertContains(t, publication, "if: github.event_name != 'pull_request'")
+	assertContains(t, publication, "needs: [test, integration]")
 }
 
 func TestDaggerEffectFunctionsAreFreshAndStrict(t *testing.T) {
@@ -335,7 +350,7 @@ func TestWorkflowAdaptersUseExactDaggerCLIAndDirectCalls(t *testing.T) {
 		setups int
 		calls  int
 	}{
-		{"ci.yml", 4, 4},
+		{"ci.yml", 5, 5},
 		{"araihu-assets.yml", 1, 1},
 	} {
 		workflow := readFile(t, filepath.Join(".github", "workflows", test.name))
@@ -480,6 +495,7 @@ func thinHostRuntimeViolation(workflow string) string {
 		`test -z "$(git ls-files '.dagger/sdk/**')"
 dagger call verify --source=. --trust-domain="$MANJA_TRUST_DOMAIN"`: true,
 		`dagger call integration --source=. --trust-domain="$MANJA_TRUST_DOMAIN"`: true,
+		`dagger call image --source=. sync`:                                       true,
 		`test -n "$REGISTRY_TOKEN"
 dagger call publish-image \
   --source=. \

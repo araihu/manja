@@ -12,3 +12,7 @@ vendor
 *.test
 go.work
 go.work.sum
+site/dist
+site/node_modules
+site/.wrangler
+.cache
