@@ -123,3 +123,25 @@ func TestUpstreamLicenseChecksumIsRequired(t *testing.T) {
 		t.Fatalf("error=%v", err)
 	}
 }
+
+func TestAssetNoticesMustMatchPinnedRevision(t *testing.T) {
+	source := t.TempDir()
+	path := filepath.Join(source, "licenses/oci")
+	if err := os.MkdirAll(path, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(source, "araihu-assets.json"), []byte(`{"assetsRevision":"current"}`), 0644); err != nil {
+		t.Fatal(err)
+	}
+	entries := []map[string]string{{"path": "assets-NOTICE", "url": "https://raw.githubusercontent.com/araihu/assets/old/NOTICE", "sha256": strings.Repeat("0", 64)}}
+	data, err := json.Marshal(entries)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(path, "sources.json"), data, 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := copyUpstream(source, t.TempDir()); err == nil || !strings.Contains(err.Error(), "pinned asset revision") {
+		t.Fatalf("error=%v", err)
+	}
+}
