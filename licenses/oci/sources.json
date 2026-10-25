@@ -1,0 +1,42 @@
+[
+  {
+    "path": "github-LICENSE.md",
+    "url": "https://raw.githubusercontent.com/github/rest-api-description/6948cb04f5304188569c4bb4ae2190c08e7cbdba/LICENSE.md",
+    "sha256": "3243761cbac07e6d169a5a2f4e7c25cc544da85248e735df74c3672e055cc87b"
+  },
+  {
+    "path": "stripe-LICENSE",
+    "url": "https://raw.githubusercontent.com/stripe/openapi/d70de345383dd818a0ce831f4e20d375c5a90cec/LICENSE",
+    "sha256": "8c1ce883f4eee7b531e0b7872dbfc72d410ced87dfff9501305de05ca8d203e5"
+  },
+  {
+    "path": "simple-icons-16-LICENSE.md",
+    "url": "https://raw.githubusercontent.com/simple-icons/simple-icons/fc91ef03ec113d06627b2d47c1f9644ca202b6f9/LICENSE.md",
+    "sha256": "9046848b63a5c92bff14e4accca80bd987e0623b74adf9226ce5198d312b79d5"
+  },
+  {
+    "path": "simple-icons-9-LICENSE.md",
+    "url": "https://raw.githubusercontent.com/simple-icons/simple-icons/14a89c73d3a1666d3fa073f865fc45ec98b88850/LICENSE.md",
+    "sha256": "4674b210d8a1a0926e070843950aef43367cf44dcac86081c25540e03c089e58"
+  },
+  {
+    "path": "assets-LICENSE",
+    "url": "https://raw.githubusercontent.com/araihu/assets/fdfb1c2aad8fa61779e7b8c6f208e52a6cf825ce/LICENSE",
+    "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
+  },
+  {
+    "path": "assets-NOTICE",
+    "url": "https://raw.githubusercontent.com/araihu/assets/fdfb1c2aad8fa61779e7b8c6f208e52a6cf825ce/NOTICE",
+    "sha256": "8ab9628587c91891e424abdc1c16fdd8d9a89191e56fe496dadc979994bd6366"
+  },
+  {
+    "path": "twemoji-LICENSE-GRAPHICS",
+    "url": "https://raw.githubusercontent.com/twitter/twemoji/v14.0.2/LICENSE-GRAPHICS",
+    "sha256": "8ae9438818c26e4873b91d8c6ad620526c011e27e125677f13031eda903f007c"
+  },
+  {
+    "path": "ca-certificates-MPL-2.0.txt",
+    "url": "https://www.mozilla.org/media/MPL/2.0/index.815ca599c9df.txt",
+    "sha256": "fab3dd6bdab226f1c08630b1dd917e11fcb4ec5e1e020e2c16f83a0a13863e85"
+  }
+]

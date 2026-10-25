@@ -143,10 +143,12 @@ jobs:
         with:
           persist-credentials: false
       - name: Install or verify exact Dagger CLI
-        if: github.event_name != 'pull_request'
         env:
           RUNNER_ENVIRONMENT: ${{ runner.environment }}
         run: bash .github/scripts/setup-dagger.sh
+      - name: Build and validate image without publishing
+        if: github.event_name == 'pull_request'
+        run: dagger call image --source=. sync
       - name: Materialize trusted publish identity
         if: github.event_name != 'pull_request'
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0

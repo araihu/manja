@@ -207,6 +207,7 @@ func TestProviderValidationPrecedesSensitiveCredentials(t *testing.T) {
 		"source SHA must be a full lowercase Git SHA-1",
 		"registry username is not a valid GitHub login",
 		"resolvePublication(",
+		"await this.verifyImage(source, built, runNonce)",
 		".withRegistryAuth(\"ghcr.io\", input.registry_username, registryToken)",
 	)
 	assertOrdered(t, daggerFunction(t, module, "updateAraihuAssets"),
@@ -335,7 +336,7 @@ func TestWorkflowAdaptersUseExactDaggerCLIAndDirectCalls(t *testing.T) {
 		setups int
 		calls  int
 	}{
-		{"ci.yml", 4, 4},
+		{"ci.yml", 4, 5},
 		{"araihu-assets.yml", 1, 1},
 	} {
 		workflow := readFile(t, filepath.Join(".github", "workflows", test.name))
@@ -480,6 +481,7 @@ func thinHostRuntimeViolation(workflow string) string {
 		`test -z "$(git ls-files '.dagger/sdk/**')"
 dagger call verify --source=. --trust-domain="$MANJA_TRUST_DOMAIN"`: true,
 		`dagger call integration --source=. --trust-domain="$MANJA_TRUST_DOMAIN"`: true,
+		`dagger call image --source=. sync`:                                       true,
 		`test -n "$REGISTRY_TOKEN"
 dagger call publish-image \
   --source=. \

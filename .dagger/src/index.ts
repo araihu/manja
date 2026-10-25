@@ -9,7 +9,7 @@ import {
   Secret,
 } from "@dagger.io/dagger"
 
-import { assertOCIPublicationGate, resolvePublication } from "./publication.js"
+import { resolvePublication } from "./publication.js"
 import { resolveCachePartition } from "./cache.js"
 
 const GO_IMAGE =
@@ -20,16 +20,9 @@ const GO_BUILD_IMAGE =
   "golang:1.27.2-alpine@sha256:f92b6ef800e499660581efdabdf25d9d817a9d124eaf900924f0504e7e27e12d"
 const FORGEJO_IMAGE =
   "codeberg.org/forgejo/forgejo:11@sha256:946243edbab116d5bb78b73ea68af6f3d69229ba1b1ed958dd82c3481167f3e0"
-const ALPINE_IMAGE =
-  "alpine:3.24@sha256:28bd5fe8b56d1bd048e5babf5b10710ebe0bae67db86916198a6eec434943f8b"
 const PLAYWRIGHT_VERSION = "v0.6201.1"
 const OCI_DESCRIPTION = "Hosted OpenAPI renderer and publisher built with Goshtoso"
-const OCI_LICENSES = ""
-// OC-01 is still blocked: no first-party authority, redistribution, or
-// trademark clearance receipt has been verified for the actual image bytes.
-// Keep the publication boundary fail-closed until a reviewed legal gate
-// supplies PASS for the exact image/platform digest set.
-const OCI_LEGAL_GATE_STATUS = "BLOCKED"
+const OCI_LICENSES = "MIT"
 const OCI_SOURCE = "https://github.com/araihu/manja"
 const OCI_TITLE = "manja"
 const OCI_URL = "https://github.com/araihu/manja"
@@ -245,7 +238,9 @@ export class Manja {
     version = "dev",
   ): Promise<Container> {
     this.validateVersion(version)
-    return this.buildImage(source, version)
+    const built = await this.buildImage(source, version)
+    await this.verifyImage(source, built, "build")
+    return built
   }
 
   /** Build and publish the main or stable-tag image set to GHCR. */
@@ -257,7 +252,6 @@ export class Manja {
     runNonce: string,
   ): Promise<string> {
     this.validateRunNonce(runNonce)
-    assertOCIPublicationGate(OCI_LEGAL_GATE_STATUS)
     const input = await this.readStringObject(metadata, [
       "created", "ref_name", "ref_type", "registry_username", "source_repository",
       "source_sha",
@@ -287,7 +281,10 @@ export class Manja {
       input.source_sha,
     )
 
-    const image = (await this.buildImage(source, buildVersion))
+    const built = await this.buildImage(source, buildVersion)
+    // Recheck the final filesystem for every publication attempt, before auth.
+    await this.verifyImage(source, built, runNonce)
+    const image = built
       .withLabel("org.opencontainers.image.created", input.created)
       .withLabel("org.opencontainers.image.description", OCI_DESCRIPTION)
       .withLabel("org.opencontainers.image.licenses", OCI_LICENSES)
@@ -296,9 +293,6 @@ export class Manja {
       .withLabel("org.opencontainers.image.title", OCI_TITLE)
       .withLabel("org.opencontainers.image.url", OCI_URL)
       .withLabel("org.opencontainers.image.version", ociVersion)
-      .withEnvVariable("MANJA_RUN_NONCE", runNonce)
-      .withExec(["true"])
-      .withoutEnvVariable("MANJA_RUN_NONCE")
       .withRegistryAuth("ghcr.io", input.registry_username, registryToken)
     const references = await Promise.all(
       tags.map((tag) => image.publish(`ghcr.io/araihu/manja:${tag}`)),
@@ -396,22 +390,37 @@ tar --extract --gzip --file /tmp/araihu-assets-release.tar.gz \
   private async buildImage(source: Directory, version: string): Promise<Container> {
     const original = await source.file("Dockerfile").contents()
     const buildFrom = "FROM golang:1.27.2-alpine AS build"
-    const runtimeFrom = "FROM alpine:3.24"
+    const runtimeFrom = "FROM scratch"
     if (
       original.split(buildFrom).length !== 2 ||
       original.split(runtimeFrom).length !== 2
     ) {
       throw new Error("Dockerfile base stages changed; refresh verified Dagger image pins")
     }
-    const pinned = original
-      .replace(buildFrom, `FROM ${GO_BUILD_IMAGE} AS build`)
-      .replace(runtimeFrom, `FROM ${ALPINE_IMAGE}`)
+    const pinned = original.replace(buildFrom, `FROM ${GO_BUILD_IMAGE} AS build`)
     return source
       .withNewFile(".manja-dagger.Dockerfile", pinned)
       .dockerBuild({
         dockerfile: ".manja-dagger.Dockerfile",
         buildArgs: [{ name: "MANJA_VERSION", value: version }],
       })
+  }
+
+  private async verifyImage(source: Directory, image: Container, runNonce: string): Promise<void> {
+    // The verifier stays outside scratch and receives no registry credential.
+    await dag.container().from(GO_BUILD_IMAGE)
+      .withDirectory("/source", source)
+      .withWorkdir("/source")
+      .withEnvVariable("GOEXPERIMENT", "jsonv2")
+      .withEnvVariable("MANJA_RUN_NONCE", runNonce)
+      .withMountedDirectory("/image", image.rootfs())
+      .withExec(["go", "run", "./cmd/oci-package", "-verify", "-root", "/image"])
+      .withServiceBinding("manja", image.asService())
+      .withExec(["wget", "-q", "-O", "/dev/null", "http://manja:8080/"])
+      .withExec(["wget", "-q", "-O", "/dev/null", "http://manja:8080/catalogs/kubernetes"])
+      .withExec(["wget", "-q", "-O", "/dev/null", "http://manja:8080/catalogs/github"])
+      .withExec(["wget", "-q", "-O", "/dev/null", "http://manja:8080/catalogs/stripe"])
+      .stdout()
   }
 
   private browserProject(source: Directory, trustDomain: string): Container {

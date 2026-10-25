@@ -1,5 +1,10 @@
 # Rights-holder confirmation
 
+> Historical review: the current OCI release instruction and packaging policy
+> are documented in [OCI publication](oci-publication.md), dated 2026-10-25.
+> Statements below about the provisional license or unconditional publication
+> block describe the earlier state. Generic evidence API checks remain intact.
+
 Date: 2026-08-15
 
 Result: **BLOCKED**

@@ -1,12 +1,9 @@
 # Third-party notices
 
-Status: **BLOCKED**.
-
-This file records only upstream license and notice material identified from
-immutable local source revisions. It is not a grant of first-party authority,
-trademark permission, or final redistribution clearance. The distribution
-gate must remain fail-closed while any shipped input lacks reviewed attribution
-or terms.
+Manja is MIT licensed; upstream materials retain their own terms. OCI images
+include the complete texts below `/usr/share/licenses/manja`, together with a
+SHA-256 file inventory and the modules read from the actual runtime binary.
+See [OCI publication](docs/legal/oci-publication.md) for the build and checks.
 
 ## Arai Hû Assets v0.2.5
 
@@ -92,22 +89,43 @@ The same `LICENSE` blob is present at the independently checked upstream
 `243ee0dbc1f3bd77b7f461f16687e7e24c38000a`. That cross-check does not replace
 the exact `v0.4.0` source receipt above.
 
-## Other inputs not cleared by these upstream notices
+## Runtime and browser dependencies
 
-The following mechanically identified inputs require separate final-artifact
-notice and/or trademark review before a release can pass:
+The image build reads Go module versions from `manja-runtime`, copies each
+module's retained license/notice files (including nested browser libraries),
+and includes Go's LICENSE, PATENTS, and vendored license notices. Build-only
+Go modules and the compiler are absent from the final scratch image.
 
-- Kubernetes OpenAPI-derived renderer data and the retained Kubernetes
-  `LICENSE` receipt;
-- GitHub and Stripe OpenAPI fixtures and their source-revision MIT licenses;
-- Simple Icons-derived GitHub and Stripe marks, whose CC0 source terms do not
-  grant trademark permission;
-- Muamba-retained browser bundle licenses and every Go module body in the
-  shipped runtime closure;
-- generated assets, social previews, and container/base-image materials whose
-  source, terms, or redistribution scope are not fully evidenced.
+The two Manja browser bundles use the packages listed in
+[the browser inventory](docs/legal/browser-bundles.md). Complete Muamba-retained
+license texts are packaged under `browser/`. Goshtoso's HTMX, Alpine.js and
+Heroicons notices and Margo's Mermaid notice are under `go/`.
 
-See `docs/legal/provenance.md` and
-`docs/legal/authority-revalidation-2026-08-15.md` for the current receipts.
-An upstream license label identifies that upstream input only; it never clears
-Manja first-party authority or a third-party trademark.
+## API descriptions and icons
+
+Kubernetes OpenAPI data is Apache-2.0 licensed; its full license accompanies
+the compiled catalog. GitHub and Stripe OpenAPI descriptions are MIT licensed;
+the exact source-revision license texts are retained in `licenses/oci/`.
+Their immutable source receipts accompany the image under `provenance/`.
+
+GitHub and Stripe icons derive from Simple Icons 16.28.0, and the Twilio icon
+from Simple Icons 9.21.0, under CC0-1.0. Local adaptations add a circular
+background and transform the unchanged icon paths. The two CC0 texts and
+adaptation receipts are included. Names and marks remain with their owners;
+these attributions do not imply endorsement or grant trademark rights.
+
+The strawberry image is the unmodified Twemoji 14.0.2 `1f353.png`, by Twitter,
+Inc and other contributors, licensed under CC BY 4.0. Source:
+https://github.com/twitter/twemoji/tree/v14.0.2/assets/72x72/1f353.png .
+It replaces the previous GitHub-hosted emoji at the same local asset path.
+The complete graphics license is included under `upstream/`.
+
+## Certificates and image base
+
+The runtime starts from scratch and includes no Alpine executables, libraries,
+or package manager. The PEM CA bundle is copied from the build stage's
+`ca-certificates` package, derived from Mozilla's root store (MPL-2.0).
+The bundle is distributed in its readable PEM form, with the full MPL-2.0
+text, Alpine package version, and upstream source location in the inventory.
+Manja's own artwork and social previews are covered by the project license;
+the separately sourced Arai Hû brand assets retain the Apache-2.0 terms above.
