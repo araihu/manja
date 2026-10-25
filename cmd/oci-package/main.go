@@ -14,7 +14,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"runtime"
 	"sort"
 	"strings"
 
@@ -88,6 +87,9 @@ func assemble(source, root string) error {
 		if err := json.Unmarshal(data, &downloaded); err != nil {
 			return err
 		}
+		if downloaded.Dir == "" {
+			return fmt.Errorf("module directory missing: %s", mod.Path)
+		}
 		if downloaded.Sum != mod.Sum || mod.Sum == "" {
 			return fmt.Errorf("module checksum mismatch: %s", mod.Path)
 		}
@@ -101,7 +103,17 @@ func assemble(source, root string) error {
 		}
 		result.Components = append(result.Components, component{mod.Path, mod.Version, mod.Sum, licenses})
 	}
-	goLicenses, err := copyLegalTree(runtime.GOROOT(), root, legalDir+"/go-toolchain")
+	// -trimpath deliberately removes runtime.GOROOT from this build tool. Ask
+	// the installed compiler for the source tree whose notices we distribute.
+	goRoot, err := exec.Command("go", "env", "GOROOT").Output()
+	if err != nil {
+		return fmt.Errorf("resolve Go license root: %w", err)
+	}
+	toolchainRoot := strings.TrimSpace(string(goRoot))
+	if !filepath.IsAbs(toolchainRoot) {
+		return fmt.Errorf("Go license root must be absolute")
+	}
+	goLicenses, err := copyLegalTree(toolchainRoot, root, legalDir+"/go-toolchain")
 	if err != nil {
 		return err
 	}

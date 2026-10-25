@@ -36,8 +36,24 @@ func TestBuiltRuntimePackagingRejectsChangedImage(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if err := assemble(source, root); err != nil {
-		t.Fatal(err)
+	// Match the production tool's -trimpath build, with no GOROOT environment
+	// override. An in-process test would hide the erased runtime.GOROOT value.
+	tool := filepath.Join(t.TempDir(), "oci-package")
+	buildTool := exec.Command("go", "build", "-trimpath", "-o", tool, "./cmd/oci-package")
+	buildTool.Dir = source
+	buildTool.Env = append(os.Environ(), "CGO_ENABLED=0", "GOEXPERIMENT=jsonv2")
+	if output, err := buildTool.CombinedOutput(); err != nil {
+		t.Fatalf("tool build: %v\n%s", err, output)
+	}
+	assembleTool := exec.Command(tool, "-source", source, "-root", root)
+	assembleTool.Dir = source
+	for _, env := range os.Environ() {
+		if !strings.HasPrefix(env, "GOROOT=") {
+			assembleTool.Env = append(assembleTool.Env, env)
+		}
+	}
+	if output, err := assembleTool.CombinedOutput(); err != nil {
+		t.Fatalf("assemble: %v\n%s", err, output)
 	}
 	if err := verifyRoot(root); err != nil {
 		t.Fatal(err)
