@@ -18,7 +18,7 @@ source bytes are preserved. Twilio's spec declares Apache 2.0 and the upstream
 repository includes an MIT license. Both license texts and attribution are
 published with the demo; see [the input provenance](demo/README.md).
 
-The demo exports 12,327 files (about 150 MB), within the Workers Free limit of
+The demo exports 12,329 files (about 150 MB), within the Workers Free limit of
 20,000 assets per Worker. Browser acceptance checks reject an export above that limit. Static
 asset storage and requests have no usage charge; Workers Paid is unnecessary
 for this demo.

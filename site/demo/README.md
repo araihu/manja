@@ -18,3 +18,8 @@ tracking the upstream example account identifiers.
 Both license texts and attribution are published at
 `/manja-assets/twilio-messaging-notices.txt` and linked from the Twilio catalog.
 The original Kubernetes fixture remains available for renderer tests.
+
+The Twilio catalog mark uses the Simple Icons symbol with the same circular
+wrapper as the GitHub and Stripe marks. `twilio-mark.provenance.json` records
+the pinned source revision, CC0 license identity, unchanged path data and local
+SVG hashes. Both icon files ship as local static assets.

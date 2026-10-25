@@ -85,6 +85,9 @@ catalogs:
       publicationKey: twilio
     branding:
       displayName: Twilio Messaging
+      logo:
+        src: /manja-assets/twilio-mark.svg
+        alt: Twilio
     readme: >-
       The official Twilio Messaging OpenAPI specification, pinned to
       [d9775142962e](https://github.com/twilio/twilio-oai/blob/d9775142962ea67d5f3d50c5021a23ae6d330c5b/spec/json/twilio_messaging_v1.json).

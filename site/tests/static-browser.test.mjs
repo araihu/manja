@@ -85,6 +85,8 @@ test("separate Workers serve landing/docs and a searchable static demo", {
   await page.goto(demoURL + "/catalogs/twilio/documents/twilio-messaging-v1/");
   await waitReady();
   assert.match(await page.title(), /Twilio/);
+  await page.locator('img[src="/manja-assets/twilio-mark.svg"]').first().waitFor({ state: "visible" });
+  await page.waitForFunction(() => [...document.images].some(image => image.src.endsWith("/manja-assets/twilio-mark.svg") && image.complete && image.naturalWidth > 0));
   await page.keyboard.press("Control+k");
   await page.locator("#catalog-search-input").fill("ListService");
   await page.locator("#catalog-search-dialog").getByRole("option", { name: /^GET ListService operation/ }).first().click();
