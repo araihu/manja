@@ -232,13 +232,17 @@ async function staticActivationFixture(failedPath = '', options = {}) {
     addEventListener(type, handler) { windowListeners[type] = handler },
   })
   const root = { dataset: {}, dispatchEvent() {} }
-  let mainHTML = ''
+  const pageContent = options.pageContent ? { innerHTML: '<p>Overview</p>' } : null
+  let mainHTML = pageContent ? '<div data-catalog-page-content>Overview</div><footer>Capabilities</footer>' : ''
   let mainWrites = 0
   const main = {
     dataset: {},
     scrollTop: 0,
     closest(selector) { return selector === '[data-manja-primary-scroll]' ? mainScroll : null },
-    querySelector(selector) { return selector === '[data-manja-settled-focus="true"]' ? focusTarget : null },
+    querySelector(selector) {
+      if (selector === '[data-catalog-page-content]') return pageContent
+      return selector === '[data-manja-settled-focus="true"]' ? focusTarget : null
+    },
   }
   Object.defineProperty(main, 'innerHTML', { get() { return mainHTML }, set(value) { mainWrites += 1; mainHTML = value } })
   const sidebar = {
@@ -287,7 +291,7 @@ async function staticActivationFixture(failedPath = '', options = {}) {
     renderSidebar: () => { sidebarRenders.push(true); return { ok: true, sidebarHtml: '<nav></nav>', canonical: value.publicationBase + 'documents/doc/?selected=wanted#wanted' } },
   }
   const result = await api.start({ document, loadABI: () => { phases.push('loadABI'); return abi } })
-	return { result, root, requests, phases, prepared, admitted, sidebarRenders, value, operationPath, api, history, focusCalls, groupFocusCalls, mainScroll, nav, groupControl, listeners, windowListeners, location, navigationError, navigationErrorMessage, navigationRetry, setFailedPath: value => { activeFailedPath = value }, mainWrites: () => mainWrites }
+	return { result, root, requests, phases, prepared, admitted, sidebarRenders, value, operationPath, api, history, focusCalls, groupFocusCalls, mainScroll, nav, groupControl, listeners, windowListeners, location, navigationError, navigationErrorMessage, navigationRetry, pageContent, main, setFailedPath: value => { activeFailedPath = value }, mainWrites: () => mainWrites }
 }
 
 test('static direct route loads verified HTML without projection children or Wasm', async () => {
@@ -339,6 +343,17 @@ test('static router exposes same-document navigation for search results', async 
   assert.equal(result.ok, true)
   assert.deepEqual(fixture.history.pushes, [fixture.value.publicationBase + 'documents/doc/?selected=wanted#wanted'])
   assert.equal(fixture.focusCalls.length, 1)
+})
+
+test('static navigation preserves the page frame and capability footer', async () => {
+  const fixture = await staticActivationFixture('', { pageContent: true })
+  assert.match(fixture.pageContent.innerHTML, /Wanted/)
+  await fixture.api.navigate('https://docs.test/group/project/pets/documents/doc/')
+  assert.equal(fixture.pageContent.innerHTML, '<p>Overview</p>')
+  await fixture.api.navigate('https://docs.test/group/project/pets/documents/doc/?selected=wanted#wanted')
+  assert.match(fixture.pageContent.innerHTML, /Wanted/)
+  assert.equal(fixture.mainWrites(), 0)
+  assert.match(fixture.main.innerHTML, /<footer>Capabilities<\/footer>/)
 })
 
 test('static detail navigation resets main scroll and saves the previous entry', async () => {
