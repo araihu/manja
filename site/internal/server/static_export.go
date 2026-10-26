@@ -18,7 +18,36 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-const staticHeaders = "/*\n  Cache-Control: public, max-age=0, must-revalidate, no-transform\n  X-Content-Type-Options: nosniff\n  Referrer-Policy: strict-origin-when-cross-origin\n"
+// Keep integrity-checked HTML, manifests, fragments and the root service worker
+// revalidated and protected from edge rewriting. Only browser asset directories
+// get a bounded fresh lifetime and allow transport compression. Their stable
+// URLs can change between builds, so they must not use immutable caching.
+// Detach the inherited header first: Cloudflare joins matching header values.
+const staticHeaders = `/*
+  Cache-Control: public, max-age=0, must-revalidate, no-transform
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: strict-origin-when-cross-origin
+
+/static/*
+  ! Cache-Control
+  Cache-Control: public, max-age=3600, must-revalidate
+
+/assets/*
+  ! Cache-Control
+  Cache-Control: public, max-age=3600, must-revalidate
+
+/manja-assets/*
+  ! Cache-Control
+  Cache-Control: public, max-age=3600, must-revalidate
+
+/manja-assets/local-docs/sw.js
+  ! Cache-Control
+  Cache-Control: public, max-age=0, must-revalidate, no-transform
+
+/manja-assets/local-docs/runtime-assets.js
+  ! Cache-Control
+  Cache-Control: public, max-age=0, must-revalidate, no-transform
+`
 
 // ExportSite renders the landing and setup documentation without starting the
 // demo workbench or writing publication state.

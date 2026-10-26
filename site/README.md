@@ -63,8 +63,22 @@ the local export's SHA-256 inventory, requires the published manifest to match
 that build, and checks every landing/docs file against its local bytes.
 Set `MANJA_VERIFY_ALL_ASSETS=1` to audit every
 deployed file. The complete local export is always verified before publication.
-Both Workers send `Cache-Control: no-transform` to preserve generated HTML,
-including offline shells, against Cloudflare's JavaScript Detections injection.
+Both Workers keep generated HTML, offline shells, manifests, fragments and
+`sw.js` revalidated with `Cache-Control: public, max-age=0, must-revalidate,
+no-transform`, preventing Cloudflare's JavaScript Detections injection from
+invalidating their integrity checks. Files under `/static/`, `/assets/` and
+`/manja-assets/` allow Cloudflare transport compression and use
+`Cache-Control: public, max-age=3600, must-revalidate`. These unversioned assets
+can stay fresh in a visitor's browser for up to one hour after publication;
+they deliberately do not use `immutable`. The local-docs service worker and
+runtime asset manifest remain revalidated. Matching `_headers` rules detach the
+inherited cache header before setting the asset policy, because Cloudflare
+otherwise joins the values and retains `no-transform`.
+
+After deployment, check a GET response with `Accept-Encoding: br, gzip` for
+`Content-Encoding` on CSS/JS. Browser acceptance checks the effective cache
+headers and verifies decoded file hashes, since transport compression must not
+change the exported bytes.
 
 ## Production deployment through CI
 
