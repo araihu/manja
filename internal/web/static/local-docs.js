@@ -1037,6 +1037,7 @@
 	function installStaticRouter(descriptor, cache, documentValue, loadCompatibility) {
 	  var root = documentValue.documentElement;
 	  var main = documentValue.querySelector("[data-catalog-main-content]");
+	  var pageContent = main && main.querySelector && main.querySelector("[data-catalog-page-content]") || main;
 	  var sidebar = documentValue.getElementById("catalog-sidebar-groups");
 	  var children = Object.create(null);
 	  var admittedChildren = Object.create(null);
@@ -1050,7 +1051,7 @@
 	  var abi = null;
 	  var cleanManifest = null;
 	  var disposeLazySchemaFragments = function () {};
-	  var initialMainHTML = main && main.innerHTML || "";
+	  var initialMainHTML = pageContent && pageContent.innerHTML || "";
 	  var initialTitle = documentValue.title;
 	  if (!main) fail("static catalog main target is missing");
 	  if (global.history && "scrollRestoration" in global.history) global.history.scrollRestoration = "manual";
@@ -1269,7 +1270,7 @@
 		if (!result || result.ok !== true) fail(result && result.error || "static render failed");
 		if (!options.sidebarOnly) {
 		  disposeLazySchemaFragments();
-		  main.innerHTML = result.mainHtml;
+		  pageContent.innerHTML = result.mainHtml;
 		  disposeLazySchemaFragments = installLazySchemaFragments(descriptor, cache, route, main);
 		}
 		if (sidebar && typeof result.sidebarHtml === "string") {

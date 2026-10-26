@@ -5,6 +5,8 @@ import (
 	"net/url"
 	"path"
 	"strings"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/araihu/manja/domain"
 )
@@ -123,10 +125,8 @@ func validateConfig(config Config) error {
 		if config.ResourceLimits && len(catalog.Readme) > maxCatalogReadmeBytes {
 			return fmt.Errorf("catalog %q README exceeds %d bytes", catalog.ID, maxCatalogReadmeBytes)
 		}
-		if catalog.Readme != "" {
-			if err := domain.ValidateCanonicalIdentity(fmt.Sprintf("catalog %q README", catalog.ID), catalog.Readme, false); err != nil {
-				return err
-			}
+		if err := validateReadme(fmt.Sprintf("catalog %q README", catalog.ID), catalog.Readme); err != nil {
+			return err
 		}
 		if catalog.License.Name != "" {
 			if err := domain.ValidateCanonicalIdentity(fmt.Sprintf("catalog %q license name", catalog.ID), catalog.License.Name, false); err != nil {
@@ -185,6 +185,20 @@ func ValidateConfig(config Config) error {
 	return validateConfig(config)
 }
 
+// README content is Markdown prose, so indentation and line endings are
+// meaningful and must not be constrained by the canonical identity rules.
+func validateReadme(name, value string) error {
+	if !utf8.ValidString(value) {
+		return fmt.Errorf("%s must contain valid UTF-8", name)
+	}
+	for _, character := range value {
+		if unicode.IsControl(character) && character != '\n' && character != '\r' && character != '\t' {
+			return fmt.Errorf("%s must not contain control characters other than line endings and tabs", name)
+		}
+	}
+	return nil
+}
+
 func validateOrganization(organization OrganizationConfig, resourceLimits bool) error {
 	if organization.Title != "" {
 		if err := domain.ValidateCanonicalIdentity("organization title", organization.Title, false); err != nil {
@@ -194,10 +208,8 @@ func validateOrganization(organization OrganizationConfig, resourceLimits bool) 
 	if resourceLimits && len(organization.Readme) > maxOrganizationReadmeBytes {
 		return fmt.Errorf("organization README exceeds %d bytes", maxOrganizationReadmeBytes)
 	}
-	if organization.Readme != "" {
-		if err := domain.ValidateCanonicalIdentity("organization README", organization.Readme, false); err != nil {
-			return err
-		}
+	if err := validateReadme("organization README", organization.Readme); err != nil {
+		return err
 	}
 	if organization.License.Name != "" {
 		if err := domain.ValidateCanonicalIdentity("organization license name", organization.License.Name, false); err != nil {

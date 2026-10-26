@@ -150,6 +150,38 @@ func TestNewAcceptsOptionalCatalogReadmeAndLicense(t *testing.T) {
 	}
 }
 
+func TestReadmeConfigurationAcceptsMarkdownWhitespaceAndRejectsInvalidText(t *testing.T) {
+	t.Parallel()
+	for _, target := range []string{"catalog", "organization"} {
+		for _, test := range []struct {
+			name  string
+			input string
+			valid bool
+		}{
+			{"empty", "", true},
+			{"plain", "API documentation.", true},
+			{"blocks", "## Start\n\n- Install\n- Browse\n", true},
+			{"indentation", "\tcode\r\n\r\nText with a hard break.  \r\nNext line.\r\n", true},
+			{"invalid UTF-8", string([]byte{0xff}), false},
+			{"NUL", "Text\x00", false},
+			{"escape", "Text\x1b", false},
+			{"DEL", "Text\x7f", false},
+		} {
+			t.Run(target+"/"+test.name, func(t *testing.T) {
+				config := Config{Version: 1, Catalogs: []CatalogConfig{validCatalogConfig("payments", "/")}}
+				if target == "organization" {
+					config.Organization.Readme = test.input
+				} else {
+					config.Catalogs[0].Readme = test.input
+				}
+				if err := ValidateConfig(config); (err == nil) != test.valid {
+					t.Fatalf("ValidateConfig = %v; valid = %t", err, test.valid)
+				}
+			})
+		}
+	}
+}
+
 func TestNewAcceptsSupportedSocialImageTypes(t *testing.T) {
 	t.Parallel()
 
