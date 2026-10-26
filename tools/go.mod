@@ -21,7 +21,7 @@ require (
 	github.com/fatih/color v1.19.0 // indirect
 	github.com/fsnotify/fsnotify v1.10.1 // indirect
 	github.com/g4s8/envdoc v1.12.0 // indirect
-	github.com/getkin/kin-openapi v0.151.0 // indirect
+	github.com/getkin/kin-openapi v0.152.0 // indirect
 	github.com/go-openapi/jsonpointer v1.0.2 // indirect
 	github.com/gobwas/glob v1.0.0 // indirect
 	github.com/gofrs/flock v0.13.1 // indirect

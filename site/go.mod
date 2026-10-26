@@ -13,7 +13,7 @@ require (
 	github.com/araihu/goshtoso v0.4.0 // indirect
 	github.com/araihu/margo v0.0.25 // indirect
 	github.com/dlclark/regexp2/v2 v2.9.1 // indirect
-	github.com/getkin/kin-openapi v0.151.0 // indirect
+	github.com/getkin/kin-openapi v0.152.0 // indirect
 	github.com/go-openapi/jsonpointer v1.0.2 // indirect
 	github.com/hashicorp/golang-lru/v2 v2.0.7 // indirect
 	github.com/kr/pretty v0.3.1 // indirect
