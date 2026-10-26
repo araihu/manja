@@ -13,7 +13,14 @@ const sha256 = bytes => createHash("sha256").update(bytes).digest("hex");
 async function verifyPublishedFile(origin, path, expectedHash, status = 200) {
   const response = await fetch(origin + "/" + path, { signal: AbortSignal.timeout(20_000) });
   assert.equal(response.status, status, path);
-  assert.match(response.headers.get("cache-control") || "", /no-transform/, path);
+  const cacheControl = response.headers.get("cache-control") || "";
+  const browserAsset = /^(?:static|assets|manja-assets)\//.test(path)
+    && !/^manja-assets\/local-docs\/(?:sw|runtime-assets)\.js$/.test(path);
+  if (browserAsset) {
+    assert.equal(cacheControl, "public, max-age=3600, must-revalidate", path);
+  } else {
+    assert.equal(cacheControl, "public, max-age=0, must-revalidate, no-transform", path);
+  }
   assert.equal(sha256(Buffer.from(await response.arrayBuffer())), expectedHash, `published bytes changed: ${path}`);
 }
 
@@ -63,6 +70,22 @@ test("separate Workers serve landing/docs and a searchable static demo", {
     : await Promise.all([
       startWorker(t, "wrangler.jsonc"), startWorker(t, "wrangler.demo.jsonc"),
     ]);
+  for (const [origin, paths] of [
+    [siteURL, ["/", "/docs", "/static/site.css", "/static/theme.js", "/static/manja-logo.svg"]],
+    [demoURL, ["/", "/sw.js", "/_manja/export.json", "/_manja/search/directory.json",
+      "/assets/styles.css", "/assets/js/runtime/alpinejs/3.17.2/alpine.min.js",
+      "/manja-assets/catalog-search.js", "/manja-assets/local-docs/runtime-assets.js"]],
+  ]) {
+    for (const path of paths) {
+      const response = await fetch(origin + path);
+      assert.equal(response.status, 200, path);
+      const fresh = /^\/(?:static|assets|manja-assets)\//.test(path)
+        && !path.endsWith("/runtime-assets.js");
+      assert.equal(response.headers.get("cache-control"), fresh
+        ? "public, max-age=3600, must-revalidate"
+        : "public, max-age=0, must-revalidate, no-transform", path);
+    }
+  }
   const browser = await chromium.launch();
   t.after(() => browser.close());
   const page = await browser.newPage();
