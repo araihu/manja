@@ -65,7 +65,7 @@ variables.
 
 ### Portable CI with Dagger
 
-CI toolchains and the same gates are available locally through Dagger v0.21.8.
+CI toolchains and the same gates are available locally through Dagger v0.21.11.
 The host needs only the exact Dagger CLI and a compatible container runtime:
 
 ```bash

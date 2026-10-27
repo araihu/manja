@@ -14,7 +14,7 @@ import (
 
 func TestDaggerConfigurationAndRuntimeContract(t *testing.T) {
 	config := readFile(t, "dagger.json")
-	for _, want := range []string{`"engineVersion": "v0.21.8"`, `"source": ".dagger"`, `"source": "typescript"`} {
+	for _, want := range []string{`"engineVersion": "v0.21.11"`, `"source": ".dagger"`, `"source": "typescript"`} {
 		assertContains(t, config, want)
 	}
 	packageJSON := readFile(t, ".dagger/package.json")
@@ -410,11 +410,11 @@ func TestExactDaggerSetupScript(t *testing.T) {
 	scriptPath := filepath.Join(".github", "scripts", "setup-dagger.sh")
 	script := readFile(t, scriptPath)
 	for _, want := range []string{
-		`expected_version="v0.21.8"`,
-		"dagger_v0.21.8_linux_amd64.tar.gz",
-		"53e226c7da8fb75171e58c35759d736d961ce8b3a12db0baa7b7107954fccc5a",
-		"dagger_v0.21.8_linux_arm64.tar.gz",
-		"cd0df4885f2050082932b4abc5a6aad9a733f6aa4e7d8474740558517ffec4af",
+		`expected_version="v0.21.11"`,
+		"dagger_v0.21.11_linux_amd64.tar.gz",
+		"a2d3ef96e7305abc18663a3606d9c1c592278ba3c8f48e01d6be14eef72276ef",
+		"dagger_v0.21.11_linux_arm64.tar.gz",
+		"7a19fc16ce58d8aa80e273629a38a3cf3e49951df8928b38a908805c9a08cc50",
 		"sha256sum --check --strict",
 		`RUNNER_ENVIRONMENT" != "self-hosted"`,
 		`[[ "$resolved_version" != "$expected_version" ]]`,
@@ -425,7 +425,7 @@ func TestExactDaggerSetupScript(t *testing.T) {
 	for _, test := range []struct {
 		version string
 		ok      bool
-	}{{"v0.21.8", true}, {"v0.21.7", false}, {"v0.22.0", false}} {
+	}{{"v0.21.11", true}, {"v0.21.7", false}, {"v0.22.0", false}} {
 		bin := t.TempDir()
 		dagger := filepath.Join(bin, "dagger")
 		if err := os.WriteFile(dagger, []byte("#!/bin/sh\nprintf 'dagger "+test.version+" (test) linux/amd64\\n'\n"), 0o755); err != nil {
