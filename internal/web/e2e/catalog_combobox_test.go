@@ -560,8 +560,10 @@ func TestCatalogDocumentSearchUsesGlobalModal(t *testing.T) {
 	if err := fallbackModal.GetByText("List core pods", playwright.LocatorGetByTextOptions{Exact: playwright.Bool(true)}).WaitFor(); err != nil {
 		t.Fatalf("server fallback result: %v", err)
 	}
-	if source, err := fallbackModal.Locator(`[data-catalog-search-source]`).TextContent(); err != nil || !strings.Contains(source, "Global search") {
-		t.Fatalf("global search source = %q, err=%v", source, err)
+	// A queued search clears the source label before its asynchronous response
+	// arrives; a matching result alone can still belong to the preceding search.
+	if err := playwright.NewPlaywrightAssertions().Locator(fallbackModal.Locator(`[data-catalog-search-source]`)).ToContainText("Global search"); err != nil {
+		t.Fatalf("global search source: %v", err)
 	}
 }
 
