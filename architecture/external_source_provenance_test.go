@@ -76,7 +76,7 @@ type goshtosoProvenance struct {
 var approvedExternalSourceProvenance = externalSourceProvenance{
 	SchemaVersion: 1,
 	Assets: assetsProvenance{
-		ModuleVersion: "v0.2.3",
+		ModuleVersion: "v0.2.5",
 		Repository:    "https://github.com/araihu/assets",
 		OriginMain: sourceRevision{
 			Ref:       "refs/remotes/origin/main",

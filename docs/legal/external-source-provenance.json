@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "assets": {
-    "moduleVersion": "v0.2.3",
+    "moduleVersion": "v0.2.5",
     "repository": "https://github.com/araihu/assets",
     "originMain": {
       "ref": "refs/remotes/origin/main",
