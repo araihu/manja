@@ -5,14 +5,14 @@ include the complete texts below `/usr/share/licenses/manja`, together with a
 SHA-256 file inventory and the modules read from the actual runtime binary.
 See [OCI publication](docs/legal/oci-publication.md) for the build and checks.
 
-## Arai Hû Assets v0.2.5
+## Arai Hû Assets v0.2.6
 
 Manja's pinned asset manifest (`araihu-assets.json`) identifies release
-`v0.2.5`, revision
-`da708ce30a3806757644278df421ae39fa4ec37c`, and release SHA-256
-`9f5331dc4b6c075aa2dee9b653b0fd7e5ea67d64069155f20da93777fa1df857`.
+`v0.2.6`, revision
+`96c81116e6610a882f89cca2b40b92b20d59fbb0`, and release SHA-256
+`2d86ebd0c0724e4293175186e80e7108fd8e813ed885f66bb192bc871b64d16b`.
 The upstream release commit has tree
-`30ed94741462571739d00339db62367278f41e13`.
+`25fcd034e116990f439eecab04bdcc94bcbceea4`.
 
 The upstream `LICENSE` is Apache-2.0 (11,358 bytes, Git blob
 `d645695673349e3947e8e5ae42332d0ac3164cd7`, SHA-256
@@ -44,8 +44,8 @@ per-file notices remain bound to the pinned release; asset trademark scope is
 not expanded by this file.
 
 The same `LICENSE` and `NOTICE` blobs are present at the independently checked
-upstream `origin/main` commit `9a1fce17ad1a99892e81bf3b3b36e7ed48448b63`,
-tree `2be5242f515b452052e514c8dd495a95791e5925`. That cross-check does not
+upstream `origin/main` commit `96c81116e6610a882f89cca2b40b92b20d59fbb0`,
+tree `25fcd034e116990f439eecab04bdcc94bcbceea4`. That cross-check does not
 replace Manja's pinned release receipt above.
 
 ## Goshtoso v0.4.4

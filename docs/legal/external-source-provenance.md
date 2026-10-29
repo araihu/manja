@@ -13,25 +13,25 @@ the pinned asset manifest, installed asset bytes, and downloaded module license
 bytes.
 
 The resolved Arai Hû Assets **Go module** is `v0.2.5`, independently of the
-`v0.2.5` static-asset archive retained below. Its `LICENSE` and `NOTICE` bytes
+`v0.2.6` static-asset archive retained below. Its `LICENSE` and `NOTICE` bytes
 were compared against the recorded hashes and are unchanged. This dependency
-upgrade is independent of the static release update. The v0.2.5 archive's four
+upgrade is independent of the static release update. The v0.2.6 archive's four
 selected source paths and all installed copies retain the approved bytes.
 
 ## Frozen external identities
 
 | Source | Consumer identity | Legal bytes recorded |
 | --- | --- | --- |
-| [`araihu/assets`](https://github.com/araihu/assets) | Previously observed `origin/main` commit `9a1fce17ad1a99892e81bf3b3b36e7ed48448b63`, tree `2be5242f515b452052e514c8dd495a95791e5925`; consumed release `v0.2.5` commit `da708ce30a3806757644278df421ae39fa4ec37c`, tree `30ed94741462571739d00339db62367278f41e13` | `LICENSE`: Apache-2.0, 11,358 bytes, Git blob `d645695673349e3947e8e5ae42332d0ac3164cd7`, SHA-256 `cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30`; `NOTICE`: 633 bytes, Git blob `61949028cb73348c69d488a844a36fb6253b46b7`, SHA-256 `8ab9628587c91891e424abdc1c16fdd8d9a89191e56fe496dadc979994bd6366`. |
+| [`araihu/assets`](https://github.com/araihu/assets) | Previously observed `origin/main` commit `96c81116e6610a882f89cca2b40b92b20d59fbb0`, tree `25fcd034e116990f439eecab04bdcc94bcbceea4`; consumed release `v0.2.6` commit `96c81116e6610a882f89cca2b40b92b20d59fbb0`, tree `25fcd034e116990f439eecab04bdcc94bcbceea4` | `LICENSE`: Apache-2.0, 11,358 bytes, Git blob `d645695673349e3947e8e5ae42332d0ac3164cd7`, SHA-256 `cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30`; `NOTICE`: 633 bytes, Git blob `61949028cb73348c69d488a844a36fb6253b46b7`, SHA-256 `8ab9628587c91891e424abdc1c16fdd8d9a89191e56fe496dadc979994bd6366`. |
 | [`araihu/goshtoso`](https://github.com/araihu/goshtoso) | `origin/main` commit `2c475800dcbe3b08e3a44ac9c857b9f7163335eb`, tree `4cdc27f08ab89768683b36e9f58dafdd7c83d6ab`; Manja dependency `v0.4.4` commit `234eaaf97a7058d137dfed942423dcfb77f2ace6`, tree `0242bf344b601a019a10b3bc08fc11364f8c4907` | `LICENSE`: MIT, 1,078 bytes, Git blob `0a7743398ecbeacc05ed822e1f74023ee9b36842`, SHA-256 `cacf68ff9920c026f5de2ebf992333c1a243e45d81aaa5b4577e05b52c5a9584`. |
 
 The Assets release archive is bound by the existing
 [`araihu-assets.json`](../../araihu-assets.json) identity:
-`https://github.com/araihu/assets/releases/download/v0.2.5/araihu-assets-v0.2.5.tar.gz`,
+`https://github.com/araihu/assets/releases/download/v0.2.6/araihu-assets-v0.2.6.tar.gz`,
 archive SHA-256
-`9f5331dc4b6c075aa2dee9b653b0fd7e5ea67d64069155f20da93777fa1df857`, and
+`2d86ebd0c0724e4293175186e80e7108fd8e813ed885f66bb192bc871b64d16b`, and
 `release.json` SHA-256
-`b749ac93b9a56a0884fa9345a4906b99e6b96df903311a5835af3cc4768b79c6`.
+`ae6a73ac6efea944d97d2680973b5ca7ffc4d381ba52511ed2771b069a419d87`.
 
 The four source paths selected by the manifest are recorded with their Git
 path, Git blob, size, SHA-256, and every installed Manja destination in the
