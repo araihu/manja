@@ -12,7 +12,7 @@ Goshtoso Go module. The machine-readable values are in
 the pinned asset manifest, installed asset bytes, and downloaded module license
 bytes.
 
-The resolved Arai Hû Assets **Go module** is `v0.2.3`, independently of the
+The resolved Arai Hû Assets **Go module** is `v0.2.5`, independently of the
 `v0.2.5` static-asset archive retained below. Its `LICENSE` and `NOTICE` bytes
 were compared against the recorded hashes and are unchanged. This dependency
 upgrade is independent of the static release update. The v0.2.5 archive's four
