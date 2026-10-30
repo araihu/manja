@@ -123,12 +123,13 @@ func TestStaticResponseExampleCopy(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer propertyPage.Close()
+	propertyPage.OnPageError(func(err error) { t.Errorf("property browser error: %v", err) })
 	propertyID := staticGitHubOperation(t, output, "actions/add-custom-labels-to-self-hosted-runner-for-org")
 	if _, err := propertyPage.Goto(server.URL + "/catalogs/github/documents/github-v3-rest/?selected=" + propertyID + "#" + propertyID); err != nil {
 		t.Fatal(err)
 	}
 	// Body schemas are intentionally loaded when they enter the viewport.
-	if err := propertyPage.Locator(`[data-manja-static-schema-fragment="true"]`).First().ScrollIntoViewIfNeeded(); err != nil {
+	if err := propertyPage.Locator(`section[data-manja-request-body]`).ScrollIntoViewIfNeeded(); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := propertyPage.WaitForFunction(`() => { const name = [...document.querySelectorAll('.gs-schema-tree-name')].find(el => el.textContent === 'labels'); if (!name) return false; const node = name.closest('.gs-schema-tree-node'); const description = node.querySelector('.gs-schema-tree-description'); const constraints = node.querySelector('.gs-schema-tree-constraints'); if (!description || !constraints) return false; return Math.abs(description.getBoundingClientRect().left - constraints.getBoundingClientRect().left) < 1 && Math.abs(description.getBoundingClientRect().left - name.getBoundingClientRect().left - 12) < 1; }`, nil); err != nil {
@@ -139,6 +140,7 @@ func TestStaticResponseExampleCopy(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer queryPage.Close()
+	queryPage.OnPageError(func(err error) { t.Errorf("query browser error: %v", err) })
 	queryID := staticGitHubOperation(t, output, "apps/list-webhook-deliveries")
 	if _, err := queryPage.Goto(server.URL + "/catalogs/github/documents/github-v3-rest/?selected=" + queryID + "#" + queryID); err != nil {
 		t.Fatal(err)

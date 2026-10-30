@@ -41,6 +41,16 @@ catalogs:
       kind: files
       root: %q
       include: [github-v3-rest.json]
+      documents:
+        - key: github-v3-rest
+          path: github-v3-rest.json
+          publication:
+            api: github
+            audience: public
+            channel: branch
+            ref: refs/heads/main
+            commit: 320307e220815d528224ca891cf8a9e3c0243678
+            sourcePath: descriptions/ghec/ghec.json
 `, source)
 	configPath := filepath.Join(root, "renderer.yaml")
 	if err := os.WriteFile(configPath, []byte(config), 0o600); err != nil {

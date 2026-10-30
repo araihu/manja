@@ -32,7 +32,9 @@
         hydrate();
         // Goshtoso code controls become available after HTMX processes markup.
         // History restores preserve data attributes, not the processing state.
-        if (root.htmx && typeof root.htmx.process === 'function') root.htmx.process(root.document.body);
+        if (root.htmx && typeof root.htmx.process === 'function') {
+          root.document.querySelectorAll('[data-code-block-copy]').forEach((button) => root.htmx.process(button));
+        }
         root.document.body.dispatchEvent(new root.CustomEvent('htmx:after:swap', { bubbles: true }));
       };
       root.document.addEventListener('htmx:before:history:restore', restore);
