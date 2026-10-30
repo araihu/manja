@@ -8,7 +8,7 @@ require (
 )
 
 require (
-	github.com/a-h/templ v0.3.1100 // indirect
+	github.com/a-h/templ v0.3.1070 // indirect
 	github.com/alecthomas/chroma/v2 v2.27.0 // indirect
 	github.com/araihu/goshtoso v0.4.4 // indirect
 	github.com/araihu/margo v0.0.25 // indirect

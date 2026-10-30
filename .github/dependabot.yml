@@ -7,6 +7,11 @@ updates:
       - "/tools"
     schedule:
       interval: "daily"
+    # Goshtoso v0.4.5 still uses templ APIs removed in v0.3.1100.
+    # Revisit after Goshtoso ships components generated with the new runtime.
+    ignore:
+      - dependency-name: "github.com/a-h/templ"
+        versions: ["0.3.1100"]
     groups:
       go-minor-patch:
         patterns: ["*"]
