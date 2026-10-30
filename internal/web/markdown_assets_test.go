@@ -52,7 +52,7 @@ func TestNestedSchemaDescriptionsUseMargoSlots(t *testing.T) {
 	if err := localrender.SchemaTreeFromSummary("runner", "Request", schema, nil, "", "", "").Render(request.Context(), &output); err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"<strong>visibility</strong>", `<code title="all">all</code>`, "<strong>settings</strong>", `<code title="true">true</code>`} {
+	for _, want := range []string{"<strong>visibility</strong>", `<code class="margo-inline-code" title="all">all</code>`, "<strong>settings</strong>", `<code class="margo-inline-code" title="true">true</code>`} {
 		if !strings.Contains(output.String(), want) {
 			t.Errorf("missing %s in %s", want, output.String())
 		}
