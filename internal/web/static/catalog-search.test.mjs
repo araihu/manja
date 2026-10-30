@@ -132,7 +132,7 @@ test('global search reports a broad query instead of a generic outage', async ()
     fetch: async () => ({ ok: false, status: 422 }),
   })
   const router = fixture.window.ManjaCatalogSearchRouter.create(fixture.root)
-  await assert.rejects(router.search('reset'), /Search is too broad\. Add another term/)
+  await assert.rejects(router.search('reset'), /Search query is too broad/)
 })
 
 test('deployment ranking accepts multiline spec descriptions as corpus text', () => {
@@ -296,3 +296,24 @@ test('invalid local query errors remain asynchronous for modal recovery', async 
  const {router} = await indexedSearchFixture()
  await assert.rejects(router.search('x'.repeat(129)),/Invalid search query/)
 })
+
+for (const [status, expected] of [
+  [400, 'Enter a shorter search query with letters or numbers.'],
+  [422, 'Search is too broad. Add more detail to your query.'],
+  [503, 'Search is unavailable. Reload the page and try again.'],
+]) {
+  test(`hosted search modal presents the recovery for HTTP ${status}`, async () => {
+    const { model } = searchModel({ searchGlobal: 'true', searchFallbackUrl: '/search.json', searchMount: '/' }, {
+      fetch: async () => ({ ok: false, status }),
+    })
+    model.$refs = { results: { scrollTop: 10 } }
+    model.query = 'reset'
+    model.generation = 1
+    model.loading = true
+    model.runSearch(1)
+    await new Promise(resolve => setImmediate(resolve))
+    assert.equal(model.loading, false)
+    assert.equal(model.error, expected)
+    assert.equal(model.results.length, 0)
+  })
+}

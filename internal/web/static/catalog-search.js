@@ -795,8 +795,8 @@
     if (this.globalSearch && this.contextDocument) url.searchParams.set("context_document", this.contextDocument);
     return fetch(url.toString(), { headers: { Accept: "application/json" } }).then(function (response) {
       if (!response.ok) {
-        if (response.status === 400) throw new Error("Enter a valid search query");
-        if (response.status === 422) throw new Error("Search is too broad. Add another term");
+        if (response.status === 400) throw new Error("Invalid search query");
+        if (response.status === 422) throw new Error("Search query is too broad");
         throw new Error("Search is temporarily unavailable");
       }
       return response.json();
