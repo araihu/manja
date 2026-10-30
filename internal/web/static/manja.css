@@ -907,7 +907,6 @@ html.boot [data-boot-anim="main"] {
 .manja-publication-back { display: inline-flex; align-items: center; min-height: 44px; text-decoration: underline; text-underline-offset: .2em; }
 .manja-publication-pickers { display: grid; grid-template-columns: minmax(0,1fr); gap: .75rem; }
 .manja-publication-pickers > * { min-width: 0; }
-.manja-publication-identity { margin-top: .75rem; font-size: .875rem; overflow-wrap: anywhere; }
 .manja-publication-summary { margin-block: .5rem; font-size: .875rem; }
 .manja-publication-group { margin-block: 1.5rem; }
 .manja-publication-link { display: flex; justify-content: space-between; align-items: center; gap: 1rem; min-height: 44px; padding: .75rem 0; border-bottom: 1px solid var(--color-outline); overflow-wrap: anywhere; }

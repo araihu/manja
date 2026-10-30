@@ -16,7 +16,6 @@ templ catalogPublicationContext(data CatalogPageData) {
 			@selectfield.Select(selectfield.Config{TriggerAttrs: templ.Attributes{"data-publication-api-select": "true"}, ID: "publication-api", Label: "API", Options: catalogPublicationAPIOptions(data), InputAttrs: templ.Attributes{"data-publication-picker": "true", "data-publication-initial-value": catalogPublicationInitialAPI(data)}})
 			@selectfield.Select(selectfield.Config{TriggerAttrs: templ.Attributes{"data-publication-version-select": "true"}, ID: "publication-version", Label: "Publication", Options: catalogPublicationVersionOptions(data), InputAttrs: templ.Attributes{"data-publication-picker": "true", "data-publication-initial-value": data.Document.Key}})
 		</div>
-		<p data-publication-identity class="manja-publication-identity">{ data.Directory.Title + " · " + data.Document.Publication.API + " · " + data.Document.Publication.Label(data.Document.APIVersion) }</p>
 		<div hidden>
 			for _,g:=range catalogPublicationGroups(data) {
 				for _,o:=range g.Options {
