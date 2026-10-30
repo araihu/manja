@@ -59,3 +59,40 @@ func TestCatalogPublicationValidationAndSemver(t *testing.T) {
 		t.Fatal("build metadata changed precedence")
 	}
 }
+
+func TestCatalogBranchPublicationNames(t *testing.T) {
+	base := CatalogPublication{API: "public", Channel: "branch", Ref: "refs/heads/main", Commit: strings.Repeat("a", 40), SourcePath: "api/public.yaml"}
+	for _, test := range []struct{ channel, ref, name, want string }{
+		{"branch", "refs/heads/main", "", "main · API 1.0.0"},
+		{"branch", "refs/heads/master", "", "master · API 1.0.0"},
+		{"branch", "refs/heads/release/v2", "", "release/v2 · API 1.0.0"},
+		{"branch", "refs/heads/main", "preview", "preview · API 1.0.0"},
+		{"next", "refs/heads/master", "", "master · API 1.0.0"},
+	} {
+		p := base
+		p.Channel, p.Ref, p.ChannelName = test.channel, test.ref, test.name
+		if err := ValidateCatalogPublication(&p); err != nil {
+			t.Fatal(err)
+		}
+		if got := p.Label("1.0.0"); got != test.want {
+			t.Errorf("publication label = %q, want %q", got, test.want)
+		}
+	}
+	for _, name := range []string{" preview", "preview\nmain", strings.Repeat("a", 129)} {
+		p := base
+		p.ChannelName = name
+		if ValidateCatalogPublication(&p) == nil {
+			t.Errorf("invalid channelName accepted: %q", name)
+		}
+	}
+	legacy := base
+	legacy.Channel = "next"
+	if ValidateCatalogPublicationSet([]*CatalogPublication{&base, &legacy}) == nil {
+		t.Fatal("legacy and branch channels duplicated the same API publication")
+	}
+	release := base
+	release.Channel, release.Version, release.Ref, release.ChannelName = "release", "1.0.0", "refs/tags/v1.0.0", "preview"
+	if ValidateCatalogPublication(&release) == nil {
+		t.Fatal("release accepted a branch channelName")
+	}
+}

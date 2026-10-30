@@ -14,6 +14,7 @@ type CatalogPublication struct {
 	API           string `json:"api" yaml:"api"`
 	Audience      string `json:"audience,omitempty" yaml:"audience"`
 	Channel       string `json:"channel" yaml:"channel"`
+	ChannelName   string `json:"channelName,omitempty" yaml:"channelName"`
 	Version       string `json:"version,omitempty" yaml:"version"`
 	Latest        bool   `json:"latest,omitempty" yaml:"latest"`
 	RepositoryURL string `json:"repositoryURL,omitempty" yaml:"repositoryURL"`
@@ -34,6 +35,17 @@ func ValidateCatalogPublication(p *CatalogPublication) error {
 	}
 	if err := ValidateCatalogDocumentKey(p.API); err != nil {
 		return fmt.Errorf("publication API: %w", err)
+	}
+	if len(p.ChannelName) > 128 {
+		return fmt.Errorf("publication channelName is too long")
+	}
+	if p.ChannelName != "" {
+		if err := ValidateCanonicalIdentity("publication channelName", p.ChannelName, false); err != nil {
+			return err
+		}
+		if !p.IsBranch() {
+			return fmt.Errorf("publication channelName is only supported for branch publications")
+		}
 	}
 	for name, value := range map[string]string{"audience": p.Audience, "ref": p.Ref, "source path": p.SourcePath} {
 		if name == "audience" && value == "" {
@@ -56,9 +68,9 @@ func ValidateCatalogPublication(p *CatalogPublication) error {
 		return fmt.Errorf("invalid publication ref")
 	}
 	switch p.Channel {
-	case "next":
+	case "branch", "next":
 		if !strings.HasPrefix(p.Ref, "refs/heads/") || len(p.Ref) == len("refs/heads/") || p.Version != "" || p.Latest {
-			return fmt.Errorf("next publication requires a branch and cannot declare a release version or latest")
+			return fmt.Errorf("branch publication requires a branch ref and cannot declare a release version or latest")
 		}
 	case "release":
 		parts := publicationVersionPattern.FindStringSubmatch(p.Version)
@@ -74,7 +86,7 @@ func ValidateCatalogPublication(p *CatalogPublication) error {
 			return fmt.Errorf("latest publication must be a stable release")
 		}
 	default:
-		return fmt.Errorf("publication channel must be next or release")
+		return fmt.Errorf("publication channel must be branch or release (next is a legacy branch alias)")
 	}
 	if p.RepositoryURL != "" {
 		u, err := url.Parse(p.RepositoryURL)
@@ -104,7 +116,11 @@ func ValidateCatalogPublicationSet(publications []*CatalogPublication) error {
 		if p == nil {
 			continue
 		}
-		identity := p.API + "\x00" + p.Channel + "\x00" + p.Version
+		channel := p.Channel
+		if p.IsBranch() {
+			channel = "branch"
+		}
+		identity := p.API + "\x00" + channel + "\x00" + p.Version
 		if seen[identity] {
 			return fmt.Errorf("duplicate publication for API %q", p.API)
 		}
@@ -126,9 +142,23 @@ func ValidateCatalogPublicationSet(publications []*CatalogPublication) error {
 	return nil
 }
 
+// IsBranch recognizes branch publications and the original next discriminator.
+func (p CatalogPublication) IsBranch() bool {
+	return p.Channel == "branch" || p.Channel == "next"
+}
+
+// BranchName uses the declared name or the tracked Git branch without inventing
+// a name from document keys, filenames or API versions.
+func (p CatalogPublication) BranchName() string {
+	if p.ChannelName != "" {
+		return p.ChannelName
+	}
+	return strings.TrimPrefix(p.Ref, "refs/heads/")
+}
+
 func (p CatalogPublication) Label(apiVersion string) string {
-	if p.Channel == "next" {
-		return "next · development · API " + apiVersion
+	if p.IsBranch() {
+		return p.BranchName() + " · API " + apiVersion
 	}
 	label := "release " + p.Version
 	if strings.Contains(strings.Split(p.Version, "+")[0], "-") {

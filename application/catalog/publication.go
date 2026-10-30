@@ -33,7 +33,7 @@ func PreferredDocuments(directory CatalogArtifactV1) []DocumentDirectoryV1 {
 			continue
 		}
 		a, b := d.Publication, old.Publication
-		if a.Latest && !b.Latest || a.Latest == b.Latest && (a.Channel == "next" && b.Channel != "next" || a.Channel == b.Channel && domain.ComparePublicationVersions(a.Version, b.Version) > 0) {
+		if a.Latest && !b.Latest || a.Latest == b.Latest && (a.IsBranch() && !b.IsBranch() || a.IsBranch() == b.IsBranch() && domain.ComparePublicationVersions(a.Version, b.Version) > 0) {
 			byAPI[key] = d
 		}
 	}

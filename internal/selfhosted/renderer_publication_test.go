@@ -25,8 +25,10 @@ func TestPublicationMetadataSurvivesExportRecoveryAndChangesIdentity(t *testing.
 	spec := `{"openapi":"3.0.3","info":{"title":"Internal API","version":"0.2.0"},"paths":{"/audit":{"get":{"operationId":"listAudit","responses":{"200":{"description":"ok"}}}}}}`
 	mappings := []map[string]any{}
 	for _, channel := range []string{"next", "release"} {
-		p := domain.CatalogPublication{API: "internal", Audience: "internal", Channel: channel, Ref: "refs/heads/main", Commit: strings.Repeat("a", 40), SourcePath: "api/internal.yaml"}
+		p := domain.CatalogPublication{API: "internal", Audience: "internal", Channel: "branch", ChannelName: "preview", Ref: "refs/heads/main", Commit: strings.Repeat("a", 40), SourcePath: "api/internal.yaml"}
 		if channel == "release" {
+			p.Channel = "release"
+			p.ChannelName = ""
 			p.Version = "0.2.0"
 			p.Latest = true
 			p.Ref = "refs/tags/openapi/internal/v0.2.0"
@@ -63,7 +65,7 @@ func TestPublicationMetadataSurvivesExportRecoveryAndChangesIdentity(t *testing.
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"data-publication-context", "next · development · API 0.2.0", `href="/reference/example/documents/release/"`} {
+	for _, want := range []string{"data-publication-context", "preview · API 0.2.0", `href="/reference/example/documents/release/"`} {
 		if !strings.Contains(string(page), want) {
 			t.Errorf("exported next page missing %q", want)
 		}
@@ -77,7 +79,7 @@ func TestPublicationMetadataSurvivesExportRecoveryAndChangesIdentity(t *testing.
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"refs/heads/main", strings.Repeat("a", 40), "api/internal.yaml"} {
+	for _, want := range []string{"refs/heads/main", strings.Repeat("a", 40), "api/internal.yaml", "channelName", "preview"} {
 		if !strings.Contains(string(directory), want) {
 			t.Errorf("catalog lost publication metadata %q", want)
 		}
@@ -86,7 +88,7 @@ func TestPublicationMetadataSurvivesExportRecoveryAndChangesIdentity(t *testing.
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"next · development", "release 0.2.0 · latest stable"} {
+	for _, want := range []string{"preview · API", "release 0.2.0 · latest stable"} {
 		if !strings.Contains(string(search), want) {
 			t.Errorf("deployment search missing %q", want)
 		}
@@ -130,7 +132,7 @@ func TestPublicationMetadataSurvivesExportRecoveryAndChangesIdentity(t *testing.
 		if _, err = page.GoBack(); err != nil {
 			t.Fatal(err)
 		}
-		if _, err = page.WaitForFunction(`() => location.pathname.endsWith('/next/') && document.querySelector('#publication-version-trigger').textContent.includes('next')`, nil); err != nil {
+		if _, err = page.WaitForFunction(`() => location.pathname.endsWith('/next/') && document.querySelector('#publication-version-trigger').textContent.includes('preview')`, nil); err != nil {
 			t.Fatal(err)
 		}
 		waitStaticExportReady(t, page)
@@ -145,7 +147,7 @@ func TestPublicationMetadataSurvivesExportRecoveryAndChangesIdentity(t *testing.
 		waitStaticExportReady(t, page)
 		assertContext := func() {
 			t.Helper()
-			if _, err := page.WaitForFunction(`() => document.querySelector('[data-public-doc-identity]') && document.querySelector('[data-publication-back]') && document.querySelector('header [data-publication-controls] #publication-version-trigger') && !document.querySelector('[data-catalog-main-content] [data-publication-picker]') && document.title.includes('next · development')`, nil); err != nil {
+			if _, err := page.WaitForFunction(`() => document.querySelector('[data-public-doc-identity]') && document.querySelector('[data-publication-back]') && document.querySelector('header [data-publication-controls] #publication-version-trigger') && !document.querySelector('[data-catalog-main-content] [data-publication-picker]') && document.title.includes('preview · API')`, nil); err != nil {
 				t.Fatal(err)
 			}
 		}

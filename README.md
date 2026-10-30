@@ -295,12 +295,12 @@ source:
   root: ./bundles
   include: ['*.json']
   documents:
-    - path: internal-next.json
-      key: internal-next
+    - path: internal-main.json
+      key: internal-main
       publication:
         api: internal
         audience: internal
-        channel: next
+        channel: branch
         ref: refs/heads/main
         commit: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
         sourcePath: api/internal/openapi.yaml
@@ -321,7 +321,14 @@ source:
 Publication refs, full commit IDs and source paths are supplied by the publisher;
 Manja does not derive Git provenance from a file source. Repository URLs are
 optional public HTTPS links; credentials and local acquisition paths must not be
-published. A `next` publication requires a branch ref and has no release version.
+published. A `branch` publication requires a branch ref and has no release
+version. Its displayed name defaults to the tracked branch (`main`, `master`,
+`release/v2`, etc.). Set optional `channelName: preview` in that publication to
+declare a different name. The name is shared by the overview, header, titles
+and search, and is included in snapshot identity. The original `channel: next`
+value remains accepted as a legacy branch discriminator and also uses the
+declared name or tracked branch. A files source does not discover Git's default
+branch: publishers supply the verified branch ref.
 A `release` requires a tag and SemVer version. `latest` may identify only one,
 highest stable release per API. This flag marks an existing release; it does not
 create a duplicate document. Publishers remain responsible for acquisition,

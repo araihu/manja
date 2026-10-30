@@ -93,8 +93,8 @@ func catalogPublicationGroups(data CatalogPageData) []catalogPublicationGroup {
 			if a.Latest != b.Latest {
 				return a.Latest
 			}
-			if (a.Channel == "next") != (b.Channel == "next") {
-				return a.Channel == "next"
+			if a.IsBranch() != b.IsBranch() {
+				return a.IsBranch()
 			}
 			if c := domain.ComparePublicationVersions(a.Version, b.Version); c != 0 {
 				return c > 0
@@ -139,11 +139,7 @@ func catalogPublicationVersionOptions(data CatalogPageData) []selectfield.Option
 	for _, g := range catalogPublicationGroups(data) {
 		if g.ID == "api:"+data.Document.Publication.API {
 			for _, o := range g.Options {
-				label := o.Label
-				if o.Document.Publication != nil && o.Document.Publication.Channel == "next" {
-					label = "next · API " + o.APIVersion
-				}
-				options = append(options, selectfield.Option{Value: o.Key, Label: label, Selected: o.Key == data.Document.Key})
+				options = append(options, selectfield.Option{Value: o.Key, Label: o.Label, Selected: o.Key == data.Document.Key})
 			}
 		}
 	}
