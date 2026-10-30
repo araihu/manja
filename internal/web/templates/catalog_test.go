@@ -494,8 +494,8 @@ func TestCatalogDocumentOverviewKeepsIdentityVersionAndDownloadInHeader(t *testi
 			t.Errorf("document overview header missing %q", want)
 		}
 	}
-	if !strings.Contains(body, document.SourcePath) {
-		t.Fatalf("document overview omitted source path %q", document.SourcePath)
+	if strings.Contains(body, document.SourcePath) {
+		t.Fatalf("public document exposed source path %q", document.SourcePath)
 	}
 }
 
@@ -558,9 +558,6 @@ func renderLegacyCatalogDocumentHeader(data CatalogPageData) ([]byte, error) {
 			if _, err := io.WriteString(writer, `<p class="max-w-[70ch] whitespace-pre-wrap text-base leading-7 text-on-surface-muted dark:text-on-surface-dark-muted">`+templ.EscapeString(document.Overview.Description)+`</p>`); err != nil {
 				return err
 			}
-		}
-		if err := catalogSourceStatus(data).Render(ctx, writer); err != nil {
-			return err
 		}
 		_, err := io.WriteString(writer, `</header>`)
 		return err
@@ -1355,8 +1352,7 @@ func TestPreparedOperationHeaderMatchesCatalogSSRBytes(t *testing.T) {
 	}
 	legacy = legacy[start : start+end+len(`</header>`)]
 	actions := copyPageAction(operation.Anchor, data.PageMarkdownHref)
-	provenance := catalogProvenance(data, true)
-	shared, err := fragment.Bytes(context.Background(), actions, provenance)
+	shared, err := fragment.Bytes(context.Background(), actions, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1645,9 +1641,6 @@ func renderLegacySchemaDetailHeader(data CatalogPageData, schema projection.Sche
 			if _, err := io.WriteString(writer, `<div class="manja-schema-markdown min-w-0"><p class="whitespace-pre-wrap">`+schema.Description+`</p></div>`); err != nil {
 				return err
 			}
-		}
-		if err := catalogSourceStatus(data).Render(ctx, writer); err != nil {
-			return err
 		}
 		_, err := io.WriteString(writer, `</header>`)
 		return err

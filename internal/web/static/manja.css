@@ -893,14 +893,7 @@ html.boot [data-boot-anim="main"] {
   padding-block: 0.75rem;
 }
 
-.manja-publication-context {
-  flex-shrink: 0;
-  margin-bottom: 1.5rem;
-  padding-block: .75rem;
-  background: var(--color-surface);
-  border-bottom: 1px solid var(--color-outline);
-}
-.dark .manja-publication-context { background: var(--color-surface-dark); border-color: var(--color-outline-dark); }
+.manja-publication-context { flex-shrink: 0; margin-bottom: 1.5rem; }
 .manja-publication-back { display: inline-flex; align-items: center; min-height: 44px; text-decoration: underline; text-underline-offset: .2em; }
 .manja-catalog-header-publication { display: grid; grid-template-columns: minmax(0,1fr) auto; align-items: center; column-gap: 1rem; padding: .625rem 1rem; }
 .manja-catalog-header-publication > :first-child { grid-column: 1; grid-row: 1; min-height: 44px; }
@@ -937,11 +930,6 @@ html.boot [data-boot-anim="main"] {
 .manja-publication-link:focus-visible,.manja-publication-back:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 3px; }
 .dark .manja-publication-link:focus-visible,.dark .manja-publication-back:focus-visible { outline-color: var(--color-primary-dark); }
 .manja-publication-counts { font-size: .75rem; text-align: right; }
-.manja-publication-provenance { font-size: .875rem; margin-top: .5rem; }
-.manja-publication-provenance > summary { display: list-item; cursor: pointer; min-height: 44px; padding-block: .75rem; }
-.manja-publication-provenance dl > div { margin-block: .75rem; }
-.manja-publication-provenance dt { font-weight: 600; }
-.manja-publication-provenance dd,.manja-publication-provenance code,.manja-publication-provenance a { overflow-wrap: anywhere; white-space: normal; }
 
 .manja-capability-footer nav:empty {
   display: none;

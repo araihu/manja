@@ -33,25 +33,11 @@ templ catalogPublicationControls(data CatalogPageData) {
 	</div>
 }
 
-// Source context stays outside the replaceable operation/schema content.
+// Navigation context stays outside the replaceable operation/schema content.
 templ catalogPublicationContext(data CatalogPageData) {
-	<section data-publication-context data-publication-document-title={ data.Directory.Title + " · " + catalog.PublicationDocumentLabel(*data.Document) + " · Manja" } class="manja-publication-context" aria-label="Publication source context">
+	<nav data-publication-context data-publication-document-title={ data.Directory.Title + " · " + catalog.PublicationDocumentLabel(*data.Document) + " · Manja" } class="manja-publication-context" aria-label="Catalog navigation">
 		<a data-publication-back href={ templ.URL(strings.TrimSuffix(data.Mount, "/") + "/") } class="manja-publication-back">{ "Back to " + data.Directory.Title }</a>
-		<details class="manja-publication-provenance">
-			<summary>Publication source</summary>
-			<dl>
-				<div><dt>Declared API version</dt><dd><code>{ data.Document.APIVersion }</code></dd></div>
-				<div><dt>Upstream ref</dt><dd><code>{ data.Document.Publication.Ref }</code></dd></div>
-				<div><dt>Upstream commit</dt><dd><code>{ data.Document.Publication.Commit }</code></dd></div>
-				<div><dt>Source path</dt><dd><code>{ data.Document.Publication.SourcePath }</code></dd></div>
-				if data.Document.Publication.RepositoryURL!="" {
-					<div><dt>Repository</dt><dd><a href={ templ.URL(data.Document.Publication.RepositoryURL) } rel="noreferrer">{ data.Document.Publication.RepositoryURL }</a></dd></div>
-				}
-				<div><dt>Catalog build revision</dt><dd><code>{ data.RevisionID }</code></dd></div>
-				<div><dt>Catalog snapshot</dt><dd><code>{ string(data.SnapshotID) }</code></dd></div>
-			</dl>
-		</details>
-	</section>
+	</nav>
 }
 
 templ catalogPublicationsOverview(data CatalogPageData) {
@@ -85,10 +71,6 @@ templ catalogPublicationsOverview(data CatalogPageData) {
 			</section>
 		}
 		<p x-cloak x-show="filter.trim() !== '' && Array.from($root.querySelectorAll('[data-publication-api]')).every(group => !(group.dataset.searchText || '').includes(filter.trim().toLowerCase()))" role="status">No matching API publications.</p>
-		<details class="manja-publication-provenance">
-			<summary>Catalog build details</summary>
-			@catalogProvenance(data, false)
-		</details>
 		if data.CatalogReadme!="" {
 			<section class="mt-8">
 				<h2 class="font-title text-xl font-bold">About this catalog</h2>

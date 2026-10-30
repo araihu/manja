@@ -572,7 +572,6 @@ templ catalogHeader(data CatalogPageData) {
 		<div class="flex shrink-0 items-center gap-2">
 			@catalogHeaderSearch()
 			@themeToggle()
-			<span class="hidden rounded-radius border border-outline px-2 py-1 font-mono text-xs text-on-surface-muted xl:inline dark:border-outline-dark dark:text-on-surface-dark-muted">{ shortSnapshotID(data.SnapshotID) }</span>
 		</div>
 	</div>
 }
@@ -686,9 +685,6 @@ templ catalogOverview(data CatalogPageData) {
 				</div>
 			</div>
 			@catalogOverviewMetrics(data)
-			<div class="mt-5">
-				@catalogProvenance(data, false)
-			</div>
 			if data.CatalogReadme != "" {
 				<section class="mt-8 max-w-3xl" aria-labelledby="catalog-readme-heading">
 					<h2 id="catalog-readme-heading" class="font-title text-xl font-bold text-on-surface-strong dark:text-on-surface-dark-strong">README</h2>
@@ -886,7 +882,7 @@ templ catalogDocument(data CatalogPageData) {
 
 templ catalogDocumentHeader(data CatalogPageData) {
 	if data.DocumentHeader != nil {
-		@localrender.CatalogDocumentHeader(*data.DocumentHeader, catalogSourceStatus(data))
+		@localrender.CatalogDocumentHeader(*data.DocumentHeader, nil)
 	} else {
 		@catalogDocumentHeaderFallback(data)
 	}
@@ -969,7 +965,7 @@ func catalogDocumentHeaderFallback(data CatalogPageData) templpkg.Component {
 			return templpkg.NopComponent
 		}
 	}
-	return localrender.CatalogDocumentHeader(fragment, catalogSourceStatus(data))
+	return localrender.CatalogDocumentHeader(fragment, nil)
 }
 
 templ catalogOperationDetail(data CatalogPageData) {
@@ -977,7 +973,7 @@ templ catalogOperationDetail(data CatalogPageData) {
 		{{ operation := *data.OperationView }}
 		<article data-catalog-detail="operation">
 			if data.OperationHeader != nil {
-				@localrender.OperationHeader(*data.OperationHeader, catalogOperationHeaderActions(operation, data), catalogProvenance(data, true))
+				@localrender.OperationHeader(*data.OperationHeader, catalogOperationHeaderActions(operation, data), nil)
 			}
 			@endpointSection(operation, data.OperationServers, "", PublicDocsOptions{
 				OperationIdentityInHeader: true,
@@ -1074,11 +1070,11 @@ templ catalogOrganizationAvatar(item CatalogOrganizationItem) {
 templ catalogSchemaDetail(data CatalogPageData) {
 	{{ schema := *data.Selected.Schema }}
 	if data.SchemaDetail != nil {
-		@localrender.SchemaDetail(*data.SchemaDetail, catalogSchemaDetailActions(data, schema.Anchor), catalogSourceStatus(data))
+		@localrender.SchemaDetail(*data.SchemaDetail, catalogSchemaDetailActions(data, schema.Anchor), nil)
 	} else {
 		<article id={ schema.Anchor } data-catalog-detail="schema" class="space-y-6">
 			if data.SchemaDetailHeader != nil {
-				@localrender.SchemaDetailHeader(*data.SchemaDetailHeader, catalogSchemaDetailActions(data, schema.Anchor), catalogSourceStatus(data))
+				@localrender.SchemaDetailHeader(*data.SchemaDetailHeader, catalogSchemaDetailActions(data, schema.Anchor), nil)
 			}
 			if data.SchemaDetailBody != nil {
 				@localrender.SchemaDetailBody(*data.SchemaDetailBody)
@@ -1115,41 +1111,6 @@ templ catalogSchemaDetailActions(data CatalogPageData, anchor string) {
 		@icon.Icon(icon.Config{SpriteURL: heroicons.SpriteURL, Symbol: heroicons.Icon16SolidArrowDownTray, Size: icon.SizeSM, Decorative: true})
 		<span>Download source</span>
 	</a>
-}
-
-templ catalogSourceStatus(data CatalogPageData) {
-	@catalogProvenance(data, true)
-}
-
-templ catalogProvenance(data CatalogPageData, includeSource bool) {
-	<dl data-catalog-provenance class="flex min-w-0 flex-wrap items-center gap-x-5 gap-y-2 border-t border-outline pt-4 text-xs text-on-surface-muted dark:border-outline-dark dark:text-on-surface-dark-muted" aria-label={ catalogProvenanceLabel(includeSource) }>
-		if includeSource && data.Document != nil {
-			<div class="flex min-w-0 max-w-full items-center gap-2" title={ data.Document.SourcePath }>
-				@icon.Icon(icon.Config{SpriteURL: heroicons.SpriteURL, Symbol: heroicons.Icon16SolidDocumentText, Size: icon.SizeSM, Decorative: true})
-				<dt class="shrink-0 font-semibold">Source</dt>
-				<dd class="min-w-0 break-all sm:truncate"><code class="text-on-surface-strong dark:text-on-surface-dark-strong">{ data.Document.SourcePath }</code></dd>
-			</div>
-		}
-		if !includeSource && strings.TrimSpace(string(data.Directory.ProfileID)) != "" {
-			<div class="flex items-center gap-2" title="Compatibility profile applied while compiling this catalog">
-				@icon.Icon(icon.Config{SpriteURL: heroicons.SpriteURL, Symbol: heroicons.Icon16SolidCog6Tooth, Size: icon.SizeSM, Decorative: true})
-				<dt class="font-semibold">Compatibility</dt>
-				<dd><code class="text-on-surface-strong dark:text-on-surface-dark-strong">{ string(data.Directory.ProfileID) }</code></dd>
-			</div>
-		}
-		if catalogRevisionValue(data) != "" {
-			<div class="flex items-center gap-2" title={ catalogRevisionTitle(data) }>
-				@icon.Icon(icon.Config{SpriteURL: heroicons.SpriteURL, Symbol: heroicons.Icon16SolidArrowPath, Size: icon.SizeSM, Decorative: true})
-				<dt class="font-semibold">{ catalogRevisionLabel(data) }</dt>
-				<dd><code class="text-on-surface-strong dark:text-on-surface-dark-strong">{ catalogRevisionValue(data) }</code></dd>
-			</div>
-		}
-		<div class="flex items-center gap-2" title={ string(data.SnapshotID) }>
-			@icon.Icon(icon.Config{SpriteURL: heroicons.SpriteURL, Symbol: heroicons.Icon16SolidShieldCheck, Size: icon.SizeSM, Decorative: true})
-			<dt class="font-semibold">Active snapshot</dt>
-			<dd><code class="text-on-surface-strong dark:text-on-surface-dark-strong">{ shortSnapshotID(data.SnapshotID) }</code></dd>
-		</div>
-	</dl>
 }
 
 func catalogBranding(branding catalog.BrandingV1) core.DocsBranding {
@@ -1214,31 +1175,6 @@ func catalogPageTitleWithManja(label string) string {
 	return label + " · Manja"
 }
 
-func shortSnapshotID(id catalog.SnapshotID) string {
-	value := strings.TrimPrefix(string(id), "snapshot-sha256-")
-	if len(value) > 12 {
-		value = value[:12]
-	}
-	return value
-}
-
-func catalogRevisionLabel(data CatalogPageData) string {
-	if data.Document != nil && data.Document.Publication != nil {
-		return "Catalog build revision"
-	}
-	if strings.TrimSpace(data.CommitSHA) != "" {
-		return "Commit"
-	}
-	return "Revision"
-}
-
-func catalogProvenanceLabel(includeSource bool) string {
-	if includeSource {
-		return "Specification provenance"
-	}
-	return "Catalog provenance"
-}
-
 func catalogDocumentVersionLabel(document catalog.DocumentDirectoryV1) string {
 	value := strings.TrimSpace(document.APIVersion)
 	if strings.EqualFold(value, "unversioned") {
@@ -1251,23 +1187,6 @@ func catalogDocumentOptionVersionLabel(document CatalogDocumentOption) string {
 	value := strings.TrimSpace(document.Version)
 	if strings.EqualFold(value, "unversioned") {
 		return ""
-	}
-	return value
-}
-
-func catalogRevisionTitle(data CatalogPageData) string {
-	if strings.TrimSpace(data.CommitSHA) != "" {
-		return data.CommitSHA
-	}
-	return data.RevisionID
-}
-
-func catalogRevisionValue(data CatalogPageData) string {
-	value := strings.TrimSpace(catalogRevisionTitle(data))
-	value = strings.TrimPrefix(value, "files-sha256-")
-	value = strings.TrimPrefix(value, "git-")
-	if len(value) > 12 {
-		value = value[:12]
 	}
 	return value
 }

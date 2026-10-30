@@ -287,7 +287,7 @@ docker run --rm \
 An optional `publication` on each `source.documents` mapping identifies the
 upstream publication independently of the OpenAPI `info.version` or the bundle
 filename. Manja binds this metadata into the catalog snapshot and uses it in
-navigation, page titles, source details and server/static client search:
+navigation, page titles and server/static client search:
 
 ```yaml
 source:
@@ -333,4 +333,6 @@ persistent header on document, operation and schema pages; switching opens the
 selected publication at its overview. Select values are document keys and
 destinations are normal links, so non-root static deployments retain their
 configured base path.
-Documents without publication metadata retain the existing presentation.
+Publication provenance remains in catalog JSON for publisher and management
+integrations. Public documentation omits source paths, Git commits, compilation
+profiles, build revisions and snapshot IDs from the reader interface.

@@ -239,16 +239,8 @@ func TestCatalogDocumentSearchUsesGlobalModal(t *testing.T) {
 	if count, err := documentHeader.GetByRole("link", playwright.LocatorGetByRoleOptions{Name: "Download source", Exact: playwright.Bool(true)}).Count(); err != nil || count != 1 {
 		t.Fatalf("catalog source download links = %d, err=%v", count, err)
 	}
-	sourcePath := documentHeader.Locator("[data-catalog-provenance] > div").First().Locator("dd code")
-	if source, err := sourcePath.TextContent(); err != nil || strings.TrimSpace(source) != "apis/apps/v1.json" {
-		t.Fatalf("catalog source path = %q, err=%v", source, err)
-	}
-	if order, err := documentHeader.Evaluate(`element => {
-		const action = element.querySelector('a');
-		const source = element.querySelector('[data-catalog-provenance] > div:first-child dd code');
-		return Boolean(action && source && (action.compareDocumentPosition(source) & Node.DOCUMENT_POSITION_FOLLOWING));
-	}`, nil); err != nil || order != true {
-		t.Fatalf("catalog source path should follow download action: %v, err=%v", order, err)
+	if count, err := documentHeader.Locator("[data-catalog-provenance]").Count(); err != nil || count != 0 {
+		t.Fatalf("public document rendered management metadata: count=%d, err=%v", count, err)
 	}
 	if _, err := page.Evaluate(`() => { window.__catalogSearchLoadMarker = "unchanged"; return true; }`, nil); err != nil {
 		t.Fatal(err)

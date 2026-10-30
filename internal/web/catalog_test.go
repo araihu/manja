@@ -118,7 +118,7 @@ func TestCatalogPreparedOverviewMetricsRendersThroughRootAndNestedHandlers(t *te
 	}
 }
 
-func TestCatalogPreparedOverviewMetricsPreservesLegacyAdjacencyThroughHandlers(t *testing.T) {
+func TestCatalogPreparedOverviewMetricsOmitsBuildMetadataThroughHandlers(t *testing.T) {
 	t.Parallel()
 
 	for _, mount := range []string{"/", "/kubernetes"} {
@@ -138,7 +138,6 @@ func TestCatalogPreparedOverviewMetricsPreservesLegacyAdjacencyThroughHandlers(t
 			if err != nil {
 				t.Fatal(err)
 			}
-			wantBoundary := append(append([]byte(nil), metrics...), []byte(`<div class="mt-5"><dl data-catalog-provenance`)...)
 
 			path := mount
 			if path != "/" {
@@ -153,14 +152,10 @@ func TestCatalogPreparedOverviewMetricsPreservesLegacyAdjacencyThroughHandlers(t
 			if bytes.Count(body, metrics) != 1 {
 				t.Fatalf("prepared metrics occurred %d times in full handler body", bytes.Count(body, metrics))
 			}
-			start := bytes.Index(body, metrics)
-			end := start + len(wantBoundary)
-			if end > len(body) || !bytes.Equal(body[start:end], wantBoundary) {
-				got := body[start:]
-				if len(got) > len(wantBoundary) {
-					got = got[:len(wantBoundary)]
+			for _, unwanted := range []string{"data-catalog-provenance", "Active snapshot", "Compatibility", ">Revision<"} {
+				if bytes.Contains(body, []byte(unwanted)) {
+					t.Errorf("public catalog rendered build metadata %q", unwanted)
 				}
-				t.Fatalf("full %s catalog handler changed legacy metrics/provenance adjacency:\nwant=%q\n got=%q", mount, wantBoundary, got)
 			}
 		})
 	}
@@ -1079,7 +1074,6 @@ func TestCatalogSchemaLoadsOneProgressiveNodeWithNoJSFallback(t *testing.T) {
 		`<header class="grid min-w-0 gap-4">`,
 		`aria-label="Schema actions"`,
 		`class="manja-schema-title`,
-		`data-catalog-provenance`,
 	} {
 		if !strings.Contains(root.Body.String(), want) {
 			t.Fatalf("schema root missing prepared header %q: %s", want, root.Body.String())
@@ -1981,8 +1975,8 @@ func TestCatalogProjectionTransportIsNotActivatedByInitialHTML(t *testing.T) {
 		t.Fatalf("initial HTML = %d body=%q", response.Code, response.Body.String())
 	}
 	digest := sha256.Sum256(response.Body.Bytes())
-	if got := hex.EncodeToString(digest[:]); got != "c15d0fd3fb87f8702303ad4ade97e4dc0133999ff346131d26c01c7b017deda5" || response.Body.Len() != 63670 {
-		t.Errorf("initial HTML = sha256 %s, %d bytes; want accepted SSR shell with publication context support", got, response.Body.Len())
+	if got := hex.EncodeToString(digest[:]); got != "fc5929b57c360e1f68daf18bfbbbea29131fb8d888e30da04387a31ddce57631" || response.Body.Len() != 62329 {
+		t.Errorf("initial HTML = sha256 %s, %d bytes; want accepted public documentation shell", got, response.Body.Len())
 	}
 	for _, forbidden := range []string{"projection-data", "serviceWorker", "manja:local-ready", "MANJA_LOCAL_DOCS"} {
 		if strings.Contains(response.Body.String(), forbidden) {

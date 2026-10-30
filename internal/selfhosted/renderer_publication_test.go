@@ -63,9 +63,23 @@ func TestPublicationMetadataSurvivesExportRecoveryAndChangesIdentity(t *testing.
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"data-publication-context", "next · development · API 0.2.0", "refs/heads/main", strings.Repeat("a", 40), "Catalog build revision", `href="/reference/example/documents/release/"`} {
+	for _, want := range []string{"data-publication-context", "next · development · API 0.2.0", `href="/reference/example/documents/release/"`} {
 		if !strings.Contains(string(page), want) {
 			t.Errorf("exported next page missing %q", want)
+		}
+	}
+	for _, unwanted := range []string{"Publication source", "Upstream ref", "Catalog build revision", "data-catalog-provenance", "Active snapshot"} {
+		if strings.Contains(string(page), unwanted) {
+			t.Errorf("public document rendered management metadata %q", unwanted)
+		}
+	}
+	directory, err := os.ReadFile(filepath.Join(output, "example/snapshots", string(receipt.Catalogs[0].SnapshotID), "catalog.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"refs/heads/main", strings.Repeat("a", 40), "api/internal.yaml"} {
+		if !strings.Contains(string(directory), want) {
+			t.Errorf("catalog lost publication metadata %q", want)
 		}
 	}
 	search, err := os.ReadFile(filepath.Join(output, "_manja/search/directory.json"))
