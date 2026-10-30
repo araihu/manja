@@ -9,11 +9,78 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 
 	artifact "github.com/araihu/manja/application/htmlartifact"
 	storeprimitives "github.com/araihu/manja/internal/adapters/store"
 )
+
+func TestStoreSerializesConcurrentArtifactPairs(t *testing.T) {
+	store := New(t.TempDir())
+	first := expectationFixture(t)
+	second := first
+	second.BuildKey = buildKeyForPayload(t, "second")
+	firstHTML := make(chan struct{})
+	release := make(chan struct{})
+	secondRender := make(chan struct{})
+	var once sync.Once
+	store.write = func(name string, mode fs.FileMode, write func(io.Writer) error) error {
+		if err := storeprimitives.DurableAtomicWriteFunc(name, mode, write); err != nil {
+			return err
+		}
+		if filepath.Base(name) == "shared.html" {
+			once.Do(func() { close(firstHTML); <-release })
+		}
+		return nil
+	}
+	done := make(chan error, 2)
+	go func() {
+		_, err := store.CommitHTML(context.Background(), "shared.html", first, renderBytes([]byte("first")))
+		done <- err
+	}()
+	<-firstHTML
+	waitContext, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+	defer cancel()
+	if _, err := store.VerifyHTML(waitContext, "shared.html", first); !errors.Is(err, context.DeadlineExceeded) {
+		close(release)
+		<-done
+		t.Fatalf("verification observed an unfinished artifact pair: %v", err)
+	}
+	if _, err := store.CommitHTML(context.Background(), "independent.html", second, renderBytes([]byte("independent"))); err != nil {
+		close(release)
+		<-done
+		t.Fatalf("unrelated artifact was blocked: %v", err)
+	}
+	go func() {
+		_, err := store.CommitHTML(context.Background(), "shared.html", second, func(writer io.Writer) error {
+			close(secondRender)
+			_, err := writer.Write([]byte("second"))
+			return err
+		})
+		done <- err
+	}()
+	select {
+	case <-secondRender:
+		close(release)
+		for range 2 {
+			<-done
+		}
+		t.Fatal("another renderer entered before the first artifact pair completed")
+	case <-time.After(50 * time.Millisecond):
+	}
+	close(release)
+	for range 2 {
+		if err := <-done; err != nil {
+			t.Fatal(err)
+		}
+	}
+	verified, err := store.VerifyHTML(context.Background(), "shared.html", second)
+	if err != nil || !verified.Hit() {
+		t.Fatalf("concurrent commits left a torn artifact pair: %#v, %v", verified, err)
+	}
+}
 
 func TestStoreCommitAndVerifyCacheHit(t *testing.T) {
 	ctx := context.Background()

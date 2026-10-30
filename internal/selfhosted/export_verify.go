@@ -132,6 +132,21 @@ func verifyExportStructure(root string, manifest exportManifest, declared map[st
 			if err := require(output); err != nil {
 				return err
 			}
+			if entry := declared[output]; entry.Length != child.Length || entry.SHA256 != child.SHA256 {
+				return fmt.Errorf("catalog %q child %q bytes differ from snapshot", receipt.CatalogID, child.Path)
+			}
+		}
+		if exportHasSupportFiles(snapshot) {
+			for _, document := range directory.Documents {
+				output := exportJoin(prefix, "snapshots", receipt.SnapshotID, "source-files", document.SourcePath)
+				if err := require(output); err != nil {
+					return err
+				}
+				child, ok := manifestChild(snapshot, document.SourceChild)
+				if entry := declared[output]; !ok || entry.Length != child.Length || entry.SHA256 != child.SHA256 {
+					return fmt.Errorf("catalog %q original source %q differs from snapshot", receipt.CatalogID, document.SourcePath)
+				}
+			}
 		}
 	}
 

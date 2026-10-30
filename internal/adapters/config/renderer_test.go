@@ -173,17 +173,33 @@ func TestLoadRendererRejectsInvalidSourceConfiguration(t *testing.T) {
 		{name: "git repository", data: strings.Replace(validRendererConfig, "repository: https://example.invalid/payments.git", "repository: \"\"", 1)},
 		{name: "git ref", data: strings.Replace(validRendererConfig, "ref: refs/heads/main", "ref: \"\"", 1)},
 		{name: "git credentials", data: strings.Replace(validRendererConfig, "https://example.invalid/payments.git", "https://user:password@example.invalid/payments.git", 1)},
-		{name: "git root", data: strings.Replace(validRendererConfig, "      repository: https://example.invalid/payments.git", "      root: forbidden\n      repository: https://example.invalid/payments.git", 1)},
+		{name: "git absolute root", data: strings.Replace(validRendererConfig, "      repository: https://example.invalid/payments.git", "      root: /api\n      repository: https://example.invalid/payments.git", 1)},
+		{name: "git escaping root", data: strings.Replace(validRendererConfig, "      repository: https://example.invalid/payments.git", "      root: ../api\n      repository: https://example.invalid/payments.git", 1)},
+		{name: "git Windows root", data: strings.Replace(validRendererConfig, "      repository: https://example.invalid/payments.git", "      root: C:/api\n      repository: https://example.invalid/payments.git", 1)},
+		{name: "git unclean root", data: strings.Replace(validRendererConfig, "      repository: https://example.invalid/payments.git", "      root: api/../specs\n      repository: https://example.invalid/payments.git", 1)},
 		{name: "runtime mount", data: strings.Replace(validRendererConfig, "mount: /payments", "mount: /kubernetes/payments", 1)},
 		{name: "duplicate document path", data: strings.Replace(validRendererConfig, "          key: core-v1", "          key: core-v1\n        - path: api__v1_openapi.json\n          key: core-copy", 1)},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
-			if _, err := LoadRenderer(writeRendererConfig(t, test.data)); err == nil {
+			if _, err := LoadRenderer(writeRendererConfigWithAllowlist(t, test.data)); err == nil {
 				t.Fatal("invalid renderer source configuration was accepted")
 			}
 		})
+	}
+}
+
+func TestRendererGitSourceAllowsRepositoryRelativeRoot(t *testing.T) {
+	data := strings.Replace(validRendererConfig, "      repository: https://example.invalid/payments.git", "      root: api/contracts\n      repository: https://example.invalid/payments.git", 1)
+	data = strings.Replace(data, "    compatibilityAllowlist: allowlists/kubernetes.json\n", "", 1)
+	loaded, err := LoadRenderer(writeRendererConfig(t, data))
+	if err != nil {
+		t.Fatal(err)
+	}
+	source, ok := loaded.Sources()[1].(sourceadapter.GitCatalogSource)
+	if !ok || source.Root != "api/contracts" {
+		t.Fatalf("configured Git source = %#v", source)
 	}
 }
 

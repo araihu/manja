@@ -37,6 +37,20 @@ func TestPreparedCatalogDocumentHeaderRendersCopiedIdentity(t *testing.T) {
 	}
 }
 
+func TestCatalogDocumentHeaderBindsOriginalSourceDownload(t *testing.T) {
+	document, href, _ := catalogDocumentHeaderFixture()
+	document.SourcePath = "api/public.yaml"
+	base := "/catalogs/project/snapshots/snapshot-sha256-" + strings.Repeat("a", 64) + "/source-files/"
+	if _, err := PrepareCatalogDocumentHeader(document, href, base+document.SourcePath); err != nil {
+		t.Fatal(err)
+	}
+	for _, invalid := range []string{base + "api/internal.yaml", "/source-files/api/public.yaml", strings.Replace(base, "snapshot-sha256-", "invalid-", 1) + document.SourcePath} {
+		if _, err := PrepareCatalogDocumentHeader(document, href, invalid); err == nil {
+			t.Fatalf("accepted unbound source download %q", invalid)
+		}
+	}
+}
+
 func TestPrepareCatalogDocumentHeaderFallsBackToKeyForBlankTitle(t *testing.T) {
 	document, documentHref, downloadHref := catalogDocumentHeaderFixture()
 	document.Title = "  "
