@@ -5,7 +5,7 @@ go 1.27.3
 require (
 	github.com/a-h/templ v0.3.1070
 	github.com/araihu/assets v0.2.5
-	github.com/araihu/goshtoso v0.4.4
+	github.com/araihu/goshtoso v0.4.5
 	github.com/araihu/margo v0.0.25
 	github.com/caarlos0/env/v11 v11.4.1
 	github.com/evanw/esbuild v0.28.2
