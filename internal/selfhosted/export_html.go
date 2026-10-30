@@ -27,7 +27,11 @@ func installDeploymentSearchHTML(input []byte, directoryURL string, entry export
 		return input, nil
 	}
 	setHTMLAttribute(root, "data-search-global", "true")
-	deploymentMount := strings.TrimSuffix(directoryURL, "/_manja/search/directory.json")
+	searchPathStart := strings.LastIndex(directoryURL, "/_manja/search/")
+	if searchPathStart < 0 {
+		return nil, fmt.Errorf("invalid deployment search directory URL")
+	}
+	deploymentMount := directoryURL[:searchPathStart]
 	if deploymentMount == "" {
 		deploymentMount = "/"
 	}

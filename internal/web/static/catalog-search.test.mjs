@@ -210,3 +210,23 @@ test('client queries retain strict validation independently of corpus normalizat
   }
   assert.throws(() => router.searchClient('Ｎｅｅｄｌｅ'), /Server normalization required/)
 })
+
+test('deployment search pins legacy URLs and rejects same-length corrupted bytes', async () => {
+  const bytes = new TextEncoder().encode('{"value":"old"}')
+  const changed = new TextEncoder().encode('{"value":"new"}')
+  const sha = Array.from(new Uint8Array(await webcrypto.subtle.digest('SHA-256', bytes)), b => b.toString(16).padStart(2, '0')).join('')
+  const pinned = `/docs/_manja/search/directory-sha256-${sha}.json`
+  const requests = []
+  const fixture = searchModel({}, { crypto: webcrypto, fetch: async path => {
+    requests.push(path)
+    return { ok: true, arrayBuffer: async () => (path === pinned ? bytes : changed).buffer }
+  } })
+  const router = fixture.window.ManjaCatalogSearchRouter.create(fixture.root)
+  const result = await router.fetchVerifiedURL('/docs/_manja/search/directory.json', bytes.length, sha)
+  assert.equal(result.value, 'old')
+  assert.deepEqual(requests, [pinned])
+
+  const corrupt = searchModel({}, { crypto: webcrypto, fetch: async () => ({ ok: true, arrayBuffer: async () => changed.buffer }) })
+  const corruptRouter = corrupt.window.ManjaCatalogSearchRouter.create(corrupt.root)
+  await assert.rejects(corruptRouter.fetchVerifiedURL(pinned, bytes.length, sha), /Verified JSON digest differs/)
+})

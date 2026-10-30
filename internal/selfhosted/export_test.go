@@ -163,10 +163,24 @@ catalogs:
 	if !strings.Contains(string(body), `id="manja-local-docs-descriptor"`) || !strings.Contains(string(body), `"publicationKey":"private"`) || !strings.Contains(string(body), `src="/manja-assets/local-docs.js"`) {
 		t.Fatalf("visibility-disabled static shell lacks export authority: %s", body)
 	}
-	for _, want := range []string{`data-search-global="true"`, `data-search-deployment-directory-url="/_manja/search/directory.json"`, `data-search-deployment-directory-sha256="`} {
+	for _, want := range []string{`data-search-global="true"`, `data-search-deployment-directory-url="/_manja/search/directory-sha256-`, `data-search-deployment-directory-sha256="`} {
 		if !strings.Contains(string(body), want) {
 			t.Errorf("static shell lacks deployment search binding %q", want)
 		}
+	}
+	searchBytes, err := os.ReadFile(filepath.Join(output, deploymentSearchDirectoryPath))
+	if err != nil {
+		t.Fatal(err)
+	}
+	searchDigest := sha256.Sum256(searchBytes)
+	digestHex := hex.EncodeToString(searchDigest[:])
+	pinnedPath := deploymentSearchImmutableDirectoryPath(digestHex)
+	pinnedBytes, err := os.ReadFile(filepath.Join(output, filepath.FromSlash(pinnedPath)))
+	if err != nil || string(pinnedBytes) != string(searchBytes) {
+		t.Fatalf("pinned search directory does not preserve exact bytes: %v", err)
+	}
+	if !strings.Contains(string(body), `data-search-deployment-directory-url="/`+pinnedPath+`"`) || !strings.Contains(string(body), `data-search-deployment-directory-sha256="`+digestHex+`"`) {
+		t.Fatal("page does not bind the immutable search directory to its digest")
 	}
 	fragment, err := os.ReadFile(filepath.Join(output, filepath.FromSlash(fragmentPath)))
 	if err != nil {

@@ -340,6 +340,10 @@ persistent header on document, operation and schema pages; switching opens the
 selected publication at its overview. Select values are document keys and
 destinations are normal links, so non-root static deployments retain their
 configured base path.
+Static deployments bind the global search directory to a content-addressed URL.
+Publishers must retain these immutable search directories and catalog snapshot
+files while older pages may remain open. Replacing mutable page URLs must not
+replace bytes at an immutable URL; clients continue verifying length and SHA-256.
 Publication provenance remains in catalog JSON for publisher and management
 integrations. Public documentation omits source paths, Git commits, compilation
 profiles, build revisions and snapshot IDs from the reader interface.

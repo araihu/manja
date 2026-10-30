@@ -82,6 +82,10 @@ func encodeDeploymentSearchDirectory(catalogs []deploymentSearchCatalogV1) ([]by
 	return append(data, '\n'), nil
 }
 
-func deploymentSearchDirectoryURL(basePath string) string {
-	return prefixExportBase(basePath, "/"+path.Clean(deploymentSearchDirectoryPath))
+func deploymentSearchImmutableDirectoryPath(digest string) string {
+	return path.Join(path.Dir(deploymentSearchDirectoryPath), "directory-sha256-"+digest+".json")
+}
+
+func deploymentSearchDirectoryURL(basePath, digest string) string {
+	return prefixExportBase(basePath, "/"+deploymentSearchImmutableDirectoryPath(digest))
 }

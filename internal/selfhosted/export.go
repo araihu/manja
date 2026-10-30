@@ -198,11 +198,15 @@ func exportFromHandlerWithCache(ctx context.Context, handler http.Handler, recei
 		return ExportReceipt{}, err
 	}
 	searchEntry := writer.entries[deploymentSearchDirectoryPath]
+	immutableSearchPath := deploymentSearchImmutableDirectoryPath(searchEntry.SHA256)
+	if err = writer.copy(deploymentSearchDirectoryPath, immutableSearchPath); err != nil {
+		return ExportReceipt{}, err
+	}
 	for _, entry := range writer.sortedEntries() {
 		if entry.MediaType != "text/html" {
 			continue
 		}
-		if err = writer.installDeploymentSearch(entry.Path, deploymentSearchDirectoryURL(basePath), searchEntry); err != nil {
+		if err = writer.installDeploymentSearch(entry.Path, deploymentSearchDirectoryURL(basePath, searchEntry.SHA256), searchEntry); err != nil {
 			return ExportReceipt{}, fmt.Errorf("install deployment search in %q: %w", entry.Path, err)
 		}
 	}

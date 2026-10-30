@@ -415,6 +415,12 @@
 	if (url.origin !== window.location.origin || url.search || url.hash) {
 	  return Promise.reject(new Error("Invalid verified JSON URL"));
 	}
+	// Older page shells used the mutable deployment alias. Bind that request
+	// to its declared digest too, so retained generations can serve its bytes.
+	var legacyDirectory = "/_manja/search/directory.json";
+	if (url.pathname.endsWith(legacyDirectory)) {
+	  url.pathname = url.pathname.slice(0, -legacyDirectory.length) + "/_manja/search/directory-sha256-" + digest + ".json";
+	}
 	var key = url.pathname + ":" + digest;
 	if (this.cache.has(key)) return this.cache.get(key);
 	var request = fetch(url.pathname, { headers: { Accept: "application/json" } })
@@ -1123,10 +1129,15 @@
           this.resetResultsScroll();
         }.bind(this)).catch(function (error) {
           if (generation !== this.generation || query !== this.query) return;
+          if (window.console && typeof window.console.warn === "function") {
+            window.console.warn("Manja search failed:", error);
+          }
           this.results = [];
           this.sourceLabel = "";
           this.loading = false;
-          this.error = error && error.message ? error.message : "Search is temporarily unavailable";
+          this.error = error && error.message === "Search query is too broad"
+            ? "Search is too broad. Add more detail to your query."
+            : "Search is unavailable. Reload the page and try again.";
         }.bind(this));
       },
       visibleItems: function () { return this.query.trim() ? this.results : this.recent; },
