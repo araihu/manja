@@ -40,7 +40,8 @@ func NewRecoveredRenderer(ctx context.Context, options RendererOptions) (http.Ha
 		}
 		receipts = append(receipts, receipt)
 	}
-	return server.Handler(), receipts, nil
+	handler, err := withRendererBrandAssets(ctx, configured.AssetDirectory(), server.Handler())
+	return handler, receipts, err
 }
 
 func rendererConfiguration(options RendererOptions) (configadapter.RendererFile, renderer.Config, error) {

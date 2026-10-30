@@ -284,8 +284,9 @@ func (server *server) ensureRuntime(ctx context.Context) error {
 		}
 	}
 	organization := web.OrganizationPresentation{
-		Title:  server.config.Organization.Title,
-		Readme: server.config.Organization.Readme,
+		Branding: server.config.Organization.Branding,
+		Title:    server.config.Organization.Title,
+		Readme:   server.config.Organization.Readme,
 		License: web.OrganizationLicensePresentation{
 			Name: server.config.Organization.License.Name,
 			URL:  server.config.Organization.License.URL,

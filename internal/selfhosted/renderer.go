@@ -68,7 +68,8 @@ func NewRenderer(ctx context.Context, options RendererOptions) (http.Handler, []
 		}
 		receipts = append(receipts, receipt)
 	}
-	return server.Handler(), receipts, nil
+	handler, err := withRendererBrandAssets(ctx, configured.AssetDirectory(), server.Handler())
+	return handler, receipts, err
 }
 
 func degradedReceipt(server renderer.Server, catalogID string, refreshErr error) renderer.ActivationReceipt {

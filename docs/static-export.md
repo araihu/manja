@@ -12,6 +12,26 @@ browser. No Manja process, database, or search API is required at request time.
 
 ## Configure, export, and preview
 
+Organization branding configures the workspace header across the organization,
+catalog, document, and search pages. Catalog branding supplies its icon and is
+also the fallback icon for its specs in organization navigation:
+
+```yaml
+version: 1
+assetDir: ./brand
+organization:
+  branding:
+    displayName: Example
+    logo: {src: /brand-assets/example.svg, alt: Example, homeUrl: /}
+    favicon: /brand-assets/example.svg
+```
+
+`assetDir` is relative to the renderer configuration and contains only local
+SVG, PNG, JPEG, WebP, GIF, or ICO images (at most 8 MiB each). Its files are
+served under `/brand-assets/` and included in the verified export. Symlinks
+are rejected. Keep this directory with recovered runtime deployments too.
+Omitting organization branding preserves the default Manja header.
+
 Use a Manja binary containing the incremental HTML exporter. The
 [Pages examples](pages-deployment.md) pin a revision with this implementation.
 When building from a Manja checkout, run `go build -o ./bin/manja ./cmd/manja`
