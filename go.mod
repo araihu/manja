@@ -5,8 +5,8 @@ go 1.27.3
 require (
 	github.com/a-h/templ v0.3.1100
 	github.com/araihu/assets v0.2.5
-	github.com/araihu/goshtoso v0.4.6-0.20261030162228-79bae652aa33
-	github.com/araihu/margo v0.0.34-0.20261030163335-750b2e4fd021
+	github.com/araihu/goshtoso v0.4.6
+	github.com/araihu/margo v0.0.34
 	github.com/caarlos0/env/v11 v11.4.1
 	github.com/evanw/esbuild v0.28.2
 	github.com/getkin/kin-openapi v0.152.0

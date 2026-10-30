@@ -48,11 +48,11 @@ upstream `origin/main` commit `96c81116e6610a882f89cca2b40b92b20d59fbb0`,
 tree `25fcd034e116990f439eecab04bdcc94bcbceea4`. That cross-check does not
 replace Manja's pinned release receipt above.
 
-## Goshtoso v0.4.6-0.20261030162228-79bae652aa33
+## Goshtoso v0.4.6
 
-Manja resolves `github.com/araihu/goshtoso v0.4.6-0.20261030162228-79bae652aa33`. The immutable source
-commit is `79bae652aa332a9f63962912d60749edfe864f0c`, tree
-`320ed8211bc5cd826574f3826e45cd2c207a1671`, and the upstream root `LICENSE`
+Manja resolves `github.com/araihu/goshtoso v0.4.6`. The immutable release
+commit is `64499293c6d134194e44288450d85e6ac559cc17`, tree
+`f05c630c8e2905b789f95d255710f62caefd1179`, and the upstream root `LICENSE`
 is mode `100644`, 1,078 bytes, Git blob
 `0a7743398ecbeacc05ed822e1f74023ee9b36842`, SHA-256
 `cacf68ff9920c026f5de2ebf992333c1a243e45d81aaa5b4577e05b52c5a9584`.
@@ -85,9 +85,9 @@ The upstream holder/year above apply to Goshtoso only. They are not a Manja
 first-party holder/year assertion.
 
 The same `LICENSE` blob is present at the independently checked upstream
-`origin/main` commit `a2d38bfbfc7425a2d29fab6301e48cf9a83df673`, tree
-`8076bd20f4fe6e926c4db01176434394a5d23f7d`. That cross-check does not replace
-the exact `v0.4.6-0.20261030162228-79bae652aa33` source receipt above.
+`origin/main` commit `64499293c6d134194e44288450d85e6ac559cc17`, tree
+`f05c630c8e2905b789f95d255710f62caefd1179`. That cross-check does not replace
+the exact `v0.4.6` source receipt above.
 
 ## Runtime and browser dependencies
 

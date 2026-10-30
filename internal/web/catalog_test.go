@@ -2068,8 +2068,8 @@ func TestCatalogAssetsServeDeterministicLocalDocsWasmRuntime(t *testing.T) {
 			name:     "wasm binary",
 			path:     "/manja-assets/local-docs/manja.wasm",
 			embedded: "static/local-docs/manja.wasm",
-			length:   16_643_255,
-			digest:   "66c7d1b0202f4ee8d1bbefeaba4cc027e382b821e56d4d9ac7f5e7002e8b6fe3",
+			length:   16_641_998,
+			digest:   "b62aadbf90d71512e635cbd67f089ad34165d5816d5f714bb12cb309ec6c9d57",
 
 			contentType: "application/wasm",
 			prefix:      []byte{0x00, 'a', 's', 'm'},
@@ -2078,8 +2078,8 @@ func TestCatalogAssetsServeDeterministicLocalDocsWasmRuntime(t *testing.T) {
 			name:     "brotli wasm binary",
 			path:     "/manja-assets/local-docs/manja.wasm.br",
 			embedded: "static/local-docs/manja.wasm.br",
-			length:   2_948_070,
-			digest:   "1a97a3d0c1a2702f01b6e43ad5855a66b39d01681b64df9a3fbdc8e447686662",
+			length:   2_947_686,
+			digest:   "18621d67f032cada0469d0d7a6e140a97cbfb63a4aa3d73d54d25103119718e7",
 		},
 	} {
 		t.Run(test.name, func(t *testing.T) {
