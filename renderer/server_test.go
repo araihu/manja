@@ -634,6 +634,7 @@ func TestCatalogOverviewPresentationIsScopedToConfiguredOverview(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
+			var overviewBody string
 			for _, route := range []string{"/payments/", "/payments/_manja/offline-shell", "/payments/documents/payments-v1/", "/payments/search", "/inventory/", "/"} {
 				response := httptest.NewRecorder()
 				server.Handler().ServeHTTP(response, httptest.NewRequest(http.MethodGet, route, nil))
@@ -641,6 +642,9 @@ func TestCatalogOverviewPresentationIsScopedToConfiguredOverview(t *testing.T) {
 					t.Fatalf("GET %s: %d", route, response.Code)
 				}
 				body := response.Body.String()
+				if route == "/payments/" {
+					overviewBody = body
+				}
 				wantDownload := test.download && (route == "/payments/" || route == "/payments/_manja/offline-shell")
 				if got := strings.Contains(body, ">Download catalog JSON</a>"); got != wantDownload {
 					t.Errorf("%s download button visible = %t, want %t", route, got, wantDownload)
@@ -662,6 +666,9 @@ func TestCatalogOverviewPresentationIsScopedToConfiguredOverview(t *testing.T) {
 			server.Handler().ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/payments/catalog.json", nil))
 			if response.Code != http.StatusTemporaryRedirect {
 				t.Fatalf("catalog JSON redirect = %d, want 307 regardless of button visibility", response.Code)
+			}
+			if test.download && !strings.Contains(overviewBody, `href="`+response.Header().Get("Location")+`"`) {
+				t.Fatal("download button must link directly to the immutable catalog JSON, including in static exports")
 			}
 			request := httptest.NewRequest(http.MethodGet, response.Header().Get("Location"), nil)
 			response = httptest.NewRecorder()

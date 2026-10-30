@@ -93,7 +93,7 @@ func (handler *CatalogHandler) catalogPageDataWithSidebarQuery(
 	data.SearchHref, _ = catalogURL(mount, "search")
 	data.SearchJSONHref = data.SearchHref + ".json"
 	data.SearchContextMount = mount
-	data.DownloadHref, _ = catalogURL(mount, "catalog.json")
+	data.DownloadHref, _ = catalogURL(mount, "snapshots", string(snapshot.ID), "catalog.json")
 	searchIdentity, exists := catalogChildIdentity(snapshot.Manifest, snapshot.Directory.SearchChild)
 	if !exists || searchIdentity.Kind != "search-directory" {
 		return templates.CatalogPageData{}, fmt.Errorf("catalog search directory identity is missing")

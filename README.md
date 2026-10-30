@@ -217,8 +217,9 @@ catalogOverview:
   showDownloadButton: true
 ```
 
-This controls only the overview button in the server and static export. The
-catalog JSON endpoint remains available to clients when the button is hidden.
+This controls only the overview button in the server and static export. Its
+link points directly to the published snapshot's JSON, which remains available
+when the button is hidden.
 
 Build a static site from the catalogs in `renderer.yaml`:
 
