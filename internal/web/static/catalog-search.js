@@ -6,7 +6,7 @@
   document.addEventListener("change", function (event) {
     var picker = event.target;
     if (!picker || !picker.matches || !picker.matches("[data-publication-picker]")) return;
-    var context = picker.closest("[data-publication-context]");
+    var context = picker.closest("[data-publication-controls]");
     if (!context) return;
     var target = Array.from(context.querySelectorAll("[data-publication-target]")).find(function (link) {
       return link.dataset.publicationTarget === picker.value;

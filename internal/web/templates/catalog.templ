@@ -517,7 +517,7 @@ func catalogWorkspaceHome(data CatalogPageData) string {
 }
 
 templ catalogHeader(data CatalogPageData) {
-	<div class="flex h-16 items-center justify-between gap-4 px-4 lg:px-8">
+	<div class={ catalogHeaderClass(data) }>
 		<div class="flex min-w-0 items-center gap-3">
 			if catalogHasSidebar(data) {
 				<button
@@ -551,7 +551,7 @@ templ catalogHeader(data CatalogPageData) {
 					}
 					<span data-catalog-header-brand-label class="max-w-[12rem] truncate">{ catalogBrandName(data) }</span>
 				</a>
-				if data.Document != nil {
+				if data.Document != nil && data.Document.Publication == nil {
 					<span class="hidden text-on-surface-muted md:inline dark:text-on-surface-dark-muted">/</span>
 					<a
 						href={ templpkg.URL(data.DocumentHref) }
@@ -566,6 +566,9 @@ templ catalogHeader(data CatalogPageData) {
 				}
 			}
 		</div>
+		if data.Document != nil && data.Document.Publication != nil {
+			@catalogPublicationControls(data)
+		}
 		<div class="flex shrink-0 items-center gap-2">
 			@catalogHeaderSearch()
 			@themeToggle()

@@ -131,7 +131,7 @@ func TestPublicationMetadataSurvivesExportRecoveryAndChangesIdentity(t *testing.
 		waitStaticExportReady(t, page)
 		assertContext := func() {
 			t.Helper()
-			if _, err := page.WaitForFunction(`() => document.querySelector('[data-public-doc-identity]') && document.querySelector('[data-publication-back]') && document.querySelector('#publication-version-trigger') && document.title.includes('next · development')`, nil); err != nil {
+			if _, err := page.WaitForFunction(`() => document.querySelector('[data-public-doc-identity]') && document.querySelector('[data-publication-back]') && document.querySelector('header [data-publication-controls] #publication-version-trigger') && !document.querySelector('[data-catalog-main-content] [data-publication-picker]') && document.title.includes('next · development')`, nil); err != nil {
 				t.Fatal(err)
 			}
 		}

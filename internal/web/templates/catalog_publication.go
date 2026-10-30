@@ -18,6 +18,13 @@ type catalogPublicationGroup struct {
 	Options                  []catalogPublicationOption
 }
 
+func catalogHeaderClass(data CatalogPageData) string {
+	if data.Document != nil && data.Document.Publication != nil {
+		return "manja-catalog-header-publication"
+	}
+	return "flex h-16 items-center justify-between gap-4 px-4 lg:px-8"
+}
+
 func catalogPublicationFilterText(group catalogPublicationGroup) string {
 	parts := []string{group.ID, group.Label, group.Audience}
 	for _, o := range group.Options {
@@ -113,7 +120,11 @@ func catalogPublicationVersionOptions(data CatalogPageData) []selectfield.Option
 	for _, g := range catalogPublicationGroups(data) {
 		if g.ID == "api:"+data.Document.Publication.API {
 			for _, o := range g.Options {
-				options = append(options, selectfield.Option{Value: o.Key, Label: o.Label, Selected: o.Key == data.Document.Key})
+				label := o.Label
+				if o.Document.Publication != nil && o.Document.Publication.Channel == "next" {
+					label = "next · API " + o.APIVersion
+				}
+				options = append(options, selectfield.Option{Value: o.Key, Label: label, Selected: o.Key == data.Document.Key})
 			}
 		}
 	}

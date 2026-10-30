@@ -328,8 +328,9 @@ create a duplicate document. Publishers remain responsible for acquisition,
 ref/commit verification, immutable-tag enforcement and alias redirects.
 
 Catalogs with publication metadata group their documents by API and expose
-explicit release/development labels. API and publication controls are available
-on document, operation and schema pages; switching opens the selected publication
-at its overview. Select values are document keys and destinations are normal
-links, so non-root static deployments retain their configured base path.
+explicit release/development labels. API and publication controls live in the
+persistent header on document, operation and schema pages; switching opens the
+selected publication at its overview. Select values are document keys and
+destinations are normal links, so non-root static deployments retain their
+configured base path.
 Documents without publication metadata retain the existing presentation.

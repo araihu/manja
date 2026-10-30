@@ -7,14 +7,12 @@ import (
 	"strings"
 )
 
-// Publication context is part of every document fragment, including operation
-// and schema pages, so both full loads and static navigation keep it current.
-templ catalogPublicationContext(data CatalogPageData) {
-	<section data-publication-context data-publication-document-title={ data.Directory.Title + " · " + catalog.PublicationDocumentLabel(*data.Document) + " · Manja" } class="manja-publication-context" aria-label="API publication">
-		<a data-publication-back href={ templ.URL(strings.TrimSuffix(data.Mount, "/") + "/") } class="manja-publication-back">{ "Back to " + data.Directory.Title }</a>
+// Publication controls live in the persistent app header, outside detail swaps.
+templ catalogPublicationControls(data CatalogPageData) {
+	<div data-publication-controls class="manja-publication-controls" role="group" aria-label="API publication">
 		<div class="manja-publication-pickers">
-			@selectfield.Select(selectfield.Config{TriggerAttrs: templ.Attributes{"data-publication-api-select": "true"}, ID: "publication-api", Label: "API", Options: catalogPublicationAPIOptions(data), InputAttrs: templ.Attributes{"data-publication-picker": "true", "data-publication-initial-value": catalogPublicationInitialAPI(data)}})
-			@selectfield.Select(selectfield.Config{TriggerAttrs: templ.Attributes{"data-publication-version-select": "true"}, ID: "publication-version", Label: "Publication", Options: catalogPublicationVersionOptions(data), InputAttrs: templ.Attributes{"data-publication-picker": "true", "data-publication-initial-value": data.Document.Key}})
+			@selectfield.Select(selectfield.Config{TriggerAttrs: templ.Attributes{"data-publication-api-select": "true", "aria-label": "API"}, ID: "publication-api", Options: catalogPublicationAPIOptions(data), InputAttrs: templ.Attributes{"data-publication-picker": "true", "data-publication-initial-value": catalogPublicationInitialAPI(data)}})
+			@selectfield.Select(selectfield.Config{TriggerAttrs: templ.Attributes{"data-publication-version-select": "true", "aria-label": "Publication"}, ID: "publication-version", Options: catalogPublicationVersionOptions(data), InputAttrs: templ.Attributes{"data-publication-picker": "true", "data-publication-initial-value": data.Document.Key}})
 		</div>
 		<div hidden>
 			for _,g:=range catalogPublicationGroups(data) {
@@ -23,6 +21,22 @@ templ catalogPublicationContext(data CatalogPageData) {
 				}
 			}
 		</div>
+		<noscript>
+			<nav aria-label="Publication links">
+				for _,g:=range catalogPublicationGroups(data) {
+					for _,o:=range g.Options {
+						<a class="manja-publication-link" href={ templ.URL(o.Href) }>{ g.Label+" · "+o.Label }</a>
+					}
+				}
+			</nav>
+		</noscript>
+	</div>
+}
+
+// Source context stays outside the replaceable operation/schema content.
+templ catalogPublicationContext(data CatalogPageData) {
+	<section data-publication-context data-publication-document-title={ data.Directory.Title + " · " + catalog.PublicationDocumentLabel(*data.Document) + " · Manja" } class="manja-publication-context" aria-label="Publication source context">
+		<a data-publication-back href={ templ.URL(strings.TrimSuffix(data.Mount, "/") + "/") } class="manja-publication-back">{ "Back to " + data.Directory.Title }</a>
 		<details class="manja-publication-provenance">
 			<summary>Publication source</summary>
 			<dl>
@@ -37,15 +51,6 @@ templ catalogPublicationContext(data CatalogPageData) {
 				<div><dt>Catalog snapshot</dt><dd><code>{ string(data.SnapshotID) }</code></dd></div>
 			</dl>
 		</details>
-		<noscript>
-			<nav aria-label="Publication links">
-				for _,g:=range catalogPublicationGroups(data) {
-					for _,o:=range g.Options {
-						<a class="manja-publication-link" href={ templ.URL(o.Href) }>{ g.Label+" · "+o.Label }</a>
-					}
-				}
-			</nav>
-		</noscript>
 	</section>
 }
 
