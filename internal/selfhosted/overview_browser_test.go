@@ -197,7 +197,7 @@ func assertOverviewFooterLayout(t *testing.T, page playwright.Page, label string
 		const errors = [];
 		if (wantOverflow && !overflow) errors.push('long page does not scroll');
 		if (!overflow && Math.abs(f.bottom - (box.bottom - parseFloat(style.paddingBottom))) > 2) errors.push('footer is above page bottom');
-		if (f.top < previous.bottom + 63) errors.push('footer overlaps content or loses its gap');
+		if (f.top < previous.bottom + 23) errors.push('footer overlaps content or loses its compact gap');
 		if (getComputedStyle(footer).position !== 'static') errors.push('footer is outside normal flow');
 		if (main.scrollWidth > main.clientWidth + 2) errors.push('horizontal overflow');
 		if (document.querySelectorAll('[data-manja-capability-footer]').length !== 1) errors.push('duplicate footer');
