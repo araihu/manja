@@ -116,6 +116,22 @@ func catalogPublicationGroups(data CatalogPageData) []catalogPublicationGroup {
 		}
 		return result[i].ID < result[j].ID
 	})
+	// OpenAPI titles need not be unique across public/internal API contracts.
+	// Preserve declared identities wherever a group title would be ambiguous.
+	labels := make(map[string]int, len(result))
+	for _, group := range result {
+		labels[strings.ToLower(group.Label)]++
+	}
+	for index := range result {
+		group := &result[index]
+		if labels[strings.ToLower(group.Label)] > 1 {
+			identity := group.API
+			if strings.HasPrefix(group.ID, "document:") {
+				identity = strings.TrimPrefix(group.ID, "document:")
+			}
+			group.Label += " · " + identity
+		}
+	}
 	return result
 }
 func catalogPublicationAPIOptions(data CatalogPageData) []selectfield.Option {
