@@ -1057,11 +1057,19 @@
           if (form) form.addEventListener("submit", function (event) {
             event.preventDefault();
             var input = form.querySelector('[name="q"]');
-            runStaticQuery(input ? input.value : "");
+            var query = input ? input.value : "";
+            var target = new URL(window.location.href);
+            target.searchParams.set("q", query);
+            window.history.replaceState(window.history.state, "", target.pathname + target.search + target.hash);
+            runStaticQuery(query);
           });
           var current = new URL(window.location.href);
           var query = current.searchParams.get("q");
-          if (query !== null && /\/search\/?$/.test(current.pathname)) this.$nextTick(function () { runStaticQuery(query); });
+          if (query !== null && /\/search\/?$/.test(current.pathname)) {
+            var input = form && form.querySelector('[name="q"]');
+            if (input) input.value = query;
+            this.$nextTick(function () { runStaticQuery(query); });
+          }
         }
         var payload = document.getElementById("catalog-search-current-visit");
         if (!payload) return;
