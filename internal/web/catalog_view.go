@@ -439,7 +439,7 @@ func (handler *CatalogHandler) catalogPageDataWithSidebarQuery(
 
 // catalogOrganizationNav builds the small root navigation from immutable
 // directory metadata only. It never reads source blobs or detail shards, so a
-// root view can advertise every mounted catalog/spec without loading a whole
+// root view can advertise every mounted catalog without loading a whole
 // collection into the browser.
 func (handler *CatalogHandler) catalogOrganizationNav(activeMount string, rootView bool) templates.CatalogOrganizationNavData {
 	if handler == nil || handler.runtime == nil || !rootView {
@@ -481,19 +481,7 @@ func (handler *CatalogHandler) catalogOrganizationNav(activeMount string, rootVi
 			AvatarSymbol: string(heroicons.Icon16SolidCube),
 			Active:       mount == activeMount,
 		})
-		for _, document := range preferred {
-			documentHref, err := catalogURL(mount, "documents", document.Key)
-			if err != nil {
-				continue
-			}
-			data.Specs = append(data.Specs, templates.CatalogOrganizationItem{
-				ID:    "spec-" + string(directory.CatalogID) + "-" + document.Key,
-				Label: catalogDocumentLabel(document), Description: catalogLabel,
-				Href:      documentHref + "/",
-				AvatarSrc: firstNonempty(document.Branding.LogoSrc, directory.Branding.LogoSrc),
-				AvatarAlt: firstNonempty(document.Branding.LogoAlt, directory.Branding.LogoAlt),
-			})
-		}
+
 		admission.Release()
 	}
 	return data

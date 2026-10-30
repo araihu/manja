@@ -73,7 +73,6 @@ type CatalogOrganizationItem struct {
 type CatalogOrganizationNavData struct {
 	Visible  bool
 	Catalogs []CatalogOrganizationItem
-	Specs    []CatalogOrganizationItem
 }
 
 type CatalogOrganizationLicenseData struct {
@@ -170,7 +169,7 @@ type CatalogPageData struct {
 
 func catalogNavigationLabel(data CatalogPageData) string {
 	if data.OrganizationNav.Visible {
-		return "Catalogs and specs"
+		return "Catalogs"
 	}
 	if data.Document == nil {
 		return "Catalog documents"
@@ -604,7 +603,7 @@ templ catalogSidebar(data CatalogPageData) {
 }
 
 templ catalogOrganizationNav(data CatalogOrganizationNavData) {
-	<nav id="catalog-organization-navigation" aria-label="Catalogs and specs" class="flex min-h-0 flex-1 flex-col">
+	<nav id="catalog-organization-navigation" aria-label="Catalogs" class="flex min-h-0 flex-1 flex-col">
 		@scrollregion.ScrollRegion(scrollregion.Config{
 			RootClass:     "min-h-0 flex-1",
 			ViewportClass: "h-full overflow-y-auto scrollbar-custom px-3 pb-4",
@@ -616,7 +615,6 @@ templ catalogOrganizationNav(data CatalogOrganizationNavData) {
 templ catalogOrganizationNavContent(data CatalogOrganizationNavData) {
 	<div>
 		@catalogOrganizationSection("Catalogs", heroicons.Icon16SolidRectangleGroup, data.Catalogs)
-		@catalogOrganizationSection("Specs", heroicons.Icon16SolidDocumentText, data.Specs)
 	</div>
 }
 
