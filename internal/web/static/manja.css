@@ -889,7 +889,19 @@ html.boot [data-boot-anim="main"] {
 }
 
 .manja-capability-footer {
-  padding-bottom: calc(5rem + env(safe-area-inset-bottom));
+  margin-top: 1.5rem;
+  padding-block: 0.75rem;
+}
+
+.manja-capability-footer nav:empty {
+  display: none;
+}
+
+/* Only enhanced endpoint pages need room for the fixed mobile request bar. */
+@media (max-width: 1023px) {
+  main:has([data-manja-request-config-enhanced="true"]) .manja-capability-footer {
+    padding-bottom: calc(5rem + env(safe-area-inset-bottom));
+  }
 }
 
 .manja-request-config-backdrop,
@@ -1990,10 +2002,6 @@ html.dark body [id^="catalog-schema-enum-alias-"][role="tooltip"] > span {
 }
 
 @media (min-width: 1024px) {
-  .manja-capability-footer {
-    padding-bottom: 0.5rem;
-  }
-
   [data-manja-copy-page] [x-ref="menu"] {
     left: auto;
     right: 0;
