@@ -79,8 +79,11 @@ catalogs:
 		if !strings.Contains(string(data), `aria-label="Example Org"`) || !strings.Contains(string(data), `/docs/brand-assets/org.svg`) {
 			t.Fatalf("organization brand missing from %s", page)
 		}
-		if page == "index.html" && strings.Count(string(data), `/docs/brand-assets/project.svg`) < 2 {
-			t.Fatal("catalog icon was not inherited by its spec navigation item")
+		if !strings.Contains(string(data), `/docs/brand-assets/project.svg`) {
+			t.Fatalf("catalog icon missing from %s", page)
+		}
+		if page == "index.html" && strings.Count(string(data), `/docs/brand-assets/project.svg`) != 1 {
+			t.Fatal("organization navigation must show the catalog icon once")
 		}
 	}
 	handler, _, err := NewRecoveredRenderer(context.Background(), options)
