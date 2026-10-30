@@ -1981,8 +1981,8 @@ func TestCatalogProjectionTransportIsNotActivatedByInitialHTML(t *testing.T) {
 		t.Fatalf("initial HTML = %d body=%q", response.Code, response.Body.String())
 	}
 	digest := sha256.Sum256(response.Body.Bytes())
-	if got := hex.EncodeToString(digest[:]); got != "3e010b4e9cc1534440fd3d90c3cb0b22492b917d9cf919cc8471a603e2d0d386" || response.Body.Len() != 64087 {
-		t.Errorf("initial HTML = sha256 %s, %d bytes; want accepted footer layout plus shared Margo stylesheet", got, response.Body.Len())
+	if got := hex.EncodeToString(digest[:]); got != "526f349fb19b9575ccd49cac7ef44797f6a1b9d845ce6a2057c3065ae83f2c48" || response.Body.Len() != 63669 {
+		t.Errorf("initial HTML = sha256 %s, %d bytes; want accepted compact footer layout plus shared Margo stylesheet", got, response.Body.Len())
 	}
 	for _, forbidden := range []string{"projection-data", "serviceWorker", "manja:local-ready", "MANJA_LOCAL_DOCS"} {
 		if strings.Contains(response.Body.String(), forbidden) {

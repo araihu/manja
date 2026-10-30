@@ -575,8 +575,8 @@ templ publicDocsOverviewLink(label string) {
 }
 
 templ capabilityFooter(data CapabilityFooterData) {
-	<footer aria-label="Documentation capabilities" data-manja-capability-footer class="manja-capability-footer mt-16 border-t border-outline pt-5 text-sm text-on-surface-muted dark:border-outline-dark dark:text-on-surface-dark-muted">
-		<div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+	<footer aria-label="Documentation capabilities" data-manja-capability-footer class="manja-capability-footer border-t border-outline text-xs text-on-surface-muted dark:border-outline-dark dark:text-on-surface-dark-muted">
+		<div class="flex flex-wrap items-center gap-x-5 gap-y-2">
 			<nav aria-label="Documentation utilities" class="flex flex-wrap items-center gap-x-5 gap-y-3">
 				if data.LLMsHref != "" {
 					<a data-manja-capability="llms" href={ templpkg.URL(data.LLMsHref) } class="font-medium underline-offset-4 transition-colors hover:text-primary hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary dark:hover:text-primary-dark dark:focus-visible:outline-primary-dark">LLMs.txt</a>
@@ -600,12 +600,7 @@ templ capabilityFooter(data CapabilityFooterData) {
 					</div>
 				}
 			</nav>
-			<a data-manja-capability="built-with" href="https://manja.araihu.com" target="_blank" rel="noopener" class="inline-flex shrink-0 items-center gap-2 self-start font-medium underline-offset-4 transition-colors hover:text-primary hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary sm:self-auto dark:hover:text-primary-dark dark:focus-visible:outline-primary-dark">
-				<svg xmlns="http://www.w3.org/2000/svg" class="size-4 shrink-0 text-primary dark:text-primary-dark" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-					<path d="M13 2 4 14h7l-1 8 9-12h-7l1-8Z"></path>
-				</svg>
-				<span>Built with <strong class="text-on-surface-strong dark:text-on-surface-dark-strong">Manja</strong></span>
-			</a>
+			<a data-manja-capability="built-with" href="https://manja.araihu.com" target="_blank" rel="noopener" class="underline-offset-4 transition-colors hover:text-primary hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary dark:hover:text-primary-dark dark:focus-visible:outline-primary-dark">Built with Manja</a>
 		</div>
 	</footer>
 }
