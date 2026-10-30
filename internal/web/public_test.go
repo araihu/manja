@@ -1254,7 +1254,9 @@ func TestPublicDocsRendersPoweredByFooterInFullPageAndFragments(t *testing.T) {
 		`<footer aria-label="Documentation capabilities"`,
 		`data-manja-capability="built-with"`,
 		`href="https://manja.araihu.com"`,
-		`>Built with Manja</a>`,
+		`aria-label="Built with Manja"`,
+		`>Built with</span>`,
+		`data-manja-footer-logo`,
 	} {
 		if !strings.Contains(full, want) {
 			t.Fatalf("full page missing powered-by footer marker %q:\n%s", want, full)
