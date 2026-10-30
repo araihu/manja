@@ -72,8 +72,11 @@ type CatalogConfig struct {
 
 // CatalogOverview controls only the catalog overview page, never document or
 // search navigation. An omitted Sidebar preserves the default visible sidebar.
+// ShowDownloadButton opts into the catalog JSON button; it is hidden by default
+// and does not control access to the catalog JSON endpoint.
 type CatalogOverview struct {
-	Sidebar *bool
+	Sidebar            *bool
+	ShowDownloadButton bool
 }
 
 type CatalogLocalDocs struct {

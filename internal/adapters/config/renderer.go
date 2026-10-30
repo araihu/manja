@@ -78,7 +78,8 @@ type RendererCatalogConfig struct {
 }
 
 type RendererCatalogOverview struct {
-	Sidebar *bool `yaml:"sidebar"`
+	Sidebar            *bool `yaml:"sidebar"`
+	ShowDownloadButton bool  `yaml:"showDownloadButton"`
 }
 
 type RendererCatalogLocalDocs struct {
@@ -202,7 +203,7 @@ func (file RendererFile) RuntimeConfig() renderer.Config {
 			ID: catalog.ID, Mount: catalog.Mount, Title: catalog.Title, Readme: catalog.Readme,
 			License:                renderer.CatalogLicense{Name: catalog.License.Name, URL: catalog.License.URL},
 			DefaultDocumentKey:     catalog.DefaultDocumentKey,
-			CatalogOverview:        renderer.CatalogOverview{Sidebar: catalog.CatalogOverview.Sidebar},
+			CatalogOverview:        renderer.CatalogOverview{Sidebar: catalog.CatalogOverview.Sidebar, ShowDownloadButton: catalog.CatalogOverview.ShowDownloadButton},
 			ProfileID:              domain.CompatibilityProfileID(catalog.ProfileID),
 			CompatibilityAllowlist: append([]byte(nil), catalog.compatibilityAllowlist...),
 			SEO: renderer.CatalogSEO{

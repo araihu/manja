@@ -96,6 +96,7 @@ type CatalogOrganizationPageData struct {
 }
 
 type CatalogPageData struct {
+	ShowCatalogDownloadButton bool
 	WorkspaceBranding core.DocsBranding
 	Metadata         PageMetadata
 	HideOverviewSidebar bool
@@ -663,7 +664,9 @@ templ catalogOverview(data CatalogPageData) {
 					<p class="mb-2 text-sm font-semibold uppercase tracking-wide text-primary dark:text-primary-dark">OpenAPI catalog</p>
 					<h1 class="font-title text-4xl font-bold text-on-surface-strong dark:text-on-surface-dark-strong">{ data.Directory.Title }</h1>
 				</div>
-				<a href={ templpkg.URL(data.DownloadHref) } class="inline-flex min-h-11 shrink-0 self-start items-center rounded-radius border border-outline px-4 font-semibold hover:bg-surface-alt dark:border-outline-dark dark:hover:bg-surface-dark-alt">Download catalog JSON</a>
+				if data.ShowCatalogDownloadButton {
+					<a href={ templpkg.URL(data.DownloadHref) } class="inline-flex min-h-11 shrink-0 self-start items-center rounded-radius border border-outline px-4 font-semibold hover:bg-surface-alt dark:border-outline-dark dark:hover:bg-surface-dark-alt">Download catalog JSON</a>
+				}
 			</div>
 		</div>
 		@catalogOverviewMetrics(data)<div class="mt-5">

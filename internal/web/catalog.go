@@ -34,14 +34,15 @@ type CatalogHandler struct {
 }
 
 type CatalogPresentation struct {
-	HideOverviewSidebar bool
-	Description         string
-	Readme              string
-	License             CatalogLicensePresentation
-	CanonicalBase       string
-	SocialImage         string
-	SocialImageMIMEType string
-	SocialImageAlt      string
+	ShowOverviewDownloadButton bool
+	HideOverviewSidebar        bool
+	Description                string
+	Readme                     string
+	License                    CatalogLicensePresentation
+	CanonicalBase              string
+	SocialImage                string
+	SocialImageMIMEType        string
+	SocialImageAlt             string
 }
 
 type CatalogLicensePresentation struct {

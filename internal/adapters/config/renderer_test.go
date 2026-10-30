@@ -511,15 +511,19 @@ func writeRendererConfigWithAllowlist(t *testing.T, data string) string {
 	return filename
 }
 
-func TestRendererCatalogOverviewSidebarConfiguration(t *testing.T) {
+func TestRendererCatalogOverviewConfiguration(t *testing.T) {
 	for _, test := range []struct {
 		name, setting string
 		want          *bool
+		wantDownload  bool
 		invalid       bool
 	}{
 		{name: "default"},
 		{name: "hidden", setting: "    catalogOverview:\n      sidebar: false\n", want: new(false)},
 		{name: "visible", setting: "    catalogOverview:\n      sidebar: true\n", want: new(true)},
+		{name: "download enabled", setting: "    catalogOverview:\n      showDownloadButton: true\n", wantDownload: true},
+		{name: "download disabled", setting: "    catalogOverview:\n      showDownloadButton: false\n"},
+		{name: "invalid download setting", setting: "    catalogOverview:\n      showDownloadButton: sometimes\n", invalid: true},
 		{name: "invalid", setting: "    catalogOverview:\n      sidebar: sometimes\n", invalid: true},
 		{name: "unknown field", setting: "    catalogOverview:\n      sidebaar: false\n", invalid: true},
 	} {
@@ -532,7 +536,7 @@ func TestRendererCatalogOverviewSidebarConfiguration(t *testing.T) {
 			loaded, err := LoadRenderer(filename)
 			if test.invalid {
 				if err == nil {
-					t.Fatal("invalid sidebar setting accepted")
+					t.Fatal("invalid catalog overview setting accepted")
 				}
 				return
 			}
@@ -542,6 +546,9 @@ func TestRendererCatalogOverviewSidebarConfiguration(t *testing.T) {
 			got := loaded.RuntimeConfig().Catalogs[0].CatalogOverview.Sidebar
 			if (got == nil) != (test.want == nil) || got != nil && *got != *test.want {
 				t.Fatalf("sidebar = %v, want %v", got, test.want)
+			}
+			if got := loaded.RuntimeConfig().Catalogs[0].CatalogOverview.ShowDownloadButton; got != test.wantDownload {
+				t.Fatalf("showDownloadButton = %t, want %t", got, test.wantDownload)
 			}
 		})
 	}
