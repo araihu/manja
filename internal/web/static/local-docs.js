@@ -608,9 +608,17 @@
   }
 
   function readExportIdentity(descriptor, cache) {
-	var url = sameOriginPath(descriptor.static.deploymentBase + "_manja/identity.json");
-	if (!url) return Promise.reject(new Error("export identity route is invalid"));
-	return fetchWithCache(url.href, { credentials: "same-origin", cache: "no-store", headers: { Accept: "application/json" } }, cache).then(function (response) {
+	var url;
+    return global.crypto.subtle.digest("SHA-256", new TextEncoder().encode(descriptor.revisionId)).then(function (digest) {
+      url = sameOriginPath(descriptor.publicationBase + "snapshots/" + descriptor.snapshotId + "/_manja/identity-sha256-" + hexDigest(digest) + ".json");
+      if (!url) fail("export identity route is invalid");
+      return fetchWithCache(url.href, { credentials: "same-origin", cache: "no-store", headers: { Accept: "application/json" } }, cache);
+    }).then(function (response) {
+      // Older exports predate the revision-bound identity file.
+      if (response.status !== 404) return response;
+      url = sameOriginPath(descriptor.static.deploymentBase + "_manja/identity.json");
+      return fetchWithCache(url.href, { credentials: "same-origin", cache: "no-store", headers: { Accept: "application/json" } }, cache);
+    }).then(function (response) {
 	  if (!response.ok) fail("export identity request failed");
 	  return response.text();
 	}).then(function (text) {
@@ -1324,6 +1332,7 @@ var publicationTitle = publicationContext && publicationContext.dataset.publicat
 	  var retryControl = navigationRetryControl(navigationError);
 	  if (retryControl && retryControl.addEventListener) retryControl.addEventListener("click", retryNavigation);
 	  documentValue.addEventListener("click", function (event) {
+      if (event.defaultPrevented || event.button > 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
 	  var group = event.target && event.target.closest && event.target.closest("[data-manja-static-group]");
 	  if (group) {
 		var groupRoute = staticRoute(descriptor, global.location.href);
@@ -1352,6 +1361,10 @@ var publicationTitle = publicationContext && publicationContext.dataset.publicat
 	  }
 	  var origin = event.target && event.target.closest && event.target.closest("a[href]");
 	  if (origin) {
+        if (origin.hasAttribute && (origin.hasAttribute("download") || origin.hasAttribute("target") && origin.getAttribute("target") !== "_self")) return;
+        var destination = new URL(origin.href, global.location.href);
+        var current = new URL(global.location.href);
+        if (destination.hash && destination.pathname === current.pathname && destination.search === current.search) return;
 		var pending = navigate(origin.href);
 		if (pending) {
 		  event.preventDefault(); pending.catch(function () {});
@@ -1366,6 +1379,23 @@ var publicationTitle = publicationContext && publicationContext.dataset.publicat
 	  return { swap: swap, navigate: navigate, initial: staticRoute(descriptor, global.location.href) };
 	}
 
+  // Persistence is optional: verified network reads still work in private mode
+  // and when storage is unavailable or full.
+  function openStaticCache(descriptor) {
+    return Promise.resolve().then(function () {
+      return global.caches.open(staticCacheName(descriptor));
+    }).catch(function () { return null; }).then(function (cache) {
+      return {
+        match: function (url) {
+          return Promise.resolve().then(function () { return cache ? cache.match(url) : undefined; }).catch(function () {});
+        },
+        put: function (url, response) {
+          return Promise.resolve().then(function () { return cache ? cache.put(url, response) : undefined; }).catch(function () {});
+        }
+      };
+    });
+  }
+
   function startStatic(root, descriptor, options, documentValue) {
 	var deployment = descriptor.static.deploymentBase;
 	var staticOptions = Object.assign({}, options, {
@@ -1374,7 +1404,7 @@ var publicationTitle = publicationContext && publicationContext.dataset.publicat
 	  runtimeURL: deployment + "manja-assets/local-docs/wasm_exec.js",
 	  wasmURL: deployment + "manja-assets/local-docs/manja.wasm",
 	});
-	return global.caches.open(staticCacheName(descriptor)).then(function (cache) {
+	return openStaticCache(descriptor).then(function (cache) {
 		return readExportIdentity(descriptor, cache).then(function () {
 		  var compatibility = null;
 		  function loadCompatibility() {

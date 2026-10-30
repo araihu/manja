@@ -83,6 +83,16 @@ catalogs:
 	if len(receipt.Catalogs) != 1 || receipt.Catalogs[0].CatalogID != "private" || receipt.Catalogs[0].PublicationKey != "private" {
 		t.Fatalf("receipt = %#v", receipt)
 	}
+	revisionDigest := sha256.Sum256([]byte(receipt.Catalogs[0].RevisionID))
+	identityName := filepath.Join(output, "private", "snapshots", receipt.Catalogs[0].SnapshotID, "_manja", "identity-sha256-"+hex.EncodeToString(revisionDigest[:])+".json")
+	boundIdentity, err := os.ReadFile(identityName)
+	if err != nil {
+		t.Fatal(err)
+	}
+	expectedIdentity, err := encodeExportIdentity(exportIdentity{SchemaVersion: 1, BasePath: "/", Catalogs: receipt.Catalogs})
+	if err != nil || string(boundIdentity) != string(expectedIdentity) {
+		t.Fatalf("revision-bound export identity differs: %v", err)
+	}
 	catalogBytes, err := os.ReadFile(filepath.Join(output, "private", "snapshots", receipt.Catalogs[0].SnapshotID, "catalog.json"))
 	if err != nil {
 		t.Fatal(err)

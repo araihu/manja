@@ -125,6 +125,10 @@ func rewriteHTMLChildren(parent *html.Node, basePath string, catalogContext *exp
 			continue
 		}
 		if node.Type == html.ElementNode {
+			prepareStaticDocumentSort(node)
+			if node.DataAtom == atom.Form && findHTMLID(node, "catalog-search-query") != nil {
+				setHTMLAttribute(node, "data-manja-static-search-form", "true")
+			}
 			if node.DataAtom == atom.Head {
 				// Static navigation owns history; HTMX must not intercept Back/Forward.
 				node.AppendChild(&html.Node{Type: html.ElementNode, DataAtom: atom.Meta, Data: "meta", Attr: []html.Attribute{
@@ -133,6 +137,9 @@ func rewriteHTMLChildren(parent *html.Node, basePath string, catalogContext *exp
 			}
 			attributes := node.Attr[:0]
 			for _, attribute := range node.Attr {
+				if runtimeRequestAttribute(attribute.Key) {
+					continue
+				}
 				switch attribute.Key {
 				case "hx-get", "data-search-fallback-url":
 					continue

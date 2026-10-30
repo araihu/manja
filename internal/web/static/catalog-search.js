@@ -3,6 +3,39 @@
 
   if (window.ManjaCatalogSearchRouter && window.manjaCatalogSearch) return;
 
+  // Static exports retain the full table inventory; sorting never needs HTTP.
+  var staticTableOrders = new WeakMap();
+  document.addEventListener("click", function (event) {
+    var control = event.target && event.target.closest && event.target.closest("[data-manja-static-sort] button");
+    if (!control) return;
+    var header = control.closest("th"), table = control.closest("table");
+    if (!table || table.id !== "catalog-documents-table") return;
+    var body = table.tBodies[0], head = table.tHead;
+    if (!body || !head) return;
+    event.preventDefault();
+    var key = header.dataset.manjaStaticSort;
+    var direction = head.dataset.tableSortBy === key ? (head.dataset.tableSortDir === "asc" ? "desc" : "") : "asc";
+    var original = staticTableOrders.get(table);
+    if (!original) { original = Array.from(body.rows); staticTableOrders.set(table, original); }
+    var rows = original.slice(), column = header.cellIndex;
+    if (direction) rows.sort(function (left, right) {
+      var a = left.cells[column].textContent.trim().toLowerCase();
+      var b = right.cells[column].textContent.trim().toLowerCase();
+      var comparison = key === "operations" || key === "schemas" ? Number(a) - Number(b) : (searchKeyLess(a,b) ? -1 : searchKeyLess(b,a) ? 1 : 0);
+      if (!comparison) comparison = original.indexOf(left) - original.indexOf(right);
+      return direction === "desc" ? -comparison : comparison;
+    });
+    rows.forEach(function (row) { body.appendChild(row); });
+    head.dataset.tableSortBy = direction ? key : "";
+    head.dataset.tableSortDir = direction;
+    head.querySelectorAll("[data-manja-static-sort]").forEach(function (item) {
+      var active = direction && item === header;
+      item.setAttribute("aria-sort", active ? (direction === "asc" ? "ascending" : "descending") : "none");
+      var indicator = item.querySelector("[data-manja-static-sort-direction]");
+      if (indicator) indicator.textContent = active ? (direction === "asc" ? "↑" : "↓") : "↕";
+    });
+  });
+
   document.addEventListener("change", function (event) {
     var picker = event.target;
     if (!picker || !picker.matches || !picker.matches("[data-publication-picker]")) return;
@@ -755,6 +788,7 @@
   };
 
   SearchRouter.prototype.searchFallback = function (query) {
+    if (!this.fallbackURL) return Promise.reject(new Error("Search server fallback is not configured"));
     var url = new URL(this.fallbackURL, window.location.origin);
     url.searchParams.set("q", query);
     if (this.globalSearch && this.contextMount) url.searchParams.set("context_mount", this.contextMount);
@@ -910,24 +944,27 @@
   };
 
   SearchRouter.prototype.search = function (query) {
-	if (this.globalSearch && this.deploymentDirectoryURL) {
-	  return this.searchDeployment(query).then(function (result) {
-		var source = "Deployment search";
-		if (result.failures) source += " · " + result.failures + " catalog" + (result.failures === 1 ? "" : "s") + " unavailable";
-		return { items: result.items, source: source };
-	  });
-	}
-    if (this.globalSearch) {
-      return this.searchFallback(query).then(function (items) {
-        return { items: items, source: "Global search" };
-      });
-    }
-    return this.searchClient(query).then(function (items) {
-      return { items: items, source: "Browser index" };
-    }).catch(function () {
-      return this.searchFallback(query).then(function (items) {
-        return { items: items, source: "Server fallback" };
-      });
+    return Promise.resolve().then(function () {
+      if (this.globalSearch && this.deploymentDirectoryURL) {
+        return this.searchDeployment(query).then(function (result) {
+          var source = "Deployment search";
+          if (result.failures) source += " · " + result.failures + " catalog" + (result.failures === 1 ? "" : "s") + " unavailable";
+          return { items: result.items, source: source };
+        });
+      }
+      if (this.globalSearch) {
+        return this.searchFallback(query).then(function (items) {
+          return { items: items, source: "Global search" };
+        });
+      }
+      return this.searchClient(query).then(function (items) {
+        return { items: items, source: "Browser index" };
+      }).catch(function (error) {
+        if (!this.fallbackURL) throw error;
+        return this.searchFallback(query).then(function (items) {
+          return { items: items, source: "Server fallback" };
+        });
+      }.bind(this));
     }.bind(this));
   };
 
@@ -1009,6 +1046,23 @@
       previousFocus: null,
       init: function () {
         this.readRecent();
+        if (router.deploymentDirectoryURL && !this.staticSearchInitialized) {
+          this.staticSearchInitialized = true;
+          var form = document.querySelector && document.querySelector("[data-manja-static-search-form]");
+          var runStaticQuery = function (query) {
+            this.openSearch(true);
+            this.query = query;
+            this.queueSearch();
+          }.bind(this);
+          if (form) form.addEventListener("submit", function (event) {
+            event.preventDefault();
+            var input = form.querySelector('[name="q"]');
+            runStaticQuery(input ? input.value : "");
+          });
+          var current = new URL(window.location.href);
+          var query = current.searchParams.get("q");
+          if (query !== null && /\/search\/?$/.test(current.pathname)) this.$nextTick(function () { runStaticQuery(query); });
+        }
         var payload = document.getElementById("catalog-search-current-visit");
         if (!payload) return;
         try { this.remember(JSON.parse(payload.textContent)); } catch (error) {}
@@ -1165,7 +1219,9 @@
           this.loading = false;
           this.error = error && error.message === "Search query is too broad"
             ? "Search is too broad. Add more detail to your query."
-            : "Search is unavailable. Reload the page and try again.";
+            : error && error.message === "Invalid search query"
+              ? "Enter a shorter search query with letters or numbers."
+              : "Search is unavailable. Reload the page and try again.";
         }.bind(this));
       },
       visibleItems: function () { return this.query.trim() ? this.results : this.recent; },

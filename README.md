@@ -350,6 +350,19 @@ Static deployments bind the global search directory to a content-addressed URL.
 Publishers must retain these immutable search directories and catalog snapshot
 files while older pages may remain open. Replacing mutable page URLs must not
 replace bytes at an immutable URL; clients continue verifying length and SHA-256.
+Exported search forms and bookmarked `/search/?q=…` links use the browser index.
+The complete Goshtoso document table is retained; its server-driven sort headers
+are composed with local sorting controls because the selected component has no
+client sorting API. Persistent browser storage is optional: unavailable storage
+or quota errors do not prevent verified reads, navigation or retries. Native
+anchors, modified clicks and download links retain normal browser behavior.
+Each snapshot also contains a revision-bound export identity, so another
+publication cannot replace the identity expected by an existing page. Keep
+snapshot files available while older pages may remain open.
+
+Export verification rejects server mutation forms and HTMX request attributes,
+except explicitly marked sidebar continuation requests to declared static files.
+
 Publication provenance remains in catalog JSON for publisher and management
 integrations. Public documentation omits source paths, Git commits, compilation
 profiles, build revisions and snapshot IDs from the reader interface.

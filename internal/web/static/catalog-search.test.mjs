@@ -277,3 +277,22 @@ test('Unicode prefix routing uses the compiler scalar sort order', async () => {
   const result = await router.loadCandidates(directory, ['𐐨'], {})
   assert.deepEqual(Array.from(result), [0])
 })
+
+test('static search preserves index errors without requesting an absent server fallback', async () => {
+  const {router} = await indexedSearchFixture()
+  const failure = new Error('Search query is too broad')
+  router.searchClient = () => Promise.reject(failure)
+  router.searchFallback = () => { throw new Error('unexpected server request') }
+  await assert.rejects(router.search('needle'), error => error === failure)
+})
+
+test('missing global server fallback fails without fetching the current page as JSON', async () => {
+  const fixture = searchModel({searchGlobal:'true'}, {fetch:()=>{throw new Error('unexpected HTTP request')}})
+  const router = fixture.window.ManjaCatalogSearchRouter.create(fixture.root)
+  await assert.rejects(router.search('needle'), /fallback is not configured/)
+})
+
+test('invalid local query errors remain asynchronous for modal recovery', async () => {
+ const {router} = await indexedSearchFixture()
+ await assert.rejects(router.search('x'.repeat(129)),/Invalid search query/)
+})

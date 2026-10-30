@@ -208,7 +208,24 @@ func verifyExportHTML(root, name, basePath string, declared map[string]exportFil
 				return fmt.Errorf("export HTML %q: %w", name, err)
 			}
 		}
+		if node.Data == "form" {
+			dialog := false
+			for _, attribute := range node.Attr {
+				if attribute.Key == "method" && strings.EqualFold(attribute.Val, "dialog") {
+					dialog = true
+				}
+				if attribute.Key == "method" && !strings.EqualFold(attribute.Val, "get") && !strings.EqualFold(attribute.Val, "dialog") {
+					return fmt.Errorf("export HTML %q retains a server mutation form", name)
+				}
+			}
+			if !dialog && !hasHTMLAttribute(node, "data-manja-static-search-form", "true") {
+				return fmt.Errorf("export HTML %q retains a server form without static handling", name)
+			}
+		}
 		for _, attribute := range node.Attr {
+			if runtimeRequestAttribute(attribute.Key) && !(attribute.Key == "hx-get" && hasHTMLAttribute(node, "data-manja-sidebar-next-chunk", "true")) {
+				return fmt.Errorf("export HTML %q retains runtime-only attribute %q", name, attribute.Key)
+			}
 			switch attribute.Key {
 			case "href", "src", "action", "data-search-child-base", "data-table-row-link", "data-catalog-search-href":
 				if err := verifyExportReference(node, attribute.Key, attribute.Val, publicPath, basePath, declared); err != nil {
