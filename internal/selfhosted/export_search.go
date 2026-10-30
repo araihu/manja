@@ -50,7 +50,7 @@ func deploymentSearchCatalog(active renderer.ActivationReceipt, basePath string,
 	childBase := prefixExportBase(basePath, catalogRoute(active.Mount, "snapshots", active.SnapshotID, "search-data")) + "/"
 	documents := make([]deploymentSearchDocumentV1, 0, len(directory.Documents))
 	for _, document := range directory.Documents {
-		title := strings.TrimSpace(document.Title)
+		title := catalog.PublicationDocumentLabel(document)
 		if title == "" {
 			title = document.Key
 		}

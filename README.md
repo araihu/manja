@@ -281,3 +281,55 @@ docker run --rm \
   -spec /spec/openapi.yaml \
   -data-dir /var/lib/manja
 ```
+
+### API publication identity
+
+An optional `publication` on each `source.documents` mapping identifies the
+upstream publication independently of the OpenAPI `info.version` or the bundle
+filename. Manja binds this metadata into the catalog snapshot and uses it in
+navigation, page titles, source details and server/static client search:
+
+```yaml
+source:
+  kind: files
+  root: ./bundles
+  include: ['*.json']
+  documents:
+    - path: internal-next.json
+      key: internal-next
+      publication:
+        api: internal
+        audience: internal
+        channel: next
+        ref: refs/heads/main
+        commit: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+        sourcePath: api/internal/openapi.yaml
+        repositoryURL: https://github.com/example/project
+    - path: internal-v0.2.0.json
+      key: internal-v0.2.0
+      publication:
+        api: internal
+        audience: internal
+        channel: release
+        version: 0.2.0
+        latest: true
+        ref: refs/tags/openapi/internal/v0.2.0
+        commit: bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+        sourcePath: api/internal/openapi.yaml
+```
+
+Publication refs, full commit IDs and source paths are supplied by the publisher;
+Manja does not derive Git provenance from a file source. Repository URLs are
+optional public HTTPS links; credentials and local acquisition paths must not be
+published. A `next` publication requires a branch ref and has no release version.
+A `release` requires a tag and SemVer version. `latest` may identify only one,
+highest stable release per API. This flag marks an existing release; it does not
+create a duplicate document. Publishers remain responsible for acquisition,
+ref/commit verification, immutable-tag enforcement and alias redirects.
+
+Catalogs with publication metadata group their documents by API and expose
+explicit release/development labels. API and publication controls are available
+on document, operation and schema pages; switching opens the selected publication
+at its overview. Select values are document keys and destinations are normal
+links, so non-root static deployments retain their configured base path.
+Documents without publication metadata retain the existing presentation.

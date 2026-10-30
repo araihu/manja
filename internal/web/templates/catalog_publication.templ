@@ -1,0 +1,95 @@
+package templates
+
+import (
+	"fmt"
+	selectfield "github.com/araihu/goshtoso/components/select"
+	"github.com/araihu/manja/application/catalog"
+	"strings"
+)
+
+// Publication context is part of every document fragment, including operation
+// and schema pages, so both full loads and static navigation keep it current.
+templ catalogPublicationContext(data CatalogPageData) {
+	<section data-publication-context data-publication-document-title={ data.Directory.Title + " · " + catalog.PublicationDocumentLabel(*data.Document) + " · Manja" } class="manja-publication-context" aria-label="API publication">
+		<a data-publication-back href={ templ.URL(strings.TrimSuffix(data.Mount, "/") + "/") } class="manja-publication-back">{ "Back to " + data.Directory.Title }</a>
+		<div class="manja-publication-pickers">
+			@selectfield.Select(selectfield.Config{TriggerAttrs: templ.Attributes{"data-publication-api-select": "true"}, ID: "publication-api", Label: "API", Options: catalogPublicationAPIOptions(data), InputAttrs: templ.Attributes{"data-publication-picker": "true", "data-publication-initial-value": catalogPublicationInitialAPI(data)}})
+			@selectfield.Select(selectfield.Config{TriggerAttrs: templ.Attributes{"data-publication-version-select": "true"}, ID: "publication-version", Label: "Publication", Options: catalogPublicationVersionOptions(data), InputAttrs: templ.Attributes{"data-publication-picker": "true", "data-publication-initial-value": data.Document.Key}})
+		</div>
+		<p data-publication-identity class="manja-publication-identity">{ data.Directory.Title + " · " + data.Document.Publication.API + " · " + data.Document.Publication.Label(data.Document.APIVersion) }</p>
+		<div hidden>
+			for _,g:=range catalogPublicationGroups(data) {
+				for _,o:=range g.Options {
+					<a data-publication-target={ o.Key } href={ templ.URL(o.Href) }>{ g.Label+" · "+o.Label }</a>
+				}
+			}
+		</div>
+		<details class="manja-publication-provenance">
+			<summary>Publication source</summary>
+			<dl>
+				<div><dt>Declared API version</dt><dd><code>{ data.Document.APIVersion }</code></dd></div>
+				<div><dt>Upstream ref</dt><dd><code>{ data.Document.Publication.Ref }</code></dd></div>
+				<div><dt>Upstream commit</dt><dd><code>{ data.Document.Publication.Commit }</code></dd></div>
+				<div><dt>Source path</dt><dd><code>{ data.Document.Publication.SourcePath }</code></dd></div>
+				if data.Document.Publication.RepositoryURL!="" {
+					<div><dt>Repository</dt><dd><a href={ templ.URL(data.Document.Publication.RepositoryURL) } rel="noreferrer">{ data.Document.Publication.RepositoryURL }</a></dd></div>
+				}
+				<div><dt>Catalog build revision</dt><dd><code>{ data.RevisionID }</code></dd></div>
+				<div><dt>Catalog snapshot</dt><dd><code>{ string(data.SnapshotID) }</code></dd></div>
+			</dl>
+		</details>
+		<noscript>
+			<nav aria-label="Publication links">
+				for _,g:=range catalogPublicationGroups(data) {
+					for _,o:=range g.Options {
+						<a class="manja-publication-link" href={ templ.URL(o.Href) }>{ g.Label+" · "+o.Label }</a>
+					}
+				}
+			</nav>
+		</noscript>
+	</section>
+}
+
+templ catalogPublicationsOverview(data CatalogPageData) {
+	<div class="manja-publications-overview" data-publication-catalog x-data="{ filter: '' }">
+		<h1 class="font-title text-3xl font-bold text-on-surface-strong dark:text-on-surface-dark-strong">{ data.Directory.Title }</h1>
+		<p class="manja-publication-summary">{ fmt.Sprintf("%d APIs · %d publications",len(catalogPublicationGroups(data)),len(data.Documents)) }</p>
+		<p class="manja-publication-summary">Latest identifies the current stable release. Next follows the development branch. Pre-releases are labelled separately.</p>
+		<label class="mb-3 block max-w-xl" for="publication-filter">
+			<span class="sr-only">Filter APIs and publications</span>
+			<input id="publication-filter" data-publication-filter type="search" x-model="filter" placeholder="Filter APIs or publications" maxlength="256" class="min-h-11 w-full rounded-radius border border-outline bg-surface px-4 text-on-surface-strong placeholder:text-on-surface-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary dark:border-outline-dark dark:bg-surface-dark dark:text-on-surface-dark-strong"/>
+		</label>
+		if data.ShowCatalogDownloadButton {
+			<a href={ templ.URL(data.DownloadHref) }>Download catalog JSON</a>
+		}
+		for _,group:=range catalogPublicationGroups(data) {
+			<section class="manja-publication-group" data-publication-api={ group.ID } data-search-text={ catalogPublicationFilterText(group) } x-show={ catalogDocumentFilterExpression(catalogPublicationFilterText(group)) }>
+				<h2 class="font-title text-xl font-bold text-on-surface-strong dark:text-on-surface-dark-strong">{ group.Label }</h2>
+				<p class="manja-publication-summary">
+					{ group.API }
+					if group.Audience!="" && group.Audience!=group.API {
+						<span>{ " · Audience: "+group.Audience }</span>
+					}
+				</p>
+				<nav aria-label={ group.Label + " publications" }>
+					for _,option:=range group.Options {
+						<a class="manja-publication-link" href={ templ.URL(option.Href) } data-publication-option={ option.Key } data-search-text={ group.Label + " " + option.Label + " " + option.Key } x-show={ catalogDocumentFilterExpression(strings.ToLower(group.Label + " " + option.Label + " " + option.Key)) }>
+							<span>{ option.Label }</span><span class="manja-publication-counts">{ fmt.Sprintf("%d operations · %d schemas",len(option.Document.Operations),len(option.Document.Schemas)) }</span>
+						</a>
+					}
+				</nav>
+			</section>
+		}
+		<p x-cloak x-show="filter.trim() !== '' && Array.from($root.querySelectorAll('[data-publication-api]')).every(group => !(group.dataset.searchText || '').includes(filter.trim().toLowerCase()))" role="status">No matching API publications.</p>
+		<details class="manja-publication-provenance">
+			<summary>Catalog build details</summary>
+			@catalogProvenance(data, false)
+		</details>
+		if data.CatalogReadme!="" {
+			<section class="mt-8">
+				<h2 class="font-title text-xl font-bold">About this catalog</h2>
+				@renderedMarkdown(catalogReadmeRenderer, data.CatalogReadme)
+			</section>
+		}
+	</div>
+}

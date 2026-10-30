@@ -120,7 +120,7 @@ func (handler *CatalogHandler) catalogPageDataWithSidebarQuery(
 			Selected: document.Key == documentKey,
 		})
 		if documentLabels != nil {
-			documentLabels[document.Key] = catalogDocumentLabel(document)
+			documentLabels[document.Key] = catalog.PublicationDocumentLabel(document)
 		}
 	}
 	// Small/standalone catalogs can resolve local search sections without
@@ -466,14 +466,22 @@ func (handler *CatalogHandler) catalogOrganizationNav(activeMount string, rootVi
 		if catalogLabel == "" {
 			catalogLabel = mount
 		}
+		preferred := catalog.PreferredDocuments(directory)
+		description := fmt.Sprintf("%d specs", len(directory.Documents))
+		for _, d := range directory.Documents {
+			if d.Publication != nil {
+				description = fmt.Sprintf("%d APIs · %d publications", len(preferred), len(directory.Documents))
+				break
+			}
+		}
 		data.Catalogs = append(data.Catalogs, templates.CatalogOrganizationItem{
 			ID: "catalog-" + string(directory.CatalogID), Label: catalogLabel,
-			Description: fmt.Sprintf("%d specs", len(directory.Documents)), Href: href,
+			Description: description, Href: href,
 			AvatarSrc: directory.Branding.LogoSrc, AvatarAlt: directory.Branding.LogoAlt,
 			AvatarSymbol: string(heroicons.Icon16SolidCube),
 			Active:       mount == activeMount,
 		})
-		for _, document := range directory.Documents {
+		for _, document := range preferred {
 			documentHref, err := catalogURL(mount, "documents", document.Key)
 			if err != nil {
 				continue
@@ -650,6 +658,9 @@ func catalogOperationServers(servers []projection.Server) []domain.SpecServer {
 }
 
 func catalogDocumentLabel(document catalog.DocumentDirectoryV1) string {
+	if document.Publication != nil {
+		return catalog.PublicationDocumentLabel(document)
+	}
 	if title := strings.TrimSpace(document.Title); title != "" {
 		return title
 	}

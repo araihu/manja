@@ -24,8 +24,18 @@ func validateCatalog(value catalog.CatalogArtifactV1) error {
 		return err
 	}
 	seenDocuments := make(map[string]struct{}, len(value.Documents))
+	publications := make([]*domain.CatalogPublication, 0, len(value.Documents))
+	for _, d := range value.Documents {
+		publications = append(publications, d.Publication)
+	}
+	if err := domain.ValidateCatalogPublicationSet(publications); err != nil {
+		return fmt.Errorf("catalogjson: %w", err)
+	}
 	defaultFound := value.DefaultDocumentKey == ""
 	for index, document := range value.Documents {
+		if err := domain.ValidateCatalogPublication(document.Publication); err != nil {
+			return fmt.Errorf("catalogjson: %w", err)
+		}
 		if err := domain.ValidateCatalogDocumentKey(document.Key); err != nil {
 			return fmt.Errorf("catalogjson: %w", err)
 		}

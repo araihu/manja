@@ -1053,6 +1053,8 @@
 	  var disposeLazySchemaFragments = function () {};
 	  var initialMainHTML = pageContent && pageContent.innerHTML || "";
 	  var initialTitle = documentValue.title;
+var publicationContext = main && main.querySelector("[data-publication-context]");
+var publicationTitle = publicationContext && publicationContext.dataset.publicationDocumentTitle;
 	  if (!main) fail("static catalog main target is missing");
 	  if (global.history && "scrollRestoration" in global.history) global.history.scrollRestoration = "manual";
 	  function mainScrollContainer() {
@@ -1278,8 +1280,9 @@
 		  replaceStaticSidebarContinuation(descriptor, cache, route.documentKey, sidebar);
 		}
 		if (!options.sidebarOnly) {
-		  documentValue.title = result.title;
-		  main.dataset.documentTitle = result.title;
+		  var renderedTitle = publicationTitle ? (route.selected ? result.title + " · " + publicationTitle : publicationTitle) : result.title;
+		  documentValue.title = renderedTitle;
+		  main.dataset.documentTitle = renderedTitle;
 		}
 		if (options.restoreScroll) restoreScroll(options.restoreScroll);
 		else if (options.preserveScroll) restoreScroll(beforeScroll);

@@ -3,6 +3,27 @@
 
   if (window.ManjaCatalogSearchRouter && window.manjaCatalogSearch) return;
 
+  document.addEventListener("change", function (event) {
+    var picker = event.target;
+    if (!picker || !picker.matches || !picker.matches("[data-publication-picker]")) return;
+    var context = picker.closest("[data-publication-context]");
+    if (!context) return;
+    var target = Array.from(context.querySelectorAll("[data-publication-target]")).find(function (link) {
+      return link.dataset.publicationTarget === picker.value;
+    });
+    if (target) window.location.assign(target.href);
+  });
+
+  // Restore composite picks from their document shell after BFCache restores
+  // the selection that changed immediately before navigating away.
+  window.addEventListener("pageshow", function (event) {
+    if (!event.persisted) return;
+    document.querySelectorAll("[data-publication-picker]").forEach(function (input) {
+      input.value = input.dataset.publicationInitialValue || "";
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+  });
+
   var MAX_SEGMENTS = 16;
   var MAX_TOKEN_SEGMENTS = 8;
   var MAX_TRIGRAM_SEGMENTS = 4;
