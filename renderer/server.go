@@ -270,8 +270,9 @@ func (server *server) ensureRuntime(ctx context.Context) error {
 	enhancement := web.CatalogEnhancementPolicy{Disabled: server.config.LocalDocsDisabled, Publications: make(map[string]web.CatalogPublicEligibility, len(server.config.Catalogs))}
 	for _, configured := range server.config.Catalogs {
 		presentation[configured.Mount] = web.CatalogPresentation{
-			HideOverviewSidebar: configured.CatalogOverview.Sidebar != nil && !*configured.CatalogOverview.Sidebar,
-			Description:         configured.SEO.Description, Readme: configured.Readme,
+			ShowOverviewDownloadButton: configured.CatalogOverview.ShowDownloadButton,
+			HideOverviewSidebar:        configured.CatalogOverview.Sidebar != nil && !*configured.CatalogOverview.Sidebar,
+			Description:                configured.SEO.Description, Readme: configured.Readme,
 			License:       web.CatalogLicensePresentation{Name: configured.License.Name, URL: configured.License.URL},
 			CanonicalBase: configured.SEO.CanonicalBase,
 			SocialImage:   configured.SEO.SocialImage, SocialImageMIMEType: socialImageMIMEType(configured.SEO.SocialImage), SocialImageAlt: configured.SEO.SocialImageAlt,

@@ -612,16 +612,18 @@ func rendererTestCandidateVersion(id, title, revisionID, digestCharacter string)
 	return candidate
 }
 
-func TestCatalogOverviewSidebarIsScopedToConfiguredOverview(t *testing.T) {
+func TestCatalogOverviewPresentationIsScopedToConfiguredOverview(t *testing.T) {
 	for _, test := range []struct {
-		name    string
-		sidebar *bool
+		name     string
+		sidebar  *bool
+		download bool
 	}{
 		{name: "default"}, {name: "visible", sidebar: new(true)}, {name: "hidden", sidebar: new(false)},
+		{name: "download enabled", download: true},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			server, err := New(Config{Version: 1, DataDir: t.TempDir(), Catalogs: []CatalogConfig{
-				{ID: "payments", Mount: "/payments", Title: "Payments", ProfileID: domain.CompatibilityProfileStrict, CatalogOverview: CatalogOverview{Sidebar: test.sidebar}, LocalDocs: CatalogLocalDocs{Public: true, Anonymous: true, PublicationKey: "payments"}},
+				{ID: "payments", Mount: "/payments", Title: "Payments", ProfileID: domain.CompatibilityProfileStrict, CatalogOverview: CatalogOverview{Sidebar: test.sidebar, ShowDownloadButton: test.download}, LocalDocs: CatalogLocalDocs{Public: true, Anonymous: true, PublicationKey: "payments"}},
 				{ID: "inventory", Mount: "/inventory", Title: "Inventory", ProfileID: domain.CompatibilityProfileStrict},
 			}})
 			if err != nil {
@@ -632,6 +634,7 @@ func TestCatalogOverviewSidebarIsScopedToConfiguredOverview(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
+			var overviewBody string
 			for _, route := range []string{"/payments/", "/payments/_manja/offline-shell", "/payments/documents/payments-v1/", "/payments/search", "/inventory/", "/"} {
 				response := httptest.NewRecorder()
 				server.Handler().ServeHTTP(response, httptest.NewRequest(http.MethodGet, route, nil))
@@ -639,6 +642,13 @@ func TestCatalogOverviewSidebarIsScopedToConfiguredOverview(t *testing.T) {
 					t.Fatalf("GET %s: %d", route, response.Code)
 				}
 				body := response.Body.String()
+				if route == "/payments/" {
+					overviewBody = body
+				}
+				wantDownload := test.download && (route == "/payments/" || route == "/payments/_manja/offline-shell")
+				if got := strings.Contains(body, ">Download catalog JSON</a>"); got != wantDownload {
+					t.Errorf("%s download button visible = %t, want %t", route, got, wantDownload)
+				}
 				hidden := test.sidebar != nil && !*test.sidebar && (route == "/payments/" || route == "/payments/_manja/offline-shell")
 				for _, marker := range []string{`id="catalog-navigation"`, `data-catalog-navigation-trigger="true"`, `data-catalog-navigation-backdrop="true"`} {
 					if strings.Contains(body, marker) == hidden {
@@ -651,6 +661,20 @@ func TestCatalogOverviewSidebarIsScopedToConfiguredOverview(t *testing.T) {
 				if route == "/payments/" && !strings.Contains(body, `href="/payments/documents/payments-v1/"`) {
 					t.Fatal("overview lost document navigation")
 				}
+			}
+			response := httptest.NewRecorder()
+			server.Handler().ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/payments/catalog.json", nil))
+			if response.Code != http.StatusTemporaryRedirect {
+				t.Fatalf("catalog JSON redirect = %d, want 307 regardless of button visibility", response.Code)
+			}
+			if test.download && !strings.Contains(overviewBody, `href="`+response.Header().Get("Location")+`"`) {
+				t.Fatal("download button must link directly to the immutable catalog JSON, including in static exports")
+			}
+			request := httptest.NewRequest(http.MethodGet, response.Header().Get("Location"), nil)
+			response = httptest.NewRecorder()
+			server.Handler().ServeHTTP(response, request)
+			if response.Code != http.StatusOK {
+				t.Fatalf("catalog JSON endpoint = %d, want 200 regardless of button visibility", response.Code)
 			}
 		})
 	}

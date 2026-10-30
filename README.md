@@ -208,6 +208,19 @@ operation/schema navigation remain available. Omit the option or set `sidebar: t
 `renderer.CatalogConfig.CatalogOverview` with `renderer.CatalogOverview.Sidebar`;
 `nil` keeps the default.
 
+The **Download catalog JSON** button is hidden by default. Opt in per catalog
+with `catalogOverview.showDownloadButton: true` (or
+`renderer.CatalogOverview.ShowDownloadButton` for Go consumers):
+
+```yaml
+catalogOverview:
+  showDownloadButton: true
+```
+
+This controls only the overview button in the server and static export. Its
+link points directly to the published snapshot's JSON, which remains available
+when the button is hidden.
+
 Build a static site from the catalogs in `renderer.yaml`:
 
 ```bash
