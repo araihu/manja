@@ -83,13 +83,13 @@
     "repository": "https://github.com/araihu/goshtoso",
     "originMain": {
       "ref": "refs/remotes/origin/main",
-      "commitSha": "2c475800dcbe3b08e3a44ac9c857b9f7163335eb",
-      "treeSha": "4cdc27f08ab89768683b36e9f58dafdd7c83d6ab"
+      "commitSha": "64499293c6d134194e44288450d85e6ac559cc17",
+      "treeSha": "f05c630c8e2905b789f95d255710f62caefd1179"
     },
     "module": "github.com/araihu/goshtoso",
-    "version": "v0.4.4",
-    "tagCommitSha": "234eaaf97a7058d137dfed942423dcfb77f2ace6",
-    "tagTreeSha": "0242bf344b601a019a10b3bc08fc11364f8c4907",
+    "version": "v0.4.6",
+    "tagCommitSha": "64499293c6d134194e44288450d85e6ac559cc17",
+    "tagTreeSha": "f05c630c8e2905b789f95d255710f62caefd1179",
     "license": {
       "path": "LICENSE",
       "kind": "license",
