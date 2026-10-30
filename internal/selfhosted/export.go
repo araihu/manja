@@ -329,6 +329,21 @@ func captureCatalog(ctx context.Context, handler http.Handler, writer *exportTre
 			return ExportCatalogReceipt{}, deploymentSearchCatalogV1{}, err
 		}
 	}
+	// Preserve original relative paths alongside the legacy flat downloads.
+	// This lets downloaded multi-file descriptions resolve their own $refs.
+	if exportHasSupportFiles(manifest) {
+		for _, document := range directory.Documents {
+			child, ok := manifestChild(manifest, document.SourceChild)
+			if !ok {
+				return ExportCatalogReceipt{}, deploymentSearchCatalogV1{}, fmt.Errorf("document %q source child is missing", document.Key)
+			}
+			requestPath := catalogRoute(active.Mount, "snapshots", active.SnapshotID, "source-files", document.SourcePath)
+			outputPath := path.Join(mountPrefix, "snapshots", active.SnapshotID, "source-files", document.SourcePath)
+			if err := captureResource(ctx, handler, writer, requestPath, outputPath, child.Length, child.SHA256); err != nil {
+				return ExportCatalogReceipt{}, deploymentSearchCatalogV1{}, err
+			}
+		}
+	}
 	publicationBase := prefixExportBase(basePath, catalogRoute(active.Mount))
 	if !strings.HasSuffix(publicationBase, "/") {
 		publicationBase += "/"
@@ -378,6 +393,9 @@ func exportedChildPath(active renderer.ActivationReceipt, directory catalog.Cata
 		}
 	}
 	switch {
+	case strings.HasPrefix(child.Path, "support/") && child.Kind == "support":
+		sourcePath := strings.TrimPrefix(child.Path, "support/")
+		return catalogRoute(active.Mount, "snapshots", active.SnapshotID, "source-files", sourcePath), path.Join(append(snapshot, "source-files", sourcePath)...), true
 	case strings.HasPrefix(child.Path, "search/") && strings.HasPrefix(child.Kind, "search-"):
 		return catalogRoute(active.Mount, "snapshots", active.SnapshotID, "search-data", child.Path), path.Join(append(snapshot, "search-data", child.Path)...), true
 	case strings.HasPrefix(child.Path, "details/") && child.Kind == "detail", strings.HasPrefix(child.Path, "schema-nodes/") && child.Kind == "schema-node":
@@ -385,6 +403,15 @@ func exportedChildPath(active renderer.ActivationReceipt, directory catalog.Cata
 	default:
 		return "", "", false
 	}
+}
+
+func exportHasSupportFiles(manifest catalog.ManifestV1) bool {
+	for _, child := range manifest.Children {
+		if child.Kind == "support" && strings.HasPrefix(child.Path, "support/") {
+			return true
+		}
+	}
+	return false
 }
 
 func captureShell(ctx context.Context, handler http.Handler, writer *exportTreeWriter, requestPath, outputPath string) error {

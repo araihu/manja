@@ -3,6 +3,7 @@ package render
 import (
 	"bytes"
 	"context"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -117,6 +118,13 @@ func validCatalogDocumentHeaderDownloadHref(value string, document catalog.Docum
 		if unicode.IsSpace(character) || unicode.IsControl(character) {
 			return false
 		}
+	}
+	if prefix, sourcePath, ok := strings.Cut(value, "/source-files/"); ok {
+		snapshot := path.Base(prefix)
+		encodedDigest, validPrefix := strings.CutPrefix(snapshot, "snapshot-sha256-")
+		digest, err := hex.DecodeString(encodedDigest)
+		return validPrefix && err == nil && len(digest) == 32 && path.Base(path.Dir(prefix)) == "snapshots" &&
+			document.SourcePath != "" && sourcePath == document.SourcePath
 	}
 	extension := path.Ext(document.SourceChild)
 	if strings.Contains(value, "/openapi/") {

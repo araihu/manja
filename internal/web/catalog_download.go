@@ -35,6 +35,25 @@ func (handler *CatalogHandler) serveStableSource(response http.ResponseWriter, r
 
 func (handler *CatalogHandler) serveSnapshotResource(response http.ResponseWriter, request *http.Request, snapshot catalog.RuntimeSnapshot, mount, relative string) {
 	parts := strings.Split(relative, "/")
+	if len(parts) >= 4 && parts[0] == "snapshots" && parts[1] == string(snapshot.ID) && parts[2] == "source-files" {
+		sourcePath := strings.Join(parts[3:], "/")
+		if sourcePath == "" || path.Clean(sourcePath) != sourcePath || strings.Contains(sourcePath, `\`) {
+			http.NotFound(response, request)
+			return
+		}
+		for _, document := range snapshot.Directory.Documents {
+			if document.SourcePath == sourcePath {
+				handler.serveExactChild(response, request, snapshot, document.SourceChild, path.Base(sourcePath))
+				return
+			}
+		}
+		if identity, ok := catalogChildIdentity(snapshot.Manifest, "support/"+sourcePath); ok && identity.Kind == "support" {
+			handler.serveExactChild(response, request, snapshot, identity.Path, path.Base(sourcePath))
+			return
+		}
+		http.NotFound(response, request)
+		return
+	}
 	if len(parts) == 3 && parts[0] == "snapshots" && parts[1] == string(snapshot.ID) && parts[2] == "manifest.json" {
 		handler.serveProjectionManifest(response, request, snapshot)
 		return
@@ -77,6 +96,15 @@ func (handler *CatalogHandler) serveSnapshotResource(response http.ResponseWrite
 		return
 	}
 	http.NotFound(response, request)
+}
+
+func catalogHasSupportFiles(manifest catalog.ManifestV1) bool {
+	for _, child := range manifest.Children {
+		if child.Kind == "support" && strings.HasPrefix(child.Path, "support/") {
+			return true
+		}
+	}
+	return false
 }
 
 func (handler *CatalogHandler) serveProjectionManifest(response http.ResponseWriter, request *http.Request, snapshot catalog.RuntimeSnapshot) {

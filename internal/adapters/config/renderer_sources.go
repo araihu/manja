@@ -47,7 +47,7 @@ func (file RendererFile) SourcesWithResourceLimits(resourceLimits bool) []render
 				integrityReceipt = *configured.Source.IntegrityReceipt
 			}
 			result[index] = sourceadapter.GitCatalogSource{
-				Repository: configured.Source.Repository, Ref: configured.Source.Ref, Manifest: manifest,
+				Repository: configured.Source.Repository, Ref: configured.Source.Ref, Root: configured.Source.Root, Manifest: manifest,
 				IntegrityReceiptRoot: integrityReceiptRoot, IntegrityReceiptPath: integrityReceipt,
 			}
 		}

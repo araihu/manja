@@ -140,6 +140,10 @@ func (handler *CatalogHandler) catalogPageDataWithSidebarQuery(
 	data.OperationServers = catalogOperationServers(document.Overview.Servers)
 	extension := path.Ext(document.SourceChild)
 	data.DownloadHref, _ = catalogURL(mount, "openapi", document.Key+extension)
+	if catalogHasSupportFiles(snapshot.Manifest) {
+		segments := append([]string{"snapshots", string(snapshot.ID), "source-files"}, strings.Split(document.SourcePath, "/")...)
+		data.DownloadHref, _ = catalogURL(mount, segments...)
+	}
 	documentHref, _ := catalogURL(mount, "documents", document.Key)
 	documentHref += "/"
 	data.DocumentHref = documentHref

@@ -39,6 +39,39 @@ The source root is relative to the configuration file. Add catalogs to the
 same list to build a deployment with multiple catalogs. Catalog mounts become
 URL paths below the deployment base path.
 
+Git sources may restrict capture to a repository-relative directory. Both
+`include` and document mappings are relative to that directory, and every
+document and referenced support file is read from the same resolved commit:
+
+```yaml
+version: 1
+catalogs:
+  - id: project
+    mount: /catalogs/project
+    title: Project APIs
+    profile: strict-v1
+    defaultDocument: public
+    source:
+      kind: git
+      repository: https://github.com/example/project.git
+      ref: refs/heads/main
+      root: openapi
+      include: [public.yaml, internal.yaml]
+```
+
+Omitting `root` uses the repository root. Git roots must be clean relative
+paths; absolute paths and parent escapes are rejected. Symlinks within the
+declared source directory remain rejected, while unrelated repository files
+outside it are not part of capture.
+
+Descriptions with relative `$ref` files can be exported directly without a
+separate bundling step. Their source downloads use an immutable
+`snapshots/<snapshot>/source-files/` tree that preserves the original paths of
+all selected documents and referenced support files. This also preserves
+references from one selected document to another. Keep that complete tree
+together when downloading or distributing a multi-file description. The
+legacy flat `openapi/<document-key>.yaml` downloads remain available.
+
 ```bash
 manja export \
   --renderer-config ./renderer.yaml \

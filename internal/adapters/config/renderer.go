@@ -259,8 +259,13 @@ func (source RendererSourceConfig) validate() error {
 		if strings.TrimSpace(source.Repository) == "" || strings.TrimSpace(source.Ref) == "" {
 			return fmt.Errorf("Git repository and ref are required")
 		}
-		if source.Root != "" {
-			return fmt.Errorf("Git source must not contain a file root")
+		if source.Root != "" && source.Root != "." {
+			if err := domain.ValidateCanonicalIdentity("Git source root", source.Root, false); err != nil {
+				return err
+			}
+			if strings.HasPrefix(source.Root, "/") || strings.Contains(source.Root, `\`) || path.Clean(source.Root) != source.Root || source.Root == ".." || strings.HasPrefix(source.Root, "../") || hasWindowsDrivePrefix(source.Root) {
+				return fmt.Errorf("Git source root %q must be a clean repository-relative path", source.Root)
+			}
 		}
 		if source.IntegrityReceipt != nil {
 			if err := validateRendererIntegrityReceiptPath(*source.IntegrityReceipt); err != nil {
