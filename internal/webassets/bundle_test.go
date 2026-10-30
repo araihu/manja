@@ -7,6 +7,7 @@ import (
 	"sort"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestBuildArtifactsAreDeterministicAndComplete(t *testing.T) {
@@ -91,6 +92,7 @@ func testGenerationRepo(t *testing.T) string {
 	for _, relative := range []string{
 		"internal/webassets/vendor.overlay.yaml",
 		"internal/web/static/schema-example-hydrator.js",
+		"internal/web/static/catalog-search.js",
 		"internal/web/static/request-composer-hydrator.js",
 	} {
 		source := filepath.Join("../..", filepath.FromSlash(relative))
@@ -107,4 +109,26 @@ func testGenerationRepo(t *testing.T) string {
 		}
 	}
 	return root
+}
+
+func TestGeneratePreservesUnchangedSearchScript(t *testing.T) {
+	repo := testGenerationRepo(t)
+	if _, err := Generate(repo, false); err != nil {
+		t.Fatal(err)
+	}
+	output := filepath.Join(repo, "internal/web/static/catalog-search.js")
+	before := time.Unix(1_600_000_000, 0)
+	if err := os.Chtimes(output, before, before); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Generate(repo, false); err != nil {
+		t.Fatal(err)
+	}
+	info, err := os.Stat(output)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !info.ModTime().Equal(before) {
+		t.Fatal("unchanged search script was rewritten and would trigger Air")
+	}
 }

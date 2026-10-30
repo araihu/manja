@@ -33,9 +33,10 @@ type deploymentSearchCatalogV1 struct {
 }
 
 type deploymentSearchDocumentV1 struct {
-	Key   string `json:"key"`
-	Title string `json:"title"`
-	Href  string `json:"href"`
+	Key         string `json:"key"`
+	Title       string `json:"title"`
+	Description string `json:"description,omitempty"`
+	Href        string `json:"href"`
 }
 
 func deploymentSearchCatalog(active renderer.ActivationReceipt, basePath string, directory catalog.CatalogArtifactV1, manifest catalog.ManifestV1) (deploymentSearchCatalogV1, error) {
@@ -55,7 +56,7 @@ func deploymentSearchCatalog(active renderer.ActivationReceipt, basePath string,
 			title = document.Key
 		}
 		documents = append(documents, deploymentSearchDocumentV1{
-			Key: document.Key, Title: title,
+			Key: document.Key, Title: title, Description: document.Overview.Description,
 			Href: prefixExportBase(basePath, catalogRoute(active.Mount, "documents", document.Key)) + "/",
 		})
 	}

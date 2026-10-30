@@ -61,8 +61,7 @@ test('search selection keeps normal navigation for non-document routes', () => {
   assert.deepEqual(fixture.assignments, ['/group/project/pets/search/?q=pets'])
 })
 
-async function indexedSearchFixture(titles = ['Needle']) {
-  const query = 'needle'
+async function indexedSearchFixture(titles = ['Needle'], query = 'needle') {
   const encoder = new TextEncoder()
   const digest = await webcrypto.subtle.digest('SHA-256', encoder.encode(query))
   const digestHex = Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, '0')).join('')
@@ -208,7 +207,9 @@ test('client queries retain strict validation independently of corpus normalizat
   for (const query of ['', 'needle\n', 'needle\t', 'n'.repeat(129), 'n'.repeat(257)]) {
     assert.throws(() => router.searchClient(query), /Invalid search query/)
   }
-  assert.throws(() => router.searchClient('Ｎｅｅｄｌｅ'), /Server normalization required/)
+  for (const query of ['\ud800', 'needle\u0085', 'İ'.repeat(85), '界'.repeat(86)]) {
+    assert.throws(() => router.searchClient(query), /Invalid search query/)
+  }
 })
 
 test('deployment search pins legacy URLs and rejects same-length corrupted bytes', async () => {
@@ -229,4 +230,50 @@ test('deployment search pins legacy URLs and rejects same-length corrupted bytes
   const corrupt = searchModel({}, { crypto: webcrypto, fetch: async () => ({ ok: true, arrayBuffer: async () => changed.buffer }) })
   const corruptRouter = corrupt.window.ManjaCatalogSearchRouter.create(corrupt.root)
   await assert.rejects(corruptRouter.fetchVerifiedURL(pinned, bytes.length, sha), /Verified JSON digest differs/)
+})
+
+// Expected keys follow application/catalog's NFKC + cases.Fold normalization.
+test('static search accepts Unicode queries with the compiler case fold', async () => {
+  for (const [query, exact] of [
+    ['FICTÍCIO', 'fictício'], ['ficti\u0301cio', 'fictício'],
+    ['Ｎｅｅｄｌｅ', 'needle'], ['Straße', 'strasse'], ['ẞ', 'ss'],
+    ['ΟΣ', 'οσ'], ['ος', 'οσ'], ['Ꭰꭰ', 'ꭰᎠ'], ['İ', 'i\u0307'],
+    ['界', '界'], ['𐐀', '𐐨'], ['\u00a0Needle\u3000', 'needle'],
+  ]) {
+    const { router } = await indexedSearchFixture([query], exact)
+    const results = await router.searchClient(query)
+    assert.equal(results.length, 1, query)
+    assert.equal(results[0].title, query)
+  }
+})
+
+test('deployment search handles accented partial and unknown terms without outages', async () => {
+  const { router } = await indexedSearchFixture(['API fictícia'], 'fictícia')
+  router.loadDeploymentDirectory = async () => ({ catalogs: [
+    { catalogId: 'fiction', title: 'Catálogo fictício', mount: '/fiction', documents: [
+      { title: 'API fictícia', key: 'public', href: '/fiction/documents/public/', description: 'Contrato administrativo fictício.' },
+    ] },
+  ] })
+  router.catalogRouter = () => router
+  const partial = await router.searchDeployment('fictí')
+  assert.equal(partial.failures, 0)
+  assert.equal(partial.items.length, 2)
+  const description = await router.searchDeployment('administrativo')
+  assert.equal(description.failures, 0)
+  assert.equal(description.items.length, 1)
+  assert.equal(description.items[0].description, 'Contrato administrativo fictício.')
+  const unknown = await router.searchDeployment('inexistência')
+  assert.equal(unknown.failures, 0)
+  assert.equal(unknown.items.length, 0)
+})
+
+test('Unicode prefix routing uses the compiler scalar sort order', async () => {
+  const { router } = await indexedSearchFixture()
+  router.loadPostingEntries = async (_references, ordinals) => {
+    assert.deepEqual(Array.from(ordinals), [1])
+    return new Map([['𐐨route', [0]]])
+  }
+  const directory = {tokenRoutes: [{key:'界',segment:0},{key:'𐐨route',segment:1}],postingSegments:[]}
+  const result = await router.loadCandidates(directory, ['𐐨'], {})
+  assert.deepEqual(Array.from(result), [0])
 })

@@ -340,6 +340,12 @@ persistent header on document, operation and schema pages; switching opens the
 selected publication at its overview. Select values are document keys and
 destinations are normal links, so non-root static deployments retain their
 configured base path.
+Static search accepts Unicode queries, including accents and compatibility
+characters, using NFKC and the index compiler’s full case fold. The shared
+deployment index also searches document descriptions. The browser case-fold
+table is regenerated from the pinned Go text dependency by
+`go run ./cmd/webassets generate` and verified by `check`.
+
 Static deployments bind the global search directory to a content-addressed URL.
 Publishers must retain these immutable search directories and catalog snapshot
 files while older pages may remain open. Replacing mutable page URLs must not
