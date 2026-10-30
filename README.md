@@ -281,3 +281,88 @@ docker run --rm \
   -spec /spec/openapi.yaml \
   -data-dir /var/lib/manja
 ```
+
+### API publication identity
+
+An optional `publication` on each `source.documents` mapping identifies the
+upstream publication independently of the OpenAPI `info.version` or the bundle
+filename. Manja binds this metadata into the catalog snapshot and uses it in
+navigation, page titles and server/static client search:
+
+```yaml
+source:
+  kind: files
+  root: ./bundles
+  include: ['*.json']
+  documents:
+    - path: internal-main.json
+      key: internal-main
+      publication:
+        api: internal
+        audience: internal
+        channel: branch
+        ref: refs/heads/main
+        commit: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+        sourcePath: api/internal/openapi.yaml
+        repositoryURL: https://github.com/example/project
+    - path: internal-v0.2.0.json
+      key: internal-v0.2.0
+      publication:
+        api: internal
+        audience: internal
+        channel: release
+        version: 0.2.0
+        latest: true
+        ref: refs/tags/openapi/internal/v0.2.0
+        commit: bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+        sourcePath: api/internal/openapi.yaml
+```
+
+Publication refs, full commit IDs and source paths are supplied by the publisher;
+Manja does not derive Git provenance from a file source. Repository URLs are
+optional public HTTPS links; credentials and local acquisition paths must not be
+published. A `branch` publication requires a branch ref and has no release
+version. Its displayed name defaults to the tracked branch (`main`, `master`,
+`release/v2`, etc.). Set optional `channelName: preview` in that publication to
+declare a different name. The name is shared by the overview, header, titles
+and search, and is included in snapshot identity. The original `channel: next`
+value remains accepted as a legacy branch discriminator and also uses the
+declared name or tracked branch. A files source does not discover Git's default
+branch: publishers supply the verified branch ref.
+A `release` requires a tag and SemVer version. `latest` may identify only one,
+highest stable release per API. This flag marks an existing release; it does not
+create a duplicate document. Publishers remain responsible for acquisition,
+ref/commit verification, immutable-tag enforcement and alias redirects.
+
+Catalogs with publication metadata group their documents by API and expose
+explicit release/development labels. API and publication controls live in the
+persistent header on document, operation and schema pages; switching opens the
+selected publication at its overview. Select values are document keys and
+destinations are normal links, so non-root static deployments retain their
+configured base path.
+Static search accepts Unicode queries, including accents and compatibility
+characters, using NFKC and the index compiler’s full case fold. The shared
+deployment index also searches document descriptions. The browser case-fold
+table is regenerated from the pinned Go text dependency by
+`go run ./cmd/webassets generate` and verified by `check`.
+
+Static deployments bind the global search directory to a content-addressed URL.
+Publishers must retain these immutable search directories and catalog snapshot
+files while older pages may remain open. Replacing mutable page URLs must not
+replace bytes at an immutable URL; clients continue verifying length and SHA-256.
+Exported search forms and bookmarked `/search/?q=…` links use the browser index.
+The complete Goshtoso document table is retained; its server-driven sort headers
+are composed with local sorting controls because the selected component has no
+client sorting API. Persistent browser storage is optional: unavailable storage
+or quota errors do not prevent verified reads, navigation or retries. Native
+anchors, modified clicks and download links retain normal browser behavior.
+Each snapshot also contains a revision-bound export identity, so another
+publication cannot replace the identity expected by an existing page. Keep
+snapshot files available while older pages may remain open.
+
+Export verification rejects server mutation forms and HTMX request attributes,
+except explicitly marked sidebar continuation requests to declared static files.
+
+Publication provenance remains in catalog JSON for publisher and management
+integrations. Public documentation omits source paths, Git commits, compilation
+profiles, build revisions and snapshot IDs from the reader interface.

@@ -56,7 +56,12 @@ func ValidateCatalogCandidateWithOptions(candidate CatalogCandidate, options Val
 	keys := make(map[string]struct{}, len(candidate.Documents))
 	paths := make(map[string]struct{}, len(candidate.Documents))
 	totalBytes := 0
+	publications := make([]*CatalogPublication, 0, len(candidate.Documents))
 	for index, document := range candidate.Documents {
+		publications = append(publications, document.Publication)
+		if err := ValidateCatalogPublication(document.Publication); err != nil {
+			return fmt.Errorf("document %q: %w", document.Key, err)
+		}
 		if err := validateCatalogDocument(index, document, options.ResourceLimits); err != nil {
 			return err
 		}
@@ -72,6 +77,9 @@ func ValidateCatalogCandidateWithOptions(candidate CatalogCandidate, options Val
 	}
 	if options.ResourceLimits && len(candidate.SupportFiles) > maxCatalogSupportFiles {
 		return fmt.Errorf("catalog support files exceed %d", maxCatalogSupportFiles)
+	}
+	if err := ValidateCatalogPublicationSet(publications); err != nil {
+		return err
 	}
 	for index, support := range candidate.SupportFiles {
 		if err := validateCatalogSourcePath(fmt.Sprintf("catalog support file %d source path", index), support.SourcePath); err != nil {

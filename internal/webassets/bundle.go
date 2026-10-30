@@ -71,6 +71,11 @@ func Generate(repoRoot string, check bool) (Report, error) {
 	if err != nil {
 		return Report{}, err
 	}
+	searchScript, err := generateSearchNormalization(repoRoot)
+	if err != nil {
+		return Report{}, err
+	}
+	artifacts["internal/web/static/catalog-search.js"] = searchScript
 	paths := make([]string, 0, len(artifacts))
 	for relative := range artifacts {
 		paths = append(paths, relative)
@@ -231,6 +236,11 @@ func formatMessages(messages []api.Message) string {
 }
 
 func writeAtomic(destination string, contents []byte) error {
+	// The search script contains a generated block and remains an Air input.
+	// Preserve unchanged files so asset generation cannot restart its own build.
+	if current, err := os.ReadFile(destination); err == nil && bytes.Equal(current, contents) {
+		return nil
+	}
 	if err := os.MkdirAll(filepath.Dir(destination), 0o755); err != nil {
 		return err
 	}

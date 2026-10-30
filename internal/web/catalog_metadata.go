@@ -94,6 +94,9 @@ func absoluteOrigin(raw string) (string, bool) {
 }
 
 func catalogPageTitleForMetadata(data templates.CatalogPageData) string {
+	if data.Document != nil && data.Document.Publication != nil {
+		return templates.CatalogPublicationPageTitle(data) + " · Manja"
+	}
 	if data.OrganizationRoot {
 		return catalogManjaDocumentTitle("Dashboard")
 	}

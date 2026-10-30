@@ -33,9 +33,10 @@ type deploymentSearchCatalogV1 struct {
 }
 
 type deploymentSearchDocumentV1 struct {
-	Key   string `json:"key"`
-	Title string `json:"title"`
-	Href  string `json:"href"`
+	Key         string `json:"key"`
+	Title       string `json:"title"`
+	Description string `json:"description,omitempty"`
+	Href        string `json:"href"`
 }
 
 func deploymentSearchCatalog(active renderer.ActivationReceipt, basePath string, directory catalog.CatalogArtifactV1, manifest catalog.ManifestV1) (deploymentSearchCatalogV1, error) {
@@ -50,12 +51,12 @@ func deploymentSearchCatalog(active renderer.ActivationReceipt, basePath string,
 	childBase := prefixExportBase(basePath, catalogRoute(active.Mount, "snapshots", active.SnapshotID, "search-data")) + "/"
 	documents := make([]deploymentSearchDocumentV1, 0, len(directory.Documents))
 	for _, document := range directory.Documents {
-		title := strings.TrimSpace(document.Title)
+		title := catalog.PublicationDocumentLabel(document)
 		if title == "" {
 			title = document.Key
 		}
 		documents = append(documents, deploymentSearchDocumentV1{
-			Key: document.Key, Title: title,
+			Key: document.Key, Title: title, Description: document.Overview.Description,
 			Href: prefixExportBase(basePath, catalogRoute(active.Mount, "documents", document.Key)) + "/",
 		})
 	}
@@ -82,6 +83,10 @@ func encodeDeploymentSearchDirectory(catalogs []deploymentSearchCatalogV1) ([]by
 	return append(data, '\n'), nil
 }
 
-func deploymentSearchDirectoryURL(basePath string) string {
-	return prefixExportBase(basePath, "/"+path.Clean(deploymentSearchDirectoryPath))
+func deploymentSearchImmutableDirectoryPath(digest string) string {
+	return path.Join(path.Dir(deploymentSearchDirectoryPath), "directory-sha256-"+digest+".json")
+}
+
+func deploymentSearchDirectoryURL(basePath, digest string) string {
+	return prefixExportBase(basePath, "/"+deploymentSearchImmutableDirectoryPath(digest))
 }

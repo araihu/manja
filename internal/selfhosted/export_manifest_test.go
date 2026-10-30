@@ -76,6 +76,11 @@ func TestExportVerifierRejectsBrokenAndRuntimeOnlyHTMLReferences(t *testing.T) {
 		{name: "search subpath escape", base: "/group/project/", body: `<div data-catalog-search-href="/search"></div>`},
 		{name: "embedded visit subpath escape", base: "/group/project/", body: `<script id="catalog-search-current-visit" type="application/json">{"href":"/documents/openapi/"}</script>`},
 		{name: "runtime route", base: "/", body: `<div hx-get="/api/private"></div>`},
+		{name: "post", base: "/", body: `<button hx-post="/">post</button>`},
+		{name: "data get", base: "/", body: `<a data-hx-get="/">get</a>`},
+		{name: "boost", base: "/", body: `<div hx-boost="true"></div>`},
+		{name: "unhandled get form", base: "/", body: `<form method="get" action="/"></form>`},
+		{name: "mutation form", base: "/", body: `<form method="POST" action="/"></form>`},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			root := t.TempDir()

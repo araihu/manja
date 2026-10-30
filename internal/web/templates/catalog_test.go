@@ -102,7 +102,7 @@ func TestCatalogStaticNavigationFailureUsesPersistentGoshtosoToast(t *testing.T)
 	}
 }
 
-func TestCatalogOrganizationNavigationRendersCatalogAndSpecSections(t *testing.T) {
+func TestCatalogOrganizationNavigationRendersCatalogsOnly(t *testing.T) {
 	t.Parallel()
 
 	data := catalogTemplateFixture()
@@ -112,26 +112,23 @@ func TestCatalogOrganizationNavigationRendersCatalogAndSpecSections(t *testing.T
 		Catalogs: []CatalogOrganizationItem{{
 			ID: "catalog-kubernetes", Label: "Kubernetes", Description: "2 specs", Href: "/", Count: 2, Active: true,
 		}},
-		Specs: []CatalogOrganizationItem{{
-			ID: "spec-kubernetes-core-v1", Label: "core-v1", Description: "Kubernetes", Href: "/documents/core-v1/",
-		}},
 	}
 	body := renderCatalogTemplate(t, data)
 	for _, want := range []string{
 		`id="catalog-organization-navigation"`,
-		`aria-label="Catalogs and specs"`,
+		`aria-label="Catalogs"`,
 		`id="catalog-organization-section-catalogs"`,
-		`id="catalog-organization-section-specs"`,
 		`data-catalog-organization-item="catalog-kubernetes"`,
-		`data-catalog-organization-item="spec-kubernetes-core-v1"`,
 		`aria-current="page"`,
 		`Search API...`,
 		`heroicons.svg#hi-16-solid-rectangle-group`,
-		`heroicons.svg#hi-16-solid-document-text`,
 	} {
 		if !strings.Contains(body, want) {
 			t.Errorf("organization navigation missing %q", want)
 		}
+	}
+	if strings.Contains(body, `id="catalog-organization-section-specs"`) {
+		t.Fatal("organization navigation rendered duplicate specs section")
 	}
 	if strings.Count(body, `data-search-field`) != 1 {
 		t.Fatalf("organization navigation rendered %d search fields, want 1", strings.Count(body, `data-search-field`))
@@ -155,7 +152,7 @@ func TestCatalogShellUsesRouteSpecificNavigationLabels(t *testing.T) {
 				data.OrganizationNav = CatalogOrganizationNavData{Visible: true}
 				return data
 			}(),
-			label:      "Catalogs and specs",
+			label:      "Catalogs",
 			otherLabel: "API sections",
 		},
 		{
@@ -173,7 +170,7 @@ func TestCatalogShellUsesRouteSpecificNavigationLabels(t *testing.T) {
 				return data
 			}(),
 			label:      "API sections",
-			otherLabel: "Catalogs and specs",
+			otherLabel: "Catalogs",
 		},
 	}
 
@@ -437,7 +434,6 @@ func TestCatalogRootRendersStandaloneSpecsAndRootBreadcrumb(t *testing.T) {
 	data.OrganizationNav = CatalogOrganizationNavData{
 		Visible:  true,
 		Catalogs: []CatalogOrganizationItem{{ID: "catalog-kubernetes", Label: "Kubernetes", Description: "2 specs", Href: "/kubernetes/"}},
-		Specs:    []CatalogOrganizationItem{{ID: "spec-core-v1", Label: "core-v1", Description: "Kubernetes", Href: "/kubernetes/documents/core-v1/"}},
 	}
 	data.Organization = CatalogOrganizationPageData{
 		Title:   "Manja",
@@ -494,8 +490,8 @@ func TestCatalogDocumentOverviewKeepsIdentityVersionAndDownloadInHeader(t *testi
 			t.Errorf("document overview header missing %q", want)
 		}
 	}
-	if !strings.Contains(body, document.SourcePath) {
-		t.Fatalf("document overview omitted source path %q", document.SourcePath)
+	if strings.Contains(body, document.SourcePath) {
+		t.Fatalf("public document exposed source path %q", document.SourcePath)
 	}
 }
 
@@ -558,9 +554,6 @@ func renderLegacyCatalogDocumentHeader(data CatalogPageData) ([]byte, error) {
 			if _, err := io.WriteString(writer, `<p class="max-w-[70ch] whitespace-pre-wrap text-base leading-7 text-on-surface-muted dark:text-on-surface-dark-muted">`+templ.EscapeString(document.Overview.Description)+`</p>`); err != nil {
 				return err
 			}
-		}
-		if err := catalogSourceStatus(data).Render(ctx, writer); err != nil {
-			return err
 		}
 		_, err := io.WriteString(writer, `</header>`)
 		return err
@@ -1355,8 +1348,7 @@ func TestPreparedOperationHeaderMatchesCatalogSSRBytes(t *testing.T) {
 	}
 	legacy = legacy[start : start+end+len(`</header>`)]
 	actions := copyPageAction(operation.Anchor, data.PageMarkdownHref)
-	provenance := catalogProvenance(data, true)
-	shared, err := fragment.Bytes(context.Background(), actions, provenance)
+	shared, err := fragment.Bytes(context.Background(), actions, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1645,9 +1637,6 @@ func renderLegacySchemaDetailHeader(data CatalogPageData, schema projection.Sche
 			if _, err := io.WriteString(writer, `<div class="manja-schema-markdown min-w-0"><p class="whitespace-pre-wrap">`+schema.Description+`</p></div>`); err != nil {
 				return err
 			}
-		}
-		if err := catalogSourceStatus(data).Render(ctx, writer); err != nil {
-			return err
 		}
 		_, err := io.WriteString(writer, `</header>`)
 		return err

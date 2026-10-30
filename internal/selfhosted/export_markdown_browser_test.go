@@ -13,10 +13,7 @@ import (
 )
 
 func TestStaticResponseExampleCopy(t *testing.T) {
-	output := os.Getenv("MANJA_GITHUB_MARKDOWN_PREVIEW")
-	if output == "" {
-		t.Skip("set MANJA_GITHUB_MARKDOWN_PREVIEW to the exported GitHub tree")
-	}
+	output := staticGitHubPreview(t)
 	pw, err := playwright.Run()
 	if err != nil {
 		t.Fatal(err)
@@ -33,7 +30,7 @@ func TestStaticResponseExampleCopy(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	const id = "detail-sha256-c392a62c2c0fa9fb24013708a1bfcab1034233e37a95101511814334bc66ad0e"
+	id := staticGitHubOperation(t, output, "actions/get-actions-cache-usage-for-enterprise")
 	if _, err := page.Goto(server.URL + "/catalogs/github/documents/github-v3-rest/?selected=" + id + "#" + id); err != nil {
 		t.Fatal(err)
 	}
@@ -126,8 +123,13 @@ func TestStaticResponseExampleCopy(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer propertyPage.Close()
-	const propertyID = "detail-sha256-757e24149d89e15b9549420d517c7529253f73093fa9a17b18eaf0294fc172a5"
+	propertyPage.OnPageError(func(err error) { t.Errorf("property browser error: %v", err) })
+	propertyID := staticGitHubOperation(t, output, "actions/add-custom-labels-to-self-hosted-runner-for-org")
 	if _, err := propertyPage.Goto(server.URL + "/catalogs/github/documents/github-v3-rest/?selected=" + propertyID + "#" + propertyID); err != nil {
+		t.Fatal(err)
+	}
+	// Body schemas are intentionally loaded when they enter the viewport.
+	if err := propertyPage.Locator(`section[data-manja-request-body]`).ScrollIntoViewIfNeeded(); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := propertyPage.WaitForFunction(`() => { const name = [...document.querySelectorAll('.gs-schema-tree-name')].find(el => el.textContent === 'labels'); if (!name) return false; const node = name.closest('.gs-schema-tree-node'); const description = node.querySelector('.gs-schema-tree-description'); const constraints = node.querySelector('.gs-schema-tree-constraints'); if (!description || !constraints) return false; return Math.abs(description.getBoundingClientRect().left - constraints.getBoundingClientRect().left) < 1 && Math.abs(description.getBoundingClientRect().left - name.getBoundingClientRect().left - 12) < 1; }`, nil); err != nil {
@@ -138,7 +140,8 @@ func TestStaticResponseExampleCopy(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer queryPage.Close()
-	const queryID = "detail-sha256-0f00cc441a2a49198191ec2c03b91dd17be5ace1b780559c160af1d0c150293b"
+	queryPage.OnPageError(func(err error) { t.Errorf("query browser error: %v", err) })
+	queryID := staticGitHubOperation(t, output, "apps/list-webhook-deliveries")
 	if _, err := queryPage.Goto(server.URL + "/catalogs/github/documents/github-v3-rest/?selected=" + queryID + "#" + queryID); err != nil {
 		t.Fatal(err)
 	}
@@ -197,10 +200,7 @@ func TestStaticResponseExampleCopy(t *testing.T) {
 
 // Run against the complete generated GitHub corpus, without a Manja server.
 func TestStaticResponsesWithoutExamplesRemainVisible(t *testing.T) {
-	output := os.Getenv("MANJA_GITHUB_MARKDOWN_PREVIEW")
-	if output == "" {
-		t.Skip("set MANJA_GITHUB_MARKDOWN_PREVIEW to the exported GitHub tree")
-	}
+	output := staticGitHubPreview(t)
 	pw, err := playwright.Run()
 	if err != nil {
 		t.Fatal(err)
@@ -217,7 +217,7 @@ func TestStaticResponsesWithoutExamplesRemainVisible(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	const id = "detail-sha256-d724fa4eb9aa7a521d61b9881c3b1b55f45a19a01423f91ccc6ca7b1dd4d94cd"
+	id := staticGitHubOperation(t, output, "apps/redeliver-webhook-delivery")
 	if _, err := page.Goto(server.URL + "/catalogs/github/documents/github-v3-rest/?selected=" + id + "#" + id); err != nil {
 		t.Fatal(err)
 	}
@@ -278,10 +278,7 @@ func TestStaticResponsesWithoutExamplesRemainVisible(t *testing.T) {
 }
 
 func TestGitHubMarkdownStaticPreview(t *testing.T) {
-	output := os.Getenv("MANJA_GITHUB_MARKDOWN_PREVIEW")
-	if output == "" {
-		t.Skip("set MANJA_GITHUB_MARKDOWN_PREVIEW to the exported GitHub tree")
-	}
+	output := staticGitHubPreview(t)
 	basePath := os.Getenv("MANJA_GITHUB_MARKDOWN_BASE_PATH")
 	if basePath == "" {
 		basePath = "/"
@@ -380,7 +377,7 @@ func TestGitHubMarkdownStaticPreview(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Regression for the runner-group visibility property reported in review.
-	const runnerGroupID = "detail-sha256-c685048700ef665a432d5e348b48ac32efd431d3662d6a63ca307921ea4e9a7d"
+	runnerGroupID := staticGitHubOperation(t, output, "actions/create-self-hosted-runner-group-for-org")
 	if _, err := page.Goto(server.URL + basePath + "catalogs/github/documents/github-v3-rest/?selected=" + runnerGroupID + "#" + runnerGroupID); err != nil {
 		t.Fatal(err)
 	}

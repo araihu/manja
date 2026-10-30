@@ -49,10 +49,11 @@ type CatalogCandidate struct {
 }
 
 type CatalogDocument struct {
-	Key        string
-	SourcePath string
-	Format     CatalogFormat
-	Bytes      []byte
+	Publication *CatalogPublication
+	Key         string
+	SourcePath  string
+	Format      CatalogFormat
+	Bytes       []byte
 }
 
 type CatalogSupportFile struct {

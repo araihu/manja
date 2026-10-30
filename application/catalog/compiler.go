@@ -258,7 +258,8 @@ func validateCompilerAlignment(candidate domain.CatalogCandidate, index domain.C
 
 func buildDocumentDirectory(catalogID string, document domain.CatalogDocument, index domain.SpecIndex, sourceChild string) (DocumentDirectoryV1, error) {
 	result := DocumentDirectoryV1{
-		Key: document.Key, SourcePath: document.SourcePath, Title: index.Title, APIVersion: index.Version,
+		Publication: domain.CloneCatalogPublication(document.Publication),
+		Key:         document.Key, SourcePath: document.SourcePath, Title: index.Title, APIVersion: index.Version,
 		Branding:    candidateBranding(index.Branding),
 		SourceChild: sourceChild, SchemaNodeShards: []ShardReferenceV1{},
 		Operations: make([]OperationDirectoryV1, 0, len(index.Operations)), Schemas: make([]SchemaDirectoryV1, 0, len(index.Schemas)),

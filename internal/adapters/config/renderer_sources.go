@@ -34,7 +34,7 @@ func (file RendererFile) SourcesWithResourceLimits(resourceLimits bool) []render
 			DisableResourceLimits: !resourceLimits,
 		}
 		for documentIndex, document := range configured.Source.Documents {
-			manifest.DocumentKeys[documentIndex] = sourceadapter.CatalogDocumentKey{SourcePath: document.Path, Key: document.Key}
+			manifest.DocumentKeys[documentIndex] = sourceadapter.CatalogDocumentKey{SourcePath: document.Path, Key: document.Key, Publication: domain.CloneCatalogPublication(document.Publication)}
 		}
 		switch configured.Source.Kind {
 		case RendererSourceFiles:

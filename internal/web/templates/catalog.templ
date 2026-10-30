@@ -40,40 +40,39 @@ type CatalogDocumentOption struct {
 }
 
 type CatalogSidebarItemData struct {
-	ID string
-	Label string
-	Href string
+	ID     string
+	Label  string
+	Href   string
 	Method string
 	Active bool
 }
 
 type CatalogSidebarGroupData struct {
-	ID string
-	Kind string
+	ID    string
+	Kind  string
 	Label string
-	Href string
+	Href  string
 	Count int
-	Open bool
+	Open  bool
 	Items []CatalogSidebarItemData
 }
 
 type CatalogOrganizationItem struct {
-	ID          string
-	Label       string
-	Description string
-	Href        string
-	AvatarSrc   string
-	AvatarAlt   string
+	ID           string
+	Label        string
+	Description  string
+	Href         string
+	AvatarSrc    string
+	AvatarAlt    string
 	AvatarSymbol string
-	Initials    string
-	Count       int
-	Active      bool
+	Initials     string
+	Count        int
+	Active       bool
 }
 
 type CatalogOrganizationNavData struct {
-	Visible bool
+	Visible  bool
 	Catalogs []CatalogOrganizationItem
-	Specs    []CatalogOrganizationItem
 }
 
 type CatalogOrganizationLicenseData struct {
@@ -97,80 +96,80 @@ type CatalogOrganizationPageData struct {
 
 type CatalogPageData struct {
 	ShowCatalogDownloadButton bool
-	WorkspaceBranding core.DocsBranding
-	Metadata         PageMetadata
-	HideOverviewSidebar bool
-	OrganizationRoot bool
-	Mount string
-	SnapshotID catalog.SnapshotID
-	RevisionID string
-	CommitSHA string
-	Directory catalog.CatalogArtifactV1
-	StandaloneSpec bool
-	Document *catalog.DocumentDirectoryV1
-	CatalogMetrics *localrender.CatalogOverviewMetricsFragment
-	DocumentTable *localrender.CatalogDocumentTableFragment
-	DocumentHref string
-	DocumentHeader *localrender.CatalogDocumentHeaderFragment
-	DocumentInfo *localrender.CatalogDocumentInfoFragment
-	DocumentMetrics *localrender.CatalogDocumentMetricsFragment
-	DocumentSecuritySchemes *localrender.CatalogDocumentSecuritySchemesFragment
-	CatalogReadme string
-	CatalogLicense CatalogOrganizationLicenseData
-	SchemaLinks map[string]string
-	Documents []CatalogDocumentOption
-	Groups []CatalogSidebarGroupData
-	OrganizationNav CatalogOrganizationNavData
-	Organization CatalogOrganizationPageData
-	Selected *catalog.DetailRecordV1
-	OperationView *core.Operation
-	OperationRequestSection *localrender.OperationRequestSectionFragment
-	OperationDetailSections *localrender.OperationDetailSectionsFragment
-	OperationHeader *localrender.OperationHeaderFragment
-	OperationAuthorization *localrender.OperationAuthorizationFragment
-	OperationParameters *localrender.OperationParametersFragment
-	OperationRequestBody *localrender.OperationRequestBodyFragment
+	WorkspaceBranding         core.DocsBranding
+	Metadata                  PageMetadata
+	HideOverviewSidebar       bool
+	OrganizationRoot          bool
+	Mount                     string
+	SnapshotID                catalog.SnapshotID
+	RevisionID                string
+	CommitSHA                 string
+	Directory                 catalog.CatalogArtifactV1
+	StandaloneSpec            bool
+	Document                  *catalog.DocumentDirectoryV1
+	CatalogMetrics            *localrender.CatalogOverviewMetricsFragment
+	DocumentTable             *localrender.CatalogDocumentTableFragment
+	DocumentHref              string
+	DocumentHeader            *localrender.CatalogDocumentHeaderFragment
+	DocumentInfo              *localrender.CatalogDocumentInfoFragment
+	DocumentMetrics           *localrender.CatalogDocumentMetricsFragment
+	DocumentSecuritySchemes   *localrender.CatalogDocumentSecuritySchemesFragment
+	CatalogReadme             string
+	CatalogLicense            CatalogOrganizationLicenseData
+	SchemaLinks               map[string]string
+	Documents                 []CatalogDocumentOption
+	Groups                    []CatalogSidebarGroupData
+	OrganizationNav           CatalogOrganizationNavData
+	Organization              CatalogOrganizationPageData
+	Selected                  *catalog.DetailRecordV1
+	OperationView             *core.Operation
+	OperationRequestSection   *localrender.OperationRequestSectionFragment
+	OperationDetailSections   *localrender.OperationDetailSectionsFragment
+	OperationHeader           *localrender.OperationHeaderFragment
+	OperationAuthorization    *localrender.OperationAuthorizationFragment
+	OperationParameters       *localrender.OperationParametersFragment
+	OperationRequestBody      *localrender.OperationRequestBodyFragment
 	OperationRequestBodyMedia *localrender.OperationRequestBodyMediaFragment
-	OperationResponseMedia *localrender.OperationResponseMediaFragment
-	OperationResponseDetails *localrender.OperationResponseDetailsFragment
-	OperationExamples *localrender.OperationExamplesFragment
-	OperationSchemaTrees *localrender.OperationSchemaTreesFragment
-	OperationResponses *localrender.OperationResponsesFragment
-	OperationNavigation *localrender.OperationNavigationFragment
-	SchemaView *core.Schema
-	OperationServers []core.SpecServer
-	Search *CatalogSearchData
-	SchemaNode *localrender.SchemaNodeFragment
-	SchemaDetailHeader *localrender.SchemaDetailHeaderFragment
-	SchemaDetailExample *localrender.SchemaDetailExampleFragment
-	SchemaDetailBody *localrender.SchemaDetailBodyFragment
-	SchemaDetail *localrender.SchemaDetailFragment
-	DownloadHref string
-	PageMarkdownHref string
-	CapabilityFooter CapabilityFooterData
-	SearchHref string
-	SearchJSONHref string
-	SearchGlobal bool
-	SearchContextMount string
-	SearchContextDocument string
+	OperationResponseMedia    *localrender.OperationResponseMediaFragment
+	OperationResponseDetails  *localrender.OperationResponseDetailsFragment
+	OperationExamples         *localrender.OperationExamplesFragment
+	OperationSchemaTrees      *localrender.OperationSchemaTreesFragment
+	OperationResponses        *localrender.OperationResponsesFragment
+	OperationNavigation       *localrender.OperationNavigationFragment
+	SchemaView                *core.Schema
+	OperationServers          []core.SpecServer
+	Search                    *CatalogSearchData
+	SchemaNode                *localrender.SchemaNodeFragment
+	SchemaDetailHeader        *localrender.SchemaDetailHeaderFragment
+	SchemaDetailExample       *localrender.SchemaDetailExampleFragment
+	SchemaDetailBody          *localrender.SchemaDetailBodyFragment
+	SchemaDetail              *localrender.SchemaDetailFragment
+	DownloadHref              string
+	PageMarkdownHref          string
+	CapabilityFooter          CapabilityFooterData
+	SearchHref                string
+	SearchJSONHref            string
+	SearchGlobal              bool
+	SearchContextMount        string
+	SearchContextDocument     string
 	// SearchMount is the href boundary used by the browser search modal. Global
 	// search always uses the workspace root so results may cross catalog mounts.
-	SearchMount string
-	SearchScopeLabel string
-	SearchChildBase string
-	SearchDirectoryPath string
+	SearchMount           string
+	SearchScopeLabel      string
+	SearchChildBase       string
+	SearchDirectoryPath   string
 	SearchDirectoryLength uint64
 	SearchDirectorySHA256 string
-	SearchDocumentLabels string
-	CurrentVisit *CatalogSearchItemData
-	DocumentSortBy string
-	DocumentSortDir string
+	SearchDocumentLabels  string
+	CurrentVisit          *CatalogSearchItemData
+	DocumentSortBy        string
+	DocumentSortDir       string
 	EnhancementDescriptor *CatalogEnhancementDescriptorData
 }
 
 func catalogNavigationLabel(data CatalogPageData) string {
 	if data.OrganizationNav.Visible {
-		return "Catalogs and specs"
+		return "Catalogs"
 	}
 	if data.Document == nil {
 		return "Catalog documents"
@@ -183,6 +182,9 @@ func catalogDocumentFilterExpression(searchText string) string {
 }
 
 func catalogDocumentLabel(document catalog.DocumentDirectoryV1) string {
+	if document.Publication != nil {
+		return catalog.PublicationDocumentLabel(document)
+	}
 	if title := strings.TrimSpace(document.Title); title != "" {
 		return title
 	}
@@ -241,27 +243,27 @@ func catalogSidebarIcon(symbol icon.Symbol) templpkg.Component {
 }
 
 type CatalogSearchItemData struct {
-	ID string `json:"id,omitempty"`
-	Title string `json:"title"`
+	ID          string `json:"id,omitempty"`
+	Title       string `json:"title"`
 	Description string `json:"description,omitempty"`
-	Href string `json:"href"`
-	Kind string `json:"kind,omitempty"`
-	Method string `json:"method,omitempty"`
-	Path string `json:"path,omitempty"`
-	Section string `json:"section,omitempty"`
+	Href        string `json:"href"`
+	Kind        string `json:"kind,omitempty"`
+	Method      string `json:"method,omitempty"`
+	Path        string `json:"path,omitempty"`
+	Section     string `json:"section,omitempty"`
 }
 
 type CatalogSearchData struct {
-	Query string
-	Results []CatalogSearchResultData
+	Query           string
+	Results         []CatalogSearchResultData
 	PostingsScanned uint64
 	SegmentsDecoded uint64
-	BytesDecoded uint64
+	BytesDecoded    uint64
 }
 
 type CatalogSearchResultData struct {
-	Record catalog.SearchRecordV1
-	Href string
+	Record  catalog.SearchRecordV1
+	Href    string
 	Section string
 }
 
@@ -275,7 +277,8 @@ templ CatalogPage(data CatalogPageData) {
 	@LayoutWithBrandingMetadata(metadata, catalogBranding(data.Directory.Branding), false, false) {
 		if data.EnhancementDescriptor != nil {
 			@templpkg.JSONScript("manja-local-docs-descriptor", data.EnhancementDescriptor)<script src="/manja-assets/local-docs.js"></script>
-		}<script src="/manja-assets/catalog-search.js"></script>
+		}
+		<script src="/manja-assets/catalog-search.js"></script>
 		@copyPageScript()
 		<div
 			x-data="{ catalogNavOpen: false }"
@@ -296,30 +299,30 @@ templ CatalogPage(data CatalogPageData) {
 				></button>
 			}
 			@appshell.AppShell(appshell.Config{
-				Header: catalogHeader(data),
-				Sidebar: catalogSidebarComponent(data),
-				MainID: "main-content",
+				Header:    catalogHeader(data),
+				Sidebar:   catalogSidebarComponent(data),
+				MainID:    "main-content",
 				RootClass: "h-full",
 				RootAttrs: templpkg.Attributes{
 					"data-manja-catalog-shell": "true",
-					"data-snapshot-id": string(data.SnapshotID),
+					"data-snapshot-id":         string(data.SnapshotID),
 					"data-catalog-search-href": data.SearchHref,
 				},
-				HeaderClass: "relative z-50",
+				HeaderClass:  "relative z-50",
 				SidebarClass: "h-full w-80",
 				SidebarAttrs: templpkg.Attributes{
-					"id": "catalog-navigation",
-					"aria-label": catalogNavigationLabel(data),
-					"x-bind:style": "catalogNavOpen ? 'display: block' : ''",
-					"x-bind:class": "catalogNavOpen ? 'manja-catalog-navigation-open fixed inset-y-0 left-0 w-80 max-w-full shadow-xl' : ''",
-					"x-bind:role": "catalogNavOpen ? 'dialog' : null",
+					"id":                "catalog-navigation",
+					"aria-label":        catalogNavigationLabel(data),
+					"x-bind:style":      "catalogNavOpen ? 'display: block' : ''",
+					"x-bind:class":      "catalogNavOpen ? 'manja-catalog-navigation-open fixed inset-y-0 left-0 w-80 max-w-full shadow-xl' : ''",
+					"x-bind:role":       "catalogNavOpen ? 'dialog' : null",
 					"x-bind:aria-modal": "catalogNavOpen ? 'true' : null",
-					"x-trap.noscroll": "catalogNavOpen",
+					"x-trap.noscroll":   "catalogNavOpen",
 				},
 				MainClass: "flex min-h-0 flex-col overflow-y-auto px-5 py-6 lg:px-10 lg:py-8",
 				MainAttrs: templpkg.Attributes{"data-manja-primary-scroll": "true"},
 			}) {
-			@catalogMainContent(data)
+				@catalogMainContent(data)
 			}
 			@catalogStaticNavigationError()
 			@catalogSearchModal(data)
@@ -345,6 +348,9 @@ templ catalogMainContent(data CatalogPageData) {
 		data-document-title={ catalogPageDocumentTitle(data) }
 		class="mx-auto flex w-full max-w-[100rem] flex-1 shrink-0 flex-col"
 	>
+		if data.Document != nil && data.Document.Publication != nil {
+			@catalogPublicationContext(data)
+		}
 		<div data-catalog-page-content class="min-w-0 flex-1">
 			if data.Search != nil {
 				@catalogSearch(data)
@@ -383,7 +389,7 @@ templ catalogSearchModal(data CatalogPageData) {
 		data-search-scope-label={ data.SearchScopeLabel }
 		data-search-catalog-id={ data.Directory.CatalogID }
 		data-search-document-labels={ data.SearchDocumentLabels }
-			class="manja-catalog-search-dialog fixed inset-0 z-[60] flex items-center justify-center p-4 backdrop-blur-md"
+		class="manja-catalog-search-dialog fixed inset-0 z-[60] flex items-center justify-center p-4 backdrop-blur-md"
 		role="dialog"
 		aria-modal="true"
 		aria-labelledby="catalog-search-label"
@@ -441,11 +447,11 @@ templ catalogSearchModal(data CatalogPageData) {
 templ catalogStaticNavigationError() {
 	<div data-manja-static-navigation-error hidden aria-live="assertive" class="group pointer-events-none fixed inset-x-8 top-0 z-99 flex max-w-full flex-col gap-2 bg-transparent px-6 py-6 md:bottom-0 md:left-[unset] md:right-0 md:top-[unset] md:max-w-sm">
 		@catalogStableToast("manja-static-navigation-error-toast", toast.Config{
-			Tone: toast.ToneDanger,
-			Title: "Unable to load this documentation section",
-			Message: "Please try again.",
+			Tone:            toast.ToneDanger,
+			Title:           "Unable to load this documentation section",
+			Message:         "Please try again.",
 			DisplayDuration: -1,
-			ActionLabel: "Retry",
+			ActionLabel:     "Retry",
 		})
 	</div>
 }
@@ -456,13 +462,13 @@ templ catalogSearch(data CatalogPageData) {
 			<p class="mb-2 text-sm font-semibold uppercase tracking-wide text-primary dark:text-primary-dark">Catalog search · { data.SearchScopeLabel }</p>
 			<h1 class="font-title text-4xl font-bold text-on-surface-strong dark:text-on-surface-dark-strong">Search { data.Directory.Title }</h1>
 			<form method="get" action={ data.SearchHref } class="mt-6 flex max-w-3xl gap-3">
-			<label for="catalog-search-query" class="sr-only">Search operations, specs, and schemas</label>
+				<label for="catalog-search-query" class="sr-only">Search operations, specs, and schemas</label>
 				<input id="catalog-search-query" name="q" value={ data.Search.Query } maxlength="256" autofocus placeholder="Operation, path, schema, or canonical detail ID" class="min-h-12 min-w-0 flex-1 rounded-radius border border-outline bg-surface px-4 text-on-surface-strong dark:border-outline-dark dark:bg-surface-dark dark:text-on-surface-dark-strong"/>
 				<button type="submit" class="min-h-12 rounded-radius bg-primary px-5 font-semibold text-on-primary dark:bg-primary-dark dark:text-on-primary-dark">Search</button>
 			</form>
 		</div>
 		if data.Search.Query == "" {
-				<p class="text-on-surface-muted dark:text-on-surface-dark-muted">Search globally across every catalog, operation, spec, and semantically deduplicated schema.</p>
+			<p class="text-on-surface-muted dark:text-on-surface-dark-muted">Search globally across every catalog, operation, spec, and semantically deduplicated schema.</p>
 		} else {
 			<div class="mb-4 flex flex-wrap items-center justify-between gap-3">
 				<h2 class="font-title text-2xl font-bold text-on-surface-strong dark:text-on-surface-dark-strong">{ fmt.Sprintf("%d results", len(data.Search.Results)) }</h2>
@@ -489,24 +495,28 @@ templ catalogSearch(data CatalogPageData) {
 							}
 						</a>
 					}
-					</div>
-				}
+				</div>
+			}
 		}
 	</main>
 }
 
 func catalogWorkspaceName(data CatalogPageData) string {
-	if data.WorkspaceBranding.DisplayName != "" { return data.WorkspaceBranding.DisplayName }
+	if data.WorkspaceBranding.DisplayName != "" {
+		return data.WorkspaceBranding.DisplayName
+	}
 	return "Manja"
 }
 
 func catalogWorkspaceHome(data CatalogPageData) string {
-	if data.WorkspaceBranding.Logo.HomeURL != "" { return data.WorkspaceBranding.Logo.HomeURL }
+	if data.WorkspaceBranding.Logo.HomeURL != "" {
+		return data.WorkspaceBranding.Logo.HomeURL
+	}
 	return "/"
 }
 
 templ catalogHeader(data CatalogPageData) {
-	<div class="flex h-16 items-center justify-between gap-4 px-4 lg:px-8">
+	<div class={ catalogHeaderClass(data) }>
 		<div class="flex min-w-0 items-center gap-3">
 			if catalogHasSidebar(data) {
 				<button
@@ -528,7 +538,7 @@ templ catalogHeader(data CatalogPageData) {
 				if data.WorkspaceBranding.Logo.Src != "" {
 					<img src={ templpkg.URL(data.WorkspaceBranding.Logo.Src) } alt="" width="28" height="28" class="size-7 shrink-0 object-contain"/>
 				} else {
-				<svg xmlns="http://www.w3.org/2000/svg" viewBox="167.325 123.377 776.662 776.662" class="size-7 shrink-0" aria-hidden="true"><path fill="currentColor" d="M740.383 586.072c-.647 3.511-.247 19.218-.238 23.876l.008 37.168c.046 31.636-.634 54.241-22.716 79.514a87.18 87.18 0 0 1-60.113 29.978c-18.82 1.181-45.321.301-64.691.306l-121.335.05-81.527-.042c-17.982 0-38.559 1.079-55.938-1.778-40.426-6.644-72.024-43.733-72.765-84.589-.393-21.714-.134-43.27-.206-64.881l-.279-136.952q-.104-37.737.221-75.475c0-37.841-4.547-66.466 23.251-97.172a88.2 88.2 0 0 1 62.939-29.471c20.206-.851 45.424-.123 66.08-.118l127.117.027 70.898-.013c19.278-.047 38.756-.986 57.903 2.166 29.657 4.882 56.69 29.14 66.267 57.398 5.884 17.884 4.588 36.864 4.872 55.325.296 19.277-.576 38.856.288 58.046 31.374-.505 63.14-3.277 87.514 20.727 30.042 29.585 30.634 74.265.786 104.401-26.55 26.806-55.208 19.257-88.336 21.509"/><path fill="var(--color-primary)" d="M740.419 439.435c31.374-.505 63.14-3.277 87.514 20.727 30.042 29.585 30.634 74.265.786 104.401-26.55 26.806-55.208 19.257-88.336 21.509-1.63.133-3.92.178-5.606.18-26.744.028-53.545-.312-80.288-.152l-41.62.313c-28.398.123-51.02.636-73.078-20.918a73.37 73.37 0 0 1-21.871-52.348 72.55 72.55 0 0 1 21.179-51.85 73.6 73.6 0 0 1 34.229-19.494c15.408-3.745 48.738-2.349 66.044-2.323z"/><path fill="currentColor" d="M740.419 439.435c31.374-.505 63.14-3.277 87.514 20.727 30.042 29.585 30.634 74.265.786 104.401-26.55 26.806-55.208 19.257-88.336 21.509.267-6.199.184-12.735.124-18.966-.411-42.498.604-85.195-.088-127.671"/></svg>
+					<svg xmlns="http://www.w3.org/2000/svg" viewBox="167.325 123.377 776.662 776.662" class="size-7 shrink-0" aria-hidden="true"><path fill="currentColor" d="M740.383 586.072c-.647 3.511-.247 19.218-.238 23.876l.008 37.168c.046 31.636-.634 54.241-22.716 79.514a87.18 87.18 0 0 1-60.113 29.978c-18.82 1.181-45.321.301-64.691.306l-121.335.05-81.527-.042c-17.982 0-38.559 1.079-55.938-1.778-40.426-6.644-72.024-43.733-72.765-84.589-.393-21.714-.134-43.27-.206-64.881l-.279-136.952q-.104-37.737.221-75.475c0-37.841-4.547-66.466 23.251-97.172a88.2 88.2 0 0 1 62.939-29.471c20.206-.851 45.424-.123 66.08-.118l127.117.027 70.898-.013c19.278-.047 38.756-.986 57.903 2.166 29.657 4.882 56.69 29.14 66.267 57.398 5.884 17.884 4.588 36.864 4.872 55.325.296 19.277-.576 38.856.288 58.046 31.374-.505 63.14-3.277 87.514 20.727 30.042 29.585 30.634 74.265.786 104.401-26.55 26.806-55.208 19.257-88.336 21.509"></path><path fill="var(--color-primary)" d="M740.419 439.435c31.374-.505 63.14-3.277 87.514 20.727 30.042 29.585 30.634 74.265.786 104.401-26.55 26.806-55.208 19.257-88.336 21.509-1.63.133-3.92.178-5.606.18-26.744.028-53.545-.312-80.288-.152l-41.62.313c-28.398.123-51.02.636-73.078-20.918a73.37 73.37 0 0 1-21.871-52.348 72.55 72.55 0 0 1 21.179-51.85 73.6 73.6 0 0 1 34.229-19.494c15.408-3.745 48.738-2.349 66.044-2.323z"></path><path fill="currentColor" d="M740.419 439.435c31.374-.505 63.14-3.277 87.514 20.727 30.042 29.585 30.634 74.265.786 104.401-26.55 26.806-55.208 19.257-88.336 21.509.267-6.199.184-12.735.124-18.966-.411-42.498.604-85.195-.088-127.671"></path></svg>
 				}
 				<span data-catalog-header-brand-label>{ catalogWorkspaceName(data) }</span>
 			</a>
@@ -540,7 +550,7 @@ templ catalogHeader(data CatalogPageData) {
 					}
 					<span data-catalog-header-brand-label class="max-w-[12rem] truncate">{ catalogBrandName(data) }</span>
 				</a>
-				if data.Document != nil {
+				if data.Document != nil && data.Document.Publication == nil {
 					<span class="hidden text-on-surface-muted md:inline dark:text-on-surface-dark-muted">/</span>
 					<a
 						href={ templpkg.URL(data.DocumentHref) }
@@ -555,10 +565,12 @@ templ catalogHeader(data CatalogPageData) {
 				}
 			}
 		</div>
+		if data.Document != nil && data.Document.Publication != nil {
+			@catalogPublicationControls(data)
+		}
 		<div class="flex shrink-0 items-center gap-2">
 			@catalogHeaderSearch()
 			@themeToggle()
-			<span class="hidden rounded-radius border border-outline px-2 py-1 font-mono text-xs text-on-surface-muted xl:inline dark:border-outline-dark dark:text-on-surface-dark-muted">{ shortSnapshotID(data.SnapshotID) }</span>
 		</div>
 	</div>
 }
@@ -591,7 +603,7 @@ templ catalogSidebar(data CatalogPageData) {
 }
 
 templ catalogOrganizationNav(data CatalogOrganizationNavData) {
-	<nav id="catalog-organization-navigation" aria-label="Catalogs and specs" class="flex min-h-0 flex-1 flex-col">
+	<nav id="catalog-organization-navigation" aria-label="Catalogs" class="flex min-h-0 flex-1 flex-col">
 		@scrollregion.ScrollRegion(scrollregion.Config{
 			RootClass:     "min-h-0 flex-1",
 			ViewportClass: "h-full overflow-y-auto scrollbar-custom px-3 pb-4",
@@ -603,7 +615,6 @@ templ catalogOrganizationNav(data CatalogOrganizationNavData) {
 templ catalogOrganizationNavContent(data CatalogOrganizationNavData) {
 	<div>
 		@catalogOrganizationSection("Catalogs", heroicons.Icon16SolidRectangleGroup, data.Catalogs)
-		@catalogOrganizationSection("Specs", heroicons.Icon16SolidDocumentText, data.Specs)
 	</div>
 }
 
@@ -645,9 +656,9 @@ templ catalogOrganizationSection(label string, symbol icon.Symbol, items []Catal
 templ catalogHeaderSearch() {
 	<div data-catalog-header-search data-catalog-platform-shortcut data-catalog-search-shortcut-visible="desktop" class="w-32 sm:w-48 lg:w-64">
 		@searchcomponent.SearchField(searchcomponent.Config{
-			ID: "catalog-search",
-			Label: "Search API...",
-			ShortcutText: "Ctrl K",
+			ID:             "catalog-search",
+			Label:          "Search API...",
+			ShortcutText:   "Ctrl K",
 			GlobalShortcut: false,
 		})
 	</div>
@@ -657,82 +668,82 @@ templ catalogOverview(data CatalogPageData) {
 	<main data-catalog-overview="true" class="pb-16">
 		if data.OrganizationRoot {
 			@catalogOrganizationOverview(data)
+		} else if catalogHasPublications(data) {
+			@catalogPublicationsOverview(data)
 		} else {
-		<div class="mb-8 border-b border-outline pb-8 dark:border-outline-dark">
-			<div class="flex flex-col gap-5 md:flex-row md:items-start md:justify-between">
-				<div class="min-w-0">
-					<p class="mb-2 text-sm font-semibold uppercase tracking-wide text-primary dark:text-primary-dark">OpenAPI catalog</p>
-					<h1 class="font-title text-4xl font-bold text-on-surface-strong dark:text-on-surface-dark-strong">{ data.Directory.Title }</h1>
-				</div>
-				if data.ShowCatalogDownloadButton {
-					<a href={ templpkg.URL(data.DownloadHref) } class="inline-flex min-h-11 shrink-0 self-start items-center rounded-radius border border-outline px-4 font-semibold hover:bg-surface-alt dark:border-outline-dark dark:hover:bg-surface-dark-alt">Download catalog JSON</a>
-				}
-			</div>
-		</div>
-		@catalogOverviewMetrics(data)<div class="mt-5">
-			@catalogProvenance(data, false)
-		</div>
-		if data.CatalogReadme != "" {
-			<section class="mt-8 max-w-3xl" aria-labelledby="catalog-readme-heading">
-				<h2 id="catalog-readme-heading" class="font-title text-xl font-bold text-on-surface-strong dark:text-on-surface-dark-strong">README</h2>
-				<div class="mt-2 text-lg">
-					@renderedMarkdown(catalogReadmeRenderer, data.CatalogReadme)
-				</div>
-			</section>
-		}
-		if data.CatalogLicense.Name != "" {
-			<section class="mt-8" aria-labelledby="catalog-license-heading">
-				<h2 id="catalog-license-heading" class="font-title text-xl font-bold text-on-surface-strong dark:text-on-surface-dark-strong">License</h2>
-				<div class="mt-2 inline-flex min-h-10 items-center rounded-radius border border-outline bg-surface px-4 text-sm text-on-surface-strong dark:border-outline-dark dark:bg-surface-dark dark:text-on-surface-dark-strong">
-					if data.CatalogLicense.URL != "" {
-						<a href={ templpkg.URL(data.CatalogLicense.URL) } rel="noreferrer" class="font-semibold hover:text-primary dark:hover:text-primary-dark">{ data.CatalogLicense.Name }</a>
-					} else {
-						<span class="font-semibold">{ data.CatalogLicense.Name }</span>
+			<div class="mb-8 border-b border-outline pb-8 dark:border-outline-dark">
+				<div class="flex flex-col gap-5 md:flex-row md:items-start md:justify-between">
+					<div class="min-w-0">
+						<p class="mb-2 text-sm font-semibold uppercase tracking-wide text-primary dark:text-primary-dark">OpenAPI catalog</p>
+						<h1 class="font-title text-4xl font-bold text-on-surface-strong dark:text-on-surface-dark-strong">{ data.Directory.Title }</h1>
+					</div>
+					if data.ShowCatalogDownloadButton {
+						<a href={ templpkg.URL(data.DownloadHref) } class="inline-flex min-h-11 shrink-0 self-start items-center rounded-radius border border-outline px-4 font-semibold hover:bg-surface-alt dark:border-outline-dark dark:hover:bg-surface-dark-alt">Download catalog JSON</a>
 					}
 				</div>
+			</div>
+			@catalogOverviewMetrics(data)
+			if data.CatalogReadme != "" {
+				<section class="mt-8 max-w-3xl" aria-labelledby="catalog-readme-heading">
+					<h2 id="catalog-readme-heading" class="font-title text-xl font-bold text-on-surface-strong dark:text-on-surface-dark-strong">README</h2>
+					<div class="mt-2 text-lg">
+						@renderedMarkdown(catalogReadmeRenderer, data.CatalogReadme)
+					</div>
+				</section>
+			}
+			if data.CatalogLicense.Name != "" {
+				<section class="mt-8" aria-labelledby="catalog-license-heading">
+					<h2 id="catalog-license-heading" class="font-title text-xl font-bold text-on-surface-strong dark:text-on-surface-dark-strong">License</h2>
+					<div class="mt-2 inline-flex min-h-10 items-center rounded-radius border border-outline bg-surface px-4 text-sm text-on-surface-strong dark:border-outline-dark dark:bg-surface-dark dark:text-on-surface-dark-strong">
+						if data.CatalogLicense.URL != "" {
+							<a href={ templpkg.URL(data.CatalogLicense.URL) } rel="noreferrer" class="font-semibold hover:text-primary dark:hover:text-primary-dark">{ data.CatalogLicense.Name }</a>
+						} else {
+							<span class="font-semibold">{ data.CatalogLicense.Name }</span>
+						}
+					</div>
+				</section>
+			}
+			<section class="mt-10 pb-12" aria-labelledby="catalog-documents-heading" x-data="{ filter: '' }">
+				<div class="mb-4">
+					<h2 id="catalog-documents-heading" class="font-title text-2xl font-bold text-on-surface-strong dark:text-on-surface-dark-strong">API groups and versions</h2>
+				</div>
+				<label class="mb-3 block max-w-xl" for="catalog-document-filter">
+					<span class="sr-only">Filter API groups and versions</span>
+					<input id="catalog-document-filter" type="search" x-model="filter" placeholder="Filter by name or version" class="min-h-11 w-full rounded-radius border border-outline bg-surface px-4 text-on-surface-strong placeholder:text-on-surface-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary dark:border-outline-dark dark:bg-surface-dark dark:text-on-surface-dark-strong dark:placeholder:text-on-surface-dark-muted"/>
+				</label>
+				<div class="catalog-documents-mobile" aria-label="OpenAPI documents in this catalog">
+					for _, option := range data.Documents {
+						<a
+							href={ templpkg.URL(option.Href) }
+							data-catalog-document-row="true"
+							data-catalog-document-card="true"
+							data-search-text={ option.SearchText }
+							x-show={ catalogDocumentFilterExpression(option.SearchText) }
+							class="grid min-w-0 gap-3 rounded-radius border border-outline bg-surface p-4 transition hover:bg-surface-alt focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary dark:border-outline-dark dark:bg-surface-dark dark:hover:bg-surface-dark-alt dark:focus-visible:outline-primary-dark"
+						>
+							<div class="min-w-0 overflow-hidden">@table.ImageCell(option.AvatarSrc, option.Label, "")</div>
+							<dl class="grid grid-cols-3 gap-3 border-t border-outline pt-3 text-sm dark:border-outline-dark">
+								<div class="min-w-0">
+									<dt class="text-xs font-semibold text-on-surface-muted dark:text-on-surface-dark-muted">Version</dt>
+									<dd class="mt-1 break-words font-mono text-on-surface-strong dark:text-on-surface-dark-strong">{ option.Version }</dd>
+								</div>
+								<div>
+									<dt class="text-xs font-semibold text-on-surface-muted dark:text-on-surface-dark-muted">Operations</dt>
+									<dd class="mt-1 font-mono text-on-surface-strong dark:text-on-surface-dark-strong">{ fmt.Sprintf("%d", option.Operations) }</dd>
+								</div>
+								<div>
+									<dt class="text-xs font-semibold text-on-surface-muted dark:text-on-surface-dark-muted">Schemas</dt>
+									<dd class="mt-1 font-mono text-on-surface-strong dark:text-on-surface-dark-strong">{ fmt.Sprintf("%d", option.Schemas) }</dd>
+								</div>
+							</dl>
+						</a>
+					}
+				</div>
+				<div class="catalog-documents-desktop">
+					@catalogDocumentTable(data)
+				</div>
+				<p x-show="filter.trim() !== '' && Array.from($root.querySelectorAll('[data-catalog-document-card]')).every(card => !(card.dataset.searchText || '').toLowerCase().includes(filter.trim().toLowerCase()))" aria-live="polite" class="rounded-b-radius border border-t-0 border-outline px-4 py-6 text-center text-on-surface-muted dark:border-outline-dark dark:text-on-surface-dark-muted">No matching API documents.</p>
 			</section>
-		}
-		<section class="mt-10 pb-12" aria-labelledby="catalog-documents-heading" x-data="{ filter: '' }">
-			<div class="mb-4">
-				<h2 id="catalog-documents-heading" class="font-title text-2xl font-bold text-on-surface-strong dark:text-on-surface-dark-strong">API groups and versions</h2>
-			</div>
-			<label class="mb-3 block max-w-xl" for="catalog-document-filter">
-				<span class="sr-only">Filter API groups and versions</span>
-				<input id="catalog-document-filter" type="search" x-model="filter" placeholder="Filter by name or version" class="min-h-11 w-full rounded-radius border border-outline bg-surface px-4 text-on-surface-strong placeholder:text-on-surface-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary dark:border-outline-dark dark:bg-surface-dark dark:text-on-surface-dark-strong dark:placeholder:text-on-surface-dark-muted"/>
-			</label>
-			<div class="catalog-documents-mobile" aria-label="OpenAPI documents in this catalog">
-				for _, option := range data.Documents {
-					<a
-						href={ templpkg.URL(option.Href) }
-						data-catalog-document-row="true"
-						data-catalog-document-card="true"
-						data-search-text={ option.SearchText }
-						x-show={ catalogDocumentFilterExpression(option.SearchText) }
-						class="grid min-w-0 gap-3 rounded-radius border border-outline bg-surface p-4 transition hover:bg-surface-alt focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary dark:border-outline-dark dark:bg-surface-dark dark:hover:bg-surface-dark-alt dark:focus-visible:outline-primary-dark"
-					>
-						<div class="min-w-0 overflow-hidden">@table.ImageCell(option.AvatarSrc, option.Label, "")</div>
-						<dl class="grid grid-cols-3 gap-3 border-t border-outline pt-3 text-sm dark:border-outline-dark">
-							<div class="min-w-0">
-								<dt class="text-xs font-semibold text-on-surface-muted dark:text-on-surface-dark-muted">Version</dt>
-								<dd class="mt-1 break-words font-mono text-on-surface-strong dark:text-on-surface-dark-strong">{ option.Version }</dd>
-							</div>
-							<div>
-								<dt class="text-xs font-semibold text-on-surface-muted dark:text-on-surface-dark-muted">Operations</dt>
-								<dd class="mt-1 font-mono text-on-surface-strong dark:text-on-surface-dark-strong">{ fmt.Sprintf("%d", option.Operations) }</dd>
-							</div>
-							<div>
-								<dt class="text-xs font-semibold text-on-surface-muted dark:text-on-surface-dark-muted">Schemas</dt>
-								<dd class="mt-1 font-mono text-on-surface-strong dark:text-on-surface-dark-strong">{ fmt.Sprintf("%d", option.Schemas) }</dd>
-							</div>
-						</dl>
-					</a>
-				}
-			</div>
-			<div class="catalog-documents-desktop">
-				@catalogDocumentTable(data)
-			</div>
-			<p x-show="filter.trim() !== '' && Array.from($root.querySelectorAll('[data-catalog-document-card]')).every(card => !(card.dataset.searchText || '').toLowerCase().includes(filter.trim().toLowerCase()))" aria-live="polite" class="rounded-b-radius border border-t-0 border-outline px-4 py-6 text-center text-on-surface-muted dark:border-outline-dark dark:text-on-surface-dark-muted">No matching API documents.</p>
-		</section>
 		}
 	</main>
 }
@@ -869,7 +880,7 @@ templ catalogDocument(data CatalogPageData) {
 
 templ catalogDocumentHeader(data CatalogPageData) {
 	if data.DocumentHeader != nil {
-		@localrender.CatalogDocumentHeader(*data.DocumentHeader, catalogSourceStatus(data))
+		@localrender.CatalogDocumentHeader(*data.DocumentHeader, nil)
 	} else {
 		@catalogDocumentHeaderFallback(data)
 	}
@@ -952,7 +963,7 @@ func catalogDocumentHeaderFallback(data CatalogPageData) templpkg.Component {
 			return templpkg.NopComponent
 		}
 	}
-	return localrender.CatalogDocumentHeader(fragment, catalogSourceStatus(data))
+	return localrender.CatalogDocumentHeader(fragment, nil)
 }
 
 templ catalogOperationDetail(data CatalogPageData) {
@@ -960,62 +971,62 @@ templ catalogOperationDetail(data CatalogPageData) {
 		{{ operation := *data.OperationView }}
 		<article data-catalog-detail="operation">
 			if data.OperationHeader != nil {
-				@localrender.OperationHeader(*data.OperationHeader, catalogOperationHeaderActions(operation, data), catalogProvenance(data, true))
+				@localrender.OperationHeader(*data.OperationHeader, catalogOperationHeaderActions(operation, data), nil)
 			}
 			@endpointSection(operation, data.OperationServers, "", PublicDocsOptions{
 				OperationIdentityInHeader: true,
-				OperationDetailSections: data.OperationDetailSections,
-				OperationRequestSection: data.OperationRequestSection,
-				OperationAuthorization: data.OperationAuthorization,
-				OperationParameters: data.OperationParameters,
-				OperationRequestBody: data.OperationRequestBody,
+				OperationDetailSections:   data.OperationDetailSections,
+				OperationRequestSection:   data.OperationRequestSection,
+				OperationAuthorization:    data.OperationAuthorization,
+				OperationParameters:       data.OperationParameters,
+				OperationRequestBody:      data.OperationRequestBody,
 				OperationRequestBodyMedia: data.OperationRequestBodyMedia,
-				OperationResponseMedia: data.OperationResponseMedia,
-				OperationResponseDetails: data.OperationResponseDetails,
-				OperationExamples: data.OperationExamples,
-				OperationSchemaTrees: data.OperationSchemaTrees,
-				OperationResponses: data.OperationResponses,
-				OperationNavigation: data.OperationNavigation,
-				SchemaLinks:      data.SchemaLinks,
-				SchemaLinkTarget: "#catalog-main-content",
-				SchemaLinkSelect: "#catalog-main-content",
-				SchemaLinkSwap:   "outerHTML show:top showTarget:#main-content",
+				OperationResponseMedia:    data.OperationResponseMedia,
+				OperationResponseDetails:  data.OperationResponseDetails,
+				OperationExamples:         data.OperationExamples,
+				OperationSchemaTrees:      data.OperationSchemaTrees,
+				OperationResponses:        data.OperationResponses,
+				OperationNavigation:       data.OperationNavigation,
+				SchemaLinks:               data.SchemaLinks,
+				SchemaLinkTarget:          "#catalog-main-content",
+				SchemaLinkSelect:          "#catalog-main-content",
+				SchemaLinkSwap:            "outerHTML show:top showTarget:#main-content",
 			}, OperationNavigationData{})
 		</article>
 	} else {
 		{{ operation := *data.Selected.Operation }}
-	<article id={ operation.Anchor } data-catalog-detail="operation" class="space-y-6">
-		<h2 class="font-title text-3xl font-bold text-on-surface-strong dark:text-on-surface-dark-strong">{ operation.Heading }</h2>
-		@localrender.EndpointRoute(operation.Method, operation.Path)
-		if operation.Description != "" {
-			<div class="manja-operation-markdown min-w-0">
-				@localrender.OperationDescription(operation.Description, operation.Anchor)
-			</div>
-		}
-		if len(operation.Parameters) > 0 {
-			<section class="rounded-radius border border-outline p-5 dark:border-outline-dark">
-				<h3 class="font-title text-xl font-bold">Parameters</h3>
-				<div class="mt-4 divide-y divide-outline dark:divide-outline-dark">
-					for _, parameter := range operation.Parameters {
-						<div class="grid gap-2 py-3 sm:grid-cols-[14rem_1fr]">
-							<div><code class="font-semibold">{ parameter.Name }</code> <span class="text-xs uppercase text-on-surface-muted dark:text-on-surface-dark-muted">{ parameter.In }</span></div>
-							<p class="text-sm text-on-surface-muted dark:text-on-surface-dark-muted">{ parameter.Description }</p>
-						</div>
-					}
+		<article id={ operation.Anchor } data-catalog-detail="operation" class="space-y-6">
+			<h2 class="font-title text-3xl font-bold text-on-surface-strong dark:text-on-surface-dark-strong">{ operation.Heading }</h2>
+			@localrender.EndpointRoute(operation.Method, operation.Path)
+			if operation.Description != "" {
+				<div class="manja-operation-markdown min-w-0">
+					@localrender.OperationDescription(operation.Description, operation.Anchor)
 				</div>
-			</section>
-		}
-		if len(operation.Responses) > 0 {
-			<section class="rounded-radius border border-outline p-5 dark:border-outline-dark">
-				<h3 class="font-title text-xl font-bold">Responses</h3>
-				<div class="mt-4 space-y-3">
-					for _, item := range operation.Responses {
-						<div class="rounded-radius bg-surface-alt p-4 dark:bg-surface-dark-alt"><code class="font-semibold">{ item.Status }</code><p class="mt-1 text-sm text-on-surface-muted dark:text-on-surface-dark-muted">{ item.Description }</p></div>
-					}
-				</div>
-			</section>
-		}
-	</article>
+			}
+			if len(operation.Parameters) > 0 {
+				<section class="rounded-radius border border-outline p-5 dark:border-outline-dark">
+					<h3 class="font-title text-xl font-bold">Parameters</h3>
+					<div class="mt-4 divide-y divide-outline dark:divide-outline-dark">
+						for _, parameter := range operation.Parameters {
+							<div class="grid gap-2 py-3 sm:grid-cols-[14rem_1fr]">
+								<div><code class="font-semibold">{ parameter.Name }</code> <span class="text-xs uppercase text-on-surface-muted dark:text-on-surface-dark-muted">{ parameter.In }</span></div>
+								<p class="text-sm text-on-surface-muted dark:text-on-surface-dark-muted">{ parameter.Description }</p>
+							</div>
+						}
+					</div>
+				</section>
+			}
+			if len(operation.Responses) > 0 {
+				<section class="rounded-radius border border-outline p-5 dark:border-outline-dark">
+					<h3 class="font-title text-xl font-bold">Responses</h3>
+					<div class="mt-4 space-y-3">
+						for _, item := range operation.Responses {
+							<div class="rounded-radius bg-surface-alt p-4 dark:bg-surface-dark-alt"><code class="font-semibold">{ item.Status }</code><p class="mt-1 text-sm text-on-surface-muted dark:text-on-surface-dark-muted">{ item.Description }</p></div>
+						}
+					</div>
+				</section>
+			}
+		</article>
 	}
 }
 
@@ -1057,11 +1068,11 @@ templ catalogOrganizationAvatar(item CatalogOrganizationItem) {
 templ catalogSchemaDetail(data CatalogPageData) {
 	{{ schema := *data.Selected.Schema }}
 	if data.SchemaDetail != nil {
-		@localrender.SchemaDetail(*data.SchemaDetail, catalogSchemaDetailActions(data, schema.Anchor), catalogSourceStatus(data))
+		@localrender.SchemaDetail(*data.SchemaDetail, catalogSchemaDetailActions(data, schema.Anchor), nil)
 	} else {
 		<article id={ schema.Anchor } data-catalog-detail="schema" class="space-y-6">
 			if data.SchemaDetailHeader != nil {
-				@localrender.SchemaDetailHeader(*data.SchemaDetailHeader, catalogSchemaDetailActions(data, schema.Anchor), catalogSourceStatus(data))
+				@localrender.SchemaDetailHeader(*data.SchemaDetailHeader, catalogSchemaDetailActions(data, schema.Anchor), nil)
 			}
 			if data.SchemaDetailBody != nil {
 				@localrender.SchemaDetailBody(*data.SchemaDetailBody)
@@ -1100,97 +1111,66 @@ templ catalogSchemaDetailActions(data CatalogPageData, anchor string) {
 	</a>
 }
 
-templ catalogSourceStatus(data CatalogPageData) {
-	@catalogProvenance(data, true)
-}
-
-templ catalogProvenance(data CatalogPageData, includeSource bool) {
-	<dl data-catalog-provenance class="flex min-w-0 flex-wrap items-center gap-x-5 gap-y-2 border-t border-outline pt-4 text-xs text-on-surface-muted dark:border-outline-dark dark:text-on-surface-dark-muted" aria-label={ catalogProvenanceLabel(includeSource) }>
-		if includeSource && data.Document != nil {
-		<div class="flex min-w-0 max-w-full items-center gap-2" title={ data.Document.SourcePath }>
-			@icon.Icon(icon.Config{SpriteURL: heroicons.SpriteURL, Symbol: heroicons.Icon16SolidDocumentText, Size: icon.SizeSM, Decorative: true})
-			<dt class="shrink-0 font-semibold">Source</dt>
-			<dd class="min-w-0 break-all sm:truncate"><code class="text-on-surface-strong dark:text-on-surface-dark-strong">{ data.Document.SourcePath }</code></dd>
-		</div>
-		}
-		if !includeSource && strings.TrimSpace(string(data.Directory.ProfileID)) != "" {
-		<div class="flex items-center gap-2" title="Compatibility profile applied while compiling this catalog">
-			@icon.Icon(icon.Config{SpriteURL: heroicons.SpriteURL, Symbol: heroicons.Icon16SolidCog6Tooth, Size: icon.SizeSM, Decorative: true})
-			<dt class="font-semibold">Compatibility</dt>
-			<dd><code class="text-on-surface-strong dark:text-on-surface-dark-strong">{ string(data.Directory.ProfileID) }</code></dd>
-		</div>
-		}
-		if catalogRevisionValue(data) != "" {
-			<div class="flex items-center gap-2" title={ catalogRevisionTitle(data) }>
-				@icon.Icon(icon.Config{SpriteURL: heroicons.SpriteURL, Symbol: heroicons.Icon16SolidArrowPath, Size: icon.SizeSM, Decorative: true})
-				<dt class="font-semibold">{ catalogRevisionLabel(data) }</dt>
-				<dd><code class="text-on-surface-strong dark:text-on-surface-dark-strong">{ catalogRevisionValue(data) }</code></dd>
-			</div>
-		}
-		<div class="flex items-center gap-2" title={ string(data.SnapshotID) }>
-			@icon.Icon(icon.Config{SpriteURL: heroicons.SpriteURL, Symbol: heroicons.Icon16SolidShieldCheck, Size: icon.SizeSM, Decorative: true})
-			<dt class="font-semibold">Active snapshot</dt>
-			<dd><code class="text-on-surface-strong dark:text-on-surface-dark-strong">{ shortSnapshotID(data.SnapshotID) }</code></dd>
-		</div>
-	</dl>
-}
-
-
 func catalogBranding(branding catalog.BrandingV1) core.DocsBranding {
 	return core.DocsBranding{DisplayName: branding.DisplayName, Logo: core.DocsBrandingLogo{Src: branding.LogoSrc, Alt: branding.LogoAlt, HomeURL: branding.LogoHomeHref}, Favicon: branding.FaviconHref}
 }
 
 func catalogBrandName(data CatalogPageData) string {
-	if strings.TrimSpace(data.Directory.Branding.DisplayName) != "" { return data.Directory.Branding.DisplayName }
+	if strings.TrimSpace(data.Directory.Branding.DisplayName) != "" {
+		return data.Directory.Branding.DisplayName
+	}
 	return data.Directory.Title
 }
 
 func catalogPageTitle(data CatalogPageData) string {
-	if data.OrganizationRoot { return catalogPageTitleWithManja("Dashboard") }
-	if data.Selected != nil && data.Selected.Operation != nil { return catalogPageTitleWithManja(data.Selected.Operation.Heading) }
-	if data.Selected != nil && data.Selected.Schema != nil { return catalogPageTitleWithManja(data.Selected.Schema.Heading) }
-	if data.Search != nil { return catalogPageTitleWithManja("Search") }
-	if data.Document != nil { return catalogPageTitleWithManja(catalogDocumentTitle(*data.Document)) }
+	if data.Document != nil && data.Document.Publication != nil {
+		return catalogPageTitleWithManja(catalogPublicationPageTitle(data))
+	}
+	if data.OrganizationRoot {
+		return catalogPageTitleWithManja("Dashboard")
+	}
+	if data.Selected != nil && data.Selected.Operation != nil {
+		return catalogPageTitleWithManja(data.Selected.Operation.Heading)
+	}
+	if data.Selected != nil && data.Selected.Schema != nil {
+		return catalogPageTitleWithManja(data.Selected.Schema.Heading)
+	}
+	if data.Search != nil {
+		return catalogPageTitleWithManja("Search")
+	}
+	if data.Document != nil {
+		return catalogPageTitleWithManja(catalogDocumentTitle(*data.Document))
+	}
 	return catalogPageTitleWithManja(data.Directory.Title)
 }
 
 func catalogPageDocumentTitle(data CatalogPageData) string {
 	title := strings.TrimSpace(data.Metadata.Title)
-	if title != "" { return title }
+	if title != "" {
+		return title
+	}
 	return catalogPageTitle(data)
 }
 
 func catalogSelectedDoc(data CatalogPageData) string {
-	if data.Selected != nil { return string(data.Selected.ID) }
-	if data.Document != nil { return data.Document.Key }
+	if data.Selected != nil {
+		return string(data.Selected.ID)
+	}
+	if data.Document != nil {
+		return data.Document.Key
+	}
 	return ""
 }
 
 func catalogPageTitleWithManja(label string) string {
 	label = strings.TrimSpace(label)
-	if label == "" { label = "OpenAPI documentation" }
-	if strings.HasSuffix(label, " · Manja") { return label }
+	if label == "" {
+		label = "OpenAPI documentation"
+	}
+	if strings.HasSuffix(label, " · Manja") {
+		return label
+	}
 	return label + " · Manja"
-}
-
-func shortSnapshotID(id catalog.SnapshotID) string {
-	value := strings.TrimPrefix(string(id), "snapshot-sha256-")
-	if len(value) > 12 { value = value[:12] }
-	return value
-}
-
-func catalogRevisionLabel(data CatalogPageData) string {
-	if strings.TrimSpace(data.CommitSHA) != "" {
-		return "Commit"
-	}
-	return "Revision"
-}
-
-func catalogProvenanceLabel(includeSource bool) string {
-	if includeSource {
-		return "Specification provenance"
-	}
-	return "Catalog provenance"
 }
 
 func catalogDocumentVersionLabel(document catalog.DocumentDirectoryV1) string {
@@ -1209,21 +1189,6 @@ func catalogDocumentOptionVersionLabel(document CatalogDocumentOption) string {
 	return value
 }
 
-func catalogRevisionTitle(data CatalogPageData) string {
-	if strings.TrimSpace(data.CommitSHA) != "" {
-		return data.CommitSHA
-	}
-	return data.RevisionID
-}
-
-func catalogRevisionValue(data CatalogPageData) string {
-	value := strings.TrimSpace(catalogRevisionTitle(data))
-	value = strings.TrimPrefix(value, "files-sha256-")
-	value = strings.TrimPrefix(value, "git-")
-	if len(value) > 12 { value = value[:12] }
-	return value
-}
-
 func catalogSidebarConfig(data CatalogPageData) sidebar.Config {
 	config := sidebar.Config{
 		DisableSkipLink: true,
@@ -1232,23 +1197,35 @@ func catalogSidebarConfig(data CatalogPageData) sidebar.Config {
 		config.Items = []sidebar.Item{{
 			ID: "catalog-overview", Label: "Catalog overview", Href: data.Mount,
 			Active: data.Search == nil,
-			Icon: catalogSidebarIcon(heroicons.Icon16SolidRectangleGroup),
+			Icon:   catalogSidebarIcon(heroicons.Icon16SolidRectangleGroup),
 		}}
 		documents := make([]sidebar.Item, 0, len(data.Documents))
-		for _, document := range data.Documents {
-			documents = append(documents, sidebar.Item{
-				ID: "catalog-document-" + document.Key, Label: document.Label, Href: document.Href,
-				Badge: catalogDocumentOptionVersionLabel(document),
-				Icon: catalogSidebarIcon(heroicons.Icon16SolidDocumentText),
-				LinkAttrs: templpkg.Attributes{"data-catalog-document-navigation": "true"},
-			})
+		if catalogHasPublications(data) {
+			for _, group := range catalogPublicationGroups(data) {
+				items := make([]sidebar.Item, 0, len(group.Options))
+				for _, option := range group.Options {
+					items = append(items, sidebar.Item{ID: "catalog-document-" + option.Key, Label: option.Label, Href: option.Href, LinkAttrs: templpkg.Attributes{"data-catalog-document-navigation": "true"}})
+				}
+				documents = append(documents, sidebar.Item{ID: "catalog-api-" + group.ID, Label: group.Label, Href: group.Options[0].Href, Items: items, Collapsible: true, Open: true})
+			}
+		} else {
+			for _, document := range data.Documents {
+				documents = append(documents, sidebar.Item{
+					ID: "catalog-document-" + document.Key, Label: document.Label, Href: document.Href,
+					Badge:     catalogDocumentOptionVersionLabel(document),
+					Icon:      catalogSidebarIcon(heroicons.Icon16SolidDocumentText),
+					LinkAttrs: templpkg.Attributes{"data-catalog-document-navigation": "true"},
+				})
+			}
 		}
 		if len(documents) > 0 {
 			config.SectionsTitle = "Documents"
 			config.Sections = []sidebar.Section{{Items: documents}}
 		}
 	}
-	if data.Document == nil { return config }
+	if data.Document == nil {
+		return config
+	}
 	operationGroups := make([]sidebar.Item, 0, len(data.Groups))
 	otherGroups := make([]sidebar.Item, 0, len(data.Groups))
 	for _, group := range data.Groups {
@@ -1256,7 +1233,9 @@ func catalogSidebarConfig(data CatalogPageData) sidebar.Config {
 		for _, item := range group.Items {
 			method := strings.ToUpper(strings.TrimSpace(item.Method))
 			linkAttrs := catalogMainNavigationAttrs(item.Href)
-			if linkAttrs == nil { linkAttrs = templpkg.Attributes{} }
+			if linkAttrs == nil {
+				linkAttrs = templpkg.Attributes{}
+			}
 			linkAttrs["id"] = "catalog-sidebar-item-" + item.ID
 			linkAttrs["data-catalog-sidebar-item"] = "true"
 			if method != "" {
@@ -1380,13 +1359,15 @@ func catalogSidebarTabConfig(data CatalogPageData, kind string) sidebar.Config {
 
 func catalogMainNavigationAttrs(href string) templpkg.Attributes {
 	href = strings.TrimSpace(href)
-	if href == "" || !strings.HasPrefix(href, "/") { return nil }
+	if href == "" || !strings.HasPrefix(href, "/") {
+		return nil
+	}
 	return templpkg.Attributes{
-		"hx-get": href,
-		"hx-target": "#catalog-main-content",
-		"hx-select": "#catalog-main-content",
-		"hx-swap": "outerHTML show:top showTarget:#main-content",
-		"hx-push-url": "true",
+		"hx-get":                 href,
+		"hx-target":              "#catalog-main-content",
+		"hx-select":              "#catalog-main-content",
+		"hx-swap":                "outerHTML show:top showTarget:#main-content",
+		"hx-push-url":            "true",
 		"data-manja-sidebar-nav": "true",
 	}
 }
@@ -1400,9 +1381,9 @@ func catalogPathsLinkAttrs(stateKey string) templpkg.Attributes {
 		"aria-controls":                      "catalog-paths-children",
 		"aria-expanded":                      "true",
 		"data-manja-catalog-paths-state-key": "manja.catalog.paths." + stateKey,
-		"data-manja-catalog-paths-toggle":     "true",
-		"data-catalog-sidebar-kind":           "operations",
-		"x-on:click.stop.prevent":             "window.manjaToggleCatalogPaths($el)",
+		"data-manja-catalog-paths-toggle":    "true",
+		"data-catalog-sidebar-kind":          "operations",
+		"x-on:click.stop.prevent":            "window.manjaToggleCatalogPaths($el)",
 	}
 }
 
@@ -1532,11 +1513,16 @@ templ catalogSidebarFocusRestoration() {
 
 func catalogMethodTone(method string) badge.Tone {
 	switch strings.ToUpper(method) {
-	case "GET": return badge.ToneSuccess
-	case "POST": return badge.TonePrimary
-	case "DELETE": return badge.ToneDanger
-	case "PUT", "PATCH": return badge.ToneWarning
-	default: return badge.ToneDefault
+	case "GET":
+		return badge.ToneSuccess
+	case "POST":
+		return badge.TonePrimary
+	case "DELETE":
+		return badge.ToneDanger
+	case "PUT", "PATCH":
+		return badge.ToneWarning
+	default:
+		return badge.ToneDefault
 	}
 }
 

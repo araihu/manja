@@ -198,11 +198,15 @@ func exportFromHandlerWithCache(ctx context.Context, handler http.Handler, recei
 		return ExportReceipt{}, err
 	}
 	searchEntry := writer.entries[deploymentSearchDirectoryPath]
+	immutableSearchPath := deploymentSearchImmutableDirectoryPath(searchEntry.SHA256)
+	if err = writer.copy(deploymentSearchDirectoryPath, immutableSearchPath); err != nil {
+		return ExportReceipt{}, err
+	}
 	for _, entry := range writer.sortedEntries() {
 		if entry.MediaType != "text/html" {
 			continue
 		}
-		if err = writer.installDeploymentSearch(entry.Path, deploymentSearchDirectoryURL(basePath), searchEntry); err != nil {
+		if err = writer.installDeploymentSearch(entry.Path, deploymentSearchDirectoryURL(basePath, searchEntry.SHA256), searchEntry); err != nil {
 			return ExportReceipt{}, fmt.Errorf("install deployment search in %q: %w", entry.Path, err)
 		}
 	}
@@ -216,6 +220,18 @@ func exportFromHandlerWithCache(ctx context.Context, handler http.Handler, recei
 	}
 	if err = writer.write(exportIdentityPath, identityBytes, "application/json"); err != nil {
 		return ExportReceipt{}, err
+	}
+	// An old static page must keep its own identity after another publication.
+	for _, catalogReceipt := range catalogReceipts {
+		identity, encodeErr := encodeExportIdentity(exportIdentity{SchemaVersion: 1, BasePath: basePath, Catalogs: []ExportCatalogReceipt{catalogReceipt}})
+		if encodeErr != nil {
+			return ExportReceipt{}, encodeErr
+		}
+		revisionDigest := sha256.Sum256([]byte(catalogReceipt.RevisionID))
+		identityPath := path.Join(strings.Trim(catalogReceipt.Mount, "/"), "snapshots", catalogReceipt.SnapshotID, "_manja", "identity-sha256-"+hex.EncodeToString(revisionDigest[:])+".json")
+		if err = writer.write(identityPath, identity, "application/json"); err != nil {
+			return ExportReceipt{}, err
+		}
 	}
 	manifest := exportManifest{SchemaVersion: 1, Rendering: "html", BasePath: basePath, Catalogs: catalogReceipts, Files: writer.sortedEntries()}
 	manifestBytes, err := encodeExportManifest(manifest)

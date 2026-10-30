@@ -1,0 +1,41 @@
+{
+  "commitSha": "320307e220815d528224ca891cf8a9e3c0243678",
+  "extraRefs": [
+    "#/components/schemas/actions-artifact-and-log-retention-response"
+  ],
+  "fixture": {
+    "path": "github-v3-rest.json",
+    "sha256": "ad079fa8ed9f6603228ff4eedebeb2ababc84e8ffb7c4a3fbfac4e39d0c26c0a",
+    "size": 66233
+  },
+  "legacyMarkdown": {
+    "commitSha": "6948cb04f5304188569c4bb4ae2190c08e7cbdba",
+    "componentPrefix": "legacy-",
+    "operationId": "actions/create-self-hosted-runner-group-for-org",
+    "path": "descriptions/ghes-3.0/ghes-3.0.json",
+    "sha256": "dedfee9ad6a676c2f7186b8e2137d887d6449cad8b7af8253aecdaae24b27977"
+  },
+  "license": {
+    "gitBlobSha": "b50625eb63949013cae604b1cadd42cfa1eaf825",
+    "path": "LICENSE.md",
+    "sha256": "3243761cbac07e6d169a5a2f4e7c25cc544da85248e735df74c3672e055cc87b",
+    "size": 1063
+  },
+  "operations": [
+    "actions/get-actions-cache-usage-for-enterprise",
+    "actions/add-custom-labels-to-self-hosted-runner-for-org",
+    "apps/list-webhook-deliveries",
+    "apps/redeliver-webhook-delivery",
+    "actions/create-self-hosted-runner-group-for-org",
+    "repos/add-user-access-restrictions",
+    "enterprise-admin/create-registration-token-for-enterprise"
+  ],
+  "repository": "https://github.com/github/rest-api-description",
+  "schemaVersion": 1,
+  "source": {
+    "gitBlobSha": "c0cf67e9736c9a84475250c9ea20b08c8dab795e",
+    "path": "descriptions/ghec/ghec.json",
+    "sha256": "65cbdfbd52b2f966681632e1e04cbdd96fa9ad149a09d6825c71be0161920a33",
+    "size": 15292140
+  }
+}

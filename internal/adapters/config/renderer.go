@@ -126,8 +126,9 @@ type RendererSourceConfig struct {
 }
 
 type RendererSourceDocument struct {
-	Path string `yaml:"path"`
-	Key  string `yaml:"key"`
+	Publication *domain.CatalogPublication `yaml:"publication"`
+	Path        string                     `yaml:"path"`
+	Key         string                     `yaml:"key"`
 }
 
 func LoadRenderer(filename string) (RendererFile, error) {
@@ -249,6 +250,9 @@ func (source RendererSourceConfig) validate() error {
 	seenPaths := make(map[string]struct{}, len(source.Documents))
 	seenKeys := make(map[string]struct{}, len(source.Documents))
 	for index, document := range source.Documents {
+		if err := domain.ValidateCatalogPublication(document.Publication); err != nil {
+			return err
+		}
 		if document.Path == "" || strings.HasPrefix(document.Path, "/") || strings.Contains(document.Path, `\`) || path.Clean(document.Path) != document.Path || document.Path == "." || strings.HasPrefix(document.Path, "../") {
 			return fmt.Errorf("document mapping %d path %q is not a clean relative slash path", index, document.Path)
 		}
