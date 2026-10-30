@@ -58,7 +58,8 @@ func (handler *CatalogHandler) catalogPageDataWithSidebarQuery(
 	sidebarQuery catalogSidebarQuery,
 ) (templates.CatalogPageData, error) {
 	data := templates.CatalogPageData{
-		Mount: mount, SnapshotID: snapshot.ID,
+		WorkspaceBranding: handler.organization.Branding,
+		Mount:             mount, SnapshotID: snapshot.ID,
 		RevisionID: snapshot.Manifest.Identity.RevisionID, CommitSHA: snapshot.Manifest.Identity.CommitSHA,
 		Directory:             snapshot.Directory,
 		EnhancementDescriptor: handler.catalogEnhancementDescriptor(snapshot, mount),
@@ -479,7 +480,9 @@ func (handler *CatalogHandler) catalogOrganizationNav(activeMount string, rootVi
 			data.Specs = append(data.Specs, templates.CatalogOrganizationItem{
 				ID:    "spec-" + string(directory.CatalogID) + "-" + document.Key,
 				Label: catalogDocumentLabel(document), Description: catalogLabel,
-				Href: documentHref + "/",
+				Href:      documentHref + "/",
+				AvatarSrc: firstNonempty(document.Branding.LogoSrc, directory.Branding.LogoSrc),
+				AvatarAlt: firstNonempty(document.Branding.LogoAlt, directory.Branding.LogoAlt),
 			})
 		}
 		admission.Release()

@@ -22,6 +22,7 @@ const (
 type RendererFile struct {
 	Version      uint32                     `yaml:"version"`
 	DataDir      string                     `yaml:"dataDir"`
+	AssetDir     string                     `yaml:"assetDir"`
 	Organization RendererOrganizationConfig `yaml:"organization"`
 	Catalogs     []RendererCatalogConfig    `yaml:"catalogs"`
 
@@ -29,11 +30,21 @@ type RendererFile struct {
 }
 
 type RendererOrganizationConfig struct {
-	Title   string                             `yaml:"title"`
-	Readme  string                             `yaml:"readme"`
-	License RendererOrganizationLicenseConfig  `yaml:"license"`
-	Sources []RendererOrganizationSourceConfig `yaml:"sources"`
-	SEO     RendererSEOConfig                  `yaml:"seo"`
+	Branding RendererBrandingConfig             `yaml:"branding"`
+	Title    string                             `yaml:"title"`
+	Readme   string                             `yaml:"readme"`
+	License  RendererOrganizationLicenseConfig  `yaml:"license"`
+	Sources  []RendererOrganizationSourceConfig `yaml:"sources"`
+	SEO      RendererSEOConfig                  `yaml:"seo"`
+}
+
+// AssetDirectory is the explicitly configured local image directory. Its files
+// are served and exported under /brand-assets/, never mixed with source specs.
+func (file RendererFile) AssetDirectory() string {
+	if file.AssetDir == "" {
+		return ""
+	}
+	return file.resolve(file.AssetDir)
 }
 
 type RendererOrganizationLicenseConfig struct {
@@ -165,6 +176,11 @@ func (file RendererFile) RuntimeConfig() renderer.Config {
 		Version: file.Version,
 		DataDir: file.resolve(file.DataDir),
 		Organization: renderer.OrganizationConfig{
+			Branding: domain.DocsBranding{
+				DisplayName: file.Organization.Branding.DisplayName,
+				Logo:        domain.DocsBrandingLogo{Src: file.Organization.Branding.Logo.Src, Alt: file.Organization.Branding.Logo.Alt, HomeURL: file.Organization.Branding.Logo.HomeURL},
+				Favicon:     file.Organization.Branding.Favicon,
+			},
 			Title:   file.Organization.Title,
 			Readme:  file.Organization.Readme,
 			License: renderer.OrganizationLicense{Name: file.Organization.License.Name, URL: file.Organization.License.URL},

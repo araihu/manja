@@ -36,11 +36,12 @@ type Config struct {
 // intentionally explicit: Manja never derives or exposes private acquisition
 // locations from catalog source adapters.
 type OrganizationConfig struct {
-	Title   string
-	Readme  string
-	License OrganizationLicense
-	Sources []OrganizationSource
-	SEO     CatalogSEO
+	Branding domain.DocsBranding
+	Title    string
+	Readme   string
+	License  OrganizationLicense
+	Sources  []OrganizationSource
+	SEO      CatalogSEO
 }
 
 type OrganizationLicense struct {
@@ -200,6 +201,27 @@ func validateReadme(name, value string) error {
 }
 
 func validateOrganization(organization OrganizationConfig, resourceLimits bool) error {
+	for name, value := range map[string]string{"display name": organization.Branding.DisplayName, "logo alt": organization.Branding.Logo.Alt} {
+		if value != "" {
+			if err := domain.ValidateCanonicalIdentity("organization branding "+name, value, false); err != nil {
+				return err
+			}
+		}
+	}
+	for name, value := range map[string]string{"logo": organization.Branding.Logo.Src, "home": organization.Branding.Logo.HomeURL, "favicon": organization.Branding.Favicon} {
+		if value == "" {
+			continue
+		}
+		if strings.HasPrefix(value, "/") && !strings.HasPrefix(value, "//") && path.Clean(value) == value && !strings.ContainsAny(value, `\?#%`) {
+			if err := domain.ValidateCanonicalPublicPath("organization branding "+name, value, false); err != nil {
+				return err
+			}
+			continue
+		}
+		if err := validatePublicHTTPSURL("organization branding "+name, value); err != nil {
+			return err
+		}
+	}
 	if organization.Title != "" {
 		if err := domain.ValidateCanonicalIdentity("organization title", organization.Title, false); err != nil {
 			return err

@@ -13,6 +13,7 @@ import (
 	"strings"
 
 	"github.com/araihu/manja/application/catalog"
+	"github.com/araihu/manja/domain"
 	localrender "github.com/araihu/manja/internal/localdocs/render"
 	"github.com/araihu/manja/internal/web/templates"
 )
@@ -49,11 +50,12 @@ type CatalogLicensePresentation struct {
 }
 
 type OrganizationPresentation struct {
-	Title   string
-	Readme  string
-	License OrganizationLicensePresentation
-	Sources []OrganizationSourcePresentation
-	SEO     CatalogPresentation
+	Branding domain.DocsBranding
+	Title    string
+	Readme   string
+	License  OrganizationLicensePresentation
+	Sources  []OrganizationSourcePresentation
+	SEO      CatalogPresentation
 }
 
 type OrganizationLicensePresentation struct {
@@ -243,13 +245,14 @@ func (handler *CatalogHandler) serveOrganizationRoot(response http.ResponseWrite
 		title = "Manja"
 	}
 	data := templates.CatalogPageData{
-		OrganizationRoot: true,
-		Mount:            "/",
-		SearchGlobal:     true,
-		SearchHref:       "/",
-		SearchJSONHref:   "/search.json",
-		SearchMount:      "/",
-		SearchScopeLabel: "All catalogs",
+		OrganizationRoot:  true,
+		WorkspaceBranding: handler.organization.Branding,
+		Mount:             "/",
+		SearchGlobal:      true,
+		SearchHref:        "/",
+		SearchJSONHref:    "/search.json",
+		SearchMount:       "/",
+		SearchScopeLabel:  "All catalogs",
 		Directory: catalog.CatalogArtifactV1{
 			Title: title,
 			Branding: catalog.BrandingV1{
@@ -268,6 +271,9 @@ func (handler *CatalogHandler) serveOrganizationRoot(response http.ResponseWrite
 			},
 			Sources: make([]templates.CatalogOrganizationSourceData, len(handler.organization.Sources)),
 		},
+	}
+	if branding := handler.organization.Branding; branding != (domain.DocsBranding{}) {
+		data.Directory.Branding = catalog.BrandingV1{DisplayName: branding.DisplayName, LogoSrc: branding.Logo.Src, LogoAlt: branding.Logo.Alt, LogoHomeHref: branding.Logo.HomeURL, FaviconHref: branding.Favicon}
 	}
 	for index, source := range handler.organization.Sources {
 		data.Organization.Sources[index] = templates.CatalogOrganizationSourceData{

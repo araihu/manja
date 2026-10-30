@@ -141,6 +141,13 @@ func exportFromHandlerWithCache(ctx context.Context, handler http.Handler, recei
 	}()
 
 	writer := exportTreeWriter{root: stage, entries: make(map[string]exportFileEntry), progress: progress}
+	if assets, ok := handler.(interface{ AssetPaths() []string }); ok {
+		for _, assetPath := range assets.AssetPaths() {
+			if err = captureResource(ctx, handler, &writer, assetPath, strings.TrimPrefix(assetPath, "/"), 0, ""); err != nil {
+				return ExportReceipt{}, err
+			}
+		}
+	}
 	if err = captureShell(ctx, handler, &writer, "/", "index.html"); err != nil {
 		return ExportReceipt{}, err
 	}
