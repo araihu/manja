@@ -924,12 +924,21 @@ html.boot [data-boot-anim="main"] {
 }
 .manja-publication-summary { margin-block: .5rem; font-size: .875rem; }
 .manja-publication-group { margin-block: 1.5rem; }
+.manja-publication-api-title { margin-top: .25rem; font-size: .875rem; color: var(--color-on-surface-muted); }
+.dark .manja-publication-api-title { color: var(--color-on-surface-dark-muted); }
+.manja-publication-versions { margin: .75rem 0 0 .25rem; padding-left: 1.25rem; list-style: none; border-left: 1px solid var(--color-outline); }
+.dark .manja-publication-versions { border-color: var(--color-outline-dark); }
 .manja-publication-link { display: flex; justify-content: space-between; align-items: center; gap: 1rem; min-height: 44px; padding: .75rem 0; border-bottom: 1px solid var(--color-outline); overflow-wrap: anywhere; }
 .dark .manja-publication-link { border-color: var(--color-outline-dark); }
 .manja-publication-link:hover { text-decoration: underline; text-underline-offset: .2em; }
 .manja-publication-link:focus-visible,.manja-publication-back:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 3px; }
 .dark .manja-publication-link:focus-visible,.dark .manja-publication-back:focus-visible { outline-color: var(--color-primary-dark); }
 .manja-publication-counts { font-size: .75rem; text-align: right; }
+@media (max-width: 639px) {
+  .manja-publication-versions { padding-left: 1rem; }
+  .manja-publication-versions .manja-publication-link { flex-wrap: wrap; gap: .25rem .75rem; }
+  .manja-publication-counts { text-align: left; }
+}
 
 .manja-capability-footer nav:empty {
   display: none;

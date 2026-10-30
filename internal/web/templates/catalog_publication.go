@@ -1,6 +1,7 @@
 package templates
 
 import (
+	"fmt"
 	"sort"
 	"strings"
 
@@ -16,6 +17,22 @@ type catalogPublicationOption struct {
 type catalogPublicationGroup struct {
 	ID, API, Label, Audience string
 	Options                  []catalogPublicationOption
+}
+
+// CatalogPublicationSummary labels counts in overviews and organization navigation.
+func CatalogPublicationSummary(apis, publications int) string {
+	return catalogCountLabel(apis, "API") + " · " + catalogCountLabel(publications, "publication")
+}
+
+func catalogCountLabel(count int, singular string) string {
+	if count != 1 {
+		singular += "s"
+	}
+	return fmt.Sprintf("%d %s", count, singular)
+}
+
+func catalogPublicationOptionFilterText(group catalogPublicationGroup, option catalogPublicationOption) string {
+	return strings.ToLower(strings.Join([]string{group.API, group.Label, group.Audience, option.Label, option.Key}, " "))
 }
 
 func catalogHeaderClass(data CatalogPageData) string {
@@ -47,15 +64,17 @@ func catalogPublicationGroups(data CatalogPageData) []catalogPublicationGroup {
 		id := d.Key
 		key := "document:" + id
 		label := catalogDocumentTitle(d)
+		api := label
 		audience := ""
 		if p := d.Publication; p != nil {
 			id = p.API
+			api = p.API
 			key = "api:" + id
 			audience = p.Audience
 		}
 		g := groups[key]
 		if g == nil {
-			g = &catalogPublicationGroup{ID: key, API: id, Label: label, Audience: audience}
+			g = &catalogPublicationGroup{ID: key, API: api, Label: label, Audience: audience}
 			groups[key] = g
 		}
 		state := "API " + d.APIVersion

@@ -1,7 +1,6 @@
 package templates
 
 import (
-	"fmt"
 	selectfield "github.com/araihu/goshtoso/components/select"
 	"github.com/araihu/manja/application/catalog"
 	"strings"
@@ -43,8 +42,7 @@ templ catalogPublicationContext(data CatalogPageData) {
 templ catalogPublicationsOverview(data CatalogPageData) {
 	<div class="manja-publications-overview" data-publication-catalog x-data="{ filter: '' }">
 		<h1 class="font-title text-3xl font-bold text-on-surface-strong dark:text-on-surface-dark-strong">{ data.Directory.Title }</h1>
-		<p class="manja-publication-summary">{ fmt.Sprintf("%d APIs · %d publications",len(catalogPublicationGroups(data)),len(data.Documents)) }</p>
-		<p class="manja-publication-summary">Latest identifies the current stable release. Next follows the development branch. Pre-releases are labelled separately.</p>
+		<p class="manja-publication-summary">{ CatalogPublicationSummary(len(catalogPublicationGroups(data)),len(data.Documents)) }</p>
 		<label class="mb-3 block max-w-xl" for="publication-filter">
 			<span class="sr-only">Filter APIs and publications</span>
 			<input id="publication-filter" data-publication-filter type="search" x-model="filter" placeholder="Filter APIs or publications" maxlength="256" class="min-h-11 w-full rounded-radius border border-outline bg-surface px-4 text-on-surface-strong placeholder:text-on-surface-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary dark:border-outline-dark dark:bg-surface-dark dark:text-on-surface-dark-strong"/>
@@ -53,20 +51,24 @@ templ catalogPublicationsOverview(data CatalogPageData) {
 			<a href={ templ.URL(data.DownloadHref) }>Download catalog JSON</a>
 		}
 		for _,group:=range catalogPublicationGroups(data) {
-			<section class="manja-publication-group" data-publication-api={ group.ID } data-search-text={ catalogPublicationFilterText(group) } x-show={ catalogDocumentFilterExpression(catalogPublicationFilterText(group)) }>
-				<h2 class="font-title text-xl font-bold text-on-surface-strong dark:text-on-surface-dark-strong">{ group.Label }</h2>
-				<p class="manja-publication-summary">
-					{ group.API }
-					if group.Audience!="" && group.Audience!=group.API {
-						<span>{ " · Audience: "+group.Audience }</span>
-					}
-				</p>
-				<nav aria-label={ group.Label + " publications" }>
-					for _,option:=range group.Options {
-						<a class="manja-publication-link" href={ templ.URL(option.Href) } data-publication-option={ option.Key } data-search-text={ group.Label + " " + option.Label + " " + option.Key } x-show={ catalogDocumentFilterExpression(strings.ToLower(group.Label + " " + option.Label + " " + option.Key)) }>
-							<span>{ option.Label }</span><span class="manja-publication-counts">{ fmt.Sprintf("%d operations · %d schemas",len(option.Document.Operations),len(option.Document.Schemas)) }</span>
-						</a>
-					}
+			<section class="manja-publication-group" aria-labelledby={ "publication-group-" + group.ID } data-publication-api={ group.ID } data-search-text={ catalogPublicationFilterText(group) } x-show={ catalogDocumentFilterExpression(catalogPublicationFilterText(group)) }>
+				<h2 id={ "publication-group-" + group.ID } class="font-title text-xl font-bold text-on-surface-strong dark:text-on-surface-dark-strong">{ group.API }</h2>
+				if group.Label!=group.API {
+					<p class="manja-publication-api-title">{ group.Label }</p>
+				}
+				if group.Audience!="" && group.Audience!=group.API {
+					<p class="manja-publication-summary">{ "Audience: "+group.Audience }</p>
+				}
+				<nav aria-label={ group.API + " publications" }>
+					<ul class="manja-publication-versions">
+						for _,option:=range group.Options {
+							<li data-search-text={ catalogPublicationOptionFilterText(group,option) } x-show={ catalogDocumentFilterExpression(catalogPublicationOptionFilterText(group,option)) }>
+								<a class="manja-publication-link" href={ templ.URL(option.Href) } data-publication-option={ option.Key }>
+									<span>{ option.Label }</span><span class="manja-publication-counts">{ catalogCountLabel(len(option.Document.Operations),"operation") + " · " + catalogCountLabel(len(option.Document.Schemas),"schema") }</span>
+								</a>
+							</li>
+						}
+					</ul>
 				</nav>
 			</section>
 		}

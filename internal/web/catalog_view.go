@@ -470,7 +470,7 @@ func (handler *CatalogHandler) catalogOrganizationNav(activeMount string, rootVi
 		description := fmt.Sprintf("%d specs", len(directory.Documents))
 		for _, d := range directory.Documents {
 			if d.Publication != nil {
-				description = fmt.Sprintf("%d APIs · %d publications", len(preferred), len(directory.Documents))
+				description = templates.CatalogPublicationSummary(len(preferred), len(directory.Documents))
 				break
 			}
 		}
