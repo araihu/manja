@@ -100,7 +100,9 @@ punycode/punycode.js:
       root.document.addEventListener('htmx:after:swap', hydrate);
       const restore = () => {
         hydrate();
-        // Re-enable Goshtoso code controls in restored document markup too.
+        // Goshtoso code controls become available after HTMX processes markup.
+        // History restores preserve data attributes, not the processing state.
+        if (root.htmx && typeof root.htmx.process === 'function') root.htmx.process(root.document.body);
         root.document.body.dispatchEvent(new root.CustomEvent('htmx:after:swap', { bubbles: true }));
       };
       root.document.addEventListener('htmx:before:history:restore', restore);
