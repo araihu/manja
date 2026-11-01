@@ -98,15 +98,6 @@ func (handler *CatalogHandler) serveSnapshotResource(response http.ResponseWrite
 	http.NotFound(response, request)
 }
 
-func catalogHasSupportFiles(manifest catalog.ManifestV1) bool {
-	for _, child := range manifest.Children {
-		if child.Kind == "support" && strings.HasPrefix(child.Path, "support/") {
-			return true
-		}
-	}
-	return false
-}
-
 func (handler *CatalogHandler) serveProjectionManifest(response http.ResponseWriter, request *http.Request, snapshot catalog.RuntimeSnapshot) {
 	data, err := catalogjson.EncodeManifest(snapshot.Manifest)
 	if err != nil {

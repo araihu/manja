@@ -29,6 +29,9 @@ func TestBrowserRendersDocumentUnseenOperationAndSchema(t *testing.T) {
 	if err != nil || page.Title != "Pets" || !strings.Contains(page.MainHTML, "title=\"Pets\">Pets</h1>") || !strings.Contains(page.MainHTML, "Operations") {
 		t.Fatalf("document page = %#v, %v", page, err)
 	}
+	if want := descriptor.PublicationBase + "snapshots/" + descriptor.SnapshotID + "/source-files/doc.json"; !strings.Contains(page.MainHTML, `href="`+want+`"`) {
+		t.Fatalf("document download did not preserve the original source path %q", want)
+	}
 	page, err = browser.Render(context.Background(), Route{DocumentKey: "doc", Selected: string(operationID)})
 	if err != nil || page.Title != "List pets" || !strings.Contains(page.MainHTML, "GET") || !strings.Contains(page.MainHTML, "/pets") || !strings.Contains(page.SidebarHTML, `aria-current="page"`) {
 		t.Fatalf("operation page = %#v, %v", page, err)

@@ -85,12 +85,13 @@ declared source directory remain rejected, while unrelated repository files
 outside it are not part of capture.
 
 Descriptions with relative `$ref` files can be exported directly without a
-separate bundling step. Their source downloads use an immutable
+separate bundling step. Source downloads always use an immutable
 `snapshots/<snapshot>/source-files/` tree that preserves the original paths of
 all selected documents and referenced support files. This also preserves
 references from one selected document to another. Keep that complete tree
 together when downloading or distributing a multi-file description. The
 legacy flat `openapi/<document-key>.yaml` downloads remain available.
+Source filenames are escaped in download URLs, including spaces and Unicode.
 
 ```bash
 manja export \

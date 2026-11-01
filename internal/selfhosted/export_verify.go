@@ -154,7 +154,17 @@ func verifyExportStructure(root string, manifest exportManifest, declared map[st
 				return fmt.Errorf("catalog %q child %q bytes differ from snapshot", receipt.CatalogID, child.Path)
 			}
 		}
-		if exportHasSupportFiles(snapshot) {
+		// Older standalone exports only carried flat downloads. Once any
+		// original source is present, require the complete bound source tree.
+		hasSourceTree := exportHasSupportFiles(snapshot)
+		sourcePrefix := exportJoin(prefix, "snapshots", receipt.SnapshotID, "source-files") + "/"
+		for name := range declared {
+			if strings.HasPrefix(name, sourcePrefix) {
+				hasSourceTree = true
+				break
+			}
+		}
+		if hasSourceTree {
 			for _, document := range directory.Documents {
 				output := exportJoin(prefix, "snapshots", receipt.SnapshotID, "source-files", document.SourcePath)
 				if err := require(output); err != nil {

@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"html"
 	"net/url"
-	"path"
 	"sort"
 	"strconv"
 	"strings"
@@ -346,7 +345,7 @@ func (browser *Browser) Search(ctx context.Context, query string) ([]catalog.Sea
 }
 
 func (browser *Browser) renderDocument(ctx context.Context, document catalog.DocumentDirectoryV1, documentHref string) (string, error) {
-	download := browser.descriptor.PublicationBase + "snapshots/" + browser.descriptor.SnapshotID + "/openapi/" + document.Key + path.Ext(document.SourceChild)
+	download := browser.descriptor.PublicationBase + "snapshots/" + browser.descriptor.SnapshotID + "/source-files/" + (&url.URL{Path: document.SourcePath}).EscapedPath()
 	header, err := localrender.PrepareCatalogDocumentHeader(document, documentHref, download)
 	if err != nil {
 		return "", err

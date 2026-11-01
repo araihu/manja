@@ -13,6 +13,7 @@ import (
 	"mime"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path"
 	"path/filepath"
@@ -354,17 +355,15 @@ func captureCatalog(ctx context.Context, handler http.Handler, writer *exportTre
 	}
 	// Preserve original relative paths alongside the legacy flat downloads.
 	// This lets downloaded multi-file descriptions resolve their own $refs.
-	if exportHasSupportFiles(manifest) {
-		for _, document := range directory.Documents {
-			child, ok := manifestChild(manifest, document.SourceChild)
-			if !ok {
-				return ExportCatalogReceipt{}, deploymentSearchCatalogV1{}, fmt.Errorf("document %q source child is missing", document.Key)
-			}
-			requestPath := catalogRoute(active.Mount, "snapshots", active.SnapshotID, "source-files", document.SourcePath)
-			outputPath := path.Join(mountPrefix, "snapshots", active.SnapshotID, "source-files", document.SourcePath)
-			if err := captureResource(ctx, handler, writer, requestPath, outputPath, child.Length, child.SHA256); err != nil {
-				return ExportCatalogReceipt{}, deploymentSearchCatalogV1{}, err
-			}
+	for _, document := range directory.Documents {
+		child, ok := manifestChild(manifest, document.SourceChild)
+		if !ok {
+			return ExportCatalogReceipt{}, deploymentSearchCatalogV1{}, fmt.Errorf("document %q source child is missing", document.Key)
+		}
+		requestPath := (&url.URL{Path: catalogRoute(active.Mount, "snapshots", active.SnapshotID, "source-files", document.SourcePath)}).EscapedPath()
+		outputPath := path.Join(mountPrefix, "snapshots", active.SnapshotID, "source-files", document.SourcePath)
+		if err := captureResource(ctx, handler, writer, requestPath, outputPath, child.Length, child.SHA256); err != nil {
+			return ExportCatalogReceipt{}, deploymentSearchCatalogV1{}, err
 		}
 	}
 	publicationBase := prefixExportBase(basePath, catalogRoute(active.Mount))
@@ -418,7 +417,7 @@ func exportedChildPath(active renderer.ActivationReceipt, directory catalog.Cata
 	switch {
 	case strings.HasPrefix(child.Path, "support/") && child.Kind == "support":
 		sourcePath := strings.TrimPrefix(child.Path, "support/")
-		return catalogRoute(active.Mount, "snapshots", active.SnapshotID, "source-files", sourcePath), path.Join(append(snapshot, "source-files", sourcePath)...), true
+		return (&url.URL{Path: catalogRoute(active.Mount, "snapshots", active.SnapshotID, "source-files", sourcePath)}).EscapedPath(), path.Join(append(snapshot, "source-files", sourcePath)...), true
 	case strings.HasPrefix(child.Path, "search/") && strings.HasPrefix(child.Kind, "search-"):
 		return catalogRoute(active.Mount, "snapshots", active.SnapshotID, "search-data", child.Path), path.Join(append(snapshot, "search-data", child.Path)...), true
 	case strings.HasPrefix(child.Path, "details/") && child.Kind == "detail", strings.HasPrefix(child.Path, "schema-nodes/") && child.Kind == "schema-node":

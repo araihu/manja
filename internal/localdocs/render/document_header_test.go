@@ -3,6 +3,7 @@ package render
 import (
 	"bytes"
 	"context"
+	"net/url"
 	"strings"
 	"testing"
 
@@ -47,6 +48,42 @@ func TestCatalogDocumentHeaderBindsOriginalSourceDownload(t *testing.T) {
 	for _, invalid := range []string{base + "api/internal.yaml", "/source-files/api/public.yaml", strings.Replace(base, "snapshot-sha256-", "invalid-", 1) + document.SourcePath} {
 		if _, err := PrepareCatalogDocumentHeader(document, href, invalid); err == nil {
 			t.Fatalf("accepted unbound source download %q", invalid)
+		}
+	}
+}
+
+func TestCatalogDocumentHeaderBindsEscapedSourcePaths(t *testing.T) {
+	document, href, _ := catalogDocumentHeaderFixture()
+	base := "/catalogs/source-files/project/snapshots/snapshot-sha256-" + strings.Repeat("a", 64) + "/source-files/"
+	for _, source := range []string{"api/public api.yaml", "api/públicá.yaml", "api/public%?#.yaml", "source-files/api.yaml"} {
+		document.SourcePath = source
+		canonical := base + (&url.URL{Path: source}).EscapedPath()
+		if _, err := PrepareCatalogDocumentHeader(document, href, canonical); err != nil {
+			t.Fatalf("canonical source %q: %v", source, err)
+		}
+	}
+	document.SourcePath = "api/public api.yaml"
+	for _, value := range []string{
+		base + "api/public api.yaml",
+		base + "api%2Fpublic%20api.yaml",
+		base + "api%5Cpublic%20api.yaml",
+		base + "api/%2e%2e/public%20api.yaml",
+		base + "api/%252e%252e/public%20api.yaml",
+		base + "api/internal.yaml",
+		base + "api/public%20api.yaml?download=true",
+		base + "api/public%20api.yaml#source",
+		"https://example.test" + base + "api/public%20api.yaml",
+		"/" + base + "api/public%20api.yaml",
+		"/documents/" + document.Key + "/source-files/api/public%20api.yaml",
+	} {
+		if _, err := PrepareCatalogDocumentHeader(document, href, value); err == nil {
+			t.Errorf("accepted unbound source URL %q", value)
+		}
+	}
+	for _, source := range []string{".", "..", "../public.yaml", "/api/public.yaml", "api/../public.yaml", `api\public.yaml`, "api/\npublic.yaml"} {
+		document.SourcePath = source
+		if _, err := PrepareCatalogDocumentHeader(document, href, base+(&url.URL{Path: source}).EscapedPath()); err == nil {
+			t.Errorf("accepted noncanonical source path %q", source)
 		}
 	}
 }
