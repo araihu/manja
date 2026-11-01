@@ -85,6 +85,7 @@ type BrandingV1 struct {
 }
 
 type DocumentDirectoryV1 struct {
+	Publication      *domain.CatalogPublication  `json:"publication,omitempty"`
 	Key              string                      `json:"key"`
 	SourcePath       string                      `json:"sourcePath"`
 	Title            string                      `json:"title"`

@@ -13,6 +13,7 @@ import (
 	"mime"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path"
 	"path/filepath"
@@ -80,6 +81,7 @@ func ExportRenderer(ctx context.Context, options ExportOptions) (receipt ExportR
 	if err != nil {
 		return ExportReceipt{}, err
 	}
+	defer func() { err = errors.Join(err, closeRendererHandler(handler)) }()
 	progress.setCatalogTotals(len(receipts))
 	progress.phase("materialize")
 	for _, receipt := range receipts {
@@ -141,6 +143,13 @@ func exportFromHandlerWithCache(ctx context.Context, handler http.Handler, recei
 	}()
 
 	writer := exportTreeWriter{root: stage, entries: make(map[string]exportFileEntry), progress: progress}
+	if assets, ok := handler.(interface{ AssetPaths() []string }); ok {
+		for _, assetPath := range assets.AssetPaths() {
+			if err = captureResource(ctx, handler, &writer, assetPath, strings.TrimPrefix(assetPath, "/"), 0, ""); err != nil {
+				return ExportReceipt{}, err
+			}
+		}
+	}
 	if err = captureShell(ctx, handler, &writer, "/", "index.html"); err != nil {
 		return ExportReceipt{}, err
 	}
@@ -191,11 +200,15 @@ func exportFromHandlerWithCache(ctx context.Context, handler http.Handler, recei
 		return ExportReceipt{}, err
 	}
 	searchEntry := writer.entries[deploymentSearchDirectoryPath]
+	immutableSearchPath := deploymentSearchImmutableDirectoryPath(searchEntry.SHA256)
+	if err = writer.copy(deploymentSearchDirectoryPath, immutableSearchPath); err != nil {
+		return ExportReceipt{}, err
+	}
 	for _, entry := range writer.sortedEntries() {
 		if entry.MediaType != "text/html" {
 			continue
 		}
-		if err = writer.installDeploymentSearch(entry.Path, deploymentSearchDirectoryURL(basePath), searchEntry); err != nil {
+		if err = writer.installDeploymentSearch(entry.Path, deploymentSearchDirectoryURL(basePath, searchEntry.SHA256), searchEntry); err != nil {
 			return ExportReceipt{}, fmt.Errorf("install deployment search in %q: %w", entry.Path, err)
 		}
 	}
@@ -209,6 +222,18 @@ func exportFromHandlerWithCache(ctx context.Context, handler http.Handler, recei
 	}
 	if err = writer.write(exportIdentityPath, identityBytes, "application/json"); err != nil {
 		return ExportReceipt{}, err
+	}
+	// An old static page must keep its own identity after another publication.
+	for _, catalogReceipt := range catalogReceipts {
+		identity, encodeErr := encodeExportIdentity(exportIdentity{SchemaVersion: 1, BasePath: basePath, Catalogs: []ExportCatalogReceipt{catalogReceipt}})
+		if encodeErr != nil {
+			return ExportReceipt{}, encodeErr
+		}
+		revisionDigest := sha256.Sum256([]byte(catalogReceipt.RevisionID))
+		identityPath := path.Join(strings.Trim(catalogReceipt.Mount, "/"), "snapshots", catalogReceipt.SnapshotID, "_manja", "identity-sha256-"+hex.EncodeToString(revisionDigest[:])+".json")
+		if err = writer.write(identityPath, identity, "application/json"); err != nil {
+			return ExportReceipt{}, err
+		}
 	}
 	manifest := exportManifest{SchemaVersion: 1, Rendering: "html", BasePath: basePath, Catalogs: catalogReceipts, Files: writer.sortedEntries()}
 	manifestBytes, err := encodeExportManifest(manifest)
@@ -329,6 +354,19 @@ func captureCatalog(ctx context.Context, handler http.Handler, writer *exportTre
 			return ExportCatalogReceipt{}, deploymentSearchCatalogV1{}, err
 		}
 	}
+	// Preserve original relative paths alongside the legacy flat downloads.
+	// This lets downloaded multi-file descriptions resolve their own $refs.
+	for _, document := range directory.Documents {
+		child, ok := manifestChild(manifest, document.SourceChild)
+		if !ok {
+			return ExportCatalogReceipt{}, deploymentSearchCatalogV1{}, fmt.Errorf("document %q source child is missing", document.Key)
+		}
+		requestPath := (&url.URL{Path: catalogRoute(active.Mount, "snapshots", active.SnapshotID, "source-files", document.SourcePath)}).EscapedPath()
+		outputPath := path.Join(mountPrefix, "snapshots", active.SnapshotID, "source-files", document.SourcePath)
+		if err := captureResource(ctx, handler, writer, requestPath, outputPath, child.Length, child.SHA256); err != nil {
+			return ExportCatalogReceipt{}, deploymentSearchCatalogV1{}, err
+		}
+	}
 	publicationBase := prefixExportBase(basePath, catalogRoute(active.Mount))
 	if !strings.HasSuffix(publicationBase, "/") {
 		publicationBase += "/"
@@ -378,6 +416,9 @@ func exportedChildPath(active renderer.ActivationReceipt, directory catalog.Cata
 		}
 	}
 	switch {
+	case strings.HasPrefix(child.Path, "support/") && child.Kind == "support":
+		sourcePath := strings.TrimPrefix(child.Path, "support/")
+		return (&url.URL{Path: catalogRoute(active.Mount, "snapshots", active.SnapshotID, "source-files", sourcePath)}).EscapedPath(), path.Join(append(snapshot, "source-files", sourcePath)...), true
 	case strings.HasPrefix(child.Path, "search/") && strings.HasPrefix(child.Kind, "search-"):
 		return catalogRoute(active.Mount, "snapshots", active.SnapshotID, "search-data", child.Path), path.Join(append(snapshot, "search-data", child.Path)...), true
 	case strings.HasPrefix(child.Path, "details/") && child.Kind == "detail", strings.HasPrefix(child.Path, "schema-nodes/") && child.Kind == "schema-node":
@@ -385,6 +426,15 @@ func exportedChildPath(active renderer.ActivationReceipt, directory catalog.Cata
 	default:
 		return "", "", false
 	}
+}
+
+func exportHasSupportFiles(manifest catalog.ManifestV1) bool {
+	for _, child := range manifest.Children {
+		if child.Kind == "support" && strings.HasPrefix(child.Path, "support/") {
+			return true
+		}
+	}
+	return false
 }
 
 func captureShell(ctx context.Context, handler http.Handler, writer *exportTreeWriter, requestPath, outputPath string) error {

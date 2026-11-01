@@ -36,11 +36,12 @@ type Config struct {
 // intentionally explicit: Manja never derives or exposes private acquisition
 // locations from catalog source adapters.
 type OrganizationConfig struct {
-	Title   string
-	Readme  string
-	License OrganizationLicense
-	Sources []OrganizationSource
-	SEO     CatalogSEO
+	Branding domain.DocsBranding
+	Title    string
+	Readme   string
+	License  OrganizationLicense
+	Sources  []OrganizationSource
+	SEO      CatalogSEO
 }
 
 type OrganizationLicense struct {
@@ -71,8 +72,11 @@ type CatalogConfig struct {
 
 // CatalogOverview controls only the catalog overview page, never document or
 // search navigation. An omitted Sidebar preserves the default visible sidebar.
+// ShowDownloadButton opts into the catalog JSON button; it is hidden by default
+// and does not control access to the catalog JSON endpoint.
 type CatalogOverview struct {
-	Sidebar *bool
+	Sidebar            *bool
+	ShowDownloadButton bool
 }
 
 type CatalogLocalDocs struct {
@@ -200,6 +204,27 @@ func validateReadme(name, value string) error {
 }
 
 func validateOrganization(organization OrganizationConfig, resourceLimits bool) error {
+	for name, value := range map[string]string{"display name": organization.Branding.DisplayName, "logo alt": organization.Branding.Logo.Alt} {
+		if value != "" {
+			if err := domain.ValidateCanonicalIdentity("organization branding "+name, value, false); err != nil {
+				return err
+			}
+		}
+	}
+	for name, value := range map[string]string{"logo": organization.Branding.Logo.Src, "home": organization.Branding.Logo.HomeURL, "favicon": organization.Branding.Favicon} {
+		if value == "" {
+			continue
+		}
+		if strings.HasPrefix(value, "/") && !strings.HasPrefix(value, "//") && path.Clean(value) == value && !strings.ContainsAny(value, `\?#%`) {
+			if err := domain.ValidateCanonicalPublicPath("organization branding "+name, value, false); err != nil {
+				return err
+			}
+			continue
+		}
+		if err := validatePublicHTTPSURL("organization branding "+name, value); err != nil {
+			return err
+		}
+	}
 	if organization.Title != "" {
 		if err := domain.ValidateCanonicalIdentity("organization title", organization.Title, false); err != nil {
 			return err
@@ -306,7 +331,7 @@ func validateMount(mount string) error {
 	if !strings.HasPrefix(mount, "/") || strings.HasSuffix(mount, "/") || strings.Contains(mount, `\`) || strings.ContainsAny(mount, "?#%") || path.Clean(mount) != mount {
 		return fmt.Errorf("must be an absolute clean unencoded path without a trailing slash")
 	}
-	for _, reserved := range []string{"/_manja", "/assets", "/manja-assets", "/healthz", "/readyz"} {
+	for _, reserved := range []string{"/_manja", "/assets", "/brand-assets", "/manja-assets", "/healthz", "/readyz"} {
 		if mount == reserved || strings.HasPrefix(mount, reserved+"/") {
 			return fmt.Errorf("uses reserved prefix %q", reserved)
 		}

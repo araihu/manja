@@ -12,7 +12,7 @@ import (
 	"github.com/araihu/manja/renderer"
 )
 
-func TestCatalogNavigationKeepsLastSpecReachableAndLabelsEachRoute(t *testing.T) {
+func TestCatalogNavigationRoutesThroughCatalogsAndLabelsEachRoute(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping e2e test in short mode")
 	}
@@ -70,11 +70,11 @@ func TestCatalogNavigationKeepsLastSpecReachableAndLabelsEachRoute(t *testing.T)
 				t.Fatal(err)
 			}
 			trigger := page.Locator(`[x-ref="catalogNavTrigger"]`)
-			if label, err := trigger.GetAttribute("aria-label"); err != nil || label != "Open Catalogs and specs" {
+			if label, err := trigger.GetAttribute("aria-label"); err != nil || label != "Open Catalogs" {
 				t.Errorf("%s root trigger label = %q, err=%v", viewport.name, label, err)
 			}
 			panel := page.Locator("#catalog-navigation")
-			if label, err := panel.GetAttribute("aria-label"); err != nil || label != "Catalogs and specs" {
+			if label, err := panel.GetAttribute("aria-label"); err != nil || label != "Catalogs" {
 				t.Errorf("%s root panel label = %q, err=%v", viewport.name, label, err)
 			}
 			if viewport.width < 1024 {
@@ -85,7 +85,7 @@ func TestCatalogNavigationKeepsLastSpecReachableAndLabelsEachRoute(t *testing.T)
 			if err := panel.WaitFor(playwright.LocatorWaitForOptions{State: playwright.WaitForSelectorStateVisible}); err != nil {
 				t.Fatalf("%s root navigation panel: %v", viewport.name, err)
 			}
-			avatarPaletteValue, err := page.Locator(`[data-catalog-organization-item="spec-kubernetes-spec-01"]`).Evaluate(`element => {
+			avatarPaletteValue, err := page.Locator(`[data-catalog-organization-item="catalog-kubernetes"]`).Evaluate(`element => {
 				const avatar = element.firstElementChild;
 				const resolveToken = (token) => {
 					const probe = document.createElement('span');
@@ -103,28 +103,28 @@ func TestCatalogNavigationKeepsLastSpecReachableAndLabelsEachRoute(t *testing.T)
 				};
 			}`, nil)
 			if err != nil {
-				t.Fatalf("%s root spec avatar palette: %v", viewport.name, err)
+				t.Fatalf("%s root catalog avatar palette: %v", viewport.name, err)
 			}
 			avatarPalette, ok := avatarPaletteValue.(map[string]any)
 			if !ok {
-				t.Fatalf("%s root spec avatar palette = %#v", viewport.name, avatarPaletteValue)
+				t.Fatalf("%s root catalog avatar palette = %#v", viewport.name, avatarPaletteValue)
 			}
 			actualAvatarColor := fmt.Sprint(avatarPalette["actual"])
 			neutralAvatarColor := fmt.Sprint(avatarPalette["neutral"])
 			primaryAvatarColor := fmt.Sprint(avatarPalette["primary"])
 			if actualAvatarColor != neutralAvatarColor || actualAvatarColor == primaryAvatarColor {
-				t.Fatalf("%s root spec avatar background = %q, want neutral %q and not primary %q", viewport.name, actualAvatarColor, neutralAvatarColor, primaryAvatarColor)
+				t.Fatalf("%s root catalog avatar background = %q, want neutral %q and not primary %q", viewport.name, actualAvatarColor, neutralAvatarColor, primaryAvatarColor)
 			}
-			if label, err := panel.Locator(`[x-ref="catalogNavClose"]`).GetAttribute("aria-label"); err != nil || label != "Close Catalogs and specs" {
+			if label, err := panel.Locator(`[x-ref="catalogNavClose"]`).GetAttribute("aria-label"); err != nil || label != "Close Catalogs" {
 				t.Errorf("%s root close label = %q, err=%v", viewport.name, label, err)
 			}
-			if label, err := page.Locator(`[data-catalog-navigation-backdrop]`).GetAttribute("aria-label"); err != nil || label != "Close Catalogs and specs" {
+			if label, err := page.Locator(`[data-catalog-navigation-backdrop]`).GetAttribute("aria-label"); err != nil || label != "Close Catalogs" {
 				t.Errorf("%s root backdrop label = %q, err=%v", viewport.name, label, err)
 			}
 			metricsValue, err := page.Evaluate(`() => {
 				const panel = document.querySelector('#catalog-navigation');
 				const nav = document.querySelector('#catalog-organization-navigation [data-goshtoso-scroll-viewport]');
-				const last = document.querySelector('[data-catalog-organization-item="spec-kubernetes-spec-18"]');
+				const last = document.querySelector('[data-catalog-organization-item="catalog-kubernetes"]');
 				nav.scrollTop = nav.scrollHeight;
 				const panelRect = panel.getBoundingClientRect();
 				const navRect = nav.getBoundingClientRect();
@@ -150,15 +150,33 @@ func TestCatalogNavigationKeepsLastSpecReachableAndLabelsEachRoute(t *testing.T)
 			lastBottom := metricNumber(t, metrics, "lastBottom")
 			lastTop := metricNumber(t, metrics, "lastTop")
 			navTop := metricNumber(t, metrics, "navTop")
-			t.Logf("%dx%d root labels=%q/%q/%q nav=%.1f..%.1f last=%.1f..%.1f visible-bottom=%.1f", viewport.width, viewport.height, "Open Catalogs and specs", "Catalogs and specs", "Close Catalogs and specs", navTop, navBottom, lastTop, lastBottom, visibleBottom)
+			t.Logf("%dx%d root labels=%q/%q/%q nav=%.1f..%.1f last=%.1f..%.1f visible-bottom=%.1f", viewport.width, viewport.height, "Open Catalogs", "Catalogs", "Close Catalogs", navTop, navBottom, lastTop, lastBottom, visibleBottom)
 			if navBottom > visibleBottom+1 {
 				t.Errorf("%s organization navigation bottom %.1f exceeds visible drawer bottom %.1f: %#v", viewport.name, navBottom, visibleBottom, metrics)
 			}
 			if lastBottom > visibleBottom+1 || lastTop < navTop-1 {
-				t.Errorf("%s last spec remains clipped after maximum navigation scroll: %#v", viewport.name, metrics)
+				t.Errorf("%s last catalog remains clipped after maximum navigation scroll: %#v", viewport.name, metrics)
 			}
 
-			if _, err := page.Goto(baseURL+"/catalogs/kubernetes/documents/spec-01/", playwright.PageGotoOptions{WaitUntil: playwright.WaitUntilStateLoad}); err != nil {
+			if count, err := panel.Locator("#catalog-organization-section-specs").Count(); err != nil || count != 0 {
+				t.Fatalf("root specs section = %d, err=%v", count, err)
+			}
+			if err := page.Locator(`[data-catalog-organization-item="catalog-kubernetes"]`).Click(); err != nil {
+				t.Fatal(err)
+			}
+			if err := page.WaitForURL("**/catalogs/kubernetes/"); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := page.WaitForFunction(`() => Boolean(window.goshtosoDependencies)`, nil); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := page.Evaluate(`async () => await window.goshtosoDependencies.ready`); err != nil {
+				t.Fatal(err)
+			}
+			if err := page.Locator(`main[data-catalog-overview] :is(a[href="/catalogs/kubernetes/documents/spec-18/"], [data-table-row-link="/catalogs/kubernetes/documents/spec-18/"]):visible`).First().Click(); err != nil {
+				t.Fatal(err)
+			}
+			if err := page.WaitForURL("**/catalogs/kubernetes/documents/spec-18/"); err != nil {
 				t.Fatal(err)
 			}
 			if label, err := page.Locator(`[x-ref="catalogNavTrigger"]`).GetAttribute("aria-label"); err != nil || label != "Open API sections" {
@@ -239,16 +257,8 @@ func TestCatalogDocumentSearchUsesGlobalModal(t *testing.T) {
 	if count, err := documentHeader.GetByRole("link", playwright.LocatorGetByRoleOptions{Name: "Download source", Exact: playwright.Bool(true)}).Count(); err != nil || count != 1 {
 		t.Fatalf("catalog source download links = %d, err=%v", count, err)
 	}
-	sourcePath := documentHeader.Locator("[data-catalog-provenance] > div").First().Locator("dd code")
-	if source, err := sourcePath.TextContent(); err != nil || strings.TrimSpace(source) != "apis/apps/v1.json" {
-		t.Fatalf("catalog source path = %q, err=%v", source, err)
-	}
-	if order, err := documentHeader.Evaluate(`element => {
-		const action = element.querySelector('a');
-		const source = element.querySelector('[data-catalog-provenance] > div:first-child dd code');
-		return Boolean(action && source && (action.compareDocumentPosition(source) & Node.DOCUMENT_POSITION_FOLLOWING));
-	}`, nil); err != nil || order != true {
-		t.Fatalf("catalog source path should follow download action: %v, err=%v", order, err)
+	if count, err := documentHeader.Locator("[data-catalog-provenance]").Count(); err != nil || count != 0 {
+		t.Fatalf("public document rendered management metadata: count=%d, err=%v", count, err)
 	}
 	if _, err := page.Evaluate(`() => { window.__catalogSearchLoadMarker = "unchanged"; return true; }`, nil); err != nil {
 		t.Fatal(err)
@@ -617,7 +627,7 @@ func TestOrganizationRootSearchKeepsNestedCatalogMount(t *testing.T) {
 	if count, err := page.GetByText("Beta Catalog", playwright.PageGetByTextOptions{Exact: playwright.Bool(true)}).Count(); err != nil || count == 0 {
 		t.Fatalf("root Beta Catalog navigation count = %d, err=%v", count, err)
 	}
-	if count, err := page.Locator(`#catalog-organization-section-specs`).Count(); err != nil || count != 1 {
+	if count, err := page.Locator(`#catalog-organization-section-specs`).Count(); err != nil || count != 0 {
 		t.Fatalf("root Specs heading count = %d, err=%v", count, err)
 	}
 	if count, err := page.Locator(`[data-search-mount="/"]`).Count(); err != nil || count != 1 {

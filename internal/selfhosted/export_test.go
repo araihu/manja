@@ -83,6 +83,16 @@ catalogs:
 	if len(receipt.Catalogs) != 1 || receipt.Catalogs[0].CatalogID != "private" || receipt.Catalogs[0].PublicationKey != "private" {
 		t.Fatalf("receipt = %#v", receipt)
 	}
+	revisionDigest := sha256.Sum256([]byte(receipt.Catalogs[0].RevisionID))
+	identityName := filepath.Join(output, "private", "snapshots", receipt.Catalogs[0].SnapshotID, "_manja", "identity-sha256-"+hex.EncodeToString(revisionDigest[:])+".json")
+	boundIdentity, err := os.ReadFile(identityName)
+	if err != nil {
+		t.Fatal(err)
+	}
+	expectedIdentity, err := encodeExportIdentity(exportIdentity{SchemaVersion: 1, BasePath: "/", Catalogs: receipt.Catalogs})
+	if err != nil || string(boundIdentity) != string(expectedIdentity) {
+		t.Fatalf("revision-bound export identity differs: %v", err)
+	}
 	catalogBytes, err := os.ReadFile(filepath.Join(output, "private", "snapshots", receipt.Catalogs[0].SnapshotID, "catalog.json"))
 	if err != nil {
 		t.Fatal(err)
@@ -163,10 +173,24 @@ catalogs:
 	if !strings.Contains(string(body), `id="manja-local-docs-descriptor"`) || !strings.Contains(string(body), `"publicationKey":"private"`) || !strings.Contains(string(body), `src="/manja-assets/local-docs.js"`) {
 		t.Fatalf("visibility-disabled static shell lacks export authority: %s", body)
 	}
-	for _, want := range []string{`data-search-global="true"`, `data-search-deployment-directory-url="/_manja/search/directory.json"`, `data-search-deployment-directory-sha256="`} {
+	for _, want := range []string{`data-search-global="true"`, `data-search-deployment-directory-url="/_manja/search/directory-sha256-`, `data-search-deployment-directory-sha256="`} {
 		if !strings.Contains(string(body), want) {
 			t.Errorf("static shell lacks deployment search binding %q", want)
 		}
+	}
+	searchBytes, err := os.ReadFile(filepath.Join(output, deploymentSearchDirectoryPath))
+	if err != nil {
+		t.Fatal(err)
+	}
+	searchDigest := sha256.Sum256(searchBytes)
+	digestHex := hex.EncodeToString(searchDigest[:])
+	pinnedPath := deploymentSearchImmutableDirectoryPath(digestHex)
+	pinnedBytes, err := os.ReadFile(filepath.Join(output, filepath.FromSlash(pinnedPath)))
+	if err != nil || string(pinnedBytes) != string(searchBytes) {
+		t.Fatalf("pinned search directory does not preserve exact bytes: %v", err)
+	}
+	if !strings.Contains(string(body), `data-search-deployment-directory-url="/`+pinnedPath+`"`) || !strings.Contains(string(body), `data-search-deployment-directory-sha256="`+digestHex+`"`) {
+		t.Fatal("page does not bind the immutable search directory to its digest")
 	}
 	fragment, err := os.ReadFile(filepath.Join(output, filepath.FromSlash(fragmentPath)))
 	if err != nil {

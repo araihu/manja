@@ -34,7 +34,7 @@ func (file RendererFile) SourcesWithResourceLimits(resourceLimits bool) []render
 			DisableResourceLimits: !resourceLimits,
 		}
 		for documentIndex, document := range configured.Source.Documents {
-			manifest.DocumentKeys[documentIndex] = sourceadapter.CatalogDocumentKey{SourcePath: document.Path, Key: document.Key}
+			manifest.DocumentKeys[documentIndex] = sourceadapter.CatalogDocumentKey{SourcePath: document.Path, Key: document.Key, Publication: domain.CloneCatalogPublication(document.Publication)}
 		}
 		switch configured.Source.Kind {
 		case RendererSourceFiles:
@@ -47,7 +47,7 @@ func (file RendererFile) SourcesWithResourceLimits(resourceLimits bool) []render
 				integrityReceipt = *configured.Source.IntegrityReceipt
 			}
 			result[index] = sourceadapter.GitCatalogSource{
-				Repository: configured.Source.Repository, Ref: configured.Source.Ref, Manifest: manifest,
+				Repository: configured.Source.Repository, Ref: configured.Source.Ref, Root: configured.Source.Root, Manifest: manifest,
 				IntegrityReceiptRoot: integrityReceiptRoot, IntegrityReceiptPath: integrityReceipt,
 			}
 		}

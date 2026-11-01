@@ -39,8 +39,9 @@ type CatalogManifest struct {
 }
 
 type CatalogDocumentKey struct {
-	SourcePath string
-	Key        string
+	Publication *domain.CatalogPublication
+	SourcePath  string
+	Key         string
 }
 
 type catalogInventoryEntry struct {
@@ -115,8 +116,10 @@ func captureCatalogCandidate(
 		return domain.CatalogCandidate{}, err
 	}
 	keyByPath := make(map[string]string, len(manifest.DocumentKeys))
+	publicationByPath := make(map[string]*domain.CatalogPublication, len(manifest.DocumentKeys))
 	for _, mapping := range manifest.DocumentKeys {
 		keyByPath[mapping.SourcePath] = mapping.Key
+		publicationByPath[mapping.SourcePath] = domain.CloneCatalogPublication(mapping.Publication)
 	}
 	documents := make([]domain.CatalogDocument, 0, len(selected))
 	captured := make(map[string]capturedCatalogFile, len(selected))
@@ -150,7 +153,8 @@ func captureCatalogCandidate(
 			}
 		}
 		documents = append(documents, domain.CatalogDocument{
-			Key: key, SourcePath: entry.path, Format: catalogFormat(entry.path), Bytes: file.data,
+			Publication: publicationByPath[entry.path],
+			Key:         key, SourcePath: entry.path, Format: catalogFormat(entry.path), Bytes: file.data,
 		})
 		captured[entry.path] = file
 	}
@@ -197,6 +201,9 @@ func validateCatalogManifest(manifest CatalogManifest) error {
 	}
 	seen := make(map[string]struct{}, len(manifest.DocumentKeys))
 	for index, mapping := range manifest.DocumentKeys {
+		if err := domain.ValidateCatalogPublication(mapping.Publication); err != nil {
+			return err
+		}
 		if err := validateSourcePath(fmt.Sprintf("catalog document key mapping %d path", index), mapping.SourcePath); err != nil {
 			return err
 		}
@@ -462,6 +469,10 @@ func catalogManifestDigest(documents []domain.CatalogDocument, supports []domain
 	records := make([]record, 0, len(documents)+len(supports))
 	for _, document := range documents {
 		records = append(records, record{role: "document", key: document.Key, path: document.SourcePath, mode: captured[document.SourcePath].mode, data: document.Bytes})
+		if document.Publication != nil {
+			metadata, _ := json.Marshal(document.Publication)
+			records = append(records, record{role: "publication", key: document.Key, path: document.SourcePath + "#publication", mode: "metadata", data: metadata})
+		}
 	}
 	for _, support := range supports {
 		records = append(records, record{role: "support", path: support.SourcePath, mode: captured[support.SourcePath].mode, data: support.Bytes})

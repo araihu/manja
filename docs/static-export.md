@@ -12,6 +12,26 @@ browser. No Manja process, database, or search API is required at request time.
 
 ## Configure, export, and preview
 
+Organization branding configures the workspace header across the organization,
+catalog, document, and search pages. Catalog branding supplies its icon and is
+also the fallback icon for its specs in organization navigation:
+
+```yaml
+version: 1
+assetDir: ./brand
+organization:
+  branding:
+    displayName: Example
+    logo: {src: /brand-assets/example.svg, alt: Example, homeUrl: /}
+    favicon: /brand-assets/example.svg
+```
+
+`assetDir` is relative to the renderer configuration and contains only local
+SVG, PNG, JPEG, WebP, GIF, or ICO images (at most 8 MiB each). Its files are
+served under `/brand-assets/` and included in the verified export. Symlinks
+are rejected. Keep this directory with recovered runtime deployments too.
+Omitting organization branding preserves the default Manja header.
+
 Use a Manja binary containing the incremental HTML exporter. The
 [Pages examples](pages-deployment.md) pin a revision with this implementation.
 When building from a Manja checkout, run `go build -o ./bin/manja ./cmd/manja`
@@ -39,6 +59,48 @@ The source root is relative to the configuration file. Add catalogs to the
 same list to build a deployment with multiple catalogs. Catalog mounts become
 URL paths below the deployment base path.
 
+Git sources may restrict capture to a repository-relative directory. Both
+`include` and document mappings are relative to that directory, and every
+document and referenced support file is read from the same resolved commit:
+
+```yaml
+version: 1
+catalogs:
+  - id: project
+    mount: /catalogs/project
+    title: Project APIs
+    profile: strict-v1
+    defaultDocument: public
+    source:
+      kind: git
+      repository: https://github.com/example/project.git
+      ref: refs/heads/main
+      root: openapi
+      include: [public.yaml, internal.yaml]
+```
+
+Omitting `root` uses the repository root. Git roots must be clean relative
+paths; absolute paths and parent escapes are rejected. Symlinks within the
+declared source directory remain rejected, while unrelated repository files
+outside it are not part of capture.
+
+Descriptions with relative `$ref` files can be exported directly without a
+separate bundling step. Source downloads always use an immutable
+`snapshots/<snapshot>/source-files/` tree that preserves the original paths of
+all selected documents and referenced support files. This also preserves
+references from one selected document to another. Keep that complete tree
+together when downloading or distributing a multi-file description. The
+legacy flat `openapi/<document-key>.yaml` downloads remain available.
+Source filenames are escaped in download URLs, including spaces and Unicode.
+
+Build and export operations close their renderer when finished, releasing the
+exclusive data-directory lock before the next operation or recovery. Configured
+state is retained. Embedded applications using `renderer.New` or
+`renderer.NewRecoveryOnly` must stop serving and close the server or its owning
+handler through `io.Closer` before reopening that directory. Closing is
+idempotent and waits for admitted HTTP requests and activation; closed handlers
+return 503 and closed servers cannot be recovered or activated again.
+
 ```bash
 manja export \
   --renderer-config ./renderer.yaml \
@@ -61,6 +123,9 @@ The export and verify commands write JSON receipts to stdout. Verification reads
 export directory. It checks the canonical receipt, exact file set, hashes,
 required browser and catalog artifacts, descriptors, internal links, and the
 complete graph of prebuilt HTML fragments and integrity sidecars.
+The asset inventory comes from the export's own receipt, so an intact export
+remains verifiable after renderer dependencies add or rename assets. Required
+runtime files, referenced assets and declared file bytes are still checked.
 Store redirected command output outside `public`, since extra files invalidate
 the export's file inventory.
 

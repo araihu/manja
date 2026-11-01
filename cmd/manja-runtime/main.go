@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -22,11 +23,16 @@ type runtimeConfig struct {
 	ResourceLimits    bool
 }
 
-var serveRecovered = func(ctx context.Context, cfg runtimeConfig) error {
+var serveRecovered = func(ctx context.Context, cfg runtimeConfig) (err error) {
 	handler, receipts, err := app.NewRecoveredRenderer(ctx, app.RendererOptions{ConfigPath: cfg.RendererConfig, DataDir: cfg.DataDir, LocalDocsDisabled: cfg.LocalDocsDisabled, ResourceLimits: cfg.ResourceLimits})
 	if err != nil {
 		return err
 	}
+	defer func() {
+		if closer, ok := handler.(io.Closer); ok {
+			err = errors.Join(err, closer.Close())
+		}
+	}()
 	log.Printf("manja recovered precompiled renderer: %v", receipts)
 	log.Printf("manja listening on %s", cfg.Addr)
 	return http.ListenAndServe(cfg.Addr, handler)

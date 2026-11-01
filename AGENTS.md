@@ -167,6 +167,8 @@ Never hand-edit generated files:
 
 - `internal/web/templates/*_templ.go` - regenerate with
   `go run -modfile=tools/go.mod github.com/a-h/templ/cmd/templ generate`
+- The marked `SEARCH CASE FOLD` block in `internal/web/static/catalog-search.js`
+  - regenerate with `go run ./cmd/webassets generate`; keep the rest handwritten.
 - `internal/web/static/request-composer.js` - regenerate with
   `go run ./cmd/webassets generate`
 - `internal/web/api.gen.go` - regenerate from `api/dist/openapi.yaml` with

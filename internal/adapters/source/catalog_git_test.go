@@ -83,6 +83,32 @@ func TestCatalogGitSourceUsesRootRelativeSlashPaths(t *testing.T) {
 	}
 }
 
+func TestCatalogGitRootExcludesUnrelatedSymlinks(t *testing.T) {
+	repository := initGitRepo(t)
+	writeGitFile(t, repository, "api/openapi.yaml", "openapi: 3.0.3\ninfo: {title: Test, version: 1.0.0}\npaths: {}\n")
+	if err := os.Symlink("api/openapi.yaml", filepath.Join(repository, "CLAUDE.md")); err != nil {
+		t.Fatal(err)
+	}
+	git(t, repository, "add", "CLAUDE.md")
+	git(t, repository, "commit", "-qm", "unrelated repository symlink")
+	source := GitCatalogSource{
+		Repository: repository, Ref: "HEAD", Root: "api",
+		Manifest: testCatalogManifest("strict-v1", "openapi.yaml"),
+	}
+	candidate, err := source.Load(context.Background())
+	if err != nil || len(candidate.Documents) != 1 || candidate.Documents[0].SourcePath != "openapi.yaml" {
+		t.Fatalf("rooted capture included unrelated repository content: %#v, %v", candidate, err)
+	}
+	if err := os.Symlink("../../outside.yaml", filepath.Join(repository, "api", "external.yaml")); err != nil {
+		t.Fatal(err)
+	}
+	git(t, repository, "add", "api/external.yaml")
+	git(t, repository, "commit", "-qm", "symlink inside API source root")
+	if _, err := source.Load(context.Background()); err == nil {
+		t.Fatal("rooted capture accepted a symlink inside its declared boundary")
+	}
+}
+
 func TestCatalogGitSourceRecursesBelowRepositoryRoot(t *testing.T) {
 	t.Parallel()
 

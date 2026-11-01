@@ -4,6 +4,7 @@ package selfhosted
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -14,11 +15,12 @@ import (
 // BuildRenderer compiles every configured source and durably activates the
 // resulting snapshots. Any degraded catalog fails the build: a published
 // image must never silently reuse stale or incomplete state.
-func BuildRenderer(ctx context.Context, options RendererOptions) ([]renderer.ActivationReceipt, error) {
-	_, receipts, err := NewRenderer(ctx, options)
+func BuildRenderer(ctx context.Context, options RendererOptions) (receipts []renderer.ActivationReceipt, err error) {
+	handler, receipts, err := NewRenderer(ctx, options)
 	if err != nil {
 		return nil, err
 	}
+	defer func() { err = errors.Join(err, closeRendererHandler(handler)) }()
 	for _, receipt := range receipts {
 		if receipt.Degraded {
 			return nil, fmt.Errorf("build catalog %q: %s", receipt.CatalogID, receipt.Diagnostic)
@@ -30,6 +32,8 @@ func BuildRenderer(ctx context.Context, options RendererOptions) ([]renderer.Act
 	return receipts, nil
 }
 
+// NewRenderer returns an owning handler implementing io.Closer. Stop serving
+// and close it before opening another renderer over the same data directory.
 func NewRenderer(ctx context.Context, options RendererOptions) (http.Handler, []renderer.ActivationReceipt, error) {
 	configured, runtimeConfig, err := rendererConfiguration(options)
 	if err != nil {
@@ -39,6 +43,12 @@ func NewRenderer(ctx context.Context, options RendererOptions) (http.Handler, []
 	if err != nil {
 		return nil, nil, err
 	}
+	ready := false
+	defer func() {
+		if !ready {
+			_ = closeRendererHandler(server.Handler())
+		}
+	}()
 	if err := server.Recover(ctx); err != nil {
 		return nil, nil, err
 	}
@@ -68,7 +78,12 @@ func NewRenderer(ctx context.Context, options RendererOptions) (http.Handler, []
 		}
 		receipts = append(receipts, receipt)
 	}
-	return server.Handler(), receipts, nil
+	handler, err := withRendererBrandAssets(ctx, configured.AssetDirectory(), server.Handler())
+	if err != nil {
+		return nil, nil, err
+	}
+	ready = true
+	return handler, receipts, nil
 }
 
 func degradedReceipt(server renderer.Server, catalogID string, refreshErr error) renderer.ActivationReceipt {

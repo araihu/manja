@@ -112,7 +112,7 @@ func (handler *CatalogHandler) searchGlobal(ctx context.Context, query, contextM
 		snapshot := admission.Snapshot
 		documentLabels := make(map[string]string, len(snapshot.Directory.Documents))
 		for _, document := range snapshot.Directory.Documents {
-			documentLabels[document.Key] = catalogDocumentLabel(document)
+			documentLabels[document.Key] = catalog.PublicationDocumentLabel(document)
 		}
 		if quality, matched := globalCatalogMatchQuality(canonical.String(), snapshot.Directory); matched {
 			record, recordErr := globalCatalogSearchRecord(mount, snapshot.Directory)
@@ -353,6 +353,9 @@ func globalCatalogMatchQuality(query string, directory catalog.CatalogArtifactV1
 
 func globalDocumentMatchQuality(query, catalogTitle string, document catalog.DocumentDirectoryV1) (catalog.SearchMatchQuality, bool) {
 	values := []string{document.Key, document.APIVersion}
+	if document.Publication != nil {
+		values = append(values, document.Publication.API, document.Publication.Label(document.APIVersion))
+	}
 	if title := strings.TrimSpace(document.Title); title != "" && !strings.EqualFold(title, strings.TrimSpace(catalogTitle)) {
 		values = append(values, title)
 	}

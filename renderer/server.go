@@ -4,10 +4,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"strings"
 	"sync"
+	"sync/atomic"
 
 	"github.com/araihu/manja/application/catalog"
 	"github.com/araihu/manja/application/port"
@@ -23,6 +25,9 @@ var ErrActivationUnavailable = errors.New("catalog activation is unavailable")
 
 var ErrStartupProcessBudget = errors.New("renderer startup process budget exceeded")
 
+// ErrClosed indicates that the renderer owner has released its durable state.
+var ErrClosed = errors.New("renderer is closed")
+
 type CatalogSource = port.CatalogSource
 
 type ActivationReceipt struct {
@@ -35,6 +40,9 @@ type ActivationReceipt struct {
 	Diagnostic          string
 }
 
+// Server values returned by this package, and their Handler values, implement
+// io.Closer. Owners must close them after serving stops to release the exclusive
+// data-directory lock. Closing a handler also closes its owning server.
 type Server interface {
 	Handler() http.Handler
 	Recover(context.Context) error
@@ -63,6 +71,8 @@ type server struct {
 	coordinator        *catalogstore.ActivationCoordinator
 	generatedDir       string
 	measureProcessPeak func() (uint64, error)
+	closed             atomic.Bool
+	closeErr           error
 }
 
 // NewRecoveryOnly constructs a serving runtime without parsers or compilers.
@@ -89,7 +99,32 @@ func newServer(config Config) (*server, error) {
 	}
 	config.Catalogs = append([]CatalogConfig(nil), config.Catalogs...)
 	gateway := &catalogGateway{mounts: mounts, assets: web.NewCatalogAssetsHandler(), admissions: newCatalogAdmissionGate()}
-	return &server{config: config, configByID: configured, parsers: parsers, compilers: compilers, handler: gateway, activation: make(chan struct{}, 1), measureProcessPeak: processPeakBytes}, nil
+	result := &server{config: config, configByID: configured, parsers: parsers, compilers: compilers, handler: gateway, activation: make(chan struct{}, 1), measureProcessPeak: processPeakBytes}
+	gateway.close = result.Close
+	return result, nil
+}
+
+// Close waits for activation and admitted HTTP requests, closes future
+// admissions, and releases owned state. Configured data directories are kept.
+func (server *server) Close() error {
+	server.activation <- struct{}{}
+	defer func() { <-server.activation }()
+	server.initialize.Lock()
+	defer server.initialize.Unlock()
+	if server.closed.Load() {
+		return server.closeErr
+	}
+	server.closed.Store(true)
+	server.handler.closeAdmissions()
+	server.handler.install(nil, nil)
+	if server.coordinator != nil {
+		server.closeErr = server.coordinator.Close()
+	}
+	if server.generatedDir != "" {
+		server.closeErr = errors.Join(server.closeErr, os.RemoveAll(server.generatedDir))
+		server.generatedDir = ""
+	}
+	return server.closeErr
 }
 
 func (server *server) Handler() http.Handler {
@@ -128,7 +163,7 @@ func (server *server) checkStartupProcessWithReservation(reserved uint64) (uint6
 
 func (server *server) Active(catalogID string) (ActivationReceipt, bool) {
 	configured, exists := server.configByID[catalogID]
-	if !exists || server.runtime == nil {
+	if !exists || server.closed.Load() || server.runtime == nil {
 		return ActivationReceipt{}, false
 	}
 	state, active := server.runtime.Table().Mounts[configured.Mount]
@@ -146,6 +181,9 @@ func (server *server) Active(catalogID string) (ActivationReceipt, bool) {
 func (server *server) Activate(ctx context.Context, candidate domain.CatalogCandidate) (ActivationReceipt, error) {
 	if err := ctx.Err(); err != nil {
 		return ActivationReceipt{}, err
+	}
+	if server.closed.Load() {
+		return ActivationReceipt{}, ErrClosed
 	}
 	if len(server.parsers) == 0 || len(server.compilers) == 0 {
 		return ActivationReceipt{}, ErrActivationUnavailable
@@ -243,6 +281,9 @@ func (server *server) Activate(ctx context.Context, candidate domain.CatalogCand
 func (server *server) ensureRuntime(ctx context.Context) error {
 	server.initialize.Lock()
 	defer server.initialize.Unlock()
+	if server.closed.Load() {
+		return ErrClosed
+	}
 	if server.runtime != nil {
 		return nil
 	}
@@ -270,8 +311,9 @@ func (server *server) ensureRuntime(ctx context.Context) error {
 	enhancement := web.CatalogEnhancementPolicy{Disabled: server.config.LocalDocsDisabled, Publications: make(map[string]web.CatalogPublicEligibility, len(server.config.Catalogs))}
 	for _, configured := range server.config.Catalogs {
 		presentation[configured.Mount] = web.CatalogPresentation{
-			HideOverviewSidebar: configured.CatalogOverview.Sidebar != nil && !*configured.CatalogOverview.Sidebar,
-			Description:         configured.SEO.Description, Readme: configured.Readme,
+			ShowOverviewDownloadButton: configured.CatalogOverview.ShowDownloadButton,
+			HideOverviewSidebar:        configured.CatalogOverview.Sidebar != nil && !*configured.CatalogOverview.Sidebar,
+			Description:                configured.SEO.Description, Readme: configured.Readme,
 			License:       web.CatalogLicensePresentation{Name: configured.License.Name, URL: configured.License.URL},
 			CanonicalBase: configured.SEO.CanonicalBase,
 			SocialImage:   configured.SEO.SocialImage, SocialImageMIMEType: socialImageMIMEType(configured.SEO.SocialImage), SocialImageAlt: configured.SEO.SocialImageAlt,
@@ -284,8 +326,9 @@ func (server *server) ensureRuntime(ctx context.Context) error {
 		}
 	}
 	organization := web.OrganizationPresentation{
-		Title:  server.config.Organization.Title,
-		Readme: server.config.Organization.Readme,
+		Branding: server.config.Organization.Branding,
+		Title:    server.config.Organization.Title,
+		Readme:   server.config.Organization.Readme,
 		License: web.OrganizationLicensePresentation{
 			Name: server.config.Organization.License.Name,
 			URL:  server.config.Organization.License.URL,
@@ -312,6 +355,7 @@ type catalogGateway struct {
 	runtime    *catalog.Runtime
 	delegate   http.Handler
 	assets     http.Handler
+	close      func() error
 }
 
 type catalogFlightReservationReporter interface {
@@ -322,6 +366,7 @@ type catalogAdmissionGate struct {
 	mutex     sync.Mutex
 	readers   uint64
 	promoting bool
+	closed    bool
 	changed   chan struct{}
 }
 
@@ -337,6 +382,10 @@ func (gate *catalogAdmissionGate) notifyLocked() {
 func (gate *catalogAdmissionGate) enter(ctx context.Context) error {
 	for {
 		gate.mutex.Lock()
+		if gate.closed {
+			gate.mutex.Unlock()
+			return ErrClosed
+		}
 		if err := ctx.Err(); err != nil {
 			gate.mutex.Unlock()
 			return err
@@ -374,6 +423,10 @@ func (gateway *catalogGateway) beginPromotion(ctx context.Context) error {
 	}
 	gate := gateway.admissions
 	gate.mutex.Lock()
+	if gate.closed {
+		gate.mutex.Unlock()
+		return ErrClosed
+	}
 	if gate.promoting {
 		gate.mutex.Unlock()
 		return fmt.Errorf("renderer: concurrent catalog promotion")
@@ -413,6 +466,27 @@ func (gateway *catalogGateway) endPromotion() {
 	gate.notifyLocked()
 }
 
+func (gateway *catalogGateway) closeAdmissions() {
+	gate := gateway.admissions
+	gate.mutex.Lock()
+	gate.closed = true
+	gate.notifyLocked()
+	for gate.readers != 0 {
+		changed := gate.changed
+		gate.mutex.Unlock()
+		<-changed
+		gate.mutex.Lock()
+	}
+	gate.mutex.Unlock()
+}
+
+func (gateway *catalogGateway) Close() error {
+	if gateway.close != nil {
+		return gateway.close()
+	}
+	return nil
+}
+
 func (gateway *catalogGateway) flightReservationBytes() uint64 {
 	gateway.mutex.RLock()
 	defer gateway.mutex.RUnlock()
@@ -432,6 +506,10 @@ func (gateway *catalogGateway) install(runtime *catalog.Runtime, delegate http.H
 
 func (gateway *catalogGateway) ServeHTTP(response http.ResponseWriter, request *http.Request) {
 	if err := gateway.admissions.enter(request.Context()); err != nil {
+		if errors.Is(err, ErrClosed) {
+			http.Error(response, "catalog unavailable", http.StatusServiceUnavailable)
+			return
+		}
 		http.Error(response, "request canceled", http.StatusRequestTimeout)
 		return
 	}
@@ -478,3 +556,5 @@ func (gateway *catalogGateway) ServeHTTP(response http.ResponseWriter, request *
 }
 
 var _ Server = (*server)(nil)
+var _ io.Closer = (*server)(nil)
+var _ io.Closer = (*catalogGateway)(nil)

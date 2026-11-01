@@ -173,17 +173,33 @@ func TestLoadRendererRejectsInvalidSourceConfiguration(t *testing.T) {
 		{name: "git repository", data: strings.Replace(validRendererConfig, "repository: https://example.invalid/payments.git", "repository: \"\"", 1)},
 		{name: "git ref", data: strings.Replace(validRendererConfig, "ref: refs/heads/main", "ref: \"\"", 1)},
 		{name: "git credentials", data: strings.Replace(validRendererConfig, "https://example.invalid/payments.git", "https://user:password@example.invalid/payments.git", 1)},
-		{name: "git root", data: strings.Replace(validRendererConfig, "      repository: https://example.invalid/payments.git", "      root: forbidden\n      repository: https://example.invalid/payments.git", 1)},
+		{name: "git absolute root", data: strings.Replace(validRendererConfig, "      repository: https://example.invalid/payments.git", "      root: /api\n      repository: https://example.invalid/payments.git", 1)},
+		{name: "git escaping root", data: strings.Replace(validRendererConfig, "      repository: https://example.invalid/payments.git", "      root: ../api\n      repository: https://example.invalid/payments.git", 1)},
+		{name: "git Windows root", data: strings.Replace(validRendererConfig, "      repository: https://example.invalid/payments.git", "      root: C:/api\n      repository: https://example.invalid/payments.git", 1)},
+		{name: "git unclean root", data: strings.Replace(validRendererConfig, "      repository: https://example.invalid/payments.git", "      root: api/../specs\n      repository: https://example.invalid/payments.git", 1)},
 		{name: "runtime mount", data: strings.Replace(validRendererConfig, "mount: /payments", "mount: /kubernetes/payments", 1)},
 		{name: "duplicate document path", data: strings.Replace(validRendererConfig, "          key: core-v1", "          key: core-v1\n        - path: api__v1_openapi.json\n          key: core-copy", 1)},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
-			if _, err := LoadRenderer(writeRendererConfig(t, test.data)); err == nil {
+			if _, err := LoadRenderer(writeRendererConfigWithAllowlist(t, test.data)); err == nil {
 				t.Fatal("invalid renderer source configuration was accepted")
 			}
 		})
+	}
+}
+
+func TestRendererGitSourceAllowsRepositoryRelativeRoot(t *testing.T) {
+	data := strings.Replace(validRendererConfig, "      repository: https://example.invalid/payments.git", "      root: api/contracts\n      repository: https://example.invalid/payments.git", 1)
+	data = strings.Replace(data, "    compatibilityAllowlist: allowlists/kubernetes.json\n", "", 1)
+	loaded, err := LoadRenderer(writeRendererConfig(t, data))
+	if err != nil {
+		t.Fatal(err)
+	}
+	source, ok := loaded.Sources()[1].(sourceadapter.GitCatalogSource)
+	if !ok || source.Root != "api/contracts" {
+		t.Fatalf("configured Git source = %#v", source)
 	}
 }
 
@@ -495,15 +511,19 @@ func writeRendererConfigWithAllowlist(t *testing.T, data string) string {
 	return filename
 }
 
-func TestRendererCatalogOverviewSidebarConfiguration(t *testing.T) {
+func TestRendererCatalogOverviewConfiguration(t *testing.T) {
 	for _, test := range []struct {
 		name, setting string
 		want          *bool
+		wantDownload  bool
 		invalid       bool
 	}{
 		{name: "default"},
 		{name: "hidden", setting: "    catalogOverview:\n      sidebar: false\n", want: new(false)},
 		{name: "visible", setting: "    catalogOverview:\n      sidebar: true\n", want: new(true)},
+		{name: "download enabled", setting: "    catalogOverview:\n      showDownloadButton: true\n", wantDownload: true},
+		{name: "download disabled", setting: "    catalogOverview:\n      showDownloadButton: false\n"},
+		{name: "invalid download setting", setting: "    catalogOverview:\n      showDownloadButton: sometimes\n", invalid: true},
 		{name: "invalid", setting: "    catalogOverview:\n      sidebar: sometimes\n", invalid: true},
 		{name: "unknown field", setting: "    catalogOverview:\n      sidebaar: false\n", invalid: true},
 	} {
@@ -516,7 +536,7 @@ func TestRendererCatalogOverviewSidebarConfiguration(t *testing.T) {
 			loaded, err := LoadRenderer(filename)
 			if test.invalid {
 				if err == nil {
-					t.Fatal("invalid sidebar setting accepted")
+					t.Fatal("invalid catalog overview setting accepted")
 				}
 				return
 			}
@@ -526,6 +546,9 @@ func TestRendererCatalogOverviewSidebarConfiguration(t *testing.T) {
 			got := loaded.RuntimeConfig().Catalogs[0].CatalogOverview.Sidebar
 			if (got == nil) != (test.want == nil) || got != nil && *got != *test.want {
 				t.Fatalf("sidebar = %v, want %v", got, test.want)
+			}
+			if got := loaded.RuntimeConfig().Catalogs[0].CatalogOverview.ShowDownloadButton; got != test.wantDownload {
+				t.Fatalf("showDownloadButton = %t, want %t", got, test.wantDownload)
 			}
 		})
 	}

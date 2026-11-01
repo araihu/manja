@@ -118,7 +118,7 @@ func TestCatalogPreparedOverviewMetricsRendersThroughRootAndNestedHandlers(t *te
 	}
 }
 
-func TestCatalogPreparedOverviewMetricsPreservesLegacyAdjacencyThroughHandlers(t *testing.T) {
+func TestCatalogPreparedOverviewMetricsOmitsBuildMetadataThroughHandlers(t *testing.T) {
 	t.Parallel()
 
 	for _, mount := range []string{"/", "/kubernetes"} {
@@ -138,7 +138,6 @@ func TestCatalogPreparedOverviewMetricsPreservesLegacyAdjacencyThroughHandlers(t
 			if err != nil {
 				t.Fatal(err)
 			}
-			wantBoundary := append(append([]byte(nil), metrics...), []byte(`<div class="mt-5"><dl data-catalog-provenance`)...)
 
 			path := mount
 			if path != "/" {
@@ -153,14 +152,10 @@ func TestCatalogPreparedOverviewMetricsPreservesLegacyAdjacencyThroughHandlers(t
 			if bytes.Count(body, metrics) != 1 {
 				t.Fatalf("prepared metrics occurred %d times in full handler body", bytes.Count(body, metrics))
 			}
-			start := bytes.Index(body, metrics)
-			end := start + len(wantBoundary)
-			if end > len(body) || !bytes.Equal(body[start:end], wantBoundary) {
-				got := body[start:]
-				if len(got) > len(wantBoundary) {
-					got = got[:len(wantBoundary)]
+			for _, unwanted := range []string{"data-catalog-provenance", "Active snapshot", "Compatibility", ">Revision<"} {
+				if bytes.Contains(body, []byte(unwanted)) {
+					t.Errorf("public catalog rendered build metadata %q", unwanted)
 				}
-				t.Fatalf("full %s catalog handler changed legacy metrics/provenance adjacency:\nwant=%q\n got=%q", mount, wantBoundary, got)
 			}
 		})
 	}
@@ -1079,7 +1074,6 @@ func TestCatalogSchemaLoadsOneProgressiveNodeWithNoJSFallback(t *testing.T) {
 		`<header class="grid min-w-0 gap-4">`,
 		`aria-label="Schema actions"`,
 		`class="manja-schema-title`,
-		`data-catalog-provenance`,
 	} {
 		if !strings.Contains(root.Body.String(), want) {
 			t.Fatalf("schema root missing prepared header %q: %s", want, root.Body.String())
@@ -1346,7 +1340,7 @@ func TestCatalogOperationWithoutRequestBodyKeepsMediaFragmentAbsent(t *testing.T
 		Directory: catalog.CatalogArtifactV1{
 			SchemaVersion: 1, CatalogID: "plain", Title: "Plain", SearchChild: "search/directory.json",
 			Documents: []catalog.DocumentDirectoryV1{{
-				Key: "plain", Title: "Plain", SourceChild: "sources/plain.json",
+				Key: "plain", Title: "Plain", SourcePath: "plain.json", SourceChild: "sources/plain.json",
 				Operations: []catalog.OperationDirectoryV1{{DetailID: detailID, OperationID: "ping", Method: "GET", Path: "/ping", Title: "Ping", Href: "plain/?selected=" + string(detailID) + "#" + string(detailID), DetailChild: "details/plain.json"}},
 			}},
 		},
@@ -1628,7 +1622,7 @@ func TestCatalogMaxOperationGroupRejectsSelectedPageBeyondByteBound(t *testing.T
 		ID: "snapshot-sha256-" + catalog.SnapshotID(strings.Repeat("f", 64)), Location: "/memory",
 		Directory: catalog.CatalogArtifactV1{
 			SchemaVersion: 1, CatalogID: "max", Title: "Maximum catalog", SearchChild: "search/directory.json",
-			Documents: []catalog.DocumentDirectoryV1{{Key: "max", Title: "Maximum", SourceChild: "sources/max.json", Operations: operations}},
+			Documents: []catalog.DocumentDirectoryV1{{Key: "max", Title: "Maximum", SourcePath: "max.json", SourceChild: "sources/max.json", Operations: operations}},
 		},
 		Manifest: catalog.ManifestV1{SchemaVersion: 1, Children: []catalog.ChildIdentityV1{
 			{Path: "search/directory.json", Kind: "search-directory", Length: 2, SHA256: strings.Repeat("e", 64)},
@@ -1981,8 +1975,8 @@ func TestCatalogProjectionTransportIsNotActivatedByInitialHTML(t *testing.T) {
 		t.Fatalf("initial HTML = %d body=%q", response.Code, response.Body.String())
 	}
 	digest := sha256.Sum256(response.Body.Bytes())
-	if got := hex.EncodeToString(digest[:]); got != "3e010b4e9cc1534440fd3d90c3cb0b22492b917d9cf919cc8471a603e2d0d386" || response.Body.Len() != 64087 {
-		t.Errorf("initial HTML = sha256 %s, %d bytes; want accepted footer layout plus shared Margo stylesheet", got, response.Body.Len())
+	if got := hex.EncodeToString(digest[:]); got != "c0cfb69368189aca1a3dd98101941e2e06e356c1f8db0aa8f46f7fa774fde532" || response.Body.Len() != 66066 {
+		t.Errorf("initial HTML = sha256 %s, %d bytes; want accepted public documentation shell", got, response.Body.Len())
 	}
 	for _, forbidden := range []string{"projection-data", "serviceWorker", "manja:local-ready", "MANJA_LOCAL_DOCS"} {
 		if strings.Contains(response.Body.String(), forbidden) {
@@ -2068,8 +2062,8 @@ func TestCatalogAssetsServeDeterministicLocalDocsWasmRuntime(t *testing.T) {
 			name:     "wasm binary",
 			path:     "/manja-assets/local-docs/manja.wasm",
 			embedded: "static/local-docs/manja.wasm",
-			length:   16_641_998,
-			digest:   "b62aadbf90d71512e635cbd67f089ad34165d5816d5f714bb12cb309ec6c9d57",
+			length:   16_683_580,
+			digest:   "c84307d7d90852b37edc4607f985360044bf98bc8ec8bdad25c10127685c5371",
 
 			contentType: "application/wasm",
 			prefix:      []byte{0x00, 'a', 's', 'm'},
@@ -2078,8 +2072,8 @@ func TestCatalogAssetsServeDeterministicLocalDocsWasmRuntime(t *testing.T) {
 			name:     "brotli wasm binary",
 			path:     "/manja-assets/local-docs/manja.wasm.br",
 			embedded: "static/local-docs/manja.wasm.br",
-			length:   2_947_686,
-			digest:   "18621d67f032cada0469d0d7a6e140a97cbfb63a4aa3d73d54d25103119718e7",
+			length:   2_961_015,
+			digest:   "e28db4e9762de548738248839a4b069eeed7ae01112fb4e6e9cc79c134d4acb5",
 		},
 	} {
 		t.Run(test.name, func(t *testing.T) {

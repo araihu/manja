@@ -16,7 +16,6 @@ import (
 	artifact "github.com/araihu/manja/application/htmlartifact"
 	"github.com/araihu/manja/internal/adapters/catalogjson"
 	"github.com/araihu/manja/internal/localdocs"
-	"github.com/araihu/manja/internal/web"
 	"github.com/araihu/manja/renderer"
 	"golang.org/x/net/html"
 )
@@ -36,11 +35,30 @@ func verifyExportStructure(root string, manifest exportManifest, declared map[st
 		}
 		return nil
 	}
-	assets := web.CatalogAssetPaths()
-	if manifest.Rendering == "html" {
-		assets = staticExportAssetPaths()
+	// Validate the serialized export, not the installed renderer's asset
+	// inventory: dependency upgrades can introduce files an intact older
+	// export never contained. The runtime contract is fixed by this schema;
+	// other assets are verified through the recorded inventory and references.
+	required := []string{
+		"index.html", "search/index.html", "sw.js",
+		"manja-assets/local-docs.js",
+		"manja-assets/local-docs/runtime-assets.js",
+		"manja-assets/local-docs/storage.js",
+		"manja-assets/local-docs/sw.js",
 	}
-	for _, name := range append([]string{"index.html", "search/index.html", "sw.js"}, trimExportAssetPaths(assets)...) {
+	if manifest.Rendering != "html" {
+		required = append(required,
+			"manja-assets/local-docs/manja.wasm",
+			"manja-assets/local-docs/manja.wasm.br",
+			"manja-assets/local-docs/wasm_exec.js",
+		)
+	}
+	for _, name := range required {
+		if err := require(name); err != nil {
+			return err
+		}
+	}
+	for name := range declared {
 		if err := require(name); err != nil {
 			return err
 		}
@@ -132,6 +150,31 @@ func verifyExportStructure(root string, manifest exportManifest, declared map[st
 			if err := require(output); err != nil {
 				return err
 			}
+			if entry := declared[output]; entry.Length != child.Length || entry.SHA256 != child.SHA256 {
+				return fmt.Errorf("catalog %q child %q bytes differ from snapshot", receipt.CatalogID, child.Path)
+			}
+		}
+		// Older standalone exports only carried flat downloads. Once any
+		// original source is present, require the complete bound source tree.
+		hasSourceTree := exportHasSupportFiles(snapshot)
+		sourcePrefix := exportJoin(prefix, "snapshots", receipt.SnapshotID, "source-files") + "/"
+		for name := range declared {
+			if strings.HasPrefix(name, sourcePrefix) {
+				hasSourceTree = true
+				break
+			}
+		}
+		if hasSourceTree {
+			for _, document := range directory.Documents {
+				output := exportJoin(prefix, "snapshots", receipt.SnapshotID, "source-files", document.SourcePath)
+				if err := require(output); err != nil {
+					return err
+				}
+				child, ok := manifestChild(snapshot, document.SourceChild)
+				if entry := declared[output]; !ok || entry.Length != child.Length || entry.SHA256 != child.SHA256 {
+					return fmt.Errorf("catalog %q original source %q differs from snapshot", receipt.CatalogID, document.SourcePath)
+				}
+			}
 		}
 	}
 
@@ -193,7 +236,24 @@ func verifyExportHTML(root, name, basePath string, declared map[string]exportFil
 				return fmt.Errorf("export HTML %q: %w", name, err)
 			}
 		}
+		if node.Data == "form" {
+			dialog := false
+			for _, attribute := range node.Attr {
+				if attribute.Key == "method" && strings.EqualFold(attribute.Val, "dialog") {
+					dialog = true
+				}
+				if attribute.Key == "method" && !strings.EqualFold(attribute.Val, "get") && !strings.EqualFold(attribute.Val, "dialog") {
+					return fmt.Errorf("export HTML %q retains a server mutation form", name)
+				}
+			}
+			if !dialog && !hasHTMLAttribute(node, "data-manja-static-search-form", "true") {
+				return fmt.Errorf("export HTML %q retains a server form without static handling", name)
+			}
+		}
 		for _, attribute := range node.Attr {
+			if runtimeRequestAttribute(attribute.Key) && !(attribute.Key == "hx-get" && hasHTMLAttribute(node, "data-manja-sidebar-next-chunk", "true")) {
+				return fmt.Errorf("export HTML %q retains runtime-only attribute %q", name, attribute.Key)
+			}
 			switch attribute.Key {
 			case "href", "src", "action", "data-search-child-base", "data-table-row-link", "data-catalog-search-href":
 				if err := verifyExportReference(node, attribute.Key, attribute.Val, publicPath, basePath, declared); err != nil {

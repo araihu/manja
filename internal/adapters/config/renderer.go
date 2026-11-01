@@ -22,6 +22,7 @@ const (
 type RendererFile struct {
 	Version      uint32                     `yaml:"version"`
 	DataDir      string                     `yaml:"dataDir"`
+	AssetDir     string                     `yaml:"assetDir"`
 	Organization RendererOrganizationConfig `yaml:"organization"`
 	Catalogs     []RendererCatalogConfig    `yaml:"catalogs"`
 
@@ -29,11 +30,21 @@ type RendererFile struct {
 }
 
 type RendererOrganizationConfig struct {
-	Title   string                             `yaml:"title"`
-	Readme  string                             `yaml:"readme"`
-	License RendererOrganizationLicenseConfig  `yaml:"license"`
-	Sources []RendererOrganizationSourceConfig `yaml:"sources"`
-	SEO     RendererSEOConfig                  `yaml:"seo"`
+	Branding RendererBrandingConfig             `yaml:"branding"`
+	Title    string                             `yaml:"title"`
+	Readme   string                             `yaml:"readme"`
+	License  RendererOrganizationLicenseConfig  `yaml:"license"`
+	Sources  []RendererOrganizationSourceConfig `yaml:"sources"`
+	SEO      RendererSEOConfig                  `yaml:"seo"`
+}
+
+// AssetDirectory is the explicitly configured local image directory. Its files
+// are served and exported under /brand-assets/, never mixed with source specs.
+func (file RendererFile) AssetDirectory() string {
+	if file.AssetDir == "" {
+		return ""
+	}
+	return file.resolve(file.AssetDir)
 }
 
 type RendererOrganizationLicenseConfig struct {
@@ -67,7 +78,8 @@ type RendererCatalogConfig struct {
 }
 
 type RendererCatalogOverview struct {
-	Sidebar *bool `yaml:"sidebar"`
+	Sidebar            *bool `yaml:"sidebar"`
+	ShowDownloadButton bool  `yaml:"showDownloadButton"`
 }
 
 type RendererCatalogLocalDocs struct {
@@ -114,8 +126,9 @@ type RendererSourceConfig struct {
 }
 
 type RendererSourceDocument struct {
-	Path string `yaml:"path"`
-	Key  string `yaml:"key"`
+	Publication *domain.CatalogPublication `yaml:"publication"`
+	Path        string                     `yaml:"path"`
+	Key         string                     `yaml:"key"`
 }
 
 func LoadRenderer(filename string) (RendererFile, error) {
@@ -165,6 +178,11 @@ func (file RendererFile) RuntimeConfig() renderer.Config {
 		Version: file.Version,
 		DataDir: file.resolve(file.DataDir),
 		Organization: renderer.OrganizationConfig{
+			Branding: domain.DocsBranding{
+				DisplayName: file.Organization.Branding.DisplayName,
+				Logo:        domain.DocsBrandingLogo{Src: file.Organization.Branding.Logo.Src, Alt: file.Organization.Branding.Logo.Alt, HomeURL: file.Organization.Branding.Logo.HomeURL},
+				Favicon:     file.Organization.Branding.Favicon,
+			},
 			Title:   file.Organization.Title,
 			Readme:  file.Organization.Readme,
 			License: renderer.OrganizationLicense{Name: file.Organization.License.Name, URL: file.Organization.License.URL},
@@ -186,7 +204,7 @@ func (file RendererFile) RuntimeConfig() renderer.Config {
 			ID: catalog.ID, Mount: catalog.Mount, Title: catalog.Title, Readme: catalog.Readme,
 			License:                renderer.CatalogLicense{Name: catalog.License.Name, URL: catalog.License.URL},
 			DefaultDocumentKey:     catalog.DefaultDocumentKey,
-			CatalogOverview:        renderer.CatalogOverview{Sidebar: catalog.CatalogOverview.Sidebar},
+			CatalogOverview:        renderer.CatalogOverview{Sidebar: catalog.CatalogOverview.Sidebar, ShowDownloadButton: catalog.CatalogOverview.ShowDownloadButton},
 			ProfileID:              domain.CompatibilityProfileID(catalog.ProfileID),
 			CompatibilityAllowlist: append([]byte(nil), catalog.compatibilityAllowlist...),
 			SEO: renderer.CatalogSEO{
@@ -232,6 +250,9 @@ func (source RendererSourceConfig) validate() error {
 	seenPaths := make(map[string]struct{}, len(source.Documents))
 	seenKeys := make(map[string]struct{}, len(source.Documents))
 	for index, document := range source.Documents {
+		if err := domain.ValidateCatalogPublication(document.Publication); err != nil {
+			return err
+		}
 		if document.Path == "" || strings.HasPrefix(document.Path, "/") || strings.Contains(document.Path, `\`) || path.Clean(document.Path) != document.Path || document.Path == "." || strings.HasPrefix(document.Path, "../") {
 			return fmt.Errorf("document mapping %d path %q is not a clean relative slash path", index, document.Path)
 		}
@@ -259,8 +280,13 @@ func (source RendererSourceConfig) validate() error {
 		if strings.TrimSpace(source.Repository) == "" || strings.TrimSpace(source.Ref) == "" {
 			return fmt.Errorf("Git repository and ref are required")
 		}
-		if source.Root != "" {
-			return fmt.Errorf("Git source must not contain a file root")
+		if source.Root != "" && source.Root != "." {
+			if err := domain.ValidateCanonicalIdentity("Git source root", source.Root, false); err != nil {
+				return err
+			}
+			if strings.HasPrefix(source.Root, "/") || strings.Contains(source.Root, `\`) || path.Clean(source.Root) != source.Root || source.Root == ".." || strings.HasPrefix(source.Root, "../") || hasWindowsDrivePrefix(source.Root) {
+				return fmt.Errorf("Git source root %q must be a clean repository-relative path", source.Root)
+			}
 		}
 		if source.IntegrityReceipt != nil {
 			if err := validateRendererIntegrityReceiptPath(*source.IntegrityReceipt); err != nil {

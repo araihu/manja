@@ -3,9 +3,11 @@ package render
 import (
 	"bytes"
 	"context"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
+	"net/url"
 	"path"
 	"strings"
 	"unicode"
@@ -107,6 +109,40 @@ func validCatalogDocumentHeaderDocumentHref(value, documentKey string) bool {
 }
 
 func validCatalogDocumentHeaderDownloadHref(value string, document catalog.DocumentDirectoryV1) bool {
+	if sourcePath := document.SourcePath; sourcePath != "" {
+		// Bind the exact escaped suffix, rather than splitting at the first
+		// source-files segment (which may also occur in the mount or filename).
+		suffix := "/source-files/" + (&url.URL{Path: sourcePath}).EscapedPath()
+		if prefix, ok := strings.CutSuffix(value, suffix); ok {
+			if len(value) > 4096 || domain.ValidateCanonicalIdentity("source path", sourcePath, false) != nil ||
+				sourcePath == "." || sourcePath == ".." || strings.HasPrefix(sourcePath, "/") || strings.HasPrefix(sourcePath, "../") ||
+				strings.Contains(sourcePath, `\`) || path.Clean(sourcePath) != sourcePath || !validCatalogDocumentHeaderDownloadPath(prefix) {
+				return false
+			}
+			snapshot := path.Base(prefix)
+			encodedDigest, validPrefix := strings.CutPrefix(snapshot, "snapshot-sha256-")
+			digest, err := hex.DecodeString(encodedDigest)
+			return validPrefix && err == nil && len(digest) == 32 && strings.ToLower(encodedDigest) == encodedDigest &&
+				path.Base(path.Dir(prefix)) == "snapshots"
+		}
+	}
+	if strings.Contains(value, "/source-files/") {
+		return false
+	}
+	if !validCatalogDocumentHeaderDownloadPath(value) {
+		return false
+	}
+	extension := path.Ext(document.SourceChild)
+	if strings.Contains(value, "/openapi/") {
+		if len(extension) < 2 || strings.ContainsAny(extension, `/\\%?#`) {
+			return false
+		}
+		return path.Base(value) == document.Key+extension
+	}
+	return strings.Contains(value, "/documents/"+document.Key+"/")
+}
+
+func validCatalogDocumentHeaderDownloadPath(value string) bool {
 	if !utf8.ValidString(value) || len(value) > 1024 || value == "" || strings.HasSuffix(value, "/") ||
 		strings.ContainsAny(value, `\\%?#`) || strings.Contains(value, "//") ||
 		domain.ValidateCanonicalPublicPath("catalog document download href", value, false) != nil ||
@@ -118,14 +154,7 @@ func validCatalogDocumentHeaderDownloadHref(value string, document catalog.Docum
 			return false
 		}
 	}
-	extension := path.Ext(document.SourceChild)
-	if strings.Contains(value, "/openapi/") {
-		if len(extension) < 2 || strings.ContainsAny(extension, `/\\%?#`) {
-			return false
-		}
-		return path.Base(value) == document.Key+extension
-	}
-	return strings.Contains(value, "/documents/"+document.Key+"/")
+	return true
 }
 
 func invalidCatalogDocumentHeaderField(name string) error {

@@ -14,6 +14,7 @@ import (
 	"path"
 	"path/filepath"
 	"strings"
+	"sync"
 
 	artifact "github.com/araihu/manja/application/htmlartifact"
 	"github.com/araihu/manja/application/port"
@@ -36,6 +37,29 @@ type Store struct {
 	root    string
 	rootErr error
 	write   durableWriter
+	locksMu sync.Mutex
+	locks   map[string]chan struct{}
+}
+
+// lockPair keeps HTML and its sidecar one process-local operation. Different
+// export workers can discover the same content-addressed schema fragment.
+func (store *Store) lockPair(ctx context.Context, resolved string) (func(), error) {
+	store.locksMu.Lock()
+	if store.locks == nil {
+		store.locks = make(map[string]chan struct{})
+	}
+	lock := store.locks[resolved]
+	if lock == nil {
+		lock = make(chan struct{}, 1)
+		store.locks[resolved] = lock
+	}
+	store.locksMu.Unlock()
+	select {
+	case lock <- struct{}{}:
+		return func() { <-lock }, nil
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
 }
 
 func New(root string) *Store {
@@ -57,6 +81,11 @@ func (store *Store) VerifyHTML(ctx context.Context, artifactPath string, expecte
 	if err != nil {
 		return artifact.Verification{}, err
 	}
+	unlock, err := store.lockPair(ctx, resolved)
+	if err != nil {
+		return artifact.Verification{}, err
+	}
+	defer unlock()
 	manifestBytes, err := readBoundedRegular(resolved+sidecarSuffix, maximumManifestSize)
 	if errors.Is(err, os.ErrNotExist) {
 		return artifact.Verification{Status: artifact.VerificationManifestMissing}, nil
@@ -120,6 +149,11 @@ func (store *Store) CommitHTML(ctx context.Context, artifactPath string, expecte
 	if err != nil {
 		return artifact.Manifest{}, err
 	}
+	unlock, err := store.lockPair(ctx, resolved)
+	if err != nil {
+		return artifact.Manifest{}, err
+	}
+	defer unlock()
 	if err := validateCommitCandidate(resolved); err != nil {
 		return artifact.Manifest{}, err
 	}

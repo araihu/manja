@@ -88,6 +88,11 @@ async function sha256(value) {
   return { bytes, hex: Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, '0')).join('') }
 }
 
+async function sha(value) {
+ const digest = await webcrypto.subtle.digest('SHA-256',new TextEncoder().encode(value))
+ return Array.from(new Uint8Array(digest),byte=>byte.toString(16).padStart(2,'0')).join('')
+}
+
 async function fragmentKey(kind, resource) {
   const values = ['manja.html.fragment.resource.v2', 'manja-html-fragment-v2', kind, resource].map(value => new TextEncoder().encode(value))
   const buffer = new ArrayBuffer(values.reduce((total, value) => total + 4 + value.byteLength, 0))
@@ -157,7 +162,8 @@ async function staticActivationFixture(failedPath = '', options = {}) {
   const requests = []
   const phases = []
   const responses = new Map([
-    [value.static.deploymentBase + '_manja/identity.json', exported],
+    [value.static.deploymentBase + '_manja/identity.json', options.changedDeployment ? JSON.stringify({schemaVersion:1,basePath:value.static.deploymentBase,catalogs:[]}) : exported],
+    [value.publicationBase + 'snapshots/' + value.snapshotId + '/_manja/identity-sha256-' + await sha(value.revisionId) + '.json', exported],
     [value.projectionManifestUrl, manifest],
     [value.catalogUrl, catalog],
 	[operationPath, operationFragment.html],
@@ -168,7 +174,8 @@ async function staticActivationFixture(failedPath = '', options = {}) {
 	[schemaChunkPath + '.meta.json', schemaChunk.sidecar],
     ...children.filter(child => child.path !== 'catalog.json').map(child => [child.path.startsWith('search/') ? value.searchDataBase + child.path : value.projectionDataBase + child.path, payloads[child.path]]),
   ])
-  const cache = { match: async () => undefined, put: async () => undefined }
+  if (options.legacyIdentity) responses.delete(value.publicationBase + 'snapshots/' + value.snapshotId + '/_manja/identity-sha256-' + await sha(value.revisionId) + '.json')
+  const cache = { match: async () => { if (options.cacheFailure === 'read') throw new Error('Storage denied'); return undefined }, put: async () => { if (options.cacheFailure === 'write') throw new Error('QuotaExceededError') } }
   const worker = { postMessage() { phases.push('configure') } }
   const serviceWorker = { register: async () => { phases.push('register'); return { active: worker } }, ready: Promise.resolve({ active: worker }), addEventListener() {} }
   const fetch = async input => {
@@ -224,7 +231,7 @@ async function staticActivationFixture(failedPath = '', options = {}) {
   const listeners = {}
   const windowListeners = {}
   const api = enhancer('/group/project/pets/documents/doc/?selected=wanted#wanted', {
-    caches: { open: async () => cache },
+    caches: options.cacheFailure === 'absent' ? undefined : { open: async () => { if (options.cacheFailure === 'open') throw new Error('Storage denied'); return cache } },
     fetch,
     navigator: { serviceWorker },
     history,
@@ -473,4 +480,49 @@ test('overview and cross-document links retain normal browser navigation', async
     assert.equal(prevented, false)
     assert.deepEqual(fixture.history.pushes, [])
   }
+})
+
+for (const cacheFailure of ['absent','open','write']) {
+ test(`static docs navigate with unavailable cache: ${cacheFailure}`, async () => {
+  const fixture = await staticActivationFixture('',{cacheFailure})
+  assert.equal(fixture.result.ok,true)
+  await fixture.api.navigate('https://docs.test/group/project/pets/documents/doc/?selected=wanted#wanted')
+  assert.equal(fixture.root.dataset.manjaLocalDocsState,'ready')
+  assert.match(fixture.main.innerHTML,/Wanted/)
+ })
+}
+
+test('static router preserves native anchors and modified link activation', async () => {
+ const fixture = await staticActivationFixture()
+ let prevented = 0
+ const link = {href:fixture.location.href.replace('#wanted','#parameters'),hasAttribute:()=>false,getAttribute:()=>null}
+ const target = {closest:selector=>selector==='a[href]'?link:null}
+ const before = fixture.requests.length
+ fixture.listeners.click({target,preventDefault(){prevented++}})
+ for (const flags of [{ctrlKey:true},{metaKey:true},{shiftKey:true},{button:1}]) {
+  fixture.listeners.click({target,preventDefault(){prevented++},...flags})
+ }
+ assert.equal(prevented,0)
+ assert.equal(fixture.requests.length,before)
+ assert.deepEqual(fixture.history.pushes,[])
+})
+
+test('static activation uses the page revision identity after the deployment changes', async () => {
+ const fixture = await staticActivationFixture('',{changedDeployment:true})
+ assert.equal(fixture.result.ok,true)
+ assert.equal(fixture.requests.some(path=>path.endsWith('/_manja/identity.json')),false)
+ assert.equal(fixture.requests.some(path=>path.includes('/snapshots/')&&path.includes('/identity-sha256-')),true)
+})
+
+test('static activation retains compatibility with older exported identity files', async () => {
+ const fixture = await staticActivationFixture('',{legacyIdentity:true})
+ assert.equal(fixture.result.ok,true)
+ assert.equal(fixture.requests.some(path=>path.endsWith('/_manja/identity.json')),true)
+})
+
+test('a failed cache read preserves the original static request error and retry state', async () => {
+ const fixture = await staticActivationFixture('operation-fragment',{cacheFailure:'read',navigationError:true})
+ assert.equal(fixture.result.ok,false)
+ assert.match(fixture.root.dataset.manjaLocalDocsReason,/network down/)
+ assert.equal(fixture.navigationError.hidden,false)
 })
