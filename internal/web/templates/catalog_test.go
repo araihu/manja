@@ -832,19 +832,9 @@ func TestCatalogDocumentSecuritySchemesFallbackUsesCanonicalFragment(t *testing.
 
 func renderLegacyCatalogDocumentSecuritySchemes(document catalog.DocumentDirectoryV1) ([]byte, error) {
 	legacyURL := func(value string) string {
-		safe, err := templ.JoinURLErrs(templ.URL(value))
-		if err != nil {
-			return ""
-		}
-		return templ.EscapeString(safe)
+		return templ.EscapeString(templ.URL(value))
 	}
-	legacyAttribute := func(value string) string {
-		resolved, err := templ.ResolveAttributeValue(value)
-		if err != nil {
-			return ""
-		}
-		return resolved
-	}
+	legacyAttribute := templ.EscapeString[string]
 	var output bytes.Buffer
 	component := templ.ComponentFunc(func(ctx context.Context, writer io.Writer) error {
 		if len(document.SecuritySchemes) == 0 {
@@ -945,19 +935,9 @@ func legacySecurityParameterLabel(location string) string {
 
 func renderLegacyCatalogDocumentInfo(document catalog.DocumentDirectoryV1) ([]byte, error) {
 	legacyURL := func(value string) string {
-		safe, err := templ.JoinURLErrs(templ.URL(value))
-		if err != nil {
-			return ""
-		}
-		return templ.EscapeString(safe)
+		return templ.EscapeString(templ.URL(value))
 	}
-	legacyAttribute := func(value string) string {
-		resolved, err := templ.ResolveAttributeValue(value)
-		if err != nil {
-			return ""
-		}
-		return resolved
-	}
+	legacyAttribute := templ.EscapeString[string]
 	contact := document.Overview.Contact
 	license := document.Overview.License
 	showContact := strings.TrimSpace(contact.Name) != "" || strings.TrimSpace(contact.URL) != "" || strings.TrimSpace(contact.Email) != ""
