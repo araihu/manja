@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/araihu/manja/application/catalog"
 	"github.com/araihu/manja/domain"
@@ -46,6 +47,7 @@ catalogs:
 	if err != nil {
 		t.Fatal(err)
 	}
+	t.Cleanup(func() { _ = closeRendererHandler(handler) })
 	if len(receipts) != 1 || receipts[0].CatalogID != "payments" || receipts[0].SnapshotID == "" {
 		t.Fatalf("activation receipts = %#v", receipts)
 	}
@@ -53,6 +55,9 @@ catalogs:
 	handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/", nil))
 	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), "Payments") || !strings.Contains(response.Body.String(), `id="manja-local-docs-descriptor"`) {
 		t.Fatalf("GET / = %d %q", response.Code, response.Body.String())
+	}
+	if err := closeRendererHandler(handler); err != nil {
+		t.Fatal(err)
 	}
 	disabled, _, err := NewRenderer(context.Background(), RendererOptions{ConfigPath: configPath, LocalDocsDisabled: true})
 	if err != nil {
@@ -63,6 +68,7 @@ catalogs:
 	if strings.Contains(disabledResponse.Body.String(), `id="manja-local-docs-descriptor"`) || !strings.Contains(disabledResponse.Body.String(), "Payments") {
 		t.Fatalf("disabled local docs changed SSR or emitted descriptor: %q", disabledResponse.Body.String())
 	}
+	t.Cleanup(func() { _ = closeRendererHandler(disabled) })
 }
 
 func TestNewRendererServesRecoveredCatalogWhenRefreshSourcesFail(t *testing.T) {
@@ -218,10 +224,13 @@ catalogs:
 		t.Fatal(err)
 	}
 
-	handler, recovered, err := NewRecoveredRenderer(context.Background(), RendererOptions{ConfigPath: configPath, DataDir: dataDir})
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	handler, recovered, err := NewRecoveredRenderer(ctx, RendererOptions{ConfigPath: configPath, DataDir: dataDir})
 	if err != nil {
 		t.Fatal(err)
 	}
+	t.Cleanup(func() { _ = closeRendererHandler(handler) })
 	if len(built) != 1 || len(recovered) != 1 || built[0].SnapshotID != recovered[0].SnapshotID || built[0].RevisionID != recovered[0].RevisionID {
 		t.Fatalf("built=%#v recovered=%#v", built, recovered)
 	}

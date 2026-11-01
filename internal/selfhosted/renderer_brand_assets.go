@@ -91,6 +91,10 @@ func (handler *rendererBrandAssets) AssetPaths() []string {
 	return paths
 }
 
+func (handler *rendererBrandAssets) Close() error {
+	return closeRendererHandler(handler.next)
+}
+
 func (handler *rendererBrandAssets) ServeHTTP(response http.ResponseWriter, request *http.Request) {
 	if !strings.HasPrefix(request.URL.Path, "/brand-assets/") {
 		handler.next.ServeHTTP(response, request)

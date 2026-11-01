@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -22,7 +23,7 @@ type cliConfig struct {
 	Options        app.Options
 }
 
-var serve = func(ctx context.Context, cfg cliConfig) error {
+var serve = func(ctx context.Context, cfg cliConfig) (err error) {
 	var handler http.Handler
 	if cfg.RendererConfig != "" {
 		catalogHandler, receipts, err := app.NewRenderer(ctx, app.RendererOptions{ConfigPath: cfg.RendererConfig, DataDir: cfg.Options.DataDir, ResourceLimits: cfg.Options.ResourceLimits})
@@ -38,6 +39,11 @@ var serve = func(ctx context.Context, cfg cliConfig) error {
 			return err
 		}
 	}
+	defer func() {
+		if closer, ok := handler.(io.Closer); ok {
+			err = errors.Join(err, closer.Close())
+		}
+	}()
 	log.Printf("manja listening on %s", cfg.Addr)
 	return http.ListenAndServe(cfg.Addr, handler)
 }

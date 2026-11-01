@@ -171,10 +171,14 @@ func TestPublicationMetadataSurvivesExportRecoveryAndChangesIdentity(t *testing.
 	p.Commit = strings.Repeat("c", 40)
 	mappings[0]["publication"] = p
 	write()
-	_, changed, err := NewRenderer(context.Background(), options)
+	if err := closeRendererHandler(handler); err != nil {
+		t.Fatal(err)
+	}
+	changedHandler, changed, err := NewRenderer(context.Background(), options)
 	if err != nil {
 		t.Fatal(err)
 	}
+	t.Cleanup(func() { _ = closeRendererHandler(changedHandler) })
 	if changed[0].SnapshotID == recovered[0].SnapshotID || changed[0].SnapshotID == receipt.Catalogs[0].SnapshotID {
 		t.Fatal("upstream metadata change reused the previous snapshot")
 	}

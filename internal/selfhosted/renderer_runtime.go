@@ -3,6 +3,7 @@ package selfhosted
 import (
 	"context"
 	"fmt"
+	"io"
 	"net/http"
 	"strings"
 
@@ -17,9 +18,17 @@ type RendererOptions struct {
 	ResourceLimits    bool
 }
 
+func closeRendererHandler(handler http.Handler) error {
+	if closer, ok := handler.(io.Closer); ok {
+		return closer.Close()
+	}
+	return nil
+}
+
 // NewRecoveredRenderer opens only durable renderer state. It never constructs
 // source adapters, parsers, or compilers and fails unless every configured
 // catalog has an active, preflighted snapshot.
+// The returned handler implements io.Closer and owns the data-directory lock.
 func NewRecoveredRenderer(ctx context.Context, options RendererOptions) (http.Handler, []renderer.ActivationReceipt, error) {
 	configured, runtimeConfig, err := rendererConfiguration(options)
 	if err != nil {
@@ -29,6 +38,12 @@ func NewRecoveredRenderer(ctx context.Context, options RendererOptions) (http.Ha
 	if err != nil {
 		return nil, nil, err
 	}
+	ready := false
+	defer func() {
+		if !ready {
+			_ = closeRendererHandler(server.Handler())
+		}
+	}()
 	if err := server.Recover(ctx); err != nil {
 		return nil, nil, err
 	}
@@ -41,7 +56,11 @@ func NewRecoveredRenderer(ctx context.Context, options RendererOptions) (http.Ha
 		receipts = append(receipts, receipt)
 	}
 	handler, err := withRendererBrandAssets(ctx, configured.AssetDirectory(), server.Handler())
-	return handler, receipts, err
+	if err != nil {
+		return nil, nil, err
+	}
+	ready = true
+	return handler, receipts, nil
 }
 
 func rendererConfiguration(options RendererOptions) (configadapter.RendererFile, renderer.Config, error) {

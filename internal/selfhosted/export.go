@@ -81,6 +81,7 @@ func ExportRenderer(ctx context.Context, options ExportOptions) (receipt ExportR
 	if err != nil {
 		return ExportReceipt{}, err
 	}
+	defer func() { err = errors.Join(err, closeRendererHandler(handler)) }()
 	progress.setCatalogTotals(len(receipts))
 	progress.phase("materialize")
 	for _, receipt := range receipts {
