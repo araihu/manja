@@ -93,6 +93,14 @@ together when downloading or distributing a multi-file description. The
 legacy flat `openapi/<document-key>.yaml` downloads remain available.
 Source filenames are escaped in download URLs, including spaces and Unicode.
 
+Build and export operations close their renderer when finished, releasing the
+exclusive data-directory lock before the next operation or recovery. Configured
+state is retained. Embedded applications using `renderer.New` or
+`renderer.NewRecoveryOnly` must stop serving and close the server or its owning
+handler through `io.Closer` before reopening that directory. Closing is
+idempotent and waits for admitted HTTP requests and activation; closed handlers
+return 503 and closed servers cannot be recovered or activated again.
+
 ```bash
 manja export \
   --renderer-config ./renderer.yaml \
