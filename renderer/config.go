@@ -331,7 +331,7 @@ func validateMount(mount string) error {
 	if !strings.HasPrefix(mount, "/") || strings.HasSuffix(mount, "/") || strings.Contains(mount, `\`) || strings.ContainsAny(mount, "?#%") || path.Clean(mount) != mount {
 		return fmt.Errorf("must be an absolute clean unencoded path without a trailing slash")
 	}
-	for _, reserved := range []string{"/_manja", "/assets", "/manja-assets", "/healthz", "/readyz"} {
+	for _, reserved := range []string{"/_manja", "/assets", "/brand-assets", "/manja-assets", "/healthz", "/readyz"} {
 		if mount == reserved || strings.HasPrefix(mount, reserved+"/") {
 			return fmt.Errorf("uses reserved prefix %q", reserved)
 		}

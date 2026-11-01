@@ -16,6 +16,10 @@ func TestNewAcceptsCanonicalRootAndNestedCatalogConfigurations(t *testing.T) {
 			Version:  1,
 			Catalogs: []CatalogConfig{{ID: "payments", Mount: "/", Title: "Payments", ProfileID: domain.CompatibilityProfileStrict}},
 		},
+		"brand prefix lookalike": {
+			Version:  1,
+			Catalogs: []CatalogConfig{validCatalogConfig("payments", "/brand-assets-team")},
+		},
 		"multiple": {
 			Version: 1,
 			Catalogs: []CatalogConfig{
@@ -66,6 +70,8 @@ func TestNewRejectsInvalidCatalogConfiguration(t *testing.T) {
 		{name: "backslash", config: Config{Version: 1, Catalogs: []CatalogConfig{validCatalogConfig("payments", `/docs\payments`)}}},
 		{name: "query", config: Config{Version: 1, Catalogs: []CatalogConfig{validCatalogConfig("payments", "/payments?mode=full")}}},
 		{name: "reserved assets", config: Config{Version: 1, Catalogs: []CatalogConfig{validCatalogConfig("payments", "/assets/payments")}}},
+		{name: "reserved brand assets root", config: Config{Version: 1, Catalogs: []CatalogConfig{validCatalogConfig("payments", "/brand-assets")}}},
+		{name: "reserved brand assets descendant", config: Config{Version: 1, Catalogs: []CatalogConfig{validCatalogConfig("payments", "/brand-assets/payments")}}},
 		{name: "reserved health", config: Config{Version: 1, Catalogs: []CatalogConfig{validCatalogConfig("payments", "/healthz")}}},
 		{name: "duplicate mount", config: Config{Version: 1, Catalogs: []CatalogConfig{validCatalogConfig("payments", "/docs"), validCatalogConfig("other", "/docs")}}},
 		{name: "overlap", config: Config{Version: 1, Catalogs: []CatalogConfig{validCatalogConfig("payments", "/docs"), validCatalogConfig("other", "/docs/other")}}},
