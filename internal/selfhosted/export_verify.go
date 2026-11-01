@@ -16,7 +16,6 @@ import (
 	artifact "github.com/araihu/manja/application/htmlartifact"
 	"github.com/araihu/manja/internal/adapters/catalogjson"
 	"github.com/araihu/manja/internal/localdocs"
-	"github.com/araihu/manja/internal/web"
 	"github.com/araihu/manja/renderer"
 	"golang.org/x/net/html"
 )
@@ -36,11 +35,30 @@ func verifyExportStructure(root string, manifest exportManifest, declared map[st
 		}
 		return nil
 	}
-	assets := web.CatalogAssetPaths()
-	if manifest.Rendering == "html" {
-		assets = staticExportAssetPaths()
+	// Validate the serialized export, not the installed renderer's asset
+	// inventory: dependency upgrades can introduce files an intact older
+	// export never contained. The runtime contract is fixed by this schema;
+	// other assets are verified through the recorded inventory and references.
+	required := []string{
+		"index.html", "search/index.html", "sw.js",
+		"manja-assets/local-docs.js",
+		"manja-assets/local-docs/runtime-assets.js",
+		"manja-assets/local-docs/storage.js",
+		"manja-assets/local-docs/sw.js",
 	}
-	for _, name := range append([]string{"index.html", "search/index.html", "sw.js"}, trimExportAssetPaths(assets)...) {
+	if manifest.Rendering != "html" {
+		required = append(required,
+			"manja-assets/local-docs/manja.wasm",
+			"manja-assets/local-docs/manja.wasm.br",
+			"manja-assets/local-docs/wasm_exec.js",
+		)
+	}
+	for _, name := range required {
+		if err := require(name); err != nil {
+			return err
+		}
+	}
+	for name := range declared {
 		if err := require(name); err != nil {
 			return err
 		}

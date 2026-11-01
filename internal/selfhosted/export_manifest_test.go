@@ -33,6 +33,86 @@ func TestExportManifestVerifiesExactCanonicalTree(t *testing.T) {
 	}
 }
 
+func TestExportVerifierAcceptsPriorAssetInventoryForReplacement(t *testing.T) {
+	for _, test := range []struct {
+		name, mutate string
+	}{
+		{name: "intact"},
+		{name: "changed asset", mutate: "changed"},
+		{name: "missing asset", mutate: "missing"},
+		{name: "wrong executable media type", mutate: "media type"},
+		{name: "missing dependency", mutate: "dependency"},
+		{name: "missing runtime core", mutate: "runtime"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			root := t.TempDir()
+			writer := exportTreeWriter{root: root, entries: make(map[string]exportFileEntry)}
+			// A previous renderer can have different asset names and need not
+			// contain unused files introduced by the currently installed version.
+			for name, body := range map[string]string{
+				"index.html":                 `<!doctype html><script src="/assets/previous-runtime.js"></script>`,
+				"search/index.html":          `<!doctype html><title>Search</title>`,
+				"sw.js":                      "// previous worker",
+				"assets/previous-runtime.js": "// previous runtime",
+				"manja-assets/local-docs.js": "// previous runtime",
+				"manja-assets/local-docs/runtime-assets.js": "// previous asset manifest",
+				"manja-assets/local-docs/storage.js":        "// previous storage",
+				"manja-assets/local-docs/sw.js":             "// previous runtime worker",
+			} {
+				if err := writer.write(name, []byte(body), mediaTypeForPath(name)); err != nil {
+					t.Fatal(err)
+				}
+			}
+			asset := "assets/previous-runtime.js"
+			if test.mutate == "media type" {
+				entry := writer.entries[asset]
+				entry.MediaType = "text/plain"
+				writer.entries[asset] = entry
+			}
+			if test.mutate == "dependency" || test.mutate == "runtime" {
+				removed := asset
+				if test.mutate == "runtime" {
+					removed = "manja-assets/local-docs/storage.js"
+				}
+				delete(writer.entries, removed)
+				if err := os.Remove(filepath.Join(root, removed)); err != nil {
+					t.Fatal(err)
+				}
+			}
+			data, err := encodeExportManifest(exportManifest{SchemaVersion: 1, Rendering: "html", BasePath: "/", Catalogs: []ExportCatalogReceipt{}, Files: writer.sortedEntries()})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := writer.write(exportManifestPath, data, "application/json"); err != nil {
+				t.Fatal(err)
+			}
+			if test.mutate == "changed" {
+				if err := os.WriteFile(filepath.Join(root, asset), []byte("changed"), 0o600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if test.mutate == "missing" {
+				if err := os.Remove(filepath.Join(root, asset)); err != nil {
+					t.Fatal(err)
+				}
+			}
+			_, err = VerifyExport(context.Background(), root)
+			if test.mutate != "" {
+				if err == nil {
+					t.Fatal("VerifyExport accepted a broken prior export")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("VerifyExport rejected prior asset inventory: %v", err)
+			}
+			if replace, err := prepareExportOutput(context.Background(), root); err != nil || !replace {
+				t.Fatalf("prepareExportOutput = %t, %v; want verified replacement", replace, err)
+			}
+		})
+	}
+}
+
 func TestExportManifestRejectsChangedAndNonCanonicalBytes(t *testing.T) {
 	for _, mutate := range []func(string) error{
 		func(root string) error {

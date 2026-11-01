@@ -114,6 +114,9 @@ The export and verify commands write JSON receipts to stdout. Verification reads
 export directory. It checks the canonical receipt, exact file set, hashes,
 required browser and catalog artifacts, descriptors, internal links, and the
 complete graph of prebuilt HTML fragments and integrity sidecars.
+The asset inventory comes from the export's own receipt, so an intact export
+remains verifiable after renderer dependencies add or rename assets. Required
+runtime files, referenced assets and declared file bytes are still checked.
 Store redirected command output outside `public`, since extra files invalidate
 the export's file inventory.
 
