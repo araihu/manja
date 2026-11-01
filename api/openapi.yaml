@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Manja Management API
-  version: 0.1.0
+  version: 0.1.1
 externalDocs:
   description: Versioned management API reference
   url: https://oapi.araihu.com/catalogs/manja/
