@@ -111,7 +111,11 @@ func TestServerConcurrentCloseDrainsRequestsAndRejectsNewAdmissions(t *testing.T
 		api.Handler().ServeHTTP(first, httptest.NewRequest(http.MethodGet, "/payments/", nil))
 		close(firstDone)
 	}()
-	<-started
+	select {
+	case <-started:
+	case <-time.After(3 * time.Second):
+		t.Fatal("request did not enter the renderer")
+	}
 	closed := make(chan error, 4)
 	for range 4 {
 		go func() { closed <- closer.Close() }()
@@ -194,11 +198,17 @@ func TestServerCloseWaitsForActivationToPublish(t *testing.T) {
 	t.Cleanup(func() { once.Do(func() { close(release) }) })
 	implementation.parsers["payments"] = closeTestParser{catalogParser: implementation.parsers["payments"], entered: entered, release: release}
 	activated := make(chan error, 1)
+	activationCtx, cancelActivation := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancelActivation()
 	go func() {
-		_, err := api.Activate(context.Background(), rendererTestCandidate("payments"))
+		_, err := api.Activate(activationCtx, rendererTestCandidate("payments"))
 		activated <- err
 	}()
-	<-entered
+	select {
+	case <-entered:
+	case <-activationCtx.Done():
+		t.Fatal("activation did not enter the parser")
+	}
 	closed := make(chan error, 1)
 	go func() { closed <- closer.Close() }()
 	select {
