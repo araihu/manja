@@ -3273,10 +3273,11 @@ func catalogSidebarConfig(data CatalogPageData) sidebar.Config {
 		}
 		linkAttrs["aria-expanded"] = strconv.FormatBool(group.Open)
 		linkAttrs["aria-controls"] = "catalog-sidebar-groups"
+		// Group expansion loads children through HTMX navigation. Keep the
+		// control a link; a local disclosure cannot load an unopened group.
 		sidebarGroup := sidebar.Item{
 			ID: group.ID, Label: group.Label, Href: group.Href,
-			Items: children, Collapsible: group.Open, Open: group.Open,
-			LinkAttrs: linkAttrs,
+			Items: children, LinkAttrs: linkAttrs,
 		}
 		switch group.Kind {
 		case "operations":
@@ -3332,7 +3333,7 @@ func catalogDocumentSidebar(data CatalogPageData) templ.Component {
 			var templ_7745c5c3_Var116 string
 			templ_7745c5c3_Var116, templ_7745c5c3_Err = templruntime.NewAttributeExpression(templpkg.URL(data.DocumentHref)).ResolveURL(ctx)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/catalog.templ`, Line: 1301, Col: 41}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/catalog.templ`, Line: 1302, Col: 41}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var116)
 			if templ_7745c5c3_Err != nil {

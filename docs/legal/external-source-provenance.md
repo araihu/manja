@@ -1,6 +1,6 @@
 # External source provenance receipt
 
-Date: 2026-10-25
+Date: 2026-11-05
 
 Status: **MECHANICAL EVIDENCE RECORDED**
 
@@ -23,7 +23,7 @@ selected source paths and all installed copies retain the approved bytes.
 | Source | Consumer identity | Legal bytes recorded |
 | --- | --- | --- |
 | [`araihu/assets`](https://github.com/araihu/assets) | Previously observed `origin/main` commit `96c81116e6610a882f89cca2b40b92b20d59fbb0`, tree `25fcd034e116990f439eecab04bdcc94bcbceea4`; consumed release `v0.2.6` commit `96c81116e6610a882f89cca2b40b92b20d59fbb0`, tree `25fcd034e116990f439eecab04bdcc94bcbceea4` | `LICENSE`: Apache-2.0, 11,358 bytes, Git blob `d645695673349e3947e8e5ae42332d0ac3164cd7`, SHA-256 `cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30`; `NOTICE`: 633 bytes, Git blob `61949028cb73348c69d488a844a36fb6253b46b7`, SHA-256 `8ab9628587c91891e424abdc1c16fdd8d9a89191e56fe496dadc979994bd6366`. |
-| [`araihu/goshtoso`](https://github.com/araihu/goshtoso) | `origin/main` commit `2c475800dcbe3b08e3a44ac9c857b9f7163335eb`, tree `4cdc27f08ab89768683b36e9f58dafdd7c83d6ab`; Manja dependency `v0.4.4` commit `234eaaf97a7058d137dfed942423dcfb77f2ace6`, tree `0242bf344b601a019a10b3bc08fc11364f8c4907` | `LICENSE`: MIT, 1,078 bytes, Git blob `0a7743398ecbeacc05ed822e1f74023ee9b36842`, SHA-256 `cacf68ff9920c026f5de2ebf992333c1a243e45d81aaa5b4577e05b52c5a9584`. |
+| [`araihu/goshtoso`](https://github.com/araihu/goshtoso) | `origin/main` commit `6803d219baa31824503dcfc9868e60204625494b`, tree `e929551f5325b3c3c84a185d583d23c913fde664`; Manja dependency `v0.5.0` commit `c4bbff5b89274d31432d6e0a154093ce2e7f8eaa`, tree `c0abbefb32a21abffa8ba91f52a448f4db0785d6` | `LICENSE`: MIT, 1,078 bytes, Git blob `0a7743398ecbeacc05ed822e1f74023ee9b36842`, SHA-256 `cacf68ff9920c026f5de2ebf992333c1a243e45d81aaa5b4577e05b52c5a9584`. |
 
 The Assets release archive is bound by the existing
 [`araihu-assets.json`](../../araihu-assets.json) identity:

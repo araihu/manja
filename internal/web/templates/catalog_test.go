@@ -1084,6 +1084,18 @@ func TestCatalogDocumentRendersOnlyExpandedGroupAndSelectedVisibleAnchor(t *test
 		{ID: "group-schemas", Kind: "schemas", Label: "Schemas", Href: "/kubernetes/core-v1/?group=group-schemas", Count: 500},
 	}
 	body := renderCatalogTemplate(t, data)
+	for _, group := range []struct {
+		id       string
+		expanded string
+	}{
+		{id: "group-core", expanded: "true"},
+		{id: "group-schemas", expanded: "false"},
+	} {
+		control := regexp.MustCompile(`<a\b[^>]*id="catalog-group-control-` + group.id + `"[^>]*>`).FindString(body)
+		if !strings.Contains(control, `aria-expanded="`+group.expanded+`"`) || !strings.Contains(control, `hx-target="#catalog-sidebar-groups"`) {
+			t.Errorf("group %s control = %q, want navigation link with server expansion state %s", group.id, control, group.expanded)
+		}
+	}
 	if strings.Count(body, `href="/kubernetes/core-v1/?selected=`) != 1 {
 		t.Fatalf("selected link was duplicated across shell variants")
 	}
