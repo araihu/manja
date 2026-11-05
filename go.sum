@@ -16,8 +16,8 @@ github.com/alecthomas/repr v0.5.4 h1:OVP7JEcuzU9CCDsT6STCr3rg17oQfWILtPWd2EG0uN4
 github.com/alecthomas/repr v0.5.4/go.mod h1:Fr0507jx4eOXV7AlPV6AVZLYrLIuIeSOWtW57eE/O/4=
 github.com/araihu/assets v0.2.6 h1:ZVxm2p1VUrwmK8Ht8Qw4HxL78u+yULSDfryM0Z8iN40=
 github.com/araihu/assets v0.2.6/go.mod h1:/542iMw33HvB1yI/x3Z1b4zuT1/M1KeKUAK5xuTP5c0=
-github.com/araihu/goshtoso v0.4.6 h1:CoVo8lwx5mYZ/LtUr+Q/+vSp7LfRP3izZ/Krm13W0bQ=
-github.com/araihu/goshtoso v0.4.6/go.mod h1:qtrsnYK1/J+2Yd8qajHEVGSGly0smWsLu8FoK01c8eQ=
+github.com/araihu/goshtoso v0.5.0 h1:LG3otF68iigTsAYOnfZ1weF9S7dhN6Cb/hnWeYJmWWk=
+github.com/araihu/goshtoso v0.5.0/go.mod h1:qtrsnYK1/J+2Yd8qajHEVGSGly0smWsLu8FoK01c8eQ=
 github.com/araihu/margo v0.0.35 h1:AySdi1msDIX5Y1dZJ8Cf+bKrDbUhwCMvYdnWeOS06y0=
 github.com/araihu/margo v0.0.35/go.mod h1:Cvt4KcHzu/OLH9Dy8XvdiqlOneGffUw1CaK7A9f2bd0=
 github.com/caarlos0/env/v11 v11.4.1 h1:fYwH0sWEsBSMPG7t4e/PEfTFzrWrpjyygXyUnWiSwEw=
