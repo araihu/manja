@@ -7,7 +7,7 @@ require (
 	github.com/araihu/assets v0.2.6
 	github.com/araihu/goshtoso v0.5.0
 	github.com/araihu/margo v0.0.35
-	github.com/caarlos0/env/v11 v11.4.1
+	github.com/caarlos0/env/v11 v11.4.2
 	github.com/evanw/esbuild v0.28.2
 	github.com/getkin/kin-openapi v0.152.0
 	github.com/go-openapi/jsonpointer v1.0.2
