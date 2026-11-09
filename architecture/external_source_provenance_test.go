@@ -106,9 +106,9 @@ var approvedExternalSourceProvenance = externalSourceProvenance{
 		Repository:   "https://github.com/araihu/goshtoso",
 		OriginMain:   sourceRevision{Ref: "refs/remotes/origin/main", CommitSHA: "6803d219baa31824503dcfc9868e60204625494b", TreeSHA: "e929551f5325b3c3c84a185d583d23c913fde664"},
 		Module:       "github.com/araihu/goshtoso",
-		Version:      "v0.5.0",
-		TagCommitSHA: "c4bbff5b89274d31432d6e0a154093ce2e7f8eaa",
-		TagTreeSHA:   "c0abbefb32a21abffa8ba91f52a448f4db0785d6",
+		Version:      "v0.6.1",
+		TagCommitSHA: "6803d219baa31824503dcfc9868e60204625494b",
+		TagTreeSHA:   "e929551f5325b3c3c84a185d583d23c913fde664",
 		License:      legalFileEvidence{Path: "LICENSE", Kind: "license", SPDX: "MIT", Size: 1078, GitBlobSHA: "0a7743398ecbeacc05ed822e1f74023ee9b36842", SHA256: "cacf68ff9920c026f5de2ebf992333c1a243e45d81aaa5b4577e05b52c5a9584"},
 	},
 }
