@@ -20,7 +20,7 @@ const GO_BUILD_IMAGE =
   "golang:1.27.3-alpine@sha256:b8c9b82affbbb82a020bbcf998dad2ba9516944ac7e883524642a481a9505e9c"
 const FORGEJO_IMAGE =
   "codeberg.org/forgejo/forgejo:11@sha256:946243edbab116d5bb78b73ea68af6f3d69229ba1b1ed958dd82c3481167f3e0"
-const PLAYWRIGHT_VERSION = "v0.6201.1"
+const PLAYWRIGHT_VERSION = "v0.6401.0"
 const OCI_DESCRIPTION = "Hosted OpenAPI renderer and publisher built with Goshtoso"
 const OCI_LICENSES = "MIT"
 const OCI_SOURCE = "https://github.com/araihu/manja"
@@ -158,6 +158,7 @@ export class Manja {
       .withExec(["go", "mod", "tidy", "-diff"])
       .withExec(["go", "test", "./...", "-count=1"])
       .withExec(["npm", "ci", "--ignore-scripts", "--no-fund", "--no-audit"])
+      .withExec(["npx", "playwright", "install", "--with-deps", "chromium"])
       .withExec(["npm", "run", "test:browser"])
       .stdout()
   }
