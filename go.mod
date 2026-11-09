@@ -12,7 +12,7 @@ require (
 	github.com/getkin/kin-openapi v0.152.0
 	github.com/go-openapi/jsonpointer v1.0.2
 	github.com/hashicorp/golang-lru/v2 v2.0.7
-	github.com/mxschmitt/playwright-go v0.6201.1
+	github.com/mxschmitt/playwright-go v0.6401.0
 	github.com/testcontainers/testcontainers-go v0.45.0
 	github.com/testcontainers/testcontainers-go/modules/forgejo v0.45.0
 	github.com/yuin/goldmark v1.8.7
