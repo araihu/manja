@@ -158,6 +158,7 @@ export class Manja {
       .withExec(["go", "mod", "tidy", "-diff"])
       .withExec(["go", "test", "./...", "-count=1"])
       .withExec(["npm", "ci", "--ignore-scripts", "--no-fund", "--no-audit"])
+      .withExec(["npx", "playwright", "install", "--with-deps", "chromium"])
       .withExec(["npm", "run", "test:browser"])
       .stdout()
   }
