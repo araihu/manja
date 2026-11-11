@@ -13,15 +13,14 @@ require (
 	github.com/araihu/goshtoso v0.6.1 // indirect
 	github.com/araihu/margo v0.0.35 // indirect
 	github.com/dlclark/regexp2/v2 v2.9.1 // indirect
-	github.com/getkin/kin-openapi v0.152.0 // indirect
+	github.com/getkin/kin-openapi v0.153.0 // indirect
 	github.com/go-openapi/jsonpointer v1.0.2 // indirect
 	github.com/hashicorp/golang-lru/v2 v2.0.7 // indirect
 	github.com/kr/pretty v0.3.1 // indirect
-	github.com/oasdiff/yaml v0.1.1 // indirect
-	github.com/oasdiff/yaml3 v0.0.14 // indirect
 	github.com/santhosh-tekuri/jsonschema/v6 v6.0.3 // indirect
 	github.com/yuin/goldmark v1.8.7 // indirect
 	go.yaml.in/yaml/v3 v3.0.6 // indirect
+	go.yaml.in/yaml/v4 v4.0.0 // indirect
 	golang.org/x/net v0.62.0 // indirect
 	golang.org/x/sys v0.50.0 // indirect
 	golang.org/x/text v0.43.0 // indirect
