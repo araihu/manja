@@ -139,7 +139,7 @@ jobs:
             core.setOutput("labels", selected.join("\n"))
 
       - name: Create or update fallback asset PR
-        uses: peter-evans/create-pull-request@15733dbdfeedb4f7fdb73d13c6f5ac83b710fab8 # v8
+        uses: peter-evans/create-pull-request@3ffccacd46053766916f087ce41d627c0b8cf2d1 # v8
         with:
           token: ${{ steps.app-token.outputs.token }}
           branch: automation/araihu-assets-${{ steps.event.outputs.release }}
