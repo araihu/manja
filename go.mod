@@ -3,7 +3,7 @@ module github.com/araihu/manja
 go 1.27.3
 
 require (
-	github.com/a-h/templ v0.3.1100
+	github.com/a-h/templ v0.3.1118
 	github.com/araihu/assets v0.2.6
 	github.com/araihu/goshtoso v0.6.1
 	github.com/araihu/margo v0.0.35
