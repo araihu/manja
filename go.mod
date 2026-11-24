@@ -3,20 +3,20 @@ module github.com/araihu/manja
 go 1.27.4
 
 require (
-	github.com/a-h/templ v0.3.1100
+	github.com/a-h/templ v0.3.1118
 	github.com/araihu/assets v0.2.6
 	github.com/araihu/goshtoso v0.6.1
-	github.com/araihu/margo v0.0.35
+	github.com/araihu/margo v0.0.36
 	github.com/caarlos0/env/v11 v11.4.2
 	github.com/evanw/esbuild v0.28.2
 	github.com/getkin/kin-openapi v0.153.0
-	github.com/go-openapi/jsonpointer v1.0.2
+	github.com/go-openapi/jsonpointer v1.0.3
 	github.com/hashicorp/golang-lru/v2 v2.0.7
 	github.com/mxschmitt/playwright-go v0.6401.0
 	github.com/testcontainers/testcontainers-go v0.45.0
 	github.com/testcontainers/testcontainers-go/modules/forgejo v0.45.0
 	github.com/yuin/goldmark v1.8.7
-	golang.org/x/net v0.62.0
+	golang.org/x/net v0.63.0
 	golang.org/x/sys v0.50.0
 	golang.org/x/text v0.44.0
 	gopkg.in/yaml.v3 v3.0.1
@@ -82,6 +82,6 @@ require (
 	go.opentelemetry.io/otel/trace v1.47.0 // indirect
 	go.yaml.in/yaml/v3 v3.0.6 // indirect
 	go.yaml.in/yaml/v4 v4.0.0 // indirect
-	golang.org/x/crypto v0.58.0 // indirect
+	golang.org/x/crypto v0.59.0 // indirect
 	pgregory.net/rapid v1.3.0 // indirect
 )
